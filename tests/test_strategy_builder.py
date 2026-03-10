@@ -807,7 +807,7 @@ class TestObjectiveSanitizer:
             19:25:00 | INFO | backtest.agents.strategy_builder | strategy_builder_start session=prev objective='[Scalp de continuation / micro-retournement] sur [crypto liquide] [5m ou 15m].
             Indicateurs : [EMA 9/21/50] + [RSI 14] + [Bandes de Bollinger 20,2].' indicators=31
             Traceback (most recent call last):
-              File "D:\\backtest_core\\agents\\strategy_builder.py", line 1
+              File "D:\\backtest_core_v2\\agents\\strategy_builder.py", line 1
             ' indicators=31
         """)
         cleaned = sanitize_objective_text(raw)
