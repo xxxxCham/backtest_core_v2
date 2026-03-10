@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "backtest-core"
-version = "1.0.0"
-description = "Moteur de backtest simplifié pour stratégies de trading"
+name = "backtest-core-v2"
+version = "2.0.0"
+description = "Moteur de backtest multi-LLM avec accélération GPU pour stratégies de trading"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -47,9 +47,9 @@ backtest-demo = "demo.quick_test:main"
 backtest-ui = "ui.app:main"
 
 [project.urls]
-Homepage = "https://github.com/baptiste/backtest-core"
-Documentation = "https://github.com/baptiste/backtest-core#readme"
-Repository = "https://github.com/baptiste/backtest-core.git"
+Homepage = "https://github.com/xxxxCham/backtest_core_v2"
+Documentation = "https://github.com/xxxxCham/backtest_core_v2#readme"
+Repository = "https://github.com/xxxxCham/backtest_core_v2.git"
 
 [tool.setuptools.packages.find]
 where = ["."]

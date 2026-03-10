@@ -4,7 +4,7 @@
 [meta]
 version = "1.0.0"
 last_update = "2026-03-10"
-description = "Index centralisé de toute la documentation du projet backtest_core"
+description = "Index centralisé de toute la documentation du projet backtest_core_v2"
 
 [documentation.reorganization_20260310]
 titre = "Reorganisation docs racine"

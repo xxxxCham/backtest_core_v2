@@ -1,18 +1,11 @@
-# backtest_core_multillm
+# Backtest Core V2
 
-Ce depot est la base canonique qui remplace progressivement l'ancien `backtest_core`.
+Moteur de backtest multi-LLM avec acceleration GPU pour strategies de trading algorithmique.
 
-## Nom Canonique Et Remplacement
+## Historique
 
-- Nom projet actif: `backtest_core_multillm`
-- Ancien nom: `backtest_core`
-- Regle operationnelle: toute nouvelle evolution doit cibler ce depot en priorite.
-
-Pour eviter les ambiguities GitHub lors de la transition:
-
-1. Conserver un seul depot de reference pour les nouvelles PR (celui-ci).
-2. Geler l'ancien depot en maintenance minimale (correctifs critiques uniquement).
-3. Nommer les branches et releases avec le prefixe `multillm` tant que les deux repos coexistent.
+- **V1** : `backtest_core` — moteur original (depot archive).
+- **V2** : `backtest_core_v2` — refonte avec orchestration multi-LLM, acceleration GPU, UI Streamlit et catalogue de strategies.
 
 ## Docs Essentielles (Conservees En Racine)
 
