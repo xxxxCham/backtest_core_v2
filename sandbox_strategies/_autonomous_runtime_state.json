@@ -1,0 +1,24 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-03-09T14:51:58+00:00",
+  "runtime": {
+    "version": "1.0",
+    "active": true,
+    "manual_stop": false,
+    "started_at": "2026-03-07T16:02:52+00:00",
+    "last_heartbeat_at": "2026-03-09T14:51:58+00:00",
+    "last_resume_at": "2026-03-09T14:14:37+00:00",
+    "last_event": "session_start",
+    "last_error": "",
+    "last_stop_reason": "",
+    "last_session_num": 151,
+    "last_session_id": "20260309_154740_strategie_de_mean_reversion_sur_grtusdc",
+    "last_session_status": "failed",
+    "model": "gpt-oss:120b-cloud",
+    "ollama_host": "http://127.0.0.1:11434",
+    "requested_source_mode": "llm",
+    "effective_source_mode": "catalog",
+    "auto_market_pick": true,
+    "resume_count": 32
+  }
+}

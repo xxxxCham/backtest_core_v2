@@ -1,0 +1,244 @@
+{# Template pour Agent Validator - Décision finale #}
+{# Version 2.0 - Optimisé avec critères explicites et format JSON complet #}
+
+Make the final validation decision for this optimization session.
+
+## CONTEXT
+Strategy: {{ strategy_name }}
+Iteration: {{ iteration }}
+
+{% if strategy_description -%}
+## STRATEGY OVERVIEW
+{{ strategy_description[:1200] }}{% if strategy_description|length > 1200 %}...{% endif %}
+
+{% endif %}
+
+{% if current_metrics -%}
+## LAST RESULT SNAPSHOT
+- Sharpe: {{ current_metrics.sharpe_ratio|format_float(3) }}
+- Return: {{ current_metrics.total_return|format_percent }}
+- Drawdown: {{ current_metrics.max_drawdown|format_percent }}
+- Trades: {{ current_metrics.total_trades }}
+
+{% endif %}
+
+{% if strategy_indicators_context -%}
+## STRATEGY INDICATORS (modifiable)
+{{ strategy_indicators_context }}
+
+{% endif %}
+
+{% if readonly_indicators_context -%}
+## CONTEXT INDICATORS (read-only)
+{{ readonly_indicators_context }}
+
+{% endif %}
+
+## INDICATOR USAGE NOTES
+- Strategy indicators are tied to tunable parameters.
+- Context indicators are read-only and for regime interpretation only.
+- Indicator values are computed once per run (baseline snapshot).
+{% if indicator_context_warnings and indicator_context_warnings|length > 0 -%}
+- Warnings below indicate unavailable indicators; ignore them in validation.
+{% endif %}
+
+{% if indicator_context_warnings and indicator_context_warnings|length > 0 -%}
+## INDICATOR CONTEXT WARNINGS
+{% for w in indicator_context_warnings %}
+- {{ w }}
+{% endfor %}
+
+{% endif %}
+
+{% if memory_summary -%}
+## HISTORICAL NOTES
+{{ memory_summary }}
+{% endif %}
+
+## OBJECTIVE CRITERIA CHECK
+| Criterion | Status | Details |
+|-----------|--------|---------|
+{% for criterion, passed in objective_check.items() %}
+| {{ criterion }} | {% if passed %}✅ PASS{% else %}❌ FAIL{% endif %} | - |
+{% endfor %}
+
+**All criteria met:** {% if objective_check.values()|select|list|length == objective_check|length %}✅ YES{% else %}❌ NO ({{ objective_check.values()|reject|list|length }} failing){% endif %}
+
+{% if current_metrics -%}
+## CURRENT PERFORMANCE
+| Metric | Value | Target | Status |
+|--------|-------|--------|--------|
+| Sharpe Ratio | {{ current_metrics.sharpe_ratio|format_float(3) }} | ≥ {{ min_sharpe }} | {% if current_metrics.sharpe_ratio >= min_sharpe %}✅{% else %}❌{% endif %} |
+| Sortino Ratio | {{ current_metrics.sortino_ratio|format_float(3) if current_metrics.sortino_ratio else 'N/A' }} | - | - |
+| Max Drawdown | {{ current_metrics.max_drawdown|format_percent }} | ≤ {{ max_drawdown_limit|format_percent }} | {% if current_metrics.max_drawdown|abs <= max_drawdown_limit %}✅{% else %}❌{% endif %} |
+| Win Rate | {{ current_metrics.win_rate|format_percent }} | - | - |
+| Profit Factor | {{ current_metrics.profit_factor|format_float(2) if current_metrics.profit_factor else 'N/A' }} | ≥ 1.0 | - |
+| SQN | {{ current_metrics.sqn|format_float(2) if current_metrics.sqn else 'N/A' }} | ≥ 2.0 | - |
+| Total Trades | {{ current_metrics.total_trades }} | ≥ {{ min_trades }} | {% if current_metrics.total_trades >= min_trades %}✅{% else %}❌{% endif %} |
+{% endif %}
+
+{% if overfitting_ratio is defined and overfitting_ratio > 0 -%}
+## WALK-FORWARD VALIDATION (Out-of-Sample Test)
+- Robust Overfitting Ratio: {{ overfitting_ratio|format_float(2) }} (threshold: {{ max_overfitting_ratio|default(1.5) }}) {% if overfitting_ratio > 1.8 %}⚠️ CRITICAL{% elif overfitting_ratio > max_overfitting_ratio|default(1.5) %}🟡 WARNING{% else %}✅{% endif %}
+- Degradation %: {{ degradation_pct|format_float(1) }}% (threshold: 40%) {% if degradation_pct > 40 %}⚠️ CRITICAL{% elif degradation_pct > 25 %}🟡 WARNING{% else %}✅{% endif %}
+- Test Stability Std: {{ test_stability_std|format_float(3) }} (threshold: 0.5) {% if test_stability_std > 0.5 %}🟡 WARNING{% else %}✅{% endif %}
+- Valid Folds: {{ n_valid_folds }}/{{ walk_forward_windows }} {% if n_valid_folds < 4 %}🟡 WARNING{% else %}✅{% endif %}
+
+⚠️ **WARNING: Do NOT approve if:**
+- overfitting_ratio > 1.8 (extreme overfitting)
+- degradation_pct > 40% (unstable forward performance)
+- test_stability_std > 0.5 (erratic out-of-sample results)
+- n_valid_folds < 4 (insufficient validation coverage)
+{% endif %}
+
+{% if current_params -%}
+## CURRENT PARAMETERS
+{% for param_name, param_value in current_params.items() %}
+- `{{ param_name }}`: {{ param_value }}
+{% endfor %}
+{% endif %}
+
+{% if analyst_report -%}
+## ANALYST SUMMARY
+{{ analyst_report[:1000] }}{% if analyst_report|length > 1000 %}...{% endif %}
+
+{% endif %}
+
+{% if strategist_proposals -%}
+## PROPOSALS EVALUATED (top 3)
+{% for proposal in strategist_proposals[:3] %}
+
+### Proposal {{ proposal.get('id') }}: {{ proposal.get('name', 'Unnamed') }}
+{% if proposal.get('critic_evaluation') %}
+| Evaluation | Score |
+|------------|-------|
+| Recommendation | {{ proposal.critic_evaluation.get('recommendation', 'N/A') }} |
+| Overfitting Score | {{ proposal.critic_evaluation.get('overfitting_score', 'N/A') }}/100 |
+| Robustness Score | {{ proposal.critic_evaluation.get('robustness_score', 'N/A') }}/100 |
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{% if critic_concerns and critic_concerns|length > 0 -%}
+## CRITIC CONCERNS
+{% for concern in critic_concerns[:5] %}
+- ⚠️ {{ concern }}
+{% endfor %}
+{% endif %}
+
+{% if iteration_history and iteration_history|length > 0 -%}
+## ITERATION HISTORY
+- Total iterations: {{ iteration_history|length }}
+{% if best_metrics %}
+- Best Sharpe achieved: {{ best_metrics.sharpe_ratio|format_float(3) }}
+- Best Drawdown: {{ best_metrics.max_drawdown|format_percent }}
+{% endif %}
+
+**Recent Progress:**
+{% for hist in iteration_history[-3:] %}
+- Iter {{ hist.get('iteration', loop.index) }}: Sharpe={{ hist.get('sharpe_ratio', 0)|format_float(2) }}, Return={{ hist.get('total_return', 0)|format_percent }}{% if hist.get('decision') %} → {{ hist.get('decision') }}{% endif %}
+
+{% endfor %}
+{% endif %}
+
+{% if sweep_summary -%}
+## GRID SEARCH VALIDATION (STRICTER CRITERIA)
+This optimization session used **grid search (sweep)** to find parameter configurations.
+
+**Sweep Details:**
+- Combinations tested: {{ sweep_results.get('n_combinations', 'N/A') if sweep_results else 'N/A' }}
+- Grid search can introduce selection bias even with walk-forward validation
+
+**CRITICAL: Grid Search Approval Criteria (stricter than normal):**
+
+✅ **APPROVE sweep config ONLY IF ALL of:**
+1. Walk-forward overfitting ratio ≤ **1.3** (not 1.5) — stricter for grid-selected configs
+2. Degradation % ≤ **20%** (not 25%) — must generalize better
+3. Parameters NOT at exact grid boundaries (red flag for overfitting to range)
+4. Sharpe improvement ≥ 15% over baseline (grid search cost must be justified)
+5. Critic explicitly approved with robustness score ≥ 70/100
+6. Parameters make intuitive sense (not arbitrary local optima)
+
+🟡 **ITERATE if:**
+- Ratio 1.3-1.5 OR degradation 20-30% → suggest refining ranges or testing neighbors
+- Parameters at boundaries → expand grid or test adjacent values
+- Marginal improvement (<15%) → may not justify grid search complexity
+
+❌ **REJECT sweep config if ANY of:**
+- Ratio > 1.5 (unacceptable overfitting for grid-selected params)
+- Degradation > 30% (unstable, likely found noise in grid)
+- Parameters arbitrary or at exact boundaries
+- Critic flagged critical concerns about generalization
+
+**RATIONALE FOR STRICTER CRITERIA:**
+Grid search performs multiple comparisons on the same dataset, increasing false discovery risk.
+Even with walk-forward, the "best" config from 50+ combinations is inherently optimized to test data.
+Higher standards ensure grid-selected configs truly generalize, not just exploit random patterns.
+
+{% endif %}
+
+## DECISION GUIDELINES
+
+### APPROVE if:
+- ALL objective criteria pass (sharpe ≥ min, drawdown ≤ max, trades ≥ min)
+- Overfitting ratio ≤ {{ max_overfitting_ratio|default(1.5) }}
+- Critic approved at least one proposal
+- High confidence in robustness
+
+### ITERATE if:
+- Shows potential but criteria not fully met
+- Clear improvement path exists
+- Overfitting is manageable
+
+### REJECT if:
+- Fundamental strategy issues identified
+- No improvement over multiple iterations
+- Severe overfitting that cannot be fixed
+
+### ABORT if:
+- System malfunction or data quality issues
+
+## REQUIRED OUTPUT FORMAT
+Return ONLY valid JSON (no markdown, no extra text):
+```json
+{
+    "decision": "APPROVE|REJECT|ITERATE|ABORT",
+    "confidence": 0-100,
+    "summary": "Brief summary of decision rationale",
+
+    "criteria_check": {
+        "sharpe_meets_minimum": true,
+        "drawdown_within_limit": true,
+        "overfitting_acceptable": true,
+        "sufficient_trades": true,
+        "critic_approved": true
+    },
+
+    "agent_synthesis": {
+        "analyst_key_points": ["point1", "point2"],
+        "strategist_contribution": "summary of proposals",
+        "critic_concerns_addressed": true
+    },
+
+    "if_approved": {
+        "final_parameters": {"param": value},
+        "expected_performance": {"sharpe": X, "drawdown": Y},
+        "deployment_notes": ["note1"],
+        "monitoring_recommendations": ["rec1"]
+    },
+
+    "if_iterate": {
+        "focus_areas": ["area1", "area2"],
+        "suggested_approach": "what to try next",
+        "max_more_iterations": 3
+    },
+
+    "if_rejected": {
+        "primary_reasons": ["reason1"],
+        "fundamental_issues": ["issue1"],
+        "recommendations": ["alternative approach"]
+    },
+
+    "final_report": "Comprehensive final report paragraph"
+}
+```

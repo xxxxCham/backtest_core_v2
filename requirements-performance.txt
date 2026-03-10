@@ -1,0 +1,29 @@
+# ============================================================
+# Backtest Core - Performance & Advanced Analytics
+# ============================================================
+# Installation: pip install -r requirements-performance.txt
+#
+# Ces packages sont OPTIONNELS mais FORTEMENT RECOMMANDÉS
+# pour améliorer les performances et capacités d'analyse.
+# ============================================================
+
+# === Performance Critiques (Recommandé) ===
+bottleneck>=1.3.0           # Accélération Pandas rolling/groupby (5-20x)
+numexpr>=2.8.0              # Évaluation rapide expressions NumPy (2-10x)
+
+# === Analyse Statistique Avancée ===
+statsmodels>=0.14.0         # Tests statistiques, ARIMA, régression
+scikit-learn>=1.3.0         # ML, validation croisée, clustering
+
+# === Compilation & Performance Extrême ===
+cython>=3.0.0               # Compilation C pour boucles critiques
+
+# === Visualisation Avancée (Optionnel) ===
+seaborn>=0.12.0             # Graphiques statistiques élégants
+plotly-resampler>=0.9.0     # Downsampling intelligent pour gros datasets
+
+# === Utilitaires (Optionnel) ===
+tqdm>=4.65.0                # Progress bars élégantes
+colorama>=0.4.6             # Couleurs console Windows
+tabulate>=0.9.0             # Tableaux formatés en console
+

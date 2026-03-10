@@ -1,0 +1,5416 @@
+{
+  "batch_id": 2,
+  "n_variants": 50,
+  "variants": [
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0020",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 13,
+        "macd_slow": 20,
+        "macd_signal": 7,
+        "rsi_period": 15,
+        "rsi_min": 35,
+        "rsi_max": 65,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 13,
+            "slow_period": 20,
+            "signal_period": 7
+          },
+          "rsi": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 65",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (4.5x)",
+        "default_params": {
+          "macd_fast": 13,
+          "macd_slow": 20,
+          "macd_signal": 7,
+          "rsi_period": 15,
+          "rsi_min": 35,
+          "rsi_max": 65,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=13, slow_period=20, signal_period=7)\n  - rsi(period=15)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 65\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (2.5x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "246f8fd1b00e65626c9b5127b529f1fe781b79898213ef058375d7029b140e82",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0021",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 10,
+        "macd_slow": 24,
+        "macd_signal": 10,
+        "rsi_period": 16,
+        "rsi_min": 45,
+        "rsi_max": 65,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 10,
+            "slow_period": 24,
+            "signal_period": 10
+          },
+          "rsi": {
+            "period": 16
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 45 and rsi < 65",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (2.5x)",
+        "default_params": {
+          "macd_fast": 10,
+          "macd_slow": 24,
+          "macd_signal": 10,
+          "rsi_period": 16,
+          "rsi_min": 45,
+          "rsi_max": 65,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=10, slow_period=24, signal_period=10)\n  - rsi(period=16)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 45 and rsi < 65\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (2.5x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "5da3eec9dd41cfb6b6e7b17bce7a62e45c37f6898c3ef23f8f09a200da449851",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0022",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 13,
+        "macd_slow": 24,
+        "macd_signal": 12,
+        "rsi_period": 15,
+        "rsi_min": 40,
+        "rsi_max": 75,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 13,
+            "slow_period": 24,
+            "signal_period": 12
+          },
+          "rsi": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 40 and rsi < 75",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (3.0x)",
+        "default_params": {
+          "macd_fast": 13,
+          "macd_slow": 24,
+          "macd_signal": 12,
+          "rsi_period": 15,
+          "rsi_min": 40,
+          "rsi_max": 75,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=13, slow_period=24, signal_period=12)\n  - rsi(period=15)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 40 and rsi < 75\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (1.5x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "2e48cb2e3821ba31df5d1d46704df5ed0e074143e70df99b4e2c7956a50e61f0",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0023",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 11,
+        "macd_slow": 22,
+        "macd_signal": 10,
+        "rsi_period": 12,
+        "rsi_min": 45,
+        "rsi_max": 80,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 6.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 11,
+            "slow_period": 22,
+            "signal_period": 10
+          },
+          "rsi": {
+            "period": 12
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 45 and rsi < 80",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (6.0x)",
+        "default_params": {
+          "macd_fast": 11,
+          "macd_slow": 22,
+          "macd_signal": 10,
+          "rsi_period": 12,
+          "rsi_min": 45,
+          "rsi_max": 80,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 6.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=11, slow_period=22, signal_period=10)\n  - rsi(period=12)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 45 and rsi < 80\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 6.0\n  description: ATR stop-loss (2.5x) and take-profit (6.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "27cd5579b5443cf057b67395be8ad9141c2fa6ee67855bc96f18786b19ff898d",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0024",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 10,
+        "macd_slow": 32,
+        "macd_signal": 11,
+        "rsi_period": 8,
+        "rsi_min": 30,
+        "rsi_max": 80,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 10,
+            "slow_period": 32,
+            "signal_period": 11
+          },
+          "rsi": {
+            "period": 8
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 30 and rsi < 80",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (4.5x)",
+        "default_params": {
+          "macd_fast": 10,
+          "macd_slow": 32,
+          "macd_signal": 11,
+          "rsi_period": 8,
+          "rsi_min": 30,
+          "rsi_max": 80,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=10, slow_period=32, signal_period=11)\n  - rsi(period=8)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 30 and rsi < 80\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (2.0x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "cbfc8bab9f16475e22cd640fb9cdb2b8fb57b09ced24f999c4b33ff89de07bac",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0025",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 13,
+        "macd_slow": 21,
+        "macd_signal": 8,
+        "rsi_period": 20,
+        "rsi_min": 40,
+        "rsi_max": 75,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 13,
+            "slow_period": 21,
+            "signal_period": 8
+          },
+          "rsi": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 40 and rsi < 75",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (5.5x)",
+        "default_params": {
+          "macd_fast": 13,
+          "macd_slow": 21,
+          "macd_signal": 8,
+          "rsi_period": 20,
+          "rsi_min": 40,
+          "rsi_max": 75,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=13, slow_period=21, signal_period=8)\n  - rsi(period=20)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 40 and rsi < 75\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (2.25x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "e6fb68bf87ad3e15b5426380556b75caaf6a6e946f0b36b33a2216426f81420f",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0026",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 13,
+        "macd_slow": 34,
+        "macd_signal": 7,
+        "rsi_period": 10,
+        "rsi_min": 40,
+        "rsi_max": 65,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 13,
+            "slow_period": 34,
+            "signal_period": 7
+          },
+          "rsi": {
+            "period": 10
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 40 and rsi < 65",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (5.0x)",
+        "default_params": {
+          "macd_fast": 13,
+          "macd_slow": 34,
+          "macd_signal": 7,
+          "rsi_period": 10,
+          "rsi_min": 40,
+          "rsi_max": 65,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=13, slow_period=34, signal_period=7)\n  - rsi(period=10)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 40 and rsi < 65\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.25x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "38847ca7774099a7d7b10aa2fdbe83319f23f3a678ac6e7c137d93b319fccc08",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0027",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 12,
+        "macd_slow": 25,
+        "macd_signal": 11,
+        "rsi_period": 12,
+        "rsi_min": 35,
+        "rsi_max": 60,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 2.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 12,
+            "slow_period": 25,
+            "signal_period": 11
+          },
+          "rsi": {
+            "period": 12
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 60",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (2.0x)",
+        "default_params": {
+          "macd_fast": 12,
+          "macd_slow": 25,
+          "macd_signal": 11,
+          "rsi_period": 12,
+          "rsi_min": 35,
+          "rsi_max": 60,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 2.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=12, slow_period=25, signal_period=11)\n  - rsi(period=12)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 60\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 2.0\n  description: ATR stop-loss (1.25x) and take-profit (2.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "a5257ef586b29ec6132e7378c55c0ab5a57dcc5019f65461865871cf9133b82a",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0028",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 11,
+        "macd_slow": 28,
+        "macd_signal": 7,
+        "rsi_period": 10,
+        "rsi_min": 35,
+        "rsi_max": 70,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 11,
+            "slow_period": 28,
+            "signal_period": 7
+          },
+          "rsi": {
+            "period": 10
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 70",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (2.5x)",
+        "default_params": {
+          "macd_fast": 11,
+          "macd_slow": 28,
+          "macd_signal": 7,
+          "rsi_period": 10,
+          "rsi_min": 35,
+          "rsi_max": 70,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=11, slow_period=28, signal_period=7)\n  - rsi(period=10)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 70\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (1.75x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "5a44ca19ef86466d1da7a5890e7b30b0d23da1aa042b58b2d8969142b39b6f3c",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.846132+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0029",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 13,
+        "macd_slow": 28,
+        "macd_signal": 7,
+        "rsi_period": 18,
+        "rsi_min": 40,
+        "rsi_max": 65,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 13,
+            "slow_period": 28,
+            "signal_period": 7
+          },
+          "rsi": {
+            "period": 18
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 40 and rsi < 65",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (3.0x)",
+        "default_params": {
+          "macd_fast": 13,
+          "macd_slow": 28,
+          "macd_signal": 7,
+          "rsi_period": 18,
+          "rsi_min": 40,
+          "rsi_max": 65,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=13, slow_period=28, signal_period=7)\n  - rsi(period=18)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 40 and rsi < 65\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (1.25x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "9373d437c8f464d2cc6724e05ef077b545b1938500824017b7c29a935d385efa",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.846132+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0030",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 11,
+        "macd_slow": 24,
+        "macd_signal": 11,
+        "rsi_period": 15,
+        "rsi_min": 35,
+        "rsi_max": 60,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 11,
+            "slow_period": 24,
+            "signal_period": 11
+          },
+          "rsi": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 60",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (5.5x)",
+        "default_params": {
+          "macd_fast": 11,
+          "macd_slow": 24,
+          "macd_signal": 11,
+          "rsi_period": 15,
+          "rsi_min": 35,
+          "rsi_max": 60,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=11, slow_period=24, signal_period=11)\n  - rsi(period=15)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 60\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (2.5x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "385e666ce47ac42e46dbe15a9ef2346ac12a3e272ffa42078881538ac888306f",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.846132+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0031",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 11,
+        "macd_slow": 35,
+        "macd_signal": 6,
+        "rsi_period": 19,
+        "rsi_min": 35,
+        "rsi_max": 60,
+        "stop_atr_mult": 2.75,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 11,
+            "slow_period": 35,
+            "signal_period": 6
+          },
+          "rsi": {
+            "period": 19
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 60",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.75x) and take-profit (4.5x)",
+        "default_params": {
+          "macd_fast": 11,
+          "macd_slow": 35,
+          "macd_signal": 6,
+          "rsi_period": 19,
+          "rsi_min": 35,
+          "rsi_max": 60,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.75,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=11, slow_period=35, signal_period=6)\n  - rsi(period=19)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 60\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.75\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (2.75x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "054286487cacd838e676edd87ab1ee62f673c7daed53ca250d1ea84f55437040",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.846132+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0032",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 12,
+        "macd_slow": 34,
+        "macd_signal": 6,
+        "rsi_period": 14,
+        "rsi_min": 35,
+        "rsi_max": 80,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 12,
+            "slow_period": 34,
+            "signal_period": 6
+          },
+          "rsi": {
+            "period": 14
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 80",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (3.0x)",
+        "default_params": {
+          "macd_fast": 12,
+          "macd_slow": 34,
+          "macd_signal": 6,
+          "rsi_period": 14,
+          "rsi_min": 35,
+          "rsi_max": 80,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=12, slow_period=34, signal_period=6)\n  - rsi(period=14)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 80\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (1.5x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "a2b4dc0653fba35e05f4df0177f8c6e233c615fbb633865cc5c2924fc7d47131",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.846132+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0033",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 11,
+        "macd_slow": 35,
+        "macd_signal": 10,
+        "rsi_period": 14,
+        "rsi_min": 30,
+        "rsi_max": 70,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 11,
+            "slow_period": 35,
+            "signal_period": 10
+          },
+          "rsi": {
+            "period": 14
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 30 and rsi < 70",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (4.0x)",
+        "default_params": {
+          "macd_fast": 11,
+          "macd_slow": 35,
+          "macd_signal": 10,
+          "rsi_period": 14,
+          "rsi_min": 30,
+          "rsi_max": 70,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=11, slow_period=35, signal_period=10)\n  - rsi(period=14)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 30 and rsi < 70\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (1.25x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "5d93e2963fa8f7fd568326b45b3c2382f0a40eecc28ddb8e174b28fc28191d99",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.846132+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0034",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 14,
+        "macd_slow": 21,
+        "macd_signal": 7,
+        "rsi_period": 7,
+        "rsi_min": 35,
+        "rsi_max": 70,
+        "stop_atr_mult": 3.0,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 14,
+            "slow_period": 21,
+            "signal_period": 7
+          },
+          "rsi": {
+            "period": 7
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 70",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (3.0x) and take-profit (5.5x)",
+        "default_params": {
+          "macd_fast": 14,
+          "macd_slow": 21,
+          "macd_signal": 7,
+          "rsi_period": 7,
+          "rsi_min": 35,
+          "rsi_max": 70,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 3.0,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=14, slow_period=21, signal_period=7)\n  - rsi(period=7)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 70\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 3.0\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (3.0x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "9836fe2f583be0f00ac429827e5862cbf5c96498592085e159e336a1b33476f0",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.846132+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0035",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 14,
+        "macd_slow": 22,
+        "macd_signal": 12,
+        "rsi_period": 15,
+        "rsi_min": 40,
+        "rsi_max": 60,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 14,
+            "slow_period": 22,
+            "signal_period": 12
+          },
+          "rsi": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 40 and rsi < 60",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (3.5x)",
+        "default_params": {
+          "macd_fast": 14,
+          "macd_slow": 22,
+          "macd_signal": 12,
+          "rsi_period": 15,
+          "rsi_min": 40,
+          "rsi_max": 60,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=14, slow_period=22, signal_period=12)\n  - rsi(period=15)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 40 and rsi < 60\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.25x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "02f691095b657c6a9a7903cffa583b073d36b6b0e3177ba647571aeede371d67",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.846132+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0036",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 14,
+        "macd_slow": 23,
+        "macd_signal": 7,
+        "rsi_period": 8,
+        "rsi_min": 45,
+        "rsi_max": 65,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 14,
+            "slow_period": 23,
+            "signal_period": 7
+          },
+          "rsi": {
+            "period": 8
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 45 and rsi < 65",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (3.5x)",
+        "default_params": {
+          "macd_fast": 14,
+          "macd_slow": 23,
+          "macd_signal": 7,
+          "rsi_period": 8,
+          "rsi_min": 45,
+          "rsi_max": 65,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=14, slow_period=23, signal_period=7)\n  - rsi(period=8)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 45 and rsi < 65\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.0x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "45b90e45e7f7afa4c88f563921856d8ae67eff0c44ae8f78b2e49cc49eeac49f",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.846132+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0037",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 13,
+        "macd_slow": 32,
+        "macd_signal": 8,
+        "rsi_period": 7,
+        "rsi_min": 45,
+        "rsi_max": 60,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 2.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 13,
+            "slow_period": 32,
+            "signal_period": 8
+          },
+          "rsi": {
+            "period": 7
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 45 and rsi < 60",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (2.0x)",
+        "default_params": {
+          "macd_fast": 13,
+          "macd_slow": 32,
+          "macd_signal": 8,
+          "rsi_period": 7,
+          "rsi_min": 45,
+          "rsi_max": 60,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 2.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=13, slow_period=32, signal_period=8)\n  - rsi(period=7)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 45 and rsi < 60\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 2.0\n  description: ATR stop-loss (1.25x) and take-profit (2.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "84677dc9d3c218da30b6b80af4c053670187c250809824ca54b47e9032c20295",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.846132+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0038",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 8,
+        "macd_slow": 21,
+        "macd_signal": 6,
+        "rsi_period": 21,
+        "rsi_min": 35,
+        "rsi_max": 75,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 8,
+            "slow_period": 21,
+            "signal_period": 6
+          },
+          "rsi": {
+            "period": 21
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 75",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (4.5x)",
+        "default_params": {
+          "macd_fast": 8,
+          "macd_slow": 21,
+          "macd_signal": 6,
+          "rsi_period": 21,
+          "rsi_min": 35,
+          "rsi_max": 75,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=8, slow_period=21, signal_period=6)\n  - rsi(period=21)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 75\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (1.75x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "9728e5e0a605ad6d6be0bd46507e36a610ede95cb266941f50b80a6a0cee3c9f",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.846132+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0039",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 14,
+        "macd_slow": 33,
+        "macd_signal": 7,
+        "rsi_period": 14,
+        "rsi_min": 35,
+        "rsi_max": 65,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 14,
+            "slow_period": 33,
+            "signal_period": 7
+          },
+          "rsi": {
+            "period": 14
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 65",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (5.0x)",
+        "default_params": {
+          "macd_fast": 14,
+          "macd_slow": 33,
+          "macd_signal": 7,
+          "rsi_period": 14,
+          "rsi_min": 35,
+          "rsi_max": 65,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=14, slow_period=33, signal_period=7)\n  - rsi(period=14)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 65\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.5x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "1a5336d5f83d720efc9a1169f75bb193f0574dc2666745cf02aff809db778eea",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.846132+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0000",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 6,
+        "st_multiplier": 3.5,
+        "adx_period": 16,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 6,
+            "multiplier": 3.5
+          },
+          "adx": {
+            "period": 16
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (1.75x) and take-profit (4.0x)",
+        "default_params": {
+          "st_atr_period": 6,
+          "st_multiplier": 3.5,
+          "adx_period": 16,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=6, multiplier=3.5)\n  - adx(period=16)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 4.0\n  description: ATR trailing stop (1.75x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "8b01df0217d0b8136c82e089246758b41e8386e236fa2a18fc8c6b2e295b7291",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.847129+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0001",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 5,
+        "st_multiplier": 2.0,
+        "adx_period": 16,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 5,
+            "multiplier": 2.0
+          },
+          "adx": {
+            "period": 16
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 25",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 25",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (1.25x) and take-profit (5.5x)",
+        "default_params": {
+          "st_atr_period": 5,
+          "st_multiplier": 2.0,
+          "adx_period": 16,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=5, multiplier=2.0)\n  - adx(period=16)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 25\n  - short: supertrend.direction == -1 and adx.adx > 25\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 5.5\n  description: ATR trailing stop (1.25x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "a8846f89674235d0eba3d8d1e0274c46a23f5e065a38dcba55047dae52be3622",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.847129+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0002",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 15,
+        "st_multiplier": 2.5,
+        "adx_period": 16,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 15,
+            "multiplier": 2.5
+          },
+          "adx": {
+            "period": 16
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (1.0x) and take-profit (2.5x)",
+        "default_params": {
+          "st_atr_period": 15,
+          "st_multiplier": 2.5,
+          "adx_period": 16,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.0,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=15, multiplier=2.5)\n  - adx(period=16)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.0\n  tp_atr_mult: 2.5\n  description: ATR trailing stop (1.0x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "e553e9051691d903f70b7d90519396aa5fd700194185568c6411c7a442291436",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.847129+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0003",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 18,
+        "st_multiplier": 3.0,
+        "adx_period": 19,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 18,
+            "multiplier": 3.0
+          },
+          "adx": {
+            "period": 19
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 25",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 25",
+        "exit_logic": "supertrend.direction changes or adx.adx < 15",
+        "risk_management": "ATR trailing stop (1.5x) and take-profit (3.5x)",
+        "default_params": {
+          "st_atr_period": 18,
+          "st_multiplier": 3.0,
+          "adx_period": 19,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=18, multiplier=3.0)\n  - adx(period=19)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 25\n  - short: supertrend.direction == -1 and adx.adx > 25\nexit:\n  - condition: supertrend.direction changes or adx.adx < 15\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 3.5\n  description: ATR trailing stop (1.5x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "b5fd74566cec18b9a743e26c5acd7ed8414937d2fae835f672cb0943c27c68b1",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.847129+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0004",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 13,
+        "st_multiplier": 2.5,
+        "adx_period": 11,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 13,
+            "multiplier": 2.5
+          },
+          "adx": {
+            "period": 11
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 35",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 35",
+        "exit_logic": "supertrend.direction changes or adx.adx < 25",
+        "risk_management": "ATR trailing stop (2.25x) and take-profit (3.5x)",
+        "default_params": {
+          "st_atr_period": 13,
+          "st_multiplier": 2.5,
+          "adx_period": 11,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=13, multiplier=2.5)\n  - adx(period=11)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 35\n  - short: supertrend.direction == -1 and adx.adx > 35\nexit:\n  - condition: supertrend.direction changes or adx.adx < 25\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 3.5\n  description: ATR trailing stop (2.25x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "1c2fac2f812da333bf588ad516dd2d643ad8ce595c5f55a5d2122a2707f6df1d",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.847129+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0005",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 17,
+        "st_multiplier": 4.0,
+        "adx_period": 16,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 17,
+            "multiplier": 4.0
+          },
+          "adx": {
+            "period": 16
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 25",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 25",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (1.0x) and take-profit (2.5x)",
+        "default_params": {
+          "st_atr_period": 17,
+          "st_multiplier": 4.0,
+          "adx_period": 16,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.0,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=17, multiplier=4.0)\n  - adx(period=16)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 25\n  - short: supertrend.direction == -1 and adx.adx > 25\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.0\n  tp_atr_mult: 2.5\n  description: ATR trailing stop (1.0x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "16454b7b1f987a56bfa1ae45daffc87c8a0bc39d646a127f4a74f7ed61d011b8",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.847129+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0006",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 17,
+        "st_multiplier": 3.0,
+        "adx_period": 10,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 17,
+            "multiplier": 3.0
+          },
+          "adx": {
+            "period": 10
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 25",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 25",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (2.25x) and take-profit (5.5x)",
+        "default_params": {
+          "st_atr_period": 17,
+          "st_multiplier": 3.0,
+          "adx_period": 10,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=17, multiplier=3.0)\n  - adx(period=10)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 25\n  - short: supertrend.direction == -1 and adx.adx > 25\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 5.5\n  description: ATR trailing stop (2.25x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "4bcd19dae40be8d3d1035a0349e0086f13f19a10cae8a5dd94c7935c49bbf0e9",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.847129+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0007",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 16,
+        "st_multiplier": 3.0,
+        "adx_period": 12,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 2.75,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 16,
+            "multiplier": 3.0
+          },
+          "adx": {
+            "period": 12
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 25",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 25",
+        "exit_logic": "supertrend.direction changes or adx.adx < 15",
+        "risk_management": "ATR trailing stop (2.75x) and take-profit (4.5x)",
+        "default_params": {
+          "st_atr_period": 16,
+          "st_multiplier": 3.0,
+          "adx_period": 12,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 2.75,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=16, multiplier=3.0)\n  - adx(period=12)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 25\n  - short: supertrend.direction == -1 and adx.adx > 25\nexit:\n  - condition: supertrend.direction changes or adx.adx < 15\nrisk:\n  stop_atr_mult: 2.75\n  tp_atr_mult: 4.5\n  description: ATR trailing stop (2.75x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "b15eefda7fe538532fe064a43d17b0ee39878578af69036de0132d7ae6c291c6",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0008",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 16,
+        "st_multiplier": 4.0,
+        "adx_period": 15,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 16,
+            "multiplier": 4.0
+          },
+          "adx": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (2.0x) and take-profit (5.5x)",
+        "default_params": {
+          "st_atr_period": 16,
+          "st_multiplier": 4.0,
+          "adx_period": 15,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=16, multiplier=4.0)\n  - adx(period=15)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 5.5\n  description: ATR trailing stop (2.0x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "2fa3e3e61403009fd0f8d677e4f6cfafa7433a2d6cf65cec437f87b17608b1c0",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0009",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 11,
+        "st_multiplier": 2.0,
+        "adx_period": 10,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 11,
+            "multiplier": 2.0
+          },
+          "adx": {
+            "period": 10
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 25",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 25",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (2.5x) and take-profit (5.5x)",
+        "default_params": {
+          "st_atr_period": 11,
+          "st_multiplier": 2.0,
+          "adx_period": 10,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=11, multiplier=2.0)\n  - adx(period=10)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 25\n  - short: supertrend.direction == -1 and adx.adx > 25\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 5.5\n  description: ATR trailing stop (2.5x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "19bde65d29a307d6195130ea8910d2ba4a25e4478dba3fff564e1bf43832bbbf",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0010",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 18,
+        "st_multiplier": 2.0,
+        "adx_period": 16,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 18,
+            "multiplier": 2.0
+          },
+          "adx": {
+            "period": 16
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 25",
+        "risk_management": "ATR trailing stop (1.75x) and take-profit (4.5x)",
+        "default_params": {
+          "st_atr_period": 18,
+          "st_multiplier": 2.0,
+          "adx_period": 16,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=18, multiplier=2.0)\n  - adx(period=16)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 25\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 4.5\n  description: ATR trailing stop (1.75x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "37b2fff6860d12664ee26b04127ecf25943ffb8f42521e8be40b7cea99d15120",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0011",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 16,
+        "st_multiplier": 3.5,
+        "adx_period": 14,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 16,
+            "multiplier": 3.5
+          },
+          "adx": {
+            "period": 14
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 15",
+        "risk_management": "ATR trailing stop (2.0x) and take-profit (4.0x)",
+        "default_params": {
+          "st_atr_period": 16,
+          "st_multiplier": 3.5,
+          "adx_period": 14,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=16, multiplier=3.5)\n  - adx(period=14)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 15\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 4.0\n  description: ATR trailing stop (2.0x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "25057b155c97471e324b4861262c23aa5463491bb857906378658aa049dba4c0",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0012",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 7,
+        "st_multiplier": 2.5,
+        "adx_period": 15,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 7,
+            "multiplier": 2.5
+          },
+          "adx": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 25",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 25",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (2.25x) and take-profit (5.5x)",
+        "default_params": {
+          "st_atr_period": 7,
+          "st_multiplier": 2.5,
+          "adx_period": 15,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=7, multiplier=2.5)\n  - adx(period=15)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 25\n  - short: supertrend.direction == -1 and adx.adx > 25\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 5.5\n  description: ATR trailing stop (2.25x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "a73c9a14e46d43620903cf829e7a5ef7d402e4e4054b12f12ecf813424e6d74e",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0013",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 5,
+        "st_multiplier": 2.5,
+        "adx_period": 15,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 2.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 5,
+            "multiplier": 2.5
+          },
+          "adx": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 15",
+        "risk_management": "ATR trailing stop (1.75x) and take-profit (2.0x)",
+        "default_params": {
+          "st_atr_period": 5,
+          "st_multiplier": 2.5,
+          "adx_period": 15,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 2.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=5, multiplier=2.5)\n  - adx(period=15)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 15\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 2.0\n  description: ATR trailing stop (1.75x) and take-profit (2.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "0eff62b7f46154f56cdf63fda648a2387896c74ae769c2ed1d53ee7b2423fbac",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0014",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 19,
+        "st_multiplier": 3.0,
+        "adx_period": 17,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 19,
+            "multiplier": 3.0
+          },
+          "adx": {
+            "period": 17
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 25",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 25",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (2.25x) and take-profit (3.0x)",
+        "default_params": {
+          "st_atr_period": 19,
+          "st_multiplier": 3.0,
+          "adx_period": 17,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=19, multiplier=3.0)\n  - adx(period=17)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 25\n  - short: supertrend.direction == -1 and adx.adx > 25\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 3.0\n  description: ATR trailing stop (2.25x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "74581c059bff3c9e570c00581a1ed700560c9e04c45aad0fad95b3767f035444",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0015",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 6,
+        "st_multiplier": 4.0,
+        "adx_period": 13,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 2.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 6,
+            "multiplier": 4.0
+          },
+          "adx": {
+            "period": 13
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 35",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 35",
+        "exit_logic": "supertrend.direction changes or adx.adx < 25",
+        "risk_management": "ATR trailing stop (1.0x) and take-profit (2.0x)",
+        "default_params": {
+          "st_atr_period": 6,
+          "st_multiplier": 4.0,
+          "adx_period": 13,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 1.0,
+          "tp_atr_mult": 2.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=6, multiplier=4.0)\n  - adx(period=13)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 35\n  - short: supertrend.direction == -1 and adx.adx > 35\nexit:\n  - condition: supertrend.direction changes or adx.adx < 25\nrisk:\n  stop_atr_mult: 1.0\n  tp_atr_mult: 2.0\n  description: ATR trailing stop (1.0x) and take-profit (2.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "990c2792e097a85f1ce73f645c9bd7008174cbbfdd547537a2208226311a3dad",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0016",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 18,
+        "st_multiplier": 3.0,
+        "adx_period": 14,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 18,
+            "multiplier": 3.0
+          },
+          "adx": {
+            "period": 14
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (1.5x) and take-profit (2.5x)",
+        "default_params": {
+          "st_atr_period": 18,
+          "st_multiplier": 3.0,
+          "adx_period": 14,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=18, multiplier=3.0)\n  - adx(period=14)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 2.5\n  description: ATR trailing stop (1.5x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "1240815cd380a9174bf5e75b5255da296735e1e6f119665e7eeb19092756fefa",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0017",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 7,
+        "st_multiplier": 2.5,
+        "adx_period": 15,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 7,
+            "multiplier": 2.5
+          },
+          "adx": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 35",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 35",
+        "exit_logic": "supertrend.direction changes or adx.adx < 25",
+        "risk_management": "ATR trailing stop (1.25x) and take-profit (4.5x)",
+        "default_params": {
+          "st_atr_period": 7,
+          "st_multiplier": 2.5,
+          "adx_period": 15,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=7, multiplier=2.5)\n  - adx(period=15)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 35\n  - short: supertrend.direction == -1 and adx.adx > 35\nexit:\n  - condition: supertrend.direction changes or adx.adx < 25\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 4.5\n  description: ATR trailing stop (1.25x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "8bb9723fb870ba04772f275957a7c5c10908c2cf3570b7014fc7d694e3830380",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0018",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 14,
+        "st_multiplier": 2.0,
+        "adx_period": 13,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 2.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 14,
+            "multiplier": 2.0
+          },
+          "adx": {
+            "period": 13
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (1.75x) and take-profit (2.0x)",
+        "default_params": {
+          "st_atr_period": 14,
+          "st_multiplier": 2.0,
+          "adx_period": 13,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 2.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=14, multiplier=2.0)\n  - adx(period=13)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 2.0\n  description: ATR trailing stop (1.75x) and take-profit (2.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "2b20bc2ef50a78160e13139bcb293e92e3c9576958ffb3ebb13d25be34920a9f",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0019",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 18,
+        "st_multiplier": 2.5,
+        "adx_period": 16,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 18,
+            "multiplier": 2.5
+          },
+          "adx": {
+            "period": 16
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 25",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 25",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (1.25x) and take-profit (2.5x)",
+        "default_params": {
+          "st_atr_period": 18,
+          "st_multiplier": 2.5,
+          "adx_period": 16,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=18, multiplier=2.5)\n  - adx(period=16)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 25\n  - short: supertrend.direction == -1 and adx.adx > 25\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 2.5\n  description: ATR trailing stop (1.25x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "c21bd7613735d350677a3b3f3a340578b65249e214218fe40832fb2d7feec918",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0020",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 13,
+        "st_multiplier": 3.0,
+        "adx_period": 23,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 13,
+            "multiplier": 3.0
+          },
+          "adx": {
+            "period": 23
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 25",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 25",
+        "exit_logic": "supertrend.direction changes or adx.adx < 15",
+        "risk_management": "ATR trailing stop (1.75x) and take-profit (2.5x)",
+        "default_params": {
+          "st_atr_period": 13,
+          "st_multiplier": 3.0,
+          "adx_period": 23,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=13, multiplier=3.0)\n  - adx(period=23)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 25\n  - short: supertrend.direction == -1 and adx.adx > 25\nexit:\n  - condition: supertrend.direction changes or adx.adx < 15\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 2.5\n  description: ATR trailing stop (1.75x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "83520222fa243503667415b1e818d0f6c2f51b7c83c2494a27580d5b0b02e72c",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0021",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 8,
+        "st_multiplier": 3.5,
+        "adx_period": 23,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 3.0,
+        "tp_atr_mult": 6.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 8,
+            "multiplier": 3.5
+          },
+          "adx": {
+            "period": 23
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 25",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 25",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (3.0x) and take-profit (6.0x)",
+        "default_params": {
+          "st_atr_period": 8,
+          "st_multiplier": 3.5,
+          "adx_period": 23,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 3.0,
+          "tp_atr_mult": 6.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=8, multiplier=3.5)\n  - adx(period=23)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 25\n  - short: supertrend.direction == -1 and adx.adx > 25\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 3.0\n  tp_atr_mult: 6.0\n  description: ATR trailing stop (3.0x) and take-profit (6.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "86b04d2b9d4a9184cf049f2af950c9bc997fff35389e9e6d5a50bc0fb1547cea",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0022",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 7,
+        "st_multiplier": 4.0,
+        "adx_period": 16,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 7,
+            "multiplier": 4.0
+          },
+          "adx": {
+            "period": 16
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 35",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 35",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (1.0x) and take-profit (4.5x)",
+        "default_params": {
+          "st_atr_period": 7,
+          "st_multiplier": 4.0,
+          "adx_period": 16,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.0,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=7, multiplier=4.0)\n  - adx(period=16)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 35\n  - short: supertrend.direction == -1 and adx.adx > 35\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.0\n  tp_atr_mult: 4.5\n  description: ATR trailing stop (1.0x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "8dc23573de4819ead337b5acb858aacf3230d3e2a163545f705dbd4a952d3da0",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0023",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 7,
+        "st_multiplier": 2.0,
+        "adx_period": 14,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 7,
+            "multiplier": 2.0
+          },
+          "adx": {
+            "period": 14
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 35",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 35",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (1.75x) and take-profit (4.0x)",
+        "default_params": {
+          "st_atr_period": 7,
+          "st_multiplier": 2.0,
+          "adx_period": 14,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=7, multiplier=2.0)\n  - adx(period=14)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 35\n  - short: supertrend.direction == -1 and adx.adx > 35\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 4.0\n  description: ATR trailing stop (1.75x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "41ebb4d4e62206661104dfb96f22c0dd1ad5277599a86754f84e127f998007a6",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0024",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 17,
+        "st_multiplier": 4.0,
+        "adx_period": 21,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 17,
+            "multiplier": 4.0
+          },
+          "adx": {
+            "period": 21
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (1.25x) and take-profit (5.5x)",
+        "default_params": {
+          "st_atr_period": 17,
+          "st_multiplier": 4.0,
+          "adx_period": 21,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=17, multiplier=4.0)\n  - adx(period=21)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 5.5\n  description: ATR trailing stop (1.25x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "02434897928e5f5f057759f28176ff20c5c9f32202e0ba3c01d3f129bff0eb90",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0025",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 18,
+        "st_multiplier": 4.0,
+        "adx_period": 16,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 18,
+            "multiplier": 4.0
+          },
+          "adx": {
+            "period": 16
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (1.75x) and take-profit (4.5x)",
+        "default_params": {
+          "st_atr_period": 18,
+          "st_multiplier": 4.0,
+          "adx_period": 16,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=18, multiplier=4.0)\n  - adx(period=16)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 4.5\n  description: ATR trailing stop (1.75x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "f9cd8c7d33f0abdbf5e5c08b2bbac8f9b0474fed2d2a4c991bd2cd37d3cbd297",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0026",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 13,
+        "st_multiplier": 3.0,
+        "adx_period": 22,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.75,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 13,
+            "multiplier": 3.0
+          },
+          "adx": {
+            "period": 22
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 25",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 25",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (2.75x) and take-profit (5.5x)",
+        "default_params": {
+          "st_atr_period": 13,
+          "st_multiplier": 3.0,
+          "adx_period": 22,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.75,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=13, multiplier=3.0)\n  - adx(period=22)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 25\n  - short: supertrend.direction == -1 and adx.adx > 25\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.75\n  tp_atr_mult: 5.5\n  description: ATR trailing stop (2.75x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "08a65e358449652debc4d359ebea14a3d869cee3dd280397927b2a8ffc4b8c49",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0027",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 14,
+        "st_multiplier": 2.5,
+        "adx_period": 18,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 14,
+            "multiplier": 2.5
+          },
+          "adx": {
+            "period": 18
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 35",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 35",
+        "exit_logic": "supertrend.direction changes or adx.adx < 25",
+        "risk_management": "ATR trailing stop (1.75x) and take-profit (3.0x)",
+        "default_params": {
+          "st_atr_period": 14,
+          "st_multiplier": 2.5,
+          "adx_period": 18,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=14, multiplier=2.5)\n  - adx(period=18)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 35\n  - short: supertrend.direction == -1 and adx.adx > 35\nexit:\n  - condition: supertrend.direction changes or adx.adx < 25\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 3.0\n  description: ATR trailing stop (1.75x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "0b6fd3290ef8b977c49eeecb5b0a9f88c2cb22f6673cce30ac52fb088a61b028",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0028",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 5,
+        "st_multiplier": 2.0,
+        "adx_period": 23,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 5,
+            "multiplier": 2.0
+          },
+          "adx": {
+            "period": 23
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (2.25x) and take-profit (4.5x)",
+        "default_params": {
+          "st_atr_period": 5,
+          "st_multiplier": 2.0,
+          "adx_period": 23,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=5, multiplier=2.0)\n  - adx(period=23)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 4.5\n  description: ATR trailing stop (2.25x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "66f225299bcd730e47540dcee19e67d6672e946f45a502b80cba625206a385c5",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0029",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 10,
+        "st_multiplier": 4.0,
+        "adx_period": 15,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 10,
+            "multiplier": 4.0
+          },
+          "adx": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 25",
+        "risk_management": "ATR trailing stop (2.0x) and take-profit (5.0x)",
+        "default_params": {
+          "st_atr_period": 10,
+          "st_multiplier": 4.0,
+          "adx_period": 15,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=10, multiplier=4.0)\n  - adx(period=15)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 25\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 5.0\n  description: ATR trailing stop (2.0x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "f2a9e8b21eb171d0fc714dbd872187d36904e083223fa004ee8409da6307917e",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+{# Strategy Builder - PROPOSAL PHASE TEMPLATE (strict JSON) #}
+
+PHASE LOCK: PROPOSAL ONLY.
+Do NOT output Python code.
+Do NOT rewrite the objective.
+Do NOT output markdown outside the requested JSON.
+
+## OBJECTIVE
+{{ objective }}
+
+## ITERATION {{ iteration }} / {{ max_iterations }}
+
+## MARKET CONTEXT
+- Symbol: {{ symbol|default("UNKNOWN") }}
+- Timeframe: {{ timeframe|default("?") }}
+- Bars: {{ n_bars|default(0) }}{% if date_range_start %} ({{ date_range_start }} -> {{ date_range_end }}){% endif %}
+- Costs: fees={{ fees_bps|default(10) }} bps, slippage={{ slippage_bps|default(5) }} bps
+- Capital: {{ initial_capital|default(10000) }}
+
+## AVAILABLE INDICATORS (ONLY THESE)
+{% for ind in available_indicators %}
+- {{ ind }}
+{% endfor %}
+
+{% if last_metrics %}
+## LAST BACKTEST SNAPSHOT
+- Sharpe: {{ last_metrics.sharpe_ratio|format_float(3) }}
+- Return: {{ last_metrics.total_return_pct|format_float(2) }}%
+- MaxDD: {{ last_metrics.max_drawdown_pct|format_float(2) }}%
+- Trades: {{ last_metrics.total_trades }}
+- WinRate: {{ last_metrics.win_rate_pct|format_float(1) }}%
+- ProfitFactor: {{ last_metrics.profit_factor|format_float(2) }}
+{% endif %}
+
+{% if diagnostic %}
+## DIAGNOSTIC CONTRACT
+- category: {{ diagnostic.category }}
+- severity: {{ diagnostic.severity }}
+- required_change_type: {{ diagnostic.change_type }}
+- summary: {{ diagnostic.summary }}
+
+Required behavior:
+{% if diagnostic.change_type == "params" %}
+- Keep same used_indicators as previous iteration.
+- Keep entry_long_logic / entry_short_logic / exit_logic unchanged (or micro-edit only).
+- Change only numeric parameters in default_params / parameter_specs.
+{% elif diagnostic.change_type == "logic" %}
+- Perform structural changes in logic, filters, and/or indicators.
+- Do not only tweak numbers.
+{% elif diagnostic.change_type == "both" %}
+- Change both logic and parameters.
+{% endif %}
+{% endif %}
+
+{% if stagnation_warning %}
+## ⚠️ STAGNATION ALERT
+{{ stagnation_warning }}
+{% endif %}
+
+{% if last_code %}
+## PREVIOUS CODE (REFERENCE)
+```python
+{{ last_code }}
+```
+{% endif %}
+
+{% if iteration_history and iteration_history|length > 0 %}
+## ITERATION HISTORY (LAST 5)
+{% for h in iteration_history %}
+- iter={{ h.iteration }} change={{ h.change_type|default("?") }} sharpe={{ h.sharpe|default("N/A") }} trades={{ h.trades|default("N/A") }} diag={{ h.diagnostic_category|default("-") }}{% if h.is_fallback %} [FALLBACK-NOT-SCORED]{% endif %}{% if h.error %} error={{ h.error }}{% endif %}
+{% endfor %}
+{% endif %}
+
+## HARD RULES
+- Output ONE valid JSON object only. No nested objects inside logic fields.
+- No placeholders (forbidden: "brief description", "when to BUY", "N/A").
+- used_indicators must be a non-empty list from AVAILABLE INDICATORS.
+- hypothesis and logic fields must be concrete and actionable.
+- Include ATR risk management in risk_management and params.
+- change_type must be exactly one of: logic, params, both, accept.
+- NEVER use pandas idioms (.iloc, .loc, .rolling, .shift, df['signal']) in logic fields.
+  Logic must describe vectorized numpy boolean conditions only.
+- SEMANTIC CHECKS: ATR is a distance (not a price), RSI/MFI are 0-100 oscillators.
+  Never compare close vs ATR directly; use ATR as a filter (e.g. ATR > threshold).
+- entry_long_logic, entry_short_logic, exit_logic MUST be plain strings (one sentence each).
+  NEVER nest JSON objects, "logic_expression" keys, or "indicators" arrays inside them.
+- Keep it simple: 2-3 indicators max. One clear entry rule, one clear exit rule.
+
+## COMMON MISTAKES (DO NOT REPEAT)
+BAD exit_logic (nested JSON — FORBIDDEN):
+  "exit_logic": {"cross_any(close, donchian.middle) or adx.adx < 25": {"description": "...", "indicators": [...]}}
+BAD exit_logic (duplicated logic_expression — FORBIDDEN):
+  "exit_logic": {"logic_expression": {"close < donchian.middle": {"description": "...", "indicators": [...]}}, "logic_expression": {...}}
+BAD entry_long_logic (vague placeholder — FORBIDDEN):
+  "entry_long_logic": "when price breaks above resistance"
+BAD hypothesis (describes WHAT not WHY — FORBIDDEN):
+  "hypothesis": "Use RSI and Bollinger bands"
+
+GOOD exit_logic (plain string — CORRECT):
+  "exit_logic": "close crosses below donchian middle band OR adx < 25"
+GOOD entry_long_logic (concrete boolean condition — CORRECT):
+  "entry_long_logic": "close > bollinger.upper AND rsi > 50 AND adx > 25"
+GOOD hypothesis (explains WHY — CORRECT):
+  "hypothesis": "Bollinger breakout with ADX trend filter reduces false signals in ranging markets"
+
+## REQUIRED JSON SCHEMA
+{
+  "strategy_name": "snake_case_name",
+  "hypothesis": "why this should improve results (explain the edge, not just the indicators)",
+  "change_type": "logic|params|both|accept",
+  "used_indicators": ["rsi", "bollinger", "atr"],
+  "indicator_params": {
+    "rsi": {"period": 14},
+    "bollinger": {"period": 20, "std_dev": 2},
+    "atr": {"period": 14}
+  },
+  "entry_long_logic": "close > bollinger.upper AND rsi > 50 AND adx > 25",
+  "entry_short_logic": "close < bollinger.lower AND rsi < 50 AND adx > 25",
+  "exit_logic": "close crosses bollinger.middle OR adx < 20",
+  "risk_management": "ATR-based: stop at 1.5x ATR below entry, take-profit at 3x ATR above entry",
+  "default_params": {
+    "leverage": 1,
+    "rsi_period": 14,
+    "rsi_oversold": 30,
+    "rsi_overbought": 70,
+    "stop_atr_mult": 1.5,
+    "tp_atr_mult": 3.0,
+    "warmup": 50
+  },
+  "parameter_specs": {
+    "rsi_period": {"min": 5, "max": 50, "default": 14, "type": "int"},
+    "stop_atr_mult": {"min": 0.5, "max": 4.0, "default": 1.5, "type": "float"}
+  }
+}
+
+REMINDER: All logic fields (entry_long_logic, entry_short_logic, exit_logic) must be
+PLAIN STRINGS. Never output nested JSON, "logic_expression", or "indicators" arrays inside them.

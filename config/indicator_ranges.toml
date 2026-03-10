@@ -1,0 +1,676 @@
+# Backtest Core - Plages d'Optimisation pour Indicateurs Techniques
+# ==================================================================
+#
+# Ce fichier définit les plages de test et pas d'optimisation recommandés
+# pour les indicateurs techniques utilisés par backtest_core.
+#
+# Format: [category.param]
+#   min = valeur minimale
+#   max = valeur maximale
+#   step = pas d'incrémentation
+#   default = valeur par défaut
+#   description = description du paramètre
+#   options = liste d'options (facultatif)
+#   type = type explicite (ex: "string", facultatif)
+#
+# Source: Adapté de ThreadX Framework
+# Date: 13/12/2025
+
+# ==========================================================================
+# BOLLINGER BANDS
+# ==========================================================================
+
+[bollinger.period]
+min = 10
+max = 50
+step = 1
+default = 20
+description = "Période de la moyenne mobile (SMA)"
+
+[bollinger.std_dev]
+min = 1.5
+max = 3.0
+step = 0.1
+default = 2.0
+description = "Multiplicateur d'écart-type"
+
+# ==========================================================================
+# MOVING AVERAGES (SMA/EMA)
+# ==========================================================================
+
+[sma.period]
+min = 5
+max = 200
+step = 1
+default = 20
+description = "Période SMA"
+
+[ema.period]
+min = 5
+max = 200
+step = 1
+default = 20
+description = "Période EMA"
+
+[ema.short_period]
+min = 5
+max = 30
+step = 1
+default = 12
+description = "EMA courte"
+
+[ema.long_period]
+min = 20
+max = 100
+step = 5
+default = 50
+description = "EMA longue"
+
+# ==========================================================================
+# MACD (Moving Average Convergence Divergence)
+# ==========================================================================
+
+[macd.fast_period]
+min = 8
+max = 15
+step = 1
+default = 12
+description = "MACD EMA rapide"
+
+[macd.slow_period]
+min = 20
+max = 35
+step = 1
+default = 26
+description = "MACD EMA lente"
+
+[macd.signal_period]
+min = 6
+max = 12
+step = 1
+default = 9
+description = "MACD Signal (EMA)"
+
+# ==========================================================================
+# RSI (Relative Strength Index)
+# ==========================================================================
+
+[rsi.period]
+min = 7
+max = 21
+step = 1
+default = 14
+description = "Période RSI"
+
+[rsi.overbought]
+min = 65
+max = 80
+step = 5
+default = 70
+description = "Niveau de surachat"
+
+[rsi.oversold]
+min = 20
+max = 35
+step = 5
+default = 30
+description = "Niveau de survente"
+
+# ==========================================================================
+# ATR (Average True Range)
+# ==========================================================================
+
+[atr.period]
+min = 7
+max = 21
+step = 1
+default = 14
+description = "Période ATR"
+
+[atr.multiplier]
+min = 1.0
+max = 3.0
+step = 0.25
+default = 2.0
+description = "Multiplicateur ATR pour stops/entrées"
+
+# ==========================================================================
+# ADX (Average Directional Index)
+# ==========================================================================
+
+[adx.period]
+min = 7
+max = 20
+step = 1
+default = 14
+description = "Période ADX"
+
+[adx.trend_threshold]
+min = 20
+max = 30
+step = 1
+default = 25
+description = "Seuil de tendance ADX"
+
+# ==========================================================================
+# STOCHASTIC
+# ==========================================================================
+
+[stochastic.k_period]
+min = 5
+max = 20
+step = 1
+default = 14
+description = "%K Period"
+
+[stochastic.d_period]
+min = 3
+max = 5
+step = 1
+default = 3
+description = "%D Period"
+
+[stochastic.smooth_k]
+min = 1
+max = 5
+step = 1
+default = 3
+description = "Smoothing %K"
+
+[stochastic.overbought]
+min = 75
+max = 85
+step = 5
+default = 80
+description = "Niveau de surachat"
+
+[stochastic.oversold]
+min = 15
+max = 25
+step = 5
+default = 20
+description = "Niveau de survente"
+
+# ==========================================================================
+# VWAP (Volume Weighted Average Price)
+# ==========================================================================
+
+[vwap.period]
+min = 10
+max = 50
+step = 5
+default = 20
+description = "Période VWAP glissant (None = ancré)"
+
+# ==========================================================================
+# DONCHIAN CHANNEL
+# ==========================================================================
+
+[donchian.period]
+min = 10
+max = 50
+step = 5
+default = 20
+description = "Période Donchian Channel"
+
+# ==========================================================================
+# CCI (Commodity Channel Index)
+# ==========================================================================
+
+[cci.period]
+min = 14
+max = 30
+step = 2
+default = 20
+description = "Période CCI"
+
+[cci.threshold]
+min = 75
+max = 150
+step = 25
+default = 100
+description = "Seuil CCI (et son opposé)"
+
+# ==========================================================================
+# KELTNER CHANNEL
+# ==========================================================================
+
+[keltner.ema_period]
+min = 10
+max = 30
+step = 5
+default = 20
+description = "Période EMA centrale"
+
+[keltner.atr_period]
+min = 5
+max = 20
+step = 5
+default = 10
+description = "Période ATR pour bandes"
+
+[keltner.atr_multiplier]
+min = 1.0
+max = 3.0
+step = 0.5
+default = 2.0
+description = "Multiplicateur ATR"
+
+# ==========================================================================
+# MFI (Money Flow Index)
+# ==========================================================================
+
+[mfi.period]
+min = 7
+max = 21
+step = 1
+default = 14
+description = "Période MFI"
+
+[mfi.overbought]
+min = 75
+max = 90
+step = 5
+default = 80
+description = "Niveau de surachat"
+
+[mfi.oversold]
+min = 10
+max = 25
+step = 5
+default = 20
+description = "Niveau de survente"
+
+# ==========================================================================
+# WILLIAMS %R
+# ==========================================================================
+
+[williams_r.period]
+min = 7
+max = 21
+step = 1
+default = 14
+description = "Période Williams %R"
+
+[williams_r.overbought]
+min = -30
+max = -10
+step = 5
+default = -20
+description = "Niveau de surachat"
+
+[williams_r.oversold]
+min = -90
+max = -70
+step = 5
+default = -80
+description = "Niveau de survente"
+
+# ==========================================================================
+# MOMENTUM
+# ==========================================================================
+
+[momentum.period]
+min = 5
+max = 20
+step = 1
+default = 14
+description = "Période Momentum"
+
+# ==========================================================================
+# OBV (On Balance Volume)
+# ==========================================================================
+
+[obv.ma_period]
+min = 10
+max = 30
+step = 5
+default = 20
+description = "Période MA optionnelle pour OBV"
+
+# ==========================================================================
+# ROC (Rate of Change)
+# ==========================================================================
+
+[roc.period]
+min = 5
+max = 20
+step = 1
+default = 12
+description = "Période ROC"
+
+# ==========================================================================
+# AROON
+# ==========================================================================
+
+[aroon.period]
+min = 10
+max = 25
+step = 1
+default = 14
+description = "Période Aroon"
+
+# ==========================================================================
+# SUPERTREND
+# ==========================================================================
+
+[supertrend.atr_period]
+min = 5
+max = 20
+step = 1
+default = 10
+description = "Période ATR"
+
+[supertrend.multiplier]
+min = 2.0
+max = 4.0
+step = 0.5
+default = 3.0
+description = "Multiplicateur ATR"
+
+# ==========================================================================
+# ICHIMOKU
+# ==========================================================================
+
+[ichimoku.tenkan_period]
+min = 5
+max = 20
+step = 1
+default = 9
+description = "Tenkan period"
+
+[ichimoku.kijun_period]
+min = 20
+max = 60
+step = 1
+default = 26
+description = "Kijun period"
+
+[ichimoku.senkou_b_period]
+min = 40
+max = 100
+step = 1
+default = 52
+description = "Senkou B period"
+
+[ichimoku.displacement]
+min = 10
+max = 40
+step = 1
+default = 26
+description = "Cloud displacement"
+
+# ==========================================================================
+# PSAR (Parabolic SAR)
+# ==========================================================================
+
+[psar.af_start]
+min = 0.01
+max = 0.05
+step = 0.01
+default = 0.02
+description = "PSAR acceleration factor start"
+
+[psar.af_increment]
+min = 0.01
+max = 0.05
+step = 0.01
+default = 0.02
+description = "PSAR acceleration factor increment"
+
+[psar.af_max]
+min = 0.1
+max = 0.3
+step = 0.02
+default = 0.2
+description = "PSAR acceleration factor max"
+
+# ==========================================================================
+# VORTEX
+# ==========================================================================
+
+[vortex.period]
+min = 7
+max = 30
+step = 1
+default = 14
+description = "Vortex period"
+
+[vortex.threshold]
+min = 0.0
+max = 0.5
+step = 0.05
+default = 0.0
+description = "Vortex signal threshold"
+
+# ==========================================================================
+# VOLUME OSCILLATOR
+# ==========================================================================
+
+[volume_oscillator.short_period]
+min = 5
+max = 30
+step = 1
+default = 14
+description = "Short MA period"
+
+[volume_oscillator.long_period]
+min = 10
+max = 60
+step = 1
+default = 28
+description = "Long MA period"
+
+[volume_oscillator.method]
+options = ["ema", "sma"]
+default = "ema"
+description = "MA method"
+
+# ==========================================================================
+# STANDARD DEVIATION
+# ==========================================================================
+
+[standard_deviation.period]
+min = 5
+max = 50
+step = 1
+default = 20
+description = "Rolling window length"
+
+# ==========================================================================
+# FIBONACCI LEVELS
+# ==========================================================================
+
+[fibonacci_levels.period]
+min = 20
+max = 200
+step = 5
+default = 50
+description = "Lookback for high/low"
+
+# ==========================================================================
+# PIVOT POINTS
+# ==========================================================================
+
+[pivot_points.method]
+options = ["classic", "fibonacci", "woodie"]
+default = "classic"
+description = "Pivot method"
+
+# ==========================================================================
+# ONCHAIN SMOOTHING
+# ==========================================================================
+
+[onchain_smoothing.period]
+min = 5
+max = 50
+step = 1
+default = 14
+description = "Smoothing period"
+
+[onchain_smoothing.method]
+options = ["ema", "sma"]
+default = "ema"
+description = "Smoothing method"
+
+[onchain_smoothing.column]
+type = "string"
+default = "close"
+description = "Column to smooth"
+
+# ==========================================================================
+# CRYPTO FEAR & GREED
+# ==========================================================================
+
+[fear_greed.smooth_period]
+min = 0
+max = 50
+step = 1
+default = 0
+description = "Smoothing period (0 = none)"
+
+[fear_greed.method]
+options = ["sma", "ema"]
+default = "sma"
+description = "Smoothing method"
+
+[fear_greed.column]
+type = "string"
+default = "fear_greed"
+description = "Column name for the index"
+
+# ==========================================================================
+# PI CYCLE
+# ==========================================================================
+
+[pi_cycle.short_period]
+min = 50
+max = 200
+step = 1
+default = 111
+description = "Short SMA period"
+
+[pi_cycle.long_period]
+min = 200
+max = 500
+step = 10
+default = 350
+description = "Long SMA period"
+
+[pi_cycle.long_multiplier]
+min = 1.5
+max = 3.0
+step = 0.1
+default = 2.0
+description = "Long SMA multiplier"
+
+# ==========================================================================
+# AMPLITUDE HUNTER SCORE
+# ==========================================================================
+
+[amplitude_hunter.period]
+min = 5
+max = 50
+step = 1
+default = 20
+description = "Rolling window length"
+
+# ==========================================================================
+# STRATEGIE: EMA CROSS
+# ==========================================================================
+
+[ema_cross.fast_period]
+min = 5
+max = 20
+step = 1
+default = 9
+description = "Période EMA rapide"
+
+[ema_cross.slow_period]
+min = 15
+max = 50
+step = 1
+default = 21
+description = "Période EMA lente"
+
+# ==========================================================================
+# STRATÉGIE: RSI REVERSAL
+# ==========================================================================
+
+[rsi_reversal.rsi_period]
+min = 7
+max = 21
+step = 1
+default = 14
+description = "Période RSI"
+
+[rsi_reversal.oversold]
+min = 20
+max = 35
+step = 5
+default = 30
+description = "Seuil survente"
+
+[rsi_reversal.overbought]
+min = 65
+max = 80
+step = 5
+default = 70
+description = "Seuil surachat"
+
+# ==========================================================================
+# STRATÉGIE: ATR CHANNEL
+# ==========================================================================
+
+[atr_channel.atr_period]
+min = 10
+max = 20
+step = 1
+default = 14
+description = "Période ATR"
+
+[atr_channel.multiplier]
+min = 1.5
+max = 3.0
+step = 0.25
+default = 2.0
+description = "Multiplicateur pour canal"
+
+[atr_channel.ma_period]
+min = 10
+max = 50
+step = 5
+default = 20
+description = "Période MA centrale"
+
+# ==========================================================================
+# RISK MANAGEMENT (Commun à toutes stratégies)
+# ==========================================================================
+
+[risk.stop_loss_pct]
+min = 0.5
+max = 5.0
+step = 0.25
+default = 2.0
+description = "Stop loss en %"
+
+[risk.take_profit_pct]
+min = 1.0
+max = 10.0
+step = 0.5
+default = 4.0
+description = "Take profit en %"
+
+[risk.max_hold_bars]
+min = 10
+max = 200
+step = 10
+default = 100
+description = "Durée maximale position (barres)"
+
+[risk.fees_bps]
+min = 1
+max = 50
+step = 1
+default = 10
+description = "Frais en basis points (10 = 0.1%)"

@@ -1,0 +1,40 @@
+{
+  "archetype_id": "vol_amplitude_breakout",
+  "version": "1.0",
+  "family": "volatility",
+  "side": "both",
+  "timeframe": "1h",
+  "indicators": ["amplitude_hunter", "donchian", "atr"],
+  "indicator_params": {
+    "amplitude_hunter": {"period": "${ah_period}"},
+    "donchian": {"period": "${dc_period}"},
+    "atr": {"period": "${atr_period}"}
+  },
+  "entry_long_logic": "amplitude_hunter.score > ${ah_score_threshold} and close > donchian.upper",
+  "entry_short_logic": "amplitude_hunter.score > ${ah_score_threshold} and close < donchian.lower",
+  "exit_logic": "amplitude_hunter.score < ${ah_exit_score} or close crosses donchian.middle",
+  "risk_management": "ATR stop-loss (${stop_atr_mult}x) and take-profit (${tp_atr_mult}x)",
+  "default_params": {
+    "ah_period": 20,
+    "ah_score_threshold": 0.7,
+    "ah_exit_score": 0.3,
+    "dc_period": 20,
+    "atr_period": 14,
+    "stop_atr_mult": 2.0,
+    "tp_atr_mult": 4.0,
+    "warmup": 50,
+    "leverage": 1
+  },
+  "parameter_specs": {
+    "ah_period": {"min": 5, "max": 50, "default": 20, "type": "int"},
+    "ah_score_threshold": {"min": 0.5, "max": 0.9, "default": 0.7, "type": "float"},
+    "ah_exit_score": {"min": 0.1, "max": 0.5, "default": 0.3, "type": "float"},
+    "dc_period": {"min": 10, "max": 50, "default": 20, "type": "int"},
+    "stop_atr_mult": {"min": 1.0, "max": 3.0, "default": 2.0, "type": "float"},
+    "tp_atr_mult": {"min": 2.0, "max": 6.0, "default": 4.0, "type": "float"}
+  },
+  "requirements": {
+    "ohlcv_required": true,
+    "dataset_features": []
+  }
+}

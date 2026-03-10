@@ -1,0 +1,769 @@
+{
+  "session_id": "20260309_155202_strategie_de_momentum_sur_nearusdc_4h_in",
+  "objective": "Strategie de Momentum sur NEARUSDC 4h. Indicateurs : EMA(10), EMA(30), ADX, ATR. Entree short quand EMA(10) < EMA(30), ADX >= 25 confirme la tendance. Stop-loss = 2.0x ATR, take-profit = 5.0x ATR.",
+  "status": "running",
+  "best_sharpe": 0.0,
+  "best_score": -26.0,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 4,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "When the short-term EMA crosses below the longer-term EMA it signals a downtrend, and an ADX >= 25 confirms that the trend has sufficient strength, reducing false entries in choppy markets; using ATR\u2011based stop\u2011loss and take\u2011profit scales risk and reward proportionally to recent volatility, improving risk\u2011adjusted returns on NEARUSDC 4h.",
+      "change_type": "both",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": null,
+      "return_pct": null,
+      "max_drawdown_pct": null,
+      "profit_factor": null,
+      "win_rate_pct": null,
+      "trades": null,
+      "continuous_score": null,
+      "score_breakdown": null,
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[AST001] Erreur de syntaxe ligne 98: unexpected indent"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      }
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Using a fast EMA crossing below a slower EMA captures short-term downtrends, while ADX >= 25 filters for strong trends, reducing false signals; ATR\u2011based stop\u2011loss and take\u2011profit scale exits proportionally to volatility, improving risk\u2011adjusted returns on a momentum\u2011driven 4h NEARUSDC chart.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -190.65247148548443,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.6073783227843573,
+      "win_rate_pct": 27.27272727272727,
+      "trades": 66,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -17.94841952985795,
+          "trades_confidence": 10.0,
+          "win_rate": -2.3181818181818192
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -190.7%, PF 0.61, Expectancy -288.87"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 841.3%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 27.3%, Trades 66, AvgW/L 1638.53/1011.64"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 105,
+          "total_signals": 105
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The EMA cross can generate many whipsaws on a volatile crypto pair, especially on 4\u2011hour bars where price can bounce quickly. ADX \u2265 25 may still capture sideways but high\u2011volatility regimes, leading to false trend confirmation. Fixed ATR multiples for SL/TP ignore changing market regimes, so risk\u2011reward may become unbalanced during low\u2011vol periods.\n[Backup plan] If the backtest shows negative returns, tighten the entry filter by requiring EMA10 < EMA30 AND ADX \u2265 30 and add a minimum 1\u2011% price move before entering. For a mediocre Sharpe, experiment with a longer EMA pair (e.g., 20/50) and adjust SL/TP to 1.5x/4x ATR to reduce exposure. As an alternative, switch to a breakout\u2011style strategy using a Donchian Channel with ATR\u2011based stops, or incorporate a volatility filter (e.g., ATR > recent median) to only trade in active regimes."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -17.94841952985795,
+            "trades_confidence": 10.0,
+            "win_rate": -2.3181818181818192
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining a fast/slow EMA crossover with a strong ADX trend filter isolates clear directional moves, while an ATR\u2011based stop\u2011loss/take\u2011profit scales risk to current volatility, reducing whipsaws and improving risk\u2011adjusted returns in the volatile 4h NEARUSDC market.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -54.053242670298175,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.9081037756786015,
+      "win_rate_pct": 25.49019607843137,
+      "trades": 102,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -4.200970254692505,
+          "trades_confidence": 10.0,
+          "win_rate": -2.8529411764705888
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -54.1%, PF 0.91, Expectancy -52.99"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 1384.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 25.5%, Trades 102, AvgW/L 2054.41/773.95"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "Indicateur(s) inconnu(s) via indicators d\u00e9tect\u00e9(s): ['ema_fast', 'ema_slow']. Utiliser uniquement les noms du registre.",
+          "validation_error_retry": "Indicateur(s) inconnu(s) via indicators d\u00e9tect\u00e9(s): ['ema_fast', 'ema_slow']. Utiliser uniquement les noms du registre.",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 0
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 62,
+          "short_signals": 63,
+          "total_signals": 125
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -4.200970254692505,
+            "trades_confidence": 10.0,
+            "win_rate": -2.8529411764705888
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining EMA crossovers with a strong ADX trend filter and an ATR volatility filter should isolate high\u2011momentum moves while avoiding choppy, low\u2011volatility periods that caused large drawdowns in the original design.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -50.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 0.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 2,
+          "realign_success": true,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[AST001] Erreur de syntaxe ligne 115: unexpected indent"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "NameError: name 'atr_threshold' is not defined",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "NameError: name 'atr_threshold' is not defined",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5635, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4989, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4966, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260309_155202_strategie_de_momentum_sur_nearusdc_4h_in\\strategy.py\", line 119, in generate_signals\n    mask_long = (ema_fast > ema_slow) & (adx_val >= 25) & (atr_val > atr_threshold)\nNameError: name 'atr_threshold' is not defined",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The 4\u2011hour EMA crossover is slow and may generate lagged entries; a single ADX \u2265\u202f25 filter can still admit sideways markets, and the undefined ATR threshold may produce overly wide stops, leading to large drawdowns. Short\u2011only bias ignores bullish regimes, and the fixed 2\u00d7/5\u00d7 ATR stop\u2011loss/take\u2011profit ratios may be mismatched to NEAR's volatility regime, causing frequent stop\u2011outs.\n[Backup plan] If return is negative, tighten risk by using 1\u00d7\u202fATR stop\u2011loss, raise ADX to \u2265\u202f30, and add a minimum volume filter. If Sharpe is low, experiment with faster EMA pairs (e.g., 8/21) and a trailing\u2011stop profit target instead of a fixed 5\u00d7\u202fATR TP. Should both adjustments fail, switch to a bidirectional framework that trades both longs and shorts using EMA crossovers plus a complementary mean\u2011reversion signal such as RSI\u202f(30/70) to capture reversals."
+        },
+        "scoring": {
+          "continuous_score": -50.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 4,
+      "hypothesis": "Combining EMA crossovers with a strong ADX trend filter and an ATR volatility filter should isolate high\u2011momentum moves while avoiding choppy, low\u2011volatility periods that caused large drawdowns in the original design.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -50.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 0.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 2,
+          "realign_success": true,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[AST001] Erreur de syntaxe ligne 115: unexpected indent"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "NameError: name 'atr_threshold' is not defined",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "NameError: name 'atr_threshold' is not defined",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5635, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4989, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4966, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260309_155202_strategie_de_momentum_sur_nearusdc_4h_in\\strategy.py\", line 119, in generate_signals\n    mask_long = (ema_fast > ema_slow) & (adx_val >= 25) & (atr_val > atr_threshold)\nNameError: name 'atr_threshold' is not defined",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The 4\u2011hour EMA crossover is slow and may generate lagged entries; a single ADX \u2265\u202f25 filter can still admit sideways markets, and the undefined ATR threshold may produce overly wide stops, leading to large drawdowns. Short\u2011only bias ignores bullish regimes, and the fixed 2\u00d7/5\u00d7 ATR stop\u2011loss/take\u2011profit ratios may be mismatched to NEAR's volatility regime, causing frequent stop\u2011outs.\n[Backup plan] If return is negative, tighten risk by using 1\u00d7\u202fATR stop\u2011loss, raise ADX to \u2265\u202f30, and add a minimum volume filter. If Sharpe is low, experiment with faster EMA pairs (e.g., 8/21) and a trailing\u2011stop profit target instead of a fixed 5\u00d7\u202fATR TP. Should both adjustments fail, switch to a bidirectional framework that trades both longs and shorts using EMA crossovers plus a complementary mean\u2011reversion signal such as RSI\u202f(30/70) to capture reversals."
+        },
+        "scoring": {
+          "continuous_score": -50.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Using a fast EMA crossing below a slower EMA captures short-term downtrends, while ADX >= 25 filters for strong trends, reducing false signals; ATR\u2011based stop\u2011loss and take\u2011profit scale exits proportionally to volatility, improving risk\u2011adjusted returns on a momentum\u2011driven 4h NEARUSDC chart.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -190.65247148548443,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.6073783227843573,
+      "win_rate_pct": 27.27272727272727,
+      "trades": 66,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -17.94841952985795,
+          "trades_confidence": 10.0,
+          "win_rate": -2.3181818181818192
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -190.7%, PF 0.61, Expectancy -288.87"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 841.3%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 27.3%, Trades 66, AvgW/L 1638.53/1011.64"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 105,
+          "total_signals": 105
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The EMA cross can generate many whipsaws on a volatile crypto pair, especially on 4\u2011hour bars where price can bounce quickly. ADX \u2265 25 may still capture sideways but high\u2011volatility regimes, leading to false trend confirmation. Fixed ATR multiples for SL/TP ignore changing market regimes, so risk\u2011reward may become unbalanced during low\u2011vol periods.\n[Backup plan] If the backtest shows negative returns, tighten the entry filter by requiring EMA10 < EMA30 AND ADX \u2265 30 and add a minimum 1\u2011% price move before entering. For a mediocre Sharpe, experiment with a longer EMA pair (e.g., 20/50) and adjust SL/TP to 1.5x/4x ATR to reduce exposure. As an alternative, switch to a breakout\u2011style strategy using a Donchian Channel with ATR\u2011based stops, or incorporate a volatility filter (e.g., ATR > recent median) to only trade in active regimes."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -17.94841952985795,
+            "trades_confidence": 10.0,
+            "win_rate": -2.3181818181818192
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining a fast/slow EMA crossover with a strong ADX trend filter isolates clear directional moves, while an ATR\u2011based stop\u2011loss/take\u2011profit scales risk to current volatility, reducing whipsaws and improving risk\u2011adjusted returns in the volatile 4h NEARUSDC market.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -54.053242670298175,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.9081037756786015,
+      "win_rate_pct": 25.49019607843137,
+      "trades": 102,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -4.200970254692505,
+          "trades_confidence": 10.0,
+          "win_rate": -2.8529411764705888
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -54.1%, PF 0.91, Expectancy -52.99"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 1384.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 25.5%, Trades 102, AvgW/L 2054.41/773.95"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "Indicateur(s) inconnu(s) via indicators d\u00e9tect\u00e9(s): ['ema_fast', 'ema_slow']. Utiliser uniquement les noms du registre.",
+          "validation_error_retry": "Indicateur(s) inconnu(s) via indicators d\u00e9tect\u00e9(s): ['ema_fast', 'ema_slow']. Utiliser uniquement les noms du registre.",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 0
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 62,
+          "short_signals": 63,
+          "total_signals": 125
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -4.200970254692505,
+            "trades_confidence": 10.0,
+            "win_rate": -2.8529411764705888
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 3
+    }
+  ]
+}

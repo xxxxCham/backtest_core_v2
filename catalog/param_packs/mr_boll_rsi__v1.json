@@ -1,0 +1,18 @@
+{
+  "param_pack_id": "mr_boll_rsi__v1",
+  "archetype_id": "mean_reversion_bollinger_rsi",
+  "seed": 1337,
+  "param_defs": {
+    "bb_period": {"source": "toml", "indicator": "bollinger", "param": "period", "dist": "int_uniform"},
+    "bb_std": {"source": "toml", "indicator": "bollinger", "param": "std_dev", "dist": "uniform"},
+    "rsi_period": {"source": "toml", "indicator": "rsi", "param": "period", "dist": "int_uniform"},
+    "rsi_oversold": {"min": 20, "max": 40, "step": 5, "dist": "int_uniform"},
+    "rsi_overbought": {"min": 60, "max": 80, "step": 5, "dist": "int_uniform"},
+    "stop_atr_mult": {"min": 1.0, "max": 3.0, "step": 0.25, "dist": "uniform"},
+    "tp_atr_mult": {"min": 2.0, "max": 6.0, "step": 0.5, "dist": "uniform"}
+  },
+  "constraints": [
+    {"type": "less_than", "a": "rsi_oversold", "b": "rsi_overbought"},
+    {"type": "greater_than_equal", "a": "tp_atr_mult", "b": "stop_atr_mult"}
+  ]
+}

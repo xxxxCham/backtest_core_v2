@@ -1,0 +1,53 @@
+# ============================================================
+# Backtest Core - Requirements
+# ============================================================
+# Installation de base:  pip install -r requirements.txt
+# Performance optimale:  pip install -r requirements-performance.txt
+# ============================================================
+
+# === Core Dependencies ===
+numpy>=1.24.0,<2.1          # Calculs vectorisés (compatible numba)
+pandas>=2.0.0               # Manipulation DataFrames OHLCV
+python-dateutil>=2.8.0      # Gestion dates
+pytz>=2024.1                # Fuseaux horaires
+
+# === Visualization & UI ===
+streamlit>=1.28.0           # Interface utilisateur interactive
+plotly>=5.18.0              # Graphiques interactifs (candlesticks)
+matplotlib>=3.8.0           # Visualisations (equity curves)
+jinja2>=3.1.0               # Moteur de templates pour prompts LLM
+
+# === Performance & Parallelization ===
+joblib>=1.3.0               # Parallélisation CPU facile
+psutil>=5.9.0               # Monitoring système (CPU/RAM)
+rich>=13.0.0                # Interface console améliorée (progress bars)
+numba>=0.58.0               # JIT compilation pour calculs rapides
+bottleneck>=1.3.0           # Accélération Pandas rolling/groupby (5-20x)
+numexpr>=2.8.0              # Évaluation rapide expressions NumPy (2-10x)
+
+# === Testing ===
+pytest>=7.4.0               # Framework de tests unitaires
+
+# === Data Formats ===
+pyarrow>=14.0.0             # Lecture/écriture Parquet
+
+# === Analytics & Statistics ===
+pydantic>=2.0.0             # Validation type-safe
+scipy>=1.11.0               # Fonctions scientifiques avancées
+statsmodels>=0.14.0         # Tests statistiques, ARIMA, régression
+scikit-learn>=1.3.0         # Machine learning, validation croisée
+httpx>=0.27.0               # Client HTTP (Ollama)
+
+# === Visualization Advanced ===
+seaborn>=0.12.0             # Graphiques statistiques élégants
+plotly-resampler>=0.9.0     # Downsampling intelligent pour gros datasets
+
+# === Utilities ===
+tqdm>=4.65.0                # Progress bars élégantes
+colorama>=0.4.6             # Couleurs console Windows
+tabulate>=0.9.0             # Tableaux formatés en console
+tomli>=2.0.0                # Lecture TOML (Python <3.11)
+tomli-w>=1.0.0              # Écriture TOML
+
+# === Optimization ===
+optuna>=3.0.0               # Optimisation bayésienne (10-100x plus rapide que grid search)

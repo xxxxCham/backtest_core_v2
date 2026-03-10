@@ -1,0 +1,178 @@
+{
+  "defaults": {
+    "symbol": "BTCUSDC",
+    "timeframe": "1h",
+    "tokens_fallback": [
+      "BTCUSDC",
+      "ETHUSDC"
+    ],
+    "timeframes_fallback": [
+      "1h",
+      "4h",
+      "1d"
+    ]
+  },
+  "diversity": {
+    "window_size": 6,
+    "min_alternatives": 2,
+    "priority": "diversity"
+  },
+  "hints": {
+    "confidence_boost": 0.2,
+    "priority_over_diversity": false
+  },
+  "potential_tokens": [
+    "BTCUSDC",
+    "ETHUSDC",
+    "BNBUSDC",
+    "SOLUSDC",
+    "XRPUSDC",
+    "AVAXUSDC",
+    "LINKUSDC",
+    "ADAUSDC",
+    "DOTUSDC",
+    "ATOMUSDC",
+    "MATICUSDC",
+    "NEARUSDC",
+    "FILUSDC",
+    "APTUSDC",
+    "ARBUSDC",
+    "OPUSDC",
+    "INJUSDC",
+    "SUIUSDC",
+    "LTCUSDC",
+    "TRXUSDC"
+  ],
+  "token_profiles": {
+    "_comment": "Métadonnées pour chaque token : volatilité (low/medium/high), liquidité (low/medium/high), et stratégies recommandées",
+    "BTCUSDC": {
+      "volatility": "medium",
+      "liquidity": "high",
+      "strategies": ["trend", "momentum", "mean_reversion", "breakout", "scalping"]
+    },
+    "ETHUSDC": {
+      "volatility": "medium",
+      "liquidity": "high",
+      "strategies": ["trend", "momentum", "mean_reversion", "breakout", "scalping"]
+    },
+    "BNBUSDC": {
+      "volatility": "medium",
+      "liquidity": "high",
+      "strategies": ["trend", "momentum", "mean_reversion", "breakout"]
+    },
+    "SOLUSDC": {
+      "volatility": "high",
+      "liquidity": "high",
+      "strategies": ["breakout", "momentum", "scalping"]
+    },
+    "AVAXUSDC": {
+      "volatility": "high",
+      "liquidity": "medium",
+      "strategies": ["breakout", "momentum", "scalping"]
+    },
+    "XRPUSDC": {
+      "volatility": "medium",
+      "liquidity": "high",
+      "strategies": ["trend", "mean_reversion"]
+    },
+    "LINKUSDC": {
+      "volatility": "medium",
+      "liquidity": "medium",
+      "strategies": ["trend", "momentum", "mean_reversion"]
+    },
+    "ADAUSDC": {
+      "volatility": "medium",
+      "liquidity": "medium",
+      "strategies": ["trend", "mean_reversion"]
+    },
+    "DOTUSDC": {
+      "volatility": "medium",
+      "liquidity": "medium",
+      "strategies": ["trend", "mean_reversion", "momentum"]
+    },
+    "ATOMUSDC": {
+      "volatility": "medium",
+      "liquidity": "medium",
+      "strategies": ["trend", "momentum", "mean_reversion"]
+    },
+    "MATICUSDC": {
+      "volatility": "medium",
+      "liquidity": "medium",
+      "strategies": ["trend", "mean_reversion"]
+    },
+    "NEARUSDC": {
+      "volatility": "high",
+      "liquidity": "medium",
+      "strategies": ["breakout", "momentum"]
+    },
+    "FILUSDC": {
+      "volatility": "medium",
+      "liquidity": "low",
+      "strategies": ["trend", "mean_reversion"]
+    },
+    "APTUSDC": {
+      "volatility": "high",
+      "liquidity": "medium",
+      "strategies": ["breakout", "momentum", "scalping"]
+    },
+    "ARBUSDC": {
+      "volatility": "medium",
+      "liquidity": "medium",
+      "strategies": ["trend", "mean_reversion", "momentum"]
+    },
+    "OPUSDC": {
+      "volatility": "medium",
+      "liquidity": "medium",
+      "strategies": ["trend", "mean_reversion"]
+    },
+    "INJUSDC": {
+      "volatility": "high",
+      "liquidity": "low",
+      "strategies": ["breakout", "momentum"]
+    },
+    "SUIUSDC": {
+      "volatility": "high",
+      "liquidity": "medium",
+      "strategies": ["breakout", "momentum"]
+    },
+    "LTCUSDC": {
+      "volatility": "low",
+      "liquidity": "high",
+      "strategies": ["trend", "mean_reversion"]
+    },
+    "TRXUSDC": {
+      "volatility": "low",
+      "liquidity": "medium",
+      "strategies": ["mean_reversion"]
+    }
+  },
+  "strategy_requirements": {
+    "_comment": "Mapping des types de stratégies vers les caractéristiques de tokens recommandées",
+    "scalping": {
+      "volatility_preferred": ["high", "medium"],
+      "liquidity_min": "high",
+      "timeframes": ["1m", "3m", "5m"]
+    },
+    "breakout": {
+      "volatility_preferred": ["high", "medium"],
+      "liquidity_min": "medium",
+      "timeframes": ["5m", "15m", "30m", "1h"]
+    },
+    "momentum": {
+      "volatility_preferred": ["high", "medium"],
+      "liquidity_min": "medium",
+      "timeframes": ["15m", "30m", "1h", "4h"]
+    },
+    "trend": {
+      "volatility_preferred": ["medium", "low"],
+      "liquidity_min": "medium",
+      "timeframes": ["1h", "4h", "1d"]
+    },
+    "mean_reversion": {
+      "volatility_preferred": ["medium", "low"],
+      "liquidity_min": "medium",
+      "timeframes": ["15m", "30m", "1h"]
+    }
+  },
+  "_comment": "Config centralisée pour la sélection des marchés (tokens × timeframes). Overridable via env vars: BACKTEST_DEFAULT_SYMBOL, BACKTEST_DEFAULT_TIMEFRAME, BACKTEST_DIVERSITY_WINDOW."
+}

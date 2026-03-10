@@ -1,0 +1,1178 @@
+{
+  "session_id": "20260308_191149_based_on_your_instructions_and_requireme",
+  "objective": "Based on your instructions and requirements, here is a concise JSON output that represents the trading strategy:\n\n```json\n{\n\"action\": \"iterate\",\n\"response\": {\n\"objective\": \"\\u901a\\u8fc7\\u66f4\\u4e25\\u683c\\u7684\\u5165\\u5e02\\u6761\\u4ef6\\u548c\\u7a33\\u5b9a\\u7684\\u98ce\\u9669\\u7ba1\\u7406\\uff0c\\u63d0\\u9ad8\\u7b56\\u7565\\u7684\\u7a33\\u5b9a\\u6027\\u548c\\u6d41\\u52a8\\u6027\",\n\"rationale\": \"\\u8be5\\u7b56\\u7565\\u4f7f\\u5f97\\u6e05\\u6670\\uff0c\\u4f46\\u9700\\u8981\\u8fdb\\u4e00\\u6b65\\u4f18\\u5316\\uff0c\\u4ee5\\u964d\\u4f4e\\u9ad8\\u6ce2\\u52a8\\u6027(82%)\\u548c\\u5927\\u5e45\\u56de\\u64a4(-35%)\\uff0c\\u4f18\\u5316\\u53ef\\u4ee5\\u901a\\u8fc7\\u63d0\\u9ad8\\u98ce\\u9669\\u63a7\\u5236\\u548c\\u589e\\u52a0\\u76c8\\u5229\\u80fd\\u529b\\u7684\\u4e00\\u81f4\\u6027\\uff0c\\u5b9e\\u73b0\",\n\"constraints\": [\n\"\\u9884\\u6710\\u6536\\u76ca\\u7387\\u81f3\\u5c11\\u4e3a1.0\",\n\"\\u6700\\u5927\\u56de\\u64a4\\u964d\\u4f4e\\u5230\\u5f53\\u524d\\u6c34\\u4f4d\\u4ee5\\u4e0b(-35%)\"\n],\n\"strategy_family\": \"\\u7ec4\\u5408\\u578b(\\u7ed3\\u5408\\u52a8\\u91cf\\uff0c\\u7a81\\u7834\\uff0c\\u5747\\u503c\\u56de\\u5f52\\u7b56\\u7565)\"\n}\n}\n```\n\n### Explanation:\n- **Objective:** The strategy aims to improve stability and liquidity through stricter entry conditions and risk management.\n- **Rationale:** This approach demonstrates profitability, but it requires further optimization to reduce high wave activity (82%) and large drawdowns (-35%). Optimization can be achieved by improving risk control and increasing profit potential.\n- **Constraints:**\n- The minimum Sharpe ratio is set at 1.0.\n- The maximum drawdown limit is set below the current water level (-35%).\n- **Strategy Family:** Hybrid (Combining momentum, breakout, mean reversion strategies).\n\n### Next Steps:\nSince the strategy hasn't met the target Sharpe ratio and the best score is negative, the appropriate action is to **iterate**. The goal of further iterations will be to refine the strategy by incorporating stress tests, diverse historical data, and thorough validation to enhance reliability.\n\nIf you need more information or a different approach, please let me know!",
+  "status": "failed",
+  "best_sharpe": 0.0,
+  "best_score": -26.0,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 6,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Combining Bollinger Band breakouts with RSI momentum and ATR volatility filtering creates a robust entry signal that avoids false signals during low-volatility or ranging periods while ensuring proper risk management through ATR-based stops and profits",
+      "change_type": "both",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -1.3302771437137828,
+      "return_pct": -47.03417063614531,
+      "max_drawdown_pct": -55.16334761242969,
+      "profit_factor": 0.8341765699639173,
+      "win_rate_pct": 35.0,
+      "trades": 220,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -37.24776002398592,
+          "return": -33.0,
+          "profit_factor": -7.580499658792352,
+          "trades_confidence": 10.0,
+          "win_rate": 0.0
+        },
+        "penalties": {
+          "drawdown_pressure": 23.442231741619793,
+          "drawdown_excess": 16.80278967702474,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 20.16334761242969
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -47.0%, PF 0.83, Expectancy -21.38"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 55.2%, Vol 69.1%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -1.330, Sortino -1.301, Calmar -1.357"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 35.0%, Trades 220, AvgW/L 307.28/198.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 153,
+          "short_signals": 133,
+          "total_signals": 286
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on multiple indicators without proper optimization may lead to overfitting or false signals. The exit rules are too simplistic and could cause premature exits or missed trends. ATR filtering might not adequately adapt to changing volatility regimes.\n[Backup plan] If results are poor, try replacing RSI with MACD for momentum and add a volatility break threshold. If Sharpe is mediocre, adjust Bollinger Bands to 2.5 std with dynamic ATR periods. As an alternative, consider a trend-following approach with dual moving averages and volatility-adjusted stops."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 20.16334761242969,
+          "components": {
+            "sharpe": -37.24776002398592,
+            "return": -33.0,
+            "profit_factor": -7.580499658792352,
+            "trades_confidence": 10.0,
+            "win_rate": 0.0
+          },
+          "penalties": {
+            "drawdown_pressure": 23.442231741619793,
+            "drawdown_excess": 16.80278967702474,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Combining Bollinger breakout with ADX trend filter eliminates false signals during ranging markets while RSI confirms momentum, reducing high-frequency whipsaws and improving risk-adjusted returns",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -1.0734365967303008,
+      "return_pct": -23.734791909418508,
+      "max_drawdown_pct": -43.19760575382471,
+      "profit_factor": 0.905603554741026,
+      "win_rate_pct": 39.51890034364261,
+      "trades": 291,
+      "continuous_score": -83.42050040543472,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -30.056224708448422,
+          "return": -26.10827110036036,
+          "profit_factor": -4.315266068981667,
+          "trades_confidence": 10.0,
+          "win_rate": 1.355670103092784
+        },
+        "penalties": {
+          "drawdown_pressure": 15.465070502549807,
+          "drawdown_excess": 6.831338128187259,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 8.19760575382471
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -23.7%, PF 0.91, Expectancy -8.16"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 43.2%, Vol 47.1%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -1.073, Sortino -1.952, Calmar -1.029"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 39.5%, Trades 291, AvgW/L 198.00/142.86"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 203,
+          "short_signals": 169,
+          "total_signals": 372
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on rigid entry filters (bollinger cross, RSI > 50, ADX > 25) may cause missed opportunities during strong trends, while exit rules (cross below middle band or ADX < 20) could lead to late exits. The combination of multiple indicators increases complexity and potential for overfitting, especially with limited data points. The current setup shows high drawdown (-47.03%) and negative Sharpe (-1.33), indicating poor risk-adjusted performance.\n[Backup plan] If results are poor, simplify to a pure breakout strategy with dynamic stop-loss (e.g., ATR-based) and add a volatility filter to avoid trading during low vol periods. If Sharpe is mediocre, reduce entry sensitivity (e.g., lower ADX threshold to 20, RSI to 45) and increase position sizing. As an alternative, switch to a mean-reversion approach using Bollinger bands with dynamic bounds or incorporate a volatility-adjusted RSI. If still failing, test a trend-following strategy with dual ADX filters (strong trend + confirmation)."
+        },
+        "scoring": {
+          "continuous_score": -83.42050040543472,
+          "drawdown_excess_pct": 8.19760575382471,
+          "components": {
+            "sharpe": -30.056224708448422,
+            "return": -26.10827110036036,
+            "profit_factor": -4.315266068981667,
+            "trades_confidence": 10.0,
+            "win_rate": 1.355670103092784
+          },
+          "penalties": {
+            "drawdown_pressure": 15.465070502549807,
+            "drawdown_excess": 6.831338128187259,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining Bollinger Bands with ATR-based risk management and a mean-reversion filter using RSI helps capture trending moves while avoiding whipsaws in volatile markets. The ATR ensures proper position sizing and stop-loss levels that scale with market volatility, reducing the impact of large drawdowns.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -113.22794880606013,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.37987473544562367,
+      "win_rate_pct": 27.00729927007299,
+      "trades": 137,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -2.397810218978103
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -113.2%, PF 0.38, Expectancy -82.65"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 1227.4%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 27.0%, Trades 137, AvgW/L 187.46/182.59"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "ValueError: operands could not be broadcast together with shapes (16143,) (16144,) ",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "ValueError: operands could not be broadcast together with shapes (16143,) (16144,) ",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5617, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4971, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4948, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260308_191149_based_on_your_instructions_and_requireme\\strategy.py\", line 97, in generate_signals\n    atr_filter = atr > atr_ma\nValueError: operands could not be broadcast together with shapes (16143,) (16144,)",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on Bollinger Bands and RSI for mean reversion creates high whipsaw risk in trending markets. The ATR filter may be too lenient, and the exit rule lacks a profit target, leading to premature exits. Overfitting to recent market conditions is likely given the poor performance in iterations 1 and 2.\n[Backup plan] If results are poor, switch to a momentum-based entry with dynamic stop-losses and add a trend filter (e.g., 50-period MA). If Sharpe is mediocre, optimize RSI threshold (e.g., 25-35) and ATR lookback periods (14, 20). As an alternative, try a breakout strategy with volatility scaling and a trailing stop for better risk-adjusted returns."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -2.397810218978103
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "decision": {
+          "stop_overridden": true
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining momentum breakout with ATR volatility filter improves signal quality by avoiding trades in low-volatility ranges while ensuring adequate risk-reward profiles through ATR-based stop-losses and take-profits",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": null,
+      "return_pct": null,
+      "max_drawdown_pct": null,
+      "profit_factor": null,
+      "win_rate_pct": null,
+      "trades": null,
+      "continuous_score": null,
+      "score_breakdown": null,
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      }
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining momentum breakout with ATR volatility filtering improves signal quality by entering only when price breaks out of consolidation phases with sufficient volatility, reducing false signals and improving risk-adjusted returns",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.31264617753912716,
+      "return_pct": -22.2564399923726,
+      "max_drawdown_pct": -42.98011100105204,
+      "profit_factor": 0.907664363261303,
+      "win_rate_pct": 36.075949367088604,
+      "trades": 158,
+      "continuous_score": -61.10461633364019,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -8.75409297109556,
+          "return": -24.48208399160986,
+          "profit_factor": -4.221057679483294,
+          "trades_confidence": 10.0,
+          "win_rate": 0.32278481012658133
+        },
+        "penalties": {
+          "drawdown_pressure": 15.320074000701357,
+          "drawdown_excess": 6.650092500876697,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 7.9801110010520375
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -22.3%, PF 0.91, Expectancy -14.09"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 43.0%, Vol 60.8%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.313, Sortino -0.291, Calmar -0.980"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 36.1%, Trades 158, AvgW/L 383.83/238.65"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 174,
+          "short_signals": 181,
+          "total_signals": 355
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on multiple overlapping conditions (bollinger cross, RSI, ATR) may cause overfitting and reduce trade frequency. The exit rules are too sensitive, leading to premature exits during strong trends. The ATR filter might be too strict, eliminating valid breakout opportunities.\n[Backup plan] If results are poor, simplify to pure breakout + ATR filter with fixed stop-loss. If Sharpe is mediocre, reduce RSI thresholds and widen Bollinger bands. As alternative, try a volatility-adjusted momentum approach with dynamic position sizing."
+        },
+        "scoring": {
+          "continuous_score": -61.10461633364019,
+          "drawdown_excess_pct": 7.9801110010520375,
+          "components": {
+            "sharpe": -8.75409297109556,
+            "return": -24.48208399160986,
+            "profit_factor": -4.221057679483294,
+            "trades_confidence": 10.0,
+            "win_rate": 0.32278481012658133
+          },
+          "penalties": {
+            "drawdown_pressure": 15.320074000701357,
+            "drawdown_excess": 6.650092500876697,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Combining Bollinger breakout signals with RSI mean reversion filters and ATR volatility filtering creates a robust entry system that avoids false signals during low volatility periods while capturing strong momentum moves. The ATR-based stop-loss and take-profit ensure consistent risk-reward ratios regardless of market conditions.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "stop",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -50.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 0.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[SIG001] `for i in range(...)` interdit dans la logique Builder.",
+          "logic_retry_used": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "NameError: name 'close' is not defined",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "NameError: name 'close' is not defined",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5617, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4971, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4948, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260308_191149_based_on_your_instructions_and_requireme\\strategy.py\", line 73, in generate_signals\n    (close > indicators['bollinger'][\"upper\"]) &\nNameError: name 'close' is not defined",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's weaknesses include overfitting to Bollinger breakout signals, lack of dynamic position sizing, and rigid exit rules that may trap profits during momentum exhaustion. The combination of multiple filters may cause excessive whipsaws in ranging markets, and the ATR filter is applied only at entry, not for dynamic stop-loss adjustment.\n[Backup plan] If results are poor, I'd simplify to a pure momentum+ATR filter with dynamic stops. If Sharpe is low, I'd optimize RSI thresholds and reduce lookback periods. As an alternative, I'd test a trend-following system with ADX filtering and fixed fractional position sizing to improve consistency across market regimes."
+        },
+        "scoring": {
+          "continuous_score": -50.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 1
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 6,
+      "hypothesis": "Combining Bollinger breakout signals with RSI mean reversion filters and ATR volatility filtering creates a robust entry system that avoids false signals during low volatility periods while capturing strong momentum moves. The ATR-based stop-loss and take-profit ensure consistent risk-reward ratios regardless of market conditions.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "stop",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -50.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 0.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[SIG001] `for i in range(...)` interdit dans la logique Builder.",
+          "logic_retry_used": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "NameError: name 'close' is not defined",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "NameError: name 'close' is not defined",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5617, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4971, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4948, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260308_191149_based_on_your_instructions_and_requireme\\strategy.py\", line 73, in generate_signals\n    (close > indicators['bollinger'][\"upper\"]) &\nNameError: name 'close' is not defined",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's weaknesses include overfitting to Bollinger breakout signals, lack of dynamic position sizing, and rigid exit rules that may trap profits during momentum exhaustion. The combination of multiple filters may cause excessive whipsaws in ranging markets, and the ATR filter is applied only at entry, not for dynamic stop-loss adjustment.\n[Backup plan] If results are poor, I'd simplify to a pure momentum+ATR filter with dynamic stops. If Sharpe is low, I'd optimize RSI thresholds and reduce lookback periods. As an alternative, I'd test a trend-following system with ADX filtering and fixed fractional position sizing to improve consistency across market regimes."
+        },
+        "scoring": {
+          "continuous_score": -50.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining momentum breakout with ATR volatility filtering improves signal quality by entering only when price breaks out of consolidation phases with sufficient volatility, reducing false signals and improving risk-adjusted returns",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.31264617753912716,
+      "return_pct": -22.2564399923726,
+      "max_drawdown_pct": -42.98011100105204,
+      "profit_factor": 0.907664363261303,
+      "win_rate_pct": 36.075949367088604,
+      "trades": 158,
+      "continuous_score": -61.10461633364019,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -8.75409297109556,
+          "return": -24.48208399160986,
+          "profit_factor": -4.221057679483294,
+          "trades_confidence": 10.0,
+          "win_rate": 0.32278481012658133
+        },
+        "penalties": {
+          "drawdown_pressure": 15.320074000701357,
+          "drawdown_excess": 6.650092500876697,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 7.9801110010520375
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -22.3%, PF 0.91, Expectancy -14.09"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 43.0%, Vol 60.8%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.313, Sortino -0.291, Calmar -0.980"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 36.1%, Trades 158, AvgW/L 383.83/238.65"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 174,
+          "short_signals": 181,
+          "total_signals": 355
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on multiple overlapping conditions (bollinger cross, RSI, ATR) may cause overfitting and reduce trade frequency. The exit rules are too sensitive, leading to premature exits during strong trends. The ATR filter might be too strict, eliminating valid breakout opportunities.\n[Backup plan] If results are poor, simplify to pure breakout + ATR filter with fixed stop-loss. If Sharpe is mediocre, reduce RSI thresholds and widen Bollinger bands. As alternative, try a volatility-adjusted momentum approach with dynamic position sizing."
+        },
+        "scoring": {
+          "continuous_score": -61.10461633364019,
+          "drawdown_excess_pct": 7.9801110010520375,
+          "components": {
+            "sharpe": -8.75409297109556,
+            "return": -24.48208399160986,
+            "profit_factor": -4.221057679483294,
+            "trades_confidence": 10.0,
+            "win_rate": 0.32278481012658133
+          },
+          "penalties": {
+            "drawdown_pressure": 15.320074000701357,
+            "drawdown_excess": 6.650092500876697,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Combining Bollinger breakout with ADX trend filter eliminates false signals during ranging markets while RSI confirms momentum, reducing high-frequency whipsaws and improving risk-adjusted returns",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -1.0734365967303008,
+      "return_pct": -23.734791909418508,
+      "max_drawdown_pct": -43.19760575382471,
+      "profit_factor": 0.905603554741026,
+      "win_rate_pct": 39.51890034364261,
+      "trades": 291,
+      "continuous_score": -83.42050040543472,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -30.056224708448422,
+          "return": -26.10827110036036,
+          "profit_factor": -4.315266068981667,
+          "trades_confidence": 10.0,
+          "win_rate": 1.355670103092784
+        },
+        "penalties": {
+          "drawdown_pressure": 15.465070502549807,
+          "drawdown_excess": 6.831338128187259,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 8.19760575382471
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -23.7%, PF 0.91, Expectancy -8.16"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 43.2%, Vol 47.1%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -1.073, Sortino -1.952, Calmar -1.029"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 39.5%, Trades 291, AvgW/L 198.00/142.86"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 203,
+          "short_signals": 169,
+          "total_signals": 372
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on rigid entry filters (bollinger cross, RSI > 50, ADX > 25) may cause missed opportunities during strong trends, while exit rules (cross below middle band or ADX < 20) could lead to late exits. The combination of multiple indicators increases complexity and potential for overfitting, especially with limited data points. The current setup shows high drawdown (-47.03%) and negative Sharpe (-1.33), indicating poor risk-adjusted performance.\n[Backup plan] If results are poor, simplify to a pure breakout strategy with dynamic stop-loss (e.g., ATR-based) and add a volatility filter to avoid trading during low vol periods. If Sharpe is mediocre, reduce entry sensitivity (e.g., lower ADX threshold to 20, RSI to 45) and increase position sizing. As an alternative, switch to a mean-reversion approach using Bollinger bands with dynamic bounds or incorporate a volatility-adjusted RSI. If still failing, test a trend-following strategy with dual ADX filters (strong trend + confirmation)."
+        },
+        "scoring": {
+          "continuous_score": -83.42050040543472,
+          "drawdown_excess_pct": 8.19760575382471,
+          "components": {
+            "sharpe": -30.056224708448422,
+            "return": -26.10827110036036,
+            "profit_factor": -4.315266068981667,
+            "trades_confidence": 10.0,
+            "win_rate": 1.355670103092784
+          },
+          "penalties": {
+            "drawdown_pressure": 15.465070502549807,
+            "drawdown_excess": 6.831338128187259,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 1,
+      "hypothesis": "Combining Bollinger Band breakouts with RSI momentum and ATR volatility filtering creates a robust entry signal that avoids false signals during low-volatility or ranging periods while ensuring proper risk management through ATR-based stops and profits",
+      "change_type": "both",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -1.3302771437137828,
+      "return_pct": -47.03417063614531,
+      "max_drawdown_pct": -55.16334761242969,
+      "profit_factor": 0.8341765699639173,
+      "win_rate_pct": 35.0,
+      "trades": 220,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -37.24776002398592,
+          "return": -33.0,
+          "profit_factor": -7.580499658792352,
+          "trades_confidence": 10.0,
+          "win_rate": 0.0
+        },
+        "penalties": {
+          "drawdown_pressure": 23.442231741619793,
+          "drawdown_excess": 16.80278967702474,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 20.16334761242969
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -47.0%, PF 0.83, Expectancy -21.38"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 55.2%, Vol 69.1%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -1.330, Sortino -1.301, Calmar -1.357"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 35.0%, Trades 220, AvgW/L 307.28/198.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 153,
+          "short_signals": 133,
+          "total_signals": 286
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on multiple indicators without proper optimization may lead to overfitting or false signals. The exit rules are too simplistic and could cause premature exits or missed trends. ATR filtering might not adequately adapt to changing volatility regimes.\n[Backup plan] If results are poor, try replacing RSI with MACD for momentum and add a volatility break threshold. If Sharpe is mediocre, adjust Bollinger Bands to 2.5 std with dynamic ATR periods. As an alternative, consider a trend-following approach with dual moving averages and volatility-adjusted stops."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 20.16334761242969,
+          "components": {
+            "sharpe": -37.24776002398592,
+            "return": -33.0,
+            "profit_factor": -7.580499658792352,
+            "trades_confidence": 10.0,
+            "win_rate": 0.0
+          },
+          "penalties": {
+            "drawdown_pressure": 23.442231741619793,
+            "drawdown_excess": 16.80278967702474,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining Bollinger Bands with ATR-based risk management and a mean-reversion filter using RSI helps capture trending moves while avoiding whipsaws in volatile markets. The ATR ensures proper position sizing and stop-loss levels that scale with market volatility, reducing the impact of large drawdowns.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -113.22794880606013,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.37987473544562367,
+      "win_rate_pct": 27.00729927007299,
+      "trades": 137,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -2.397810218978103
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -113.2%, PF 0.38, Expectancy -82.65"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 1227.4%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 27.0%, Trades 137, AvgW/L 187.46/182.59"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "ValueError: operands could not be broadcast together with shapes (16143,) (16144,) ",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "ValueError: operands could not be broadcast together with shapes (16143,) (16144,) ",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5617, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4971, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4948, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260308_191149_based_on_your_instructions_and_requireme\\strategy.py\", line 97, in generate_signals\n    atr_filter = atr > atr_ma\nValueError: operands could not be broadcast together with shapes (16143,) (16144,)",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on Bollinger Bands and RSI for mean reversion creates high whipsaw risk in trending markets. The ATR filter may be too lenient, and the exit rule lacks a profit target, leading to premature exits. Overfitting to recent market conditions is likely given the poor performance in iterations 1 and 2.\n[Backup plan] If results are poor, switch to a momentum-based entry with dynamic stop-losses and add a trend filter (e.g., 50-period MA). If Sharpe is mediocre, optimize RSI threshold (e.g., 25-35) and ATR lookback periods (14, 20). As an alternative, try a breakout strategy with volatility scaling and a trailing stop for better risk-adjusted returns."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -2.397810218978103
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "decision": {
+          "stop_overridden": true
+        }
+      },
+      "rank": 5
+    }
+  ]
+}

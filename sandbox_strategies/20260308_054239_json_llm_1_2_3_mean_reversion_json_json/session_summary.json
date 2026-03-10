@@ -1,0 +1,244 @@
+{
+  "session_id": "20260308_054239_json_llm_1_2_3_mean_reversion_json_json",
+  "objective": "\u6839\u636e\u63d0\u4f9b\u7684 JSON \u6570\u636e\u548c\u6765\u81ea\u5404\u79cd\u8bed\u8a00\u6a21\u578b\uff08LLM\uff09\u7684\u5206\u6790\uff0c\u4ee5\u4e0b\u662f\u7528\u4e8e\u6539\u8fdb\u4ea4\u6613\u7b56\u7565\u7684\u5173\u952e\u90e8\u5206\u7684\u7b80\u6d01\u6458\u8981\uff1a\n\n### \u76ee\u6807\uff1a\n\u901a\u8fc7\u4f18\u5316\u5165\u5e02\u6807\u51c6\u5e76\u5b9e\u65bd\u7a33\u5065\u7684\u98ce\u9669\u7ba1\u7406\u89c4\u5219\u6765\u63d0\u9ad8\u7b56\u7565\u7684\u7a33\u5065\u6027\u548c\u6027\u80fd\u6307\u6807\u3002\n\n### \u7406\u7531\uff1a\n\u5f53\u524d\u7b56\u7565\u663e\u793a\u51fa\u8fc7\u5ea6\u62df\u5408\u8ff9\u8c61\uff0c\u5e76\u4e14\u6837\u672c\u5916\u8868\u73b0\u4e0d\u4f73\u3002\u9700\u8981\u5728\u591a\u6837\u5316\u7684\u5e02\u573a\u6761\u4ef6\u4e0b\u5bf9\u5165\u5e02\u6807\u51c6\u3001\u7a33\u5065\u7684\u98ce\u9669\u7ba1\u7406\u548c\u5168\u9762\u56de\u6d4b\u8fdb\u884c\u6539\u8fdb\uff0c\u4ee5\u786e\u4fdd\u53ef\u9760\u6027\u548c\u9002\u5e94\u6027\u3002\n\n### \u9650\u5236\u6761\u4ef6\uff1a\n1. \u76ee\u6807\u662f\u590d\u6742\u4f46\u73b0\u5b9e\u7684\u7b56\u7565\u3002\n2. \u504f\u597d\u7a33\u5065\u7684\u5165\u5e02\u548c\u98ce\u9669\u7ba1\u7406\u89c4\u5219\u3002\n3. \u9700\u8981\u907f\u514d\u91cd\u590d\u76f8\u540c\u7684\u5e02\u573a\u6216\u65f6\u95f4\u6846\u67b6\uff0c\u9664\u975e\u6709\u5408\u7406\u7406\u7531\u3002\n\n### \u7b56\u7565\u7c7b\u578b\uff1a\n\u5df2\u786e\u5b9a\u7684\u7b56\u7565\u5bb6\u65cf\u4e3a `mean_reversion`\uff08\u5747\u503c\u56de\u5f52\uff09\u3002\n\n### JSON \u683c\u5f0f\u6458\u8981\uff1a\n\n```json\n{\n\"objective\": \"\u901a\u8fc7\u4f18\u5316\u5165\u5e02\u6807\u51c6\u548c\u5b9e\u65bd\u7a33\u5065\u7684\u98ce\u9669\u7ba1\u7406\u89c4\u5219\u6765\u63d0\u9ad8\u4ea4\u6613\u7b56\u7565\u7684\u7a33\u5065\u6027\u548c\u6027\u80fd\u6307\u6807\u3002\",\n\"rationale\": \"\u5f53\u524d\u7b56\u7565\u663e\u793a\u8fc7\u5ea6\u62df\u5408\u8ff9\u8c61\uff0c\u5e76\u4e14\u6837\u672c\u5916\u8868\u73b0\u4e0d\u4f73\u3002\u9700\u8981\u5728\u591a\u6837\u5316\u7684\u5e02\u573a\u6761\u4ef6\u4e0b\u8fdb\u884c\u5168\u9762\u56de\u6d4b\uff0c\u4ee5\u786e\u4fdd\u53ef\u9760\u6027\u548c\u9002\u5e94\u6027\u3002\",\n\"constraints\": [\n\"\u76ee\u6807\u662f\u590d\u6742\u4f46\u73b0\u5b9e\u7684\u7b56\u7565\",\n\"\u504f\u597d\u7a33\u5065\u7684\u5165\u5e02\u548c\u98ce\u9669\u7ba1\u7406\u89c4\u5219\",\n\"\u907f\u514d\u91cd\u590d\u76f8\u540c\u7684\u5e02\u573a\u6216\u65f6\u95f4\u6846\u67b6\uff0c\u9664\u975e\u6709\u5408\u7406\u7406\u7531\"\n],\n\"strategy_family\": \"mean_reversion\"\n}\n```\n\n### \u4e0b\u4e00\u6b65\uff1a\n1. **\u4f18\u5316\u5165\u5e02\u6807\u51c6**\uff1a\u57fa\u4e8e\u66f4\u7a33\u5065\u7684\u6807\u51c6\u6539\u5584\u5165\u5e02\u70b9\u3002\n2. **\u5b9e\u65bd\u5168\u9762\u7684\u98ce\u9669\u7ba1\u7406\u7b56\u7565**\uff1a\u5f15\u5165\u5305\u62ec\u6b62\u635f\u5355\u3001\u4ed3\u4f4d\u5927\u5c0f\u7b56\u7565\u548c\u8de8\u4e0d\u540c\u5e02\u573a\u7684\u591a\u6837\u5316\u7b49\u7efc\u5408\u98ce\u9669\u7ba1\u7406\u89c4\u5219\u3002\n3. **\u8fdb\u884c\u5e7f\u6cdb\u7684\u56de\u6d4b**\uff1a\u4f7f\u7528\u591a\u6837\u5316\u7684\u6570\u636e\u96c6\u4ee5\u786e\u4fdd\u5728\u5404\u79cd\u5e02\u573a\u60c5\u666f\u4e0b\u7684\u53ef\u9760\u6027\u3002\n\n\u901a\u8fc7\u4e13\u6ce8\u4e8e\u8fd9\u4e9b\u90e8\u5206\uff0c\u4ea4\u6613\u7b56\u7565\u53ef\u4ee5\u9010\u6b65\u6539\u8fdb\uff0c\u4ece\u800c\u63d0\u9ad8\u5176\u6027\u80fd\u548c\u9002\u5e94\u6027\u3002",
+  "status": "success",
+  "best_sharpe": 1.9141589040237943,
+  "best_score": 100.0,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 1,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Combining Bollinger Bands with RSI creates a robust mean-reversion signal by identifying overbought/oversold conditions at extreme price levels, reducing false signals and improving entry timing in trending and ranging markets",
+      "change_type": "both",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "accept",
+      "sharpe": 1.9141589040237943,
+      "return_pct": 78.41922757886456,
+      "max_drawdown_pct": -13.980364707290818,
+      "profit_factor": 2.0532667868783374,
+      "win_rate_pct": 46.93877551020408,
+      "trades": 49,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 53.59644931266624,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 8.166666666666666,
+          "win_rate": 3.581632653061224
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +78.4%, PF 2.05, Expectancy 160.04"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 14.0%, Vol 49.0%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 1.914, Sortino 5.497, Calmar 16.656"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 46.9%, Trades 49, AvgW/L 664.66/286.36"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 36,
+          "short_signals": 15,
+          "total_signals": 51
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] \u8be5\u7b56\u7565\u53ef\u80fd\u8fc7\u5ea6\u4f9d\u8d56\u5355\u4e00\u65f6\u95f4\u6846\u67b6\uff0830m\uff09\u548c\u56fa\u5b9a\u6307\u6807\u9608\u503c\uff0c\u6613\u53d7\u5e02\u573a\u7ed3\u6784\u53d8\u5316\u5f71\u54cd\u3002Bollinger Bands\u4e0eRSI\u7684\u7ec4\u5408\u5728\u8d8b\u52bf\u5e02\u573a\u4e2d\u53ef\u80fd\u4ea7\u751f\u8f83\u591a\u5047\u4fe1\u53f7\uff0c\u4e14\u7f3a\u4e4f\u52a8\u6001\u4ed3\u4f4d\u7ba1\u7406\u673a\u5236\u3002\n[Backup plan] \u82e5\u7ed3\u679c\u4e0d\u4f73\uff0c\u5c1d\u8bd5\u5f15\u5165ATR\u52a8\u6001\u6b62\u635f\u548c\u5206\u5c42\u5165\u573a\u673a\u5236\uff1b\u82e5Sharpe\u8f83\u4f4e\uff0c\u8c03\u6574RSI\u9608\u503c\u81f3[25,75]\u5e76\u52a0\u5165\u6210\u4ea4\u91cf\u8fc7\u6ee4\u5668\uff1b\u82e5\u6301\u7eed\u5931\u8d25\uff0c\u5219\u8f6c\u5411\u57fa\u4e8eMACD\u548cATR\u7684\u52a8\u91cf-\u5747\u503c\u56de\u5f52\u6df7\u5408\u7b56\u7565\u3002"
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 53.59644931266624,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 8.166666666666666,
+            "win_rate": 3.581632653061224
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 1,
+      "hypothesis": "Combining Bollinger Bands with RSI creates a robust mean-reversion signal by identifying overbought/oversold conditions at extreme price levels, reducing false signals and improving entry timing in trending and ranging markets",
+      "change_type": "both",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "accept",
+      "sharpe": 1.9141589040237943,
+      "return_pct": 78.41922757886456,
+      "max_drawdown_pct": -13.980364707290818,
+      "profit_factor": 2.0532667868783374,
+      "win_rate_pct": 46.93877551020408,
+      "trades": 49,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 53.59644931266624,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 8.166666666666666,
+          "win_rate": 3.581632653061224
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +78.4%, PF 2.05, Expectancy 160.04"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 14.0%, Vol 49.0%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 1.914, Sortino 5.497, Calmar 16.656"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 46.9%, Trades 49, AvgW/L 664.66/286.36"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 36,
+          "short_signals": 15,
+          "total_signals": 51
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] \u8be5\u7b56\u7565\u53ef\u80fd\u8fc7\u5ea6\u4f9d\u8d56\u5355\u4e00\u65f6\u95f4\u6846\u67b6\uff0830m\uff09\u548c\u56fa\u5b9a\u6307\u6807\u9608\u503c\uff0c\u6613\u53d7\u5e02\u573a\u7ed3\u6784\u53d8\u5316\u5f71\u54cd\u3002Bollinger Bands\u4e0eRSI\u7684\u7ec4\u5408\u5728\u8d8b\u52bf\u5e02\u573a\u4e2d\u53ef\u80fd\u4ea7\u751f\u8f83\u591a\u5047\u4fe1\u53f7\uff0c\u4e14\u7f3a\u4e4f\u52a8\u6001\u4ed3\u4f4d\u7ba1\u7406\u673a\u5236\u3002\n[Backup plan] \u82e5\u7ed3\u679c\u4e0d\u4f73\uff0c\u5c1d\u8bd5\u5f15\u5165ATR\u52a8\u6001\u6b62\u635f\u548c\u5206\u5c42\u5165\u573a\u673a\u5236\uff1b\u82e5Sharpe\u8f83\u4f4e\uff0c\u8c03\u6574RSI\u9608\u503c\u81f3[25,75]\u5e76\u52a0\u5165\u6210\u4ea4\u91cf\u8fc7\u6ee4\u5668\uff1b\u82e5\u6301\u7eed\u5931\u8d25\uff0c\u5219\u8f6c\u5411\u57fa\u4e8eMACD\u548cATR\u7684\u52a8\u91cf-\u5747\u503c\u56de\u5f52\u6df7\u5408\u7b56\u7565\u3002"
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 53.59644931266624,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 8.166666666666666,
+            "win_rate": 3.581632653061224
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    }
+  ]
+}

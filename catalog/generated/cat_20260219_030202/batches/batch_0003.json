@@ -1,0 +1,4796 @@
+{
+  "batch_id": 3,
+  "n_variants": 50,
+  "variants": [
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0030",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 16,
+        "st_multiplier": 2.0,
+        "adx_period": 23,
+        "adx_threshold": 20,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 16,
+            "multiplier": 2.0
+          },
+          "adx": {
+            "period": 23
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 20",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 20",
+        "exit_logic": "supertrend.direction changes or adx.adx < 15",
+        "risk_management": "ATR trailing stop (1.75x) and take-profit (2.5x)",
+        "default_params": {
+          "st_atr_period": 16,
+          "st_multiplier": 2.0,
+          "adx_period": 23,
+          "adx_threshold": 20,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=16, multiplier=2.0)\n  - adx(period=23)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 20\n  - short: supertrend.direction == -1 and adx.adx > 20\nexit:\n  - condition: supertrend.direction changes or adx.adx < 15\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 2.5\n  description: ATR trailing stop (1.75x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "26ad83fed0d7e2811103f8ddb8e0cbd397675ae1bd12c7ba8200ef37f1d2872e",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0031",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 11,
+        "st_multiplier": 3.0,
+        "adx_period": 11,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 11,
+            "multiplier": 3.0
+          },
+          "adx": {
+            "period": 11
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 15",
+        "risk_management": "ATR trailing stop (2.5x) and take-profit (5.0x)",
+        "default_params": {
+          "st_atr_period": 11,
+          "st_multiplier": 3.0,
+          "adx_period": 11,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=11, multiplier=3.0)\n  - adx(period=11)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 15\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 5.0\n  description: ATR trailing stop (2.5x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "b8a63c35f2ee71dc7e6acefb8c91fae8b17ba3412eed883eec0a8a7cd958ee79",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0032",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 11,
+        "st_multiplier": 3.0,
+        "adx_period": 24,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 11,
+            "multiplier": 3.0
+          },
+          "adx": {
+            "period": 24
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (2.5x) and take-profit (3.0x)",
+        "default_params": {
+          "st_atr_period": 11,
+          "st_multiplier": 3.0,
+          "adx_period": 24,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=11, multiplier=3.0)\n  - adx(period=24)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 3.0\n  description: ATR trailing stop (2.5x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "5e050bb6cbe9351a54968e7f1004611af113e6e057a1ce260ae9ea9fc17061e1",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0033",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 10,
+        "st_multiplier": 3.0,
+        "adx_period": 13,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 10,
+            "multiplier": 3.0
+          },
+          "adx": {
+            "period": 13
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 35",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 35",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (1.0x) and take-profit (3.5x)",
+        "default_params": {
+          "st_atr_period": 10,
+          "st_multiplier": 3.0,
+          "adx_period": 13,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.0,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=10, multiplier=3.0)\n  - adx(period=13)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 35\n  - short: supertrend.direction == -1 and adx.adx > 35\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.0\n  tp_atr_mult: 3.5\n  description: ATR trailing stop (1.0x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "ddd47d9d2114d7b095dfcbfcc1ecfc564f16d189a1d73d382e39f13deecb9ffc",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0034",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 12,
+        "st_multiplier": 2.5,
+        "adx_period": 18,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 12,
+            "multiplier": 2.5
+          },
+          "adx": {
+            "period": 18
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 25",
+        "risk_management": "ATR trailing stop (1.5x) and take-profit (3.0x)",
+        "default_params": {
+          "st_atr_period": 12,
+          "st_multiplier": 2.5,
+          "adx_period": 18,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=12, multiplier=2.5)\n  - adx(period=18)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 25\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 3.0\n  description: ATR trailing stop (1.5x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "4c832c7e219864ace767939013c0474b7b7c47c47854c4f81493366b16609021",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0035",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 15,
+        "st_multiplier": 2.5,
+        "adx_period": 20,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 15,
+            "multiplier": 2.5
+          },
+          "adx": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (1.25x) and take-profit (3.0x)",
+        "default_params": {
+          "st_atr_period": 15,
+          "st_multiplier": 2.5,
+          "adx_period": 20,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=15, multiplier=2.5)\n  - adx(period=20)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 3.0\n  description: ATR trailing stop (1.25x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "14eabeaf2f93d031e2751d3fffa344fcfda9f02b3f732a21c43cafc7a0e14a75",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.848132+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0036",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 6,
+        "st_multiplier": 2.5,
+        "adx_period": 23,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.75,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 6,
+            "multiplier": 2.5
+          },
+          "adx": {
+            "period": 23
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 25",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 25",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (2.75x) and take-profit (3.5x)",
+        "default_params": {
+          "st_atr_period": 6,
+          "st_multiplier": 2.5,
+          "adx_period": 23,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.75,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=6, multiplier=2.5)\n  - adx(period=23)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 25\n  - short: supertrend.direction == -1 and adx.adx > 25\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.75\n  tp_atr_mult: 3.5\n  description: ATR trailing stop (2.75x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "202a601f949ed689e65550637f182a548448ee3f193e708804cd76d22018b7bc",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.849263+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0037",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 15,
+        "st_multiplier": 2.5,
+        "adx_period": 11,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 15,
+            "multiplier": 2.5
+          },
+          "adx": {
+            "period": 11
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 15",
+        "risk_management": "ATR trailing stop (2.25x) and take-profit (4.0x)",
+        "default_params": {
+          "st_atr_period": 15,
+          "st_multiplier": 2.5,
+          "adx_period": 11,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=15, multiplier=2.5)\n  - adx(period=11)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 15\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 4.0\n  description: ATR trailing stop (2.25x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "f31140dd26f04f31845e0daa9f7da472ff23df95a5d7ab6107d695f2e4a8d444",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.849263+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0038",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 20,
+        "st_multiplier": 4.0,
+        "adx_period": 16,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 6.0
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 20,
+            "multiplier": 4.0
+          },
+          "adx": {
+            "period": 16
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 30",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 30",
+        "exit_logic": "supertrend.direction changes or adx.adx < 15",
+        "risk_management": "ATR trailing stop (2.25x) and take-profit (6.0x)",
+        "default_params": {
+          "st_atr_period": 20,
+          "st_multiplier": 4.0,
+          "adx_period": 16,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 6.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=20, multiplier=4.0)\n  - adx(period=16)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 30\n  - short: supertrend.direction == -1 and adx.adx > 30\nexit:\n  - condition: supertrend.direction changes or adx.adx < 15\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 6.0\n  description: ATR trailing stop (2.25x) and take-profit (6.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "6a9493a3e07adf8bc34ae90aeee2eb40b2afd2f380f47083af26a454201d6726",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.849263+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "trend_supertrend__trend_supertrend__v1__v0039",
+      "archetype_id": "trend_supertrend",
+      "param_pack_id": "trend_supertrend__v1",
+      "params": {
+        "st_atr_period": 16,
+        "st_multiplier": 3.0,
+        "adx_period": 12,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "trend_supertrend",
+        "hypothesis": "Parametric variant of trend archetype trend_supertrend",
+        "change_type": "logic",
+        "used_indicators": [
+          "supertrend",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "supertrend": {
+            "atr_period": 16,
+            "multiplier": 3.0
+          },
+          "adx": {
+            "period": 12
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "supertrend.direction == 1 and adx.adx > 25",
+        "entry_short_logic": "supertrend.direction == -1 and adx.adx > 25",
+        "exit_logic": "supertrend.direction changes or adx.adx < 20",
+        "risk_management": "ATR trailing stop (1.75x) and take-profit (5.5x)",
+        "default_params": {
+          "st_atr_period": 16,
+          "st_multiplier": 3.0,
+          "adx_period": 12,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "st_atr_period": {
+            "min": 5,
+            "max": 20,
+            "default": 10,
+            "type": "int"
+          },
+          "st_multiplier": {
+            "min": 2.0,
+            "max": 4.0,
+            "default": 3.0,
+            "type": "float"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: trend_supertrend\narchetype: trend_supertrend\nfamily: trend\ntimeframe: 1h\nside: both\nindicators:\n  - supertrend(atr_period=16, multiplier=3.0)\n  - adx(period=12)\n  - atr(period=14)\nentry:\n  - long: supertrend.direction == 1 and adx.adx > 25\n  - short: supertrend.direction == -1 and adx.adx > 25\nexit:\n  - condition: supertrend.direction changes or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 5.5\n  description: ATR trailing stop (1.75x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "4d7db2c5b6e2d1c35ff5d1e194c2c531e3d5f2eb55db4c5dc7e214994940d9af",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.849263+00:00",
+        "seed": 2929018190,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0000",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 40,
+        "ah_score_threshold": 0.6,
+        "ah_exit_score": 0.5,
+        "dc_period": 25,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 40
+          },
+          "donchian": {
+            "period": 25
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.6 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.6 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.5 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (5.0x)",
+        "default_params": {
+          "ah_period": 40,
+          "ah_score_threshold": 0.6,
+          "ah_exit_score": 0.5,
+          "dc_period": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=40)\n  - donchian(period=25)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.6 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.6 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.5 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (1.75x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "ec4bb02430c485ee7b2e32c4ad6ee1c88b68cd26383bbe942419dee0df76604f",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0001",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 18,
+        "ah_score_threshold": 0.8,
+        "ah_exit_score": 0.15,
+        "dc_period": 40,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 2.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 18
+          },
+          "donchian": {
+            "period": 40
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.8 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.8 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.15 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (2.0x)",
+        "default_params": {
+          "ah_period": 18,
+          "ah_score_threshold": 0.8,
+          "ah_exit_score": 0.15,
+          "dc_period": 40,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 2.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=18)\n  - donchian(period=40)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.8 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.8 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.15 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 2.0\n  description: ATR stop-loss (2.0x) and take-profit (2.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "20814c59cf2072eac74f39c22cb250dede0296aa6af33e17e0645eccbd6f15ad",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0002",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 13,
+        "ah_score_threshold": 0.55,
+        "ah_exit_score": 0.1,
+        "dc_period": 30,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 13
+          },
+          "donchian": {
+            "period": 30
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.55 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.55 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.1 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (3.0x)",
+        "default_params": {
+          "ah_period": 13,
+          "ah_score_threshold": 0.55,
+          "ah_exit_score": 0.1,
+          "dc_period": 30,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=13)\n  - donchian(period=30)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.55 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.55 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.1 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (2.25x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "af37e3c21ea7563ff7b93ecc0e8bae7600549f02b7a04275d22219da3cfc33ef",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0003",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 28,
+        "ah_score_threshold": 0.9,
+        "ah_exit_score": 0.3,
+        "dc_period": 40,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 28
+          },
+          "donchian": {
+            "period": 40
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.9 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.9 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.3 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (3.0x)",
+        "default_params": {
+          "ah_period": 28,
+          "ah_score_threshold": 0.9,
+          "ah_exit_score": 0.3,
+          "dc_period": 40,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=28)\n  - donchian(period=40)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.9 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.9 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.3 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (1.75x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "eb238f71e96d09cb89984d2fe9bd5d1869685bf6d90c39962fb5d23f5b36bf7c",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0004",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 7,
+        "ah_score_threshold": 0.65,
+        "ah_exit_score": 0.15,
+        "dc_period": 15,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 7
+          },
+          "donchian": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.65 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.65 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.15 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (4.0x)",
+        "default_params": {
+          "ah_period": 7,
+          "ah_score_threshold": 0.65,
+          "ah_exit_score": 0.15,
+          "dc_period": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=7)\n  - donchian(period=15)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.65 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.65 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.15 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (1.75x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "bb503b020f842ffd74d43c4bf8b7b59c5e6d227db58dd3aa5710a394d0331451",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0005",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 34,
+        "ah_score_threshold": 0.55,
+        "ah_exit_score": 0.5,
+        "dc_period": 15,
+        "stop_atr_mult": 2.75,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 34
+          },
+          "donchian": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.55 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.55 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.5 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.75x) and take-profit (4.0x)",
+        "default_params": {
+          "ah_period": 34,
+          "ah_score_threshold": 0.55,
+          "ah_exit_score": 0.5,
+          "dc_period": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 2.75,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=34)\n  - donchian(period=15)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.55 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.55 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.5 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.75\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (2.75x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "9f16436b014168be049cc58327b3094f1c4bdf7f19e8bbdd0464c0df717e65b9",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0006",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 28,
+        "ah_score_threshold": 0.55,
+        "ah_exit_score": 0.4,
+        "dc_period": 30,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 28
+          },
+          "donchian": {
+            "period": 30
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.55 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.55 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.4 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (3.5x)",
+        "default_params": {
+          "ah_period": 28,
+          "ah_score_threshold": 0.55,
+          "ah_exit_score": 0.4,
+          "dc_period": 30,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=28)\n  - donchian(period=30)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.55 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.55 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.4 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.25x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "b584ec113f3b95de06542f16949e9ce63ace6589e17cbea268bd50f16e70a989",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0007",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 7,
+        "ah_score_threshold": 0.6,
+        "ah_exit_score": 0.45,
+        "dc_period": 25,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 7
+          },
+          "donchian": {
+            "period": 25
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.6 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.6 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.45 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (4.5x)",
+        "default_params": {
+          "ah_period": 7,
+          "ah_score_threshold": 0.6,
+          "ah_exit_score": 0.45,
+          "dc_period": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=7)\n  - donchian(period=25)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.6 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.6 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.45 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (2.25x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "2c3772c5a7bbdfe1bfebd405ba961929d23e79e49245f56a1741dd38861f610a",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0008",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 45,
+        "ah_score_threshold": 0.7,
+        "ah_exit_score": 0.35,
+        "dc_period": 20,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 45
+          },
+          "donchian": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.7 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.7 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.35 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (3.5x)",
+        "default_params": {
+          "ah_period": 45,
+          "ah_score_threshold": 0.7,
+          "ah_exit_score": 0.35,
+          "dc_period": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=45)\n  - donchian(period=20)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.7 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.7 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.35 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (1.25x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "18a6771fbfae5596f60c1fa44dc6354b8fd4b605137c11d8cbaa6075eafec108",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0009",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 5,
+        "ah_score_threshold": 0.6,
+        "ah_exit_score": 0.5,
+        "dc_period": 30,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 5
+          },
+          "donchian": {
+            "period": 30
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.6 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.6 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.5 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (3.0x)",
+        "default_params": {
+          "ah_period": 5,
+          "ah_score_threshold": 0.6,
+          "ah_exit_score": 0.5,
+          "dc_period": 30,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=5)\n  - donchian(period=30)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.6 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.6 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.5 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (2.25x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "e5311c07bdaca4a3f36a81a4ca80e62622d26e6af0b0345e3490d3c8c0d57bea",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0010",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 49,
+        "ah_score_threshold": 0.6,
+        "ah_exit_score": 0.35,
+        "dc_period": 20,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 6.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 49
+          },
+          "donchian": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.6 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.6 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.35 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (6.0x)",
+        "default_params": {
+          "ah_period": 49,
+          "ah_score_threshold": 0.6,
+          "ah_exit_score": 0.35,
+          "dc_period": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 6.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=49)\n  - donchian(period=20)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.6 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.6 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.35 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 6.0\n  description: ATR stop-loss (1.25x) and take-profit (6.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "61ccfca2f2c4d0de71bbdf71755b919abc57c5d3a62da8e12af233699c28e833",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0011",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 10,
+        "ah_score_threshold": 0.6,
+        "ah_exit_score": 0.2,
+        "dc_period": 15,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 10
+          },
+          "donchian": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.6 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.6 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.2 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (5.0x)",
+        "default_params": {
+          "ah_period": 10,
+          "ah_score_threshold": 0.6,
+          "ah_exit_score": 0.2,
+          "dc_period": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=10)\n  - donchian(period=15)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.6 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.6 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.2 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.5x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "7509c9dc0b97ab2fde916bb1cbf6cf11ce665ad9a9e8b9a451128f1ed03046af",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0012",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 40,
+        "ah_score_threshold": 0.8,
+        "ah_exit_score": 0.15,
+        "dc_period": 35,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 40
+          },
+          "donchian": {
+            "period": 35
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.8 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.8 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.15 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (5.5x)",
+        "default_params": {
+          "ah_period": 40,
+          "ah_score_threshold": 0.8,
+          "ah_exit_score": 0.15,
+          "dc_period": 35,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=40)\n  - donchian(period=35)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.8 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.8 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.15 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (1.25x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "6667b00802e0b8016876a4fe303f718914932d3891da21e7606c3d4c4744d059",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0013",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 15,
+        "ah_score_threshold": 0.55,
+        "ah_exit_score": 0.45,
+        "dc_period": 20,
+        "stop_atr_mult": 3.0,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 15
+          },
+          "donchian": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.55 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.55 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.45 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (3.0x) and take-profit (5.0x)",
+        "default_params": {
+          "ah_period": 15,
+          "ah_score_threshold": 0.55,
+          "ah_exit_score": 0.45,
+          "dc_period": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 3.0,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=15)\n  - donchian(period=20)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.55 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.55 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.45 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 3.0\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (3.0x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "7a05d2d04f2404c61af5656ba52bfde9a5d11cd1e2df84dfd6322049b1214cbe",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0014",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 46,
+        "ah_score_threshold": 0.5,
+        "ah_exit_score": 0.4,
+        "dc_period": 15,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 46
+          },
+          "donchian": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.5 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.5 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.4 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (5.0x)",
+        "default_params": {
+          "ah_period": 46,
+          "ah_score_threshold": 0.5,
+          "ah_exit_score": 0.4,
+          "dc_period": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=46)\n  - donchian(period=15)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.5 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.5 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.4 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (1.5x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "6155cecd8e9573234044315801e680cc3c16728858780d2d3765145fdf50d86d",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0015",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 42,
+        "ah_score_threshold": 0.55,
+        "ah_exit_score": 0.3,
+        "dc_period": 40,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 42
+          },
+          "donchian": {
+            "period": 40
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.55 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.55 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.3 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (2.5x)",
+        "default_params": {
+          "ah_period": 42,
+          "ah_score_threshold": 0.55,
+          "ah_exit_score": 0.3,
+          "dc_period": 40,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=42)\n  - donchian(period=40)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.55 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.55 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.3 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (1.5x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "e98a23d7bdf922b88d133df1a7484c6f10f17604355b273ddfb351c4852066f6",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0016",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 23,
+        "ah_score_threshold": 0.65,
+        "ah_exit_score": 0.2,
+        "dc_period": 40,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 23
+          },
+          "donchian": {
+            "period": 40
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.65 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.65 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.2 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (3.5x)",
+        "default_params": {
+          "ah_period": 23,
+          "ah_score_threshold": 0.65,
+          "ah_exit_score": 0.2,
+          "dc_period": 40,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=23)\n  - donchian(period=40)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.65 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.65 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.2 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.5x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "d922545dc37af1de6be43dee1ef7f45dfc454f1a630deb69a6444fa14228cb3c",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0017",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 39,
+        "ah_score_threshold": 0.8,
+        "ah_exit_score": 0.15,
+        "dc_period": 45,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 39
+          },
+          "donchian": {
+            "period": 45
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.8 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.8 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.15 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (3.5x)",
+        "default_params": {
+          "ah_period": 39,
+          "ah_score_threshold": 0.8,
+          "ah_exit_score": 0.15,
+          "dc_period": 45,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=39)\n  - donchian(period=45)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.8 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.8 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.15 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.25x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "f0c7d458510e5b2dbf5bd5686a461fd83083eebf2bafa3ce42d296603d3ee552",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0018",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 13,
+        "ah_score_threshold": 0.75,
+        "ah_exit_score": 0.25,
+        "dc_period": 35,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 13
+          },
+          "donchian": {
+            "period": 35
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.75 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.75 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.25 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (4.0x)",
+        "default_params": {
+          "ah_period": 13,
+          "ah_score_threshold": 0.75,
+          "ah_exit_score": 0.25,
+          "dc_period": 35,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=13)\n  - donchian(period=35)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.75 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.75 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.25 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (2.25x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "659807e197eb42a8e1ee805840c4a68c5398d2f45b9d5fcf357f52ecc8b26749",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0019",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 32,
+        "ah_score_threshold": 0.6,
+        "ah_exit_score": 0.5,
+        "dc_period": 40,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 32
+          },
+          "donchian": {
+            "period": 40
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.6 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.6 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.5 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (2.5x)",
+        "default_params": {
+          "ah_period": 32,
+          "ah_score_threshold": 0.6,
+          "ah_exit_score": 0.5,
+          "dc_period": 40,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=32)\n  - donchian(period=40)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.6 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.6 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.5 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (1.75x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "f26b6a831c0cb84228af97d6cca9b2b7db0a98892231768dc883761bf26fa5a1",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0020",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 27,
+        "ah_score_threshold": 0.8,
+        "ah_exit_score": 0.4,
+        "dc_period": 35,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 27
+          },
+          "donchian": {
+            "period": 35
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.8 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.8 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.4 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (5.5x)",
+        "default_params": {
+          "ah_period": 27,
+          "ah_score_threshold": 0.8,
+          "ah_exit_score": 0.4,
+          "dc_period": 35,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=27)\n  - donchian(period=35)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.8 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.8 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.4 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (2.5x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "1fba2c1c25fee7f60c47b4a433306378af2dc5cc477708792173cc795bed3936",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.850261+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0021",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 14,
+        "ah_score_threshold": 0.65,
+        "ah_exit_score": 0.15,
+        "dc_period": 15,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 14
+          },
+          "donchian": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.65 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.65 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.15 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (5.0x)",
+        "default_params": {
+          "ah_period": 14,
+          "ah_score_threshold": 0.65,
+          "ah_exit_score": 0.15,
+          "dc_period": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=14)\n  - donchian(period=15)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.65 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.65 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.15 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (1.25x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "5fa1afdc94efb4fc2163011b5710c7f574527cee101fca8e836ee2bfe732ec1b",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0022",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 21,
+        "ah_score_threshold": 0.85,
+        "ah_exit_score": 0.5,
+        "dc_period": 30,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 21
+          },
+          "donchian": {
+            "period": 30
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.85 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.85 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.5 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (4.5x)",
+        "default_params": {
+          "ah_period": 21,
+          "ah_score_threshold": 0.85,
+          "ah_exit_score": 0.5,
+          "dc_period": 30,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=21)\n  - donchian(period=30)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.85 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.85 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.5 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (1.25x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "fdbd3417ceac621cd04c0269f28d9be49200ddde54922d35382f1ac4a5301d9b",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0023",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 30,
+        "ah_score_threshold": 0.75,
+        "ah_exit_score": 0.15,
+        "dc_period": 30,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 30
+          },
+          "donchian": {
+            "period": 30
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.75 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.75 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.15 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (5.0x)",
+        "default_params": {
+          "ah_period": 30,
+          "ah_score_threshold": 0.75,
+          "ah_exit_score": 0.15,
+          "dc_period": 30,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=30)\n  - donchian(period=30)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.75 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.75 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.15 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (1.5x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "b6c04251be5f89b50b37e286e8e8a4ffa35be6c51ccc796edcbe7cfaef4a1bec",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0024",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 18,
+        "ah_score_threshold": 0.8,
+        "ah_exit_score": 0.2,
+        "dc_period": 50,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 18
+          },
+          "donchian": {
+            "period": 50
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.8 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.8 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.2 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (5.0x)",
+        "default_params": {
+          "ah_period": 18,
+          "ah_score_threshold": 0.8,
+          "ah_exit_score": 0.2,
+          "dc_period": 50,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=18)\n  - donchian(period=50)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.8 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.8 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.2 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.25x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "d849c4511e2ab5652d73c6418f64a85d9d61ffe3aea14106b4838c2cb71098d4",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0025",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 43,
+        "ah_score_threshold": 0.6,
+        "ah_exit_score": 0.2,
+        "dc_period": 25,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 43
+          },
+          "donchian": {
+            "period": 25
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.6 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.6 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.2 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (3.5x)",
+        "default_params": {
+          "ah_period": 43,
+          "ah_score_threshold": 0.6,
+          "ah_exit_score": 0.2,
+          "dc_period": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=43)\n  - donchian(period=25)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.6 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.6 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.2 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.5x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "0dc5db6602586ba6e10b90ac491830b227274c36c72d77099b1b17dc45fa4926",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0026",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 12,
+        "ah_score_threshold": 0.7,
+        "ah_exit_score": 0.15,
+        "dc_period": 15,
+        "stop_atr_mult": 3.0,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 12
+          },
+          "donchian": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.7 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.7 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.15 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (3.0x) and take-profit (4.5x)",
+        "default_params": {
+          "ah_period": 12,
+          "ah_score_threshold": 0.7,
+          "ah_exit_score": 0.15,
+          "dc_period": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 3.0,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=12)\n  - donchian(period=15)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.7 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.7 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.15 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 3.0\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (3.0x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "92ff03e56034125d3d03bdcd69c6f85ca85b250bffd756ac4b1f6e8d21df437a",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0027",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 38,
+        "ah_score_threshold": 0.9,
+        "ah_exit_score": 0.45,
+        "dc_period": 30,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 38
+          },
+          "donchian": {
+            "period": 30
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.9 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.9 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.45 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (5.5x)",
+        "default_params": {
+          "ah_period": 38,
+          "ah_score_threshold": 0.9,
+          "ah_exit_score": 0.45,
+          "dc_period": 30,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=38)\n  - donchian(period=30)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.9 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.9 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.45 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (1.25x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "af0f0b15263aaa2a07f0a5149b59ffe4a09a4ccaa919a2848948cd3b8286bada",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0028",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 22,
+        "ah_score_threshold": 0.65,
+        "ah_exit_score": 0.4,
+        "dc_period": 45,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 22
+          },
+          "donchian": {
+            "period": 45
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.65 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.65 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.4 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (5.0x)",
+        "default_params": {
+          "ah_period": 22,
+          "ah_score_threshold": 0.65,
+          "ah_exit_score": 0.4,
+          "dc_period": 45,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=22)\n  - donchian(period=45)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.65 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.65 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.4 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (1.75x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "b222e34e712b0eee0a8b5b315c63ee96cf9e52684e9a6cd032aca96383921497",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0029",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 16,
+        "ah_score_threshold": 0.65,
+        "ah_exit_score": 0.3,
+        "dc_period": 35,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 16
+          },
+          "donchian": {
+            "period": 35
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.65 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.65 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.3 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (2.5x)",
+        "default_params": {
+          "ah_period": 16,
+          "ah_score_threshold": 0.65,
+          "ah_exit_score": 0.3,
+          "dc_period": 35,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=16)\n  - donchian(period=35)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.65 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.65 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.3 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (1.75x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "aa723d85a92ce4550f11f598adcd114f355e53c47179e2586c6bf70aa0e058cb",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0030",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 47,
+        "ah_score_threshold": 0.8,
+        "ah_exit_score": 0.15,
+        "dc_period": 45,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 47
+          },
+          "donchian": {
+            "period": 45
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.8 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.8 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.15 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (5.0x)",
+        "default_params": {
+          "ah_period": 47,
+          "ah_score_threshold": 0.8,
+          "ah_exit_score": 0.15,
+          "dc_period": 45,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=47)\n  - donchian(period=45)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.8 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.8 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.15 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.0x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "07b8a37758413991addb4bac9d935d06e4b32d32b075db627037e8af2b1ad7f1",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0031",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 32,
+        "ah_score_threshold": 0.6,
+        "ah_exit_score": 0.35,
+        "dc_period": 30,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 32
+          },
+          "donchian": {
+            "period": 30
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.6 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.6 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.35 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.0x) and take-profit (4.5x)",
+        "default_params": {
+          "ah_period": 32,
+          "ah_score_threshold": 0.6,
+          "ah_exit_score": 0.35,
+          "dc_period": 30,
+          "atr_period": 14,
+          "stop_atr_mult": 1.0,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=32)\n  - donchian(period=30)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.6 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.6 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.35 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.0\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (1.0x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "a0a45e63df47a659d927a791d1a0bb04e4da82ed6f58b849dedc8e70e7f00633",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0032",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 50,
+        "ah_score_threshold": 0.7,
+        "ah_exit_score": 0.3,
+        "dc_period": 35,
+        "stop_atr_mult": 2.75,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 50
+          },
+          "donchian": {
+            "period": 35
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.7 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.7 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.3 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.75x) and take-profit (5.5x)",
+        "default_params": {
+          "ah_period": 50,
+          "ah_score_threshold": 0.7,
+          "ah_exit_score": 0.3,
+          "dc_period": 35,
+          "atr_period": 14,
+          "stop_atr_mult": 2.75,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=50)\n  - donchian(period=35)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.7 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.7 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.3 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.75\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (2.75x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "60413bf193efab7ec8b3789ecab583141beca9d6685302c10165f0610b05004f",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0033",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 5,
+        "ah_score_threshold": 0.55,
+        "ah_exit_score": 0.4,
+        "dc_period": 35,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 5
+          },
+          "donchian": {
+            "period": 35
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.55 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.55 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.4 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (3.5x)",
+        "default_params": {
+          "ah_period": 5,
+          "ah_score_threshold": 0.55,
+          "ah_exit_score": 0.4,
+          "dc_period": 35,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=5)\n  - donchian(period=35)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.55 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.55 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.4 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.0x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "a7c92cdd81f3dea9993d080bd47a8858e2bd4496a5469844e36f2f641f92ab45",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0034",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 11,
+        "ah_score_threshold": 0.7,
+        "ah_exit_score": 0.35,
+        "dc_period": 15,
+        "stop_atr_mult": 3.0,
+        "tp_atr_mult": 6.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 11
+          },
+          "donchian": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.7 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.7 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.35 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (3.0x) and take-profit (6.0x)",
+        "default_params": {
+          "ah_period": 11,
+          "ah_score_threshold": 0.7,
+          "ah_exit_score": 0.35,
+          "dc_period": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 3.0,
+          "tp_atr_mult": 6.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=11)\n  - donchian(period=15)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.7 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.7 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.35 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 3.0\n  tp_atr_mult: 6.0\n  description: ATR stop-loss (3.0x) and take-profit (6.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "517c3accc9ab7d09f96817d7dae9fee76e73e91d33a1723e0c144928be61f9ac",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0035",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 22,
+        "ah_score_threshold": 0.7,
+        "ah_exit_score": 0.45,
+        "dc_period": 50,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 22
+          },
+          "donchian": {
+            "period": 50
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.7 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.7 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.45 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (4.0x)",
+        "default_params": {
+          "ah_period": 22,
+          "ah_score_threshold": 0.7,
+          "ah_exit_score": 0.45,
+          "dc_period": 50,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=22)\n  - donchian(period=50)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.7 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.7 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.45 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (1.5x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "a3b3cd5719b3375cd26c1dbe084f2d24838e883e5ccfa0cc2268ce88bf5f8a18",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0036",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 36,
+        "ah_score_threshold": 0.8,
+        "ah_exit_score": 0.4,
+        "dc_period": 30,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 36
+          },
+          "donchian": {
+            "period": 30
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.8 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.8 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.4 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (5.5x)",
+        "default_params": {
+          "ah_period": 36,
+          "ah_score_threshold": 0.8,
+          "ah_exit_score": 0.4,
+          "dc_period": 30,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=36)\n  - donchian(period=30)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.8 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.8 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.4 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (1.75x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "4608e85eb83688337059f83d54ca3509f21672db0cabac3998b3039fdaa6f863",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0037",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 10,
+        "ah_score_threshold": 0.75,
+        "ah_exit_score": 0.35,
+        "dc_period": 35,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 10
+          },
+          "donchian": {
+            "period": 35
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.75 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.75 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.35 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (3.5x)",
+        "default_params": {
+          "ah_period": 10,
+          "ah_score_threshold": 0.75,
+          "ah_exit_score": 0.35,
+          "dc_period": 35,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=10)\n  - donchian(period=35)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.75 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.75 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.35 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.0x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "0e8bb93cc0159b2f66359fec96eeb573b15079c94d0577c651f316e186ec7aae",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0038",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 48,
+        "ah_score_threshold": 0.9,
+        "ah_exit_score": 0.25,
+        "dc_period": 40,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 48
+          },
+          "donchian": {
+            "period": 40
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.9 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.9 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.25 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (4.5x)",
+        "default_params": {
+          "ah_period": 48,
+          "ah_score_threshold": 0.9,
+          "ah_exit_score": 0.25,
+          "dc_period": 40,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=48)\n  - donchian(period=40)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.9 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.9 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.25 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (2.5x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "0ea41f135bbcaf4206349c019b83f5f8a6c0c151584ee11dfa132be071c96bde",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "vol_amplitude_breakout__vol_amplitude_breakout__v1__v0039",
+      "archetype_id": "vol_amplitude_breakout",
+      "param_pack_id": "vol_amplitude_breakout__v1",
+      "params": {
+        "ah_period": 9,
+        "ah_score_threshold": 0.6,
+        "ah_exit_score": 0.2,
+        "dc_period": 35,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "vol_amplitude_breakout",
+        "hypothesis": "Parametric variant of volatility archetype vol_amplitude_breakout",
+        "change_type": "logic",
+        "used_indicators": [
+          "amplitude_hunter",
+          "donchian",
+          "atr"
+        ],
+        "indicator_params": {
+          "amplitude_hunter": {
+            "period": 9
+          },
+          "donchian": {
+            "period": 35
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "amplitude_hunter.score > 0.6 and close > donchian.upper",
+        "entry_short_logic": "amplitude_hunter.score > 0.6 and close < donchian.lower",
+        "exit_logic": "amplitude_hunter.score < 0.2 or close crosses donchian.middle",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (3.5x)",
+        "default_params": {
+          "ah_period": 9,
+          "ah_score_threshold": 0.6,
+          "ah_exit_score": 0.2,
+          "dc_period": 35,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "ah_period": {
+            "min": 5,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "ah_score_threshold": {
+            "min": 0.5,
+            "max": 0.9,
+            "default": 0.7,
+            "type": "float"
+          },
+          "ah_exit_score": {
+            "min": 0.1,
+            "max": 0.5,
+            "default": 0.3,
+            "type": "float"
+          },
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: vol_amplitude_breakout\narchetype: vol_amplitude_breakout\nfamily: volatility\ntimeframe: 1h\nside: both\nindicators:\n  - amplitude_hunter(period=9)\n  - donchian(period=35)\n  - atr(period=14)\nentry:\n  - long: amplitude_hunter.score > 0.6 and close > donchian.upper\n  - short: amplitude_hunter.score > 0.6 and close < donchian.lower\nexit:\n  - condition: amplitude_hunter.score < 0.2 or close crosses donchian.middle\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.25x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "611b08e71d2846d1ab21234c34337ed7971f23fb816903a1b2a21f577015065a",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.851260+00:00",
+        "seed": 2501933634,
+        "batch_id": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "archetype_id": "breakout_donchian_adx",
+  "version": "1.0",
+  "family": "breakout",
+  "side": "both",
+  "timeframe": "1h",
+  "indicators": ["donchian", "adx", "atr"],
+  "indicator_params": {
+    "donchian": {"period": "${dc_period}"},
+    "adx": {"period": "${adx_period}"},
+    "atr": {"period": "${atr_period}"}
+  },
+  "entry_long_logic": "close > donchian.upper and adx.adx > ${adx_threshold}",
+  "entry_short_logic": "close < donchian.lower and adx.adx > ${adx_threshold}",
+  "exit_logic": "close crosses donchian.middle or adx.adx < ${adx_exit_threshold}",
+  "risk_management": "ATR stop-loss (${stop_atr_mult}x) and take-profit (${tp_atr_mult}x)",
+  "default_params": {
+    "dc_period": 20,
+    "adx_period": 14,
+    "adx_threshold": 25,
+    "adx_exit_threshold": 20,
+    "atr_period": 14,
+    "stop_atr_mult": 2.0,
+    "tp_atr_mult": 4.0,
+    "warmup": 50,
+    "leverage": 1
+  },
+  "parameter_specs": {
+    "dc_period": {"min": 10, "max": 50, "default": 20, "type": "int"},
+    "adx_period": {"min": 10, "max": 25, "default": 14, "type": "int"},
+    "adx_threshold": {"min": 20, "max": 35, "default": 25, "type": "int"},
+    "adx_exit_threshold": {"min": 15, "max": 25, "default": 20, "type": "int"},
+    "stop_atr_mult": {"min": 1.0, "max": 3.0, "default": 2.0, "type": "float"},
+    "tp_atr_mult": {"min": 2.0, "max": 6.0, "default": 4.0, "type": "float"}
+  },
+  "requirements": {
+    "ohlcv_required": true,
+    "dataset_features": []
+  }
+}

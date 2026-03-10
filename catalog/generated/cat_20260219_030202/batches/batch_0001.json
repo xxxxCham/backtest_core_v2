@@ -1,0 +1,5416 @@
+{
+  "batch_id": 1,
+  "n_variants": 50,
+  "variants": [
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0010",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 34,
+        "bb_std": 2.8,
+        "rsi_period": 7,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 34,
+            "std_dev": 2.8
+          },
+          "rsi": {
+            "period": 7
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 30",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (3.5x)",
+        "default_params": {
+          "bb_period": 34,
+          "bb_std": 2.8,
+          "rsi_period": 7,
+          "rsi_oversold": 30,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=34, std_dev=2.8)\n  - rsi(period=7)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 30\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (1.75x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "dc12617f3fa8e0222c2286bb99d4e4c7ff5d4cb67496ae725c90d3afe73d0cb7",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0011",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 25,
+        "bb_std": 2.3,
+        "rsi_period": 18,
+        "rsi_oversold": 25,
+        "rsi_overbought": 80,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 25,
+            "std_dev": 2.3
+          },
+          "rsi": {
+            "period": 18
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 25",
+        "entry_short_logic": "close > bollinger.upper and rsi > 80",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (3.0x)",
+        "default_params": {
+          "bb_period": 25,
+          "bb_std": 2.3,
+          "rsi_period": 18,
+          "rsi_oversold": 25,
+          "rsi_overbought": 80,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=25, std_dev=2.3)\n  - rsi(period=18)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 25\n  - short: close > bollinger.upper and rsi > 80\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (2.5x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "37fa1e9e18e9b74484006692c0f6504bdccb14d284ba41fc3ff3460d28bac383",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0012",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 17,
+        "bb_std": 1.7,
+        "rsi_period": 20,
+        "rsi_oversold": 25,
+        "rsi_overbought": 65,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 17,
+            "std_dev": 1.7
+          },
+          "rsi": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 25",
+        "entry_short_logic": "close > bollinger.upper and rsi > 65",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (4.0x)",
+        "default_params": {
+          "bb_period": 17,
+          "bb_std": 1.7,
+          "rsi_period": 20,
+          "rsi_oversold": 25,
+          "rsi_overbought": 65,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=17, std_dev=1.7)\n  - rsi(period=20)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 25\n  - short: close > bollinger.upper and rsi > 65\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (1.25x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "31c03945a7c1fbf91d3958c6396eb7a690a7aa3430df762b33b6aac9269a393b",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0013",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 46,
+        "bb_std": 2.4,
+        "rsi_period": 21,
+        "rsi_oversold": 25,
+        "rsi_overbought": 80,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 46,
+            "std_dev": 2.4
+          },
+          "rsi": {
+            "period": 21
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 25",
+        "entry_short_logic": "close > bollinger.upper and rsi > 80",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (5.0x)",
+        "default_params": {
+          "bb_period": 46,
+          "bb_std": 2.4,
+          "rsi_period": 21,
+          "rsi_oversold": 25,
+          "rsi_overbought": 80,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=46, std_dev=2.4)\n  - rsi(period=21)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 25\n  - short: close > bollinger.upper and rsi > 80\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.25x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "a1e7ace7f2112189f3fe60377e57e82bf895e81d6f2f4f439e636e33298af3cd",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0014",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 38,
+        "bb_std": 2.4,
+        "rsi_period": 14,
+        "rsi_oversold": 40,
+        "rsi_overbought": 60,
+        "stop_atr_mult": 3.0,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 38,
+            "std_dev": 2.4
+          },
+          "rsi": {
+            "period": 14
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 40",
+        "entry_short_logic": "close > bollinger.upper and rsi > 60",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (3.0x) and take-profit (5.0x)",
+        "default_params": {
+          "bb_period": 38,
+          "bb_std": 2.4,
+          "rsi_period": 14,
+          "rsi_oversold": 40,
+          "rsi_overbought": 60,
+          "atr_period": 14,
+          "stop_atr_mult": 3.0,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=38, std_dev=2.4)\n  - rsi(period=14)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 40\n  - short: close > bollinger.upper and rsi > 60\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 3.0\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (3.0x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "b60cf8d743e084a4ca34df0eec5a097ee1dcea1c27acc438e31c69561fe5b5f7",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0015",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 40,
+        "bb_std": 2.9,
+        "rsi_period": 10,
+        "rsi_oversold": 35,
+        "rsi_overbought": 80,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 40,
+            "std_dev": 2.9
+          },
+          "rsi": {
+            "period": 10
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 35",
+        "entry_short_logic": "close > bollinger.upper and rsi > 80",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (2.5x)",
+        "default_params": {
+          "bb_period": 40,
+          "bb_std": 2.9,
+          "rsi_period": 10,
+          "rsi_oversold": 35,
+          "rsi_overbought": 80,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=40, std_dev=2.9)\n  - rsi(period=10)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 35\n  - short: close > bollinger.upper and rsi > 80\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (2.0x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "61f7ecd2c9305b279d799a892cd1776832fb9d20172ecce7f282042631ad884c",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0016",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 12,
+        "bb_std": 2.2,
+        "rsi_period": 7,
+        "rsi_oversold": 20,
+        "rsi_overbought": 60,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 12,
+            "std_dev": 2.2
+          },
+          "rsi": {
+            "period": 7
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 20",
+        "entry_short_logic": "close > bollinger.upper and rsi > 60",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (5.5x)",
+        "default_params": {
+          "bb_period": 12,
+          "bb_std": 2.2,
+          "rsi_period": 7,
+          "rsi_oversold": 20,
+          "rsi_overbought": 60,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=12, std_dev=2.2)\n  - rsi(period=7)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 20\n  - short: close > bollinger.upper and rsi > 60\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (1.5x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "0d9c513f265a527b2380057af670986ad07a1498f69eaf16e96702b37ca0c76c",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0017",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 29,
+        "bb_std": 2.9,
+        "rsi_period": 10,
+        "rsi_oversold": 25,
+        "rsi_overbought": 60,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 29,
+            "std_dev": 2.9
+          },
+          "rsi": {
+            "period": 10
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 25",
+        "entry_short_logic": "close > bollinger.upper and rsi > 60",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (4.0x)",
+        "default_params": {
+          "bb_period": 29,
+          "bb_std": 2.9,
+          "rsi_period": 10,
+          "rsi_oversold": 25,
+          "rsi_overbought": 60,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=29, std_dev=2.9)\n  - rsi(period=10)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 25\n  - short: close > bollinger.upper and rsi > 60\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (1.75x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "e08d24029d445279233ed0776f9c5398e26dfb9711d882703e5bb228ea3bb218",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0018",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 25,
+        "bb_std": 1.9,
+        "rsi_period": 15,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 25,
+            "std_dev": 1.9
+          },
+          "rsi": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 30",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (3.0x)",
+        "default_params": {
+          "bb_period": 25,
+          "bb_std": 1.9,
+          "rsi_period": 15,
+          "rsi_oversold": 30,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=25, std_dev=1.9)\n  - rsi(period=15)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 30\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (2.0x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "4e5bf2aa002d6727ce0bf5f68485dff6163fb452a560b84f3042da57775ae3c7",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0019",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 39,
+        "bb_std": 2.9,
+        "rsi_period": 13,
+        "rsi_oversold": 35,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 39,
+            "std_dev": 2.9
+          },
+          "rsi": {
+            "period": 13
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 35",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (5.0x)",
+        "default_params": {
+          "bb_period": 39,
+          "bb_std": 2.9,
+          "rsi_period": 13,
+          "rsi_oversold": 35,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=39, std_dev=2.9)\n  - rsi(period=13)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 35\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.0x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "4c35c0c167bdd2297d9d33876057f57fbe49bd48a18612f5116bfa80d259b53d",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0020",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 15,
+        "bb_std": 2.0,
+        "rsi_period": 11,
+        "rsi_oversold": 40,
+        "rsi_overbought": 75,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 15,
+            "std_dev": 2.0
+          },
+          "rsi": {
+            "period": 11
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 40",
+        "entry_short_logic": "close > bollinger.upper and rsi > 75",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (3.5x)",
+        "default_params": {
+          "bb_period": 15,
+          "bb_std": 2.0,
+          "rsi_period": 11,
+          "rsi_oversold": 40,
+          "rsi_overbought": 75,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=15, std_dev=2.0)\n  - rsi(period=11)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 40\n  - short: close > bollinger.upper and rsi > 75\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (1.5x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "c5984a4e48d2e48cbf6e2aba3abab185ec6cbf6faf0b6ad0fe60808f24171fdc",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0021",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 36,
+        "bb_std": 2.6,
+        "rsi_period": 8,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 36,
+            "std_dev": 2.6
+          },
+          "rsi": {
+            "period": 8
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 20",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (3.5x)",
+        "default_params": {
+          "bb_period": 36,
+          "bb_std": 2.6,
+          "rsi_period": 8,
+          "rsi_oversold": 20,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=36, std_dev=2.6)\n  - rsi(period=8)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 20\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (1.5x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "8135c4bf9eae95137cc5abbc99144c337a03e970da3c5c96f82a0368995f19db",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0022",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 45,
+        "bb_std": 2.8,
+        "rsi_period": 18,
+        "rsi_oversold": 35,
+        "rsi_overbought": 65,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 45,
+            "std_dev": 2.8
+          },
+          "rsi": {
+            "period": 18
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 35",
+        "entry_short_logic": "close > bollinger.upper and rsi > 65",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (3.5x)",
+        "default_params": {
+          "bb_period": 45,
+          "bb_std": 2.8,
+          "rsi_period": 18,
+          "rsi_oversold": 35,
+          "rsi_overbought": 65,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=45, std_dev=2.8)\n  - rsi(period=18)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 35\n  - short: close > bollinger.upper and rsi > 65\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.0x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "a507d44644009370b2584c396c9769e8c3b7e00f8f498e2adb324f0355ca99f0",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0023",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 25,
+        "bb_std": 1.7,
+        "rsi_period": 21,
+        "rsi_oversold": 30,
+        "rsi_overbought": 80,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 25,
+            "std_dev": 1.7
+          },
+          "rsi": {
+            "period": 21
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 30",
+        "entry_short_logic": "close > bollinger.upper and rsi > 80",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (3.5x)",
+        "default_params": {
+          "bb_period": 25,
+          "bb_std": 1.7,
+          "rsi_period": 21,
+          "rsi_oversold": 30,
+          "rsi_overbought": 80,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=25, std_dev=1.7)\n  - rsi(period=21)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 30\n  - short: close > bollinger.upper and rsi > 80\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.5x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "2434a4f2c4f2e4cbb72b54278d688bf9c5751720159b88463d795a3b7dc1999e",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0024",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 16,
+        "bb_std": 2.1,
+        "rsi_period": 17,
+        "rsi_oversold": 35,
+        "rsi_overbought": 65,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 16,
+            "std_dev": 2.1
+          },
+          "rsi": {
+            "period": 17
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 35",
+        "entry_short_logic": "close > bollinger.upper and rsi > 65",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (2.5x)",
+        "default_params": {
+          "bb_period": 16,
+          "bb_std": 2.1,
+          "rsi_period": 17,
+          "rsi_oversold": 35,
+          "rsi_overbought": 65,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=16, std_dev=2.1)\n  - rsi(period=17)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 35\n  - short: close > bollinger.upper and rsi > 65\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (2.5x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "78a1a3b394349072f5405b038b88a935c9662587d4613a9efe4b35dac608ea64",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0025",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 10,
+        "bb_std": 2.1,
+        "rsi_period": 7,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 10,
+            "std_dev": 2.1
+          },
+          "rsi": {
+            "period": 7
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 30",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (5.5x)",
+        "default_params": {
+          "bb_period": 10,
+          "bb_std": 2.1,
+          "rsi_period": 7,
+          "rsi_oversold": 30,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=10, std_dev=2.1)\n  - rsi(period=7)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 30\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (1.25x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "204b8dcd8060734f78b9f3eab0a0e201833a8fd1430ecd8ea242031aeee309e6",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0026",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 15,
+        "bb_std": 2.7,
+        "rsi_period": 21,
+        "rsi_oversold": 25,
+        "rsi_overbought": 65,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 15,
+            "std_dev": 2.7
+          },
+          "rsi": {
+            "period": 21
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 25",
+        "entry_short_logic": "close > bollinger.upper and rsi > 65",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (5.5x)",
+        "default_params": {
+          "bb_period": 15,
+          "bb_std": 2.7,
+          "rsi_period": 21,
+          "rsi_oversold": 25,
+          "rsi_overbought": 65,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=15, std_dev=2.7)\n  - rsi(period=21)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 25\n  - short: close > bollinger.upper and rsi > 65\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (2.25x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "ab10993f8157c90da2fc469d7a1ba626fc491d1b28916f4cdf5a34dd5b56cbc8",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0027",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 10,
+        "bb_std": 2.9,
+        "rsi_period": 12,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 10,
+            "std_dev": 2.9
+          },
+          "rsi": {
+            "period": 12
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 30",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (4.0x)",
+        "default_params": {
+          "bb_period": 10,
+          "bb_std": 2.9,
+          "rsi_period": 12,
+          "rsi_oversold": 30,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=10, std_dev=2.9)\n  - rsi(period=12)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 30\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (1.25x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "fe75baea85eb4dac72d1b6ac54bc1b5c83e993241a70126575dd1b0d5363ac2f",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0028",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 49,
+        "bb_std": 2.1,
+        "rsi_period": 8,
+        "rsi_oversold": 25,
+        "rsi_overbought": 60,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 49,
+            "std_dev": 2.1
+          },
+          "rsi": {
+            "period": 8
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 25",
+        "entry_short_logic": "close > bollinger.upper and rsi > 60",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (2.5x)",
+        "default_params": {
+          "bb_period": 49,
+          "bb_std": 2.1,
+          "rsi_period": 8,
+          "rsi_oversold": 25,
+          "rsi_overbought": 60,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=49, std_dev=2.1)\n  - rsi(period=8)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 25\n  - short: close > bollinger.upper and rsi > 60\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (1.75x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "6fef92665ac1570a1b84a6a80e12da24a2e117fe57e10d63ec02f49ba72cafe9",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0029",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 15,
+        "bb_std": 2.0,
+        "rsi_period": 20,
+        "rsi_oversold": 20,
+        "rsi_overbought": 75,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 15,
+            "std_dev": 2.0
+          },
+          "rsi": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 20",
+        "entry_short_logic": "close > bollinger.upper and rsi > 75",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (4.5x)",
+        "default_params": {
+          "bb_period": 15,
+          "bb_std": 2.0,
+          "rsi_period": 20,
+          "rsi_oversold": 20,
+          "rsi_overbought": 75,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=15, std_dev=2.0)\n  - rsi(period=20)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 20\n  - short: close > bollinger.upper and rsi > 75\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (1.75x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "1a64d1767aecb18b6a9de3b66ea6cb5f7298e0a6852b697556712935f2e5be79",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0030",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 13,
+        "bb_std": 1.7,
+        "rsi_period": 11,
+        "rsi_oversold": 30,
+        "rsi_overbought": 75,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 13,
+            "std_dev": 1.7
+          },
+          "rsi": {
+            "period": 11
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 30",
+        "entry_short_logic": "close > bollinger.upper and rsi > 75",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (3.0x)",
+        "default_params": {
+          "bb_period": 13,
+          "bb_std": 1.7,
+          "rsi_period": 11,
+          "rsi_oversold": 30,
+          "rsi_overbought": 75,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=13, std_dev=1.7)\n  - rsi(period=11)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 30\n  - short: close > bollinger.upper and rsi > 75\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (2.25x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "e2de0c0de8d4549d9f9c8c203dbaaaf20982635a291283e103505466d6de0e78",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0031",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 31,
+        "bb_std": 2.7,
+        "rsi_period": 16,
+        "rsi_oversold": 30,
+        "rsi_overbought": 80,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 31,
+            "std_dev": 2.7
+          },
+          "rsi": {
+            "period": 16
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 30",
+        "entry_short_logic": "close > bollinger.upper and rsi > 80",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (5.5x)",
+        "default_params": {
+          "bb_period": 31,
+          "bb_std": 2.7,
+          "rsi_period": 16,
+          "rsi_oversold": 30,
+          "rsi_overbought": 80,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=31, std_dev=2.7)\n  - rsi(period=16)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 30\n  - short: close > bollinger.upper and rsi > 80\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (1.25x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "7ca4c8b30de6c2f23774efd50dce053e2654880dc1b67b92061c7c65a19a135a",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0032",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 15,
+        "bb_std": 2.3,
+        "rsi_period": 7,
+        "rsi_oversold": 40,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 2.75,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 15,
+            "std_dev": 2.3
+          },
+          "rsi": {
+            "period": 7
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 40",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.75x) and take-profit (4.0x)",
+        "default_params": {
+          "bb_period": 15,
+          "bb_std": 2.3,
+          "rsi_period": 7,
+          "rsi_oversold": 40,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 2.75,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=15, std_dev=2.3)\n  - rsi(period=7)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 40\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.75\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (2.75x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "8a20fb2312adb00679b35d91fdc9c727e1a3a9a8ed5b78f240df9871036f3511",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0033",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.8,
+        "rsi_period": 13,
+        "rsi_oversold": 40,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 20,
+            "std_dev": 2.8
+          },
+          "rsi": {
+            "period": 13
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 40",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.0x) and take-profit (3.0x)",
+        "default_params": {
+          "bb_period": 20,
+          "bb_std": 2.8,
+          "rsi_period": 13,
+          "rsi_oversold": 40,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 1.0,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=20, std_dev=2.8)\n  - rsi(period=13)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 40\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.0\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (1.0x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "a95baa77a1f35ecb517af96c0b3d4ceb6d4153fa78a7b3e4167b15936e4f1a2a",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0034",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 42,
+        "bb_std": 3.0,
+        "rsi_period": 20,
+        "rsi_oversold": 25,
+        "rsi_overbought": 75,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 42,
+            "std_dev": 3.0
+          },
+          "rsi": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 25",
+        "entry_short_logic": "close > bollinger.upper and rsi > 75",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (2.5x)",
+        "default_params": {
+          "bb_period": 42,
+          "bb_std": 3.0,
+          "rsi_period": 20,
+          "rsi_oversold": 25,
+          "rsi_overbought": 75,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=42, std_dev=3.0)\n  - rsi(period=20)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 25\n  - short: close > bollinger.upper and rsi > 75\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (1.75x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "f018f240381f91e9037aff75096f3fad8569e13dc6333a61174a8df689c6c1b5",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0035",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 19,
+        "bb_std": 2.2,
+        "rsi_period": 14,
+        "rsi_oversold": 35,
+        "rsi_overbought": 80,
+        "stop_atr_mult": 3.0,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 19,
+            "std_dev": 2.2
+          },
+          "rsi": {
+            "period": 14
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 35",
+        "entry_short_logic": "close > bollinger.upper and rsi > 80",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (3.0x) and take-profit (3.5x)",
+        "default_params": {
+          "bb_period": 19,
+          "bb_std": 2.2,
+          "rsi_period": 14,
+          "rsi_oversold": 35,
+          "rsi_overbought": 80,
+          "atr_period": 14,
+          "stop_atr_mult": 3.0,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=19, std_dev=2.2)\n  - rsi(period=14)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 35\n  - short: close > bollinger.upper and rsi > 80\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 3.0\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (3.0x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "b04bf6c7d598895b745b8a43e64ef64042755a8bf8ff5fa4b115b43ccd364623",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0036",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 22,
+        "bb_std": 2.5,
+        "rsi_period": 20,
+        "rsi_oversold": 35,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 22,
+            "std_dev": 2.5
+          },
+          "rsi": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 35",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (4.5x)",
+        "default_params": {
+          "bb_period": 22,
+          "bb_std": 2.5,
+          "rsi_period": 20,
+          "rsi_oversold": 35,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=22, std_dev=2.5)\n  - rsi(period=20)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 35\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (2.25x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "7f430e78708dae5c9a7b4cf15e4b821260c4e4b88aad6a50944aa2bbc7b4a037",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0037",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 49,
+        "bb_std": 1.7,
+        "rsi_period": 12,
+        "rsi_oversold": 25,
+        "rsi_overbought": 60,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 49,
+            "std_dev": 1.7
+          },
+          "rsi": {
+            "period": 12
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 25",
+        "entry_short_logic": "close > bollinger.upper and rsi > 60",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (4.0x)",
+        "default_params": {
+          "bb_period": 49,
+          "bb_std": 1.7,
+          "rsi_period": 12,
+          "rsi_oversold": 25,
+          "rsi_overbought": 60,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=49, std_dev=1.7)\n  - rsi(period=12)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 25\n  - short: close > bollinger.upper and rsi > 60\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (2.5x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "485a60f92370b1f49fed9676223df4dd1df129e64ba24d3dea696fddeef22dc6",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0038",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 28,
+        "bb_std": 2.5,
+        "rsi_period": 13,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 6.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 28,
+            "std_dev": 2.5
+          },
+          "rsi": {
+            "period": 13
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 20",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (6.0x)",
+        "default_params": {
+          "bb_period": 28,
+          "bb_std": 2.5,
+          "rsi_period": 13,
+          "rsi_oversold": 20,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 6.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=28, std_dev=2.5)\n  - rsi(period=13)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 20\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 6.0\n  description: ATR stop-loss (2.25x) and take-profit (6.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "3b5df33f819a1fbe4ea9054b1ade1da077cf2aa78450d54ea443b9ffd5ab2a0e",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0039",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.7,
+        "rsi_period": 19,
+        "rsi_oversold": 40,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 50,
+            "std_dev": 2.7
+          },
+          "rsi": {
+            "period": 19
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 40",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (3.5x)",
+        "default_params": {
+          "bb_period": 50,
+          "bb_std": 2.7,
+          "rsi_period": 19,
+          "rsi_oversold": 40,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=50, std_dev=2.7)\n  - rsi(period=19)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 40\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.5x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "52241b18f00a4e800b03c1c5cd547e32894a8c930c859eb9f52ed7e32aa401f1",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.843129+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0000",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 10,
+        "macd_slow": 28,
+        "macd_signal": 12,
+        "rsi_period": 12,
+        "rsi_min": 35,
+        "rsi_max": 75,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 2.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 10,
+            "slow_period": 28,
+            "signal_period": 12
+          },
+          "rsi": {
+            "period": 12
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 75",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (2.0x)",
+        "default_params": {
+          "macd_fast": 10,
+          "macd_slow": 28,
+          "macd_signal": 12,
+          "rsi_period": 12,
+          "rsi_min": 35,
+          "rsi_max": 75,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 2.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=10, slow_period=28, signal_period=12)\n  - rsi(period=12)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 75\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 2.0\n  description: ATR stop-loss (1.75x) and take-profit (2.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "c78697dcb14f9939beb0f4ac04e596d2d171c428e61f3cd4b4bdcac793a4f19c",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.844129+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0001",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 11,
+        "macd_slow": 34,
+        "macd_signal": 8,
+        "rsi_period": 8,
+        "rsi_min": 35,
+        "rsi_max": 65,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 11,
+            "slow_period": 34,
+            "signal_period": 8
+          },
+          "rsi": {
+            "period": 8
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 65",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (2.5x)",
+        "default_params": {
+          "macd_fast": 11,
+          "macd_slow": 34,
+          "macd_signal": 8,
+          "rsi_period": 8,
+          "rsi_min": 35,
+          "rsi_max": 65,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=11, slow_period=34, signal_period=8)\n  - rsi(period=8)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 65\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (1.5x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "8bebeb798a8cc103300ad028f2fd34aa248677b8b888259bb6e4f35ddc9cd52f",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.844129+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0002",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 14,
+        "macd_slow": 33,
+        "macd_signal": 11,
+        "rsi_period": 15,
+        "rsi_min": 45,
+        "rsi_max": 75,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 14,
+            "slow_period": 33,
+            "signal_period": 11
+          },
+          "rsi": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 45 and rsi < 75",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (2.5x)",
+        "default_params": {
+          "macd_fast": 14,
+          "macd_slow": 33,
+          "macd_signal": 11,
+          "rsi_period": 15,
+          "rsi_min": 45,
+          "rsi_max": 75,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=14, slow_period=33, signal_period=11)\n  - rsi(period=15)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 45 and rsi < 75\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (1.75x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "89f1eb000bd0af22b9cea79f3874b341fd53276a255627cc38350d773e2335c4",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.844129+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0003",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 14,
+        "macd_slow": 25,
+        "macd_signal": 12,
+        "rsi_period": 18,
+        "rsi_min": 45,
+        "rsi_max": 65,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 14,
+            "slow_period": 25,
+            "signal_period": 12
+          },
+          "rsi": {
+            "period": 18
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 45 and rsi < 65",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (4.5x)",
+        "default_params": {
+          "macd_fast": 14,
+          "macd_slow": 25,
+          "macd_signal": 12,
+          "rsi_period": 18,
+          "rsi_min": 45,
+          "rsi_max": 65,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=14, slow_period=25, signal_period=12)\n  - rsi(period=18)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 45 and rsi < 65\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (2.5x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "f9d0ba0d0331c21ec40b0c35f6fd2463c47e7c1e6624ef13496c32acff590f98",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.844129+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0004",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 8,
+        "macd_slow": 31,
+        "macd_signal": 7,
+        "rsi_period": 10,
+        "rsi_min": 45,
+        "rsi_max": 70,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 8,
+            "slow_period": 31,
+            "signal_period": 7
+          },
+          "rsi": {
+            "period": 10
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 45 and rsi < 70",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (3.5x)",
+        "default_params": {
+          "macd_fast": 8,
+          "macd_slow": 31,
+          "macd_signal": 7,
+          "rsi_period": 10,
+          "rsi_min": 45,
+          "rsi_max": 70,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=8, slow_period=31, signal_period=7)\n  - rsi(period=10)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 45 and rsi < 70\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (1.25x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "ee536f54ead27b9b0fc5941f4ddf8da90a66c3acc1a29f3dd84694c10da5bb34",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.844129+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0005",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 9,
+        "macd_slow": 25,
+        "macd_signal": 12,
+        "rsi_period": 13,
+        "rsi_min": 35,
+        "rsi_max": 75,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 9,
+            "slow_period": 25,
+            "signal_period": 12
+          },
+          "rsi": {
+            "period": 13
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 75",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (3.5x)",
+        "default_params": {
+          "macd_fast": 9,
+          "macd_slow": 25,
+          "macd_signal": 12,
+          "rsi_period": 13,
+          "rsi_min": 35,
+          "rsi_max": 75,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=9, slow_period=25, signal_period=12)\n  - rsi(period=13)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 75\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (1.5x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "62adf6ad7325953b27ad62a01851cd8b2968b36e773fb28b736550632d5e6cf5",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.844129+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0006",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 9,
+        "macd_slow": 33,
+        "macd_signal": 8,
+        "rsi_period": 18,
+        "rsi_min": 45,
+        "rsi_max": 60,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 9,
+            "slow_period": 33,
+            "signal_period": 8
+          },
+          "rsi": {
+            "period": 18
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 45 and rsi < 60",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (5.0x)",
+        "default_params": {
+          "macd_fast": 9,
+          "macd_slow": 33,
+          "macd_signal": 8,
+          "rsi_period": 18,
+          "rsi_min": 45,
+          "rsi_max": 60,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=9, slow_period=33, signal_period=8)\n  - rsi(period=18)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 45 and rsi < 60\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.25x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "b79a7681e96cc87a01a609253bad92825a4c84373fe8ae3d351bfaa7fde91273",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0007",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 12,
+        "macd_slow": 26,
+        "macd_signal": 7,
+        "rsi_period": 17,
+        "rsi_min": 35,
+        "rsi_max": 80,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 12,
+            "slow_period": 26,
+            "signal_period": 7
+          },
+          "rsi": {
+            "period": 17
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 80",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (4.5x)",
+        "default_params": {
+          "macd_fast": 12,
+          "macd_slow": 26,
+          "macd_signal": 7,
+          "rsi_period": 17,
+          "rsi_min": 35,
+          "rsi_max": 80,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=12, slow_period=26, signal_period=7)\n  - rsi(period=17)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 80\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (2.5x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "ba4ff3b834881b04341a4d66cbabaf16b9c92b75b3325e8b901d1d5353113d1a",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0008",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 11,
+        "macd_slow": 28,
+        "macd_signal": 10,
+        "rsi_period": 15,
+        "rsi_min": 40,
+        "rsi_max": 75,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 11,
+            "slow_period": 28,
+            "signal_period": 10
+          },
+          "rsi": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 40 and rsi < 75",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (3.0x)",
+        "default_params": {
+          "macd_fast": 11,
+          "macd_slow": 28,
+          "macd_signal": 10,
+          "rsi_period": 15,
+          "rsi_min": 40,
+          "rsi_max": 75,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=11, slow_period=28, signal_period=10)\n  - rsi(period=15)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 40 and rsi < 75\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (2.0x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "0e26ad66de762319338bfb5983e2d69c4b6f1d8acc64c1a52f2fcff7b62f6ea3",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0009",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 8,
+        "macd_slow": 32,
+        "macd_signal": 10,
+        "rsi_period": 20,
+        "rsi_min": 45,
+        "rsi_max": 80,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 8,
+            "slow_period": 32,
+            "signal_period": 10
+          },
+          "rsi": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 45 and rsi < 80",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (4.5x)",
+        "default_params": {
+          "macd_fast": 8,
+          "macd_slow": 32,
+          "macd_signal": 10,
+          "rsi_period": 20,
+          "rsi_min": 45,
+          "rsi_max": 80,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=8, slow_period=32, signal_period=10)\n  - rsi(period=20)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 45 and rsi < 80\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (2.25x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "494b204efc915adfd335a3a7ae590f1512571d9da1dbef60298ff778035ea3d3",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0010",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 14,
+        "macd_slow": 20,
+        "macd_signal": 7,
+        "rsi_period": 21,
+        "rsi_min": 40,
+        "rsi_max": 80,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 14,
+            "slow_period": 20,
+            "signal_period": 7
+          },
+          "rsi": {
+            "period": 21
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 40 and rsi < 80",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (2.5x)",
+        "default_params": {
+          "macd_fast": 14,
+          "macd_slow": 20,
+          "macd_signal": 7,
+          "rsi_period": 21,
+          "rsi_min": 40,
+          "rsi_max": 80,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=14, slow_period=20, signal_period=7)\n  - rsi(period=21)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 40 and rsi < 80\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (2.0x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "6e638f91b4dc5439a75cf89b4b1f290ecc3294411876da82f21eee93fcef58be",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0011",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 13,
+        "macd_slow": 26,
+        "macd_signal": 12,
+        "rsi_period": 8,
+        "rsi_min": 45,
+        "rsi_max": 75,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 13,
+            "slow_period": 26,
+            "signal_period": 12
+          },
+          "rsi": {
+            "period": 8
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 45 and rsi < 75",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (5.0x)",
+        "default_params": {
+          "macd_fast": 13,
+          "macd_slow": 26,
+          "macd_signal": 12,
+          "rsi_period": 8,
+          "rsi_min": 45,
+          "rsi_max": 75,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=13, slow_period=26, signal_period=12)\n  - rsi(period=8)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 45 and rsi < 75\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.5x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "40d481c913795b442b2db9e3bb8687dcecf4d0d6d50e83ce0367030322f730e8",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0012",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 14,
+        "macd_slow": 32,
+        "macd_signal": 6,
+        "rsi_period": 21,
+        "rsi_min": 35,
+        "rsi_max": 65,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 6.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 14,
+            "slow_period": 32,
+            "signal_period": 6
+          },
+          "rsi": {
+            "period": 21
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 65",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (6.0x)",
+        "default_params": {
+          "macd_fast": 14,
+          "macd_slow": 32,
+          "macd_signal": 6,
+          "rsi_period": 21,
+          "rsi_min": 35,
+          "rsi_max": 65,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 6.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=14, slow_period=32, signal_period=6)\n  - rsi(period=21)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 65\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 6.0\n  description: ATR stop-loss (2.0x) and take-profit (6.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "ef26b8ad49f455b1b5ba4a040479ab934f2bb68be01feb03932dcbec4af18307",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0013",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 13,
+        "macd_slow": 34,
+        "macd_signal": 11,
+        "rsi_period": 7,
+        "rsi_min": 30,
+        "rsi_max": 60,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 13,
+            "slow_period": 34,
+            "signal_period": 11
+          },
+          "rsi": {
+            "period": 7
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 30 and rsi < 60",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.0x) and take-profit (3.0x)",
+        "default_params": {
+          "macd_fast": 13,
+          "macd_slow": 34,
+          "macd_signal": 11,
+          "rsi_period": 7,
+          "rsi_min": 30,
+          "rsi_max": 60,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.0,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=13, slow_period=34, signal_period=11)\n  - rsi(period=7)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 30 and rsi < 60\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.0\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (1.0x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "0dfd043ff6f51dce70ad4f8df62973fa7f76fc95e3a10907eb1e39c45a4d33e4",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0014",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 12,
+        "macd_slow": 21,
+        "macd_signal": 7,
+        "rsi_period": 9,
+        "rsi_min": 30,
+        "rsi_max": 65,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 12,
+            "slow_period": 21,
+            "signal_period": 7
+          },
+          "rsi": {
+            "period": 9
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 30 and rsi < 65",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (5.0x)",
+        "default_params": {
+          "macd_fast": 12,
+          "macd_slow": 21,
+          "macd_signal": 7,
+          "rsi_period": 9,
+          "rsi_min": 30,
+          "rsi_max": 65,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=12, slow_period=21, signal_period=7)\n  - rsi(period=9)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 30 and rsi < 65\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.5x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "c7c4e18da1819dec0bab686cfb882fb3f5b1cae450928053768591f1c0e04070",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0015",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 9,
+        "macd_slow": 33,
+        "macd_signal": 10,
+        "rsi_period": 20,
+        "rsi_min": 40,
+        "rsi_max": 65,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 9,
+            "slow_period": 33,
+            "signal_period": 10
+          },
+          "rsi": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 40 and rsi < 65",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (2.5x)",
+        "default_params": {
+          "macd_fast": 9,
+          "macd_slow": 33,
+          "macd_signal": 10,
+          "rsi_period": 20,
+          "rsi_min": 40,
+          "rsi_max": 65,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=9, slow_period=33, signal_period=10)\n  - rsi(period=20)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 40 and rsi < 65\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (2.25x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "db22f700203f100b119d88f3de540ac0c662d9ecc7dcfb00e1c347eb5f1a0fd5",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0016",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 11,
+        "macd_slow": 23,
+        "macd_signal": 10,
+        "rsi_period": 17,
+        "rsi_min": 40,
+        "rsi_max": 70,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 11,
+            "slow_period": 23,
+            "signal_period": 10
+          },
+          "rsi": {
+            "period": 17
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 40 and rsi < 70",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (3.0x)",
+        "default_params": {
+          "macd_fast": 11,
+          "macd_slow": 23,
+          "macd_signal": 10,
+          "rsi_period": 17,
+          "rsi_min": 40,
+          "rsi_max": 70,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=11, slow_period=23, signal_period=10)\n  - rsi(period=17)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 40 and rsi < 70\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (1.75x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "0c62981ac8e3e377cb6ae63a1557f9e210cfda86149d0d8eba91e66df4d50560",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0017",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 13,
+        "macd_slow": 35,
+        "macd_signal": 11,
+        "rsi_period": 9,
+        "rsi_min": 35,
+        "rsi_max": 75,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 13,
+            "slow_period": 35,
+            "signal_period": 11
+          },
+          "rsi": {
+            "period": 9
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 35 and rsi < 75",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (4.5x)",
+        "default_params": {
+          "macd_fast": 13,
+          "macd_slow": 35,
+          "macd_signal": 11,
+          "rsi_period": 9,
+          "rsi_min": 35,
+          "rsi_max": 75,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=13, slow_period=35, signal_period=11)\n  - rsi(period=9)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 35 and rsi < 75\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (2.0x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "9ab206db8a0a763223d6b5ad9cfe68e2d57666865646361bfcbec835251b1038",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0018",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 13,
+        "macd_slow": 33,
+        "macd_signal": 7,
+        "rsi_period": 7,
+        "rsi_min": 40,
+        "rsi_max": 65,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 13,
+            "slow_period": 33,
+            "signal_period": 7
+          },
+          "rsi": {
+            "period": 7
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 40 and rsi < 65",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (5.5x)",
+        "default_params": {
+          "macd_fast": 13,
+          "macd_slow": 33,
+          "macd_signal": 7,
+          "rsi_period": 7,
+          "rsi_min": 40,
+          "rsi_max": 65,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=13, slow_period=33, signal_period=7)\n  - rsi(period=7)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 40 and rsi < 65\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (2.0x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "95c6ad86cee45fb30898953f8d82244f3b69e2ca0a15cd92d6f42870f44fe5d9",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "momentum_macd__momentum_macd__v1__v0019",
+      "archetype_id": "momentum_macd",
+      "param_pack_id": "momentum_macd__v1",
+      "params": {
+        "macd_fast": 9,
+        "macd_slow": 20,
+        "macd_signal": 7,
+        "rsi_period": 14,
+        "rsi_min": 45,
+        "rsi_max": 80,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "momentum_macd",
+        "hypothesis": "Parametric variant of momentum archetype momentum_macd",
+        "change_type": "logic",
+        "used_indicators": [
+          "macd",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "macd": {
+            "fast_period": 9,
+            "slow_period": 20,
+            "signal_period": 7
+          },
+          "rsi": {
+            "period": 14
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > 45 and rsi < 80",
+        "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60",
+        "exit_logic": "macd.histogram changes sign or rsi > 80 or rsi < 20",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (5.0x)",
+        "default_params": {
+          "macd_fast": 9,
+          "macd_slow": 20,
+          "macd_signal": 7,
+          "rsi_period": 14,
+          "rsi_min": 45,
+          "rsi_max": 80,
+          "rsi_min_short": 30,
+          "rsi_max_short": 60,
+          "rsi_exit_overbought": 80,
+          "rsi_exit_oversold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "macd_fast": {
+            "min": 8,
+            "max": 15,
+            "default": 12,
+            "type": "int"
+          },
+          "macd_slow": {
+            "min": 20,
+            "max": 35,
+            "default": 26,
+            "type": "int"
+          },
+          "macd_signal": {
+            "min": 6,
+            "max": 12,
+            "default": 9,
+            "type": "int"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_min": {
+            "min": 30,
+            "max": 50,
+            "default": 40,
+            "type": "int"
+          },
+          "rsi_max": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: momentum_macd\narchetype: momentum_macd\nfamily: momentum\ntimeframe: 1h\nside: both\nindicators:\n  - macd(fast_period=9, slow_period=20, signal_period=7)\n  - rsi(period=14)\n  - atr(period=14)\nentry:\n  - long: macd.macd crosses_above macd.signal and rsi > 45 and rsi < 80\n  - short: macd.macd crosses_below macd.signal and rsi > 30 and rsi < 60\nexit:\n  - condition: macd.histogram changes sign or rsi > 80 or rsi < 20\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.0x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "8ae87a7fef2e0bcdd4725252c15eacd6c70a96567f8f1e45f68686d8ad756ddc",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.845130+00:00",
+        "seed": 1356740486,
+        "batch_id": 0
+      }
+    }
+  ]
+}

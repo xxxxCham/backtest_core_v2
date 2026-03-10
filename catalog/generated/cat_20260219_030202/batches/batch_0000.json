@@ -1,0 +1,4796 @@
+{
+  "batch_id": 0,
+  "n_variants": 50,
+  "variants": [
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0000",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 15,
+        "adx_period": 16,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 15
+          },
+          "adx": {
+            "period": 16
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 35",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 35",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 25",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (3.5x)",
+        "default_params": {
+          "dc_period": 15,
+          "adx_period": 16,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=15)\n  - adx(period=16)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 35\n  - short: close < donchian.lower and adx.adx > 35\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 25\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.25x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "f99bcada1e8b84b041a7bb759a6a58f7ffe008283107a83e954605821c3249ae",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.839073+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0001",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 25,
+        "adx_period": 12,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 6.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 25
+          },
+          "adx": {
+            "period": 12
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 15",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (6.0x)",
+        "default_params": {
+          "dc_period": 25,
+          "adx_period": 12,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 6.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=25)\n  - adx(period=12)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 15\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 6.0\n  description: ATR stop-loss (1.75x) and take-profit (6.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "060b08127dc745598bdc10f2fb8c873c5f0533f648e9bd2cb4f06fe9ce4b7ebf",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.839073+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0002",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 15,
+        "adx_period": 23,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 15
+          },
+          "adx": {
+            "period": 23
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 25",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 25",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 15",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (4.0x)",
+        "default_params": {
+          "dc_period": 15,
+          "adx_period": 23,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=15)\n  - adx(period=23)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 25\n  - short: close < donchian.lower and adx.adx > 25\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 15\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (1.5x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "deda3f65e7de521e1de4f7a66187506bda9b4e1398640dc4aa5d61428464903c",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.839073+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0003",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 30,
+        "adx_period": 19,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 30
+          },
+          "adx": {
+            "period": 19
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 25",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 25",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (4.0x)",
+        "default_params": {
+          "dc_period": 30,
+          "adx_period": 19,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=30)\n  - adx(period=19)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 25\n  - short: close < donchian.lower and adx.adx > 25\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (1.75x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "b399c87029292315a0ab7a395e913766228a56d8f58b54f628afafc991e1a2f3",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.839073+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0004",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 20,
+        "adx_period": 17,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 20
+          },
+          "adx": {
+            "period": 17
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 25",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 25",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 15",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (2.5x)",
+        "default_params": {
+          "dc_period": 20,
+          "adx_period": 17,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=20)\n  - adx(period=17)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 25\n  - short: close < donchian.lower and adx.adx > 25\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 15\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (1.25x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "8a08826fca300a9801a6f6b7a3d0f0d02509429bea0005c06eddd0d73a3f1b49",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.839073+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0005",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 30,
+        "adx_period": 17,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 30
+          },
+          "adx": {
+            "period": 17
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 25",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 25",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (4.5x)",
+        "default_params": {
+          "dc_period": 30,
+          "adx_period": 17,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=30)\n  - adx(period=17)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 25\n  - short: close < donchian.lower and adx.adx > 25\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (1.25x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "70e48d8c754666e2c7ea7ff7935413c86ba9f89f68e9d496697b202b6beaec75",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.839073+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0006",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 45,
+        "adx_period": 20,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 2.75,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 45
+          },
+          "adx": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 35",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 35",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 15",
+        "risk_management": "ATR stop-loss (2.75x) and take-profit (3.0x)",
+        "default_params": {
+          "dc_period": 45,
+          "adx_period": 20,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 2.75,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=45)\n  - adx(period=20)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 35\n  - short: close < donchian.lower and adx.adx > 35\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 15\nrisk:\n  stop_atr_mult: 2.75\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (2.75x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "1cf4c39bf5385d9e2f80e116763648d64b2b8819174d61944367d87b12a824d1",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.839073+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0007",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 20,
+        "adx_period": 20,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 20
+          },
+          "adx": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (3.0x)",
+        "default_params": {
+          "dc_period": 20,
+          "adx_period": 20,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=20)\n  - adx(period=20)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (2.5x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "aa873868aad63272bebe3abe027a598f1c0a381b09436b22a9c5eb99bb4afbae",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.839073+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0008",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 25,
+        "adx_period": 19,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 2.75,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 25
+          },
+          "adx": {
+            "period": 19
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 15",
+        "risk_management": "ATR stop-loss (2.75x) and take-profit (5.0x)",
+        "default_params": {
+          "dc_period": 25,
+          "adx_period": 19,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 2.75,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=25)\n  - adx(period=19)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 15\nrisk:\n  stop_atr_mult: 2.75\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.75x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "e94ebcc93ed93c2808504f484e4b21fce0bf61c8b0e0c864a4eed8b1eaa45439",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.839073+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0009",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 25,
+        "adx_period": 14,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 25
+          },
+          "adx": {
+            "period": 14
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 35",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 35",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 15",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (4.5x)",
+        "default_params": {
+          "dc_period": 25,
+          "adx_period": 14,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=25)\n  - adx(period=14)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 35\n  - short: close < donchian.lower and adx.adx > 35\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 15\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (1.25x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "0ae3c74ede4e359e348f5241c16c1c6d678f5729b94942d4a5d44cc88442f57e",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.839073+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0010",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 25,
+        "adx_period": 19,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 3.0,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 25
+          },
+          "adx": {
+            "period": 19
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 15",
+        "risk_management": "ATR stop-loss (3.0x) and take-profit (3.5x)",
+        "default_params": {
+          "dc_period": 25,
+          "adx_period": 19,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 3.0,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=25)\n  - adx(period=19)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 15\nrisk:\n  stop_atr_mult: 3.0\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (3.0x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "3473821c0ff97c83d92cd1dd966fad2c3d7d38ce9040a24125db2274b8c78603",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.839073+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0011",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 15,
+        "adx_period": 10,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 15
+          },
+          "adx": {
+            "period": 10
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (5.5x)",
+        "default_params": {
+          "dc_period": 15,
+          "adx_period": 10,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=15)\n  - adx(period=10)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (1.25x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "dcdfeccc3dfd82dd919dac7ff0edfd6caa2404d3b8c8d6448565985115872d91",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0012",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 25,
+        "adx_period": 25,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 6.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 25
+          },
+          "adx": {
+            "period": 25
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 25",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (6.0x)",
+        "default_params": {
+          "dc_period": 25,
+          "adx_period": 25,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 6.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=25)\n  - adx(period=25)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 25\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 6.0\n  description: ATR stop-loss (2.0x) and take-profit (6.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "18d09ea95aa19af45f77d5cc2839925c5eb1b31677ccf3c48f9d95ce386963c3",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0013",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 25,
+        "adx_period": 14,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 25
+          },
+          "adx": {
+            "period": 14
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 25",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (5.5x)",
+        "default_params": {
+          "dc_period": 25,
+          "adx_period": 14,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=25)\n  - adx(period=14)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 25\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (1.75x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "10e05dbe65168a2a95feb3a1be3dd8c2382781714fc32c26b9c5d75629acf0bd",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0014",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 25,
+        "adx_period": 16,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 5.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 25
+          },
+          "adx": {
+            "period": 16
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 35",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 35",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 25",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (5.5x)",
+        "default_params": {
+          "dc_period": 25,
+          "adx_period": 16,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 5.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=25)\n  - adx(period=16)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 35\n  - short: close < donchian.lower and adx.adx > 35\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 25\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 5.5\n  description: ATR stop-loss (2.25x) and take-profit (5.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "e55a9482b18ea5f6c36c87ab952cd5e7590636dbd6f8f5c841cdd1414e1baf17",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0015",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 30,
+        "adx_period": 18,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 30
+          },
+          "adx": {
+            "period": 18
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 35",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 35",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 25",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (4.0x)",
+        "default_params": {
+          "dc_period": 30,
+          "adx_period": 18,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=30)\n  - adx(period=18)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 35\n  - short: close < donchian.lower and adx.adx > 35\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 25\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (2.25x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "a87176c00c9d26753492b6a94f1f87bf9d135dace7494eb3a51a2ed80fa4cec2",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0016",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 45,
+        "adx_period": 13,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 45
+          },
+          "adx": {
+            "period": 13
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 35",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 35",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 25",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (5.0x)",
+        "default_params": {
+          "dc_period": 45,
+          "adx_period": 13,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=45)\n  - adx(period=13)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 35\n  - short: close < donchian.lower and adx.adx > 35\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 25\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.5x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "3b75fae470001711ec336b3ce527f8c7ca567a0a1b5b70581e27ce58019121ef",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0017",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 25,
+        "adx_period": 25,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 25
+          },
+          "adx": {
+            "period": 25
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 25",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 25",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 15",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (2.5x)",
+        "default_params": {
+          "dc_period": 25,
+          "adx_period": 25,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=25)\n  - adx(period=25)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 25\n  - short: close < donchian.lower and adx.adx > 25\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 15\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (1.5x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "db191a0ccd6a37bd62ebac34a210ce181d9f572118bae6e12f3985c9a936a737",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0018",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 45,
+        "adx_period": 10,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 45
+          },
+          "adx": {
+            "period": 10
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 25",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (3.0x)",
+        "default_params": {
+          "dc_period": 45,
+          "adx_period": 10,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=45)\n  - adx(period=10)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 25\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (2.25x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "f9d7c9ff31b6dd7bb6710cd215d1db70d394cf2332f3e3da575b7f704592c5f0",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0019",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 45,
+        "adx_period": 11,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 45
+          },
+          "adx": {
+            "period": 11
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 15",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (4.0x)",
+        "default_params": {
+          "dc_period": 45,
+          "adx_period": 11,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=45)\n  - adx(period=11)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 15\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (2.0x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "5282b64256cd6df8b1b004bc4b4a079fedf716d367f902ef927a5893847dc774",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0020",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 25,
+        "adx_period": 20,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 25
+          },
+          "adx": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (4.5x)",
+        "default_params": {
+          "dc_period": 25,
+          "adx_period": 20,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=25)\n  - adx(period=20)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (2.0x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "c3a553fbda6ffa3419b732bc8ac0beef7516d7bd6c9f22a652fb86dddd76c245",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0021",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 35,
+        "adx_period": 17,
+        "adx_threshold": 20,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 6.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 35
+          },
+          "adx": {
+            "period": 17
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 20",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 20",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 15",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (6.0x)",
+        "default_params": {
+          "dc_period": 35,
+          "adx_period": 17,
+          "adx_threshold": 20,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 6.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=35)\n  - adx(period=17)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 20\n  - short: close < donchian.lower and adx.adx > 20\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 15\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 6.0\n  description: ATR stop-loss (1.5x) and take-profit (6.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "a56e0232a7f47967165dfacc4972791c4bcc52402f26bbe98e3e50c66c1c6eb4",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0022",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 15,
+        "adx_period": 11,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 15
+          },
+          "adx": {
+            "period": 11
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 35",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 35",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (4.0x)",
+        "default_params": {
+          "dc_period": 15,
+          "adx_period": 11,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=15)\n  - adx(period=11)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 35\n  - short: close < donchian.lower and adx.adx > 35\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (2.0x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "78608d78528a20a5e2863438eefa6cb862f48fc7a7ef3775441425a0a1e839ce",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0023",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 15,
+        "adx_period": 22,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.75,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 15
+          },
+          "adx": {
+            "period": 22
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (2.75x) and take-profit (3.5x)",
+        "default_params": {
+          "dc_period": 15,
+          "adx_period": 22,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.75,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=15)\n  - adx(period=22)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.75\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.75x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "31df0fbb5ebcee3471c9dd4bb9f79ff7f54adb464e9ad8ebc06a2a57badf2e71",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0024",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 20,
+        "adx_period": 15,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 20
+          },
+          "adx": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (4.0x)",
+        "default_params": {
+          "dc_period": 20,
+          "adx_period": 15,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=20)\n  - adx(period=15)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (1.5x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "6b45bfa0da1c8e063fadd51176a488da04a0b4e9238676d1844e8a6c50022bf5",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0025",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 15,
+        "adx_period": 21,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 3.0,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 15
+          },
+          "adx": {
+            "period": 21
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (3.0x) and take-profit (3.0x)",
+        "default_params": {
+          "dc_period": 15,
+          "adx_period": 21,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 3.0,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=15)\n  - adx(period=21)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 3.0\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (3.0x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "d87e6cbbd65f81cb0656bec98a8a924e269d9117da704b800a49a4498b33123a",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0026",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 50,
+        "adx_period": 22,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 50
+          },
+          "adx": {
+            "period": 22
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (4.0x)",
+        "default_params": {
+          "dc_period": 50,
+          "adx_period": 22,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=50)\n  - adx(period=22)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (2.0x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "710407c78d0422969b02da369ec7ede883fa9e6fa88c40c465a7d8d3d0ee0442",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0027",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 45,
+        "adx_period": 11,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 25,
+        "stop_atr_mult": 3.0,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 45
+          },
+          "adx": {
+            "period": 11
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 25",
+        "risk_management": "ATR stop-loss (3.0x) and take-profit (3.0x)",
+        "default_params": {
+          "dc_period": 45,
+          "adx_period": 11,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 25,
+          "atr_period": 14,
+          "stop_atr_mult": 3.0,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=45)\n  - adx(period=11)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 25\nrisk:\n  stop_atr_mult: 3.0\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (3.0x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "05c2e74f86ba3b8d64092e9d7d31ccdbe98fa442c3caa5e5b71896f188549a66",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0028",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 35,
+        "adx_period": 25,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 35
+          },
+          "adx": {
+            "period": 25
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 35",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 35",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 15",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (3.5x)",
+        "default_params": {
+          "dc_period": 35,
+          "adx_period": 25,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=35)\n  - adx(period=25)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 35\n  - short: close < donchian.lower and adx.adx > 35\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 15\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (1.75x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "12318897d348b828d4756ac66f99d8d03b81f447acdbe3be2f3b776592e36c83",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0029",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 50,
+        "adx_period": 21,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.5,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 50
+          },
+          "adx": {
+            "period": 21
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 25",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 25",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (1.5x) and take-profit (3.5x)",
+        "default_params": {
+          "dc_period": 50,
+          "adx_period": 21,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.5,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=50)\n  - adx(period=21)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 25\n  - short: close < donchian.lower and adx.adx > 25\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.5\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (1.5x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "97f0eb7fc897d01070da2ef212c946a2d52c88c0b0aee56e7a7dfaa2412d945a",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0030",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 30,
+        "adx_period": 10,
+        "adx_threshold": 20,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 30
+          },
+          "adx": {
+            "period": 10
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 20",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 20",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 15",
+        "risk_management": "ATR stop-loss (1.0x) and take-profit (4.5x)",
+        "default_params": {
+          "dc_period": 30,
+          "adx_period": 10,
+          "adx_threshold": 20,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.0,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=30)\n  - adx(period=10)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 20\n  - short: close < donchian.lower and adx.adx > 20\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 15\nrisk:\n  stop_atr_mult: 1.0\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (1.0x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "61959738e53153243c73c84848cee13083236e2679a9504aca7521dc2a0f1b72",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0031",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 40,
+        "adx_period": 11,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.75,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 40
+          },
+          "adx": {
+            "period": 11
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 35",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 35",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (1.75x) and take-profit (5.0x)",
+        "default_params": {
+          "dc_period": 40,
+          "adx_period": 11,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.75,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=40)\n  - adx(period=11)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 35\n  - short: close < donchian.lower and adx.adx > 35\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.75\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (1.75x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "9648050ccd53480b370cdd22f6569038e83f246b746f415f4a596299c3629a14",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0032",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 10,
+        "adx_period": 19,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 10
+          },
+          "adx": {
+            "period": 19
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (3.5x)",
+        "default_params": {
+          "dc_period": 10,
+          "adx_period": 19,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=10)\n  - adx(period=19)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.25x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "7fd354e6665b05badb763e2428559d68f61042a29508113c4d4131896e889502",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0033",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 25,
+        "adx_period": 24,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 2.0,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 25
+          },
+          "adx": {
+            "period": 24
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 25",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 25",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 15",
+        "risk_management": "ATR stop-loss (2.0x) and take-profit (5.0x)",
+        "default_params": {
+          "dc_period": 25,
+          "adx_period": 24,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 2.0,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=25)\n  - adx(period=24)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 25\n  - short: close < donchian.lower and adx.adx > 25\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 15\nrisk:\n  stop_atr_mult: 2.0\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.0x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "1ec331ff40061c8af71d45b3a812755fe1a5802b5aadcd0dd9a837f2a34a3cbc",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0034",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 40,
+        "adx_period": 23,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 15,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 40
+          },
+          "adx": {
+            "period": 23
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 15",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (5.0x)",
+        "default_params": {
+          "dc_period": 40,
+          "adx_period": 23,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 15,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=40)\n  - adx(period=23)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 15\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (1.25x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "5c41f746e66edcac18649eb420dcccc43bc93627f24826ec5871f138c3257dbc",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0035",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 35,
+        "adx_period": 11,
+        "adx_threshold": 30,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 3.0,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 35
+          },
+          "adx": {
+            "period": 11
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 30",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 30",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (3.0x) and take-profit (3.0x)",
+        "default_params": {
+          "dc_period": 35,
+          "adx_period": 11,
+          "adx_threshold": 30,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 3.0,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=35)\n  - adx(period=11)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 30\n  - short: close < donchian.lower and adx.adx > 30\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 3.0\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (3.0x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "ac644e12dd3935a7b5fe8e385108a03f5a3767dbb92698cda2a3a991d11f2f33",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0036",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 15,
+        "adx_period": 15,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 15
+          },
+          "adx": {
+            "period": 15
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 25",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 25",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (2.5x)",
+        "default_params": {
+          "dc_period": 15,
+          "adx_period": 15,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=15)\n  - adx(period=15)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 25\n  - short: close < donchian.lower and adx.adx > 25\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (2.5x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "306989d2ffe56a379eb3570cc1c09f829cd938aa62524ead64f02217862ea96b",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0037",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 35,
+        "adx_period": 12,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 6.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 35
+          },
+          "adx": {
+            "period": 12
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 25",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 25",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (6.0x)",
+        "default_params": {
+          "dc_period": 35,
+          "adx_period": 12,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 6.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=35)\n  - adx(period=12)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 25\n  - short: close < donchian.lower and adx.adx > 25\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 6.0\n  description: ATR stop-loss (2.5x) and take-profit (6.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "e67c684335ab94f71225735061373b980182384265a8ece1c2f57140ed2108c6",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0038",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 35,
+        "adx_period": 11,
+        "adx_threshold": 35,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 2.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 35
+          },
+          "adx": {
+            "period": 11
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 35",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 35",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (2.0x)",
+        "default_params": {
+          "dc_period": 35,
+          "adx_period": 11,
+          "adx_threshold": 35,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 2.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=35)\n  - adx(period=11)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 35\n  - short: close < donchian.lower and adx.adx > 35\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 2.0\n  description: ATR stop-loss (1.25x) and take-profit (2.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "232a955c510c03ec7123688362e7a66c1bfb604ab1b6f640d5da7ed06809e7e4",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "breakout_donchian_adx__breakout_donchian_adx__v1__v0039",
+      "archetype_id": "breakout_donchian_adx",
+      "param_pack_id": "breakout_donchian_adx__v1",
+      "params": {
+        "dc_period": 10,
+        "adx_period": 16,
+        "adx_threshold": 25,
+        "adx_exit_threshold": 20,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "breakout_donchian_adx",
+        "hypothesis": "Parametric variant of breakout archetype breakout_donchian_adx",
+        "change_type": "logic",
+        "used_indicators": [
+          "donchian",
+          "adx",
+          "atr"
+        ],
+        "indicator_params": {
+          "donchian": {
+            "period": 10
+          },
+          "adx": {
+            "period": 16
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close > donchian.upper and adx.adx > 25",
+        "entry_short_logic": "close < donchian.lower and adx.adx > 25",
+        "exit_logic": "close crosses donchian.middle or adx.adx < 20",
+        "risk_management": "ATR stop-loss (1.0x) and take-profit (3.0x)",
+        "default_params": {
+          "dc_period": 10,
+          "adx_period": 16,
+          "adx_threshold": 25,
+          "adx_exit_threshold": 20,
+          "atr_period": 14,
+          "stop_atr_mult": 1.0,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "dc_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "adx_period": {
+            "min": 10,
+            "max": 25,
+            "default": 14,
+            "type": "int"
+          },
+          "adx_threshold": {
+            "min": 20,
+            "max": 35,
+            "default": 25,
+            "type": "int"
+          },
+          "adx_exit_threshold": {
+            "min": 15,
+            "max": 25,
+            "default": 20,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 4.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: breakout_donchian_adx\narchetype: breakout_donchian_adx\nfamily: breakout\ntimeframe: 1h\nside: both\nindicators:\n  - donchian(period=10)\n  - adx(period=16)\n  - atr(period=14)\nentry:\n  - long: close > donchian.upper and adx.adx > 25\n  - short: close < donchian.lower and adx.adx > 25\nexit:\n  - condition: close crosses donchian.middle or adx.adx < 20\nrisk:\n  stop_atr_mult: 1.0\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (1.0x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "4403993a5103ed286c234a0c25b77ca44d3ff525d9632ca022f873680fd1ca96",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.840070+00:00",
+        "seed": 2513346682,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0000",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 23,
+        "bb_std": 2.7,
+        "rsi_period": 13,
+        "rsi_oversold": 40,
+        "rsi_overbought": 65,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 4.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 23,
+            "std_dev": 2.7
+          },
+          "rsi": {
+            "period": 13
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 40",
+        "entry_short_logic": "close > bollinger.upper and rsi > 65",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.0x) and take-profit (4.0x)",
+        "default_params": {
+          "bb_period": 23,
+          "bb_std": 2.7,
+          "rsi_period": 13,
+          "rsi_oversold": 40,
+          "rsi_overbought": 65,
+          "atr_period": 14,
+          "stop_atr_mult": 1.0,
+          "tp_atr_mult": 4.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=23, std_dev=2.7)\n  - rsi(period=13)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 40\n  - short: close > bollinger.upper and rsi > 65\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.0\n  tp_atr_mult: 4.0\n  description: ATR stop-loss (1.0x) and take-profit (4.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "4717a5e17868445f07545c88aa15a9f8788970f359dc337e27355a33fd29def3",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0001",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 50,
+        "bb_std": 2.1,
+        "rsi_period": 18,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 2.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 50,
+            "std_dev": 2.1
+          },
+          "rsi": {
+            "period": 18
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 20",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (2.5x)",
+        "default_params": {
+          "bb_period": 50,
+          "bb_std": 2.1,
+          "rsi_period": 18,
+          "rsi_oversold": 20,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 2.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=50, std_dev=2.1)\n  - rsi(period=18)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 20\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 2.5\n  description: ATR stop-loss (2.25x) and take-profit (2.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "dcb0e980e3662e57eeb0b6d0759af3948a20ccd93b100e3c0a91e162edc92b4a",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0002",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 44,
+        "bb_std": 2.7,
+        "rsi_period": 18,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 44,
+            "std_dev": 2.7
+          },
+          "rsi": {
+            "period": 18
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 20",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (4.5x)",
+        "default_params": {
+          "bb_period": 44,
+          "bb_std": 2.7,
+          "rsi_period": 18,
+          "rsi_oversold": 20,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=44, std_dev=2.7)\n  - rsi(period=18)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 20\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (1.25x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "7e3c2cc828b1eae8c1b15a0266216483a24bd6deced8ae386698270e23feaeb8",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0003",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 36,
+        "bb_std": 1.9,
+        "rsi_period": 9,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 6.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 36,
+            "std_dev": 1.9
+          },
+          "rsi": {
+            "period": 9
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 30",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (6.0x)",
+        "default_params": {
+          "bb_period": 36,
+          "bb_std": 1.9,
+          "rsi_period": 9,
+          "rsi_oversold": 30,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 6.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=36, std_dev=1.9)\n  - rsi(period=9)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 30\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 6.0\n  description: ATR stop-loss (2.5x) and take-profit (6.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "e6c20029180a80af19e84a1a8c19d3bff363e7897fc3de2817d83066173dcc21",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0004",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 15,
+        "bb_std": 2.9,
+        "rsi_period": 20,
+        "rsi_oversold": 35,
+        "rsi_overbought": 65,
+        "stop_atr_mult": 1.25,
+        "tp_atr_mult": 3.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 15,
+            "std_dev": 2.9
+          },
+          "rsi": {
+            "period": 20
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 35",
+        "entry_short_logic": "close > bollinger.upper and rsi > 65",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.25x) and take-profit (3.0x)",
+        "default_params": {
+          "bb_period": 15,
+          "bb_std": 2.9,
+          "rsi_period": 20,
+          "rsi_oversold": 35,
+          "rsi_overbought": 65,
+          "atr_period": 14,
+          "stop_atr_mult": 1.25,
+          "tp_atr_mult": 3.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=15, std_dev=2.9)\n  - rsi(period=20)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 35\n  - short: close > bollinger.upper and rsi > 65\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.25\n  tp_atr_mult: 3.0\n  description: ATR stop-loss (1.25x) and take-profit (3.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "40bc2a35c4417e544923f997afff48a8a0d9071042c55406d656e8ab62d3663c",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0005",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.1,
+        "rsi_period": 11,
+        "rsi_oversold": 25,
+        "rsi_overbought": 65,
+        "stop_atr_mult": 1.0,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 20,
+            "std_dev": 2.1
+          },
+          "rsi": {
+            "period": 11
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 25",
+        "entry_short_logic": "close > bollinger.upper and rsi > 65",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (1.0x) and take-profit (3.5x)",
+        "default_params": {
+          "bb_period": 20,
+          "bb_std": 2.1,
+          "rsi_period": 11,
+          "rsi_oversold": 25,
+          "rsi_overbought": 65,
+          "atr_period": 14,
+          "stop_atr_mult": 1.0,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=20, std_dev=2.1)\n  - rsi(period=11)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 25\n  - short: close > bollinger.upper and rsi > 65\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 1.0\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (1.0x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "48032f3052f7d963c4d55260f6166003bd5414014ee9a157b0c4f4c951d9f476",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0006",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 29,
+        "bb_std": 2.8,
+        "rsi_period": 8,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 2.25,
+        "tp_atr_mult": 5.0
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 29,
+            "std_dev": 2.8
+          },
+          "rsi": {
+            "period": 8
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 30",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.25x) and take-profit (5.0x)",
+        "default_params": {
+          "bb_period": 29,
+          "bb_std": 2.8,
+          "rsi_period": 8,
+          "rsi_oversold": 30,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 2.25,
+          "tp_atr_mult": 5.0,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=29, std_dev=2.8)\n  - rsi(period=8)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 30\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.25\n  tp_atr_mult: 5.0\n  description: ATR stop-loss (2.25x) and take-profit (5.0x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "b90c692cfc3eb97495e484d2866dd5ceed05c01da5a416fc45efb17568a9f248",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0007",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 32,
+        "bb_std": 2.4,
+        "rsi_period": 18,
+        "rsi_oversold": 25,
+        "rsi_overbought": 75,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 32,
+            "std_dev": 2.4
+          },
+          "rsi": {
+            "period": 18
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 25",
+        "entry_short_logic": "close > bollinger.upper and rsi > 75",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (4.5x)",
+        "default_params": {
+          "bb_period": 32,
+          "bb_std": 2.4,
+          "rsi_period": 18,
+          "rsi_oversold": 25,
+          "rsi_overbought": 75,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=32, std_dev=2.4)\n  - rsi(period=18)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 25\n  - short: close > bollinger.upper and rsi > 75\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (2.5x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "562dab8ebccc1c523712f091ae92d8e44ee37e68137244059ce61d896717e515",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0008",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 26,
+        "bb_std": 2.7,
+        "rsi_period": 21,
+        "rsi_oversold": 25,
+        "rsi_overbought": 80,
+        "stop_atr_mult": 2.5,
+        "tp_atr_mult": 3.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 26,
+            "std_dev": 2.7
+          },
+          "rsi": {
+            "period": 21
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 25",
+        "entry_short_logic": "close > bollinger.upper and rsi > 80",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.5x) and take-profit (3.5x)",
+        "default_params": {
+          "bb_period": 26,
+          "bb_std": 2.7,
+          "rsi_period": 21,
+          "rsi_oversold": 25,
+          "rsi_overbought": 80,
+          "atr_period": 14,
+          "stop_atr_mult": 2.5,
+          "tp_atr_mult": 3.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=26, std_dev=2.7)\n  - rsi(period=21)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 25\n  - short: close > bollinger.upper and rsi > 80\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.5\n  tp_atr_mult: 3.5\n  description: ATR stop-loss (2.5x) and take-profit (3.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "2ddef01e1a95a2122eacce5f858d45e92896a09feb436bc0e6cb1d217103aa50",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    },
+    {
+      "variant_id": "mean_reversion_bollinger_rsi__mr_boll_rsi__v1__v0009",
+      "archetype_id": "mean_reversion_bollinger_rsi",
+      "param_pack_id": "mr_boll_rsi__v1",
+      "params": {
+        "bb_period": 20,
+        "bb_std": 2.8,
+        "rsi_period": 12,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "stop_atr_mult": 2.75,
+        "tp_atr_mult": 4.5
+      },
+      "proposal": {
+        "strategy_name": "mean_reversion_bollinger_rsi",
+        "hypothesis": "Parametric variant of mean_reversion archetype mean_reversion_bollinger_rsi",
+        "change_type": "logic",
+        "used_indicators": [
+          "bollinger",
+          "rsi",
+          "atr"
+        ],
+        "indicator_params": {
+          "bollinger": {
+            "period": 20,
+            "std_dev": 2.8
+          },
+          "rsi": {
+            "period": 12
+          },
+          "atr": {
+            "period": 14
+          }
+        },
+        "entry_long_logic": "close < bollinger.lower and rsi < 20",
+        "entry_short_logic": "close > bollinger.upper and rsi > 70",
+        "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+        "risk_management": "ATR stop-loss (2.75x) and take-profit (4.5x)",
+        "default_params": {
+          "bb_period": 20,
+          "bb_std": 2.8,
+          "rsi_period": 12,
+          "rsi_oversold": 20,
+          "rsi_overbought": 70,
+          "atr_period": 14,
+          "stop_atr_mult": 2.75,
+          "tp_atr_mult": 4.5,
+          "warmup": 50,
+          "leverage": 1
+        },
+        "parameter_specs": {
+          "bb_period": {
+            "min": 10,
+            "max": 50,
+            "default": 20,
+            "type": "int"
+          },
+          "bb_std": {
+            "min": 1.5,
+            "max": 3.0,
+            "default": 2.0,
+            "type": "float"
+          },
+          "rsi_period": {
+            "min": 7,
+            "max": 21,
+            "default": 14,
+            "type": "int"
+          },
+          "rsi_oversold": {
+            "min": 20,
+            "max": 40,
+            "default": 30,
+            "type": "int"
+          },
+          "rsi_overbought": {
+            "min": 60,
+            "max": 80,
+            "default": 70,
+            "type": "int"
+          },
+          "stop_atr_mult": {
+            "min": 1.0,
+            "max": 3.0,
+            "default": 1.5,
+            "type": "float"
+          },
+          "tp_atr_mult": {
+            "min": 2.0,
+            "max": 6.0,
+            "default": 3.0,
+            "type": "float"
+          }
+        }
+      },
+      "builder_text": "FICHE_STRATEGIE v1\nid: mean_reversion_bollinger_rsi\narchetype: mean_reversion_bollinger_rsi\nfamily: mean_reversion\ntimeframe: 1h\nside: both\nindicators:\n  - bollinger(period=20, std_dev=2.8)\n  - rsi(period=12)\n  - atr(period=14)\nentry:\n  - long: close < bollinger.lower and rsi < 20\n  - short: close > bollinger.upper and rsi > 70\nexit:\n  - condition: close crosses bollinger.middle or rsi crosses 50\nrisk:\n  stop_atr_mult: 2.75\n  tp_atr_mult: 4.5\n  description: ATR stop-loss (2.75x) and take-profit (4.5x)\nconstraints:\n  - no_lookahead: true\n  - only_registry_indicators: true",
+      "fingerprint": "34d212e8af81bc08cd3f0931622c340b7f73e7f1643920434aaf9e5a6527d5cd",
+      "provenance": {
+        "generated_at_utc": "2026-02-19T03:02:02.842070+00:00",
+        "seed": 2838232887,
+        "batch_id": 0
+      }
+    }
+  ]
+}

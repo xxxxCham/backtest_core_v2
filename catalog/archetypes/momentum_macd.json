@@ -1,0 +1,48 @@
+{
+  "archetype_id": "momentum_macd",
+  "version": "1.0",
+  "family": "momentum",
+  "side": "both",
+  "timeframe": "1h",
+  "indicators": ["macd", "rsi", "atr"],
+  "indicator_params": {
+    "macd": {"fast_period": "${macd_fast}", "slow_period": "${macd_slow}", "signal_period": "${macd_signal}"},
+    "rsi": {"period": "${rsi_period}"},
+    "atr": {"period": "${atr_period}"}
+  },
+  "entry_long_logic": "macd.macd crosses_above macd.signal and rsi > ${rsi_min} and rsi < ${rsi_max}",
+  "entry_short_logic": "macd.macd crosses_below macd.signal and rsi > ${rsi_min_short} and rsi < ${rsi_max_short}",
+  "exit_logic": "macd.histogram changes sign or rsi > ${rsi_exit_overbought} or rsi < ${rsi_exit_oversold}",
+  "risk_management": "ATR stop-loss (${stop_atr_mult}x) and take-profit (${tp_atr_mult}x)",
+  "default_params": {
+    "macd_fast": 12,
+    "macd_slow": 26,
+    "macd_signal": 9,
+    "rsi_period": 14,
+    "rsi_min": 40,
+    "rsi_max": 70,
+    "rsi_min_short": 30,
+    "rsi_max_short": 60,
+    "rsi_exit_overbought": 80,
+    "rsi_exit_oversold": 20,
+    "atr_period": 14,
+    "stop_atr_mult": 1.5,
+    "tp_atr_mult": 3.0,
+    "warmup": 50,
+    "leverage": 1
+  },
+  "parameter_specs": {
+    "macd_fast": {"min": 8, "max": 15, "default": 12, "type": "int"},
+    "macd_slow": {"min": 20, "max": 35, "default": 26, "type": "int"},
+    "macd_signal": {"min": 6, "max": 12, "default": 9, "type": "int"},
+    "rsi_period": {"min": 7, "max": 21, "default": 14, "type": "int"},
+    "rsi_min": {"min": 30, "max": 50, "default": 40, "type": "int"},
+    "rsi_max": {"min": 60, "max": 80, "default": 70, "type": "int"},
+    "stop_atr_mult": {"min": 1.0, "max": 3.0, "default": 1.5, "type": "float"},
+    "tp_atr_mult": {"min": 2.0, "max": 6.0, "default": 3.0, "type": "float"}
+  },
+  "requirements": {
+    "ohlcv_required": true,
+    "dataset_features": []
+  }
+}

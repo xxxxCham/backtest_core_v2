@@ -1,0 +1,218 @@
+{
+  "version": "1.0",
+  "default_mode": "single_llm",
+  "default_profile": "24GB_balanced",
+  "discovery": {
+    "prefer_existing": true,
+    "search_roots": [
+      "D:\\models\\huggingface",
+      "D:\\models\\ollama",
+      "C:\\LLM-Local",
+      "C:\\Users\\o3-Pro\\Llama_ccp_win"
+    ],
+    "live_ollama_check": true
+  },
+  "profiles": {
+    "24GB_balanced": {
+      "description": "Balanced local profile for a 24GB-class GPU, favoring existing local Ollama models.",
+      "roles": {
+        "idea_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "qwen3:14b",
+            "qwen2.5:32b",
+            "gemma3:12b"
+          ],
+          "fallback_models": [
+            "deepseek-moe-16b-local:latest",
+            "mistral:7b-instruct"
+          ],
+          "required": true,
+          "description": "Creates diverse but testable strategy objectives."
+        },
+        "builder_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "qwen3-coder:30b-a3b-instruct",
+            "qwen3-coder:30b"
+          ],
+          "fallback_models": [
+            "deepseek-coder-33b-local:latest",
+            "gpt-oss:20b"
+          ],
+          "required": true,
+          "description": "Writes or adjusts builder code and configs."
+        },
+        "critic_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "deepseek-r1-distill:14b"
+          ],
+          "fallback_models": [
+            "deepseek-r1:32b",
+            "qwq:32b"
+          ],
+          "required": true,
+          "description": "Challenges robustness and overfitting risk."
+        },
+        "risk_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "dragonllm-qwen-open-finance-r:8b",
+            "martain7r/finance-llama-8b:q4_k_m"
+          ],
+          "fallback_models": [
+            "fin-llama-33b:33b",
+            "deepseek-r1-distill:14b"
+          ],
+          "required": true,
+          "description": "Flags fragile or unsafe trading behavior."
+        },
+        "execution_router_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "granite4.0-micro",
+            "nemotron-orchestrator-8b:latest"
+          ],
+          "fallback_models": [
+            "mistral:7b-instruct",
+            "deepseek-moe-16b-local:latest"
+          ],
+          "required": true,
+          "description": "Routes accept/iterate/recover decisions."
+        }
+      }
+    },
+    "fast_local": {
+      "description": "Lower-latency local profile with lighter routing and critique models.",
+      "roles": {
+        "idea_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "deepseek-moe-16b-local:latest",
+            "mistral:7b-instruct"
+          ],
+          "fallback_models": [
+            "gemma3:12b"
+          ],
+          "required": true,
+          "description": "Fast objective generation."
+        },
+        "builder_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "qwen3-coder:30b",
+            "deepseek-coder-33b-local:latest"
+          ],
+          "fallback_models": [
+            "gpt-oss:20b"
+          ],
+          "required": true,
+          "description": "Fastest strong local builder option."
+        },
+        "critic_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "deepseek-r1-distill:14b",
+            "gemma3:12b"
+          ],
+          "fallback_models": [
+            "mistral:7b-instruct"
+          ],
+          "required": true,
+          "description": "Quick critique."
+        },
+        "risk_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "martain7r/finance-llama-8b:q4_k_m"
+          ],
+          "fallback_models": [
+            "deepseek-r1-distill:14b",
+            "mistral:7b-instruct"
+          ],
+          "required": true,
+          "description": "Fast risk filter."
+        },
+        "execution_router_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "nemotron-orchestrator-8b:latest",
+            "mistral:7b-instruct"
+          ],
+          "fallback_models": [
+            "deepseek-moe-16b-local:latest"
+          ],
+          "required": true,
+          "description": "Lightweight routing."
+        }
+      }
+    },
+    "finance_specialized": {
+      "description": "Finance-oriented profile that prefers finance-tuned critique and risk roles.",
+      "roles": {
+        "idea_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "fin-llama-33b:33b",
+            "qwen2.5:32b"
+          ],
+          "fallback_models": [
+            "gemma3:12b"
+          ],
+          "required": true,
+          "description": "Prefers finance-aware ideation."
+        },
+        "builder_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "qwen3-coder:30b",
+            "deepseek-coder-33b-local:latest"
+          ],
+          "fallback_models": [
+            "gpt-oss:20b"
+          ],
+          "required": true,
+          "description": "Keeps the builder code path strong."
+        },
+        "critic_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "deepseek-r1-distill:14b",
+            "deepseek-r1:32b"
+          ],
+          "fallback_models": [
+            "qwq:32b"
+          ],
+          "required": true,
+          "description": "Deep critique."
+        },
+        "risk_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "dragonllm-qwen-open-finance-r:8b",
+            "martain7r/finance-llama-8b:q4_k_m",
+            "fin-llama-33b:33b"
+          ],
+          "fallback_models": [
+            "deepseek-r1-distill:14b"
+          ],
+          "required": true,
+          "description": "Finance-oriented risk role."
+        },
+        "execution_router_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "granite4.0-micro",
+            "nemotron-orchestrator-8b:latest"
+          ],
+          "fallback_models": [
+            "mistral:7b-instruct"
+          ],
+          "required": true,
+          "description": "Light routing control."
+        }
+      }
+    }
+  }
+}

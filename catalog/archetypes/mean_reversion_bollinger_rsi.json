@@ -1,0 +1,42 @@
+{
+  "archetype_id": "mean_reversion_bollinger_rsi",
+  "version": "1.0",
+  "family": "mean_reversion",
+  "side": "both",
+  "timeframe": "1h",
+  "indicators": ["bollinger", "rsi", "atr"],
+  "indicator_params": {
+    "bollinger": {"period": "${bb_period}", "std_dev": "${bb_std}"},
+    "rsi": {"period": "${rsi_period}"},
+    "atr": {"period": "${atr_period}"}
+  },
+  "entry_long_logic": "close < bollinger.lower and rsi < ${rsi_oversold}",
+  "entry_short_logic": "close > bollinger.upper and rsi > ${rsi_overbought}",
+  "exit_logic": "close crosses bollinger.middle or rsi crosses 50",
+  "risk_management": "ATR stop-loss (${stop_atr_mult}x) and take-profit (${tp_atr_mult}x)",
+  "default_params": {
+    "bb_period": 20,
+    "bb_std": 2.0,
+    "rsi_period": 14,
+    "rsi_oversold": 30,
+    "rsi_overbought": 70,
+    "atr_period": 14,
+    "stop_atr_mult": 1.5,
+    "tp_atr_mult": 3.0,
+    "warmup": 50,
+    "leverage": 1
+  },
+  "parameter_specs": {
+    "bb_period": {"min": 10, "max": 50, "default": 20, "type": "int"},
+    "bb_std": {"min": 1.5, "max": 3.0, "default": 2.0, "type": "float"},
+    "rsi_period": {"min": 7, "max": 21, "default": 14, "type": "int"},
+    "rsi_oversold": {"min": 20, "max": 40, "default": 30, "type": "int"},
+    "rsi_overbought": {"min": 60, "max": 80, "default": 70, "type": "int"},
+    "stop_atr_mult": {"min": 1.0, "max": 3.0, "default": 1.5, "type": "float"},
+    "tp_atr_mult": {"min": 2.0, "max": 6.0, "default": 3.0, "type": "float"}
+  },
+  "requirements": {
+    "ohlcv_required": true,
+    "dataset_features": []
+  }
+}

@@ -1,0 +1,2 @@
+rank,iteration,decision,continuous_score,sharpe,return_pct,max_drawdown_pct,profit_factor,win_rate_pct,trades,change_type,diagnostic_category,is_fallback,error,hypothesis
+1,2,continue,-100.0,-20.0,-2254.3429501445266,-100.0,0.6105995052124192,26.154563831441457,6431,logic,ruined,False,,Combining Donchian Channel breakouts with MACD signal confirmation filters for trend alignment while using ATR-based risk management reduces whipsaw losses and improves risk-reward profiles in volatile market conditions

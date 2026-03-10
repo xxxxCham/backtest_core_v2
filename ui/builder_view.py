@@ -1,0 +1,3506 @@
+"""
+Module-ID: ui.builder_view
+
+Purpose: Interface Streamlit pour le Strategy Builder — création de stratégies par IA.
+
+Role in pipeline: UI / interaction utilisateur
+
+Key components: render_builder_view, render_iteration_card, render_session_summary
+
+Inputs: SidebarState (builder_objective, builder_model, etc.), DataFrame OHLCV
+
+Outputs: Affichage interactif des itérations et résultats du builder
+
+Dependencies: agents.strategy_builder, ui.helpers, ui.context
+
+Conventions: Streamlit components, pas de logique de trading
+
+Read-if: Modification de l'interface Strategy Builder
+
+Skip-if: Logique backend du builder (voir agents/strategy_builder.py)
+"""
+
+from __future__ import annotations
+
+import csv
+import io
+import json
+import logging
+import random
+import time
+import traceback
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
+
+import streamlit as st
+
+import httpx
+
+# ── Logging de diagnostic (TEMPORAIRE) ──
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)  # Force INFO level
+# Ajouter un handler console si absent
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setLevel(logging.INFO)
+    _formatter = logging.Formatter('%(asctime)s | %(levelname)-7s | %(name)s | %(message)s', datefmt='%H:%M:%S')
+    _handler.setFormatter(_formatter)
+    logger.addHandler(_handler)
+
+from agents.llm_client import LLMConfig, LLMProvider, create_llm_client
+from agents.ollama_manager import ensure_ollama_running
+from agents.strategy_builder import (
+    SANDBOX_ROOT,
+    StrategyBuilder,
+    generate_llm_objective,
+    generate_llm_objective_from_seed,
+    generate_parametric_catalog,
+    generate_random_objective,
+    get_catalog_coverage,
+    get_next_catalog_objective,
+    get_next_parametric_objective,
+    mark_catalog_objective_explored,
+    recommend_market_context,
+    reset_catalog_exploration,
+    reset_parametric_catalog,
+    sanitize_objective_text,
+)
+from agents.thought_stream import STREAM_FILE
+from ui.helpers import _maybe_auto_save_run, safe_load_data, show_status
+
+try:
+    from core.llm_multi import DEFAULT_MULTI_LLM_PROFILE, MultiLLMSessionManager
+
+    _MULTI_LLM_RUNTIME_AVAILABLE = True
+except ImportError:
+    DEFAULT_MULTI_LLM_PROFILE = "24GB_balanced"
+    _MULTI_LLM_RUNTIME_AVAILABLE = False
+
+
+_AUTONOMOUS_SUPERVISOR_STATE_FILE = SANDBOX_ROOT / "_autonomous_supervisor_state.json"
+_AUTONOMOUS_RUNTIME_STATE_FILE = SANDBOX_ROOT / "_autonomous_runtime_state.json"
+_AUTONOMOUS_SUPERVISOR_VERSION = "1.0"
+_AUTONOMOUS_RUNTIME_VERSION = "1.0"
+_AUTONOMOUS_MAX_PERSISTED_HISTORY = 400
+_AUTONOMOUS_SESSION_FAILURE_RESET_THRESHOLD = 4
+_AUTONOMOUS_MAX_SOFT_RESETS = 3
+_AUTONOMOUS_SOFT_RESET_WINDOW_SECONDS = 2 * 60 * 60
+_AUTONOMOUS_HARDENED_COOLDOWN_MULTIPLIER = 8
+_AUTONOMOUS_SOURCE_MODES = ("catalog", "llm", "parametric")
+_STREAM_CODE_LINE_PREFIXES = (
+    "from ",
+    "import ",
+    "class ",
+    "def ",
+    "@",
+    "if ",
+    "elif ",
+    "else:",
+    "for ",
+    "while ",
+    "try:",
+    "except ",
+    "finally:",
+    "with ",
+    "return ",
+    "raise ",
+    "pass",
+    "break",
+    "continue",
+    "signals",
+    "long_",
+    "short_",
+    "entry_",
+    "exit_",
+    "sl_",
+    "tp_",
+)
+
+
+def _extract_code_from_stream_text(text: str) -> str:
+    normalized = str(text or "").replace("\r\n", "\n")
+
+    fenced_blocks = re.findall(
+        r"```(?:python)?\s*(.*?)```",
+        normalized,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if fenced_blocks:
+        return str(fenced_blocks[-1]).strip()
+
+    lines = normalized.splitlines()
+    first_code_index: Optional[int] = None
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(_STREAM_CODE_LINE_PREFIXES):
+            first_code_index = idx
+            break
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*\s*=", stripped):
+            first_code_index = idx
+            break
+        if stripped.endswith(":") and (
+            stripped.startswith(("if ", "elif ", "else", "for ", "while ", "try", "except ", "with "))
+        ):
+            first_code_index = idx
+            break
+
+    if first_code_index is None:
+        return ""
+
+    code_lines: List[str] = []
+    for line in lines[first_code_index:]:
+        stripped = line.strip()
+        if (
+            stripped.startswith("## ")
+            or stripped.startswith("<|")
+            or stripped.startswith("Okay,")
+            or stripped.startswith("Wait,")
+            or stripped.startswith("Let me")
+            or stripped.startswith("First,")
+            or stripped.startswith("Next,")
+        ):
+            continue
+        code_lines.append(line)
+    return "\n".join(code_lines).strip()
+
+
+def _sanitize_builder_stream_text(phase: str, text: str) -> tuple[str, str]:
+    cleaned = str(text or "").replace("\r\n", "\n")
+    cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = re.sub(r"<think>.*", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = cleaned.replace("<|im_start|>", "").replace("<|im_end|>", "")
+
+    if phase in {"code", "retry_code"}:
+        code_view = _extract_code_from_stream_text(cleaned)
+        if code_view:
+            return code_view, "python"
+        return (
+            "Generation du code utile en cours...\n"
+            "Le prompt brut et les auto-commentaires du modele sont masques.",
+            "text",
+        )
+
+    lines = []
+    for line in cleaned.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            lines.append(line)
+            continue
+        if stripped.startswith("<|"):
+            continue
+        if stripped.startswith("## YOUR TURN"):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip(), "text"
+
+
+def _default_autonomous_supervisor_state() -> Dict[str, Any]:
+    return {
+        "version": _AUTONOMOUS_SUPERVISOR_VERSION,
+        "consecutive_errors": 0,
+        "consecutive_failed_sessions": 0,
+        "soft_reset_count": 0,
+        "soft_reset_timestamps": [],
+        "last_error_origin": "",
+        "last_error": "",
+        "last_recovery_reason": "",
+        "last_selected_source_mode": "",
+        "last_selected_source_reason": "",
+        "forced_source_mode": "",
+        "disable_auto_market_pick_once": False,
+        "last_resume_at": "",
+        "next_pause_multiplier": 1,
+    }
+
+
+def _default_autonomous_runtime_state() -> Dict[str, Any]:
+    return {
+        "version": _AUTONOMOUS_RUNTIME_VERSION,
+        "active": False,
+        "manual_stop": False,
+        "started_at": "",
+        "last_heartbeat_at": "",
+        "last_resume_at": "",
+        "last_event": "",
+        "last_error": "",
+        "last_stop_reason": "",
+        "last_session_num": 0,
+        "last_session_id": "",
+        "last_session_status": "",
+        "model": "",
+        "ollama_host": "",
+        "requested_source_mode": "",
+        "effective_source_mode": "",
+        "auto_market_pick": False,
+        "resume_count": 0,
+    }
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _parse_runtime_timestamp(value: Any) -> Optional[datetime]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _recent_soft_reset_timestamps(
+    supervisor: Dict[str, Any],
+    *,
+    now: Optional[datetime] = None,
+) -> List[str]:
+    current_time = now or datetime.now(timezone.utc)
+    raw_items = supervisor.get("soft_reset_timestamps", [])
+    if not isinstance(raw_items, list):
+        raw_items = []
+
+    cleaned: List[str] = []
+    for raw in raw_items:
+        parsed = _parse_runtime_timestamp(raw)
+        if parsed is None:
+            continue
+        if (current_time - parsed).total_seconds() <= _AUTONOMOUS_SOFT_RESET_WINDOW_SECONDS:
+            cleaned.append(parsed.replace(microsecond=0).isoformat())
+    supervisor["soft_reset_timestamps"] = cleaned
+    return cleaned
+
+
+def _trim_autonomous_history(
+    history: List[Dict[str, Any]],
+    *,
+    limit: int = _AUTONOMOUS_MAX_PERSISTED_HISTORY,
+) -> List[Dict[str, Any]]:
+    items = list(history or [])
+    if len(items) <= limit:
+        return items
+    return items[-limit:]
+
+
+def _load_autonomous_supervisor_state() -> Dict[str, Any]:
+    payload = {
+        "history": [],
+        "supervisor": _default_autonomous_supervisor_state(),
+    }
+    if not _AUTONOMOUS_SUPERVISOR_STATE_FILE.exists():
+        return payload
+
+    try:
+        raw = json.loads(
+            _AUTONOMOUS_SUPERVISOR_STATE_FILE.read_text(encoding="utf-8")
+        )
+    except Exception as exc:
+        logger.warning("builder_autonomous_state_load_failed error=%s", exc)
+        return payload
+
+    history = raw.get("history", [])
+    if not isinstance(history, list):
+        history = []
+
+    supervisor = _default_autonomous_supervisor_state()
+    raw_supervisor = raw.get("supervisor", {})
+    if isinstance(raw_supervisor, dict):
+        for key in supervisor.keys():
+            if key in raw_supervisor:
+                supervisor[key] = raw_supervisor[key]
+
+    payload["history"] = _trim_autonomous_history(
+        [item for item in history if isinstance(item, dict)]
+    )
+    payload["supervisor"] = supervisor
+    return payload
+
+
+def _load_autonomous_runtime_state() -> Dict[str, Any]:
+    runtime = _default_autonomous_runtime_state()
+    if not _AUTONOMOUS_RUNTIME_STATE_FILE.exists():
+        return runtime
+
+    try:
+        raw = json.loads(_AUTONOMOUS_RUNTIME_STATE_FILE.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("builder_autonomous_runtime_load_failed error=%s", exc)
+        return runtime
+
+    if not isinstance(raw, dict):
+        return runtime
+    if isinstance(raw.get("runtime"), dict):
+        raw = raw["runtime"]
+
+    for key in runtime.keys():
+        if key in raw:
+            runtime[key] = raw[key]
+    return runtime
+
+
+def _save_autonomous_supervisor_state(
+    history: List[Dict[str, Any]],
+    supervisor: Dict[str, Any],
+) -> None:
+    _AUTONOMOUS_SUPERVISOR_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    cleaned_supervisor = _default_autonomous_supervisor_state()
+    for key in cleaned_supervisor.keys():
+        if key in supervisor:
+            cleaned_supervisor[key] = supervisor[key]
+
+    payload = {
+        "version": _AUTONOMOUS_SUPERVISOR_VERSION,
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "history": _trim_autonomous_history(history),
+        "supervisor": cleaned_supervisor,
+    }
+
+    tmp_path = _AUTONOMOUS_SUPERVISOR_STATE_FILE.with_suffix(".tmp")
+    try:
+        tmp_path.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        tmp_path.replace(_AUTONOMOUS_SUPERVISOR_STATE_FILE)
+    except Exception as exc:
+        logger.warning("builder_autonomous_state_save_failed error=%s", exc)
+
+
+def _save_autonomous_runtime_state(runtime: Dict[str, Any]) -> None:
+    _AUTONOMOUS_RUNTIME_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    cleaned_runtime = _default_autonomous_runtime_state()
+    for key in cleaned_runtime.keys():
+        if key in runtime:
+            cleaned_runtime[key] = runtime[key]
+
+    payload = {
+        "version": _AUTONOMOUS_RUNTIME_VERSION,
+        "updated_at": _utc_now_iso(),
+        "runtime": cleaned_runtime,
+    }
+
+    tmp_path = _AUTONOMOUS_RUNTIME_STATE_FILE.with_suffix(".tmp")
+    try:
+        tmp_path.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        tmp_path.replace(_AUTONOMOUS_RUNTIME_STATE_FILE)
+    except Exception as exc:
+        logger.warning("builder_autonomous_runtime_save_failed error=%s", exc)
+
+
+def should_auto_resume_builder_autonomous(state: Any) -> tuple[bool, Dict[str, Any]]:
+    if getattr(state, "optimization_mode", "") != "🏗️ Strategy Builder":
+        return False, _default_autonomous_runtime_state()
+    if not bool(getattr(state, "builder_autonomous", False)):
+        return False, _default_autonomous_runtime_state()
+
+    payload = _load_autonomous_runtime_state()
+    should_resume = bool(payload.get("active")) and not bool(payload.get("manual_stop"))
+    return should_resume, payload
+
+
+def _mark_builder_autonomous_runtime_started(
+    *,
+    model: str,
+    ollama_host: str,
+    requested_source_mode: str,
+    auto_market_pick: bool,
+) -> Dict[str, Any]:
+    runtime = _load_autonomous_runtime_state()
+    was_active = bool(runtime.get("active"))
+    runtime["active"] = True
+    runtime["manual_stop"] = False
+    runtime["started_at"] = runtime.get("started_at") or _utc_now_iso()
+    runtime["last_heartbeat_at"] = _utc_now_iso()
+    runtime["last_resume_at"] = _utc_now_iso() if was_active else ""
+    runtime["last_event"] = "autonomous_started"
+    runtime["last_error"] = ""
+    runtime["last_stop_reason"] = ""
+    runtime["model"] = str(model or "")
+    runtime["ollama_host"] = str(ollama_host or "")
+    runtime["requested_source_mode"] = str(requested_source_mode or "")
+    runtime["effective_source_mode"] = ""
+    runtime["auto_market_pick"] = bool(auto_market_pick)
+    if was_active:
+        runtime["resume_count"] = int(runtime.get("resume_count", 0) or 0) + 1
+    _save_autonomous_runtime_state(runtime)
+    return runtime
+
+
+def _heartbeat_builder_autonomous_runtime(**updates: Any) -> Dict[str, Any]:
+    runtime = _load_autonomous_runtime_state()
+    runtime["last_heartbeat_at"] = _utc_now_iso()
+    for key, value in updates.items():
+        if key in runtime:
+            runtime[key] = value
+    _save_autonomous_runtime_state(runtime)
+    return runtime
+
+
+def mark_builder_autonomous_runtime_stopped(
+    *,
+    reason: str,
+    manual_stop: bool = False,
+    error: str = "",
+) -> Dict[str, Any]:
+    runtime = _load_autonomous_runtime_state()
+    runtime["active"] = False
+    runtime["manual_stop"] = bool(manual_stop)
+    runtime["last_heartbeat_at"] = _utc_now_iso()
+    runtime["last_event"] = "autonomous_stopped"
+    runtime["last_stop_reason"] = str(reason or "")
+    runtime["last_error"] = str(error or "")
+    _save_autonomous_runtime_state(runtime)
+    return runtime
+
+
+def _count_tail_history_statuses(
+    history: List[Dict[str, Any]],
+    statuses: set[str],
+    *,
+    limit: int = 8,
+) -> int:
+    count = 0
+    for item in reversed(list(history or [])[-limit:]):
+        status = str(item.get("status", "") or "").strip().lower()
+        if status not in statuses:
+            break
+        count += 1
+    return count
+
+
+def _history_entry_is_robust(entry: Dict[str, Any]) -> bool:
+    def _safe_float(value: Any, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except Exception:
+            return default
+
+    def _safe_int(value: Any, default: int = 0) -> int:
+        try:
+            return int(value)
+        except Exception:
+            return default
+
+    score = _safe_float(entry.get("best_score"), default=float("-inf"))
+    sharpe = _safe_float(entry.get("best_sharpe"), default=float("-inf"))
+    ret = _safe_float(entry.get("best_return"), default=0.0)
+    max_dd = abs(_safe_float(entry.get("best_max_dd"), default=999.0))
+    trades = _safe_int(entry.get("best_trades"), default=0)
+    return (
+        score >= 35.0
+        and sharpe >= 0.9
+        and ret > 0.0
+        and max_dd <= 45.0
+        and trades >= 20
+    )
+
+
+def _choose_autonomous_objective_mode(
+    requested_mode: str,
+    history: List[Dict[str, Any]],
+    supervisor: Dict[str, Any],
+) -> Dict[str, Any]:
+    def _safe_float(value: Any, default: float = float("-inf")) -> float:
+        try:
+            return float(value)
+        except Exception:
+            return default
+
+    forced_mode = str(supervisor.get("forced_source_mode", "") or "").strip().lower()
+    if forced_mode in _AUTONOMOUS_SOURCE_MODES:
+        return {"mode": forced_mode, "reason": "forced_recovery_mode"}
+
+    recent = list(history or [])[-8:]
+    robust_recent = sum(1 for item in recent if _history_entry_is_robust(item))
+    crash_streak = _count_tail_history_statuses(recent, {"crash", "error"})
+    failure_streak = _count_tail_history_statuses(
+        recent,
+        {"failed", "crash", "error"},
+    )
+    last_error_origin = str(supervisor.get("last_error_origin", "") or "").strip().lower()
+
+    best_recent_score = max(
+        (_safe_float(item.get("best_score")) for item in recent),
+        default=float("-inf"),
+    )
+
+    if requested_mode == "parametric" and failure_streak >= 3 and robust_recent == 0:
+        return {"mode": "catalog", "reason": "parametric_deescalation"}
+
+    if (
+        int(supervisor.get("consecutive_errors", 0) or 0) >= 2
+        or failure_streak >= 4
+        or crash_streak >= 2
+    ):
+        if requested_mode == "llm" and last_error_origin not in {"llm_runtime", "objective_generation"}:
+            return {"mode": "llm", "reason": "llm_preferred_non_llm_incident"}
+        return {"mode": "catalog", "reason": "recovery_simplify"}
+
+    if requested_mode != "parametric" and (
+        robust_recent >= 2 or best_recent_score >= 45.0
+    ):
+        return {"mode": "parametric", "reason": "healthy_complexity_escalation"}
+
+    if requested_mode not in _AUTONOMOUS_SOURCE_MODES:
+        requested_mode = "catalog"
+    return {"mode": requested_mode, "reason": "requested"}
+
+
+def _resolve_autonomous_auto_market_pick(
+    requested_auto_market_pick: bool,
+    supervisor: Dict[str, Any],
+) -> Dict[str, Any]:
+    if not requested_auto_market_pick:
+        return {"enabled": False, "reason": "requested_off"}
+    if supervisor.get("disable_auto_market_pick_once"):
+        return {"enabled": False, "reason": "recovery_guard_once"}
+    return {"enabled": True, "reason": "requested_on"}
+
+
+def _classify_autonomous_failure_origin(
+    error: BaseException,
+    traceback_text: str = "",
+) -> str:
+    text = f"{type(error).__name__}: {error}\n{traceback_text}".lower()
+    if "streamlitapiexception" in text or "script run context" in text:
+        return "streamlit_ui"
+    if "ollama" in text or "httpx" in text or "timeout" in text or "connection" in text:
+        return "llm_runtime"
+    if "load_ohlcv" in text or "market selection" in text:
+        return "market_selection"
+    if "dataframe" in text or "parquet" in text or "csv" in text:
+        return "data_loading"
+    if "strategy_builder.py" in text or "builder_" in text:
+        return "builder_backend"
+    return "unexpected"
+
+
+def _plan_autonomous_recovery(
+    origin: str,
+    history: List[Dict[str, Any]],
+    supervisor: Dict[str, Any],
+    *,
+    current_source_mode: str,
+) -> Dict[str, Any]:
+    soft_reset_count = int(supervisor.get("soft_reset_count", 0) or 0)
+    recent_soft_reset_count = len(_recent_soft_reset_timestamps(supervisor))
+    if recent_soft_reset_count >= _AUTONOMOUS_MAX_SOFT_RESETS:
+        return {
+            "recover": True,
+            "reason": "soft_reset_budget_hardened_recovery",
+            "reset_catalog": True,
+            "reset_parametric": False,
+            "force_source_mode": "catalog",
+            "disable_auto_market_pick_once": True,
+            "cooldown_multiplier": _AUTONOMOUS_HARDENED_COOLDOWN_MULTIPLIER,
+            "hardened_recovery": True,
+        }
+
+    plan = {
+        "recover": True,
+        "reason": origin,
+        "reset_catalog": current_source_mode == "catalog",
+        "reset_parametric": current_source_mode == "parametric",
+        "force_source_mode": "",
+        "disable_auto_market_pick_once": False,
+        "cooldown_multiplier": min(5, max(2, soft_reset_count + 2)),
+        "hardened_recovery": False,
+    }
+
+    if origin in {"llm_runtime", "objective_generation"}:
+        plan["reason"] = "llm_recovery_fallback_catalog"
+        plan["force_source_mode"] = "catalog"
+        plan["reset_catalog"] = True
+    elif origin in {"market_selection", "data_loading"}:
+        plan["reason"] = "market_recovery_disable_auto_pick"
+        plan["disable_auto_market_pick_once"] = True
+        if current_source_mode == "catalog":
+            plan["force_source_mode"] = "catalog"
+            plan["reset_catalog"] = True
+        elif current_source_mode == "parametric":
+            plan["force_source_mode"] = "parametric"
+            plan["reset_parametric"] = True
+            plan["reset_catalog"] = False
+        else:
+            plan["force_source_mode"] = "llm"
+            plan["reset_catalog"] = False
+    elif origin == "session_failed":
+        robust_recent = sum(
+            1 for item in list(history or [])[-8:] if _history_entry_is_robust(item)
+        )
+        if robust_recent >= 1 and current_source_mode != "parametric":
+            plan["reason"] = "session_failed_escalate_parametric"
+            plan["force_source_mode"] = "parametric"
+            plan["reset_parametric"] = True
+        elif current_source_mode == "llm":
+            plan["reason"] = "session_failed_retry_llm"
+            plan["force_source_mode"] = "llm"
+            plan["reset_catalog"] = False
+        else:
+            plan["reason"] = "session_failed_reset_catalog"
+            plan["force_source_mode"] = "catalog"
+            plan["reset_catalog"] = True
+    elif origin in {"builder_backend", "streamlit_ui", "unexpected"}:
+        plan["reason"] = f"{origin}_reset_source"
+        if current_source_mode == "catalog":
+            plan["reset_catalog"] = True
+            plan["force_source_mode"] = "catalog"
+        elif current_source_mode == "parametric":
+            plan["reset_catalog"] = False
+            plan["reset_parametric"] = True
+            plan["force_source_mode"] = "parametric"
+        else:
+            plan["reset_catalog"] = False
+            plan["force_source_mode"] = "llm"
+
+    return plan
+
+
+def _apply_autonomous_supervisor_recovery(
+    supervisor: Dict[str, Any],
+    history: List[Dict[str, Any]],
+    *,
+    origin: str,
+    current_source_mode: str,
+) -> Dict[str, Any]:
+    plan = _plan_autonomous_recovery(
+        origin,
+        history,
+        supervisor,
+        current_source_mode=current_source_mode,
+    )
+    if not plan.get("recover"):
+        return plan
+
+    if plan.get("reset_catalog"):
+        reset_catalog_exploration()
+    if plan.get("reset_parametric"):
+        reset_parametric_catalog()
+
+    supervisor["soft_reset_count"] = int(supervisor.get("soft_reset_count", 0) or 0) + 1
+    recent_timestamps = _recent_soft_reset_timestamps(supervisor)
+    recent_timestamps.append(_utc_now_iso())
+    supervisor["soft_reset_timestamps"] = recent_timestamps
+    supervisor["consecutive_errors"] = 0
+    supervisor["consecutive_failed_sessions"] = 0
+    supervisor["last_error_origin"] = origin
+    supervisor["last_recovery_reason"] = str(plan.get("reason", "") or "")
+    supervisor["forced_source_mode"] = str(plan.get("force_source_mode", "") or "")
+    supervisor["disable_auto_market_pick_once"] = bool(
+        plan.get("disable_auto_market_pick_once")
+    )
+    supervisor["last_resume_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    supervisor["next_pause_multiplier"] = int(plan.get("cooldown_multiplier", 1) or 1)
+    return plan
+
+
+def render_iteration_card(
+    iteration: Any,
+    *,
+    expanded: bool = False,
+) -> None:
+    """Affiche une carte enrichie pour une itération du builder."""
+    it_num = iteration.iteration
+    decision = getattr(iteration, "decision", "")
+    error = getattr(iteration, "error", None)
+    diag = getattr(iteration, "diagnostic_detail", {}) or {}
+    phase_feedback = getattr(iteration, "phase_feedback", {}) or {}
+
+    # Icône selon résultat
+    if error:
+        icon = "❌"
+        label = f"Itération {it_num} — Erreur"
+    elif decision == "accept":
+        icon = "✅"
+        label = f"Itération {it_num} — Acceptée"
+    elif decision == "stop":
+        icon = "🛑"
+        label = f"Itération {it_num} — Arrêt"
+    else:
+        icon = "🔄"
+        label = f"Itération {it_num} — Continue"
+
+    with st.expander(f"{icon} {label}", expanded=expanded):
+        # Diagnostic badge + type de modification
+        diag_cat = getattr(iteration, "diagnostic_category", "")
+        change_type = getattr(iteration, "change_type", "")
+        severity = diag.get("severity", "")
+
+        sev_icons = {
+            "critical": "🔴", "warning": "🟡",
+            "info": "🔵", "success": "🟢",
+        }
+        type_labels = {
+            "logic": "🔀 Logique",
+            "params": "🎛️ Paramètres",
+            "both": "🔀🎛️ Logique + Params",
+            "accept": "✅ Acceptation",
+        }
+        sev_icon = sev_icons.get(severity, "⚪")
+        type_lbl = type_labels.get(change_type, "")
+        cat_lbl = diag_cat.replace("_", " ").title() if diag_cat else ""
+
+        if cat_lbl:
+            st.caption(f"{sev_icon} **{cat_lbl}** — {type_lbl}")
+        elif type_lbl:
+            st.caption(type_lbl)
+
+        # Hypothèse
+        hypothesis = getattr(iteration, "hypothesis", "")
+        if hypothesis:
+            st.markdown(f"**💡 Hypothèse:** {hypothesis}")
+
+        # Erreur
+        if error:
+            st.error(f"Erreur: {error}")
+
+        # Résultats backtest
+        bt = getattr(iteration, "backtest_result", None)
+        if bt and hasattr(bt, "metrics"):
+            metrics = bt.metrics
+            score_info = diag.get("continuous_score")
+            if score_info is None:
+                score_info = (
+                    (phase_feedback.get("scoring", {}) if phase_feedback else {}).get(
+                        "continuous_score"
+                    )
+                )
+
+            # Ligne 1: métriques principales
+            col1, col2, col3, col4, col5 = st.columns(5)
+            with col1:
+                st.metric("Sharpe", f"{metrics.get('sharpe_ratio', 0):.3f}")
+            with col2:
+                st.metric("Return", f"{metrics.get('total_return_pct', 0):+.2f}%")
+            with col3:
+                st.metric("Max DD", f"{metrics.get('max_drawdown_pct', 0):.2f}%")
+            with col4:
+                st.metric("Trades", str(metrics.get("total_trades", 0)))
+            with col5:
+                if score_info is None:
+                    st.metric("Score", "n/a")
+                else:
+                    st.metric("Score", f"{float(score_info):.2f}")
+
+            # Ligne 2: métriques secondaires
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.metric("Win Rate", f"{metrics.get('win_rate_pct', 0):.1f}%")
+            with c2:
+                st.metric("PF", f"{metrics.get('profit_factor', 0):.2f}")
+            with c3:
+                st.metric("Sortino", f"{metrics.get('sortino_ratio', 0):.3f}")
+            with c4:
+                st.metric("Expectancy", f"{metrics.get('expectancy', 0):.2f}")
+
+            # Bulletin de notes compact
+            if diag and "score_card" in diag:
+                sc = diag["score_card"]
+                grades = " | ".join(
+                    f"**{dim.replace('_', ' ').title()}**: {info['grade']}"
+                    for dim, info in sc.items()
+                )
+                st.caption(f"📊 {grades}")
+
+        # Actions recommandées (expandable)
+        if diag and diag.get("actions"):
+            with st.expander("💡 Actions recommandées", expanded=False):
+                for act in diag["actions"]:
+                    st.markdown(f"- {act}")
+                for dont in diag.get("donts", []):
+                    st.markdown(f"- ⚠️ {dont}")
+
+        # Analyse LLM
+        analysis = getattr(iteration, "analysis", "")
+        if analysis:
+            st.markdown(f"**📊 Analyse:** {analysis[:600]}")
+
+        # Feedback structuré de phase (diagnostic d'orchestration)
+        if phase_feedback:
+            with st.expander("🧭 Feedback d'orchestration", expanded=False):
+                pfb = phase_feedback.get("proposal", {}) or {}
+                cfb = phase_feedback.get("code", {}) or {}
+                bfb = phase_feedback.get("backtest", {}) or {}
+                dfb = phase_feedback.get("decision", {}) or {}
+
+                if pfb:
+                    st.markdown("**Proposal phase**")
+                    st.markdown(
+                        f"- kind initial: `{pfb.get('initial_kind', '?')}` | "
+                        f"realign attempts: `{pfb.get('realign_attempts', 0)}` | "
+                        f"realign success: `{pfb.get('realign_success', False)}` | "
+                        f"valid: `{pfb.get('final_valid', False)}`"
+                    )
+                    issues = pfb.get("issues") or pfb.get("issues_after_retry")
+                    if issues:
+                        st.markdown(f"- issues: `{issues}`")
+                    if pfb.get("fallback_retry_used"):
+                        st.markdown("- fallback retry utilisé")
+                    ct_override = pfb.get("change_type_overridden")
+                    if isinstance(ct_override, dict):
+                        st.markdown(
+                            "- change_type overridé: "
+                            f"`{ct_override.get('from', '?')}` → "
+                            f"`{ct_override.get('to', '?')}` "
+                            f"(`{ct_override.get('reason', '?')}`)"
+                        )
+
+                if cfb:
+                    st.markdown("**Code phase**")
+                    st.markdown(
+                        f"- kind initial: `{cfb.get('initial_kind', '?')}` | "
+                        f"realign attempts: `{cfb.get('realign_attempts', 0)}` | "
+                        f"realign success: `{cfb.get('realign_success', False)}` | "
+                        f"valid: `{cfb.get('final_valid', False)}`"
+                    )
+                    if cfb.get("source"):
+                        st.markdown(f"- source: `{cfb.get('source')}`")
+                    if cfb.get("fallback_retry_used"):
+                        st.markdown("- fallback retry utilisé")
+                    if cfb.get("fallback_deterministic_used"):
+                        st.markdown("- fallback déterministe appliqué")
+
+                if bfb:
+                    st.markdown("**Backtest phase**")
+                    if bfb.get("runtime_error"):
+                        st.markdown(f"- runtime_error: `{bfb.get('runtime_error')}`")
+                    if bfb.get("runtime_traceback_tail"):
+                        st.markdown("- traceback (tail):")
+                        st.code(str(bfb.get("runtime_traceback_tail")), language="text")
+                    if bfb.get("runtime_fix_applied"):
+                        st.markdown("- runtime_fix appliqué avec succès")
+                    if bfb.get("runtime_fix_fallback_deterministic_used"):
+                        st.markdown("- runtime_fix: fallback déterministe appliqué")
+                    if bfb.get("runtime_fix_retry_error"):
+                        st.markdown(
+                            "- runtime_fix second échec: "
+                            f"`{bfb.get('runtime_fix_retry_error')}`"
+                        )
+                    if bfb.get("runtime_fix_validation_error"):
+                        st.markdown(
+                            "- runtime_fix rejeté à la validation: "
+                            f"`{bfb.get('runtime_fix_validation_error')}`"
+                        )
+
+                sfb = phase_feedback.get("scoring", {}) or {}
+                if sfb:
+                    st.markdown("**Scoring continu**")
+                    score = sfb.get("continuous_score")
+                    dd_excess = sfb.get("drawdown_excess_pct")
+                    if score is not None:
+                        st.markdown(f"- score: `{float(score):.2f}`")
+                    if dd_excess is not None:
+                        st.markdown(f"- drawdown excess: `{float(dd_excess):.2f}%`")
+
+                if dfb:
+                    st.markdown("**Decision policy**")
+                    if dfb.get("stop_overridden"):
+                        st.markdown("- stop overridé en `continue`")
+                    if dfb.get("accept_overridden"):
+                        st.markdown("- accept overridé en `continue`")
+
+        # Code (collapsible)
+        code = getattr(iteration, "code", "")
+        if code:
+            with st.expander("📝 Code généré", expanded=False):
+                st.code(code, language="python")
+
+
+def render_session_summary(session: Any) -> None:
+    """Affiche le résumé final de la session builder."""
+    status = getattr(session, "status", "unknown")
+    best_sharpe = getattr(session, "best_sharpe", float("-inf"))
+    best_score = getattr(session, "best_score", float("-inf"))
+    n_iters = len(getattr(session, "iterations", []))
+
+    # Statut global
+    status_map = {
+        "success": ("🏆", "Stratégie acceptée"),
+        "max_iterations": ("⏱️", "Itérations max atteintes"),
+        "failed": ("❌", "Échec - aucune stratégie viable"),
+        "running": ("🔄", "En cours..."),
+    }
+    icon, label = status_map.get(status, ("❓", status))
+
+    st.markdown(f"### {icon} {label}")
+    score_txt = "n/a" if best_score == float("-inf") else f"{best_score:.2f}"
+    st.markdown(
+        f"**Itérations:** {n_iters} | **Meilleur Sharpe:** {best_sharpe:.3f} | "
+        f"**Meilleur Score:** {score_txt}"
+    )
+
+    auto_resets = int(getattr(session, "auto_reset_count", 0) or 0)
+    if auto_resets:
+        st.caption(f"Auto-resets session: {auto_resets}")
+
+    # Synthèse orchestration: réalignements et overrides
+    total_realign = 0
+    stop_overrides = 0
+    accept_overrides = 0
+    for it in getattr(session, "iterations", []):
+        fb = getattr(it, "phase_feedback", {}) or {}
+        total_realign += int((fb.get("proposal", {}) or {}).get("realign_attempts", 0))
+        total_realign += int((fb.get("code", {}) or {}).get("realign_attempts", 0))
+        dec_fb = fb.get("decision", {}) or {}
+        stop_overrides += 1 if dec_fb.get("stop_overridden") else 0
+        accept_overrides += 1 if dec_fb.get("accept_overridden") else 0
+
+    if total_realign or stop_overrides or accept_overrides:
+        st.caption(
+            "Orchestration: "
+            f"realignements={total_realign} | "
+            f"stop_overrides={stop_overrides} | "
+            f"accept_overrides={accept_overrides}"
+        )
+
+    # Détails du meilleur résultat
+    best = getattr(session, "best_iteration", None)
+    if best and hasattr(best, "backtest_result") and best.backtest_result:
+        metrics = best.backtest_result.metrics
+        st.markdown("#### 🥇 Meilleur résultat")
+
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            st.metric("Sharpe", f"{metrics.get('sharpe_ratio', 0):.3f}")
+        with col2:
+            st.metric("Return", f"{metrics.get('total_return_pct', 0):+.2f}%")
+        with col3:
+            st.metric("Max DD", f"{metrics.get('max_drawdown_pct', 0):.2f}%")
+        with col4:
+            st.metric("Win Rate", f"{metrics.get('win_rate_pct', 0):.1f}%")
+        with col5:
+            st.metric("PF", f"{metrics.get('profit_factor', 0):.2f}")
+
+        # Hypothèse gagnante
+        hyp = getattr(best, "hypothesis", "")
+        if hyp:
+            st.info(f"**Hypothèse gagnante:** {hyp}")
+
+        # Code final
+        code = getattr(best, "code", "")
+        if code:
+            with st.expander("📝 Code de la stratégie gagnante", expanded=True):
+                st.code(code, language="python")
+
+    # Chemin sandbox
+    session_dir = getattr(session, "session_dir", None)
+    if session_dir:
+        st.caption(f"📁 Fichiers de session: `{session_dir}`")
+
+
+# ---------------------------------------------------------------------------
+# Warmup Ollama — préchargement du modèle en VRAM
+# ---------------------------------------------------------------------------
+
+def _is_local_ollama_host(ollama_host: str) -> bool:
+    """Retourne True si l'host Ollama est local (localhost/127.0.0.1/0.0.0.0)."""
+    try:
+        parsed = urlparse(_normalize_ollama_host(ollama_host))
+        host = (parsed.hostname or "").lower()
+        return host in {"127.0.0.1", "localhost", "0.0.0.0"}
+    except Exception:
+        return False
+
+
+def _normalize_ollama_host(ollama_host: str) -> str:
+    host = str(ollama_host or "").strip()
+    if not host:
+        return "http://127.0.0.1:11434"
+    if not host.startswith(("http://", "https://")):
+        host = f"http://{host}"
+    return host.rstrip("/")
+
+
+def _model_matches(model_name: str, requested_model: str) -> bool:
+    """Matching tolérant entre nom de modèle demandé et liste Ollama."""
+    model_name_l = model_name.lower()
+    requested_l = requested_model.lower()
+
+    if model_name_l == requested_l:
+        return True
+    if model_name_l.startswith(requested_l):
+        return True
+    if requested_l.startswith(model_name_l):
+        return True
+
+    req_base = requested_l.split(":", 1)[0]
+    model_base = model_name_l.split(":", 1)[0]
+    if model_base == req_base:
+        return True
+
+    req_compact = re.sub(r"[^a-z0-9]", "", req_base)
+    model_compact = re.sub(r"[^a-z0-9]", "", model_base)
+    return bool(req_compact) and req_compact == model_compact
+
+
+def _extract_model_size_b(model_name: str) -> float:
+    """Extrait la taille d'un modèle en milliards de paramètres (ex: 32b)."""
+    m = re.search(r"(\d+(?:\.\d+)?)b", model_name.lower())
+    if not m:
+        return -1.0
+    try:
+        return float(m.group(1))
+    except Exception:
+        return -1.0
+
+
+def _resolve_requested_model(
+    requested_model: str,
+    installed_models: List[str],
+    *,
+    allow_fallback: bool = False,
+) -> tuple[str, str, bool]:
+    """Résout un modèle demandé vers un modèle installé."""
+    if not installed_models:
+        return requested_model, "Aucun modèle installé détecté.", False
+
+    # 1) Match direct/normalisé
+    for name in installed_models:
+        if _model_matches(name, requested_model):
+            return name, "", True
+
+    if not allow_fallback:
+        available_preview = ", ".join(installed_models[:5])
+        if len(installed_models) > 5:
+            available_preview += ", ..."
+        return (
+            requested_model,
+            (
+                f"Modèle `{requested_model}` absent sur cet Ollama. "
+                f"Disponibles: {available_preview or 'aucun'}."
+            ),
+            False,
+        )
+
+    # 2) Match par taille (ex: 32b) pour garder un profil proche
+    requested_size = _extract_model_size_b(requested_model)
+    if requested_size > 0:
+        same_size = [
+            n for n in installed_models
+            if _extract_model_size_b(n) == requested_size
+        ]
+        if same_size:
+            return (
+                same_size[0],
+                (
+                    f"Modèle `{requested_model}` absent. "
+                    f"Fallback auto vers `{same_size[0]}` (taille {requested_size:.0f}B)."
+                ),
+                False,
+            )
+
+    # 3) Priorité à quelques modèles robustes si présents
+    preferred = [
+        "deepseek-r1-32b-local:latest",
+        "deepseek-r1:32b",
+        "qwq-32b-local:latest",
+        "qwq:32b",
+        "qwen3-48b-savant:latest",
+    ]
+    installed_lower = {m.lower(): m for m in installed_models}
+    for pref in preferred:
+        if pref.lower() in installed_lower:
+            chosen = installed_lower[pref.lower()]
+            return (
+                chosen,
+                f"Modèle `{requested_model}` absent. Fallback auto vers `{chosen}`.",
+                False,
+            )
+
+    # 4) Dernier recours: premier installé
+    return (
+        installed_models[0],
+        (
+            f"Modèle `{requested_model}` absent. "
+            f"Fallback auto vers `{installed_models[0]}`."
+        ),
+        False,
+    )
+
+
+def _is_model_loaded_in_ollama_ps(
+    *,
+    model: str,
+    ollama_host: str,
+    timeout: float = 6.0,
+) -> tuple[bool, str]:
+    """Vérifie via /api/ps si un modèle est déjà chargé en mémoire."""
+    try:
+        resp = httpx.get(f"{ollama_host}/api/ps", timeout=timeout)
+        if resp.status_code != 200:
+            return False, f"/api/ps status={resp.status_code}"
+        payload = resp.json() if resp.content else {}
+        models = payload.get("models", []) or []
+        loaded_names = [
+            str(item.get("name", "") or "").strip()
+            for item in models
+            if str(item.get("name", "") or "").strip()
+        ]
+        for loaded in loaded_names:
+            if _model_matches(loaded, model):
+                return True, f"modèle déjà chargé (`{loaded}`)"
+        if loaded_names:
+            return False, f"modèles actifs: {', '.join(loaded_names[:3])}"
+        return False, "aucun modèle actif"
+    except Exception as exc:
+        return False, f"/api/ps inaccessible: {exc}"
+
+
+def _warmup_ollama_model(
+    *,
+    model: str,
+    ollama_host: str,
+    keep_alive_minutes: int,
+    timeout: float = 300.0,
+) -> tuple[bool, str]:
+    """Précharge un modèle Ollama en VRAM via un prompt court.
+
+    Envoie un prompt minimal à /api/generate pour forcer le chargement
+    du modèle en mémoire GPU avant les vrais appels LLM.
+
+    Returns:
+        (succès, détail).
+    """
+    keep_alive = f"{max(1, int(keep_alive_minutes))}m"
+    try:
+        resp = httpx.post(
+            f"{ollama_host}/api/generate",
+            json={
+                "model": model,
+                "prompt": "Ready.",
+                "keep_alive": keep_alive,
+                "stream": False,
+            },
+            timeout=timeout,
+        )
+        if resp.status_code == 200:
+            done_reason = ""
+            try:
+                payload = resp.json() if resp.content else {}
+                done_reason = str(payload.get("done_reason", "") or "").strip()
+            except Exception:
+                done_reason = ""
+            detail = "warmup /api/generate status=200"
+            if done_reason:
+                detail += f", done_reason={done_reason}"
+            return True, detail
+
+        body = (resp.text or "").strip().replace("\n", " ")
+        if len(body) > 300:
+            body = body[:300] + "..."
+        loaded, loaded_detail = _is_model_loaded_in_ollama_ps(
+            model=model,
+            ollama_host=ollama_host,
+        )
+        if loaded:
+            return (
+                True,
+                f"warmup status={resp.status_code} mais {loaded_detail}",
+            )
+        return (
+            False,
+            f"warmup status={resp.status_code}, body={body or '<vide>'}, ps={loaded_detail}",
+        )
+    except httpx.TimeoutException:
+        loaded, loaded_detail = _is_model_loaded_in_ollama_ps(
+            model=model,
+            ollama_host=ollama_host,
+        )
+        if loaded:
+            return (
+                True,
+                f"timeout warmup ({int(timeout)}s) mais {loaded_detail}",
+            )
+        return (
+            False,
+            f"timeout warmup ({int(timeout)}s), ps={loaded_detail}",
+        )
+    except Exception as exc:
+        loaded, loaded_detail = _is_model_loaded_in_ollama_ps(
+            model=model,
+            ollama_host=ollama_host,
+        )
+        if loaded:
+            return (
+                True,
+                f"erreur warmup ({exc}) mais {loaded_detail}",
+            )
+        return (
+            False,
+            f"erreur warmup ({exc}), ps={loaded_detail}",
+        )
+
+
+def _unload_ollama_model(*, model: str, ollama_host: str, timeout: float = 20.0) -> bool:
+    """Décharge un modèle Ollama de la mémoire."""
+    try:
+        resp = httpx.post(
+            f"{ollama_host}/api/generate",
+            json={
+                "model": model,
+                "prompt": "",
+                "keep_alive": 0,
+                "stream": False,
+            },
+            timeout=timeout,
+        )
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def _prepare_builder_llm(
+    *,
+    model: str,
+    ollama_host: str,
+    preload_model: bool,
+    keep_alive_minutes: int,
+    auto_start_ollama: bool,
+    allow_model_fallback: bool = False,
+) -> tuple[bool, str, str]:
+    """Prépare Ollama + modèle pour le Strategy Builder (check + warmup)."""
+    ollama_host = _normalize_ollama_host(ollama_host)
+    if auto_start_ollama and _is_local_ollama_host(ollama_host):
+        ok, msg = ensure_ollama_running(ollama_host=ollama_host)
+        if not ok:
+            return False, msg, model
+
+    try:
+        tags = httpx.get(f"{ollama_host}/api/tags", timeout=8.0)
+    except Exception as exc:
+        return False, f"Ollama inaccessible ({ollama_host}): {exc}", model
+
+    if tags.status_code != 200:
+        return (
+            False,
+            f"Ollama indisponible sur {ollama_host} (status={tags.status_code})",
+            model,
+        )
+
+    models = [m.get("name", "") for m in tags.json().get("models", []) if m.get("name")]
+    resolved_model, resolve_note, model_found = _resolve_requested_model(
+        model,
+        models,
+        allow_fallback=allow_model_fallback,
+    )
+    if not model_found:
+        return False, resolve_note, model
+
+    if not preload_model:
+        msg = f"Ollama OK ({ollama_host}) — warmup désactivé."
+        if resolve_note:
+            msg = f"{resolve_note} {msg}"
+        return True, msg, resolved_model
+
+    warmup_ok, warmup_detail = _warmup_ollama_model(
+        model=resolved_model,
+        ollama_host=ollama_host,
+        keep_alive_minutes=keep_alive_minutes,
+    )
+    if warmup_ok:
+        msg = (
+            f"Modèle `{resolved_model}` chargé en mémoire "
+            f"({keep_alive_minutes} min keep-alive). "
+            f"[{warmup_detail}]"
+        )
+        if resolve_note:
+            msg = f"{resolve_note} {msg}"
+        return (
+            True,
+            msg,
+            resolved_model,
+        )
+
+    return (
+        False,
+        (
+            f"Impossible de précharger `{resolved_model}` sur {ollama_host}. "
+            f"Détail: {warmup_detail}"
+        ),
+        resolved_model,
+    )
+
+
+def _dedupe_keep_order(values: List[str], *, upper: bool = False) -> List[str]:
+    """Supprime les doublons en conservant l'ordre d'apparition."""
+    out: List[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        value = str(raw or "").strip()
+        if not value:
+            continue
+        if upper:
+            value = value.upper()
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
+
+
+def _is_builder_supported_timeframe(raw_tf: str) -> bool:
+    """Filtre des TF supportés en mode Builder (rejette les TF mensuels)."""
+    tf = str(raw_tf or "").strip()
+    if not tf:
+        return False
+    m = re.fullmatch(r"(\d+)([mhdwM])", tf)
+    if not m:
+        return False
+    amount = int(m.group(1))
+    unit = m.group(2)
+    if amount <= 0:
+        return False
+    if unit == "M":
+        return False
+    return True
+
+
+def _sanitize_builder_timeframes(
+    timeframes: List[str],
+    *,
+    fallback: str = "1h",
+) -> List[str]:
+    """Normalise la liste de TF pour le Builder en retirant les entrées non supportées."""
+    cleaned = [
+        str(tf or "").strip()
+        for tf in (timeframes or [])
+        if _is_builder_supported_timeframe(str(tf or "").strip())
+    ]
+    cleaned = _dedupe_keep_order(cleaned, upper=False)
+    if cleaned:
+        return cleaned
+    return [fallback] if _is_builder_supported_timeframe(fallback) else ["1h"]
+
+
+def _get_builder_compatible_indicators(df: Any) -> List[str]:
+    """Retourne les indicateurs calculables avec les colonnes réellement présentes."""
+    try:
+        from indicators.registry import get_indicator, list_indicators
+    except Exception:
+        return ["ema", "rsi", "atr"]
+
+    all_indicators = [str(x or "").strip().lower() for x in list_indicators()]
+    all_indicators = [x for x in all_indicators if x]
+    if not all_indicators:
+        return ["ema", "rsi", "atr"]
+
+    # Si df indisponible, partir sur OHLCV standard.
+    raw_cols = getattr(df, "columns", None)
+    if raw_cols is None:
+        raw_cols = []
+    df_cols = {
+        str(col or "").strip().lower()
+        for col in list(raw_cols)
+        if str(col or "").strip()
+    }
+    if not df_cols:
+        df_cols = {"open", "high", "low", "close", "volume"}
+
+    # Indicateurs à colonne externe optionnelle/non-OHLCV.
+    # fear_greed exige une colonne dédiée "fear_greed" et échoue sinon.
+    custom_column_requirements = {
+        "fear_greed": "fear_greed",
+    }
+
+    compatible: List[str] = []
+    for name in all_indicators:
+        info = get_indicator(name)
+        required = tuple(getattr(info, "required_columns", ()) or ())
+        if any(str(col).lower() not in df_cols for col in required):
+            continue
+        extra_col = custom_column_requirements.get(name)
+        if extra_col and extra_col not in df_cols:
+            continue
+        compatible.append(name)
+
+    if compatible:
+        return compatible
+    return ["ema", "rsi", "atr"]
+
+
+def _stable_random_pick(session_key: str, candidates: List[str], fallback: str) -> str:
+    """Retourne un choix aléatoire stable sur la session Streamlit."""
+    normalized = [str(v or "").strip() for v in candidates if str(v or "").strip()]
+    if not normalized:
+        return fallback
+
+    cached = str(st.session_state.get(session_key, "") or "").strip()
+    if cached in normalized:
+        return cached
+
+    picked = random.choice(normalized)
+    st.session_state[session_key] = picked
+    return picked
+
+
+def _pick_non_recent_market(
+    symbols: List[str],
+    timeframes: List[str],
+    recent_markets: List[Tuple[str, str]],
+) -> Tuple[str, str]:
+    """Choisit un couple marché de fallback en évitant d'abord les plus récents."""
+    clean_symbols = [str(s or "").strip().upper() for s in symbols if str(s or "").strip()]
+    clean_tfs = [str(tf or "").strip() for tf in timeframes if str(tf or "").strip()]
+    if not clean_symbols:
+        clean_symbols = ["BTCUSDC"]
+    if not clean_tfs:
+        clean_tfs = ["1h"]
+
+    all_pairs = [(s, tf) for s in clean_symbols for tf in clean_tfs]
+    if len(all_pairs) == 1:
+        return all_pairs[0]
+
+    recent_set = {
+        (str(s or "").strip().upper(), str(tf or "").strip())
+        for s, tf in (recent_markets or [])
+        if str(s or "").strip() and str(tf or "").strip()
+    }
+    candidate_pairs = [pair for pair in all_pairs if pair not in recent_set]
+    pool = candidate_pairs if candidate_pairs else all_pairs
+
+    # Diversifier explicitement les TF pour éviter les longs blocs mono-timeframe.
+    tf_usage = st.session_state.setdefault("_builder_tf_usage", {})
+    for tf in clean_tfs:
+        tf_usage.setdefault(tf, 0)
+    min_tf_usage = min(tf_usage.get(tf, 0) for _, tf in pool)
+    tf_pool = [
+        tf for tf in clean_tfs
+        if tf_usage.get(tf, 0) == min_tf_usage and any(pair_tf == tf for _, pair_tf in pool)
+    ]
+    chosen_tf = random.choice(tf_pool) if tf_pool else random.choice(clean_tfs)
+
+    tf_pairs = [pair for pair in pool if pair[1] == chosen_tf]
+    chosen_pair = random.choice(tf_pairs) if tf_pairs else random.choice(pool)
+    tf_usage[chosen_pair[1]] = int(tf_usage.get(chosen_pair[1], 0)) + 1
+    return chosen_pair
+
+
+def _builder_market_candidates(
+    state: Any,
+    *,
+    current_symbol: str,
+    current_timeframe: str,
+) -> Tuple[List[str], List[str]]:
+    """Construit l'univers symbol/timeframe proposé au LLM."""
+    auto_market_pick = bool(getattr(state, "builder_auto_market_pick", False))
+
+    # En mode auto market pick, ignorer les valeurs bootstrap cachées (1 seul token/TF)
+    # et ne conserver que les sélections explicitement faites dans les multiselects UI.
+    if auto_market_pick:
+        selected_symbols = [
+            str(s or "").strip().upper()
+            for s in (st.session_state.get("symbols_select", []) or [])
+            if str(s or "").strip()
+        ]
+        selected_timeframes = [
+            str(tf or "").strip()
+            for tf in (st.session_state.get("timeframes_select", []) or [])
+            if str(tf or "").strip()
+        ]
+    else:
+        selected_symbols = list(getattr(state, "symbols", []) or [])
+        selected_timeframes = list(getattr(state, "timeframes", []) or [])
+
+    available_symbols = list(getattr(state, "available_tokens", []) or [])
+    available_timeframes = list(getattr(state, "available_timeframes", []) or [])
+
+    # Priorité: sélection utilisateur -> marché courant -> univers complet.
+    symbols = _dedupe_keep_order(
+        [*selected_symbols, current_symbol, *available_symbols],
+        upper=True,
+    )
+    if selected_timeframes:
+        # Source de vérité: quand l'utilisateur a sélectionné des TF,
+        # ne pas réinjecter un current_timeframe externe potentiellement obsolète.
+        tf_candidates = [str(tf or "").strip() for tf in selected_timeframes if str(tf or "").strip()]
+        if current_timeframe and current_timeframe in tf_candidates:
+            tf_candidates = [current_timeframe, *[tf for tf in tf_candidates if tf != current_timeframe]]
+    else:
+        tf_candidates = [current_timeframe, *available_timeframes]
+
+    timeframes = _dedupe_keep_order(tf_candidates, upper=False)
+    timeframes = _sanitize_builder_timeframes(timeframes, fallback=current_timeframe or "1h")
+
+    # Anti-biais: on garde des ancres utiles (marché courant + sélection utilisateur),
+    # puis on complète aléatoirement pour éviter l'effet "premiers éléments de liste".
+    symbol_anchors = _dedupe_keep_order(
+        [current_symbol, *selected_symbols],
+        upper=True,
+    )
+    symbol_anchors = [s for s in symbol_anchors if s in symbols][:6]
+    symbol_pool = [s for s in symbols if s not in symbol_anchors]
+    random.shuffle(symbol_pool)
+    symbols = [*symbol_anchors, *symbol_pool]
+
+    timeframe_anchors = _dedupe_keep_order(
+        [current_timeframe, *selected_timeframes],
+        upper=False,
+    )
+    timeframe_anchors = [
+        tf for tf in timeframe_anchors
+        if tf in timeframes and _is_builder_supported_timeframe(tf)
+    ][:4]
+    timeframe_pool = [tf for tf in timeframes if tf not in timeframe_anchors]
+    random.shuffle(timeframe_pool)
+    timeframes = [*timeframe_anchors, *timeframe_pool]
+
+    # Limiter la taille du prompt LLM.
+    return symbols[:24], timeframes[:12]
+
+
+def _state_date_to_iso(value: Any) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        try:
+            return str(value.isoformat())
+        except Exception:
+            return None
+    text = str(value).strip()
+    return text or None
+
+
+def _load_builder_market_data(
+    *,
+    state: Any,
+    symbol: str,
+    timeframe: str,
+    fallback_df: Any,
+    allow_current_fallback: bool = True,
+) -> tuple[Any, str | None, str]:
+    """Charge les données pour un marché recommandé avec cache simple en session."""
+    fallback_available = _has_builder_market_df(fallback_df)
+    if not symbol or not timeframe:
+        if fallback_available and allow_current_fallback:
+            return fallback_df, "Marché invalide", "fallback_current_df"
+        return None, "Marché invalide", "load_error"
+
+    base_symbol = str(getattr(state, "symbol", "") or "").upper()
+    base_timeframe = str(getattr(state, "timeframe", "") or "")
+    if symbol.upper() == base_symbol and timeframe == base_timeframe and fallback_available:
+        return fallback_df, None, "current_df"
+
+    use_date_filter = bool(getattr(state, "use_date_filter", False))
+    start = _state_date_to_iso(getattr(state, "start_date", None)) if use_date_filter else None
+    end = _state_date_to_iso(getattr(state, "end_date", None)) if use_date_filter else None
+    cache_key = f"{symbol}|{timeframe}|{start}|{end}"
+
+    cache = st.session_state.setdefault("_builder_market_df_cache", {})
+    if cache_key in cache:
+        return cache[cache_key], None, "cache"
+
+    market_df, load_msg = safe_load_data(symbol, timeframe, start=start, end=end)
+    if not _has_builder_market_df(market_df):
+        if fallback_available and allow_current_fallback:
+            return fallback_df, load_msg or f"Chargement impossible pour {symbol}/{timeframe}", "fallback_current_df"
+        return None, load_msg or f"Chargement impossible pour {symbol}/{timeframe}", "load_error"
+
+    cache[cache_key] = market_df
+    if len(cache) > 6:
+        first_key = next(iter(cache))
+        if first_key != cache_key:
+            cache.pop(first_key, None)
+    return market_df, None, "loaded"
+
+
+def _has_builder_market_df(df: Any) -> bool:
+    if df is None:
+        return False
+    try:
+        if getattr(df, "empty", False):
+            return False
+        return len(df) > 0
+    except Exception:
+        return False
+
+
+def _build_builder_market_probe_pairs(
+    symbols: List[str],
+    timeframes: List[str],
+    *,
+    preferred_pairs: List[Tuple[str, str]] | None = None,
+    recent_markets: List[Tuple[str, str]] | None = None,
+    max_pairs: int = 24,
+) -> List[Tuple[str, str]]:
+    clean_symbols = [str(s or "").strip().upper() for s in symbols if str(s or "").strip()]
+    clean_tfs = [str(tf or "").strip() for tf in timeframes if str(tf or "").strip()]
+    if not clean_symbols:
+        clean_symbols = ["BTCUSDC"]
+    if not clean_tfs:
+        clean_tfs = ["1h"]
+
+    ordered_pairs: List[Tuple[str, str]] = []
+    seen: set[Tuple[str, str]] = set()
+
+    def _append_pair(pair_symbol: str, pair_timeframe: str) -> None:
+        clean_pair = (str(pair_symbol or "").strip().upper(), str(pair_timeframe or "").strip())
+        if not clean_pair[0] or not clean_pair[1] or clean_pair in seen:
+            return
+        seen.add(clean_pair)
+        ordered_pairs.append(clean_pair)
+
+    for pref_symbol, pref_tf in (preferred_pairs or []):
+        _append_pair(pref_symbol, pref_tf)
+
+    recent_set = {
+        (str(s or "").strip().upper(), str(tf or "").strip())
+        for s, tf in (recent_markets or [])
+        if str(s or "").strip() and str(tf or "").strip()
+    }
+
+    all_pairs = [(s, tf) for s in clean_symbols for tf in clean_tfs]
+    non_recent_pairs = [pair for pair in all_pairs if pair not in recent_set]
+    recent_pairs = [pair for pair in all_pairs if pair in recent_set]
+
+    for pool in (non_recent_pairs, recent_pairs):
+        if len(pool) > 1:
+            random.shuffle(pool)
+        for pair_symbol, pair_timeframe in pool:
+            _append_pair(pair_symbol, pair_timeframe)
+            if len(ordered_pairs) >= max_pairs:
+                return ordered_pairs
+
+    return ordered_pairs[:max_pairs]
+
+
+def _find_first_valid_builder_market(
+    *,
+    state: Any,
+    symbols: List[str],
+    timeframes: List[str],
+    default_symbol: str,
+    default_timeframe: str,
+    fallback_df: Any,
+    preferred_pairs: List[Tuple[str, str]] | None = None,
+    recent_markets: List[Tuple[str, str]] | None = None,
+    max_pairs: int = 24,
+) -> tuple[str, str, Any, Dict[str, Any]]:
+    probe_pairs = _build_builder_market_probe_pairs(
+        symbols,
+        timeframes,
+        preferred_pairs=preferred_pairs,
+        recent_markets=recent_markets,
+        max_pairs=max_pairs,
+    )
+    failures: List[Dict[str, str]] = []
+
+    for probe_symbol, probe_timeframe in probe_pairs:
+        use_fallback = (
+            _has_builder_market_df(fallback_df)
+            and probe_symbol == str(default_symbol or "").strip().upper()
+            and probe_timeframe == str(default_timeframe or "").strip()
+        )
+        probe_df, load_error, data_source = _load_builder_market_data(
+            state=state,
+            symbol=probe_symbol,
+            timeframe=probe_timeframe,
+            fallback_df=fallback_df if use_fallback else None,
+            allow_current_fallback=use_fallback,
+        )
+        if _has_builder_market_df(probe_df) and load_error is None:
+            return probe_symbol, probe_timeframe, probe_df, {
+                "data_source": data_source,
+                "failures": failures,
+                "probed_pairs": probe_pairs,
+            }
+        if load_error:
+            failures.append(
+                {
+                    "symbol": probe_symbol,
+                    "timeframe": probe_timeframe,
+                    "error": str(load_error),
+                }
+            )
+
+    if _has_builder_market_df(fallback_df):
+        return default_symbol, default_timeframe, fallback_df, {
+            "data_source": "fallback_current_df",
+            "failures": failures,
+            "probed_pairs": probe_pairs,
+        }
+
+    return "", "", None, {
+        "data_source": "load_error",
+        "failures": failures,
+        "probed_pairs": probe_pairs,
+    }
+
+
+def _pick_market_for_objective(
+    *,
+    state: Any,
+    objective: str,
+    llm_client: Any,
+    default_symbol: str,
+    default_timeframe: str,
+    fallback_df: Any,
+    recent_markets: list[tuple[str, str]] | None = None,
+) -> tuple[str, str, Any, Dict[str, Any]]:
+    """Demande au LLM le meilleur marché pour l'objectif puis charge les données."""
+    symbols, timeframes = _builder_market_candidates(
+        state,
+        current_symbol=default_symbol,
+        current_timeframe=default_timeframe,
+    )
+    pick = recommend_market_context(
+        llm_client,
+        objective=objective,
+        candidate_symbols=symbols,
+        candidate_timeframes=timeframes,
+        default_symbol=default_symbol,
+        default_timeframe=default_timeframe,
+        recent_markets=recent_markets,
+    )
+
+    run_symbol = str(pick.get("symbol", default_symbol) or default_symbol).upper()
+    run_timeframe = str(pick.get("timeframe", default_timeframe) or default_timeframe)
+    run_df, load_error, data_source = _load_builder_market_data(
+        state=state,
+        symbol=run_symbol,
+        timeframe=run_timeframe,
+        fallback_df=fallback_df,
+    )
+
+    if load_error:
+        fallback_symbol, fallback_timeframe, fallback_candidate_df, fallback_meta = _find_first_valid_builder_market(
+            state=state,
+            symbols=symbols,
+            timeframes=timeframes,
+            default_symbol=default_symbol,
+            default_timeframe=default_timeframe,
+            fallback_df=fallback_df,
+            preferred_pairs=[(default_symbol, default_timeframe)],
+            recent_markets=recent_markets,
+        )
+        if _has_builder_market_df(fallback_candidate_df) and fallback_symbol and fallback_timeframe:
+            run_symbol = fallback_symbol
+            run_timeframe = fallback_timeframe
+            run_df = fallback_candidate_df
+            data_source = str(fallback_meta.get("data_source", data_source) or data_source)
+            pick["fallback_symbol"] = fallback_symbol
+            pick["fallback_timeframe"] = fallback_timeframe
+            pick["fallback_data_source"] = data_source
+            pick["probe_failures"] = fallback_meta.get("failures", [])
+        else:
+            run_symbol = default_symbol
+            run_timeframe = default_timeframe
+
+    pick["data_source"] = data_source
+    pick["load_error"] = load_error
+    pick["candidate_symbols"] = symbols
+    pick["candidate_timeframes"] = timeframes
+    return run_symbol, run_timeframe, run_df, pick
+
+
+# ---------------------------------------------------------------------------
+# Run unique d'une session builder (factorisé pour réutilisation)
+# ---------------------------------------------------------------------------
+
+def _run_single_builder_session(
+    *,
+    objective: str,
+    model: str,
+    ollama_host: str,
+    llm_topology_config: Any = None,
+    preload_model: bool,
+    keep_alive_minutes: int,
+    unload_after_run: bool,
+    auto_start_ollama: bool,
+    max_iterations: int,
+    target_sharpe: float,
+    capital: float,
+    symbol: str,
+    timeframe: str,
+    fees_bps: float,
+    slippage_bps: float,
+    df: Any,
+    session_label: str = "",
+    skip_llm_prepare: bool = False,
+    show_config_caption: bool = True,
+) -> Any:
+    """Exécute une session builder unique et affiche les résultats.
+
+    Args:
+        skip_llm_prepare: Si True, ne pas refaire les checks/warmup (déjà fait en amont).
+
+    Returns:
+        BuilderSession ou None en cas d'erreur/interruption.
+    """
+    if session_label:
+        st.markdown(f"### {session_label}")
+    st.markdown(f"**Objectif:** {objective}")
+    if show_config_caption:
+        st.caption(
+            f"Modèle: `{model}` | Max itérations: {max_iterations} | "
+            f"Sharpe cible: {target_sharpe} | Capital: ${capital:,.0f} | "
+            f"Marché: {symbol} {timeframe} | "
+            f"Données: {len(df):,} barres | "
+            f"Frais: {fees_bps}bps + {slippage_bps}bps slip"
+        )
+
+    # Préchargement du modèle Ollama en VRAM
+    runtime_model = model
+    if not skip_llm_prepare:
+        with st.spinner(f"⏳ Préparation LLM `{model}` ({ollama_host})…"):
+            ok, msg, resolved_model = _prepare_builder_llm(
+                model=model,
+                ollama_host=ollama_host,
+                preload_model=preload_model,
+                keep_alive_minutes=keep_alive_minutes,
+                auto_start_ollama=auto_start_ollama,
+            )
+            if ok:
+                st.caption(f"✅ {msg}")
+                runtime_model = resolved_model
+                if runtime_model != model:
+                    st.info(
+                        f"ℹ️ Modèle effectif Builder: `{runtime_model}` "
+                        f"(fallback depuis `{model}`)"
+                    )
+            else:
+                st.error(f"❌ {msg}")
+                return None
+
+    st.session_state["builder_model_effective"] = runtime_model
+
+    progress_bar = st.progress(0.0, text="Initialisation...")
+    progress_detail_placeholder = st.empty()
+
+    # Zone de streaming LLM
+    stream_placeholder = st.empty()
+    _stream_state: dict = {"text": "", "phase": "", "active": False}
+    _progress_state: dict[str, Any] = {
+        "iteration": 0,
+        "max_iterations": max_iterations,
+        "phase": "initialisation",
+        "event": "session_start",
+    }
+
+    _PHASE_LABELS = {
+        "proposal": ("💡", "Proposition", "json"),
+        "code": ("🔧", "Génération de code", "python"),
+        "analysis": ("🤔", "Analyse", "json"),
+        "backtest": ("📈", "Backtest", "text"),
+        "retry_proposal": ("🔁", "Retry proposition", "json"),
+        "retry_code": ("🔁", "Retry code", "python"),
+        "objective_gen": ("🎯", "Génération d'objectif", "text"),
+    }
+
+    _PROGRESS_PHASE_LABELS = {
+        "proposal": "proposition",
+        "code": "génération code",
+        "analysis": "analyse",
+        "backtest": "backtest",
+        "validation": "validation",
+    }
+
+    def _on_builder_progress(payload: Dict[str, Any]) -> None:
+        event = str(payload.get("event", "") or "")
+        iteration = int(payload.get("iteration", _progress_state["iteration"]) or 0)
+        max_iters = int(payload.get("max_iterations", _progress_state["max_iterations"]) or max_iterations)
+        phase = str(payload.get("phase", _progress_state["phase"]) or "")
+        _progress_state.update(
+            {
+                "iteration": iteration,
+                "max_iterations": max_iters,
+                "phase": phase,
+                "event": event,
+            }
+        )
+
+        phase_fraction = {
+            "proposal": 0.18,
+            "code": 0.46,
+            "validation": 0.58,
+            "backtest": 0.78,
+            "analysis": 0.92,
+        }
+        completed_iterations = max(iteration - 1, 0)
+        if event == "iteration_done":
+            completed_iterations = max(iteration, 0)
+            fraction = 0.0
+        elif event == "session_done":
+            completed_iterations = max_iters
+            fraction = 0.0
+        else:
+            fraction = phase_fraction.get(phase, 0.05)
+
+        progress_value = 0.0
+        if max_iters > 0:
+            progress_value = min((completed_iterations + fraction) / max_iters, 1.0)
+
+        if event == "session_start":
+            progress_text = "Initialisation de la session Builder..."
+        elif event == "iteration_start":
+            progress_text = f"Itération {iteration}/{max_iters} — démarrage"
+        elif event == "phase_start":
+            progress_text = (
+                f"Itération {iteration}/{max_iters} — "
+                f"{_PROGRESS_PHASE_LABELS.get(phase, phase or 'phase en cours')}"
+            )
+        elif event == "iteration_error":
+            progress_text = (
+                f"Itération {iteration}/{max_iters} — erreur "
+                f"({_PROGRESS_PHASE_LABELS.get(phase, phase or 'runtime')})"
+            )
+        elif event == "iteration_done":
+            decision = str(payload.get("decision", "") or "continue")
+            progress_text = f"Itération {iteration}/{max_iters} — décision {decision}"
+        elif event == "session_done":
+            progress_text = (
+                f"Session terminée — {payload.get('status', 'n/a')} "
+                f"({payload.get('total_iterations', 0)} itérations)"
+            )
+        else:
+            progress_text = f"Itération {iteration}/{max_iters} — activité en cours"
+
+        try:
+            progress_bar.progress(progress_value, text=progress_text)
+            with progress_detail_placeholder.container():
+                st.caption(progress_text)
+                if event == "iteration_error":
+                    error_text = str(payload.get("error", "") or "").strip()
+                    if error_text:
+                        st.caption(f"Détail: {error_text[:220]}")
+                elif event == "phase_done" and phase == "backtest":
+                    sharpe = payload.get("sharpe")
+                    ret_pct = payload.get("total_return_pct")
+                    try:
+                        st.caption(
+                            f"Backtest courant: Sharpe {float(sharpe):.3f} | "
+                            f"Return {float(ret_pct):+.2f}%"
+                        )
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    def _on_llm_stream(phase: str, chunk: str) -> None:
+        if phase != _stream_state["phase"]:
+            _stream_state["text"] = ""
+            _stream_state["phase"] = phase
+        _stream_state["text"] += chunk
+        _stream_state["active"] = True
+
+        icon, label, default_lang = _PHASE_LABELS.get(phase, ("🧠", phase, "text"))
+        text, lang = _sanitize_builder_stream_text(phase, _stream_state["text"])
+
+        try:
+            with stream_placeholder.container():
+                st.caption(f"{icon} **{label}** — streaming en cours…")
+                display = text[-4000:] if len(text) > 4000 else text
+                if len(text) > 4000:
+                    display = "…(tronqué)…\n" + display
+                st.code(display, language=lang)
+        except Exception:
+            pass
+
+    llm_config = LLMConfig(
+        provider=LLMProvider.OLLAMA,
+        model=runtime_model,
+        ollama_host=ollama_host,
+    )
+
+    builder = StrategyBuilder(
+        llm_config=llm_config,
+        llm_topology_config=llm_topology_config,
+        stream_callback=_on_llm_stream,
+        backtest_completed_callback=_maybe_auto_save_run,
+        progress_callback=_on_builder_progress,
+    )
+    compatible_indicators = _get_builder_compatible_indicators(df)
+    if compatible_indicators:
+        builder.available_indicators = compatible_indicators
+
+    iterations_container = st.container()
+    summary_placeholder = st.empty()
+
+    start_time = time.perf_counter()
+
+    with st.status("🏗️ Construction en cours...", expanded=True) as live_status:
+        try:
+            session = builder.run(
+                objective=objective,
+                data=df,
+                max_iterations=max_iterations,
+                target_sharpe=target_sharpe,
+                initial_capital=capital,
+                symbol=symbol,
+                timeframe=timeframe,
+                fees_bps=fees_bps,
+                slippage_bps=slippage_bps,
+            )
+        except KeyboardInterrupt:
+            live_status.update(label="⚠️ Interrompu", state="error")
+            st.warning("Construction interrompue par l'utilisateur.")
+            return None
+        except Exception as exc:
+            live_status.update(label=f"❌ Erreur: {exc}", state="error")
+            show_status("error", f"Erreur Strategy Builder: {exc}")
+            st.code(traceback.format_exc())
+            return None
+
+        elapsed = time.perf_counter() - start_time
+        live_status.update(
+            label=f"✅ Terminé en {elapsed:.1f}s — {len(session.iterations)} itérations",
+            state="complete",
+        )
+
+    # Nettoyage
+    try:
+        stream_placeholder.empty()
+    except Exception:
+        pass
+
+    progress_bar.progress(1.0, text="Terminé")
+
+    with iterations_container:
+        st.markdown("### 📋 Historique des itérations")
+        for it in session.iterations:
+            is_last = (it == session.iterations[-1])
+            render_iteration_card(it, expanded=is_last)
+
+    with summary_placeholder.container():
+        st.markdown("---")
+        render_session_summary(session)
+
+    if unload_after_run:
+        with st.spinner(f"💾 Déchargement du modèle `{runtime_model}`…"):
+            if _unload_ollama_model(model=runtime_model, ollama_host=ollama_host):
+                st.caption(f"✅ Modèle `{runtime_model}` déchargé")
+            else:
+                st.warning(f"⚠️ Impossible de décharger `{runtime_model}`")
+
+    return session
+
+
+# ---------------------------------------------------------------------------
+# Tableau récapitulatif des sessions autonomes
+# ---------------------------------------------------------------------------
+
+def _render_autonomous_recap(
+    history: List[Dict[str, Any]],
+    supervisor: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Affiche un tableau récapitulatif de toutes les sessions autonomes."""
+    if not history:
+        return
+
+    def _fmt_float(value: Any, pattern: str, default: str = "n/a") -> str:
+        try:
+            if value is None:
+                return default
+            return pattern.format(float(value))
+        except Exception:
+            return default
+
+    def _fmt_int(value: Any, default: str = "n/a") -> str:
+        try:
+            if value is None:
+                return default
+            return str(int(value))
+        except Exception:
+            return default
+
+    st.markdown("---")
+    st.markdown("## 📊 Récapitulatif des sessions autonomes")
+
+    if supervisor:
+        st.caption(
+            "Superviseur: "
+            f"errors={int(supervisor.get('consecutive_errors', 0) or 0)} | "
+            f"failed_sessions={int(supervisor.get('consecutive_failed_sessions', 0) or 0)} | "
+            f"soft_resets={int(supervisor.get('soft_reset_count', 0) or 0)} | "
+            f"source={str(supervisor.get('last_selected_source_mode', '-') or '-')} | "
+            f"policy={str(supervisor.get('last_selected_source_reason', '-') or '-')}"
+        )
+
+    header = "| # | Source | Objectif (résumé) | Statut | Score | Sharpe | Return | Max DD | Trades | Durée |"
+    separator = "|---|---|---|---|---|---|---|---|---|---|"
+    rows = [header, separator]
+    export_rows: List[Dict[str, Any]] = []
+
+    for i, h in enumerate(history, 1):
+        objective_raw = str(h.get("objective", "") or "")
+        objective_one_line = " ".join(objective_raw.split())
+        obj_short = objective_one_line[:100]
+        if len(objective_one_line) > 100:
+            obj_short += "…"
+
+        # Important: conserver le nom de source complet (pas de troncature).
+        source = str(h.get("parametric_variant_id", "") or h.get("catalog_id", "") or "-")
+        status = h.get("status", "?")
+        sharpe = h.get("best_sharpe", 0)
+        score = h.get("best_score")
+        ret = h.get("best_return")
+        max_dd = h.get("best_max_dd")
+        trades = h.get("best_trades")
+        duration = h.get("duration", 0)
+
+        status_icon = {"success": "🏆", "max_iterations": "⏱️", "failed": "❌"}.get(
+            status, "❓"
+        )
+        rows.append(
+            f"| {i} | {source} | {obj_short} | {status_icon} {status} | "
+            f"{_fmt_float(score, '{:.2f}')} | {_fmt_float(sharpe, '{:.3f}')} | "
+            f"{_fmt_float(ret, '{:+.2f}%')} | {_fmt_float(max_dd, '{:.2f}%')} | "
+            f"{_fmt_int(trades)} | {duration:.0f}s |"
+        )
+        export_rows.append(
+            {
+                "session_num": h.get("session_num"),
+                "status": status,
+                "best_score": score,
+                "best_sharpe": sharpe,
+                "best_return_pct": ret,
+                "best_max_drawdown_pct": max_dd,
+                "best_trades": trades,
+                "duration_s": duration,
+                "symbol": h.get("symbol"),
+                "timeframe": h.get("timeframe"),
+                "objective": objective_one_line,
+                "source": source,
+                "source_mode": h.get("source_mode"),
+                "orchestration_mode": h.get("orchestration_mode"),
+                "multi_llm_profile": h.get("multi_llm_profile"),
+                "multi_llm_router_action": (
+                    (h.get("multi_llm_router_decision", {}) or {}).get("action")
+                ),
+                "session_id": h.get("session_id"),
+            }
+        )
+
+    st.markdown("\n".join(rows))
+
+    # Meilleur global
+    if history:
+        best = max(history, key=lambda h: float(h.get("best_score", float("-inf")) or float("-inf")))
+        st.success(
+            f"**Meilleure session :** Score {_fmt_float(best.get('best_score'), '{:.2f}')} "
+            f"(Sharpe {_fmt_float(best.get('best_sharpe'), '{:.3f}')}) — "
+            f"{best.get('objective', '')[:80]}"
+        )
+
+    if export_rows:
+        csv_buf = io.StringIO()
+        writer = csv.DictWriter(csv_buf, fieldnames=list(export_rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(export_rows)
+        st.download_button(
+            "⬇️ Export leaderboard CSV",
+            data=csv_buf.getvalue(),
+            file_name="builder_autonomous_leaderboard.csv",
+            mime="text/csv",
+            key=f"builder_autonomous_leaderboard_export_{len(export_rows)}",
+        )
+
+    # Couverture catalogue
+    try:
+        cov = get_catalog_coverage()
+        total = cov.get("total_objectives", 0)
+        explored = cov.get("explored_count", 0)
+        pct = cov.get("coverage_pct", 0.0)
+        success = cov.get("success_count", 0)
+        if total > 0:
+            st.markdown(
+                f"**Catalogue :** {explored}/{total} objectifs explores "
+                f"({pct:.0f}%) — {success} avec Sharpe > 0"
+            )
+            st.progress(min(pct / 100.0, 1.0))
+    except Exception:
+        pass
+
+    # Dernière fiche paramétrique (métadonnées utiles pour debug UI)
+    parametric_runs = [h for h in history if h.get("parametric_variant_id")]
+    if parametric_runs:
+        last = parametric_runs[-1]
+        st.markdown("**Dernier variant paramétrique**")
+        st.json({
+            "run_id": last.get("parametric_run_id", ""),
+            "variant_id": last.get("parametric_variant_id", ""),
+            "archetype_id": last.get("parametric_archetype_id", ""),
+            "param_pack_id": last.get("parametric_param_pack_id", ""),
+            "params": last.get("parametric_params", {}),
+            "proposal": last.get("parametric_proposal", {}),
+            "builder_text": last.get("parametric_builder_text", ""),
+            "fingerprint": last.get("parametric_fingerprint", ""),
+        })
+
+
+# ---------------------------------------------------------------------------
+# Point d'entrée principal
+# ---------------------------------------------------------------------------
+
+def render_builder_view(
+    state: Any,
+    df: Any,
+    status_container: Any,
+) -> None:
+    """
+    Rendu principal du mode Strategy Builder.
+
+    Supporte deux modes :
+    - **Manuel** : exécute une session unique avec l'objectif saisi
+    - **Autonome 24/24** : génère des objectifs automatiquement et boucle
+    """
+    model = state.builder_model
+    max_iterations = state.builder_max_iterations
+    target_sharpe = state.builder_target_sharpe
+    ollama_host = str(
+        getattr(state, "builder_ollama_host", None)
+        or "http://127.0.0.1:11434"
+    ).strip()
+    ollama_host = _normalize_ollama_host(ollama_host)
+    preload_model = bool(getattr(state, "builder_preload_model", True))
+    keep_alive_minutes = int(getattr(state, "builder_keep_alive_minutes", 20))
+    unload_after_run = bool(getattr(state, "builder_unload_after_run", False))
+    auto_start_ollama = bool(getattr(state, "builder_auto_start_ollama", True))
+    auto_market_pick = bool(getattr(state, "builder_auto_market_pick", False))
+    builder_multi_llm_enabled = bool(
+        getattr(state, "builder_multi_llm_enabled", False)
+    )
+    builder_multi_llm_profile = str(
+        getattr(state, "builder_multi_llm_profile", DEFAULT_MULTI_LLM_PROFILE)
+        or DEFAULT_MULTI_LLM_PROFILE
+    )
+    capital_raw = getattr(state, "builder_capital", 10000.0)
+    try:
+        capital = float(capital_raw)
+    except (TypeError, ValueError):
+        capital = 10000.0
+
+    # Contexte de marché — si rien n'est sélectionné, on pioche parmi les tokens disponibles
+    available_tokens = list(getattr(state, "available_tokens", []) or [])
+    available_tfs = _sanitize_builder_timeframes(
+        list(getattr(state, "available_timeframes", []) or []),
+        fallback="1h",
+    )
+
+    _raw_symbol = (
+        getattr(state, "symbol", None)
+        or st.session_state.get("selected_symbol")
+        or ""
+    )
+    _raw_timeframe = (
+        getattr(state, "timeframe", None)
+        or st.session_state.get("selected_timeframe")
+        or ""
+    )
+
+    # Fallback intelligent quand rien n'est sélectionné.
+    # Évite le biais "premier élément de liste" en utilisant un bootstrap aléatoire stable de session.
+    symbol = (
+        str(_raw_symbol).strip().upper()
+        if _raw_symbol
+        else _stable_random_pick("_builder_startup_symbol", available_tokens, "BTCUSDC").upper()
+    )
+    timeframe = (
+        str(_raw_timeframe).strip()
+        if _raw_timeframe
+        else _stable_random_pick(
+            "_builder_startup_timeframe",
+            available_tfs,
+            "1h",
+        )
+    )
+    if not _is_builder_supported_timeframe(timeframe):
+        timeframe = _stable_random_pick(
+            "_builder_startup_timeframe",
+            available_tfs,
+            "1h",
+        )
+
+    # ── DIAG: Mode auto-sélection marché ──
+    logger.info(
+        "🔍 [DIAG] auto_market_pick = %s | Symbole/TF par défaut: %s/%s",
+        "✅ ACTIVÉ" if auto_market_pick else "❌ DÉSACTIVÉ",
+        symbol,
+        timeframe,
+    )
+
+    # Listes complètes pour le mode autonome (diversification multi-market).
+    # En auto market pick, on ne traite comme "user_*" que les sélections explicites UI.
+    if auto_market_pick:
+        user_symbols = [
+            str(s or "").strip().upper()
+            for s in (st.session_state.get("symbols_select", []) or [])
+            if str(s or "").strip()
+        ]
+        user_symbols = [s for s in user_symbols if s in available_tokens]
+        user_timeframes = [
+            str(tf or "").strip()
+            for tf in (st.session_state.get("timeframes_select", []) or [])
+            if str(tf or "").strip()
+        ]
+        user_timeframes = [tf for tf in user_timeframes if tf in available_tfs]
+    else:
+        user_symbols = list(getattr(state, "symbols", []) or [])
+        user_timeframes = list(getattr(state, "timeframes", []) or [])
+
+    # ── ROTATION DIVERSIFIÉE : éviter de toujours tester les mêmes tokens ──
+    if not user_symbols and available_tokens:
+        # Shuffle pour diversifier (évite biais alphabétique)
+        shuffled_tokens = available_tokens.copy()
+        random.shuffle(shuffled_tokens)
+
+        # Tracker des marchés récemment testés (pour éviter répétitions)
+        if "builder_tested_markets" not in st.session_state:
+            st.session_state["builder_tested_markets"] = []
+
+        tested_markets = st.session_state["builder_tested_markets"]
+        recently_tested_tokens = {m["symbol"] for m in tested_markets[-20:]}  # 20 derniers
+
+        # Priorité aux tokens NON récemment testés
+        untested_tokens = [t for t in shuffled_tokens if t not in recently_tested_tokens]
+        if untested_tokens:
+            all_symbols = untested_tokens[:20]  # Top 20 non testés
+        else:
+            # Tous testés récemment → re-shuffle complet
+            all_symbols = shuffled_tokens[:20]
+
+        logger.info(
+            "🔄 Rotation tokens: %d disponibles, %d récemment testés, %d sélectionnés pour ce run",
+            len(available_tokens),
+            len(recently_tested_tokens),
+            len(all_symbols),
+        )
+    else:
+        all_symbols = user_symbols if user_symbols else [symbol]
+
+    all_timeframes_raw = user_timeframes if user_timeframes else (available_tfs or [timeframe])
+    all_timeframes = _sanitize_builder_timeframes(all_timeframes_raw, fallback=timeframe or "1h")
+
+    # ── DIAG: Univers de sélection ──
+    logger.info(
+        "🔍 [DIAG] Univers disponible: %d symboles × %d timeframes = %d combinaisons | "
+        "Symboles: %s | Timeframes: %s",
+        len(all_symbols), len(all_timeframes), len(all_symbols) * len(all_timeframes),
+        ", ".join(all_symbols[:10]) + ("..." if len(all_symbols) > 10 else ""),
+        ", ".join(all_timeframes),
+    )
+
+    fees_bps_raw = getattr(state, "fees_bps", None)
+    if fees_bps_raw is None:
+        fees_bps_raw = st.session_state.get("fees_bps", 10.0)
+    try:
+        fees_bps = float(fees_bps_raw)
+    except (TypeError, ValueError):
+        fees_bps = 10.0
+
+    slippage_bps_raw = getattr(state, "slippage_bps", None)
+    if slippage_bps_raw is None:
+        slippage_bps_raw = st.session_state.get("slippage_bps", 5.0)
+    try:
+        slippage_bps = float(slippage_bps_raw)
+    except (TypeError, ValueError):
+        slippage_bps = 5.0
+
+    autonomous = getattr(state, "builder_autonomous", False)
+
+    if (df is None or len(df) == 0) and not autonomous:
+        # Mode manuel : on a besoin des données pré-chargées
+        # Tenter un chargement automatique si symbol/timeframe sont définis
+        if symbol and timeframe and symbol != "UNKNOWN":
+            try:
+                from data.loader import load_ohlcv
+                df = load_ohlcv(symbol, timeframe)
+                st.caption(f"📥 Données chargées automatiquement: {symbol} {timeframe}")
+            except Exception:
+                pass
+        if df is None or len(df) == 0:
+            with status_container:
+                show_status("error", "Aucune donnée OHLCV chargée — sélectionnez un token et timeframe, ou activez le mode autonome.")
+            st.session_state.is_running = False
+            return
+    elif (df is None or len(df) == 0) and autonomous:
+        # Mode autonome: ne jamais bloquer sur une présélection UI vide ou invalide.
+        requested_symbol = symbol
+        requested_timeframe = timeframe
+        probe_symbols = list(all_symbols)
+        probe_timeframes = list(all_timeframes)
+        if auto_market_pick:
+            probe_symbols = _dedupe_keep_order(
+                [*probe_symbols, *available_tokens],
+                upper=True,
+            )
+            if not user_timeframes:
+                probe_timeframes = _sanitize_builder_timeframes(
+                    _dedupe_keep_order(
+                        [*probe_timeframes, *available_tfs],
+                        upper=False,
+                    ),
+                    fallback=timeframe or "1h",
+                )
+
+        preferred_pairs: List[Tuple[str, str]] = []
+        if requested_symbol and requested_timeframe and requested_symbol != "UNKNOWN":
+            preferred_pairs.append((requested_symbol, requested_timeframe))
+
+        logger.info(
+            "🔍 [DIAG] Startup data probe: trying up to %d pairs",
+            min(len(probe_symbols) * len(probe_timeframes), 24),
+        )
+
+        symbol, timeframe, df, bootstrap_meta = _find_first_valid_builder_market(
+            state=state,
+            symbols=probe_symbols,
+            timeframes=probe_timeframes,
+            default_symbol=requested_symbol,
+            default_timeframe=requested_timeframe,
+            fallback_df=df,
+            preferred_pairs=preferred_pairs,
+            max_pairs=24,
+        )
+        if not _has_builder_market_df(df):
+            with status_container:
+                show_status("error", "Aucune donnée OHLCV disponible pour démarrer le mode autonome.")
+                for failure in (bootstrap_meta.get("failures", []) or [])[:2]:
+                    st.caption(
+                        f"Rejeté: {failure['symbol']} {failure['timeframe']} -> {failure['error']}"
+                    )
+            st.session_state.is_running = False
+            return
+        if (
+            preferred_pairs
+            and (symbol, timeframe) != preferred_pairs[0]
+        ):
+            st.warning(
+                "⚠️ Présélection marché ignorée en mode autonome. "
+                f"{requested_symbol} {requested_timeframe} est indisponible ou rejeté; "
+                f"fallback sur {symbol} {timeframe}."
+            )
+        st.caption(f"📥 Données initiales: {symbol} {timeframe} ({len(df)} barres)")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Mode MANUEL (comportement original)
+    # ══════════════════════════════════════════════════════════════════════
+    if not autonomous:
+        raw_objective = str(getattr(state, "builder_objective", "") or "")
+        objective = sanitize_objective_text(raw_objective)
+        if raw_objective.strip() != objective:
+            st.warning(
+                "Objectif nettoyé automatiquement (des lignes de logs ont été retirées)."
+            )
+            st.session_state["builder_objective"] = objective
+            # Ne pas modifier la clé widget après instanciation (StreamlitAPIException).
+            # La sidebar appliquera cette synchro au prochain rerun, avant de créer le widget.
+            st.session_state["_builder_objective_input_sync"] = objective
+        if not objective or not objective.strip():
+            with status_container:
+                show_status("error", "Objectif vide — décrivez la stratégie souhaitée")
+            st.session_state.is_running = False
+            return
+
+        st.markdown("## 🏗️ Strategy Builder")
+
+        # Flux de pensée
+        with st.expander("📂 Flux de pensée en terminal (optionnel)", expanded=False):
+            st.code(
+                f'Get-Content "{STREAM_FILE}" -Wait -Tail 80',
+                language="powershell",
+            )
+            st.caption(
+                f"📄 Fichier : `{STREAM_FILE}`  \n"
+                "Alternative : surveiller ce fichier dans un terminal séparé."
+            )
+
+        st.markdown("---")
+
+        run_model = model
+        run_symbol = symbol
+        run_timeframe = timeframe
+        run_df = df
+        skip_llm_prepare = False
+
+        llm_client_for_market = None
+        if auto_market_pick:
+            with st.spinner(f"⏳ Préparation LLM `{model}` ({ollama_host})…"):
+                ok, msg, resolved_model = _prepare_builder_llm(
+                    model=model,
+                    ollama_host=ollama_host,
+                    preload_model=preload_model,
+                    keep_alive_minutes=keep_alive_minutes,
+                    auto_start_ollama=auto_start_ollama,
+                )
+                if ok:
+                    st.caption(f"✅ {msg}")
+                    run_model = resolved_model
+                else:
+                    st.error(f"❌ {msg}")
+                    st.session_state.is_running = False
+                    return
+
+            llm_client_for_market = create_llm_client(
+                LLMConfig(
+                    provider=LLMProvider.OLLAMA,
+                    model=run_model,
+                    ollama_host=ollama_host,
+                ),
+            )
+            with st.spinner("🧭 Sélection automatique du marché (token/TF)…"):
+                run_symbol, run_timeframe, run_df, market_pick = _pick_market_for_objective(
+                    state=state,
+                    objective=objective,
+                    llm_client=llm_client_for_market,
+                    default_symbol=symbol,
+                    default_timeframe=timeframe,
+                    fallback_df=df,
+                )
+
+            confidence = float(market_pick.get("confidence", 0.0) or 0.0)
+            reason = str(market_pick.get("reason", "") or "").strip()
+            source = str(market_pick.get("source", "") or "")
+            data_source = str(market_pick.get("data_source", "") or "")
+            if market_pick.get("load_error"):
+                st.warning(
+                    "⚠️ Choix marché LLM ignoré (chargement données impossible). "
+                    f"Fallback sur {symbol} {timeframe}. "
+                    f"Détail: {market_pick.get('load_error')}"
+                )
+            st.info(
+                f"🧭 Marché sélectionné: `{run_symbol} {run_timeframe}` "
+                f"(source: `{source}`, données: `{data_source}`, confiance: {confidence:.2f})."
+            )
+            if reason:
+                st.caption(f"Raison LLM: {reason}")
+            skip_llm_prepare = True
+
+        session = _run_single_builder_session(
+            objective=objective,
+            model=run_model,
+            ollama_host=ollama_host,
+            llm_topology_config=getattr(state, "llm_topology_config", None),
+            preload_model=preload_model,
+            keep_alive_minutes=keep_alive_minutes,
+            unload_after_run=unload_after_run,
+            auto_start_ollama=auto_start_ollama,
+            max_iterations=max_iterations,
+            target_sharpe=target_sharpe,
+            capital=capital,
+            symbol=run_symbol,
+            timeframe=run_timeframe,
+            fees_bps=fees_bps,
+            slippage_bps=slippage_bps,
+            df=run_df,
+            skip_llm_prepare=skip_llm_prepare,
+        )
+
+        if session is not None:
+            st.session_state["builder_session"] = session
+            st.session_state["builder_last_objective"] = objective
+            with status_container:
+                show_status(
+                    "success" if session.status == "success" else "info",
+                    f"Builder terminé: {session.status} (Sharpe {session.best_sharpe:.3f})",
+                )
+        else:
+            st.session_state.is_running = False
+
+        return
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Mode AUTONOME 24/24
+    # ══════════════════════════════════════════════════════════════════════
+    auto_pause = getattr(state, "builder_auto_pause", 10)
+    use_llm_objectives = getattr(state, "builder_auto_use_llm", False)
+    use_parametric_catalog = getattr(state, "builder_use_parametric_catalog", False)
+    requested_objective_mode = (
+        "parametric" if use_parametric_catalog else "llm" if use_llm_objectives else "catalog"
+    )
+
+    # Pré-génération du catalogue paramétrique si activé
+    if use_parametric_catalog:
+        with st.spinner("📐 Génération du catalogue paramétrique..."):
+            n_variants = generate_parametric_catalog()
+        st.caption(f"📐 {n_variants} fiches paramétriques générées")
+
+    persisted_supervisor_state = _load_autonomous_supervisor_state()
+
+    st.markdown("## 🔄 Strategy Builder — Mode Autonome 24/24")
+    _market_display = (
+        f"{', '.join(all_symbols)} × {', '.join(all_timeframes)}"
+        if len(all_symbols) > 1 or len(all_timeframes) > 1
+        else f"{symbol} {timeframe}"
+    )
+    st.caption(
+        f"Configuration autonome | Max itérations/session: {max_iterations} | "
+        f"Sharpe cible: {target_sharpe} | Capital: ${capital:,.0f} | "
+        f"Marchés: {_market_display} | "
+        f"Pause entre runs: {auto_pause}s | "
+        f"Objectifs demandés: {requested_objective_mode} | "
+        f"Auto marché: {'ON' if auto_market_pick else 'OFF'} | "
+        f"Orchestration: {'multi-LLM' if builder_multi_llm_enabled else 'single-LLM'}"
+    )
+    if builder_multi_llm_enabled:
+        st.caption(f"Profil multi-LLM: {builder_multi_llm_profile}")
+
+    # Flux de pensée
+    with st.expander("📂 Flux de pensée en terminal (optionnel)", expanded=False):
+        st.code(
+            f'Get-Content "{STREAM_FILE}" -Wait -Tail 80',
+            language="powershell",
+        )
+        st.caption(
+            f"📄 Fichier : `{STREAM_FILE}`  \n"
+            "Alternative : surveiller ce fichier dans un terminal séparé."
+        )
+
+    st.markdown("---")
+
+    multi_llm_manager: Optional[MultiLLMSessionManager] = None
+    if builder_multi_llm_enabled:
+        if not _MULTI_LLM_RUNTIME_AVAILABLE:
+            show_status("error", "Mode multi-LLM indisponible dans ce workspace.")
+            st.session_state.is_running = False
+            return
+        if auto_start_ollama and _is_local_ollama_host(ollama_host):
+            ok, msg = ensure_ollama_running(ollama_host=ollama_host)
+            if not ok:
+                show_status("error", msg)
+                st.session_state.is_running = False
+                return
+            st.caption(f"✅ {msg}")
+        multi_llm_manager = MultiLLMSessionManager(
+            profile_name=builder_multi_llm_profile,
+            base_llm_config=LLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model=model,
+                ollama_host=ollama_host,
+            ),
+        )
+        role_runtime_summary = " | ".join(
+            (
+                f"{assignment.role}=`{assignment.resolved_model or assignment.requested_model or '-'}"
+                f"{'' if assignment.available else ' [indisponible]'}"
+                "`"
+            )
+            for assignment in multi_llm_manager.assignments
+        )
+        if role_runtime_summary:
+            st.caption(f"Roles runtime: {role_runtime_summary}")
+        builder_assignment = multi_llm_manager.resolve_role_assignment("builder_llm")
+        if builder_assignment is None or not builder_assignment.available:
+            show_status(
+                "error",
+                "Le role `builder_llm` du profil multi-LLM n'est pas utilisable "
+                f"sur `{ollama_host}`. Corrige le profil ou l'hôte avant de lancer.",
+            )
+            st.session_state.is_running = False
+            return
+        if multi_llm_manager.missing_roles:
+            st.warning(
+                "Multi-LLM partiel: roles manquants = "
+                + ", ".join(multi_llm_manager.missing_roles)
+            )
+        else:
+            st.caption("✅ Tous les roles multi-LLM sont resolus pour le runtime actif.")
+    else:
+        # Préparer LLM une seule fois pour toute la boucle autonome
+        with st.spinner(f"⏳ Préparation LLM `{model}` ({ollama_host})…"):
+            ok, msg, resolved_model = _prepare_builder_llm(
+                model=model,
+                ollama_host=ollama_host,
+                preload_model=preload_model,
+                keep_alive_minutes=keep_alive_minutes,
+                auto_start_ollama=auto_start_ollama,
+            )
+            if ok:
+                st.caption(f"✅ {msg}")
+                model = resolved_model
+            else:
+                show_status("error", msg)
+                st.session_state.is_running = False
+                return
+
+    objective_indicators = _get_builder_compatible_indicators(df)
+    _mark_builder_autonomous_runtime_started(
+        model=model,
+        ollama_host=ollama_host,
+        requested_source_mode=requested_objective_mode,
+        auto_market_pick=auto_market_pick,
+    )
+
+    # Historique des sessions autonomes
+    if "builder_autonomous_history" not in st.session_state:
+        st.session_state["builder_autonomous_history"] = list(
+            persisted_supervisor_state.get("history", [])
+        )
+    if "builder_autonomous_supervisor" not in st.session_state:
+        st.session_state["builder_autonomous_supervisor"] = dict(
+            persisted_supervisor_state.get(
+                "supervisor", _default_autonomous_supervisor_state()
+            )
+        )
+    history: List[Dict[str, Any]] = st.session_state["builder_autonomous_history"]
+    supervisor: Dict[str, Any] = st.session_state["builder_autonomous_supervisor"]
+
+    if history:
+        st.caption(
+            f"Reprise superviseur autonome: {len(history)} runs persistés "
+            f"({int(supervisor.get('soft_reset_count', 0) or 0)} soft-resets cumulés)"
+        )
+
+    # Compteur de session
+    session_num = len(history)
+    recap_placeholder = st.empty()
+    session_placeholder = st.empty()
+    _consecutive_errors = int(supervisor.get("consecutive_errors", 0) or 0)
+    _MAX_CONSECUTIVE_ERRORS = 5  # Arrêt de sécurité après N erreurs consécutives
+    terminal_reason = "completed"
+    terminal_error = ""
+
+    while st.session_state.get("is_running", False):
+        session_num += 1
+        _loop_body_start = time.perf_counter()
+        effective_objective_mode = requested_objective_mode
+        effective_auto_market_pick = auto_market_pick
+        session_model = model
+        llm_client_for_obj = None
+        llm_client_for_market = None
+        multi_llm_role_outputs: Dict[str, Any] = {}
+        multi_llm_router_decision: Dict[str, Any] = {}
+
+        # ── Protection globale : toute exception est rattrapee pour continuer ──
+        try:
+
+            # ── Extraire les marchés récents pour forcer la diversité ──
+            _recent_markets: list[tuple[str, str]] = [
+                (str(h.get("symbol", "")), str(h.get("timeframe", "")))
+                for h in history[-6:]
+                if h.get("symbol") and h.get("timeframe")
+            ]
+
+            # ── DIAG: Historique de diversité ──
+            logger.info(
+                "🔍 [DIAG] Session #%d | Historique total: %d runs | Marchés récents (6 derniers): %s",
+                session_num,
+                len(history),
+                _recent_markets if _recent_markets else "❌ VIDE (premier run ou historique perdu)",
+            )
+
+            objective_mode_policy = _choose_autonomous_objective_mode(
+                requested_objective_mode,
+                history,
+                supervisor,
+            )
+            effective_objective_mode = str(
+                objective_mode_policy.get("mode", requested_objective_mode) or requested_objective_mode
+            )
+            supervisor["last_selected_source_mode"] = effective_objective_mode
+            supervisor["last_selected_source_reason"] = str(
+                objective_mode_policy.get("reason", "") or ""
+            )
+
+            auto_market_policy = _resolve_autonomous_auto_market_pick(
+                auto_market_pick,
+                supervisor,
+            )
+            effective_auto_market_pick = bool(auto_market_policy.get("enabled"))
+            if (
+                not effective_auto_market_pick
+                and auto_market_policy.get("reason") == "recovery_guard_once"
+            ):
+                supervisor["disable_auto_market_pick_once"] = False
+
+            st.caption(
+                f"Session #{session_num} | source={effective_objective_mode} "
+                f"({objective_mode_policy.get('reason', 'n/a')}) | "
+                f"auto_marché={'ON' if effective_auto_market_pick else 'OFF'} "
+                f"({auto_market_policy.get('reason', 'n/a')})"
+            )
+            logger.info(
+                "builder_autonomous_policy session=%d source_mode=%s source_reason=%s auto_market=%s auto_market_reason=%s",
+                session_num,
+                effective_objective_mode,
+                objective_mode_policy.get("reason", ""),
+                effective_auto_market_pick,
+                auto_market_policy.get("reason", ""),
+            )
+            _heartbeat_builder_autonomous_runtime(
+                last_event="session_start",
+                last_session_num=session_num,
+                effective_source_mode=effective_objective_mode,
+                auto_market_pick=effective_auto_market_pick,
+            )
+
+            if builder_multi_llm_enabled and multi_llm_manager is not None:
+                if auto_start_ollama and _is_local_ollama_host(ollama_host):
+                    ok, msg = ensure_ollama_running(ollama_host=ollama_host)
+                    if not ok:
+                        raise RuntimeError(msg)
+                session_model = multi_llm_manager.resolve_builder_model(model)
+                with st.spinner(f"⏳ Vérification builder_llm session #{session_num}…"):
+                    ok, msg, resolved_model = _prepare_builder_llm(
+                        model=session_model,
+                        ollama_host=ollama_host,
+                        preload_model=preload_model,
+                        keep_alive_minutes=keep_alive_minutes,
+                        auto_start_ollama=auto_start_ollama,
+                    )
+                    if not ok:
+                        raise RuntimeError(msg)
+                    session_model = resolved_model
+                st.caption(
+                    f"Session #{session_num} | builder_llm=`{session_model}` | "
+                    f"profil=`{builder_multi_llm_profile}`"
+                )
+                if effective_auto_market_pick:
+                    llm_client_for_market = create_llm_client(
+                        LLMConfig(
+                            provider=LLMProvider.OLLAMA,
+                            model=session_model,
+                            ollama_host=ollama_host,
+                        )
+                    )
+            else:
+                with st.spinner(f"⏳ Vérification LLM session #{session_num}…"):
+                    ok, msg, resolved_model = _prepare_builder_llm(
+                        model=model,
+                        ollama_host=ollama_host,
+                        preload_model=preload_model,
+                        keep_alive_minutes=keep_alive_minutes,
+                        auto_start_ollama=auto_start_ollama,
+                    )
+                    if not ok:
+                        raise RuntimeError(msg)
+                    if resolved_model != model:
+                        st.caption(
+                            f"ℹ️ Modèle effectif session #{session_num}: `{resolved_model}`"
+                        )
+                        model = resolved_model
+                    session_model = model
+
+                llm_config_shared = LLMConfig(
+                    provider=LLMProvider.OLLAMA,
+                    model=model,
+                    ollama_host=ollama_host,
+                )
+                if effective_objective_mode == "llm":
+                    llm_client_for_obj = create_llm_client(llm_config_shared)
+                if effective_auto_market_pick:
+                    llm_client_for_market = create_llm_client(llm_config_shared)
+
+            # ── Générer l'objectif (multi-market : listes symbols/timeframes) ──
+            current_catalog_id: Optional[str] = None
+            current_parametric_meta: Dict[str, Any] = {}
+            if effective_objective_mode == "parametric":
+                # Priorité : fiches paramétriques (archetypes × param_packs)
+                # Si auto_market_pick activé, ne PAS injecter symbol/TF dans le template
+                parametric_result = get_next_parametric_objective(
+                    symbol=None if effective_auto_market_pick else all_symbols,
+                    timeframe=None if effective_auto_market_pick else all_timeframes,
+                )
+                if parametric_result is not None:
+                    objective = str(parametric_result.get("objective_text", "") or "")
+                    current_catalog_id = (
+                        str(parametric_result.get("variant_id", "") or "").strip() or None
+                    )
+                    current_parametric_meta = dict(parametric_result)
+                else:
+                    st.info("📐 Catalogue paramétrique vide — fallback templates")
+                    catalog_result = get_next_catalog_objective(
+                        symbol=None if effective_auto_market_pick else all_symbols,
+                        timeframe=None if effective_auto_market_pick else all_timeframes,
+                    )
+                    if catalog_result is not None:
+                        objective, current_catalog_id = catalog_result
+                    else:
+                        objective = generate_random_objective(
+                            symbol=("{symbol}" if effective_auto_market_pick else all_symbols),
+                            timeframe=("{timeframe}" if effective_auto_market_pick else all_timeframes),
+                            available_indicators=objective_indicators,
+                        )
+            elif effective_objective_mode == "llm" and llm_client_for_obj is not None:
+                with st.spinner("🧠 Génération de l'objectif par LLM..."):
+                    objective = generate_llm_objective(
+                        llm_client_for_obj,
+                        symbol=None if effective_auto_market_pick else all_symbols,
+                        timeframe=None if effective_auto_market_pick else all_timeframes,
+                        available_indicators=objective_indicators,
+                        recent_markets=_recent_markets or None,
+                    )
+            else:
+                # Catalogue systématique en priorité, fallback random
+                catalog_result = get_next_catalog_objective(
+                    symbol=None if effective_auto_market_pick else all_symbols,
+                    timeframe=None if effective_auto_market_pick else all_timeframes,
+                )
+                if catalog_result is not None:
+                    objective, current_catalog_id = catalog_result
+                    if llm_client_for_obj is not None:
+                        with st.spinner("🧠 Raffinage LLM de la piste catalogue..."):
+                            objective = generate_llm_objective_from_seed(
+                                llm_client_for_obj,
+                                seed_objective=objective,
+                                symbol=None if effective_auto_market_pick else all_symbols,
+                                timeframe=None if effective_auto_market_pick else all_timeframes,
+                                available_indicators=objective_indicators,
+                                recent_markets=_recent_markets or None,
+                            )
+                else:
+                    st.info("📚 Catalogue épuisé — passage en mode aléatoire")
+                    objective = generate_random_objective(
+                        symbol=("{symbol}" if effective_auto_market_pick else all_symbols),
+                        timeframe=("{timeframe}" if effective_auto_market_pick else all_timeframes),
+                        available_indicators=objective_indicators,
+                    )
+            if builder_multi_llm_enabled and multi_llm_manager is not None:
+                multi_objective_bundle = multi_llm_manager.generate_objective(
+                    symbols=all_symbols,
+                    timeframes=all_timeframes,
+                    available_indicators=objective_indicators,
+                    history_tail=history,
+                    fallback_objective=objective,
+                )
+                objective = str(multi_objective_bundle.get("objective", "") or objective)
+                idea_output = multi_objective_bundle.get("role_output")
+                if idea_output is not None:
+                    multi_llm_role_outputs["idea_llm"] = idea_output.to_dict()
+            objective = sanitize_objective_text(objective)
+            if current_parametric_meta:
+                st.caption(
+                    "📐 Variant "
+                    f"{current_parametric_meta.get('variant_id', 'n/a')} | "
+                    f"archetype={current_parametric_meta.get('archetype_id', 'n/a')} | "
+                    f"pack={current_parametric_meta.get('param_pack_id', 'n/a')}"
+                )
+
+            session_symbol = symbol
+            session_timeframe = timeframe
+            if effective_auto_market_pick:
+                session_symbol, session_timeframe = _pick_non_recent_market(
+                    all_symbols,
+                    all_timeframes,
+                    _recent_markets,
+                )
+            default_session_symbol = session_symbol
+            default_session_timeframe = session_timeframe
+            session_df = df
+            if effective_auto_market_pick:
+                session_df, pre_load_error, pre_data_source = _load_builder_market_data(
+                    state=state,
+                    symbol=default_session_symbol,
+                    timeframe=default_session_timeframe,
+                    fallback_df=df,
+                )
+                if pre_load_error:
+                    logger.warning(
+                        "🔍 [DIAG] Default session market preload failed for %s %s: %s (source=%s)",
+                        default_session_symbol,
+                        default_session_timeframe,
+                        pre_load_error,
+                        pre_data_source,
+                    )
+            market_pick: Dict[str, Any] = {}
+            if effective_auto_market_pick and llm_client_for_market is not None:
+                with st.spinner("🧭 Sélection automatique du marché (token/TF)…"):
+                    session_symbol, session_timeframe, session_df, market_pick = _pick_market_for_objective(
+                        state=state,
+                        objective=objective,
+                        llm_client=llm_client_for_market,
+                        default_symbol=default_session_symbol,
+                        default_timeframe=default_session_timeframe,
+                        fallback_df=session_df,
+                        recent_markets=_recent_markets or None,
+                    )
+                confidence = float(market_pick.get("confidence", 0.0) or 0.0)
+                source = str(market_pick.get("source", "") or "")
+                data_source = str(market_pick.get("data_source", "") or "")
+                reason = str(market_pick.get("reason", "") or "")
+
+                # Détection override UI
+                is_override = (
+                    default_session_symbol and default_session_timeframe and
+                    (
+                        session_symbol != default_session_symbol
+                        or session_timeframe != default_session_timeframe
+                    )
+                )
+
+                if is_override:
+                    # UI warning pour override explicite
+                    st.warning(
+                        f"🔄 **Override LLM** : {default_session_symbol} {default_session_timeframe} → {session_symbol} {session_timeframe}\n\n"
+                        f"**Raison:** {reason}\n\n"
+                        f"*Source: {source} | Confidence: {confidence:.2f}*"
+                    )
+                    # Log structuré override
+                    logger.info(
+                        "Market selection: source=llm_override, original=%s %s, final=%s %s, reason=%s, confidence=%.2f",
+                        default_session_symbol,
+                        default_session_timeframe,
+                        session_symbol,
+                        session_timeframe,
+                        reason,
+                        confidence,
+                    )
+                else:
+                    st.caption(
+                        f"🧭 Session #{session_num}: {session_symbol} {session_timeframe} "
+                        f"(source={source}, data={data_source}, conf={confidence:.2f})"
+                    )
+
+                # ── DIAG: Sélection finale ──
+                logger.info(
+                    "🔍 [DIAG] Session #%d → Marché sélectionné: %s %s | "
+                    "Source: %s | Confidence: %.2f | Data: %s | "
+                    "Candidats: %d symbols × %d timeframes",
+                    session_num,
+                    session_symbol,
+                    session_timeframe,
+                    source,
+                    confidence,
+                    data_source,
+                    len(market_pick.get("candidate_symbols", [])),
+                    len(market_pick.get("candidate_timeframes", [])),
+                )
+            else:
+                # ── DIAG: Mode auto-pick désactivé ──
+                logger.info(
+                    "🔍 [DIAG] Session #%d → Marché PAR DÉFAUT (auto_market_pick=OFF): %s %s",
+                    session_num,
+                    session_symbol,
+                    session_timeframe,
+                )
+
+            # ── Remplacer les placeholders {symbol}/{timeframe} après sélection marché ──
+            if "{symbol}" in objective or "{timeframe}" in objective:
+                objective = objective.replace("{symbol}", session_symbol)
+                objective = objective.replace("{timeframe}", session_timeframe)
+                objective = sanitize_objective_text(objective)
+                logger.info(
+                    "🔍 [DIAG] Placeholders remplacés dans objectif → %s %s",
+                    session_symbol,
+                    session_timeframe,
+                )
+
+            # ── Exécuter la session (remplace l'affichage précédent) ──
+            with session_placeholder.container():
+                t0 = time.perf_counter()
+                session = _run_single_builder_session(
+                    objective=objective,
+                    model=session_model,
+                    ollama_host=ollama_host,
+                    llm_topology_config=getattr(state, "llm_topology_config", None),
+                    preload_model=preload_model,
+                    keep_alive_minutes=keep_alive_minutes,
+                    unload_after_run=False,
+                    auto_start_ollama=auto_start_ollama,
+                    max_iterations=max_iterations,
+                    target_sharpe=target_sharpe,
+                    capital=capital,
+                    symbol=session_symbol,
+                    timeframe=session_timeframe,
+                    fees_bps=fees_bps,
+                    slippage_bps=slippage_bps,
+                    df=session_df,
+                    session_label=f"🔄 Session autonome #{session_num}",
+                    skip_llm_prepare=True,
+                    show_config_caption=False,
+                )
+                duration = time.perf_counter() - t0
+
+            if (
+                builder_multi_llm_enabled
+                and multi_llm_manager is not None
+                and session is not None
+            ):
+                multi_review_bundle = multi_llm_manager.review_builder_session(
+                    objective=objective,
+                    builder_session=session,
+                    target_sharpe=target_sharpe,
+                )
+                multi_llm_router_decision = dict(
+                    multi_review_bundle.get("router_decision", {}) or {}
+                )
+                for role_name, role_output in (
+                    multi_review_bundle.get("role_outputs", {}) or {}
+                ).items():
+                    multi_llm_role_outputs[role_name] = role_output.to_dict()
+                router_action = str(
+                    multi_llm_router_decision.get("action", "iterate") or "iterate"
+                )
+                router_reason = str(
+                    multi_llm_router_decision.get("reason", "") or ""
+                ).strip()
+                st.caption(
+                    f"Multi-LLM router: {router_action}"
+                    + (f" | {router_reason}" if router_reason else "")
+                )
+
+            # ── Enregistrer le résultat ──
+            if session is not None:
+                best_metrics = {}
+                if session.best_iteration and session.best_iteration.backtest_result:
+                    best_metrics = session.best_iteration.backtest_result.metrics
+                best_score = getattr(session, "best_score", float("-inf"))
+                if best_score == float("-inf"):
+                    best_score = None
+
+                history_entry = {
+                    "session_num": session_num,
+                    "objective": objective,
+                    "catalog_id": current_catalog_id or "",
+                    "parametric_run_id": current_parametric_meta.get("run_id", ""),
+                    "parametric_variant_id": current_parametric_meta.get("variant_id", ""),
+                    "parametric_archetype_id": current_parametric_meta.get("archetype_id", ""),
+                    "parametric_param_pack_id": current_parametric_meta.get("param_pack_id", ""),
+                    "parametric_params": current_parametric_meta.get("params", {}),
+                    "parametric_proposal": current_parametric_meta.get("proposal", {}),
+                    "parametric_builder_text": current_parametric_meta.get("builder_text", ""),
+                    "parametric_fingerprint": current_parametric_meta.get("fingerprint", ""),
+                    "status": session.status,
+                    "best_sharpe": session.best_sharpe,
+                    "best_score": best_score,
+                    "best_return": best_metrics.get("total_return_pct"),
+                    "best_max_dd": best_metrics.get("max_drawdown_pct"),
+                    "best_pf": best_metrics.get("profit_factor"),
+                    "best_trades": best_metrics.get("total_trades"),
+                    "n_iterations": len(session.iterations),
+                    "duration": duration,
+                    "session_id": session.session_id,
+                    "symbol": session_symbol,
+                    "timeframe": session_timeframe,
+                    "source_mode": effective_objective_mode,
+                    "source_reason": objective_mode_policy.get("reason", ""),
+                    "auto_market_pick_used": effective_auto_market_pick,
+                    "orchestration_mode": (
+                        "multi_llm" if builder_multi_llm_enabled else "single_llm"
+                    ),
+                    "multi_llm_profile": (
+                        builder_multi_llm_profile if builder_multi_llm_enabled else ""
+                    ),
+                    "multi_llm_assignments": (
+                        [
+                            assignment.to_dict()
+                            for assignment in multi_llm_manager.assignments
+                        ]
+                        if builder_multi_llm_enabled and multi_llm_manager is not None
+                        else []
+                    ),
+                    "multi_llm_builder_model": session_model,
+                    "multi_llm_router_decision": multi_llm_router_decision,
+                    "multi_llm_role_outputs": multi_llm_role_outputs,
+                }
+                history.append(history_entry)
+                history[:] = _trim_autonomous_history(history)
+                st.session_state["builder_autonomous_history"] = history
+                st.session_state["builder_session"] = session
+                _heartbeat_builder_autonomous_runtime(
+                    last_event="session_done",
+                    last_session_num=session_num,
+                    last_session_id=str(session.session_id or ""),
+                    last_session_status=str(session.status or ""),
+                    effective_source_mode=effective_objective_mode,
+                )
+
+                if session.status == "failed":
+                    supervisor["consecutive_failed_sessions"] = int(
+                        supervisor.get("consecutive_failed_sessions", 0) or 0
+                    ) + 1
+                else:
+                    supervisor["consecutive_failed_sessions"] = 0
+                    supervisor["forced_source_mode"] = ""
+                    supervisor["disable_auto_market_pick_once"] = False
+
+                # Marquer l'objectif catalogue comme exploré
+                if current_catalog_id is not None:
+                    mark_catalog_objective_explored(
+                        current_catalog_id,
+                        status=session.status,
+                        best_sharpe=session.best_sharpe,
+                        session_id=session.session_id,
+                        symbol=session_symbol,
+                        timeframe=session_timeframe,
+                    )
+            else:
+                history_entry = {
+                    "session_num": session_num,
+                    "objective": objective,
+                    "catalog_id": current_catalog_id or "",
+                    "parametric_run_id": current_parametric_meta.get("run_id", ""),
+                    "parametric_variant_id": current_parametric_meta.get("variant_id", ""),
+                    "parametric_archetype_id": current_parametric_meta.get("archetype_id", ""),
+                    "parametric_param_pack_id": current_parametric_meta.get("param_pack_id", ""),
+                    "parametric_params": current_parametric_meta.get("params", {}),
+                    "parametric_proposal": current_parametric_meta.get("proposal", {}),
+                    "parametric_builder_text": current_parametric_meta.get("builder_text", ""),
+                    "parametric_fingerprint": current_parametric_meta.get("fingerprint", ""),
+                    "status": "error",
+                    "best_sharpe": None,
+                    "best_score": None,
+                    "best_return": None,
+                    "best_max_dd": None,
+                    "best_pf": None,
+                    "best_trades": None,
+                    "n_iterations": 0,
+                    "duration": duration,
+                    "session_id": "",
+                    "symbol": session_symbol,
+                    "timeframe": session_timeframe,
+                    "source_mode": effective_objective_mode,
+                    "source_reason": objective_mode_policy.get("reason", ""),
+                    "auto_market_pick_used": effective_auto_market_pick,
+                    "orchestration_mode": (
+                        "multi_llm" if builder_multi_llm_enabled else "single_llm"
+                    ),
+                    "multi_llm_profile": (
+                        builder_multi_llm_profile if builder_multi_llm_enabled else ""
+                    ),
+                    "multi_llm_assignments": (
+                        [
+                            assignment.to_dict()
+                            for assignment in multi_llm_manager.assignments
+                        ]
+                        if builder_multi_llm_enabled and multi_llm_manager is not None
+                        else []
+                    ),
+                    "multi_llm_builder_model": session_model,
+                    "multi_llm_router_decision": multi_llm_router_decision,
+                    "multi_llm_role_outputs": multi_llm_role_outputs,
+                }
+                history.append(history_entry)
+                history[:] = _trim_autonomous_history(history)
+                st.session_state["builder_autonomous_history"] = history
+                supervisor["consecutive_failed_sessions"] = int(
+                    supervisor.get("consecutive_failed_sessions", 0) or 0
+                ) + 1
+                _heartbeat_builder_autonomous_runtime(
+                    last_event="session_error",
+                    last_session_num=session_num,
+                    last_session_status="error",
+                    effective_source_mode=effective_objective_mode,
+                )
+
+                # Marquer l'objectif catalogue comme exploré (même en erreur)
+                if current_catalog_id is not None:
+                    mark_catalog_objective_explored(
+                        current_catalog_id,
+                        status="error",
+                        best_sharpe=0.0,
+                        session_id="",
+                        symbol=session_symbol,
+                        timeframe=session_timeframe,
+                    )
+
+            st.session_state["builder_autonomous_supervisor"] = supervisor
+            _save_autonomous_supervisor_state(history, supervisor)
+
+            if int(supervisor.get("consecutive_failed_sessions", 0) or 0) >= _AUTONOMOUS_SESSION_FAILURE_RESET_THRESHOLD:
+                recovery_plan = _apply_autonomous_supervisor_recovery(
+                    supervisor,
+                    history,
+                    origin="session_failed",
+                    current_source_mode=effective_objective_mode,
+                )
+                st.session_state["builder_autonomous_supervisor"] = supervisor
+                _save_autonomous_supervisor_state(history, supervisor)
+                if recovery_plan.get("recover"):
+                    st.session_state["builder_session"] = None
+                    st.warning(
+                        "Superviseur: trop de sessions en échec consécutives, "
+                        f"reset appliqué ({recovery_plan.get('reason', 'n/a')})."
+                    )
+                    _heartbeat_builder_autonomous_runtime(
+                        last_event="supervisor_recovery",
+                        effective_source_mode=str(
+                            recovery_plan.get("force_source_mode", "") or effective_objective_mode
+                        ),
+                    )
+                else:
+                    st.error(
+                        "Superviseur autonome: budget de reset épuisé après trop "
+                        "de sessions en échec."
+                    )
+                    terminal_reason = "supervisor_stop"
+                    break
+
+            # ── Afficher le récap mis à jour ──
+            with recap_placeholder.container():
+                _render_autonomous_recap(history, supervisor)
+
+
+        except KeyboardInterrupt:
+            logger.info("Mode autonome interrompu par l'utilisateur (KeyboardInterrupt)")
+            terminal_reason = "keyboard_interrupt"
+            break
+        except Exception as _loop_exc:
+            _consecutive_errors += 1
+            _exc_tb = traceback.format_exc()
+            failure_origin = _classify_autonomous_failure_origin(_loop_exc, _exc_tb)
+            supervisor["consecutive_errors"] = _consecutive_errors
+            supervisor["consecutive_failed_sessions"] = int(
+                supervisor.get("consecutive_failed_sessions", 0) or 0
+            ) + 1
+            supervisor["last_error_origin"] = failure_origin
+            supervisor["last_error"] = f"{type(_loop_exc).__name__}: {_loop_exc}"
+            logger.error(
+                "Session autonome #%d CRASH (%d/%d erreurs consecutives): %s\n%s",
+                session_num, _consecutive_errors, _MAX_CONSECUTIVE_ERRORS,
+                _loop_exc, _exc_tb,
+            )
+            # Enregistrer le crash dans l'historique
+            history.append({
+                "session_num": session_num,
+                "objective": "(crash avant execution)",
+                "catalog_id": "",
+                "parametric_run_id": "",
+                "parametric_variant_id": "",
+                "parametric_archetype_id": "",
+                "parametric_param_pack_id": "",
+                "parametric_params": {},
+                "parametric_proposal": {},
+                "parametric_builder_text": "",
+                "parametric_fingerprint": "",
+                "status": "crash",
+                "best_sharpe": None,
+                "best_score": None,
+                "best_return": None,
+                "best_max_dd": None,
+                "best_pf": None,
+                "best_trades": None,
+                "n_iterations": 0,
+                "duration": time.perf_counter() - _loop_body_start,
+                "session_id": "",
+                "symbol": "",
+                "timeframe": "",
+                "error": f"{type(_loop_exc).__name__}: {_loop_exc}",
+                "source_mode": effective_objective_mode,
+                "source_reason": supervisor.get("last_selected_source_reason", ""),
+                "orchestration_mode": (
+                    "multi_llm" if builder_multi_llm_enabled else "single_llm"
+                ),
+                "multi_llm_profile": (
+                    builder_multi_llm_profile if builder_multi_llm_enabled else ""
+                ),
+            })
+            history[:] = _trim_autonomous_history(history)
+            st.session_state["builder_autonomous_history"] = history
+            st.session_state["builder_autonomous_supervisor"] = supervisor
+            _save_autonomous_supervisor_state(history, supervisor)
+            terminal_error = f"{type(_loop_exc).__name__}: {_loop_exc}"
+            _heartbeat_builder_autonomous_runtime(
+                last_event="session_crash",
+                last_session_num=session_num,
+                last_session_status="crash",
+                last_error=terminal_error,
+                effective_source_mode=effective_objective_mode,
+            )
+            try:
+                with recap_placeholder.container():
+                    _render_autonomous_recap(history, supervisor)
+            except Exception:
+                pass
+            st.error(
+                f"Session #{session_num} crash: {type(_loop_exc).__name__}: {_loop_exc} "
+                f"-- reprise automatique ({_consecutive_errors}/{_MAX_CONSECUTIVE_ERRORS})"
+            )
+            if _consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
+                recovery_plan = _apply_autonomous_supervisor_recovery(
+                    supervisor,
+                    history,
+                    origin=failure_origin,
+                    current_source_mode=effective_objective_mode,
+                )
+                st.session_state["builder_autonomous_supervisor"] = supervisor
+                _save_autonomous_supervisor_state(history, supervisor)
+                if recovery_plan.get("recover"):
+                    _consecutive_errors = 0
+                    st.session_state["builder_session"] = None
+                    st.warning(
+                        "Superviseur: seuil d'erreurs atteint, reset appliqué "
+                        f"({recovery_plan.get('reason', 'n/a')})."
+                    )
+                    _heartbeat_builder_autonomous_runtime(
+                        last_event="supervisor_recovery",
+                        effective_source_mode=str(
+                            recovery_plan.get("force_source_mode", "") or effective_objective_mode
+                        ),
+                    )
+                else:
+                    logger.error(
+                        "Arret du mode autonome: %d erreurs consecutives",
+                        _MAX_CONSECUTIVE_ERRORS,
+                    )
+                    st.error(
+                        f"Arret de securite: {_MAX_CONSECUTIVE_ERRORS} erreurs consecutives. "
+                        f"Verifiez les logs et relancez."
+                    )
+                    terminal_reason = "consecutive_errors_stop"
+                    break
+        else:
+            # Session OK -> reset erreurs consecutives
+            _consecutive_errors = 0
+            supervisor["consecutive_errors"] = 0
+            supervisor["next_pause_multiplier"] = 1
+            st.session_state["builder_autonomous_supervisor"] = supervisor
+            _save_autonomous_supervisor_state(history, supervisor)
+
+        # ── Vérifier si on doit continuer ──
+        if not st.session_state.get("is_running", False):
+            terminal_reason = "manual_stop"
+            break
+
+        # ── Pause configurable avec countdown (allongée après crash) ──
+        pause_multiplier = int(supervisor.get("next_pause_multiplier", 1) or 1)
+        if _consecutive_errors > 0:
+            pause_multiplier = max(pause_multiplier, 3)
+        effective_pause = auto_pause * max(1, pause_multiplier)
+        if effective_pause > 0:
+            countdown_placeholder = st.empty()
+            for remaining in range(effective_pause, 0, -1):
+                if not st.session_state.get("is_running", False):
+                    break
+                countdown_placeholder.info(
+                    f"⏱️ Prochaine session dans **{remaining}s**..."
+                )
+                time.sleep(1)
+            try:
+                countdown_placeholder.empty()
+            except Exception:
+                pass
+        if int(supervisor.get("next_pause_multiplier", 1) or 1) != 1:
+            supervisor["next_pause_multiplier"] = 1
+            st.session_state["builder_autonomous_supervisor"] = supervisor
+            _save_autonomous_supervisor_state(history, supervisor)
+
+    # ── Fin de la boucle autonome ──
+    with recap_placeholder.container():
+        _render_autonomous_recap(history, supervisor)
+
+    with status_container:
+        n = len(history)
+        best_ever = max(
+            (h.get("best_sharpe", 0) for h in history), default=0,
+        )
+        show_status(
+            "success" if best_ever > 0 else "info",
+            f"Mode autonome terminé : {n} sessions | Meilleur Sharpe: {best_ever:.3f}",
+        )
+
+    if unload_after_run:
+        with st.spinner(f"💾 Déchargement du modèle `{model}`…"):
+            if _unload_ollama_model(model=model, ollama_host=ollama_host):
+                st.caption(f"✅ Modèle `{model}` déchargé")
+            else:
+                st.warning(f"⚠️ Impossible de décharger `{model}`")
+
+    st.session_state["builder_autonomous_supervisor"] = supervisor
+    _save_autonomous_supervisor_state(history, supervisor)
+    st.session_state.is_running = False
+    mark_builder_autonomous_runtime_stopped(
+        reason=terminal_reason,
+        manual_stop=(terminal_reason == "manual_stop"),
+        error=terminal_error,
+    )

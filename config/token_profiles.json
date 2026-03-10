@@ -1,0 +1,97 @@
+{
+  "version": "1.0",
+  "classification_method": "manual + historical_atr",
+  "last_updated": "2026-02-24",
+
+  "profiles": {
+    "high_volatility": {
+      "description": "Tokens avec forte volatilité (>4% daily ATR)",
+      "recommended_for": ["scalping", "day_trading", "breakout"],
+      "tokens": [
+        "BTCUSDC",
+        "ETHUSDC",
+        "SOLUSDC",
+        "BNBUSDC",
+        "AVAXUSDC"
+      ]
+    },
+    "medium_volatility": {
+      "description": "Tokens avec volatilité modérée (2-4% daily ATR)",
+      "recommended_for": ["swing", "trend_following", "mean_reversion"],
+      "tokens": [
+        "LINKUSDC",
+        "DOTUSDC",
+        "MATICUSDC",
+        "ATOMUSDC",
+        "NEARUSDC",
+        "INJUSDC",
+        "FILUSDC",
+        "OPUSDC",
+        "ARBUSDC",
+        "APTUSDC"
+      ]
+    },
+    "low_volatility": {
+      "description": "Tokens avec faible volatilité (<2% daily ATR)",
+      "recommended_for": ["mean_reversion", "grid_trading"],
+      "tokens": [
+        "XRPUSDC",
+        "ADAUSDC",
+        "TRXUSDC",
+        "LTCUSDC"
+      ]
+    }
+  },
+
+  "archetype_recommendations": {
+    "scalping": {
+      "timeframes": ["3m", "5m"],
+      "preferred_tf": "3m",
+      "token_profile": "high_volatility",
+      "min_daily_volume": 1000000000
+    },
+    "day_trading": {
+      "timeframes": ["5m", "15m", "30m"],
+      "preferred_tf": "15m",
+      "token_profile": "high_volatility",
+      "min_daily_volume": 500000000
+    },
+    "swing": {
+      "timeframes": ["30m", "1h", "4h"],
+      "preferred_tf": "1h",
+      "token_profile": "medium_volatility",
+      "min_daily_volume": 100000000
+    },
+    "trend_following": {
+      "timeframes": ["1h", "4h", "1d"],
+      "preferred_tf": "4h",
+      "token_profile": "medium_volatility",
+      "min_daily_volume": 100000000
+    },
+    "mean_reversion": {
+      "timeframes": ["15m", "30m", "1h"],
+      "preferred_tf": "30m",
+      "token_profile": "medium_volatility",
+      "min_daily_volume": 100000000
+    },
+    "breakout": {
+      "timeframes": ["5m", "15m", "30m", "1h"],
+      "preferred_tf": "15m",
+      "token_profile": "high_volatility",
+      "min_daily_volume": 500000000
+    },
+    "grid_trading": {
+      "timeframes": ["15m", "30m", "1h"],
+      "preferred_tf": "30m",
+      "token_profile": "low_volatility",
+      "min_daily_volume": 50000000
+    }
+  },
+
+  "timeframe_categories": {
+    "ultra_short": ["3m", "5m"],
+    "short": ["15m", "30m"],
+    "medium": ["1h", "4h"],
+    "long": ["1d", "1w"]
+  }
+}

@@ -1,0 +1,157 @@
+{# Template pour Agent Analyst - Analyse quantitative de performance #}
+{# Version 2.0 - Optimisé avec métriques Tier S et format JSON explicite #}
+
+Analyze the following trading strategy performance.
+
+## CONTEXT
+Strategy: {{ strategy_name }}
+Data: {{ data_symbol }} {{ data_timeframe }}
+Date Range: {{ data_date_range }}
+Total Data Points: {{ data_rows }}
+Iteration: {{ iteration }}
+
+{% if strategy_description -%}
+## STRATEGY OVERVIEW
+{{ strategy_description[:1200] }}{% if strategy_description|length > 1200 %}...{% endif %}
+
+{% endif %}
+
+{% if current_metrics -%}
+## LAST RESULT SNAPSHOT
+- Sharpe: {{ current_metrics.sharpe_ratio|format_float(3) }}
+- Return: {{ current_metrics.total_return|format_percent }}
+- Drawdown: {{ current_metrics.max_drawdown|format_percent }}
+- Trades: {{ current_metrics.total_trades }}
+
+{% endif %}
+
+{% if strategy_indicators_context -%}
+## STRATEGY INDICATORS (modifiable)
+{{ strategy_indicators_context }}
+
+{% endif %}
+
+{% if readonly_indicators_context -%}
+## CONTEXT INDICATORS (read-only)
+{{ readonly_indicators_context }}
+
+{% endif %}
+
+## INDICATOR USAGE NOTES
+- Strategy indicators are tied to tunable parameters.
+- Context indicators are read-only and for regime interpretation only.
+- Indicator values are computed once per run (baseline snapshot).
+{% if indicator_context_warnings and indicator_context_warnings|length > 0 -%}
+- Warnings below indicate unavailable indicators; ignore them in analysis.
+{% endif %}
+
+{% if indicator_context_warnings and indicator_context_warnings|length > 0 -%}
+## INDICATOR CONTEXT WARNINGS
+{% for w in indicator_context_warnings %}
+- {{ w }}
+{% endfor %}
+
+{% endif %}
+
+{% if memory_summary -%}
+## HISTORICAL NOTES
+{{ memory_summary }}
+{% endif %}
+
+## CURRENT PARAMETERS
+{% for param_name, param_value in current_params.items() %}
+- `{{ param_name }}`: {{ param_value }}
+{% endfor %}
+
+{% if param_specs -%}
+## PARAMETER BOUNDS
+{% for spec in param_specs %}
+- `{{ spec.name }}`: [{{ spec.min_value }} - {{ spec.max_value }}] step={{ spec.step }}
+{% endfor %}
+{% endif %}
+
+{% if current_metrics -%}
+## PERFORMANCE METRICS
+| Metric | Value | Target | Status |
+|--------|-------|--------|--------|
+| Sharpe Ratio | {{ current_metrics.sharpe_ratio|format_float(3) }} | ≥ {{ min_sharpe }} | {% if current_metrics.sharpe_ratio >= min_sharpe %}✅{% else %}❌{% endif %} |
+| Sortino Ratio | {{ current_metrics.sortino_ratio|format_float(3) if current_metrics.sortino_ratio else 'N/A' }} | - | - |
+| Total Return | {{ current_metrics.total_return|format_percent }} | - | - |
+| Max Drawdown | {{ current_metrics.max_drawdown|format_percent }} | ≤ {{ max_drawdown_limit|format_percent }} | {% if current_metrics.max_drawdown|abs <= max_drawdown_limit %}✅{% else %}❌{% endif %} |
+| Win Rate | {{ current_metrics.win_rate|format_percent }} | - | - |
+| Profit Factor | {{ current_metrics.profit_factor|format_float(2) if current_metrics.profit_factor else 'N/A' }} | ≥ 1.0 | {% if current_metrics.profit_factor and current_metrics.profit_factor >= 1.0 %}✅{% else %}❌{% endif %} |
+| SQN | {{ current_metrics.sqn|format_float(2) if current_metrics.sqn else 'N/A' }} | ≥ 2.0 | {% if current_metrics.sqn and current_metrics.sqn >= 2.0 %}✅{% else %}🟡{% endif %} |
+| Calmar Ratio | {{ current_metrics.calmar_ratio|format_float(2) if current_metrics.calmar_ratio else 'N/A' }} | - | - |
+| Recovery Factor | {{ current_metrics.recovery_factor|format_float(2) if current_metrics.recovery_factor else 'N/A' }} | - | - |
+| Total Trades | {{ current_metrics.total_trades }} | ≥ {{ min_trades }} | {% if current_metrics.total_trades >= min_trades %}✅{% else %}❌{% endif %} |
+{% endif %}
+
+{% if train_metrics and test_metrics -%}
+## WALK-FORWARD ANALYSIS
+| Period | Sharpe | Return | Drawdown |
+|--------|--------|--------|----------|
+| Train | {{ train_metrics.sharpe_ratio|format_float(3) }} | {{ train_metrics.total_return|format_percent }} | {{ train_metrics.max_drawdown|format_percent }} |
+| Test | {{ test_metrics.sharpe_ratio|format_float(3) }} | {{ test_metrics.total_return|format_percent }} | {{ test_metrics.max_drawdown|format_percent }} |
+
+**Overfitting Analysis:**
+- Ratio: {{ overfitting_ratio|format_float(2) }} (Train Sharpe / Test Sharpe)
+- Limit: {{ max_overfitting_ratio|default(1.5) }}
+- Status: {% if overfitting_ratio > max_overfitting_ratio|default(1.5) %}⚠️ **HIGH RISK** - Strategy may be overfit{% elif overfitting_ratio > 1.0 %}🟡 MODERATE - Some degradation on test{% else %}✅ LOW - Robust across periods{% endif %}
+
+{% endif %}
+
+{% if iteration_history and iteration_history|length > 0 -%}
+## ITERATION HISTORY (last 3)
+{% for hist in iteration_history[-3:] %}
+- Iter {{ hist.get('iteration', loop.index) }}: Sharpe={{ hist.get('sharpe_ratio', 0)|format_float(2) }}, Return={{ hist.get('total_return', 0)|format_percent }}{% if hist.get('decision') %} [{{ hist.get('decision') }}]{% endif %}
+
+{% endfor %}
+{% endif %}
+
+## OPTIMIZATION OBJECTIVES
+| Objective | Threshold |
+|-----------|-----------|
+| Target Metric | {{ optimization_target }} |
+| Min Sharpe Ratio | {{ min_sharpe }} |
+| Max Drawdown | {{ max_drawdown_limit|format_percent }} |
+| Min Trades | {{ min_trades }} |
+| Max Overfitting | {{ max_overfitting_ratio|default(1.5) }} |
+
+## ANALYSIS CHECKLIST
+1. **Sample Size**: Is {{ current_metrics.total_trades if current_metrics else 0 }} trades sufficient for statistical significance? (min: 30)
+2. **Consistency**: Are train/test results similar?
+3. **Risk Profile**: Is drawdown {{ current_metrics.max_drawdown|format_percent if current_metrics else 'N/A' }} acceptable?
+4. **Robustness**: Would this work in different market regimes?
+5. **Parameter Patterns**: Do you see correlations between parameters suggesting grid search would be efficient?
+
+## GRID SEARCH CONSIDERATION
+In your `recommendations`, you can suggest grid search if you observe:
+- Strong correlations between specific parameters
+- A promising parameter region that needs exhaustive exploration
+- Parameter interactions that make sequential testing inefficient
+
+**Example recommendation for grid search:**
+"Recommend grid search on bb_period (20-25) and bb_std (2.0-2.5) to systematically test their correlation"
+
+## REQUIRED OUTPUT FORMAT
+Return ONLY valid JSON (no markdown, no extra text):
+```json
+{
+    "summary": "Brief one-paragraph analysis summary",
+    "performance_rating": "EXCELLENT|GOOD|FAIR|POOR|CRITICAL",
+    "risk_rating": "LOW|MODERATE|HIGH|EXTREME",
+    "overfitting_risk": "LOW|MODERATE|HIGH|CRITICAL",
+    "strengths": ["strength1", "strength2"],
+    "weaknesses": ["weakness1", "weakness2"],
+    "concerns": ["concern1", "concern2"],
+    "key_metrics_assessment": {
+        "sharpe_ratio": {"value": X.XX, "assessment": "Good/Poor/etc"},
+        "max_drawdown": {"value": -X.XX, "assessment": "Acceptable/High/etc"},
+        "win_rate": {"value": X.XX, "assessment": "Strong/Weak/etc"},
+        "profit_factor": {"value": X.XX, "assessment": "Healthy/Marginal/etc"}
+    },
+    "recommendations": ["recommendation1", "recommendation2"],
+    "proceed_to_optimization": true,
+    "reasoning": "Why proceed or not proceed with optimization"
+}
+```

@@ -1,0 +1,15 @@
+rank,strategy,symbol,timeframe,pnl,return_pct,sharpe,sortino,win_rate,trades,profit_factor,max_drawdown,run_id,param_rsi_period,param_oversold_level,param_overbought_level,param_leverage,param_bb_period,param_bb_std,param_atr_period,param_atr_percentile,param_entry_z,param_k_sl
+1,rsi_reversal,BTCUSDC,30m,26808.46,268.08,0.0,0.0,100.0,1,inf,0.0,rsi_reversal_BTCUSDC_30m_20260105_014811_1fc29210,17.0,37.0,90.0,1.0,,,,,,
+2,rsi_reversal,BTCUSDC,1h,9722.98,97.23,0.0,0.0,16.9,124,1.55,0.0,3e89a0a2,30.0,39.0,77.0,1.0,,,,,,
+3,rsi_reversal,BTCUSDC,1h,9722.98,97.23,0.0,0.0,16.9,124,1.55,0.0,fce2e6ad,30.0,39.0,77.0,1.0,,,,,,
+4,rsi_reversal,BTCUSDC,30m,7296.62,72.97,0.0,0.0,25.2,326,1.06,0.0,rsi_reversal_BTCUSDC_30m_20260104_082544_f81651d9,13.0,40.0,84.0,3.0,,,,,,
+5,rsi_reversal,BTCUSDC,30m,7296.62,72.97,0.0,0.0,25.2,326,1.06,0.0,rsi_reversal_BTCUSDC_30m_20260104_084607_605b8a91,13.0,40.0,84.0,3.0,,,,,,
+6,BollingerATR,DOGEUSDC,15m,1133.34,11.33,0.0,0.0,30.2,63,1.18,0.0,bollinger_atr_DOGEUSDC_15m_20260106_170148_5cb70fda,,,,1.0,26.0,3.0,15.0,6.0,2.6,1.2
+7,BollingerATR,DOGEUSDC,15m,891.27,8.91,0.0,0.0,66.7,3,7.55,0.0,bollinger_atr_DOGEUSDC_15m_20260106_165723_ab3aa69f,,,,1.0,26.0,3.0,15.0,6.0,2.6,1.2
+8,BollingerATR,BTCUSDC,30m,405.58,4.06,0.0,0.0,58.3,12,1.29,0.0,0150267a,,,,1.0,38.0,2.55,17.0,50.0,2.6,2.6
+9,BollingerATR,BTCUSDC,30m,405.58,4.06,0.0,0.0,58.3,12,1.29,0.0,bollinger_atr_BTCUSDC_30m_20260104_011557_36bcbe6b,,,,1.0,38.0,2.55,17.0,50.0,2.6,2.6
+10,BollingerATR,BTCUSDC,30m,405.58,4.06,0.0,0.0,58.3,12,1.29,0.0,bollinger_atr_BTCUSDC_30m_20260104_011627_cce79a00,,,,1.0,38.0,2.55,17.0,50.0,2.6,2.6
+11,BollingerATR,BTCUSDC,30m,405.58,4.06,0.0,0.0,58.3,12,1.29,0.0,bollinger_atr_BTCUSDC_30m_20260104_011630_13707117,,,,1.0,38.0,2.55,17.0,50.0,2.6,2.6
+12,BollingerATR,BTCUSDC,30m,405.58,4.06,0.0,0.0,58.3,12,1.29,0.0,bollinger_atr_BTCUSDC_30m_20260104_011839_3d2836be,,,,1.0,38.0,2.55,17.0,50.0,2.6,2.6
+13,BollingerATR,BTCUSDC,30m,341.88,3.42,0.0,0.0,53.8,13,1.23,0.0,bollinger_atr_BTCUSDC_30m_20260104_011828_08875682,,,,1.0,38.0,2.55,17.0,50.0,2.6,2.6
+14,BollingerATR,BTCUSDC,30m,341.88,3.42,0.0,0.0,53.8,13,1.23,0.0,bollinger_atr_BTCUSDC_30m_20260104_011832_61b268aa,,,,1.0,38.0,2.55,17.0,50.0,2.6,2.6

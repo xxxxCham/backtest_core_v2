@@ -1,0 +1,6 @@
+[flake8]
+max-line-length = 120
+extend-ignore = E501,E402
+exclude = .git,__pycache__,.venv,venv,build,dist
+per-file-ignores =
+    indicators/registry.py:F401

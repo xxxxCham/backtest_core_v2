@@ -1,0 +1,137 @@
+from typing import Any, Dict, List
+
+import numpy as np
+import pandas as pd
+
+from utils.parameters import ParameterSpec
+from strategies.base import StrategyBase
+
+
+class BuilderGeneratedStrategy(StrategyBase):
+    def __init__(self):
+        super().__init__(name='supertrend_rsi_filter')
+
+    @property
+    def required_indicators(self) -> List[str]:
+        return ['supertrend', 'rsi', 'atr']
+
+    @property
+    def default_params(self) -> Dict[str, Any]:
+        return {'leverage': 1,
+         'rsi_overbought': 70,
+         'rsi_oversold': 30,
+         'rsi_period': 14,
+         'stop_atr_mult': 1.5,
+         'tp_atr_mult': 3.0,
+         'warmup': 50}
+
+    @property
+    def parameter_specs(self) -> Dict[str, ParameterSpec]:
+        return {
+            'rsi_period': ParameterSpec(
+                name='rsi_period',
+                min_val=5,
+                max_val=50,
+                default=14,
+                param_type='int',
+                step=1,
+            ),
+            'stop_atr_mult': ParameterSpec(
+                name='stop_atr_mult',
+                min_val=0.5,
+                max_val=4.0,
+                default=1.5,
+                param_type='float',
+                step=0.1,
+            ),
+            'leverage': ParameterSpec(
+                name='leverage',
+                min_val=1,
+                max_val=2,
+                default=1,
+                param_type='int',
+                step=1,
+            ),
+            'tp_atr_mult': ParameterSpec(
+                name='tp_atr_mult',
+                min_val=2.0,
+                max_val=4.5,
+                default=3.0,
+                param_type='float',
+                step=0.1,
+            ),
+        }
+
+    def generate_signals(self, df: pd.DataFrame, indicators: Dict[str, Any], params: Dict[str, Any]) -> pd.Series:
+        signals = pd.Series(0.0, index=df.index, dtype=np.float64)
+        n = len(df)
+        warmup = int(params.get('warmup', 50))
+        long_mask = np.zeros(n, dtype=bool)
+        short_mask = np.zeros(n, dtype=bool)
+        # === LOGIQUE LLM INSÉRÉE ICI UNIQUEMENT ===
+        long_mask = np.zeros(n, dtype=bool)
+        short_mask = np.zeros(n, dtype=bool)
+
+        # Extract indicators
+        close = df["close"].values
+        rsi = np.nan_to_num(indicators['rsi'])
+        supertrend = np.nan_to_num(indicators['supertrend']["supertrend"])
+        direction = np.nan_to_num(indicators['supertrend']["direction"])
+        atr = np.nan_to_num(indicators['atr'])
+
+        # Warmup protection
+        signals.iloc[:warmup] = 0.0
+
+        # Define entry conditions
+        rsi_overbought = params.get("rsi_overbought", 70)
+        rsi_oversold = params.get("rsi_oversold", 30)
+
+        # Cross detection
+        prev_close = np.roll(close, 1)
+        prev_close[0] = np.nan
+        prev_supertrend = np.roll(supertrend, 1)
+        prev_supertrend[0] = np.nan
+
+        # Long entry: close crosses above supertrend AND rsi > 50
+        close_cross_above = (close > supertrend) & (prev_close <= prev_supertrend)
+        long_condition = close_cross_above & (rsi > rsi_oversold)
+        long_mask = long_condition
+
+        # Short entry: close crosses below supertrend AND rsi < 50
+        close_cross_below = (close < supertrend) & (prev_close >= prev_supertrend)
+        short_condition = close_cross_below & (rsi < rsi_overbought)
+        short_mask = short_condition
+
+        # Exit conditions
+        # Exit long: close crosses below supertrend OR rsi crosses below 30
+        rsi_cross_below_30 = (rsi < rsi_oversold) & (np.roll(rsi, 1) >= rsi_oversold)
+        exit_long = (close < supertrend) | rsi_cross_below_30
+        long_mask = long_mask & ~exit_long
+
+        # Exit short: close crosses above supertrend OR rsi crosses above 70
+        rsi_cross_above_70 = (rsi > rsi_overbought) & (np.roll(rsi, 1) <= rsi_overbought)
+        exit_short = (close > supertrend) | rsi_cross_above_70
+        short_mask = short_mask & ~exit_short
+
+        # Set signals
+        signals[long_mask] = 1.0
+        signals[short_mask] = -1.0
+
+        # ATR-based SL/TP
+        stop_atr_mult = params.get("stop_atr_mult", 1.5)
+        tp_atr_mult = params.get("tp_atr_mult", 3.0)
+
+        df.loc[:, "bb_stop_long"] = np.nan
+        df.loc[:, "bb_tp_long"] = np.nan
+        df.loc[:, "bb_stop_short"] = np.nan
+        df.loc[:, "bb_tp_short"] = np.nan
+
+        entry_long = (signals == 1.0)
+        entry_short = (signals == -1.0)
+
+        df.loc[entry_long, "bb_stop_long"] = close[entry_long] - stop_atr_mult * atr[entry_long]
+        df.loc[entry_long, "bb_tp_long"] = close[entry_long] + tp_atr_mult * atr[entry_long]
+        df.loc[entry_short, "bb_stop_short"] = close[entry_short] + stop_atr_mult * atr[entry_short]
+        df.loc[entry_short, "bb_tp_short"] = close[entry_short] - tp_atr_mult * atr[entry_short]
+        signals.iloc[:warmup] = 0.0
+        return signals

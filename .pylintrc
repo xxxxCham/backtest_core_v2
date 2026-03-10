@@ -1,0 +1,11 @@
+[MASTER]
+# Ignore lazy logging warning for now
+disable=
+    W1202,  # logging-fstring-interpolation
+    R0913,  # too-many-arguments
+    R0914,  # too-many-locals
+    W0612,  # unused-variable (used in f-strings)
+    R0903,  # too-few-public-methods
+    C0103,  # invalid-name
+    W0631,  # undefined-loop-variable
+    R0801,  # duplicate-code

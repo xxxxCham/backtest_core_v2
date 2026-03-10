@@ -1,0 +1,2 @@
+rank,iteration,decision,continuous_score,sharpe,return_pct,max_drawdown_pct,profit_factor,win_rate_pct,trades,change_type,diagnostic_category,is_fallback,error,hypothesis
+1,2,accept,100.0,2.1199660071917483,88.91835108110484,-11.729276620552884,2.4961509670480497,51.162790697674424,43,logic,target_reached,False,,"Combining Bollinger Bands with RSI creates a robust mean-reversion signal by identifying overbought/oversold conditions at extreme price levels, while filtering out weak trends with ADX to reduce false breakouts and improve risk-adjusted returns"

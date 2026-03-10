@@ -1,0 +1,36 @@
+{
+  "config": {
+    "catalog_version": "1.0",
+    "run_id": "cat_20260219_030202",
+    "seed": 42,
+    "batch_size": 50,
+    "n_variants_target": 200,
+    "archetypes_dir": "catalog/archetypes",
+    "param_packs_dir": "catalog/param_packs",
+    "output_dir": "catalog/generated",
+    "profiles": {
+      "dataset": "ohlcv_only",
+      "risk_stoploss_mandatory": true
+    },
+    "gating": {
+      "enabled": false,
+      "max_seconds": 2.0,
+      "thresholds": {
+        "min_trades": 20,
+        "max_drawdown_pct": 40.0,
+        "min_profit_factor": 1.05
+      }
+    },
+    "builder_integration": {
+      "enabled": true,
+      "input_format": "json_proposal"
+    }
+  },
+  "stats": {
+    "total_generated": 200,
+    "total_after_sanity": 200,
+    "total_after_gating": 200,
+    "total_rejected": 0
+  },
+  "rejections_sample": []
+}

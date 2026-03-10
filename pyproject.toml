@@ -1,0 +1,119 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "backtest-core"
+version = "1.0.0"
+description = "Moteur de backtest simplifié pour stratégies de trading"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "", email = ""}
+]
+keywords = ["backtest", "trading", "algorithmic", "finance", "quantitative"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+
+dependencies = [
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "streamlit>=1.28.0",
+    "plotly>=5.18.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "isort>=5.12",
+    "mypy>=1.0",
+]
+
+[project.scripts]
+backtest-demo = "demo.quick_test:main"
+backtest-ui = "ui.app:main"
+
+[project.urls]
+Homepage = "https://github.com/baptiste/backtest-core"
+Documentation = "https://github.com/baptiste/backtest-core#readme"
+Repository = "https://github.com/baptiste/backtest-core.git"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["backtest*", "data*", "indicators*", "strategies*", "utils*", "ui*", "demo*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.black]
+line-length = 120
+target-version = ["py310", "py311", "py312"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 120
+known_first_party = ["backtest", "data", "indicators", "strategies", "utils", "ui"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["."]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+    "E501",  # Line too long (handled by formatter)
+    "E402",  # Module level import not at top of file
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backtest", "data", "indicators", "strategies", "utils", "ui", "performance"]
+
+[tool.pylint.main]
+ignore-paths = [".venv", "__pycache__", ".mypy_cache", ".pytest_cache"]
+
+[tool.pylint.messages_control]
+disable = [
+    "C0114",  # Missing module docstring
+    "C0115",  # Missing class docstring
+    "C0116",  # Missing function docstring
+    "E0401",  # Unable to import (handled by sys.path)
+    "E0402",  # Import not at top of file
+    "W0611",  # Unused import
+    "W0612",  # Unused variable
+    "W0621",  # Redefining name from outer scope
+    "W0718",  # Catching too general exception
+    "W1202",  # Logging fstring interpolation
+    "W0123",  # Use of eval
+    "R0903",  # Too few public methods
+    "R0913",  # Too many arguments
+    "R0914",  # Too many local variables
+    "C0301",  # Line too long
+]

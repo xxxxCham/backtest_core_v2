@@ -1,0 +1,87 @@
+===============================================================================
+CORRECTIONS 3 PROBLÈMES UI - Résumé
+===============================================================================
+
+✅ PROBLÈMES CORRIGÉS
+====================
+
+1. CATALOGUE PARAMÉTRIQUE BUILDER
+   Symptôme : Reset ne régénérait pas immédiatement, prompts répétitifs
+   Fix     : Appel generate_parametric_catalog(seed=random) après reset
+   Fichier : ui/sidebar.py (lignes ~1405-1415)
+
+2. TOKEN/TIMEFRAME VISIBLES EN MODE BUILDER AUTONOME
+   Symptôme : Widgets visibles alors que gestion automatique
+   Fix     : Masquer widgets si builder_autonomous OU auto_market_pick
+   Fichier : ui/sidebar.py (lignes ~615-670)
+
+3. MODE GRILLE NE TESTE PAS TOUTES LES STRATÉGIES
+   Symptôme : 1T + 2TF + 2S = 2 backtests au lieu de 4
+   Fix     : Produit cartésien complet symbols × timeframes × strategies
+   Fichier : ui/main.py (4 zones modifiées)
+
+===============================================================================
+TESTS RAPIDES (3 MIN)
+===============================================================================
+
+Test 1: Builder catalogue (1 min)
+  1. Mode "Strategy Builder" + "Mode autonome" + "Catalogue paramétrique"
+  2. Cliquer "Reset fiches param."
+  3. ✅ Vérifier régénération immédiate avec nouvelles fiches
+
+Test 2: Builder autonome (30 sec)
+  1. Mode "Strategy Builder"
+  2. Cocher "Mode autonome 24/24"
+  3. ✅ Vérifier que widgets token/TF disparaissent
+  4. ✅ Caption "🤖 Mode autonome : marchés gérés automatiquement" apparaît
+
+Test 3: Grille multi-stratégies (2 min)
+  1. Mode "Grille de Paramètres"
+  2. Sélectionner : 1 token + 2 timeframes + 2 stratégies
+  3. ✅ Vérifier affichage "4 sweep(s) au total (1 × 2 × 2)"
+  4. ✅ Vérifier tableau plan avec 4 lignes :
+     - BTCUSDC | 4h | bollinger_atr
+     - BTCUSDC | 4h | rsi_reversal
+     - BTCUSDC | 1h | bollinger_atr
+     - BTCUSDC | 1h | rsi_reversal
+  5. Lancer backtest
+  6. ✅ Vérifier 4 sweeps exécutés (pas 2)
+
+===============================================================================
+FICHIERS MODIFIÉS
+===============================================================================
+
+ui/main.py
+  - _build_multi_sweep_plan() avec strategy_keys (ligne ~164)
+  - Appel avec state.strategy_keys (ligne ~769)
+  - DataFrame plan avec colonne strategy (ligne ~796)
+  - Boucle sweep avec (sym, tf, strat_key) (ligne ~831)
+
+ui/sidebar.py
+  - Masquage token/TF en mode Builder autonome (ligne ~615)
+  - Régénération catalogue avec seed aléatoire (ligne ~1405)
+
+===============================================================================
+VALIDATION
+===============================================================================
+
+Syntaxe Python : ✅ Aucune erreur
+  > python -m py_compile ui/main.py ui/sidebar.py
+
+Rétrocompatibilité : ✅ Mode simple (1 token, 1 TF, 1 strat) inchangé
+
+===============================================================================
+RÉSULTAT MODE GRILLE
+===============================================================================
+
+AVANT FIX:
+  1 token × 2 TF × 2 stratégies = 2 backtests ❌
+  Seule la 1ère stratégie testée
+
+APRÈS FIX:
+  1 token × 2 TF × 2 stratégies = 4 backtests ✅
+  Chaque stratégie testée avec SES propres paramètres
+
+===============================================================================
+
+Doc complète : FIX_3_PROBLEMES_UI.md

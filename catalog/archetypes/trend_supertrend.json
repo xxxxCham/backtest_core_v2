@@ -1,0 +1,42 @@
+{
+  "archetype_id": "trend_supertrend",
+  "version": "1.0",
+  "family": "trend",
+  "side": "both",
+  "timeframe": "1h",
+  "indicators": ["supertrend", "adx", "atr"],
+  "indicator_params": {
+    "supertrend": {"atr_period": "${st_atr_period}", "multiplier": "${st_multiplier}"},
+    "adx": {"period": "${adx_period}"},
+    "atr": {"period": "${atr_period}"}
+  },
+  "entry_long_logic": "supertrend.direction == 1 and adx.adx > ${adx_threshold}",
+  "entry_short_logic": "supertrend.direction == -1 and adx.adx > ${adx_threshold}",
+  "exit_logic": "supertrend.direction changes or adx.adx < ${adx_exit_threshold}",
+  "risk_management": "ATR trailing stop (${stop_atr_mult}x) and take-profit (${tp_atr_mult}x)",
+  "default_params": {
+    "st_atr_period": 10,
+    "st_multiplier": 3.0,
+    "adx_period": 14,
+    "adx_threshold": 25,
+    "adx_exit_threshold": 20,
+    "atr_period": 14,
+    "stop_atr_mult": 2.0,
+    "tp_atr_mult": 4.0,
+    "warmup": 50,
+    "leverage": 1
+  },
+  "parameter_specs": {
+    "st_atr_period": {"min": 5, "max": 20, "default": 10, "type": "int"},
+    "st_multiplier": {"min": 2.0, "max": 4.0, "default": 3.0, "type": "float"},
+    "adx_period": {"min": 10, "max": 25, "default": 14, "type": "int"},
+    "adx_threshold": {"min": 20, "max": 35, "default": 25, "type": "int"},
+    "adx_exit_threshold": {"min": 15, "max": 25, "default": 20, "type": "int"},
+    "stop_atr_mult": {"min": 1.0, "max": 3.0, "default": 2.0, "type": "float"},
+    "tp_atr_mult": {"min": 2.0, "max": 6.0, "default": 4.0, "type": "float"}
+  },
+  "requirements": {
+    "ohlcv_required": true,
+    "dataset_features": []
+  }
+}

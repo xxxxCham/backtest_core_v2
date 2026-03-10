@@ -1,0 +1,218 @@
+{# Template pour Agent Critic - Évaluation critique des propositions #}
+{# Version 2.0 - Optimisé avec métriques Tier S et format JSON explicite #}
+
+Critically evaluate the following optimization proposals.
+
+## CONTEXT
+Strategy: {{ strategy_name }}
+Iteration: {{ iteration }}
+
+{% if strategy_description -%}
+## STRATEGY OVERVIEW
+{{ strategy_description[:1200] }}{% if strategy_description|length > 1200 %}...{% endif %}
+
+{% endif %}
+
+{% if current_metrics -%}
+## LAST RESULT SNAPSHOT
+- Sharpe: {{ current_metrics.sharpe_ratio|format_float(3) }}
+- Return: {{ current_metrics.total_return|format_percent }}
+- Drawdown: {{ current_metrics.max_drawdown|format_percent }}
+- Trades: {{ current_metrics.total_trades }}
+
+{% endif %}
+
+{% if strategy_indicators_context -%}
+## STRATEGY INDICATORS (modifiable)
+{{ strategy_indicators_context }}
+
+{% endif %}
+
+{% if readonly_indicators_context -%}
+## CONTEXT INDICATORS (read-only)
+{{ readonly_indicators_context }}
+
+{% endif %}
+
+## INDICATOR USAGE NOTES
+- Strategy indicators are tied to tunable parameters.
+- Context indicators are read-only and for regime interpretation only.
+- Indicator values are computed once per run (baseline snapshot).
+{% if indicator_context_warnings and indicator_context_warnings|length > 0 -%}
+- Warnings below indicate unavailable indicators; ignore them in critique.
+{% endif %}
+
+{% if indicator_context_warnings and indicator_context_warnings|length > 0 -%}
+## INDICATOR CONTEXT WARNINGS
+{% for w in indicator_context_warnings %}
+- {{ w }}
+{% endfor %}
+
+{% endif %}
+
+{% if memory_summary -%}
+## HISTORICAL NOTES
+{{ memory_summary }}
+{% endif %}
+
+{% if current_metrics -%}
+## BASELINE PERFORMANCE
+| Metric | Value | Target |
+|--------|-------|--------|
+| Sharpe Ratio | {{ current_metrics.sharpe_ratio|format_float(3) }} | ≥ {{ min_sharpe }} |
+| Sortino Ratio | {{ current_metrics.sortino_ratio|format_float(3) if current_metrics.sortino_ratio else 'N/A' }} | - |
+| Max Drawdown | {{ current_metrics.max_drawdown|format_percent }} | ≤ {{ max_drawdown_limit|format_percent }} |
+| Win Rate | {{ current_metrics.win_rate|format_percent }} | - |
+| Profit Factor | {{ current_metrics.profit_factor|format_float(2) if current_metrics.profit_factor else 'N/A' }} | - |
+| SQN | {{ current_metrics.sqn|format_float(2) if current_metrics.sqn else 'N/A' }} | ≥ 2.0 |
+| Total Trades | {{ current_metrics.total_trades }} | ≥ {{ min_trades }} |
+{% endif %}
+
+{% if overfitting_ratio is defined and overfitting_ratio > 0 -%}
+## WALK-FORWARD VALIDATION (Out-of-Sample Test)
+{% set _overfitting_ratio = overfitting_ratio|default(0) %}
+{% set _classic_ratio = classic_ratio|default(none) %}
+{% set _degradation_pct = degradation_pct|default(0) %}
+{% set _test_stability_std = test_stability_std|default(0) %}
+{% set _max_overfitting_ratio = max_overfitting_ratio|default(1.5) %}
+- Classic Ratio (train/test Sharpe): {{ classic_ratio|format_float(2) }}
+- Robust Overfitting Ratio (with stability penalty): {{ overfitting_ratio|format_float(2) }}
+- Degradation % (train → test): {{ degradation_pct|format_float(1) }}%
+- Test Stability Std: {{ test_stability_std|format_float(3) }}
+- Valid Folds: {{ n_valid_folds|default('N/A') }}/{{ walk_forward_windows|default('N/A') }}
+- Data: {{ data_rows|default('N/A') }} rows{% if data_date_range %}, {{ data_date_range }}{% endif %}
+
+**Thresholds:**
+- Max Overfitting Ratio: {{ _max_overfitting_ratio }}
+
+**RED FLAGS:**
+- Ratio > 1.8: ⚠️ DANGER – Extreme overfitting detected
+- Degradation > 40%: ⚠️ DANGER – Unstable forward performance
+- Stability Std > 0.5: 🟡 WARNING – Erratic out-of-sample results
+- Valid Folds < 4: 🟡 WARNING – Insufficient validation coverage
+
+**Status:** {% if _overfitting_ratio > 1.8 or _degradation_pct > 40 %}⚠️ **CRITICAL RISK** - Reject aggressive proposals{% elif _overfitting_ratio > _max_overfitting_ratio or _degradation_pct > 25 %}🟡 **MODERATE RISK** - Be very skeptical{% else %}✅ **ACCEPTABLE** - Standard evaluation{% endif %}
+
+{% endif %}
+
+{% if iteration_history and iteration_history|length > 0 -%}
+## ITERATION HISTORY (trend analysis)
+{% for hist in iteration_history[-3:] %}
+- Iter {{ hist.get('iteration', loop.index) }}: Sharpe={{ hist.get('sharpe_ratio', 0)|format_float(2) }}{% if hist.get('status') %} [{{ hist.get('status') }}]{% endif %}
+
+{% endfor %}
+{% endif %}
+
+{% if analyst_report -%}
+## ANALYST FINDINGS
+{{ analyst_report[:800] }}{% if analyst_report|length > 800 %}...{% endif %}
+
+{% endif %}
+
+## PROPOSALS TO EVALUATE
+{% for proposal in strategist_proposals %}
+
+### Proposal {{ proposal.get('id', loop.index) }}: {{ proposal.get('name', 'Unnamed') }}
+| Attribute | Value |
+|-----------|-------|
+| Priority | {{ proposal.get('priority', 'N/A') }} |
+| Risk Level | {{ proposal.get('risk_level', 'N/A') }} |
+
+**Parameter Changes (current → proposed):**
+{% for param_name, param_value in proposal.get('parameters', {}).items() %}
+- `{{ param_name }}`: {{ current_params.get(param_name, 'N/A') }} → **{{ param_value }}**{% set change = param_value - current_params.get(param_name, param_value) %}{% if change != 0 %} ({{ '+' if change > 0 else '' }}{{ change }}){% endif %}
+
+{% endfor %}
+
+**Rationale:** {{ proposal.get('rationale', 'N/A') }}
+{% if proposal.get('expected_impact') %}
+**Expected Impact:**
+- Sharpe: {{ proposal.expected_impact.get('sharpe_ratio', 'N/A') }}
+- Drawdown: {{ proposal.expected_impact.get('drawdown', 'N/A') }}
+- Trade Frequency: {{ proposal.expected_impact.get('trade_frequency', 'N/A') }}
+{% endif %}
+{% if proposal.get('risks') %}
+**Stated Risks:** {{ proposal.get('risks')|join(', ') }}
+{% endif %}
+{% endfor %}
+
+{% if sweep_summary -%}
+## GRID SEARCH CONTEXT
+This proposal comes from a **grid search (sweep)** that tested {{ sweep_results.get('n_combinations', 'N/A') if sweep_results else 'N/A' }} parameter combinations.
+
+**Sweep Summary:**
+{{ sweep_summary[:600] }}{% if sweep_summary|length > 600 %}...{% endif %}
+
+**CRITICAL CONSIDERATIONS FOR SWEEP-BASED PROPOSALS:**
+1. **Selection Bias Risk**: The "best" config from a grid is inherently optimized to the test data
+   - Even with walk-forward, sweeping creates multiple looks at the data
+   - Larger grids (>50 combos) amplify this risk exponentially
+
+2. **Overfitting to Grid**: The selected config may exploit random patterns specific to the tested range
+   - Check if best config is at grid boundaries (red flag)
+   - Verify parameter values make intuitive sense (not arbitrary optima)
+
+3. **Generalization Concern**: Grid search finds local maxima, which may not generalize
+   - Prefer configs with smooth performance across neighboring combinations
+   - Reject configs that dramatically outperform their neighbors (likely noise)
+
+4. **Validation Requirement**: Sweep configs MUST show:
+   - Walk-forward overfitting ratio ≤ 1.3 (stricter than normal 1.5)
+   - Consistent performance across multiple folds (not just peak)
+   - Logical parameter relationships (e.g., period ratios)
+
+**APPROVAL CRITERIA FOR SWEEP CONFIGS (stricter):**
+- ✅ APPROVE: Walk-forward ratio ≤ 1.3 AND parameters not at boundaries AND intuitive logic
+- 🟡 MODIFY: Ratio 1.3-1.5 OR boundary params → suggest testing neighbors
+- ❌ REJECT: Ratio > 1.5 OR arbitrary parameters OR suspicious edge case
+
+{% endif %}
+
+## PARAMETER CONSTRAINTS
+{% for spec in param_specs %}
+- `{{ spec.name }}`: [{{ spec.min_value }} - {{ spec.max_value }}] step={{ spec.step }}
+{% endfor %}
+
+## EVALUATION CRITERIA
+| Objective | Threshold |
+|-----------|-----------|
+| Min Sharpe Ratio | {{ min_sharpe }} |
+| Max Drawdown | {{ max_drawdown_limit|format_percent }} |
+| Min Trades | {{ min_trades }} |
+| Max Overfitting | {{ max_overfitting_ratio|default(1.5) }} |
+
+## RED FLAGS TO CHECK
+1. **Boundary values**: Parameters at exact min/max (likely overfitting)
+2. **Overly specific values**: e.g., 17.3 instead of 15 or 20
+3. **Large impact claims**: >20% Sharpe improvement is suspicious
+4. **Step violations**: Values not aligned with step increments
+5. **Inconsistency**: Conflicts with analyst findings
+6. **Regime dependency**: Works only in specific market conditions
+
+## REQUIRED OUTPUT FORMAT
+Return ONLY valid JSON (no markdown, no extra text):
+```json
+{
+    "overall_assessment": "Brief critical summary of all proposals",
+    "walk_forward_summary": "Specific assessment of out-of-sample stability and degradation",
+    "market_regime_concerns": ["concern1", "concern2"],
+    "statistical_concerns": ["concern1", "concern2"],
+    "proposal_evaluations": [
+        {
+            "proposal_id": 1,
+            "overfitting_score": 0-100,
+            "robustness_score": 0-100,
+            "recommendation": "APPROVE|MODIFY|REJECT",
+            "critical_issues": ["issue1"],
+            "warnings": ["warning1"],
+            "suggested_modifications": ["mod1"],
+            "reasoning": "Detailed reasoning"
+        }
+    ],
+    "approved_proposals": [1, 2],
+    "rejected_proposals": [3],
+    "best_proposal_id": 1,
+    "proceed_with_testing": true,
+    "final_concerns": ["Any remaining concerns"]
+}
+```

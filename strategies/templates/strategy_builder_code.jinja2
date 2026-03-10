@@ -1,0 +1,236 @@
+{# Strategy Builder - CODE PHASE TEMPLATE (strict Python) #}
+
+PHASE LOCK: CODE ONLY.
+Do NOT output JSON.
+Do NOT rewrite objective text.
+Do NOT output explanations before/after code.
+
+## OBJECTIVE
+{{ objective }}
+
+## PROPOSAL SUMMARY
+- Strategy: {{ proposal.strategy_name|default("custom_strategy") }}
+- Hypothesis: {{ proposal.hypothesis|default("N/A") }}
+- Change type: {{ proposal.change_type|default("logic") }}
+- Indicators requested: {{ proposal.used_indicators|default([])|join(", ") }}
+- Entry long: {{ proposal.entry_long_logic|default("N/A") }}
+- Entry short: {{ proposal.entry_short_logic|default("N/A") }}
+- Exit: {{ proposal.exit_logic|default("N/A") }}
+- Risk: {{ proposal.risk_management|default("N/A") }}
+{% if proposal.default_params %}
+- Default params: {{ proposal.default_params|tojson }}
+{% endif %}
+
+## MARKET CONTEXT
+- Symbol: {{ symbol|default("UNKNOWN") }}
+- Timeframe: {{ timeframe|default("?") }}
+- Bars: {{ n_bars|default(0) }}
+- Costs: fees={{ fees_bps|default(10) }} bps, slippage={{ slippage_bps|default(5) }} bps (already applied by engine)
+- Capital: {{ initial_capital|default(10000) }}
+
+## CHANGE CONTRACT
+Requested change_type = {{ proposal.change_type|default("logic") }}
+
+{% if proposal.change_type == "params" %}
+PARAMS-ONLY MODE (MANDATORY):
+- Keep required_indicators EXACTLY unchanged.
+- Keep generate_signals logic EXACTLY unchanged.
+- Modify ONLY default_params and/or parameter_specs.
+
+Previous code to preserve:
+```python
+{{ previous_code }}
+```
+{% elif proposal.change_type == "logic" %}
+LOGIC MODE:
+- Modify strategy logic/filters/indicators.
+- Keep params coherent with logic.
+{% elif proposal.change_type == "both" %}
+BOTH MODE:
+- Modify both logic and params.
+{% endif %}
+
+## AVAILABLE INDICATORS (ONLY THESE)
+{% for ind in available_indicators %}
+- {{ ind }}
+{% endfor %}
+
+## ENGINE USAGE RULES
+- Indicators are already computed and provided in `indicators` dict.
+- Every `indicators["name"]` used in code MUST exist in required_indicators.
+- Arrays: wrap with `np.nan_to_num(...)` before comparisons.
+- Indicator values are `np.ndarray` (or dict of `np.ndarray`), not pandas Series.
+- Never use `.iloc` / `.loc` / `.shift` / `.rolling` on indicator arrays.
+- If you create helper methods, NEVER reference `df` / `indicators` / `params` as undefined globals inside them — pass what you need as arguments.
+- Dict indicators must be accessed by sub-key first, then wrapped with `np.nan_to_num()`.
+  NEVER create bare variables like `keltner_upper`, `donchian_lower`, `cci_value`.
+  ALWAYS extract from the indicators dict.
+
+### INDICATOR ACCESS CONTRACT (complete reference)
+**Plain array indicators** → `np.ndarray` of float64, length = len(df). Direct access, NO sub-keys:
+- EMA: `np.nan_to_num(indicators["ema"])` — price-level array
+- RSI: `np.nan_to_num(indicators["rsi"])` — oscillator 0-100
+- ATR: `np.nan_to_num(indicators["atr"])` — volatility/distance (NOT a price level)
+- CCI: `np.nan_to_num(indicators["cci"])` — oscillator (unbounded, typically -200..+200)
+- OBV: `np.nan_to_num(indicators["obv"])` — cumulative volume
+- MFI: `np.nan_to_num(indicators["mfi"])` — oscillator 0-100
+
+**Dict indicators** → `dict[str, np.ndarray]`. MUST access sub-keys first, then `np.nan_to_num()`:
+- Bollinger: keys `upper`, `middle`, `lower` — price-level arrays
+  Example: `bb = indicators["bollinger"]; upper = np.nan_to_num(bb["upper"])`
+- Keltner: keys `upper`, `middle`, `lower` — price-level arrays
+  Example: `kelt = indicators["keltner"]; upper = np.nan_to_num(kelt["upper"])`
+- Donchian: keys `upper`, `middle`, `lower` — price-level arrays
+  Example: `dc = indicators["donchian"]; upper = np.nan_to_num(dc["upper"])`
+- MACD: keys `macd`, `signal`, `histogram` — unbounded float arrays
+  Example: `macd_d = indicators["macd"]; macd_line = np.nan_to_num(macd_d["macd"])`
+- ADX: keys `adx`, `plus_di`, `minus_di` — 0-100 range arrays
+  Example: `adx_d = indicators["adx"]; adx_val = np.nan_to_num(adx_d["adx"])`
+- Supertrend: keys `supertrend`, `direction` — NO upper/lower keys
+  Example: `st = indicators["supertrend"]; direction = np.nan_to_num(st["direction"])`
+- Stochastic: keys `stoch_k`, `stoch_d` — 0-100, NO `signal` key
+  Example: `stoch = indicators["stochastic"]; k = np.nan_to_num(stoch["stoch_k"])`
+- Stoch_RSI: keys `k`, `d`, `signal` — 0-100
+  Example: `srsi = indicators["stoch_rsi"]; k = np.nan_to_num(srsi["k"])`
+- Ichimoku: keys `tenkan`, `kijun`, `senkou_a`, `senkou_b`, `chikou`, `cloud_position`
+  Example: `ich = indicators["ichimoku"]; tenkan = np.nan_to_num(ich["tenkan"])`
+- PSAR: keys `sar`, `trend`, `signal`
+  Example: `psar_d = indicators["psar"]; sar = np.nan_to_num(psar_d["sar"])`
+- Vortex: keys `vi_plus`, `vi_minus`, `signal`, `oscillator`
+  Example: `vx = indicators["vortex"]; vip = np.nan_to_num(vx["vi_plus"])`
+- Aroon: keys `aroon_up`, `aroon_down` — 0-100
+  Example: `ar = indicators["aroon"]; up = np.nan_to_num(ar["aroon_up"])`
+- Pivot Points: keys `pivot`, `r1`, `s1`, `r2`, `s2`, `r3`, `s3` — price levels
+  Example: `pp = indicators["pivot_points"]; r1 = np.nan_to_num(pp["r1"])`
+
+- Never request/use fake indicator names like `bollinger_upper`, `keltner_lower`, `donchian_middle`.
+- Never do `np.nan_to_num(indicators["bollinger"])` directly on a dict indicator.
+- Never access indicators via `df["rsi"]`, `df["bollinger"]`, `df["ema"]`.
+- Do not recalculate indicators from raw OHLCV.
+- If proposal logic contains `cross_up(x, y)` / `cross_down(x, y)` / `cross_any(x, y)`,
+  implement vectorized helpers only:
+  `prev_x = np.roll(x, 1); prev_y = np.roll(y, 1); prev_x[0] = np.nan; prev_y[0] = np.nan`
+  then `cross_up = (x > y) & (prev_x <= prev_y)`, `cross_down = (x < y) & (prev_x >= prev_y)`,
+  `cross_any = cross_up | cross_down`.
+- ALWAYS define `long_mask`/`short_mask` before using them: `long_mask = np.zeros(len(df), dtype=bool)`.
+- NEVER write `df["signal"]` or `df["signals"]`. Signal values go in the `signals` variable ONLY.
+- The ONLY columns you may write to `df` are: `bb_stop_long`, `bb_tp_long`, `bb_stop_short`, `bb_tp_short`, `sl_level`, `tp_level`.
+
+### BOOLEAN INDEXING — CRITICAL SIZE RULE
+Every boolean mask used to index `signals`, `df`, or any array MUST have length `n = len(df)`.
+Common mistakes that cause `IndexError: boolean index did not match`:
+- `np.diff(close)` returns length `n-1` → pad with `np.insert(np.diff(close), 0, 0.0)`.
+- `close[window:]` returns length `n-window` → use `np.roll` or pad, never slice.
+- List comprehensions like `[f(i) for i in range(w, n)]` return `n-w` → prepend `w` False values.
+- NEVER use a sliced array as a boolean index on the full signals array.
+Always verify: `assert len(mask) == n` before `signals[mask] = value`.
+
+### COMMON MISTAKES (BAD → GOOD)
+- `rsi = df['rsi']` → `rsi = np.nan_to_num(indicators["rsi"])`
+- `upper = indicators['bollinger_upper']` → `upper = np.nan_to_num(indicators["bollinger"]["upper"])`
+- `signals.iloc[i] = 1.0` → `signals[long_mask] = 1.0`
+- `atr.rolling(14).mean()` → already computed, just use the array
+- `df['signal'] = 1` → `signals[mask] = 1.0`
+- `for i in range(n): ...` → use boolean masks
+- `mask = close[50:] > ema[50:]` → `mask = (close > ema)` (full-length arrays)
+- `diff = np.diff(close)` → `diff = np.insert(np.diff(close), 0, 0.0)` (keep length n)
+
+## LEVERAGE AND RISK MANAGEMENT (CRITICAL)
+- ALWAYS include `"leverage": 1` in default_params. The engine defaults to leverage=3 which destroys accounts.
+- To implement ATR-based stop-loss and take-profit, write price levels into DataFrame columns:
+  ```python
+  # Initialize SL/TP columns with NaN (no level = no stop)
+  df.loc[:, "bb_stop_long"] = np.nan
+  df.loc[:, "bb_tp_long"] = np.nan
+  # On entry signal bars only, compute ATR-based levels:
+  atr = np.nan_to_num(indicators["atr"])
+  close = df["close"].values
+  entry_mask = (signals == 1.0)  # boolean mask of long entries
+  df.loc[entry_mask, "bb_stop_long"] = close[entry_mask] - stop_atr_mult * atr[entry_mask]
+  df.loc[entry_mask, "bb_tp_long"] = close[entry_mask] + tp_atr_mult * atr[entry_mask]
+  # For short entries (if applicable):
+  # df.loc[short_mask, "bb_stop_short"] = close[short_mask] + stop_atr_mult * atr[short_mask]
+  # df.loc[short_mask, "bb_tp_short"] = close[short_mask] - tp_atr_mult * atr[short_mask]
+  ```
+  The simulator reads these columns automatically. Only write on entry bars (NaN elsewhere).
+  Alternative: write `df.loc[:, "sl_level"]` / `df.loc[:, "tp_level"]` for per-bar absolute SL/TP prices.
+  Without these columns, the only stop-loss is a fixed % from the `k_sl` param (default 1.5%).
+{% if diagnostic_actions %}
+
+## DIAGNOSTIC FROM PREVIOUS ITERATION (MUST ADDRESS)
+{% for action in diagnostic_actions %}
+- {{ action }}
+{% endfor %}
+{% if diagnostic_donts %}
+DO NOT:
+{% for dont in diagnostic_donts %}
+- {{ dont }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+## REQUIRED OUTPUT
+Return ONLY a complete Python class in one ```python block.
+Class name MUST be exactly `{{ class_name }}`.
+
+Required structure:
+```python
+from typing import Any, Dict, List
+
+import numpy as np
+import pandas as pd
+
+from utils.parameters import ParameterSpec
+from strategies.base import StrategyBase
+
+
+class {{ class_name }}(StrategyBase):
+    def __init__(self):
+        super().__init__(name="{{ proposal.strategy_name|default("BuilderStrategy") }}")
+
+    @property
+    def required_indicators(self) -> List[str]:
+        return {{ proposal.used_indicators|default([])|tojson }}
+
+    @property
+    def default_params(self) -> Dict[str, Any]:
+        return {"leverage": 1, "warmup": 50, ...}  # ALWAYS include leverage: 1
+
+    @property
+    def parameter_specs(self) -> Dict[str, ParameterSpec]:
+        return {
+            # fill each tunable parameter
+        }
+
+    def generate_signals(
+        self,
+        df: pd.DataFrame,
+        indicators: Dict[str, Any],
+        params: Dict[str, Any],
+    ) -> pd.Series:
+        signals = pd.Series(0.0, index=df.index, dtype=np.float64)
+        n = len(df)
+        long_mask = np.zeros(n, dtype=bool)
+        short_mask = np.zeros(n, dtype=bool)
+        # implement explicit LONG / SHORT / FLAT logic
+        # warmup protection
+        warmup = int(params.get("warmup", 50))
+        signals.iloc[:warmup] = 0.0
+        # Write SL/TP columns into df if using ATR-based risk management
+        return signals
+```
+
+## CODE COMPLETENESS — CRITICAL
+- Your code MUST be COMPLETE. Never truncate, abbreviate, or use "..." / "# ..." / "# etc".
+- Every boolean mask must be fully computed and applied to `signals`.
+- The function must end with `return signals`.
+- If you run out of space, simplify the logic rather than leaving it incomplete.
+
+## NON-NEGOTIABLE RULES
+1. Use only imports: typing, numpy, pandas, StrategyBase, ParameterSpec.
+2. No os/subprocess/eval/exec/open/__import__.
+3. No triple-quoted docstrings.
+4. No placeholders, no TODO, no pass.
+5. Output Python code only.
+6. MUST include "leverage": 1 in default_params.
+7. Code MUST be complete — never output partial or truncated code.

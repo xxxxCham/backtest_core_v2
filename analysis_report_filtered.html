@@ -1,0 +1,477 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rapport d'Analyse Backtests - 2026-02-03 11:06</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 40px;
+            background: #f8f9fa;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            transition: transform 0.3s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        }
+        
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .positive { color: #28a745; }
+        .negative { color: #dc3545; }
+        .warning { color: #ffc107; }
+        
+        .section {
+            padding: 40px;
+        }
+        
+        .section-title {
+            font-size: 1.8em;
+            margin-bottom: 25px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+            color: #667eea;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        th, td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        th {
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 1px;
+        }
+        
+        tbody tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .rank {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 1.2em;
+        }
+        
+        .medal {
+            font-size: 1.5em;
+            margin-right: 5px;
+        }
+        
+        .params {
+            font-size: 0.85em;
+            color: #666;
+            font-family: 'Courier New', monospace;
+            background: #f8f9fa;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 5px;
+        }
+        
+        .strategy-card {
+            background: white;
+            padding: 25px;
+            margin: 20px 0;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-left: 5px solid #667eea;
+        }
+        
+        .strategy-name {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        
+        .strategy-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .strategy-stat {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .strategy-stat-label {
+            font-size: 0.8em;
+            color: #666;
+            text-transform: uppercase;
+        }
+        
+        .strategy-stat-value {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        
+        .footer {
+            background: #2c3e50;
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .emoji {
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Rapport d'Analyse Backtests</h1>
+            <p>Généré le 03/02/2026 à 11:06</p>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Configurations Testées</div>
+                <div class="stat-number">63</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Profitables</div>
+                <div class="stat-number positive">9</div>
+                <div style="color: #666; margin-top: 10px;">14.3%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Comptes Ruinés</div>
+                <div class="stat-number negative">26</div>
+                <div style="color: #666; margin-top: 10px;">41.3%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">PnL Total</div>
+                <div class="stat-number negative">$-1,529,004.36</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">🏆 Top 10 Meilleures Configurations</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rang</th>
+                        <th>Stratégie</th>
+                        <th>Symbole</th>
+                        <th>TF</th>
+                        <th>PnL</th>
+                        <th>Return %</th>
+                        <th>Sharpe</th>
+                        <th>Trades</th>
+                        <th>Win Rate</th>
+                    </tr>
+                </thead>
+                <tbody>
+
+                    <tr>
+                        <td><span class="medal">🥇</span><span class="rank">1</span></td>
+                        <td>BollingerATR</td>
+                        <td>DOGEUSDC</td>
+                        <td>15m</td>
+                        <td class="positive">$1,133.34</td>
+                        <td class="positive">11.33%</td>
+                        <td>0.00</td>
+                        <td>63</td>
+                        <td>30.2%</td>
+                    </tr>
+                    <tr>
+                        <td colspan="9">
+                            <div class="params">atr_percentile=6, atr_period=15, bb_period=26, bb_std=3.0, entry_z=2.6, k_sl=1.2, leverage=1.0</div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td><span class="medal">🥈</span><span class="rank">2</span></td>
+                        <td>BollingerATR</td>
+                        <td>DOGEUSDC</td>
+                        <td>15m</td>
+                        <td class="positive">$891.27</td>
+                        <td class="positive">8.91%</td>
+                        <td>0.00</td>
+                        <td>3</td>
+                        <td>66.7%</td>
+                    </tr>
+                    <tr>
+                        <td colspan="9">
+                            <div class="params">atr_percentile=6, atr_period=15, bb_period=26, bb_std=3.0, entry_z=2.6, k_sl=1.2, leverage=1.0</div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td><span class="medal">🥉</span><span class="rank">3</span></td>
+                        <td>BollingerATR</td>
+                        <td>BTCUSDC</td>
+                        <td>30m</td>
+                        <td class="positive">$405.58</td>
+                        <td class="positive">4.06%</td>
+                        <td>0.00</td>
+                        <td>12</td>
+                        <td>58.3%</td>
+                    </tr>
+                    <tr>
+                        <td colspan="9">
+                            <div class="params">atr_percentile=50, atr_period=17, bb_period=38, bb_std=2.55, entry_z=2.6, k_sl=2.6, leverage=1</div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td><span class="medal">🏅</span><span class="rank">4</span></td>
+                        <td>BollingerATR</td>
+                        <td>BTCUSDC</td>
+                        <td>30m</td>
+                        <td class="positive">$405.58</td>
+                        <td class="positive">4.06%</td>
+                        <td>0.00</td>
+                        <td>12</td>
+                        <td>58.3%</td>
+                    </tr>
+                    <tr>
+                        <td colspan="9">
+                            <div class="params">atr_percentile=50, atr_period=17, bb_period=38, bb_std=2.55, entry_z=2.6, k_sl=2.6, leverage=1</div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td><span class="medal">🏅</span><span class="rank">5</span></td>
+                        <td>BollingerATR</td>
+                        <td>BTCUSDC</td>
+                        <td>30m</td>
+                        <td class="positive">$405.58</td>
+                        <td class="positive">4.06%</td>
+                        <td>0.00</td>
+                        <td>12</td>
+                        <td>58.3%</td>
+                    </tr>
+                    <tr>
+                        <td colspan="9">
+                            <div class="params">atr_percentile=50, atr_period=17, bb_period=38, bb_std=2.55, entry_z=2.6, k_sl=2.6, leverage=1</div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td><span class="medal">🎖️</span><span class="rank">6</span></td>
+                        <td>BollingerATR</td>
+                        <td>BTCUSDC</td>
+                        <td>30m</td>
+                        <td class="positive">$405.58</td>
+                        <td class="positive">4.06%</td>
+                        <td>0.00</td>
+                        <td>12</td>
+                        <td>58.3%</td>
+                    </tr>
+                    <tr>
+                        <td colspan="9">
+                            <div class="params">atr_percentile=50, atr_period=17, bb_period=38, bb_std=2.55, entry_z=2.6, k_sl=2.6, leverage=1</div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td><span class="medal">🎖️</span><span class="rank">7</span></td>
+                        <td>BollingerATR</td>
+                        <td>BTCUSDC</td>
+                        <td>30m</td>
+                        <td class="positive">$405.58</td>
+                        <td class="positive">4.06%</td>
+                        <td>0.00</td>
+                        <td>12</td>
+                        <td>58.3%</td>
+                    </tr>
+                    <tr>
+                        <td colspan="9">
+                            <div class="params">atr_percentile=50, atr_period=17, bb_period=38, bb_std=2.55, entry_z=2.6, k_sl=2.6, leverage=1</div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td><span class="medal">⭐</span><span class="rank">8</span></td>
+                        <td>BollingerATR</td>
+                        <td>BTCUSDC</td>
+                        <td>30m</td>
+                        <td class="positive">$341.88</td>
+                        <td class="positive">3.42%</td>
+                        <td>0.00</td>
+                        <td>13</td>
+                        <td>53.8%</td>
+                    </tr>
+                    <tr>
+                        <td colspan="9">
+                            <div class="params">atr_percentile=50, atr_period=17, bb_period=38, bb_std=2.55, entry_z=2.6, k_sl=2.6, leverage=1</div>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td><span class="medal">⭐</span><span class="rank">9</span></td>
+                        <td>BollingerATR</td>
+                        <td>BTCUSDC</td>
+                        <td>30m</td>
+                        <td class="positive">$341.88</td>
+                        <td class="positive">3.42%</td>
+                        <td>0.00</td>
+                        <td>13</td>
+                        <td>53.8%</td>
+                    </tr>
+                    <tr>
+                        <td colspan="9">
+                            <div class="params">atr_percentile=50, atr_period=17, bb_period=38, bb_std=2.55, entry_z=2.6, k_sl=2.6, leverage=1</div>
+                        </td>
+                    </tr>
+
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="section">
+            <h2 class="section-title">📈 Analyse par Stratégie</h2>
+
+            <div class="strategy-card">
+                <div class="strategy-name">BollingerATR</div>
+                <div class="strategy-stats">
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">Total Runs</div>
+                        <div class="strategy-stat-value">48</div>
+                    </div>
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">Profitables</div>
+                        <div class="strategy-stat-value positive">9/48</div>
+                    </div>
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">PnL Moyen</div>
+                        <div class="strategy-stat-value negative">$-25,477.15</div>
+                    </div>
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">Meilleur PnL</div>
+                        <div class="strategy-stat-value positive">$1,133.34</div>
+                    </div>
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">Pire PnL</div>
+                        <div class="strategy-stat-value negative">$-160,655.74</div>
+                    </div>
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">Sharpe Moyen</div>
+                        <div class="strategy-stat-value">-0.73</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="strategy-card">
+                <div class="strategy-name">BollingerATR_V3</div>
+                <div class="strategy-stats">
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">Total Runs</div>
+                        <div class="strategy-stat-value">15</div>
+                    </div>
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">Profitables</div>
+                        <div class="strategy-stat-value negative">0/15</div>
+                    </div>
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">PnL Moyen</div>
+                        <div class="strategy-stat-value negative">$-20,406.75</div>
+                    </div>
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">Meilleur PnL</div>
+                        <div class="strategy-stat-value positive">$-1,399.86</div>
+                    </div>
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">Pire PnL</div>
+                        <div class="strategy-stat-value negative">$-68,780.10</div>
+                    </div>
+                    <div class="strategy-stat">
+                        <div class="strategy-stat-label">Sharpe Moyen</div>
+                        <div class="strategy-stat-value">0.00</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+        
+        <div class="footer">
+            <p>🚀 Backtest Core Analysis System</p>
+            <p style="margin-top: 10px; opacity: 0.7;">Généré automatiquement par tools/generate_html_report.py</p>
+        </div>
+    </div>
+</body>
+</html>

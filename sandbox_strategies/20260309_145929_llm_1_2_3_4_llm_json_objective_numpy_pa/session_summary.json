@@ -1,0 +1,1155 @@
+{
+  "session_id": "20260309_145929_llm_1_2_3_4_llm_json_objective_numpy_pa",
+  "objective": "\u57fa\u4e8e\u63d0\u4f9b\u7684\u4f1a\u8bdd\u8be6\u60c5\u548c\u5404LLM\u7684\u53cd\u9988\uff0c\u4ee5\u4e0b\u662f\u5173\u952e\u70b9\u603b\u7ed3\u53ca\u4e0b\u4e00\u6b65\u884c\u52a8\u8ba1\u5212\uff1a\n\n### \u9700\u6539\u8fdb\u7684\u5173\u952e\u70b9\n\n1. **\u7a33\u5065\u6027**\uff1a\n- \u5b9e\u73b0\u4ea4\u53c9\u9a8c\u8bc1\u6216\u4f7f\u7528\u591a\u4e2a\u6570\u636e\u96c6\u4ee5\u51cf\u5c11\u8fc7\u62df\u5408\u98ce\u9669\u3002\n\n2. **\u6570\u636e\u8d28\u91cf**\uff1a\n- \u589e\u52a0\u6570\u636e\u8d28\u91cf\u68c0\u67e5\uff0c\u5305\u62ec\u5904\u7406\u7f3a\u5931\u503c\u548c\u5f02\u5e38\u503c\u3002\n\n3. **\u4fe1\u53f7\u751f\u6210\u903b\u8f91**\uff1a\n- \u901a\u8fc7\u589e\u52a0\u6761\u4ef6\uff08\u5982\u6210\u4ea4\u91cf\u6216\u8d8b\u52bf\u786e\u8ba4\uff09\u6765\u5b8c\u5584\u4fe1\u53f7\u751f\u6210\u903b\u8f91\u3002\n\n4. **\u7f3a\u5c11\u7684\u6d4b\u8bd5**\uff1a\n- \u5305\u62ec\u6700\u5927\u56de\u64a4\u8ba1\u7b97\u3001\u4ed3\u4f4d\u5927\u5c0f\u8bc4\u4f30\u53ca\u4ea4\u6613\u6210\u672c\u5206\u6790\u3002\n\n### \u51b3\u5b9a\u8fdb\u884c\u8fed\u4ee3\n\n\u6267\u884c\u8def\u7531LLM\u51b3\u5b9a\u6839\u636e\u53cd\u9988\u5bf9\u811a\u672c\u8fdb\u884c\u8fed\u4ee3\u4ee5\u8fdb\u4e00\u6b65\u4f18\u5316\u3002\u6b64\u51b3\u7b56\u7b26\u5408\u6279\u8bc4\u8005\u5efa\u8bae\u548c\u98ce\u9669\u603b\u7ed3\u3002\n\n### \u4e0b\u4e00\u6b65\u884c\u52a8\u8ba1\u5212\n\n- **\u4ea4\u53c9\u9a8c\u8bc1**\uff1a\u5b9e\u73b0\u4ea4\u53c9\u9a8c\u8bc1\u6216\u4f7f\u7528\u591a\u4e2a\u6570\u636e\u96c6\u3002\n- **\u6570\u636e\u8d28\u91cf\u68c0\u67e5**\uff1a\u589e\u52a0\u5168\u9762\u7684\u7f3a\u5931\u503c\u548c\u5f02\u5e38\u503c\u5904\u7406\u3002\n- **\u4fe1\u53f7\u751f\u6210\u903b\u8f91\u6539\u8fdb**\uff1a\u589e\u5f3a\u4fe1\u53f7\u751f\u6210\u903b\u8f91\uff0c\u52a0\u5165\u5982\u6210\u4ea4\u91cf\u6216\u8d8b\u52bf\u786e\u8ba4\u7b49\u6761\u4ef6\u3002\n- **\u989d\u5916\u6307\u6807\u8ba1\u7b97**\uff1a\u5305\u62ec\u6700\u5927\u56de\u64a4\u3001\u4ed3\u4f4d\u5927\u5c0f\u53ca\u4ea4\u6613\u6210\u672c\u8bc4\u4f30\u3002\n\n### \u4fee\u8ba2\u540e\u7684\u811a\u672c\u76ee\u6807\u4e0e\u7ea6\u675f\n\n\u57fa\u4e8e\u53cd\u9988\uff0c\u4ee5\u4e0b\u662f\u4fee\u8ba2\u540e\u7684\u76ee\u6807\u4e0e\u7ea6\u675f\uff1a\n\n```json\n{\n\"objective\": \"\u4f7f\u7528 `numpy` \u548c `pandas` \u751f\u4ea7\u51fa\u4e00\u4e2a\u7a33\u5065\u7684\u56de\u6d4b\u811a\u672c\u4ee5\u6267\u884c\u73b0\u6709\u4ea4\u6613\u7b56\u7565\uff0c\u8be5\u811a\u672c\u9700\u5305\u542b\u4ea4\u53c9\u9a8c\u8bc1\u3001\u6570\u636e\u8d28\u91cf\u68c0\u67e5\u3001\u4f18\u5316\u4fe1\u53f7\u751f\u6210\u903b\u8f91\u3001\u6700\u5927\u56de\u64a4\u8ba1\u7b97\u3001\u4ed3\u4f4d\u5927\u5c0f\u8bc4\u4f30\u4ee5\u53ca\u4ea4\u6613\u6210\u672c\u5206\u6790\u3002\",\n\"rationale\": \"\u63d0\u9ad8\u811a\u672c\u7684\u7a33\u5065\u6027\u548c\u73b0\u5b9e\u6027\u5c06\u589e\u5f3a\u5176\u5728\u8bc4\u4ef7\u590f\u666e\u6bd4\u7387\u548c\u80dc\u7387\u7b49\u7ee9\u6548\u6307\u6807\u65f6\u7684\u53ef\u9760\u6027\u3002\",\n\"constraints\": [\n\"\u9664\u663e\u5f0f\u5141\u8bb8\u7684\u7b2c\u4e09\u65b9\u5e93 (`numpy` \u548c `pandas`) \u5916\uff0c\u4ec5\u4f7f\u7528\u6807\u51c6\u5e93\u3002\",\n\"\u8be5\u811a\u672c\u5fc5\u987b\u6a21\u62df\u73b0\u6709\u4ea4\u6613\u7b56\u7565\u7684\u56de\u6d4b\u3002\"\n],\n\"strategy_family\": \"hybrid\"\n}\n```\n\n### \u6240\u9700\u8f93\u51fa\u683c\u5f0f\n\n\u4ee5\u4e0b\u662f\u6240\u9700\u8f93\u51fa\u683c\u5f0f\uff1a\n\n```json\n{\n\"objective\": \"\u4f7f\u7528 `numpy` \u548c `pandas` \u751f\u4ea7\u51fa\u4e00\u4e2a\u7a33\u5065\u7684\u56de\u6d4b\u811a\u672c\u4ee5\u6267\u884c\u73b0\u6709\u4ea4\u6613\u7b56\u7565\uff0c\u8be5\u811a\u672c\u9700\u5305\u542b\u4ea4\u53c9\u9a8c\u8bc1\u3001\u6570\u636e\u8d28\u91cf\u68c0\u67e5\u3001\u4f18\u5316\u4fe1\u53f7\u751f\u6210\u903b\u8f91\u3001\u6700\u5927\u56de\u64a4\u8ba1\u7b97\u3001\u4ed3\u4f4d\u5927\u5c0f\u8bc4\u4f30\u4ee5\u53ca\u4ea4\u6613\u6210\u672c\u5206\u6790\u3002\",\n\"rationale\": \"\u63d0\u9ad8\u811a\u672c\u7684\u7a33\u5065\u6027\u548c\u73b0\u5b9e\u6027\u5c06\u589e\u5f3a\u5176\u5728\u8bc4\u4ef7\u590f\u666e\u6bd4\u7387\u548c\u80dc\u7387\u7b49\u7ee9\u6548\u6307\u6807\u65f6\u7684\u53ef\u9760\u6027\u3002\",\n\"constraints\": [\n\"\u9664\u663e\u5f0f\u5141\u8bb8\u7684\u7b2c\u4e09\u65b9\u5e93 (`numpy` \u548c `pandas`) \u5916\uff0c\u4ec5\u4f7f\u7528\u6807\u51c6\u5e93\u3002\",\n\"\u8be5\u811a\u672c\u5fc5\u987b\u6a21\u62df\u73b0\u6709\u4ea4\u6613\u7b56\u7565\u7684\u56de\u6d4b\u3002\"\n],\n\"strategy_family\": \"hybrid\"\n}\n```\n\n\u6b64\u6b21\u8fed\u4ee3\u5c06\u805a\u7126\u4e8eLLM\u5efa\u8bae\u7684\u6539\u8fdb\u70b9\u4ee5\u589e\u5f3a\u811a\u672c\u7684\u7a33\u5065\u6027\u3001\u6570\u636e\u8d28\u91cf\u548c\u73b0\u5b9e\u9002\u7528\u6027\u3002",
+  "status": "failed",
+  "best_sharpe": 0.0,
+  "best_score": -26.0,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 6,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Combining Bollinger Breakout with RSI and ADX trend filter captures momentum-driven moves while avoiding false signals in ranging markets, improving win rate and reducing whipsaw losses",
+      "change_type": "both",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.5275733800014509,
+      "return_pct": -34.647692565756515,
+      "max_drawdown_pct": -47.780521624136654,
+      "profit_factor": 0.8046226964823725,
+      "win_rate_pct": 33.62068965517241,
+      "trades": 116,
+      "continuous_score": -88.28816405478543,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -14.772054640040626,
+          "return": -33.0,
+          "profit_factor": -8.931533875091544,
+          "trades_confidence": 10.0,
+          "win_rate": -0.4137931034482762
+        },
+        "penalties": {
+          "drawdown_pressure": 18.520347749424435,
+          "drawdown_excess": 10.650434686780546,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 12.780521624136654
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -34.6%, PF 0.80, Expectancy -29.87"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 47.8%, Vol 39.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.528, Sortino -0.689, Calmar -0.185"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.6%, Trades 116, AvgW/L 365.87/230.31"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "KeyError: 'atr'",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "KeyError: 'atr'",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5635, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4989, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4966, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260309_145929_llm_1_2_3_4_llm_json_objective_numpy_pa\\strategy.py\", line 79, in generate_signals\n    atr = np.nan_to_num(indicators['atr'])\nKeyError: 'atr'",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] \u8be5\u7b56\u7565\u7ed3\u5408\u5e03\u6797\u5e26\u7a81\u7834\u3001RSI\u548cADX\u8d8b\u52bf\u8fc7\u6ee4\u5668\uff0c\u65e8\u5728\u6355\u6349\u52a8\u91cf\u540c\u65f6\u8fc7\u6ee4\u9707\u8361\uff0c\u4f46\u53ef\u80fd\u5b58\u5728\u53c2\u6570\u654f\u611f\u6027\u9ad8\u3001\u4fe1\u53f7\u6ede\u540e\u3001\u4ee5\u53ca\u5728\u5f3a\u8d8b\u52bf\u4e2d\u8fc7\u65e9\u9000\u51fa\u7684\u95ee\u9898\u3002\u82e5\u56de\u6d4b\u7ed3\u679c\u4e3a\u8d1f\uff0c\u53ef\u80fd\u56e0\u8fc7\u6ee4\u6761\u4ef6\u8fc7\u4e8e\u4e25\u683c\u5bfc\u81f4\u9519\u8fc7\u8d8b\u52bf\u521d\u671f\u673a\u4f1a\u3002\n[Backup plan] \u82e5\u7ed3\u679c\u4e0d\u4f73\uff0c\u5c1d\u8bd5\u653e\u5bbdADX\u9608\u503c\u6216\u5f15\u5165\u79fb\u52a8\u5e73\u5747\u8d8b\u52bf\u786e\u8ba4\uff1b\u82e5Sharpe\u8f83\u4f4e\uff0c\u8c03\u6574\u5e03\u6797\u5e26\u5468\u671f\u6216RSI\u8d85\u4e70\u8d85\u5356\u9608\u503c\uff1b\u82e5\u6574\u4f53\u5931\u8d25\uff0c\u53ef\u8f6c\u4e3a\u57fa\u4e8eMACD\u4e0eATR\u7684\u52a8\u91cf-\u98ce\u9669\u5e73\u8861\u7b56\u7565\u3002"
+        },
+        "scoring": {
+          "continuous_score": -88.28816405478543,
+          "drawdown_excess_pct": 12.780521624136654,
+          "components": {
+            "sharpe": -14.772054640040626,
+            "return": -33.0,
+            "profit_factor": -8.931533875091544,
+            "trades_confidence": 10.0,
+            "win_rate": -0.4137931034482762
+          },
+          "penalties": {
+            "drawdown_pressure": 18.520347749424435,
+            "drawdown_excess": 10.650434686780546,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Combining Bollinger Bands with RSI and ADX creates a robust trend-filtered breakout strategy. Bollinger breakouts identify potential reversal points, RSI confirms momentum strength to avoid false signals, and ADX filters for strong trending conditions to reduce whipsaw in ranging markets. This hybrid approach improves signal quality and reduces drawdown by avoiding trades in unclear market direction.",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.747193955711516,
+      "return_pct": -39.536505786732704,
+      "max_drawdown_pct": -44.857067943948465,
+      "profit_factor": 0.7604119398490926,
+      "win_rate_pct": 32.407407407407405,
+      "trades": 108,
+      "continuous_score": -92.43740748909298,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -20.921430759922448,
+          "return": -33.0,
+          "profit_factor": -10.952597035470053,
+          "trades_confidence": 10.0,
+          "win_rate": -0.7777777777777786
+        },
+        "penalties": {
+          "drawdown_pressure": 16.571378629298977,
+          "drawdown_excess": 8.21422328662372,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.857067943948465
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -39.5%, PF 0.76, Expectancy -36.61"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.9%, Vol 36.5%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.747, Sortino -0.932, Calmar -0.231"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 32.4%, Trades 108, AvgW/L 358.52/226.05"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 71,
+          "short_signals": 63,
+          "total_signals": 134
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] \u8be5\u7b56\u7565\u7ed3\u5408\u4e86\u8d8b\u52bf\u8fc7\u6ee4\u4e0e\u52a8\u91cf\u786e\u8ba4\uff0c\u4f46\u53ef\u80fd\u5b58\u5728\u8fc7\u5ea6\u62df\u5408\u98ce\u9669\uff0c\u5c24\u5176\u5728\u4f4e\u6ce2\u52a8\u6027\u5e02\u573a\u4e2d\u5bb9\u6613\u4ea7\u751f\u5047\u7a81\u7834\u3002ADX\u9608\u503c\u548cRSI\u8fb9\u754c\u53ef\u80fd\u9700\u52a8\u6001\u8c03\u6574\u4ee5\u9002\u5e94\u4e0d\u540c\u5e02\u573a\u73af\u5883\u3002\u82e5\u56de\u6d4b\u8868\u73b0\u4e0d\u4f73\uff0c\u53ef\u80fd\u662f\u4fe1\u53f7\u751f\u6210\u903b\u8f91\u8fc7\u4e8e\u4e25\u683c\u6216\u672a\u5145\u5206\u8003\u8651\u4ea4\u6613\u6210\u672c\u3002\n[Backup plan] \u82e5\u7ed3\u679c\u5dee\uff0c\u5c1d\u8bd5\u653e\u5bbdADX\u8fdb\u5165\u6761\u4ef6\u6216\u52a0\u5165\u6210\u4ea4\u91cf\u8fc7\u6ee4\uff1b\u82e5Sharpe\u4f4e\uff0c\u53ef\u4f18\u5316\u4ed3\u4f4d\u7ba1\u7406\u6216\u5f15\u5165\u6b62\u635f\u673a\u5236\u3002\u5907\u9009\u65b9\u6848\u4e3a\u6539\u4e3a\u57fa\u4e8eATR\u7684\u52a8\u6001\u6b62\u635f+\u79fb\u52a8\u5e73\u5747\u4ea4\u53c9\u7b56\u7565\uff0c\u63d0\u5347\u9002\u5e94\u6027\u3002"
+        },
+        "scoring": {
+          "continuous_score": -92.43740748909298,
+          "drawdown_excess_pct": 9.857067943948465,
+          "components": {
+            "sharpe": -20.921430759922448,
+            "return": -33.0,
+            "profit_factor": -10.952597035470053,
+            "trades_confidence": 10.0,
+            "win_rate": -0.7777777777777786
+          },
+          "penalties": {
+            "drawdown_pressure": 16.571378629298977,
+            "drawdown_excess": 8.21422328662372,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "stop_overridden": true
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining Bollinger breakout signals with RSI momentum and ADX trend filter improves signal quality by confirming trend strength and avoiding trades in ranging markets, while ATR-based risk management ensures appropriate stop-loss and take-profit levels relative to volatility.",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.6919647146725849,
+      "return_pct": -39.90599274774311,
+      "max_drawdown_pct": -47.61677866996614,
+      "profit_factor": 0.7716843951377714,
+      "win_rate_pct": 33.04347826086956,
+      "trades": 115,
+      "continuous_score": -94.3244213312226,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -19.37501201083238,
+          "return": -33.0,
+          "profit_factor": -10.437284793701878,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5869565217391313
+        },
+        "penalties": {
+          "drawdown_pressure": 18.411185779977426,
+          "drawdown_excess": 10.51398222497178,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 12.616778669966138
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -39.9%, PF 0.77, Expectancy -34.70"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 47.6%, Vol 38.7%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.692, Sortino -0.858, Calmar -0.220"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.0%, Trades 115, AvgW/L 354.94/226.99"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 100,
+          "short_signals": 92,
+          "total_signals": 192
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] \u8be5\u7b56\u7565\u7ed3\u5408\u4e86\u591a\u4e2a\u6280\u672f\u6307\u6807\uff0c\u4f46\u53ef\u80fd\u5b58\u5728\u4fe1\u53f7\u5197\u4f59\u3001\u53c2\u6570\u654f\u611f\u6027\u9ad8\u53ca\u8fc7\u62df\u5408\u98ce\u9669\u3002Bollinger\u7a81\u7834\u4e0eRSI\u3001ADX\u8fc7\u6ee4\u5668\u7684\u7ec4\u5408\u53ef\u80fd\u5728\u9707\u8361\u5e02\u4e2d\u4ea7\u751f\u9891\u7e41\u5047\u7a81\u7834\uff0c\u4e14\u672a\u8003\u8651\u4ea4\u6613\u6210\u672c\u548c\u4ed3\u4f4d\u7ba1\u7406\u3002\u82e5\u56de\u6d4b\u7ed3\u679c\u4e0d\u4f73\uff0c\u9700\u7b80\u5316\u4fe1\u53f7\u903b\u8f91\u5e76\u52a0\u5f3a\u8d8b\u52bf\u786e\u8ba4\u3002\u82e5Sharpe\u8f83\u4f4e\uff0c\u5219\u5e94\u4f18\u5316\u6b62\u635f\u6b62\u76c8\u673a\u5236\u548c\u8d44\u91d1\u7ba1\u7406\u3002\n[Backup plan] \u82e5\u5f53\u524d\u7b56\u7565\u8868\u73b0\u5dee\uff0c\u5c06\u5c1d\u8bd5\u4ec5\u4f7f\u7528ADX\u8d8b\u52bf\u8fc7\u6ee4\u5668\u4e0eBollinger\u7a81\u7834\u7684\u7b80\u5316\u7ec4\u5408\uff1b\u82e5\u4ecd\u65e0\u6548\uff0c\u8f6c\u5411\u57fa\u4e8eATR\u7684\u52a8\u6001\u79fb\u52a8\u6b62\u635f+\u56fa\u5b9a\u4ed3\u4f4d\u5927\u5c0f\u7684\u5747\u503c\u56de\u5f52\u7b56\u7565\u4f5c\u4e3a\u5907\u9009\u65b9\u6848\u3002"
+        },
+        "scoring": {
+          "continuous_score": -94.3244213312226,
+          "drawdown_excess_pct": 12.616778669966138,
+          "components": {
+            "sharpe": -19.37501201083238,
+            "return": -33.0,
+            "profit_factor": -10.437284793701878,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5869565217391313
+          },
+          "penalties": {
+            "drawdown_pressure": 18.411185779977426,
+            "drawdown_excess": 10.51398222497178,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "stop_overridden": true
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining RSI with Bollinger Bands and ADX creates a robust trend-filtered breakout strategy. RSI confirms momentum at overbought/oversold extremes, Bollinger Bands identify volatility expansion, and ADX ensures we only trade with strong trending momentum, reducing whipsaw losses in ranging markets.",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.747193955711516,
+      "return_pct": -39.536505786732704,
+      "max_drawdown_pct": -44.857067943948465,
+      "profit_factor": 0.7604119398490926,
+      "win_rate_pct": 32.407407407407405,
+      "trades": 108,
+      "continuous_score": -92.43740748909298,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -20.921430759922448,
+          "return": -33.0,
+          "profit_factor": -10.952597035470053,
+          "trades_confidence": 10.0,
+          "win_rate": -0.7777777777777786
+        },
+        "penalties": {
+          "drawdown_pressure": 16.571378629298977,
+          "drawdown_excess": 8.21422328662372,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.857067943948465
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -39.5%, PF 0.76, Expectancy -36.61"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.9%, Vol 36.5%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.747, Sortino -0.932, Calmar -0.231"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 32.4%, Trades 108, AvgW/L 358.52/226.05"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 71,
+          "short_signals": 63,
+          "total_signals": 134
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] \u8be5\u7b56\u7565\u7ed3\u5408RSI\u3001\u5e03\u6797\u5e26\u548cADX\u6784\u5efa\u8d8b\u52bf\u8fc7\u6ee4\u7a81\u7834\u673a\u5236\uff0c\u903b\u8f91\u4e0a\u8bd5\u56fe\u8fc7\u6ee4\u5047\u7a81\u7834\u5e76\u6355\u6349\u5f3a\u8d8b\u52bf\u3002\u4f46\u6f5c\u5728\u5f31\u70b9\u5305\u62ec\uff1a\u8fc7\u5ea6\u4f9d\u8d56\u5355\u4e00ADX\u9608\u503c\u53ef\u80fd\u8bef\u5224\u8d8b\u52bf\u3001\u672a\u8003\u8651\u4ea4\u6613\u6210\u672c\u4e0e\u6ed1\u70b9\u3001\u4fe1\u53f7\u751f\u6210\u6761\u4ef6\u8fc7\u4e8e\u4e25\u683c\u5bfc\u81f4\u4ea4\u6613\u9891\u7387\u4f4e\u3002\u82e5\u56de\u6d4b\u8868\u73b0\u5dee\uff0c\u5c06\u5c1d\u8bd5\u653e\u5bbdADX\u9608\u503c\u6216\u5f15\u5165\u6b62\u635f\u673a\u5236\u3002\n[Backup plan] \u82e5\u7ed3\u679c\u4e0d\u4f73\uff0c\u4f18\u5148\u5c1d\u8bd5\u964d\u4f4eADX\u9608\u503c\u81f320\uff0c\u589e\u52a0\u6210\u4ea4\u91cf\u8fc7\u6ee4\u6761\u4ef6\u4ee5\u63d0\u5347\u4fe1\u53f7\u8d28\u91cf\uff1b\u82e5\u4ecd\u65e0\u6539\u5584\uff0c\u5219\u8f6c\u5411\u57fa\u4e8eATR\u7684\u52a8\u6001\u6b62\u635f+\u56fa\u5b9a\u4ed3\u4f4d\u5927\u5c0f\u7684\u5747\u503c\u56de\u5f52\u7b56\u7565\u4f5c\u4e3a\u5907\u9009\u3002"
+        },
+        "scoring": {
+          "continuous_score": -92.43740748909298,
+          "drawdown_excess_pct": 9.857067943948465,
+          "components": {
+            "sharpe": -20.921430759922448,
+            "return": -33.0,
+            "profit_factor": -10.952597035470053,
+            "trades_confidence": 10.0,
+            "win_rate": -0.7777777777777786
+          },
+          "penalties": {
+            "drawdown_pressure": 16.571378629298977,
+            "drawdown_excess": 8.21422328662372,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining Bollinger Bands with RSI and ADX creates a robust mean-reversion strategy that filters out weak trends. The ADX acts as a trend strength filter to avoid false breakouts during ranging markets, while RSI confirms overbought/oversold conditions to improve entry timing. Bollinger Bands provide dynamic price boundaries for entries and exits, with ATR-based stop-losses and take-profits ensuring risk management.",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.747193955711516,
+      "return_pct": -39.536505786732704,
+      "max_drawdown_pct": -44.857067943948465,
+      "profit_factor": 0.7604119398490926,
+      "win_rate_pct": 32.407407407407405,
+      "trades": 108,
+      "continuous_score": -92.43740748909298,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -20.921430759922448,
+          "return": -33.0,
+          "profit_factor": -10.952597035470053,
+          "trades_confidence": 10.0,
+          "win_rate": -0.7777777777777786
+        },
+        "penalties": {
+          "drawdown_pressure": 16.571378629298977,
+          "drawdown_excess": 8.21422328662372,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.857067943948465
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -39.5%, PF 0.76, Expectancy -36.61"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.9%, Vol 36.5%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.747, Sortino -0.932, Calmar -0.231"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 32.4%, Trades 108, AvgW/L 358.52/226.05"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 71,
+          "short_signals": 63,
+          "total_signals": 134
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] \u8be5\u7b56\u7565\u4f9d\u8d56\u591a\u91cd\u6307\u6807\u8fc7\u6ee4\uff0c\u4f46\u53ef\u80fd\u5b58\u5728\u4fe1\u53f7\u7a00\u758f\u3001\u8fc7\u62df\u5408\u98ce\u9669\u4ee5\u53ca\u5bf9\u53c2\u6570\u654f\u611f\u7684\u95ee\u9898\u3002ADX\u9608\u503c\u548cRSI\u533a\u95f4\u53ef\u80fd\u9700\u8981\u66f4\u7cbe\u7ec6\u7684\u8c03\u6574\u4ee5\u9002\u5e94\u5e02\u573a\u53d8\u5316\u3002\u82e5\u56de\u6d4b\u8868\u73b0\u5dee\uff0c\u53ef\u80fd\u56e0\u8d8b\u52bf\u8fc7\u6ee4\u8fc7\u4e8e\u4e25\u683c\u6216\u5165\u573a\u6761\u4ef6\u8fc7\u4e8e\u82db\u523b\u3002\n[Backup plan] \u82e5\u7ed3\u679c\u5dee\uff0c\u5c1d\u8bd5\u653e\u5bbdADX\u9608\u503c\u81f320\uff0c\u5e76\u5f15\u5165\u6210\u4ea4\u91cf\u786e\u8ba4\uff1b\u82e5Sharpe\u4f4e\uff0c\u53ef\u8c03\u6574Bollinger\u5e26\u5bbd\u81f320\u65e5\u6216\u4f18\u5316ATR\u6b62\u76c8\u6b62\u635f\u500d\u6570\u3002\u5907\u9009\u65b9\u6848\u4e3a\u8f6c\u7528\u7b80\u5355\u79fb\u52a8\u5e73\u5747\u4ea4\u53c9\u7b56\u7565\uff0c\u6216\u52a0\u5165\u6ce2\u52a8\u7387\u81ea\u9002\u5e94\u4ed3\u4f4d\u7ba1\u7406\u4ee5\u63d0\u5347\u7a33\u5b9a\u6027\u3002"
+        },
+        "scoring": {
+          "continuous_score": -92.43740748909298,
+          "drawdown_excess_pct": 9.857067943948465,
+          "components": {
+            "sharpe": -20.921430759922448,
+            "return": -33.0,
+            "profit_factor": -10.952597035470053,
+            "trades_confidence": 10.0,
+            "win_rate": -0.7777777777777786
+          },
+          "penalties": {
+            "drawdown_pressure": 16.571378629298977,
+            "drawdown_excess": 8.21422328662372,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Combining Supertrend with RSI as a filter leverages the trend-following strength of Supertrend while using RSI to avoid entering against the trend, reducing whipsaw losses in choppy markets",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "stop",
+      "sharpe": null,
+      "return_pct": null,
+      "max_drawdown_pct": null,
+      "profit_factor": null,
+      "win_rate_pct": null,
+      "trades": null,
+      "continuous_score": null,
+      "score_breakdown": null,
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      }
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 1,
+      "hypothesis": "Combining Bollinger Breakout with RSI and ADX trend filter captures momentum-driven moves while avoiding false signals in ranging markets, improving win rate and reducing whipsaw losses",
+      "change_type": "both",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.5275733800014509,
+      "return_pct": -34.647692565756515,
+      "max_drawdown_pct": -47.780521624136654,
+      "profit_factor": 0.8046226964823725,
+      "win_rate_pct": 33.62068965517241,
+      "trades": 116,
+      "continuous_score": -88.28816405478543,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -14.772054640040626,
+          "return": -33.0,
+          "profit_factor": -8.931533875091544,
+          "trades_confidence": 10.0,
+          "win_rate": -0.4137931034482762
+        },
+        "penalties": {
+          "drawdown_pressure": 18.520347749424435,
+          "drawdown_excess": 10.650434686780546,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 12.780521624136654
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -34.6%, PF 0.80, Expectancy -29.87"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 47.8%, Vol 39.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.528, Sortino -0.689, Calmar -0.185"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.6%, Trades 116, AvgW/L 365.87/230.31"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "KeyError: 'atr'",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "KeyError: 'atr'",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5635, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4989, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4966, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260309_145929_llm_1_2_3_4_llm_json_objective_numpy_pa\\strategy.py\", line 79, in generate_signals\n    atr = np.nan_to_num(indicators['atr'])\nKeyError: 'atr'",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] \u8be5\u7b56\u7565\u7ed3\u5408\u5e03\u6797\u5e26\u7a81\u7834\u3001RSI\u548cADX\u8d8b\u52bf\u8fc7\u6ee4\u5668\uff0c\u65e8\u5728\u6355\u6349\u52a8\u91cf\u540c\u65f6\u8fc7\u6ee4\u9707\u8361\uff0c\u4f46\u53ef\u80fd\u5b58\u5728\u53c2\u6570\u654f\u611f\u6027\u9ad8\u3001\u4fe1\u53f7\u6ede\u540e\u3001\u4ee5\u53ca\u5728\u5f3a\u8d8b\u52bf\u4e2d\u8fc7\u65e9\u9000\u51fa\u7684\u95ee\u9898\u3002\u82e5\u56de\u6d4b\u7ed3\u679c\u4e3a\u8d1f\uff0c\u53ef\u80fd\u56e0\u8fc7\u6ee4\u6761\u4ef6\u8fc7\u4e8e\u4e25\u683c\u5bfc\u81f4\u9519\u8fc7\u8d8b\u52bf\u521d\u671f\u673a\u4f1a\u3002\n[Backup plan] \u82e5\u7ed3\u679c\u4e0d\u4f73\uff0c\u5c1d\u8bd5\u653e\u5bbdADX\u9608\u503c\u6216\u5f15\u5165\u79fb\u52a8\u5e73\u5747\u8d8b\u52bf\u786e\u8ba4\uff1b\u82e5Sharpe\u8f83\u4f4e\uff0c\u8c03\u6574\u5e03\u6797\u5e26\u5468\u671f\u6216RSI\u8d85\u4e70\u8d85\u5356\u9608\u503c\uff1b\u82e5\u6574\u4f53\u5931\u8d25\uff0c\u53ef\u8f6c\u4e3a\u57fa\u4e8eMACD\u4e0eATR\u7684\u52a8\u91cf-\u98ce\u9669\u5e73\u8861\u7b56\u7565\u3002"
+        },
+        "scoring": {
+          "continuous_score": -88.28816405478543,
+          "drawdown_excess_pct": 12.780521624136654,
+          "components": {
+            "sharpe": -14.772054640040626,
+            "return": -33.0,
+            "profit_factor": -8.931533875091544,
+            "trades_confidence": 10.0,
+            "win_rate": -0.4137931034482762
+          },
+          "penalties": {
+            "drawdown_pressure": 18.520347749424435,
+            "drawdown_excess": 10.650434686780546,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Combining Bollinger Bands with RSI and ADX creates a robust trend-filtered breakout strategy. Bollinger breakouts identify potential reversal points, RSI confirms momentum strength to avoid false signals, and ADX filters for strong trending conditions to reduce whipsaw in ranging markets. This hybrid approach improves signal quality and reduces drawdown by avoiding trades in unclear market direction.",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.747193955711516,
+      "return_pct": -39.536505786732704,
+      "max_drawdown_pct": -44.857067943948465,
+      "profit_factor": 0.7604119398490926,
+      "win_rate_pct": 32.407407407407405,
+      "trades": 108,
+      "continuous_score": -92.43740748909298,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -20.921430759922448,
+          "return": -33.0,
+          "profit_factor": -10.952597035470053,
+          "trades_confidence": 10.0,
+          "win_rate": -0.7777777777777786
+        },
+        "penalties": {
+          "drawdown_pressure": 16.571378629298977,
+          "drawdown_excess": 8.21422328662372,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.857067943948465
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -39.5%, PF 0.76, Expectancy -36.61"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.9%, Vol 36.5%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.747, Sortino -0.932, Calmar -0.231"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 32.4%, Trades 108, AvgW/L 358.52/226.05"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 71,
+          "short_signals": 63,
+          "total_signals": 134
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] \u8be5\u7b56\u7565\u7ed3\u5408\u4e86\u8d8b\u52bf\u8fc7\u6ee4\u4e0e\u52a8\u91cf\u786e\u8ba4\uff0c\u4f46\u53ef\u80fd\u5b58\u5728\u8fc7\u5ea6\u62df\u5408\u98ce\u9669\uff0c\u5c24\u5176\u5728\u4f4e\u6ce2\u52a8\u6027\u5e02\u573a\u4e2d\u5bb9\u6613\u4ea7\u751f\u5047\u7a81\u7834\u3002ADX\u9608\u503c\u548cRSI\u8fb9\u754c\u53ef\u80fd\u9700\u52a8\u6001\u8c03\u6574\u4ee5\u9002\u5e94\u4e0d\u540c\u5e02\u573a\u73af\u5883\u3002\u82e5\u56de\u6d4b\u8868\u73b0\u4e0d\u4f73\uff0c\u53ef\u80fd\u662f\u4fe1\u53f7\u751f\u6210\u903b\u8f91\u8fc7\u4e8e\u4e25\u683c\u6216\u672a\u5145\u5206\u8003\u8651\u4ea4\u6613\u6210\u672c\u3002\n[Backup plan] \u82e5\u7ed3\u679c\u5dee\uff0c\u5c1d\u8bd5\u653e\u5bbdADX\u8fdb\u5165\u6761\u4ef6\u6216\u52a0\u5165\u6210\u4ea4\u91cf\u8fc7\u6ee4\uff1b\u82e5Sharpe\u4f4e\uff0c\u53ef\u4f18\u5316\u4ed3\u4f4d\u7ba1\u7406\u6216\u5f15\u5165\u6b62\u635f\u673a\u5236\u3002\u5907\u9009\u65b9\u6848\u4e3a\u6539\u4e3a\u57fa\u4e8eATR\u7684\u52a8\u6001\u6b62\u635f+\u79fb\u52a8\u5e73\u5747\u4ea4\u53c9\u7b56\u7565\uff0c\u63d0\u5347\u9002\u5e94\u6027\u3002"
+        },
+        "scoring": {
+          "continuous_score": -92.43740748909298,
+          "drawdown_excess_pct": 9.857067943948465,
+          "components": {
+            "sharpe": -20.921430759922448,
+            "return": -33.0,
+            "profit_factor": -10.952597035470053,
+            "trades_confidence": 10.0,
+            "win_rate": -0.7777777777777786
+          },
+          "penalties": {
+            "drawdown_pressure": 16.571378629298977,
+            "drawdown_excess": 8.21422328662372,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "stop_overridden": true
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining RSI with Bollinger Bands and ADX creates a robust trend-filtered breakout strategy. RSI confirms momentum at overbought/oversold extremes, Bollinger Bands identify volatility expansion, and ADX ensures we only trade with strong trending momentum, reducing whipsaw losses in ranging markets.",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.747193955711516,
+      "return_pct": -39.536505786732704,
+      "max_drawdown_pct": -44.857067943948465,
+      "profit_factor": 0.7604119398490926,
+      "win_rate_pct": 32.407407407407405,
+      "trades": 108,
+      "continuous_score": -92.43740748909298,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -20.921430759922448,
+          "return": -33.0,
+          "profit_factor": -10.952597035470053,
+          "trades_confidence": 10.0,
+          "win_rate": -0.7777777777777786
+        },
+        "penalties": {
+          "drawdown_pressure": 16.571378629298977,
+          "drawdown_excess": 8.21422328662372,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.857067943948465
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -39.5%, PF 0.76, Expectancy -36.61"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.9%, Vol 36.5%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.747, Sortino -0.932, Calmar -0.231"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 32.4%, Trades 108, AvgW/L 358.52/226.05"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 71,
+          "short_signals": 63,
+          "total_signals": 134
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] \u8be5\u7b56\u7565\u7ed3\u5408RSI\u3001\u5e03\u6797\u5e26\u548cADX\u6784\u5efa\u8d8b\u52bf\u8fc7\u6ee4\u7a81\u7834\u673a\u5236\uff0c\u903b\u8f91\u4e0a\u8bd5\u56fe\u8fc7\u6ee4\u5047\u7a81\u7834\u5e76\u6355\u6349\u5f3a\u8d8b\u52bf\u3002\u4f46\u6f5c\u5728\u5f31\u70b9\u5305\u62ec\uff1a\u8fc7\u5ea6\u4f9d\u8d56\u5355\u4e00ADX\u9608\u503c\u53ef\u80fd\u8bef\u5224\u8d8b\u52bf\u3001\u672a\u8003\u8651\u4ea4\u6613\u6210\u672c\u4e0e\u6ed1\u70b9\u3001\u4fe1\u53f7\u751f\u6210\u6761\u4ef6\u8fc7\u4e8e\u4e25\u683c\u5bfc\u81f4\u4ea4\u6613\u9891\u7387\u4f4e\u3002\u82e5\u56de\u6d4b\u8868\u73b0\u5dee\uff0c\u5c06\u5c1d\u8bd5\u653e\u5bbdADX\u9608\u503c\u6216\u5f15\u5165\u6b62\u635f\u673a\u5236\u3002\n[Backup plan] \u82e5\u7ed3\u679c\u4e0d\u4f73\uff0c\u4f18\u5148\u5c1d\u8bd5\u964d\u4f4eADX\u9608\u503c\u81f320\uff0c\u589e\u52a0\u6210\u4ea4\u91cf\u8fc7\u6ee4\u6761\u4ef6\u4ee5\u63d0\u5347\u4fe1\u53f7\u8d28\u91cf\uff1b\u82e5\u4ecd\u65e0\u6539\u5584\uff0c\u5219\u8f6c\u5411\u57fa\u4e8eATR\u7684\u52a8\u6001\u6b62\u635f+\u56fa\u5b9a\u4ed3\u4f4d\u5927\u5c0f\u7684\u5747\u503c\u56de\u5f52\u7b56\u7565\u4f5c\u4e3a\u5907\u9009\u3002"
+        },
+        "scoring": {
+          "continuous_score": -92.43740748909298,
+          "drawdown_excess_pct": 9.857067943948465,
+          "components": {
+            "sharpe": -20.921430759922448,
+            "return": -33.0,
+            "profit_factor": -10.952597035470053,
+            "trades_confidence": 10.0,
+            "win_rate": -0.7777777777777786
+          },
+          "penalties": {
+            "drawdown_pressure": 16.571378629298977,
+            "drawdown_excess": 8.21422328662372,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining Bollinger Bands with RSI and ADX creates a robust mean-reversion strategy that filters out weak trends. The ADX acts as a trend strength filter to avoid false breakouts during ranging markets, while RSI confirms overbought/oversold conditions to improve entry timing. Bollinger Bands provide dynamic price boundaries for entries and exits, with ATR-based stop-losses and take-profits ensuring risk management.",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.747193955711516,
+      "return_pct": -39.536505786732704,
+      "max_drawdown_pct": -44.857067943948465,
+      "profit_factor": 0.7604119398490926,
+      "win_rate_pct": 32.407407407407405,
+      "trades": 108,
+      "continuous_score": -92.43740748909298,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -20.921430759922448,
+          "return": -33.0,
+          "profit_factor": -10.952597035470053,
+          "trades_confidence": 10.0,
+          "win_rate": -0.7777777777777786
+        },
+        "penalties": {
+          "drawdown_pressure": 16.571378629298977,
+          "drawdown_excess": 8.21422328662372,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.857067943948465
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -39.5%, PF 0.76, Expectancy -36.61"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.9%, Vol 36.5%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.747, Sortino -0.932, Calmar -0.231"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 32.4%, Trades 108, AvgW/L 358.52/226.05"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 71,
+          "short_signals": 63,
+          "total_signals": 134
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] \u8be5\u7b56\u7565\u4f9d\u8d56\u591a\u91cd\u6307\u6807\u8fc7\u6ee4\uff0c\u4f46\u53ef\u80fd\u5b58\u5728\u4fe1\u53f7\u7a00\u758f\u3001\u8fc7\u62df\u5408\u98ce\u9669\u4ee5\u53ca\u5bf9\u53c2\u6570\u654f\u611f\u7684\u95ee\u9898\u3002ADX\u9608\u503c\u548cRSI\u533a\u95f4\u53ef\u80fd\u9700\u8981\u66f4\u7cbe\u7ec6\u7684\u8c03\u6574\u4ee5\u9002\u5e94\u5e02\u573a\u53d8\u5316\u3002\u82e5\u56de\u6d4b\u8868\u73b0\u5dee\uff0c\u53ef\u80fd\u56e0\u8d8b\u52bf\u8fc7\u6ee4\u8fc7\u4e8e\u4e25\u683c\u6216\u5165\u573a\u6761\u4ef6\u8fc7\u4e8e\u82db\u523b\u3002\n[Backup plan] \u82e5\u7ed3\u679c\u5dee\uff0c\u5c1d\u8bd5\u653e\u5bbdADX\u9608\u503c\u81f320\uff0c\u5e76\u5f15\u5165\u6210\u4ea4\u91cf\u786e\u8ba4\uff1b\u82e5Sharpe\u4f4e\uff0c\u53ef\u8c03\u6574Bollinger\u5e26\u5bbd\u81f320\u65e5\u6216\u4f18\u5316ATR\u6b62\u76c8\u6b62\u635f\u500d\u6570\u3002\u5907\u9009\u65b9\u6848\u4e3a\u8f6c\u7528\u7b80\u5355\u79fb\u52a8\u5e73\u5747\u4ea4\u53c9\u7b56\u7565\uff0c\u6216\u52a0\u5165\u6ce2\u52a8\u7387\u81ea\u9002\u5e94\u4ed3\u4f4d\u7ba1\u7406\u4ee5\u63d0\u5347\u7a33\u5b9a\u6027\u3002"
+        },
+        "scoring": {
+          "continuous_score": -92.43740748909298,
+          "drawdown_excess_pct": 9.857067943948465,
+          "components": {
+            "sharpe": -20.921430759922448,
+            "return": -33.0,
+            "profit_factor": -10.952597035470053,
+            "trades_confidence": 10.0,
+            "win_rate": -0.7777777777777786
+          },
+          "penalties": {
+            "drawdown_pressure": 16.571378629298977,
+            "drawdown_excess": 8.21422328662372,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining Bollinger breakout signals with RSI momentum and ADX trend filter improves signal quality by confirming trend strength and avoiding trades in ranging markets, while ATR-based risk management ensures appropriate stop-loss and take-profit levels relative to volatility.",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.6919647146725849,
+      "return_pct": -39.90599274774311,
+      "max_drawdown_pct": -47.61677866996614,
+      "profit_factor": 0.7716843951377714,
+      "win_rate_pct": 33.04347826086956,
+      "trades": 115,
+      "continuous_score": -94.3244213312226,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -19.37501201083238,
+          "return": -33.0,
+          "profit_factor": -10.437284793701878,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5869565217391313
+        },
+        "penalties": {
+          "drawdown_pressure": 18.411185779977426,
+          "drawdown_excess": 10.51398222497178,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 12.616778669966138
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -39.9%, PF 0.77, Expectancy -34.70"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 47.6%, Vol 38.7%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.692, Sortino -0.858, Calmar -0.220"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.0%, Trades 115, AvgW/L 354.94/226.99"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 100,
+          "short_signals": 92,
+          "total_signals": 192
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] \u8be5\u7b56\u7565\u7ed3\u5408\u4e86\u591a\u4e2a\u6280\u672f\u6307\u6807\uff0c\u4f46\u53ef\u80fd\u5b58\u5728\u4fe1\u53f7\u5197\u4f59\u3001\u53c2\u6570\u654f\u611f\u6027\u9ad8\u53ca\u8fc7\u62df\u5408\u98ce\u9669\u3002Bollinger\u7a81\u7834\u4e0eRSI\u3001ADX\u8fc7\u6ee4\u5668\u7684\u7ec4\u5408\u53ef\u80fd\u5728\u9707\u8361\u5e02\u4e2d\u4ea7\u751f\u9891\u7e41\u5047\u7a81\u7834\uff0c\u4e14\u672a\u8003\u8651\u4ea4\u6613\u6210\u672c\u548c\u4ed3\u4f4d\u7ba1\u7406\u3002\u82e5\u56de\u6d4b\u7ed3\u679c\u4e0d\u4f73\uff0c\u9700\u7b80\u5316\u4fe1\u53f7\u903b\u8f91\u5e76\u52a0\u5f3a\u8d8b\u52bf\u786e\u8ba4\u3002\u82e5Sharpe\u8f83\u4f4e\uff0c\u5219\u5e94\u4f18\u5316\u6b62\u635f\u6b62\u76c8\u673a\u5236\u548c\u8d44\u91d1\u7ba1\u7406\u3002\n[Backup plan] \u82e5\u5f53\u524d\u7b56\u7565\u8868\u73b0\u5dee\uff0c\u5c06\u5c1d\u8bd5\u4ec5\u4f7f\u7528ADX\u8d8b\u52bf\u8fc7\u6ee4\u5668\u4e0eBollinger\u7a81\u7834\u7684\u7b80\u5316\u7ec4\u5408\uff1b\u82e5\u4ecd\u65e0\u6548\uff0c\u8f6c\u5411\u57fa\u4e8eATR\u7684\u52a8\u6001\u79fb\u52a8\u6b62\u635f+\u56fa\u5b9a\u4ed3\u4f4d\u5927\u5c0f\u7684\u5747\u503c\u56de\u5f52\u7b56\u7565\u4f5c\u4e3a\u5907\u9009\u65b9\u6848\u3002"
+        },
+        "scoring": {
+          "continuous_score": -94.3244213312226,
+          "drawdown_excess_pct": 12.616778669966138,
+          "components": {
+            "sharpe": -19.37501201083238,
+            "return": -33.0,
+            "profit_factor": -10.437284793701878,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5869565217391313
+          },
+          "penalties": {
+            "drawdown_pressure": 18.411185779977426,
+            "drawdown_excess": 10.51398222497178,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "stop_overridden": true
+        }
+      },
+      "rank": 5
+    }
+  ]
+}

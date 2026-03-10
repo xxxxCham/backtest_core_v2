@@ -1,0 +1,208 @@
+{# Template pour Agent Strategist - Propositions d'optimisation #}
+{# Version 2.0 - Optimisé pour cohérence avec AgentContext et métriques Tier S #}
+
+Generate parameter optimization proposals for the strategy.
+
+## CONTEXT
+Strategy: {{ strategy_name }}
+Iteration: {{ iteration }}
+
+{% if strategy_description -%}
+## STRATEGY OVERVIEW
+{{ strategy_description[:1200] }}{% if strategy_description|length > 1200 %}...{% endif %}
+
+{% endif %}
+
+{% if current_metrics -%}
+## LAST RESULT SNAPSHOT
+- Sharpe: {{ current_metrics.sharpe_ratio|format_float(3) }}
+- Return: {{ current_metrics.total_return|format_percent }}
+- Drawdown: {{ current_metrics.max_drawdown|format_percent }}
+- Trades: {{ current_metrics.total_trades }}
+
+{% endif %}
+
+{% if strategy_indicators_context -%}
+## STRATEGY INDICATORS (modifiable)
+{{ strategy_indicators_context }}
+
+{% endif %}
+
+{% if readonly_indicators_context -%}
+## CONTEXT INDICATORS (read-only)
+{{ readonly_indicators_context }}
+
+{% endif %}
+
+## INDICATOR USAGE NOTES
+- You may only change parameters linked to Strategy Indicators.
+- Context Indicators are read-only and for regime interpretation only.
+- Indicator values are computed once per run (baseline snapshot).
+{% if indicator_context_warnings and indicator_context_warnings|length > 0 -%}
+- Warnings below indicate unavailable indicators; ignore them for changes.
+{% endif %}
+
+{% if indicator_context_warnings and indicator_context_warnings|length > 0 -%}
+## INDICATOR CONTEXT WARNINGS
+{% for w in indicator_context_warnings %}
+- {{ w }}
+{% endfor %}
+
+{% endif %}
+
+{% if memory_summary -%}
+## HISTORICAL NOTES
+{{ memory_summary }}
+{% endif %}
+
+## PARAMETERS (current | bounds | step)
+{% for spec in param_specs %}
+- {{ spec.name }}: {{ current_params.get(spec.name, spec.current_value) }} | [{{ spec.min_value }} - {{ spec.max_value }}] step={{ spec.step }}
+{% endfor %}
+
+{% if current_metrics -%}
+## CURRENT PERFORMANCE
+| Metric | Value | Target |
+|--------|-------|--------|
+| Sharpe Ratio | {{ current_metrics.sharpe_ratio|format_float(3) }} | ≥ {{ min_sharpe }} |
+| Sortino Ratio | {{ current_metrics.sortino_ratio|format_float(3) if current_metrics.sortino_ratio else 'N/A' }} | - |
+| Total Return | {{ current_metrics.total_return|format_percent }} | - |
+| Max Drawdown | {{ current_metrics.max_drawdown|format_percent }} | ≤ {{ max_drawdown_limit|format_percent }} |
+| Win Rate | {{ current_metrics.win_rate|format_percent }} | - |
+| Profit Factor | {{ current_metrics.profit_factor|format_float(2) if current_metrics.profit_factor else 'N/A' }} | - |
+| SQN | {{ current_metrics.sqn|format_float(2) if current_metrics.sqn else 'N/A' }} | ≥ 2.0 |
+| Total Trades | {{ current_metrics.total_trades }} | ≥ {{ min_trades }} |
+{% endif %}
+
+{% if overfitting_ratio is defined and overfitting_ratio > 0 -%}
+## OVERFITTING RISK
+- Current Ratio: {{ overfitting_ratio|format_float(2) }}
+- Limit: {{ max_overfitting_ratio|default(1.5) }}
+- Status: {% if overfitting_ratio > max_overfitting_ratio|default(1.5) %}⚠️ HIGH RISK{% elif overfitting_ratio > 1.0 %}🟡 MODERATE{% else %}✅ LOW{% endif %}
+{% if overfitting_ratio > max_overfitting_ratio|default(1.5) %}
+
+**WARNING**: Overfitting risk is HIGH. Favor robustness:
+- Prefer smaller parameter changes
+- Avoid extreme values at boundaries
+- Consider widening trade filters
+{% endif %}
+{% endif %}
+
+{% if iteration_history and iteration_history|length > 0 -%}
+## ITERATION HISTORY (last 3)
+{% for hist in iteration_history[-3:] %}
+- Iter {{ hist.get('iteration', loop.index) }}: Sharpe={{ hist.get('sharpe_ratio', 0)|format_float(2) }}, Return={{ hist.get('total_return', 0)|format_percent }}{% if hist.get('params') %} | {{ hist.get('params', {})|tojson }}{% endif %}
+
+{% endfor %}
+{% endif %}
+
+{% if best_metrics and best_params -%}
+## BEST RESULT SO FAR
+| Metric | Value |
+|--------|-------|
+| Sharpe | {{ best_metrics.sharpe_ratio|format_float(3) }} |
+| Sortino | {{ best_metrics.sortino_ratio|format_float(3) if best_metrics.sortino_ratio else 'N/A' }} |
+| Drawdown | {{ best_metrics.max_drawdown|format_percent }} |
+| Trades | {{ best_metrics.total_trades }} |
+
+Best Parameters:
+{% for param_name, param_value in best_params.items() %}
+- {{ param_name }}: {{ param_value }}
+{% endfor %}
+{% endif %}
+
+{% if analyst_report -%}
+## ANALYST INSIGHTS
+{{ analyst_report[:1200] }}{% if analyst_report|length > 1200 %}...{% endif %}
+
+{% endif %}
+
+{% if session_params_summary -%}
+## ⚠️ PARAMETERS ALREADY TESTED IN THIS SESSION
+**CRITICAL**: DO NOT propose the exact same parameter combinations listed below!
+
+{{ session_params_summary }}
+
+**Action Required**: Your proposals MUST use different parameter values than those already tested above.
+If you receive this list, it means some combinations have already been explored in this optimization session.
+
+{% endif %}
+
+## OPTIMIZATION OBJECTIVES
+- **Primary Target**: {{ optimization_target }}
+- **Min Sharpe Ratio**: {{ min_sharpe }}
+- **Max Drawdown (absolute)**: {{ max_drawdown_limit|format_percent }}
+- **Min Trades**: {{ min_trades }}
+- **Max Overfitting Ratio**: {{ max_overfitting_ratio|default(1.5) }}
+
+## INSTRUCTIONS
+1. Propose **3-5 parameter sets** ordered by priority (conservative → aggressive)
+2. **Respect bounds strictly**: each param must be within [min, max]
+3. **Respect step**: if step is defined, values must be multiples of step from min
+4. **Avoid extreme boundaries** unless justified by robustness improvement
+5. **Do NOT modify**: capital, fees, seed, or non-strategy parameters
+6. **Consider parameter interactions**: e.g., fast_period < slow_period
+
+## GRID SEARCH OPTION ("sweep")
+**When to use grid search instead of sequential proposals:**
+- Testing **parameter correlations** (e.g., fast/slow ratio, bb_period/bb_std interactions)
+- After finding promising region, need **exhaustive exploration** of narrow ranges
+- When parameter interactions make sequential testing inefficient
+- **NOT for initial exploration** - use regular proposals first to narrow down ranges
+
+**If you choose grid search**, return the sweep JSON format (documented below) instead of the proposals format.
+
+## REQUIRED OUTPUT FORMAT
+Return ONLY valid JSON with this exact structure (no markdown, no extra text):
+```json
+{
+    "analysis_summary": "Brief summary of key findings from analyst",
+    "optimization_strategy": "Your overall approach for this iteration",
+    "proposals": [
+        {
+            "id": 1,
+            "name": "Conservative Adjustment",
+            "priority": "HIGH",
+            "risk_level": "LOW",
+            "parameters": {"param_name": value},
+            "changes_from_current": {"param_name": {"from": X, "to": Y, "change_pct": Z}},
+            "rationale": "Why this should improve performance",
+            "expected_impact": {
+                "sharpe_ratio": "+X% to +Y%",
+                "drawdown": "reduced|similar|increased",
+                "trade_frequency": "lower|similar|higher"
+            },
+            "risks": ["risk1", "risk2"]
+        }
+    ],
+    "constraints_respected": true,
+    "fallback_recommendation": "What to do if proposals fail"
+}
+```
+
+**ALTERNATIVE: Grid Search (Sweep) Format**
+If you determine that grid search is more appropriate (see "GRID SEARCH OPTION" above), return this format instead:
+```json
+{
+    "analysis_summary": "Brief summary of key findings from analyst",
+    "optimization_strategy": "Why grid search is chosen for this iteration",
+    "sweep": {
+        "ranges": {
+            "param_name": {"min": X, "max": Y, "step": Z}
+        },
+        "rationale": "REQUIRED: Explain why grid search is needed (e.g., 'Testing bb_period/bb_std correlation')",
+        "optimize_for": "sharpe_ratio",
+        "max_combinations": 100
+    },
+    "constraints_respected": true,
+    "fallback_recommendation": "What to do if sweep fails"
+}
+```
+
+**Requirements for sweep format:**
+- `ranges`: Dict with `{"param": {"min": X, "max": Y, "step": Z}}` - each range MUST have min, max, step
+- `rationale`: REQUIRED - explain why grid search is needed
+- `optimize_for`: Metric to optimize (default: "sharpe_ratio")
+- `max_combinations`: Max configs to test (default: 100, hard limit: 200)
+- Ranges will be clamped to parameter bounds automatically
+- Grid search runs in parallel, returns top 10 configs + summary
