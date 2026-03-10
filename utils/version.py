@@ -20,6 +20,8 @@ Read-if: Modification version retrieval ou build metadata.
 Skip-if: Vous appelez get_git_commit().
 """
 
+__version__ = "2.0.0"
+
 import subprocess
 
 
@@ -103,4 +105,4 @@ def is_git_dirty() -> bool:
         return False
 
 
-__all__ = ["get_git_commit", "get_git_branch", "is_git_dirty"]
+__all__ = ["__version__", "get_git_commit", "get_git_branch", "is_git_dirty"]
