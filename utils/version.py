@@ -20,7 +20,7 @@ Read-if: Modification version retrieval ou build metadata.
 Skip-if: Vous appelez get_git_commit().
 """
 
-__version__ = "2.0.0"
+__version__ = "2.7.1"
 
 import subprocess
 

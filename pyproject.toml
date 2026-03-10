@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "backtest-core-v2"
-version = "2.0.0"
+version = "2.7.1"
 description = "Moteur de backtest multi-LLM avec accélération GPU pour stratégies de trading"
 readme = "README.md"
 requires-python = ">=3.10"
