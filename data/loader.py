@@ -208,7 +208,9 @@ DATA_FILE_STEM_RE = re.compile(
 )
 
 # Répertoire de données par défaut
-DEFAULT_DATA_DIR = Path(__file__).parent / "sample_data"
+# Source principale: gestionnaire multi-timeframe processed parquets
+_GESTIONNAIRE_CLEAN_DIR = Path("D:/.my_soft/gestionnaire_telechargement_multi-timeframe_clean/processed/parquet")
+DEFAULT_DATA_DIR = _GESTIONNAIRE_CLEAN_DIR if _GESTIONNAIRE_CLEAN_DIR.exists() else Path(__file__).parent / "sample_data"
 
 def _optional_env_path(key: str) -> Optional[Path]:
     value = os.environ.get(key)
@@ -267,11 +269,11 @@ def _build_legacy_windows_data_dirs() -> List[Path]:
 
     candidates = [
         # Banque principale du gestionnaire multi-timeframe
-        drive_root / ".my_soft" / "gestionnaire_telechargement_multi-timeframe" / "processed" / "parquet",
-        drive_root / ".my_soft" / "gestionnaire_telechargement_multi-timeframe" / "raw",
+        drive_root / ".my_soft" / "gestionnaire_telechargement_multi-timeframe_clean" / "processed" / "parquet",
+        drive_root / ".my_soft" / "gestionnaire_telechargement_multi-timeframe_clean" / "raw",
         # Variante sous profil utilisateur
-        home_root / ".my_soft" / "gestionnaire_telechargement_multi-timeframe" / "processed" / "parquet",
-        home_root / ".my_soft" / "gestionnaire_telechargement_multi-timeframe" / "raw",
+        home_root / ".my_soft" / "gestionnaire_telechargement_multi-timeframe_clean" / "processed" / "parquet",
+        home_root / ".my_soft" / "gestionnaire_telechargement_multi-timeframe_clean" / "raw",
         # Compat historique ThreadX
         drive_root / "ThreadX_big" / "data",
         drive_root / "ThreadX_big" / "processed_data",
