@@ -1,0 +1,465 @@
+{
+  "session_id": "20260312_050338_construire_une_strategie_momentum_sur_bt",
+  "objective": "Construire une strategie momentum sur BTCUSDC 1h avec EMA + RSI + ATR, entrees filtrees, sorties explicites et gestion du risque robuste.",
+  "status": "failed",
+  "best_sharpe": 0.0,
+  "best_score": -26.0,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 2,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fear_greed",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Combining EMA momentum with RSI overbought/oversold signals and ATR-based risk management filters out low-quality entries and provides dynamic stop-loss/take-profit levels that adapt to volatility, improving risk-adjusted returns in BTCUSDC 1h timeframe",
+      "change_type": "both",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 62070,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Combining EMA trend filter with RSI momentum and ATR volatility scaling creates a robust entry/exit system that avoids false signals during ranging periods while maintaining sensitivity to trending moves. The EMA ensures we only trade in the direction of the dominant trend, RSI confirms momentum strength, and ATR provides dynamic stop-loss and take-profit levels that adapt to market volatility.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "stop",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 62070,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 2
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 1,
+      "hypothesis": "Combining EMA momentum with RSI overbought/oversold signals and ATR-based risk management filters out low-quality entries and provides dynamic stop-loss/take-profit levels that adapt to volatility, improving risk-adjusted returns in BTCUSDC 1h timeframe",
+      "change_type": "both",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 62070,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Combining EMA trend filter with RSI momentum and ATR volatility scaling creates a robust entry/exit system that avoids false signals during ranging periods while maintaining sensitivity to trending moves. The EMA ensures we only trade in the direction of the dominant trend, RSI confirms momentum strength, and ATR provides dynamic stop-loss and take-profit levels that adapt to market volatility.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "stop",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 62070,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 2
+    }
+  ]
+}

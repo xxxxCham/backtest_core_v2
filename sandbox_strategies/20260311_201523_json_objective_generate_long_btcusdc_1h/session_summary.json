@@ -1,0 +1,126 @@
+{
+  "session_id": "20260311_201523_json_objective_generate_long_btcusdc_1h",
+  "objective": "json\n{\n\"objective\": \"Generate long BTCUSDC 1h trades when the 14-period RSI crosses above 30, confirming a potential oversold bounce, and the 20-period EMA is trending upwards.\",\n\"rationale\": \"Oversold conditions, as indicated by RSI, often lead to a price reversal. Combining this with an upward trending EMA provides confirmation of underlying bullish momentum.\",\n\"constraints\": [\n\"Maximum position size of 0.5% of total capital per trade.\",\n\"Stop-loss order placed 1 ATR below the entry price.\"\n],\n\"strategy_family\": \"mean_reversion\"\n}",
+  "status": "max_iterations",
+  "best_sharpe": 0.0,
+  "best_score": -26.0,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 1,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fear_greed",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Combining RSI oversold confirmation with upward EMA trend filters out weak signals and reduces whipsaw in ranging markets, improving risk-adjusted returns.",
+      "change_type": "both",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": null,
+      "return_pct": null,
+      "max_drawdown_pct": null,
+      "profit_factor": null,
+      "win_rate_pct": null,
+      "trades": null,
+      "continuous_score": null,
+      "score_breakdown": null,
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      }
+    }
+  ],
+  "leaderboard": []
+}

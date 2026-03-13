@@ -1,0 +1,35 @@
+{
+  "pipeline": "positive_imports",
+  "status": "running",
+  "event": "candidate_start",
+  "pid": 21472,
+  "started_at": "2026-03-10T14:37:44.274714+00:00",
+  "current_phase": "P3",
+  "current_index": 11,
+  "current_total": 26,
+  "stats": {
+    "p1_candidates": 256,
+    "import_candidates": 256,
+    "p2_processed": 256,
+    "p2_survivors": 26,
+    "p3_processed": 10,
+    "p3_survivors": 7
+  },
+  "report_path": "catalog\\graduation_results\\positive_imports_graduation.json",
+  "current_candidate": {
+    "session_id": "mean_reversion_bollinger_rsi|BTCUSDC|1h|e1cdcd195eac",
+    "strategy_name": "mean_reversion_bollinger_rsi",
+    "source_run_id": "recap_pf_mean_reversion_bollinger_rsi",
+    "source_symbol": "BTCUSDC",
+    "source_timeframe": "1h",
+    "phase": "P2",
+    "decision": "WATCHLIST",
+    "best_return_pct": 60.38,
+    "catalog_entry_id": "mean_reversion_bollinger_rsi|BTCUSDC|1h|e1cdcd195eac"
+  },
+  "extra": {
+    "token": "BTCUSDC",
+    "timeframe": "1h"
+  },
+  "updated_at": "2026-03-10T20:24:57.452887+00:00"
+}

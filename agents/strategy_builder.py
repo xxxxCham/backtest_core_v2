@@ -91,6 +91,18 @@ MAX_DETERMINISTIC_FALLBACKS = 4
 MAX_SESSION_AUTO_RESETS = int(os.getenv("BACKTEST_BUILDER_MAX_SESSION_RESETS", "2"))
 PROPOSAL_REALIGN_ATTEMPTS = 1
 MIN_BUILDER_BARS = 300
+MIN_SIGNAL_COUNT_FOR_DENSITY_PRECHECK = int(
+    os.getenv("BACKTEST_BUILDER_MIN_SIGNAL_COUNT_FOR_DENSITY_PRECHECK", "200")
+)
+MAX_SIGNAL_DENSITY_PRECHECK = float(
+    os.getenv("BACKTEST_BUILDER_MAX_SIGNAL_DENSITY_PRECHECK", "0.85")
+)
+MAX_REPEATED_SAME_SIGNAL_RATIO_PRECHECK = float(
+    os.getenv(
+        "BACKTEST_BUILDER_MAX_REPEATED_SAME_SIGNAL_RATIO_PRECHECK",
+        "0.80",
+    )
+)
 
 # Per-phase LLM call timeouts (seconds).
 # Prevents single outlier calls (e.g. 8-minute code generation) from
@@ -339,6 +351,7 @@ class BuilderSession:
     fees_bps: float = 10.0
     slippage_bps: float = 5.0
     initial_capital: float = 10000.0
+    direction_constraint: str = "long_short"
 
 
 def _iteration_is_recovery_anchor(
@@ -1064,6 +1077,71 @@ def _metric_float(metrics: Dict[str, Any], key: str, default: float = 0.0) -> fl
         return float(value)
     except Exception:
         return float(default)
+
+
+def _infer_direction_constraint_from_objective(objective: Any) -> str:
+    """Déduit une contrainte long-only / short-only depuis l'objectif texte."""
+    normalized = " ".join(str(objective or "").strip().lower().split())
+    if not normalized:
+        return "long_short"
+
+    long_only_markers = (
+        "only execute buy orders",
+        "only execute buy order",
+        "only buy orders",
+        "buy signals",
+        "buy-only",
+        "long only",
+        "long-only",
+        "only execute long orders",
+        "only execute long positions",
+        "only take long trades",
+        "uniquement des achats",
+        "achat seulement",
+        "long seulement",
+    )
+    short_only_markers = (
+        "only execute sell orders",
+        "only execute sell order",
+        "only sell orders",
+        "sell signals",
+        "sell-only",
+        "short only",
+        "short-only",
+        "only execute short orders",
+        "only execute short positions",
+        "only take short trades",
+        "uniquement des ventes",
+        "vente seulement",
+        "short seulement",
+    )
+
+    long_only = any(marker in normalized for marker in long_only_markers)
+    short_only = any(marker in normalized for marker in short_only_markers)
+
+    if long_only and not short_only:
+        return "long_only"
+    if short_only and not long_only:
+        return "short_only"
+    return "long_short"
+
+
+def _apply_signal_direction_constraint(
+    signals: pd.Series,
+    direction_constraint: str,
+) -> pd.Series:
+    """Neutralise le côté interdit pour les objectifs long-only / short-only."""
+    direction = str(direction_constraint or "long_short").strip().lower()
+    if direction not in {"long_only", "short_only"}:
+        return signals
+
+    constrained = signals.copy()
+    values = constrained.to_numpy(copy=True)
+    if direction == "long_only":
+        values = np.where(values < 0.0, 0.0, values)
+    else:
+        values = np.where(values > 0.0, 0.0, values)
+    return pd.Series(values, index=constrained.index, dtype=np.float64)
 
 
 def _is_ruined_metrics(metrics: Dict[str, Any]) -> bool:
@@ -2345,6 +2423,9 @@ def _build_deterministic_strategy_code(
         default_params = {}
     default_params.setdefault("leverage", 1)
     default_params.setdefault("warmup", 50)
+    direction_constraint = str(
+        proposal.get("direction_constraint", "long_short") or "long_short"
+    ).strip().lower()
 
     default_params_literal = _format_python_dict_literal(default_params)
     default_params_lines = default_params_literal.splitlines() or ["{}"]
@@ -2362,6 +2443,17 @@ def _build_deterministic_strategy_code(
         f"        {line}" if line.strip() else ""
         for line in logic_lines
     )
+    direction_block = ""
+    if direction_constraint == "long_only":
+        direction_block = (
+            "        # Objective constraint: long-only\n"
+            "        signals[signals < 0.0] = 0.0\n"
+        )
+    elif direction_constraint == "short_only":
+        direction_block = (
+            "        # Objective constraint: short-only\n"
+            "        signals[signals > 0.0] = 0.0\n"
+        )
 
     return (
         "from typing import Any, Dict, List\n\n"
@@ -2389,6 +2481,7 @@ def _build_deterministic_strategy_code(
         "        short_mask = np.zeros(n, dtype=bool)\n"
         "        # === LOGIQUE LLM INSÉRÉE ICI UNIQUEMENT ===\n"
         f"{logic_block}\n"
+        f"{direction_block}"
         "        signals.iloc[:warmup] = 0.0\n"
         "        return signals\n"
     )
@@ -2436,6 +2529,9 @@ def _build_deterministic_fallback_code(
     default_params.setdefault("stop_atr_mult", 1.5)
     default_params.setdefault("tp_atr_mult", 3.0)
     default_params["leverage"] = 1  # Force leverage=1 (not setdefault)
+    direction_constraint = str(
+        proposal.get("direction_constraint", "long_short") or "long_short"
+    ).strip().lower()
 
     effective_variant = variant % 4
     if "donchian" in safe_used and "adx" in safe_used:
@@ -2665,6 +2761,17 @@ def _build_deterministic_fallback_code(
             f"        {line}\n" for line in default_params_lines[1:]
         )
         default_params_block += "\n"
+    direction_block = ""
+    if direction_constraint == "long_only":
+        direction_block = (
+            "        # Objective constraint: long-only\n"
+            "        signals[signals < 0.0] = 0.0\n"
+        )
+    elif direction_constraint == "short_only":
+        direction_block = (
+            "        # Objective constraint: short-only\n"
+            "        signals[signals > 0.0] = 0.0\n"
+        )
 
     return (
         "from typing import Any, Dict, List\n\n"
@@ -2689,6 +2796,7 @@ def _build_deterministic_fallback_code(
         "        signals = pd.Series(0.0, index=df.index, dtype=np.float64)\n"
         "        warmup = int(params.get('warmup', 50))\n"
         f"{signals_body}"
+        f"{direction_block}"
         "        signals.iloc[:warmup] = 0.0\n"
         "        return signals\n"
     )
@@ -2862,6 +2970,8 @@ def _sanitize_proposal_payload(
     proposal: Dict[str, Any],
     *,
     available_indicators: List[str],
+    objective: str = "",
+    direction_constraint: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Nettoie/sauve une proposition LLM sans relâcher le contrat final."""
     if not isinstance(proposal, dict):
@@ -2879,6 +2989,7 @@ def _sanitize_proposal_payload(
         "risk_management",
         "default_params",
         "parameter_specs",
+        "direction_constraint",
     }
     cleaned: Dict[str, Any] = {
         k: v for k, v in proposal.items() if k in allowed
@@ -2951,6 +3062,12 @@ def _sanitize_proposal_payload(
         cleaned["hypothesis"] = "Ajustement structurel basé sur le diagnostic précédent."
 
     cleaned["strategy_name"] = str(cleaned.get("strategy_name", "builder_strategy") or "builder_strategy").strip()
+    effective_direction = str(
+        direction_constraint or _infer_direction_constraint_from_objective(objective)
+    ).strip().lower()
+    if effective_direction not in {"long_only", "short_only", "long_short"}:
+        effective_direction = "long_short"
+    cleaned["direction_constraint"] = effective_direction
 
     # Flatten nested JSON in logic fields: LLMs sometimes output dicts/lists
     # instead of plain strings for entry/exit logic (e.g. nested logic_expression).
@@ -2982,6 +3099,11 @@ def _sanitize_proposal_payload(
         for pat, repl in _PROPOSAL_SCRUB_PATTERNS:
             val = pat.sub(repl, val)
         cleaned[key] = val
+
+    if effective_direction == "long_only":
+        cleaned["entry_short_logic"] = ""
+    elif effective_direction == "short_only":
+        cleaned["entry_long_logic"] = ""
 
     return cleaned
 
@@ -3133,6 +3255,7 @@ def _proposal_issues(proposal: Dict[str, Any]) -> List[str]:
         "risk_management",
         "default_params",
         "parameter_specs",
+        "direction_constraint",
     }
     required_top_keys = set(_BUILDER_PROPOSAL_REQUIRED_KEYS)
 
@@ -3736,6 +3859,7 @@ class StrategyBuilder:
         llm_config: Optional[LLMConfig] = None,
         llm_client: Optional[LLMClient] = None,
         llm_topology_config: Optional[LLMTopologyConfig | Dict[str, Any]] = None,
+        phase_llm_clients: Optional[Dict[str, Any]] = None,
         stream_callback: Optional[Callable[[str, str], None]] = None,
         backtest_completed_callback: Optional[Callable[[Any], None]] = None,
         progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
@@ -3751,6 +3875,11 @@ class StrategyBuilder:
         self.stream_callback = stream_callback
         self.backtest_completed_callback = backtest_completed_callback
         self.progress_callback = progress_callback
+        self.phase_llm_clients = {
+            str(key or "").strip(): value
+            for key, value in dict(phase_llm_clients or {}).items()
+            if str(key or "").strip() and value is not None
+        }
         if isinstance(llm_topology_config, dict):
             llm_topology_config = LLMTopologyConfig.from_dict(llm_topology_config)
         self.llm_topology_config = llm_topology_config or build_phase1_topology(
@@ -3809,6 +3938,25 @@ class StrategyBuilder:
     # LLM call helper (streaming si callback défini)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _resolve_phase_client_key(phase: str) -> str:
+        normalized = str(phase or "").strip().lower()
+        if normalized.startswith("pre_reflection"):
+            return "pre_reflection"
+        if normalized.startswith("retry_proposal"):
+            return "retry_proposal"
+        if normalized.startswith("retry_code"):
+            return "retry_code"
+        if normalized.startswith("proposal"):
+            return "proposal"
+        if normalized.startswith("code"):
+            return "code"
+        if normalized.startswith("analysis"):
+            return "analysis"
+        if normalized.startswith("objective_gen"):
+            return "objective_gen"
+        return normalized.split("_")[0] if normalized else ""
+
     def _chat_llm(
         self,
         messages: List[LLMMessage],
@@ -3832,7 +3980,9 @@ class StrategyBuilder:
         timeout_sec = _LLM_PHASE_TIMEOUTS.get(
             base_phase, _LLM_PHASE_TIMEOUT_DEFAULT
         )
-        client_config = getattr(self.llm, "config", None)
+        phase_client_key = self._resolve_phase_client_key(phase)
+        llm_client = self.phase_llm_clients.get(phase_client_key, self.llm)
+        client_config = getattr(llm_client, "config", None)
         route = self.llm_topology_config.resolve_builder_phase_route(
             phase,
             fallback_host=getattr(client_config, "ollama_host", None),
@@ -3842,15 +3992,15 @@ class StrategyBuilder:
             client_config.ollama_host = route.ollama_host
 
         def _do_call():
-            if self.stream_callback and hasattr(self.llm, "chat_stream"):
-                return self.llm.chat_stream(
+            if self.stream_callback and hasattr(llm_client, "chat_stream"):
+                return llm_client.chat_stream(
                     messages,
                     on_chunk=lambda c: self.stream_callback(phase, c),
                     json_mode=json_mode,
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
-            return self.llm.chat(
+            return llm_client.chat(
                 messages,
                 json_mode=json_mode,
                 temperature=temperature,
@@ -3990,6 +4140,7 @@ class StrategyBuilder:
             "available_indicators": self.available_indicators,
             "iteration": len(session.iterations) + 1,
             "max_iterations": session.max_iterations,
+            "direction_constraint": session.direction_constraint,
             # Contexte de marché
             "symbol": session.symbol,
             "timeframe": session.timeframe,
@@ -4084,6 +4235,8 @@ class StrategyBuilder:
         proposal = _sanitize_proposal_payload(
             proposal,
             available_indicators=self.available_indicators,
+            objective=session.objective,
+            direction_constraint=session.direction_constraint,
         )
         issues = _proposal_issues(proposal)
         feedback["issues"] = issues
@@ -4132,6 +4285,8 @@ class StrategyBuilder:
             proposal = _sanitize_proposal_payload(
                 proposal,
                 available_indicators=self.available_indicators,
+                objective=session.objective,
+                direction_constraint=session.direction_constraint,
             )
             issues = _proposal_issues(proposal)
             feedback["issues"] = issues
@@ -4173,6 +4328,7 @@ class StrategyBuilder:
             "proposal": proposal,
             "available_indicators": self.available_indicators,
             "class_name": GENERATED_CLASS_NAME,
+            "direction_constraint": session.direction_constraint,
             # Contexte de marché
             "symbol": session.symbol,
             "timeframe": session.timeframe,
@@ -4895,6 +5051,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         initial_capital: float = 10000.0,
         fees_bps: float = 10.0,
         slippage_bps: float = 5.0,
+        direction_constraint: str = "long_short",
     ) -> Dict[str, Any]:
         """Estime le nombre de signaux avant simulation complète.
 
@@ -4915,25 +5072,119 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             indicators = engine._calculate_indicators(probe_df, strategy_instance, merged_params)
             raw_signals = strategy_instance.generate_signals(probe_df, indicators, merged_params)
             signals = _coerce_and_validate_signals_runtime(raw_signals, probe_df)
+            signals = _apply_signal_direction_constraint(
+                signals,
+                direction_constraint,
+            )
 
-            long_count = int((signals.values > 0).sum())
-            short_count = int((signals.values < 0).sum())
+            signal_values = np.asarray(
+                signals.values if hasattr(signals, "values") else signals,
+                dtype=np.float64,
+            )
+            long_count = int((signal_values > 0).sum())
+            short_count = int((signal_values < 0).sum())
             total_count = long_count + short_count
+            bar_count = int(signal_values.size)
+            nonzero_mask = signal_values != 0.0
+            prev_values = np.roll(signal_values, 1)
+            prev_values[0] = 0.0
+            transition_nonzero = nonzero_mask & (signal_values != prev_values)
+            repeated_same_nonzero = nonzero_mask & (signal_values == prev_values)
+            transition_count = int(transition_nonzero.sum())
+            repeated_same_count = int(repeated_same_nonzero.sum())
+            signal_density = (
+                float(total_count / bar_count) if bar_count > 0 else 0.0
+            )
+            transition_density = (
+                float(transition_count / bar_count) if bar_count > 0 else 0.0
+            )
+            repeated_same_ratio = (
+                float(repeated_same_count / total_count) if total_count > 0 else 0.0
+            )
 
             return {
                 "ok": True,
+                "bar_count": bar_count,
                 "long_signals": long_count,
                 "short_signals": short_count,
                 "total_signals": total_count,
+                "signal_density": signal_density,
+                "transition_signals": transition_count,
+                "transition_density": transition_density,
+                "repeated_same_signals": repeated_same_count,
+                "repeated_same_ratio": repeated_same_ratio,
             }
         except Exception as exc:
             return {
                 "ok": False,
                 "error": f"{type(exc).__name__}: {exc}",
+                "bar_count": 0,
                 "long_signals": 0,
                 "short_signals": 0,
                 "total_signals": 0,
+                "signal_density": 0.0,
+                "transition_signals": 0,
+                "transition_density": 0.0,
+                "repeated_same_signals": 0,
+                "repeated_same_ratio": 0.0,
             }
+
+    def _is_pathological_signal_profile(self, signal_probe: Dict[str, Any]) -> bool:
+        """Détecte un spam de signaux qui mérite un skip avant backtest complet."""
+        if not signal_probe.get("ok"):
+            return False
+
+        total_signals = int(signal_probe.get("total_signals", 0) or 0)
+        signal_density = float(signal_probe.get("signal_density", 0.0) or 0.0)
+        repeated_same_ratio = float(signal_probe.get("repeated_same_ratio", 0.0) or 0.0)
+
+        if total_signals < MIN_SIGNAL_COUNT_FOR_DENSITY_PRECHECK:
+            return False
+
+        return (
+            signal_density >= MAX_SIGNAL_DENSITY_PRECHECK
+            and repeated_same_ratio >= MAX_REPEATED_SAME_SIGNAL_RATIO_PRECHECK
+        )
+
+    @staticmethod
+    def _build_precheck_overtrading_result(
+        signal_probe: Dict[str, Any],
+    ) -> SimpleNamespace:
+        """Construit un résultat synthétique pour classifier un spam de signaux."""
+        total_signals = int(signal_probe.get("total_signals", 0) or 0)
+        signal_density = float(signal_probe.get("signal_density", 0.0) or 0.0)
+        repeated_same_ratio = float(signal_probe.get("repeated_same_ratio", 0.0) or 0.0)
+
+        metrics = {
+            "total_return_pct": -10.0,
+            "sharpe_ratio": -5.0,
+            "sortino_ratio": -5.0,
+            "calmar_ratio": -1.0,
+            "max_drawdown_pct": -25.0,
+            "total_trades": total_signals,
+            "win_rate_pct": 0.0,
+            "profit_factor": 0.5,
+            "expectancy": -0.05,
+            "avg_win": 0.0,
+            "avg_loss": -1.0,
+            "volatility_annual": 0.0,
+        }
+
+        return SimpleNamespace(
+            success=True,
+            metrics=metrics,
+            sharpe_ratio=metrics["sharpe_ratio"],
+            total_return_pct=metrics["total_return_pct"],
+            max_drawdown_pct=metrics["max_drawdown_pct"],
+            total_trades=metrics["total_trades"],
+            execution_time_ms=0,
+            meta={
+                "precheck_skipped": True,
+                "skip_reason": "pathological_signal_density",
+                "signal_density": signal_density,
+                "repeated_same_ratio": repeated_same_ratio,
+            },
+        )
     # ------------------------------------------------------------------
     # Core: run backtest on generated strategy
     # ------------------------------------------------------------------
@@ -4949,6 +5200,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         timeframe: str = "1h",
         fees_bps: float = 10.0,
         slippage_bps: float = 5.0,
+        direction_constraint: str = "long_short",
     ) -> Any:
         """Lance un backtest sur la stratégie générée.
 
@@ -4976,7 +5228,11 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                     f"Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with "
                     f"conditional fill instead of slicing."
                 ) from exc
-            return _coerce_and_validate_signals_runtime(raw, df_local)
+            constrained = _coerce_and_validate_signals_runtime(raw, df_local)
+            return _apply_signal_direction_constraint(
+                constrained,
+                direction_constraint,
+            )
 
         strategy_instance.generate_signals = _guarded_generate_signals
 
@@ -5093,6 +5349,9 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             fees_bps=fees_bps,
             slippage_bps=slippage_bps,
             initial_capital=initial_capital,
+        )
+        session.direction_constraint = _infer_direction_constraint_from_objective(
+            objective
         )
         self._emit_progress(
             "session_start",
@@ -5246,6 +5505,8 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                     proposal = _sanitize_proposal_payload(
                         proposal,
                         available_indicators=self.available_indicators,
+                        objective=session.objective,
+                        direction_constraint=session.direction_constraint,
                     )
                     iteration.phase_feedback.setdefault("proposal", {})[
                         "fallback_deterministic_used"
@@ -5581,6 +5842,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                     initial_capital=initial_capital,
                     fees_bps=session.fees_bps,
                     slippage_bps=session.slippage_bps,
+                    direction_constraint=session.direction_constraint,
                 )
                 iteration.phase_feedback.setdefault("precheck", {}).update(signal_probe)
 
@@ -5618,6 +5880,40 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                         total_trades=0,
                         execution_time_ms=0,
                     )
+                elif self._is_pathological_signal_profile(signal_probe):
+                    total_n = int(signal_probe.get("total_signals", 0) or 0)
+                    density = float(signal_probe.get("signal_density", 0.0) or 0.0)
+                    repeated_same_ratio = float(
+                        signal_probe.get("repeated_same_ratio", 0.0) or 0.0
+                    )
+                    transition_n = int(signal_probe.get("transition_signals", 0) or 0)
+                    ts.warning(
+                        "Pré-check: densité de signaux aberrante "
+                        f"({density:.1%}, répétitions identiques {repeated_same_ratio:.1%}, "
+                        f"transitions {transition_n}). Backtest complet ignoré, "
+                        "correction logique forcée."
+                    )
+                    logger.warning(
+                        "builder_iter_%d_precheck_signal_spam total=%d density=%.3f "
+                        "repeated_same_ratio=%.3f transitions=%d",
+                        i,
+                        total_n,
+                        density,
+                        repeated_same_ratio,
+                        transition_n,
+                    )
+                    iteration.phase_feedback.setdefault("precheck", {}).update(
+                        {
+                            "pathological_signal_density": True,
+                            "skip_reason": "pathological_signal_density",
+                            "backtest_skipped": True,
+                            "suggested_fix": (
+                                "deduplicate_consecutive_signals_or_tighten_entry_logic"
+                            ),
+                        }
+                    )
+                    proposal["_stagnation_detected"] = True
+                    bt_result = self._build_precheck_overtrading_result(signal_probe)
                 else:
                     # Launch pre-reflection in parallel with backtest
                     pre_reflection_future = None
@@ -5638,6 +5934,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                             timeframe=session.timeframe,
                             fees_bps=session.fees_bps,
                             slippage_bps=session.slippage_bps,
+                            direction_constraint=session.direction_constraint,
                         )
                     except Exception as bt_exc:
                         bt_error = f"{type(bt_exc).__name__}: {bt_exc}"
@@ -5709,6 +6006,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                                 timeframe=session.timeframe,
                                 fees_bps=session.fees_bps,
                                 slippage_bps=session.slippage_bps,
+                                direction_constraint=session.direction_constraint,
                             )
                         except Exception as retry_bt_exc:
                             if used_runtime_fallback:
@@ -5737,6 +6035,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                                 timeframe=session.timeframe,
                                 fees_bps=session.fees_bps,
                                 slippage_bps=session.slippage_bps,
+                                direction_constraint=session.direction_constraint,
                             )
                             retry_code = fallback_code
                             used_runtime_fallback = True
@@ -5751,19 +6050,24 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                         iteration.phase_feedback.setdefault("backtest", {})[
                             "runtime_fix_applied"
                         ] = True
-                    iteration.backtest_result = bt_result
-                    self._emit_progress(
-                        "phase_done",
-                        iteration=i,
-                        phase="backtest",
-                        sharpe=bt_result.metrics.get("sharpe_ratio", 0.0),
-                        total_return_pct=bt_result.metrics.get("total_return_pct", 0.0),
-                    )
                     self._emit_completed_backtest(
                         bt_result,
                         session=session,
                         iteration_num=i,
                     )
+                iteration.backtest_result = bt_result
+                self._emit_progress(
+                    "phase_done",
+                    iteration=i,
+                    phase="backtest",
+                    sharpe=bt_result.metrics.get("sharpe_ratio", 0.0),
+                    total_return_pct=bt_result.metrics.get("total_return_pct", 0.0),
+                    backtest_skipped=bool(
+                        iteration.phase_feedback.get("precheck", {}).get(
+                            "backtest_skipped"
+                        )
+                    ),
+                )
                 ts.backtest_result(bt_result.metrics)
 
                 # Collect pre-reflection result (ran in parallel with backtest)
@@ -5813,15 +6117,21 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                         "penalties": score_payload.get("penalties"),
                     }
                 )
-                # Fallback iterations are NOT eligible for best — they use
-                # generic deterministic logic, not the LLM's actual proposal.
-                if not iteration.is_fallback:
-                    if sharpe > session.best_sharpe:
-                        session.best_sharpe = sharpe
-                    if rank_score > session.best_score:
-                        session.best_score = rank_score
-                        session.best_iteration = iteration
-                        ts.best_update(sharpe, i)
+                if math.isfinite(sharpe) and sharpe > session.best_sharpe:
+                    session.best_sharpe = sharpe
+
+                should_promote_best = False
+                if session.best_iteration is None:
+                    should_promote_best = True
+                elif session.best_iteration.is_fallback and not iteration.is_fallback:
+                    should_promote_best = True
+                elif not iteration.is_fallback and rank_score > session.best_score:
+                    should_promote_best = True
+
+                if should_promote_best:
+                    session.best_score = rank_score
+                    session.best_iteration = iteration
+                    ts.best_update(sharpe, i)
                 elif iteration.is_fallback:
                     logger.info(
                         "builder_iter_%d_fallback_not_scored rank_score=%.3f",

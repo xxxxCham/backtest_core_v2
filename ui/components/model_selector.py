@@ -31,7 +31,13 @@ except ImportError:
     def is_ollama_available(ollama_host: Optional[str] = None) -> bool:
         return False
 from utils.log import get_logger
-from utils.model_loader import get_model_info_for_ui, get_ollama_model_names, load_models_json
+from utils.model_loader import (
+    get_model_by_id,
+    get_model_info_for_ui,
+    get_ollama_model_names,
+    load_models_json,
+    normalize_model_name as normalize_catalog_model_name,
+)
 
 logger = get_logger(__name__)
 
@@ -211,9 +217,7 @@ def _fetch_ollama_details(ollama_host: Optional[str] = None) -> Dict[str, Dict]:
         data = resp.json()
         result = {}
         for m in data.get("models", []):
-            name = m["name"]
-            if name.endswith(":latest"):
-                name = name[:-7]
+            name = normalize_catalog_model_name(m["name"])
             details = m.get("details", {})
             result[name] = {
                 "size_bytes": m.get("size", 0),
@@ -255,21 +259,15 @@ def get_model_details(model_name: str, ollama_host: Optional[str] = None) -> Dic
         Dict avec: name, size_gb, vram_gb, parameters, quantization,
                    family, use_case, description, backup_path, fits_gpu
     """
-    ollama_data = _fetch_ollama_details(ollama_host).get(model_name, {})
+    normalized_model_name = _normalize_model_name(model_name)
+    ollama_data = _fetch_ollama_details(ollama_host).get(normalized_model_name, {})
 
-    # Chercher dans models.json
+    # Chercher dans models.json via la resolution d'alias centrale
     json_data = {}
     try:
-        models_json = load_models_json()
-        for m in models_json.get("ollama_models", []):
-            ollama_nm = m.get("ollama_name", "")
-            if ollama_nm.endswith(":latest"):
-                ollama_nm = ollama_nm[:-7]
-            if ollama_nm == model_name:
-                json_data = m
-                break
+        json_data = get_model_by_id(model_name) or {}
     except Exception:
-        pass
+        json_data = {}
 
     size_gb = ollama_data.get("size_gb") or json_data.get("size_gb") or "?"
     vram_gb = _estimate_vram_gb(size_gb) if isinstance(size_gb, (int, float)) else "?"
@@ -281,7 +279,7 @@ def get_model_details(model_name: str, ollama_host: Optional[str] = None) -> Dic
         fits_gpu = None
 
     return {
-        "name": model_name,
+        "name": normalized_model_name or model_name,
         "size_gb": size_gb,
         "vram_gb": vram_gb,
         "parameters": ollama_data.get("parameters") or json_data.get("parameters", "?"),
@@ -322,9 +320,7 @@ def _get_library_models() -> List[str]:
 
 
 def _normalize_model_name(name: str) -> str:
-    if name.endswith(":latest"):
-        return name.rsplit(":", 1)[0]
-    return name
+    return normalize_catalog_model_name(name)
 
 
 def get_available_models_for_ui(

@@ -1,0 +1,2228 @@
+{
+  "session_id": "20260312_113305_fiche_strategie_v1_id_trend_supertrend_a",
+  "objective": "FICHE_STRATEGIE v1 id: trend_supertrend archetype: trend_supertrend family: trend timeframe: side: both indicators: - supertrend(atr_period=15, multiplier=2.0) - adx(period=18) - atr(period=14) entry: - long: supertrend.direction == 1 and adx.adx > 35 - short: supertrend.direction == -1 and adx.adx > 35 exit: - condition: direction_change(supertrend.direction) or adx.adx < 20 risk: stop_atr_mult: 2.25 tp_atr_mult: 5.0 description: ATR trailing stop (2.25x) and take-profit (5.0x) constraints: - no_lookahead: true - only_registry_indicators: true",
+  "status": "max_iterations",
+  "best_sharpe": 0.7744345624494372,
+  "best_score": 77.98827424780552,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 10,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Supertrend supplies a volatility\u2011adjusted trend direction while ADX filters for only the strongest trends; combining them reduces false entries in choppy markets, and ATR\u2011based exits scale risk to current market volatility.",
+      "change_type": "accept",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.6949410422008119,
+      "return_pct": 92.44944722870758,
+      "max_drawdown_pct": -50.090088853876125,
+      "profit_factor": 1.8596573084432388,
+      "win_rate_pct": 50.0,
+      "trades": 10,
+      "continuous_score": 60.989882567475206,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 19.458349181622733,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.6666666666666665,
+          "win_rate": 4.5
+        },
+        "penalties": {
+          "drawdown_pressure": 20.060059235917418,
+          "drawdown_excess": 12.57507404489677,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 15.090088853876125
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +92.4%, PF 1.86, Expectancy 924.49"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 50.1%, Vol 47.9%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.695, Sortino 0.989, Calmar 0.760"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 50.0%, Trades 10, AvgW/L 3999.83/2150.84"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 742,
+          "long_signals": 123,
+          "short_signals": 0,
+          "total_signals": 123,
+          "signal_density": 0.16576819407008087,
+          "transition_signals": 7,
+          "transition_density": 0.009433962264150943,
+          "repeated_same_signals": 116,
+          "repeated_same_ratio": 0.943089430894309
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses include an overly restrictive ADX filter (threshold 35) that may miss many viable trends, a lagging supertrend (ATR15) that can delay entries, and a simple exit that may close positions prematurely when the trend reverses slowly. The fixed ATR\u2011based stop/TP (2.25x/5x) may not adapt well to different volatility regimes, leading to suboptimal risk\u2011reward. Additionally, relying only on the supertrend direction change for exits ignores price structure and could yield whipsaws in ranging markets.\n[Backup plan] If the strategy underperforms, first lower the ADX entry threshold to ~25 and test a shorter supertrend period (e.g., atr_period=10, multiplier=1.5) to capture more timely trends. For low Sharpe, tighten the exit by adding a trailing stop at 1.5\u00d7ATR and a tighter TP (3\u00d7ATR) or employ a volatility\u2011adjusted risk\u2011reward ratio. If performance remains weak, switch to a dual\u2011EMA trend filter (e.g., 50/200 EMA) combined with the same ADX filter, or introduce a momentum filter such as RSI over 14 to reduce false entries in choppy markets."
+        },
+        "scoring": {
+          "continuous_score": 60.989882567475206,
+          "drawdown_excess_pct": 15.090088853876125,
+          "components": {
+            "sharpe": 19.458349181622733,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.6666666666666665,
+            "win_rate": 4.5
+          },
+          "penalties": {
+            "drawdown_pressure": 20.060059235917418,
+            "drawdown_excess": 12.57507404489677,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Combining the supertrend trend filter with a strong ADX confirmation and an RSI range filter limits trades to genuine trend moves that are not already exhausted, which should reduce the number of large losses in volatile swings and lower maximum drawdown.",
+      "change_type": "logic",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.6933369052863858,
+      "return_pct": 91.49792051466932,
+      "max_drawdown_pct": -48.518896121153865,
+      "profit_factor": 1.8433474858372498,
+      "win_rate_pct": 50.0,
+      "trades": 10,
+      "continuous_score": 63.30175583295467,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 19.413433348018803,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.6666666666666665,
+          "win_rate": 4.5
+        },
+        "penalties": {
+          "drawdown_pressure": 19.012597414102576,
+          "drawdown_excess": 11.265746767628222,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 13.518896121153865
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +91.5%, PF 1.84, Expectancy 914.98"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 48.5%, Vol 47.5%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.693, Sortino 0.988, Calmar 0.777"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 50.0%, Trades 10, AvgW/L 3999.83/2169.87"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 742,
+          "long_signals": 110,
+          "short_signals": 0,
+          "total_signals": 110,
+          "signal_density": 0.14824797843665768,
+          "transition_signals": 12,
+          "transition_density": 0.016172506738544475,
+          "repeated_same_signals": 98,
+          "repeated_same_ratio": 0.8909090909090909
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. The supertrend/ADX combo may produce many whipsaw trades in ranging markets; the high ADX threshold (35) can miss weaker but profitable trends and the RSI filter may over\u2011restrict entries. 2. If the backtest yields a negative return, I would first drop or lower the ADX requirement (e.g., to 25) and replace the RSI exit with a simpler direction\u2011change only rule to reduce premature exits. 3. If the Sharpe is low, I would tighten the stop (ATR mult 1.5) and shorten the ATR period (12) for quicker exits, while also testing a higher take\u2011profit multiplier (7.0) to improve risk\u2011reward. 4. As an alternative, I would try a trend\u2011following strategy based on a 50\u2011EMA crossover with a volatility\u2011scaled trailing stop, optionally adding a momentum filter such as the MACD histogram to confirm entry timing."
+        },
+        "scoring": {
+          "continuous_score": 63.30175583295467,
+          "drawdown_excess_pct": 13.518896121153865,
+          "components": {
+            "sharpe": 19.413433348018803,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.6666666666666665,
+            "win_rate": 4.5
+          },
+          "penalties": {
+            "drawdown_pressure": 19.012597414102576,
+            "drawdown_excess": 11.265746767628222,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Supertrend identifies trend direction while a high ADX (>35) confirms trend strength; ATR-based risk limits exposure to volatility and protects capital during sudden swings, improving risk-adjusted returns.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7744345624494372,
+      "return_pct": 119.84559365233116,
+      "max_drawdown_pct": -39.44372698031712,
+      "profit_factor": 2.0001508410243423,
+      "win_rate_pct": 45.45454545454545,
+      "trades": 11,
+      "continuous_score": 77.98827424780552,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 21.68416774858424,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.8333333333333333,
+          "win_rate": 3.1363636363636362
+        },
+        "penalties": {
+          "drawdown_pressure": 12.962484653544749,
+          "drawdown_excess": 3.703105816930936,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 4.443726980317123
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +119.8%, PF 2.00, Expectancy 1089.51"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 39.4%, Vol 49.4%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.774, Sortino 1.216, Calmar 1.202"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 45.5%, Trades 11, AvgW/L 4793.46/1997.13"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 742,
+          "long_signals": 77,
+          "short_signals": 0,
+          "total_signals": 77,
+          "signal_density": 0.10377358490566038,
+          "transition_signals": 10,
+          "transition_density": 0.013477088948787063,
+          "repeated_same_signals": 67,
+          "repeated_same_ratio": 0.8701298701298701
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses include an overly restrictive ADX threshold (>35) that limits trade frequency, a lagging supertrend (ATR period 15) that may miss quick trend shifts, and a simplistic exit rule that could trigger too late or too early; the fixed ATR\u2011based stop/TP may not adapt to changing volatility. If the strategy turns negative, I would first lower the ADX threshold to ~25 or add a volume filter to capture more valid trends. If the Sharpe remains low, tightening the ATR stop (e.g., 2.0x) and reducing the take\u2011profit (e.g., 3.5x) or experimenting with a shorter ATR period (10) could improve risk\u2011adjusted returns. As an alternative, I would test a dual\u2011moving\u2011average crossover with a volatility filter or a trend\u2011following MACD strategy that includes a dynamic trailing stop."
+        },
+        "scoring": {
+          "continuous_score": 77.98827424780552,
+          "drawdown_excess_pct": 4.443726980317123,
+          "components": {
+            "sharpe": 21.68416774858424,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.8333333333333333,
+            "win_rate": 3.1363636363636362
+          },
+          "penalties": {
+            "drawdown_pressure": 12.962484653544749,
+            "drawdown_excess": 3.703105816930936,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "The supertrend indicator captures trend direction while the ADX filter ensures only strong trends trigger entries; tightening the ATR stop and take\u2011profit multipliers reduces drawdown and aligns risk\u2011reward with daily volatility, improving Sharpe while preserving profitable trend captures.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.6845415050175757,
+      "return_pct": 91.53388325010292,
+      "max_drawdown_pct": -49.746615396226,
+      "profit_factor": 1.837141232623598,
+      "win_rate_pct": 50.0,
+      "trades": 10,
+      "continuous_score": 61.21390571281978,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 19.16716214049212,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.6666666666666665,
+          "win_rate": 4.5
+        },
+        "penalties": {
+          "drawdown_pressure": 19.831076930817332,
+          "drawdown_excess": 12.288846163521665,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 14.746615396225998
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +91.5%, PF 1.84, Expectancy 915.34"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 49.7%, Vol 49.2%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.685, Sortino 0.975, Calmar 0.758"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 50.0%, Trades 10, AvgW/L 4017.50/2186.82"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 742,
+          "long_signals": 110,
+          "short_signals": 0,
+          "total_signals": 110,
+          "signal_density": 0.14824797843665768,
+          "transition_signals": 12,
+          "transition_density": 0.016172506738544475,
+          "repeated_same_signals": 98,
+          "repeated_same_ratio": 0.8909090909090909
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1) Over\u2011reliance on supertrend direction and a hard ADX threshold may miss late\u2011entry opportunities and generate whipsaws in ranging markets; 2) Fixed ATR multipliers for stop and TP may be sub\u2011optimal across volatility regimes; 3) Exit on adx<20 can trigger prematurely if ADX lags, causing small gains; 4) Single\u2011timeframe (1d) limits adaptability to intraday dynamics.\n[Backup plan] If negative return: lower the ADX entry threshold to ~25 and add a volume filter to avoid low\u2011liquidity whipsaws. If low Sharpe: experiment with a dynamic ATR multiplier (e.g., 1.5x stop, 4x TP) or use a volatility\u2011adjusted stop (ATR/price) to tighten risk. Alternative: replace supertrend with a moving\u2011average crossover (e.g., 50/200) combined with ADX filter, and use a trailing stop based on recent swing lows/highs to capture longer\u2011term trends."
+        },
+        "scoring": {
+          "continuous_score": 61.21390571281978,
+          "drawdown_excess_pct": 14.746615396225998,
+          "components": {
+            "sharpe": 19.16716214049212,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.6666666666666665,
+            "win_rate": 4.5
+          },
+          "penalties": {
+            "drawdown_pressure": 19.831076930817332,
+            "drawdown_excess": 12.288846163521665,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "The supertrend indicator provides a robust trend direction based on ATR, while a high ADX value confirms that the market is in a strong trend; tightening the supertrend ATR period and multiplier along with a more aggressive stop/TP ratio reduces exposure to whipsaw moves and improves risk\u2011adjusted returns.",
+      "change_type": "params",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.3787457760753882,
+      "return_pct": -29.119687837646097,
+      "max_drawdown_pct": -88.09703949407185,
+      "profit_factor": 0.8383781349811614,
+      "win_rate_pct": 38.46153846153847,
+      "trades": 13,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 10.604881730110868,
+          "return": -32.031656621410704,
+          "profit_factor": -7.3884281151469064,
+          "trades_confidence": 2.166666666666667,
+          "win_rate": 1.03846153846154
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 53.09703949407185
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -29.1%, PF 0.84, Expectancy -224.00"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 88.1%, Vol 113.5%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.379, Sortino 0.570, Calmar -0.177"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 38.5%, Trades 13, AvgW/L 3021.04/2252.15"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 742,
+          "long_signals": 170,
+          "short_signals": 0,
+          "total_signals": 170,
+          "signal_density": 0.22911051212938005,
+          "transition_signals": 15,
+          "transition_density": 0.02021563342318059,
+          "repeated_same_signals": 155,
+          "repeated_same_ratio": 0.9117647058823529
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses include a lagging supertrend on a 1\u2011day chart, an overly high ADX cutoff that filters out many trend\u2011initiating moves, and a stop/TP ratio that may be too aggressive for a volatile asset, causing premature exits. The exit rule (direction change or ADX<20) can trigger on minor retracements, reducing profitability. The strategy also ignores market context (e.g., volume or range).\n[Backup plan] If the backtest shows negative returns, lower the ADX threshold to ~25 or add a volume filter to confirm trend strength. For a low Sharpe, increase the stop multiplier to 3.0 and TP to 6.0 to improve risk\u2011reward, or tighten the supertrend multiplier to 1.5 for earlier entries. If performance remains weak, switch to a dual\u2011MA trend filter with ATR\u2011based trailing stops or incorporate a MACD trend confirmation as an alternative approach."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 53.09703949407185,
+          "components": {
+            "sharpe": 10.604881730110868,
+            "return": -32.031656621410704,
+            "profit_factor": -7.3884281151469064,
+            "trades_confidence": 2.166666666666667,
+            "win_rate": 1.03846153846154
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 9
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Using supertrend to capture trend direction, filtering with a strong ADX (>35) to ensure trend persistence, and only entering when price breaks above the upper Bollinger band for longs or below the lower band for shorts, limits entries to genuine breakouts and reduces whipsaws, thereby lowering drawdown while still allowing for significant upside.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.3943605117340076,
+      "return_pct": -38.00120605921698,
+      "max_drawdown_pct": -56.81092330491444,
+      "profit_factor": 0.5158282351950644,
+      "win_rate_pct": 16.666666666666664,
+      "trades": 6,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -11.042094328552214,
+          "return": -33.0,
+          "profit_factor": -22.133566391082773,
+          "trades_confidence": 1.0,
+          "win_rate": -5.5
+        },
+        "penalties": {
+          "drawdown_pressure": 24.54061553660963,
+          "drawdown_excess": 18.175769420762034,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 21.81092330491444
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -38.0%, PF 0.52, Expectancy -633.35"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 56.8%, Vol 30.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.394, Sortino -0.189, Calmar -0.369"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 16.7%, Trades 6, AvgW/L 4048.58/1569.74"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 742,
+          "long_signals": 14,
+          "short_signals": 0,
+          "total_signals": 14,
+          "signal_density": 0.018867924528301886,
+          "transition_signals": 8,
+          "transition_density": 0.01078167115902965,
+          "repeated_same_signals": 6,
+          "repeated_same_ratio": 0.42857142857142855
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy is over\u2011constrained: a 35+ ADX filter and a Bollinger breakout cut out many legitimate moves, while the 2.25x ATR stop and 5x TP may be too loose for a 1\u2011day chart, causing large slippage and high drawdown. The supertrend itself can lag on choppy markets, and the exit rule (middle band or ADX<25) may trigger too early. Also, the backtest uses only long/short entries on a single pair, limiting diversification.\n[Backup plan] If returns stay negative, drop the Bollinger filter and use a simple supertrend direction+ADX>25 entry to increase fill rate. If Sharpe remains low, tighten the ATR stop to 1.5x, reduce TP to 3x, and shorten the ADX period to 12 to capture faster trends. Alternatively, switch to a volatility\u2011breakout strategy using the 20\u2011period ATR to set dynamic thresholds, or add a 50\u2011period SMA filter to smooth the trend signal."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 21.81092330491444,
+          "components": {
+            "sharpe": -11.042094328552214,
+            "return": -33.0,
+            "profit_factor": -22.133566391082773,
+            "trades_confidence": 1.0,
+            "win_rate": -5.5
+          },
+          "penalties": {
+            "drawdown_pressure": 24.54061553660963,
+            "drawdown_excess": 18.175769420762034,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 4,
+            "llm_positive": 4,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 10
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "A supertrend-confirmed trend combined with a Bollinger band breakout limits entries to strong directional moves, while the ADX filter ensures only robust trends are traded, reducing whipsaws and large drawdowns.",
+      "change_type": "logic",
+      "diagnostic_category": "needs_work",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.16650387005196599,
+      "return_pct": -22.450198142320232,
+      "max_drawdown_pct": -45.97791138777561,
+      "profit_factor": 0.6432854229354985,
+      "win_rate_pct": 20.0,
+      "trades": 5,
+      "continuous_score": -95.79781216071461,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -4.662108361455047,
+          "return": -24.695217956552256,
+          "profit_factor": -16.306952094377213,
+          "trades_confidence": 0.8333333333333333,
+          "win_rate": -4.5
+        },
+        "penalties": {
+          "drawdown_pressure": 17.31860759185041,
+          "drawdown_excess": 9.148259489813011,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 10.977911387775613
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -22.5%, PF 0.64, Expectancy -449.00"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 46.0%, Vol 28.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.167, Sortino -0.076, Calmar -0.256"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 20.0%, Trades 5, AvgW/L 4048.58/1573.40"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 742,
+          "long_signals": 13,
+          "short_signals": 0,
+          "total_signals": 13,
+          "signal_density": 0.01752021563342318,
+          "transition_signals": 7,
+          "transition_density": 0.009433962264150943,
+          "repeated_same_signals": 6,
+          "repeated_same_ratio": 0.46153846153846156
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1) The strategy relies solely on supertrend and ADX, which can produce many false signals in sideways markets and may miss moderate trends; 2) The fixed ATR stop/TP may not adapt to changing volatility, leading to premature exits or large drawdowns; 3) No position\u2011sizing or risk\u2011management details are defined, so the strategy could be overly exposed during weak trends; 4) The exit rule (direction change or ADX<20) may be too late, causing losses if the trend reverses quickly.\n[Backup plan] If returns turn negative, first test a stricter ADX threshold (e.g., >45) or add a Bollinger upper/lower filter to confirm breakouts before entry. For low Sharpe, reduce the stop multiplier to 1.5x ATR and tighten the TP to 3.0x ATR, or implement a trailing stop. If the strategy still underperforms, switch to a dual\u2011EMA crossover with an ADX filter and a volatility\u2011scaled position size, or try a breakout strategy using daily high/low ranges with a volatility filter."
+        },
+        "scoring": {
+          "continuous_score": -95.79781216071461,
+          "drawdown_excess_pct": 10.977911387775613,
+          "components": {
+            "sharpe": -4.662108361455047,
+            "return": -24.695217956552256,
+            "profit_factor": -16.306952094377213,
+            "trades_confidence": 0.8333333333333333,
+            "win_rate": -4.5
+          },
+          "penalties": {
+            "drawdown_pressure": 17.31860759185041,
+            "drawdown_excess": 9.148259489813011,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 8
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "Combining a Bollinger band breakout with a strong trend filter (ADX > 25) and momentum confirmation (RSI above 70 for longs, below 30 for shorts) limits entries to genuine trend shifts and reduces whipsaw in volatile crypto markets, improving risk\u2011adjusted returns.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -50.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 0.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "KeyError: 'adx_threshold'",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "KeyError: 'adx_threshold'",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5218, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260312_113305_fiche_strategie_v1_id_trend_supertrend_a\\strategy.py\", line 150, in generate_signals\n    & (adx_val > params[\"adx_threshold\"])\nKeyError: 'adx_threshold'",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy\u2019s heavy reliance on Bollinger breakout and high ADX thresholds makes it overly restrictive and may miss mid\u2011term trends; the 1\u2011day UNIUSDC chart\u2019s high volatility can cause frequent false breakouts, and the 70/30 RSI filter is too strict, reducing trade frequency and skewing risk\u2011return. The ATR\u2011based stop/take\u2011profit may be too wide for a crypto pair, leading to large drawdowns before exit triggers. The exit rule (middle band or low ADX) can lag, causing over\u2011exposure during consolidations.\n[Backup plan] If the backtest remains negative, switch to a shorter ADX period (12) and lower the breakout filter to close > bollinger.middle rather than upper, adding a trend confirmation with a 14\u2011period EMA to reduce whipsaws. For a low Sharpe, tighten the ATR stop to 1.5\u00d7 and TP to 3\u00d7, and introduce a volatility filter by capping trades when ATR > 2\u00d7 its 20\u2011period average. If performance still fails, abandon Bollinger and adopt a pure SuperTrend + ADX filter with a 1\u2011hour timeframe and a dynamic position sizing based on recent volatility."
+        },
+        "scoring": {
+          "continuous_score": -50.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "Using the supertrend to define trend direction combined with a moderate ADX filter (above 25) allows the strategy to capture genuine trend shifts while avoiding the overly restrictive 35\u2011level threshold that eliminated all entries; ATR\u2011based risk management ensures consistent volatility\u2011scaled exits.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.4934008950172471,
+      "return_pct": 41.06274009238783,
+      "max_drawdown_pct": -54.998328318288195,
+      "profit_factor": 1.1468773723468284,
+      "win_rate_pct": 35.0,
+      "trades": 20,
+      "continuous_score": 27.865460080810408,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 13.815225060482918,
+          "return": 44.0,
+          "profit_factor": 6.714394164426442,
+          "trades_confidence": 3.333333333333333,
+          "win_rate": 0.0
+        },
+        "penalties": {
+          "drawdown_pressure": 23.332218878858797,
+          "drawdown_excess": 16.665273598573496,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 19.998328318288195
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +41.1%, PF 1.15, Expectancy 205.31"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 55.0%, Vol 66.5%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.493, Sortino 0.890, Calmar 0.336"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 35.0%, Trades 20, AvgW/L 4580.49/2150.55"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "ValueError: cannot convert float NaN to integer",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "ValueError: cannot convert float NaN to integer",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5218, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260312_113305_fiche_strategie_v1_id_trend_supertrend_a\\strategy.py\", line 70, in generate_signals\n    prev_dir[0] = np.nan\nValueError: cannot convert float NaN to integer",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. The strategy relies on a single trend indicator (SuperTrend) and a high ADX threshold (>35) which often filters out most opportunities, especially on a volatile pair like UNIUSDC; 2. The exit rule (direction change or ADX<20) can trigger prematurely when the trend is still strong but the ADX dips; 3. ATR\u2011based stop/TP may be too aggressive or too lax for a daily time\u2011frame, causing frequent whipsaws; 4. The model ignores volume or order\u2011flow signals that could improve entry timing.\n[Backup plan] If the backtest yields negative returns, lower the ADX entry threshold to 25 and increase the SuperTrend multiplier to 2.5 to capture stronger trends while still allowing more trades. If Sharpe remains low, tighten the stop to 2.0\u00d7ATR and reduce TP to 4\u00d7ATR to improve risk\u2011reward balance, or test a shorter ADX period (e.g., 12) for quicker trend confirmation. As an alternative, replace SuperTrend with a dual\u2011EMA (200/50) crossover combined with a 14\u2011period RSI filter (overbought/oversold) to generate more robust trend entries and use a volatility\u2011adjusted trailing stop based on the Keltner Channel.}"
+        },
+        "scoring": {
+          "continuous_score": 27.865460080810408,
+          "drawdown_excess_pct": 19.998328318288195,
+          "components": {
+            "sharpe": 13.815225060482918,
+            "return": 44.0,
+            "profit_factor": 6.714394164426442,
+            "trades_confidence": 3.333333333333333,
+            "win_rate": 0.0
+          },
+          "penalties": {
+            "drawdown_pressure": 23.332218878858797,
+            "drawdown_excess": 16.665273598573496,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 5,
+            "llm_positive": 5,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 10,
+      "hypothesis": "Adding an EMA trend confirmation to the supertrend/ADX entry reduces whipsaw entries in ranging markets, thereby lowering drawdown while preserving the volatility\u2011based risk management of ATR.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -50.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 0.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "ValueError: cannot convert float NaN to integer",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "ValueError: cannot convert float NaN to integer",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5218, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260312_113305_fiche_strategie_v1_id_trend_supertrend_a\\strategy.py\", line 81, in generate_signals\n    prev_dir[0] = np.nan\nValueError: cannot convert float NaN to integer",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy relies heavily on a high ADX threshold and a single EMA filter, which may eliminate many valid trend entries while still allowing whipsaw trades when the EMA is near the price; the supertrend multiplier (2.0) and ATR\u2011based stops are quite wide, potentially letting large losses before the exit triggers. The 1\u2011day time frame and lack of regime\u2011switching logic mean the system can over\u2011trade in sideways markets. The exit rule also triggers on any EMA cross, which can be noisy on daily data.\n[Backup plan] If the backtest returns negative performance, first lower the ADX threshold to 30 or remove it, and tighten the supertrend multiplier to 1.5 to reduce false signals. For a mediocre Sharpe, reduce the stop_atr_mult to 2.0 and tp_atr_mult to 4.0, and test a shorter EMA (e.g., 50\u2011period) or a double\u2011EMA confirmation. If the current framework still fails, switch to a momentum\u2011based entry (e.g., MACD crossover) combined with a volatility breakout filter and keep ATR stops for risk control."
+        },
+        "scoring": {
+          "continuous_score": -50.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 7
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 3,
+      "hypothesis": "Supertrend identifies trend direction while a high ADX (>35) confirms trend strength; ATR-based risk limits exposure to volatility and protects capital during sudden swings, improving risk-adjusted returns.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7744345624494372,
+      "return_pct": 119.84559365233116,
+      "max_drawdown_pct": -39.44372698031712,
+      "profit_factor": 2.0001508410243423,
+      "win_rate_pct": 45.45454545454545,
+      "trades": 11,
+      "continuous_score": 77.98827424780552,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 21.68416774858424,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.8333333333333333,
+          "win_rate": 3.1363636363636362
+        },
+        "penalties": {
+          "drawdown_pressure": 12.962484653544749,
+          "drawdown_excess": 3.703105816930936,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 4.443726980317123
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +119.8%, PF 2.00, Expectancy 1089.51"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 39.4%, Vol 49.4%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.774, Sortino 1.216, Calmar 1.202"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 45.5%, Trades 11, AvgW/L 4793.46/1997.13"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 742,
+          "long_signals": 77,
+          "short_signals": 0,
+          "total_signals": 77,
+          "signal_density": 0.10377358490566038,
+          "transition_signals": 10,
+          "transition_density": 0.013477088948787063,
+          "repeated_same_signals": 67,
+          "repeated_same_ratio": 0.8701298701298701
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses include an overly restrictive ADX threshold (>35) that limits trade frequency, a lagging supertrend (ATR period 15) that may miss quick trend shifts, and a simplistic exit rule that could trigger too late or too early; the fixed ATR\u2011based stop/TP may not adapt to changing volatility. If the strategy turns negative, I would first lower the ADX threshold to ~25 or add a volume filter to capture more valid trends. If the Sharpe remains low, tightening the ATR stop (e.g., 2.0x) and reducing the take\u2011profit (e.g., 3.5x) or experimenting with a shorter ATR period (10) could improve risk\u2011adjusted returns. As an alternative, I would test a dual\u2011moving\u2011average crossover with a volatility filter or a trend\u2011following MACD strategy that includes a dynamic trailing stop."
+        },
+        "scoring": {
+          "continuous_score": 77.98827424780552,
+          "drawdown_excess_pct": 4.443726980317123,
+          "components": {
+            "sharpe": 21.68416774858424,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.8333333333333333,
+            "win_rate": 3.1363636363636362
+          },
+          "penalties": {
+            "drawdown_pressure": 12.962484653544749,
+            "drawdown_excess": 3.703105816930936,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Combining the supertrend trend filter with a strong ADX confirmation and an RSI range filter limits trades to genuine trend moves that are not already exhausted, which should reduce the number of large losses in volatile swings and lower maximum drawdown.",
+      "change_type": "logic",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.6933369052863858,
+      "return_pct": 91.49792051466932,
+      "max_drawdown_pct": -48.518896121153865,
+      "profit_factor": 1.8433474858372498,
+      "win_rate_pct": 50.0,
+      "trades": 10,
+      "continuous_score": 63.30175583295467,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 19.413433348018803,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.6666666666666665,
+          "win_rate": 4.5
+        },
+        "penalties": {
+          "drawdown_pressure": 19.012597414102576,
+          "drawdown_excess": 11.265746767628222,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 13.518896121153865
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +91.5%, PF 1.84, Expectancy 914.98"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 48.5%, Vol 47.5%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.693, Sortino 0.988, Calmar 0.777"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 50.0%, Trades 10, AvgW/L 3999.83/2169.87"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 742,
+          "long_signals": 110,
+          "short_signals": 0,
+          "total_signals": 110,
+          "signal_density": 0.14824797843665768,
+          "transition_signals": 12,
+          "transition_density": 0.016172506738544475,
+          "repeated_same_signals": 98,
+          "repeated_same_ratio": 0.8909090909090909
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. The supertrend/ADX combo may produce many whipsaw trades in ranging markets; the high ADX threshold (35) can miss weaker but profitable trends and the RSI filter may over\u2011restrict entries. 2. If the backtest yields a negative return, I would first drop or lower the ADX requirement (e.g., to 25) and replace the RSI exit with a simpler direction\u2011change only rule to reduce premature exits. 3. If the Sharpe is low, I would tighten the stop (ATR mult 1.5) and shorten the ATR period (12) for quicker exits, while also testing a higher take\u2011profit multiplier (7.0) to improve risk\u2011reward. 4. As an alternative, I would try a trend\u2011following strategy based on a 50\u2011EMA crossover with a volatility\u2011scaled trailing stop, optionally adding a momentum filter such as the MACD histogram to confirm entry timing."
+        },
+        "scoring": {
+          "continuous_score": 63.30175583295467,
+          "drawdown_excess_pct": 13.518896121153865,
+          "components": {
+            "sharpe": 19.413433348018803,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.6666666666666665,
+            "win_rate": 4.5
+          },
+          "penalties": {
+            "drawdown_pressure": 19.012597414102576,
+            "drawdown_excess": 11.265746767628222,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "The supertrend indicator captures trend direction while the ADX filter ensures only strong trends trigger entries; tightening the ATR stop and take\u2011profit multipliers reduces drawdown and aligns risk\u2011reward with daily volatility, improving Sharpe while preserving profitable trend captures.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.6845415050175757,
+      "return_pct": 91.53388325010292,
+      "max_drawdown_pct": -49.746615396226,
+      "profit_factor": 1.837141232623598,
+      "win_rate_pct": 50.0,
+      "trades": 10,
+      "continuous_score": 61.21390571281978,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 19.16716214049212,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.6666666666666665,
+          "win_rate": 4.5
+        },
+        "penalties": {
+          "drawdown_pressure": 19.831076930817332,
+          "drawdown_excess": 12.288846163521665,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 14.746615396225998
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +91.5%, PF 1.84, Expectancy 915.34"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 49.7%, Vol 49.2%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.685, Sortino 0.975, Calmar 0.758"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 50.0%, Trades 10, AvgW/L 4017.50/2186.82"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 742,
+          "long_signals": 110,
+          "short_signals": 0,
+          "total_signals": 110,
+          "signal_density": 0.14824797843665768,
+          "transition_signals": 12,
+          "transition_density": 0.016172506738544475,
+          "repeated_same_signals": 98,
+          "repeated_same_ratio": 0.8909090909090909
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1) Over\u2011reliance on supertrend direction and a hard ADX threshold may miss late\u2011entry opportunities and generate whipsaws in ranging markets; 2) Fixed ATR multipliers for stop and TP may be sub\u2011optimal across volatility regimes; 3) Exit on adx<20 can trigger prematurely if ADX lags, causing small gains; 4) Single\u2011timeframe (1d) limits adaptability to intraday dynamics.\n[Backup plan] If negative return: lower the ADX entry threshold to ~25 and add a volume filter to avoid low\u2011liquidity whipsaws. If low Sharpe: experiment with a dynamic ATR multiplier (e.g., 1.5x stop, 4x TP) or use a volatility\u2011adjusted stop (ATR/price) to tighten risk. Alternative: replace supertrend with a moving\u2011average crossover (e.g., 50/200) combined with ADX filter, and use a trailing stop based on recent swing lows/highs to capture longer\u2011term trends."
+        },
+        "scoring": {
+          "continuous_score": 61.21390571281978,
+          "drawdown_excess_pct": 14.746615396225998,
+          "components": {
+            "sharpe": 19.16716214049212,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.6666666666666665,
+            "win_rate": 4.5
+          },
+          "penalties": {
+            "drawdown_pressure": 19.831076930817332,
+            "drawdown_excess": 12.288846163521665,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 1,
+      "hypothesis": "Supertrend supplies a volatility\u2011adjusted trend direction while ADX filters for only the strongest trends; combining them reduces false entries in choppy markets, and ATR\u2011based exits scale risk to current market volatility.",
+      "change_type": "accept",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.6949410422008119,
+      "return_pct": 92.44944722870758,
+      "max_drawdown_pct": -50.090088853876125,
+      "profit_factor": 1.8596573084432388,
+      "win_rate_pct": 50.0,
+      "trades": 10,
+      "continuous_score": 60.989882567475206,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 19.458349181622733,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.6666666666666665,
+          "win_rate": 4.5
+        },
+        "penalties": {
+          "drawdown_pressure": 20.060059235917418,
+          "drawdown_excess": 12.57507404489677,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 15.090088853876125
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +92.4%, PF 1.86, Expectancy 924.49"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 50.1%, Vol 47.9%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.695, Sortino 0.989, Calmar 0.760"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 50.0%, Trades 10, AvgW/L 3999.83/2150.84"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 742,
+          "long_signals": 123,
+          "short_signals": 0,
+          "total_signals": 123,
+          "signal_density": 0.16576819407008087,
+          "transition_signals": 7,
+          "transition_density": 0.009433962264150943,
+          "repeated_same_signals": 116,
+          "repeated_same_ratio": 0.943089430894309
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses include an overly restrictive ADX filter (threshold 35) that may miss many viable trends, a lagging supertrend (ATR15) that can delay entries, and a simple exit that may close positions prematurely when the trend reverses slowly. The fixed ATR\u2011based stop/TP (2.25x/5x) may not adapt well to different volatility regimes, leading to suboptimal risk\u2011reward. Additionally, relying only on the supertrend direction change for exits ignores price structure and could yield whipsaws in ranging markets.\n[Backup plan] If the strategy underperforms, first lower the ADX entry threshold to ~25 and test a shorter supertrend period (e.g., atr_period=10, multiplier=1.5) to capture more timely trends. For low Sharpe, tighten the exit by adding a trailing stop at 1.5\u00d7ATR and a tighter TP (3\u00d7ATR) or employ a volatility\u2011adjusted risk\u2011reward ratio. If performance remains weak, switch to a dual\u2011EMA trend filter (e.g., 50/200 EMA) combined with the same ADX filter, or introduce a momentum filter such as RSI over 14 to reduce false entries in choppy markets."
+        },
+        "scoring": {
+          "continuous_score": 60.989882567475206,
+          "drawdown_excess_pct": 15.090088853876125,
+          "components": {
+            "sharpe": 19.458349181622733,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.6666666666666665,
+            "win_rate": 4.5
+          },
+          "penalties": {
+            "drawdown_pressure": 20.060059235917418,
+            "drawdown_excess": 12.57507404489677,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "Using the supertrend to define trend direction combined with a moderate ADX filter (above 25) allows the strategy to capture genuine trend shifts while avoiding the overly restrictive 35\u2011level threshold that eliminated all entries; ATR\u2011based risk management ensures consistent volatility\u2011scaled exits.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.4934008950172471,
+      "return_pct": 41.06274009238783,
+      "max_drawdown_pct": -54.998328318288195,
+      "profit_factor": 1.1468773723468284,
+      "win_rate_pct": 35.0,
+      "trades": 20,
+      "continuous_score": 27.865460080810408,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 13.815225060482918,
+          "return": 44.0,
+          "profit_factor": 6.714394164426442,
+          "trades_confidence": 3.333333333333333,
+          "win_rate": 0.0
+        },
+        "penalties": {
+          "drawdown_pressure": 23.332218878858797,
+          "drawdown_excess": 16.665273598573496,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 19.998328318288195
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +41.1%, PF 1.15, Expectancy 205.31"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 55.0%, Vol 66.5%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.493, Sortino 0.890, Calmar 0.336"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 35.0%, Trades 20, AvgW/L 4580.49/2150.55"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "ValueError: cannot convert float NaN to integer",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "ValueError: cannot convert float NaN to integer",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5218, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260312_113305_fiche_strategie_v1_id_trend_supertrend_a\\strategy.py\", line 70, in generate_signals\n    prev_dir[0] = np.nan\nValueError: cannot convert float NaN to integer",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. The strategy relies on a single trend indicator (SuperTrend) and a high ADX threshold (>35) which often filters out most opportunities, especially on a volatile pair like UNIUSDC; 2. The exit rule (direction change or ADX<20) can trigger prematurely when the trend is still strong but the ADX dips; 3. ATR\u2011based stop/TP may be too aggressive or too lax for a daily time\u2011frame, causing frequent whipsaws; 4. The model ignores volume or order\u2011flow signals that could improve entry timing.\n[Backup plan] If the backtest yields negative returns, lower the ADX entry threshold to 25 and increase the SuperTrend multiplier to 2.5 to capture stronger trends while still allowing more trades. If Sharpe remains low, tighten the stop to 2.0\u00d7ATR and reduce TP to 4\u00d7ATR to improve risk\u2011reward balance, or test a shorter ADX period (e.g., 12) for quicker trend confirmation. As an alternative, replace SuperTrend with a dual\u2011EMA (200/50) crossover combined with a 14\u2011period RSI filter (overbought/oversold) to generate more robust trend entries and use a volatility\u2011adjusted trailing stop based on the Keltner Channel.}"
+        },
+        "scoring": {
+          "continuous_score": 27.865460080810408,
+          "drawdown_excess_pct": 19.998328318288195,
+          "components": {
+            "sharpe": 13.815225060482918,
+            "return": 44.0,
+            "profit_factor": 6.714394164426442,
+            "trades_confidence": 3.333333333333333,
+            "win_rate": 0.0
+          },
+          "penalties": {
+            "drawdown_pressure": 23.332218878858797,
+            "drawdown_excess": 16.665273598573496,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 5,
+            "llm_positive": 5,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "Combining a Bollinger band breakout with a strong trend filter (ADX > 25) and momentum confirmation (RSI above 70 for longs, below 30 for shorts) limits entries to genuine trend shifts and reduces whipsaw in volatile crypto markets, improving risk\u2011adjusted returns.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -50.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 0.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "KeyError: 'adx_threshold'",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "KeyError: 'adx_threshold'",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5218, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260312_113305_fiche_strategie_v1_id_trend_supertrend_a\\strategy.py\", line 150, in generate_signals\n    & (adx_val > params[\"adx_threshold\"])\nKeyError: 'adx_threshold'",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy\u2019s heavy reliance on Bollinger breakout and high ADX thresholds makes it overly restrictive and may miss mid\u2011term trends; the 1\u2011day UNIUSDC chart\u2019s high volatility can cause frequent false breakouts, and the 70/30 RSI filter is too strict, reducing trade frequency and skewing risk\u2011return. The ATR\u2011based stop/take\u2011profit may be too wide for a crypto pair, leading to large drawdowns before exit triggers. The exit rule (middle band or low ADX) can lag, causing over\u2011exposure during consolidations.\n[Backup plan] If the backtest remains negative, switch to a shorter ADX period (12) and lower the breakout filter to close > bollinger.middle rather than upper, adding a trend confirmation with a 14\u2011period EMA to reduce whipsaws. For a low Sharpe, tighten the ATR stop to 1.5\u00d7 and TP to 3\u00d7, and introduce a volatility filter by capping trades when ATR > 2\u00d7 its 20\u2011period average. If performance still fails, abandon Bollinger and adopt a pure SuperTrend + ADX filter with a 1\u2011hour timeframe and a dynamic position sizing based on recent volatility."
+        },
+        "scoring": {
+          "continuous_score": -50.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 10,
+      "hypothesis": "Adding an EMA trend confirmation to the supertrend/ADX entry reduces whipsaw entries in ranging markets, thereby lowering drawdown while preserving the volatility\u2011based risk management of ATR.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -50.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 0.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "ValueError: cannot convert float NaN to integer",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "ValueError: cannot convert float NaN to integer",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5218, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260312_113305_fiche_strategie_v1_id_trend_supertrend_a\\strategy.py\", line 81, in generate_signals\n    prev_dir[0] = np.nan\nValueError: cannot convert float NaN to integer",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy relies heavily on a high ADX threshold and a single EMA filter, which may eliminate many valid trend entries while still allowing whipsaw trades when the EMA is near the price; the supertrend multiplier (2.0) and ATR\u2011based stops are quite wide, potentially letting large losses before the exit triggers. The 1\u2011day time frame and lack of regime\u2011switching logic mean the system can over\u2011trade in sideways markets. The exit rule also triggers on any EMA cross, which can be noisy on daily data.\n[Backup plan] If the backtest returns negative performance, first lower the ADX threshold to 30 or remove it, and tighten the supertrend multiplier to 1.5 to reduce false signals. For a mediocre Sharpe, reduce the stop_atr_mult to 2.0 and tp_atr_mult to 4.0, and test a shorter EMA (e.g., 50\u2011period) or a double\u2011EMA confirmation. If the current framework still fails, switch to a momentum\u2011based entry (e.g., MACD crossover) combined with a volatility breakout filter and keep ATR stops for risk control."
+        },
+        "scoring": {
+          "continuous_score": -50.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 7
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "A supertrend-confirmed trend combined with a Bollinger band breakout limits entries to strong directional moves, while the ADX filter ensures only robust trends are traded, reducing whipsaws and large drawdowns.",
+      "change_type": "logic",
+      "diagnostic_category": "needs_work",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.16650387005196599,
+      "return_pct": -22.450198142320232,
+      "max_drawdown_pct": -45.97791138777561,
+      "profit_factor": 0.6432854229354985,
+      "win_rate_pct": 20.0,
+      "trades": 5,
+      "continuous_score": -95.79781216071461,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -4.662108361455047,
+          "return": -24.695217956552256,
+          "profit_factor": -16.306952094377213,
+          "trades_confidence": 0.8333333333333333,
+          "win_rate": -4.5
+        },
+        "penalties": {
+          "drawdown_pressure": 17.31860759185041,
+          "drawdown_excess": 9.148259489813011,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 10.977911387775613
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -22.5%, PF 0.64, Expectancy -449.00"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 46.0%, Vol 28.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.167, Sortino -0.076, Calmar -0.256"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 20.0%, Trades 5, AvgW/L 4048.58/1573.40"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 742,
+          "long_signals": 13,
+          "short_signals": 0,
+          "total_signals": 13,
+          "signal_density": 0.01752021563342318,
+          "transition_signals": 7,
+          "transition_density": 0.009433962264150943,
+          "repeated_same_signals": 6,
+          "repeated_same_ratio": 0.46153846153846156
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1) The strategy relies solely on supertrend and ADX, which can produce many false signals in sideways markets and may miss moderate trends; 2) The fixed ATR stop/TP may not adapt to changing volatility, leading to premature exits or large drawdowns; 3) No position\u2011sizing or risk\u2011management details are defined, so the strategy could be overly exposed during weak trends; 4) The exit rule (direction change or ADX<20) may be too late, causing losses if the trend reverses quickly.\n[Backup plan] If returns turn negative, first test a stricter ADX threshold (e.g., >45) or add a Bollinger upper/lower filter to confirm breakouts before entry. For low Sharpe, reduce the stop multiplier to 1.5x ATR and tighten the TP to 3.0x ATR, or implement a trailing stop. If the strategy still underperforms, switch to a dual\u2011EMA crossover with an ADX filter and a volatility\u2011scaled position size, or try a breakout strategy using daily high/low ranges with a volatility filter."
+        },
+        "scoring": {
+          "continuous_score": -95.79781216071461,
+          "drawdown_excess_pct": 10.977911387775613,
+          "components": {
+            "sharpe": -4.662108361455047,
+            "return": -24.695217956552256,
+            "profit_factor": -16.306952094377213,
+            "trades_confidence": 0.8333333333333333,
+            "win_rate": -4.5
+          },
+          "penalties": {
+            "drawdown_pressure": 17.31860759185041,
+            "drawdown_excess": 9.148259489813011,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 8
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "The supertrend indicator provides a robust trend direction based on ATR, while a high ADX value confirms that the market is in a strong trend; tightening the supertrend ATR period and multiplier along with a more aggressive stop/TP ratio reduces exposure to whipsaw moves and improves risk\u2011adjusted returns.",
+      "change_type": "params",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.3787457760753882,
+      "return_pct": -29.119687837646097,
+      "max_drawdown_pct": -88.09703949407185,
+      "profit_factor": 0.8383781349811614,
+      "win_rate_pct": 38.46153846153847,
+      "trades": 13,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 10.604881730110868,
+          "return": -32.031656621410704,
+          "profit_factor": -7.3884281151469064,
+          "trades_confidence": 2.166666666666667,
+          "win_rate": 1.03846153846154
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 53.09703949407185
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -29.1%, PF 0.84, Expectancy -224.00"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 88.1%, Vol 113.5%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.379, Sortino 0.570, Calmar -0.177"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 38.5%, Trades 13, AvgW/L 3021.04/2252.15"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 742,
+          "long_signals": 170,
+          "short_signals": 0,
+          "total_signals": 170,
+          "signal_density": 0.22911051212938005,
+          "transition_signals": 15,
+          "transition_density": 0.02021563342318059,
+          "repeated_same_signals": 155,
+          "repeated_same_ratio": 0.9117647058823529
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses include a lagging supertrend on a 1\u2011day chart, an overly high ADX cutoff that filters out many trend\u2011initiating moves, and a stop/TP ratio that may be too aggressive for a volatile asset, causing premature exits. The exit rule (direction change or ADX<20) can trigger on minor retracements, reducing profitability. The strategy also ignores market context (e.g., volume or range).\n[Backup plan] If the backtest shows negative returns, lower the ADX threshold to ~25 or add a volume filter to confirm trend strength. For a low Sharpe, increase the stop multiplier to 3.0 and TP to 6.0 to improve risk\u2011reward, or tighten the supertrend multiplier to 1.5 for earlier entries. If performance remains weak, switch to a dual\u2011MA trend filter with ATR\u2011based trailing stops or incorporate a MACD trend confirmation as an alternative approach."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 53.09703949407185,
+          "components": {
+            "sharpe": 10.604881730110868,
+            "return": -32.031656621410704,
+            "profit_factor": -7.3884281151469064,
+            "trades_confidence": 2.166666666666667,
+            "win_rate": 1.03846153846154
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 9
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Using supertrend to capture trend direction, filtering with a strong ADX (>35) to ensure trend persistence, and only entering when price breaks above the upper Bollinger band for longs or below the lower band for shorts, limits entries to genuine breakouts and reduces whipsaws, thereby lowering drawdown while still allowing for significant upside.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.3943605117340076,
+      "return_pct": -38.00120605921698,
+      "max_drawdown_pct": -56.81092330491444,
+      "profit_factor": 0.5158282351950644,
+      "win_rate_pct": 16.666666666666664,
+      "trades": 6,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -11.042094328552214,
+          "return": -33.0,
+          "profit_factor": -22.133566391082773,
+          "trades_confidence": 1.0,
+          "win_rate": -5.5
+        },
+        "penalties": {
+          "drawdown_pressure": 24.54061553660963,
+          "drawdown_excess": 18.175769420762034,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 21.81092330491444
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -38.0%, PF 0.52, Expectancy -633.35"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 56.8%, Vol 30.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.394, Sortino -0.189, Calmar -0.369"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 16.7%, Trades 6, AvgW/L 4048.58/1569.74"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 742,
+          "long_signals": 14,
+          "short_signals": 0,
+          "total_signals": 14,
+          "signal_density": 0.018867924528301886,
+          "transition_signals": 8,
+          "transition_density": 0.01078167115902965,
+          "repeated_same_signals": 6,
+          "repeated_same_ratio": 0.42857142857142855
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy is over\u2011constrained: a 35+ ADX filter and a Bollinger breakout cut out many legitimate moves, while the 2.25x ATR stop and 5x TP may be too loose for a 1\u2011day chart, causing large slippage and high drawdown. The supertrend itself can lag on choppy markets, and the exit rule (middle band or ADX<25) may trigger too early. Also, the backtest uses only long/short entries on a single pair, limiting diversification.\n[Backup plan] If returns stay negative, drop the Bollinger filter and use a simple supertrend direction+ADX>25 entry to increase fill rate. If Sharpe remains low, tighten the ATR stop to 1.5x, reduce TP to 3x, and shorten the ADX period to 12 to capture faster trends. Alternatively, switch to a volatility\u2011breakout strategy using the 20\u2011period ATR to set dynamic thresholds, or add a 50\u2011period SMA filter to smooth the trend signal."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 21.81092330491444,
+          "components": {
+            "sharpe": -11.042094328552214,
+            "return": -33.0,
+            "profit_factor": -22.133566391082773,
+            "trades_confidence": 1.0,
+            "win_rate": -5.5
+          },
+          "penalties": {
+            "drawdown_pressure": 24.54061553660963,
+            "drawdown_excess": 18.175769420762034,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 4,
+            "llm_positive": 4,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 10
+    }
+  ]
+}

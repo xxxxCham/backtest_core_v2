@@ -10,6 +10,18 @@ Do NOT output markdown outside the requested JSON.
 
 ## ITERATION {{ iteration }} / {{ max_iterations }}
 
+{% if direction_constraint == "long_only" %}
+## DIRECTION CONSTRAINT
+- LONG ONLY: produce buy/long entries only.
+- entry_short_logic MUST be empty.
+- Do not propose any short-selling logic.
+{% elif direction_constraint == "short_only" %}
+## DIRECTION CONSTRAINT
+- SHORT ONLY: produce sell/short entries only.
+- entry_long_logic MUST be empty.
+- Do not propose any long-buy logic.
+{% endif %}
+
 ## MARKET CONTEXT
 - Symbol: {{ symbol|default("UNKNOWN") }}
 - Timeframe: {{ timeframe|default("?") }}
@@ -85,6 +97,11 @@ Required behavior:
 - entry_long_logic, entry_short_logic, exit_logic MUST be plain strings (one sentence each).
   NEVER nest JSON objects, "logic_expression" keys, or "indicators" arrays inside them.
 - Keep it simple: 2-3 indicators max. One clear entry rule, one clear exit rule.
+{% if direction_constraint == "long_only" %}
+- Objective is LONG ONLY: entry_short_logic MUST be "".
+{% elif direction_constraint == "short_only" %}
+- Objective is SHORT ONLY: entry_long_logic MUST be "".
+{% endif %}
 
 ## COMMON MISTAKES (DO NOT REPEAT)
 BAD exit_logic (nested JSON — FORBIDDEN):

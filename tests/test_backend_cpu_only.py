@@ -159,3 +159,50 @@ def test_worker_numba_thread_limit_is_applied_programmatically():
         assert numba.get_num_threads() == target_threads
     finally:
         _apply_numba_thread_limit(original_threads, debug_enabled=False)
+
+
+def test_numba_sweep_thread_count_respects_worker_ceiling(monkeypatch):
+    """Le sweep Numba ne doit jamais depasser la limite de threads du worker."""
+    from backtest import sweep_numba
+
+    monkeypatch.setenv("BACKTEST_WORKER_THREADS", "1")
+    monkeypatch.setattr(sweep_numba, "get_recommended_worker_count", lambda max_cap=None: 32)
+    monkeypatch.setattr(
+        sweep_numba,
+        "_get_numba_thread_profile",
+        lambda strategy_lower: {
+            "cost_multiplier": 1.0,
+            "to_4_threads": 10,
+            "to_8_threads": 20,
+            "to_16_threads": 30,
+        },
+    )
+
+    thread_count = sweep_numba._get_numba_thread_count(
+        strategy_lower="ema_cross",
+        chunk_size=5000,
+        n_bars=5000,
+    )
+
+    assert thread_count == 1
+
+
+def test_numba_thread_context_falls_back_to_current_pool(monkeypatch):
+    """Si Numba refuse un changement de pool, le sweep continue avec le pool courant."""
+    from backtest import sweep_numba
+
+    state = {"threads": 1}
+
+    monkeypatch.setattr(sweep_numba, "HAS_NUMBA", True)
+    monkeypatch.setattr(sweep_numba, "get_num_threads", lambda: state["threads"])
+
+    def _failing_set_num_threads(value: int) -> None:
+        if value != state["threads"]:
+            raise RuntimeError(
+                "Cannot set NUMBA_NUM_THREADS to a different value once the threads have been launched"
+            )
+
+    monkeypatch.setattr(sweep_numba, "set_num_threads", _failing_set_num_threads)
+
+    with sweep_numba._numba_thread_context(32) as applied_threads:
+        assert applied_threads == 1

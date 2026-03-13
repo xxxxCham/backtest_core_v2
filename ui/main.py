@@ -668,6 +668,44 @@ def render_setup_previews(state: SidebarState) -> None:
         )
 
 
+def _render_builder_view_safe(
+    *,
+    state: SidebarState,
+    df: Any,
+    status_container: Any,
+) -> None:
+    from ui.builder_view import (
+        mark_builder_autonomous_runtime_stopped,
+        render_builder_view,
+    )
+
+    try:
+        render_builder_view(
+            state=state,
+            df=df,
+            status_container=status_container,
+        )
+    except Exception as exc:
+        logging.getLogger(__name__).error(
+            "builder_view_unhandled_exception error=%s\n%s",
+            exc,
+            traceback.format_exc(),
+        )
+        st.session_state.is_running = False
+        st.session_state.run_backtest_requested = False
+        try:
+            mark_builder_autonomous_runtime_stopped(
+                reason="builder_view_crash",
+                manual_stop=False,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        except Exception:
+            pass
+        with status_container:
+            show_status("error", f"Erreur Builder UI: {exc}")
+            st.code(traceback.format_exc())
+
+
 def render_main(
     state: SidebarState,
     run_button: bool,
@@ -843,15 +881,16 @@ def render_main(
         winner_origin = None
         winner_meta = None
 
-        is_valid, errors = validate_all_params(params)
+        if optimization_mode != "🏗️ Strategy Builder":
+            is_valid, errors = validate_all_params(params)
 
-        if not is_valid:
-            with status_container:
-                show_status("error", "Paramètres invalides")
-                for err in errors:
-                    st.error(f"  • {err}")
-            st.session_state.is_running = False
-            st.stop()
+            if not is_valid:
+                with status_container:
+                    show_status("error", "Paramètres invalides")
+                    for err in errors:
+                        st.error(f"  • {err}")
+                st.session_state.is_running = False
+                st.stop()
 
         is_multi_sweep = (len(state.symbols) > 1 or len(state.timeframes) > 1)
         if is_multi_sweep and optimization_mode in ("Backtest Simple", "Grille de Paramètres"):
@@ -1069,7 +1108,6 @@ def render_main(
 
         if optimization_mode == "🏗️ Strategy Builder":
             from ui.builder_view import (
-                render_builder_view,
                 should_auto_resume_builder_autonomous,
             )
 
@@ -1077,7 +1115,7 @@ def render_main(
             if resume_autonomous and not st.session_state.get("is_running", False):
                 st.session_state["is_running"] = True
 
-            render_builder_view(
+            _render_builder_view_safe(
                 state=state,
                 df=st.session_state.get("ohlcv_df"),
                 status_container=status_container,
@@ -2401,9 +2439,7 @@ def render_main(
                     st.stop()
 
         elif optimization_mode == "🏗️ Strategy Builder":
-            from ui.builder_view import render_builder_view
-
-            render_builder_view(
+            _render_builder_view_safe(
                 state=state,
                 df=df,
                 status_container=status_container,

@@ -1,0 +1,2017 @@
+{
+  "session_id": "20260307_082439_fiche_strategie_v1_id_momentum_macd_arch",
+  "objective": "FICHE_STRATEGIE v1 id: momentum_macd archetype: momentum_macd family: momentum timeframe: side: both indicators: - macd(fast_period=9, slow_period=20, signal_period=11) - rsi(period=15) - atr(period=14) entry: - long: cross_up(macd.macd, macd.signal) and rsi > 35 and rsi < 70 - short: cross_down(macd.macd, macd.signal) and rsi > 30 and rsi < 60 exit: - condition: sign_change(macd.histogram) or rsi > 80 or rsi < 20 risk: stop_atr_mult: 1.5 tp_atr_mult: 5.0 description: ATR stop-loss (1.5x) and take-profit (5.0x) constraints: - no_lookahead: true - only_registry_indicators: true",
+  "status": "max_iterations",
+  "best_sharpe": 0.7960408563121739,
+  "best_score": 73.00387979835988,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 10,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Combining MACD momentum with RSI filter aims to capture trending moves while avoiding whipsaws, with ATR for risk management.",
+      "change_type": "both",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7960408563121739,
+      "return_pct": 105.87308250908865,
+      "max_drawdown_pct": -40.523509452254,
+      "profit_factor": 2.1999570901918557,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 9,
+      "continuous_score": 73.00387979835988,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 22.28914397674087,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.5,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 13.682339634835998,
+          "drawdown_excess": 4.602924543544997,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 5.523509452253997
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +105.9%, PF 2.20, Expectancy 1176.37"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 40.5%, Vol 57.6%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.796, Sortino 0.919, Calmar 1.318"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 9, AvgW/L 6470.13/1470.51"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[AST001] Erreur de syntaxe ligne 103: cannot assign to function call here. Maybe you meant '==' instead of '='?",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 98: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 0
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 7,
+          "short_signals": 3,
+          "total_signals": 10
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The RSI filter might be too restrictive, missing profitable trends, while the MACD histogram sign change exit is prone to premature exits in choppy markets. ATR-based stops/targets are inherently reactive and may not adapt well to varying volatility regimes. Over-optimization of the ATR multiplier is a significant risk, especially with a limited dataset (617 bars).\n[Backup plan] If negative returns, loosen RSI filter (increase upper/lower bounds). If mediocre Sharpe, optimize ATR multipliers and consider a dynamic stop-loss based on volatility. If consistently failing, replace MACD with a simpler moving average crossover system and incorporate a volatility-adjusted position sizing."
+        },
+        "scoring": {
+          "continuous_score": 73.00387979835988,
+          "drawdown_excess_pct": 5.523509452253997,
+          "components": {
+            "sharpe": 22.28914397674087,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.5,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 13.682339634835998,
+            "drawdown_excess": 4.602924543544997,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Refining the RSI filter within the MACD crossover system by tightening the bands improves signal clarity and reduces whipsaws, while maintaining a robust ATR-based risk management framework.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.6661882905496033,
+      "return_pct": 72.0266772195965,
+      "max_drawdown_pct": -40.523509452254,
+      "profit_factor": 1.5900095931139469,
+      "win_rate_pct": 30.0,
+      "trades": 10,
+      "continuous_score": 63.506541737454995,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 18.653272135388892,
+          "return": 44.0,
+          "profit_factor": 26.97186711378043,
+          "trades_confidence": 1.6666666666666665,
+          "win_rate": -1.5
+        },
+        "penalties": {
+          "drawdown_pressure": 13.682339634835998,
+          "drawdown_excess": 4.602924543544997,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 5.523509452253997
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +72.0%, PF 1.59, Expectancy 720.27"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 40.5%, Vol 58.9%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.666, Sortino 0.827, Calmar 0.936"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 30.0%, Trades 10, AvgW/L 6470.13/1743.96"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 9,
+          "short_signals": 3,
+          "total_signals": 12
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The RSI bands are tight, potentially missing valid signals and increasing sensitivity to noise. Reliance solely on MACD histogram for exits could lead to premature exits during sustained trends. The 5.0x ATR TP might be overly ambitious, reducing profitability and increasing drawdowns. The strategy's success hinges heavily on the interplay of MACD and RSI, making it vulnerable to regime shifts where these indicators diverge.\n[Backup plan] Poor results: Loosen RSI filter bands (e.g., 30-80) to capture more signals. Mediocre Sharpe: Optimize ATR multiple for TP and SL, or experiment with dynamic TP/SL based on volatility. Alternative: Incorporate a trend filter (e.g., moving average) to bias trades with the prevailing direction."
+        },
+        "scoring": {
+          "continuous_score": 63.506541737454995,
+          "drawdown_excess_pct": 5.523509452253997,
+          "components": {
+            "sharpe": 18.653272135388892,
+            "return": 44.0,
+            "profit_factor": 26.97186711378043,
+            "trades_confidence": 1.6666666666666665,
+            "win_rate": -1.5
+          },
+          "penalties": {
+            "drawdown_pressure": 13.682339634835998,
+            "drawdown_excess": 4.602924543544997,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining MACD signal with RSI filter and ATR-based risk management aims to capture momentum shifts while avoiding false signals in overbought/oversold conditions and managing volatility.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7960408563121739,
+      "return_pct": 105.87308250908865,
+      "max_drawdown_pct": -40.523509452254,
+      "profit_factor": 2.1999570901918557,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 9,
+      "continuous_score": 73.00387979835988,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 22.28914397674087,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.5,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 13.682339634835998,
+          "drawdown_excess": 4.602924543544997,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 5.523509452253997
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +105.9%, PF 2.20, Expectancy 1176.37"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 40.5%, Vol 57.6%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.796, Sortino 0.919, Calmar 1.318"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 9, AvgW/L 6470.13/1470.51"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 7,
+          "short_signals": 3,
+          "total_signals": 10
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on MACD crossovers is prone to whipsaws, especially given the relatively short timeframe. The RSI filters are a good attempt at noise reduction, but might be too restrictive, missing valid momentum opportunities. ATR-based stops are standard, but the 5.0x TP might be overly aggressive, leading to premature exits. The small sample size (617 bars) introduces significant backtest overfitting risk.\n[Backup plan] Poor results: Simplify entry by removing the RSI filter entirely. Mediocre results: Reduce TP_ATR_MULT to 2.5 and optimize fast_period in MACD. Complete failure: Switch to a Mean Reversion strategy utilizing Bollinger Bands and a shorter timeframe (e.g., 4H) with a different risk/reward profile."
+        },
+        "scoring": {
+          "continuous_score": 73.00387979835988,
+          "drawdown_excess_pct": 5.523509452253997,
+          "components": {
+            "sharpe": 22.28914397674087,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.5,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 13.682339634835998,
+            "drawdown_excess": 4.602924543544997,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining MACD signal with RSI filter improves entry timing, while ATR-based stops manage risk in volatile markets.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7960408563121739,
+      "return_pct": 105.87308250908865,
+      "max_drawdown_pct": -40.523509452254,
+      "profit_factor": 2.1999570901918557,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 9,
+      "continuous_score": 73.00387979835988,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 22.28914397674087,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.5,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 13.682339634835998,
+          "drawdown_excess": 4.602924543544997,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 5.523509452253997
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +105.9%, PF 2.20, Expectancy 1176.37"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 40.5%, Vol 57.6%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.796, Sortino 0.919, Calmar 1.318"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 9, AvgW/L 6470.13/1470.51"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 7,
+          "short_signals": 3,
+          "total_signals": 10
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The RSI filters might be too restrictive, reducing trade frequency and potentially missing profitable opportunities. Reliance solely on MACD histogram for exits is risky; it\u2019s a noisy signal. ATR-based stops, while good for volatility, could prematurely exit during sustained trends. The 5.0x TP is aggressive and may lead to frequent exits before full trend realization.\n[Backup plan] If negative return, relax RSI filters (increase upper/lower bounds). If mediocre Sharpe, optimize ATR multipliers and consider a MACD histogram smoothing technique or alternative exit condition (e.g., price action confirmation). As an alternative, explore a breakout strategy based on volume and price range, abandoning MACD entirely."
+        },
+        "scoring": {
+          "continuous_score": 73.00387979835988,
+          "drawdown_excess_pct": 5.523509452253997,
+          "components": {
+            "sharpe": 22.28914397674087,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.5,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 13.682339634835998,
+            "drawdown_excess": 4.602924543544997,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining MACD momentum with RSI confirmation and ATR-based risk management aims to capture strong trends while minimizing false signals in choppy markets; the MACD identifies momentum shifts, RSI filters for overbought/oversold conditions, and ATR manages risk dynamically.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7960408563121739,
+      "return_pct": 105.87308250908865,
+      "max_drawdown_pct": -40.523509452254,
+      "profit_factor": 2.1999570901918557,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 9,
+      "continuous_score": 73.00387979835988,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 22.28914397674087,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.5,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 13.682339634835998,
+          "drawdown_excess": 4.602924543544997,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 5.523509452253997
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +105.9%, PF 2.20, Expectancy 1176.37"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 40.5%, Vol 57.6%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.796, Sortino 0.919, Calmar 1.318"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 9, AvgW/L 6470.13/1470.51"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 7,
+          "short_signals": 3,
+          "total_signals": 10
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on MACD crossovers can generate whipsaws, especially given the relatively short timeframe (1d). RSI filters might be too restrictive, missing potential trend entries. ATR-based stops, while good for risk management, could prematurely exit profitable trades if volatility spikes. The fixed TP/SL ratio is rigid and may not adapt to varying market conditions.\n[Backup plan] If poor results, I'll relax RSI filter thresholds and introduce a dynamic TP/SL based on recent volatility. If mediocre results, I'll optimize MACD periods and ATR multiple. Failing that, I'd switch to a breakout strategy using price action and volume confirmation, abandoning the momentum indicator combination."
+        },
+        "scoring": {
+          "continuous_score": 73.00387979835988,
+          "drawdown_excess_pct": 5.523509452253997,
+          "components": {
+            "sharpe": 22.28914397674087,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.5,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 13.682339634835998,
+            "drawdown_excess": 4.602924543544997,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Combining MACD for trend confirmation with RSI for overbought/oversold conditions, and filtering with ADX to avoid false signals in choppy markets, should improve signal quality and reduce whipsaws.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7960408563121739,
+      "return_pct": 105.87308250908865,
+      "max_drawdown_pct": -40.523509452254,
+      "profit_factor": 2.1999570901918557,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 9,
+      "continuous_score": 73.00387979835988,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 22.28914397674087,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.5,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 13.682339634835998,
+          "drawdown_excess": 4.602924543544997,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 5.523509452253997
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +105.9%, PF 2.20, Expectancy 1176.37"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 40.5%, Vol 57.6%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.796, Sortino 0.919, Calmar 1.318"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 9, AvgW/L 6470.13/1470.51"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 7,
+          "short_signals": 3,
+          "total_signals": 10
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on MACD crosses is prone to whipsaws, and the RSI filters might be too restrictive, missing profitable opportunities. The ATR-based stop-loss and take-profit, while simple, could be sub-optimal for this market and timeframe. The ADX filter was removed; this may have been a mistake, potentially increasing false signals.\n[Backup plan] If negative return, loosen RSI filters significantly (e.g., RSI > 25, < 75). For mediocre Sharpe, optimize ATR multiples (reduce TP, increase SL). If consistently poor, replace MACD with a simpler moving average crossover system and incorporate volatility scaling based on realized volatility."
+        },
+        "scoring": {
+          "continuous_score": 73.00387979835988,
+          "drawdown_excess_pct": 5.523509452253997,
+          "components": {
+            "sharpe": 22.28914397674087,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.5,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 13.682339634835998,
+            "drawdown_excess": 4.602924543544997,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 6,
+            "llm_positive": 5,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "Combining MACD for momentum shifts with RSI for overbought/oversold conditions, and filtering with ADX to avoid whipsaws in weak trending environments, should improve signal quality and reduce false entries.",
+      "change_type": "params",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.5846217981077093,
+      "return_pct": 53.234837994982065,
+      "max_drawdown_pct": -56.269659716160206,
+      "profit_factor": 1.6033594166091254,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 9,
+      "continuous_score": 39.047065532049864,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 16.36941034701586,
+          "return": 44.0,
+          "profit_factor": 27.582144759274307,
+          "trades_confidence": 1.5,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 24.179773144106804,
+          "drawdown_excess": 17.724716430133505,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 21.269659716160206
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +53.2%, PF 1.60, Expectancy 591.50"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 56.3%, Vol 59.1%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.585, Sortino 0.608, Calmar 0.511"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 9, AvgW/L 4715.52/1470.51"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 7,
+          "short_signals": 3,
+          "total_signals": 10
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on MACD crossovers is prone to whipsaws, especially given the relatively short timeframe. RSI filters might be too restrictive, missing valid opportunities. ATR-based stops/targets are blunt instruments, potentially cutting short winning trades or triggering premature exits. The ADX filter is missing \u2013 a critical element of the hypothesis \u2013 and will likely lead to poor performance.\n[Backup plan] If negative return, loosen RSI filters significantly and remove ADX filter entirely. If mediocre Sharpe, optimize ATR multipliers (reduce TP, increase SL) and shorten MACD fast period. If still failing, replace MACD with a simpler moving average crossover and incorporate volume confirmation for entries."
+        },
+        "scoring": {
+          "continuous_score": 39.047065532049864,
+          "drawdown_excess_pct": 21.269659716160206,
+          "components": {
+            "sharpe": 16.36941034701586,
+            "return": 44.0,
+            "profit_factor": 27.582144759274307,
+            "trades_confidence": 1.5,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 24.179773144106804,
+            "drawdown_excess": 17.724716430133505,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 8
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "Combining MACD momentum with RSI filter and Bollinger Band breakouts aims to capture strong trends while avoiding false signals in choppy markets, reducing drawdown.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": null,
+      "return_pct": null,
+      "max_drawdown_pct": null,
+      "profit_factor": null,
+      "win_rate_pct": null,
+      "trades": null,
+      "continuous_score": null,
+      "score_breakdown": null,
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[AST001] Erreur de syntaxe ligne 106: cannot assign to function call here. Maybe you meant '==' instead of '='?",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 98: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 1
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      }
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "Combining MACD momentum shifts with RSI confirmation and ADX trend filtering aims to capitalize on strong trending moves while avoiding whipsaws in choppy conditions.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7412908315214439,
+      "return_pct": 99.34626855804501,
+      "max_drawdown_pct": -62.75039554430608,
+      "profit_factor": 1.4412381881991378,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 33,
+      "continuous_score": 41.426768189785534,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 20.75614328260043,
+          "return": 44.0,
+          "profit_factor": 20.17088860338916,
+          "trades_confidence": 5.5,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 28.500263696204055,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 27.75039554430608
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.3%, PF 1.44, Expectancy 301.05"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 62.8%, Vol 82.4%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.741, Sortino 0.939, Calmar 0.805"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 33, AvgW/L 2950.00/1023.42"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[AST001] Erreur de syntaxe ligne 90: cannot assign to function call here. Maybe you meant '==' instead of '='?",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 82: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 2
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 25,
+          "short_signals": 25,
+          "total_signals": 50
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on MACD crossovers is prone to whipsaws, potentially exacerbated by the relatively tight RSI bands. The ATR-based stop/profit is rigid and might miss out on longer trends or suffer premature exits. The combined RSI filters may overly restrict entries, especially in trending markets. The relatively small dataset (617 bars) introduces significant backtest overfitting risk.\n[Backup plan] Poor results: loosen RSI entry filters (extend upper/lower bounds). Mediocre results: optimize ATR multipliers, or introduce a dynamic position sizing based on ATR. Alternative approach: replace MACD with a simpler momentum indicator like a moving average crossover, incorporating volatility filters (e.g., ADX) for trend confirmation."
+        },
+        "scoring": {
+          "continuous_score": 41.426768189785534,
+          "drawdown_excess_pct": 27.75039554430608,
+          "components": {
+            "sharpe": 20.75614328260043,
+            "return": 44.0,
+            "profit_factor": 20.17088860338916,
+            "trades_confidence": 5.5,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 28.500263696204055,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 8,
+            "llm_positive": 7,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 7
+    },
+    {
+      "iteration": 10,
+      "hypothesis": "Combining MACD for trend direction with RSI for momentum confirmation and ADX for trend strength filters out whipsaws and improves signal robustness.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.8449968346843475,
+      "return_pct": 62.58883048539268,
+      "max_drawdown_pct": -95.34755151821324,
+      "profit_factor": 1.3599341676312364,
+      "win_rate_pct": 38.88888888888889,
+      "trades": 18,
+      "continuous_score": -59.71928858474365,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 23.65991137116173,
+          "return": 44.0,
+          "profit_factor": 16.45413337742795,
+          "trades_confidence": 3.0,
+          "win_rate": 1.1666666666666679
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 60.34755151821324
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +62.6%, PF 1.36, Expectancy 347.72"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 95.3%, Vol 234.6%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.845, Sortino 1.434, Calmar 0.350"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 38.9%, Trades 18, AvgW/L 3378.26/1580.82"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[AST001] Erreur de syntaxe ligne 75: cannot assign to function call here. Maybe you meant '==' instead of '='?",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 71: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 3
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 15,
+          "short_signals": 17,
+          "total_signals": 32
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on MACD crosses can generate false signals, especially in choppy markets. RSI filters might be too restrictive, missing profitable opportunities. ATR-based stops/TPs, while simple, may not adapt well to varying volatility regimes. The ADX filter is missing, which was a critical component of the initial hypothesis, and should be re-introduced.\n[Backup plan] Poor results: Remove RSI filters entirely and optimize MACD parameters for shorter cycles. Mediocre Sharpe: Reduce stop_atr_mult to 1.0 and decrease tp_atr_mult to 3.0. Alternative: Replace MACD with a simpler moving average crossover system and incorporate volume confirmation."
+        },
+        "scoring": {
+          "continuous_score": -59.71928858474365,
+          "drawdown_excess_pct": 60.34755151821324,
+          "components": {
+            "sharpe": 23.65991137116173,
+            "return": 44.0,
+            "profit_factor": 16.45413337742795,
+            "trades_confidence": 3.0,
+            "win_rate": 1.1666666666666679
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 9
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 1,
+      "hypothesis": "Combining MACD momentum with RSI filter aims to capture trending moves while avoiding whipsaws, with ATR for risk management.",
+      "change_type": "both",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7960408563121739,
+      "return_pct": 105.87308250908865,
+      "max_drawdown_pct": -40.523509452254,
+      "profit_factor": 2.1999570901918557,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 9,
+      "continuous_score": 73.00387979835988,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 22.28914397674087,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.5,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 13.682339634835998,
+          "drawdown_excess": 4.602924543544997,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 5.523509452253997
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +105.9%, PF 2.20, Expectancy 1176.37"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 40.5%, Vol 57.6%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.796, Sortino 0.919, Calmar 1.318"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 9, AvgW/L 6470.13/1470.51"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[AST001] Erreur de syntaxe ligne 103: cannot assign to function call here. Maybe you meant '==' instead of '='?",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 98: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 0
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 7,
+          "short_signals": 3,
+          "total_signals": 10
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The RSI filter might be too restrictive, missing profitable trends, while the MACD histogram sign change exit is prone to premature exits in choppy markets. ATR-based stops/targets are inherently reactive and may not adapt well to varying volatility regimes. Over-optimization of the ATR multiplier is a significant risk, especially with a limited dataset (617 bars).\n[Backup plan] If negative returns, loosen RSI filter (increase upper/lower bounds). If mediocre Sharpe, optimize ATR multipliers and consider a dynamic stop-loss based on volatility. If consistently failing, replace MACD with a simpler moving average crossover system and incorporate a volatility-adjusted position sizing."
+        },
+        "scoring": {
+          "continuous_score": 73.00387979835988,
+          "drawdown_excess_pct": 5.523509452253997,
+          "components": {
+            "sharpe": 22.28914397674087,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.5,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 13.682339634835998,
+            "drawdown_excess": 4.602924543544997,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining MACD signal with RSI filter and ATR-based risk management aims to capture momentum shifts while avoiding false signals in overbought/oversold conditions and managing volatility.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7960408563121739,
+      "return_pct": 105.87308250908865,
+      "max_drawdown_pct": -40.523509452254,
+      "profit_factor": 2.1999570901918557,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 9,
+      "continuous_score": 73.00387979835988,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 22.28914397674087,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.5,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 13.682339634835998,
+          "drawdown_excess": 4.602924543544997,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 5.523509452253997
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +105.9%, PF 2.20, Expectancy 1176.37"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 40.5%, Vol 57.6%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.796, Sortino 0.919, Calmar 1.318"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 9, AvgW/L 6470.13/1470.51"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 7,
+          "short_signals": 3,
+          "total_signals": 10
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on MACD crossovers is prone to whipsaws, especially given the relatively short timeframe. The RSI filters are a good attempt at noise reduction, but might be too restrictive, missing valid momentum opportunities. ATR-based stops are standard, but the 5.0x TP might be overly aggressive, leading to premature exits. The small sample size (617 bars) introduces significant backtest overfitting risk.\n[Backup plan] Poor results: Simplify entry by removing the RSI filter entirely. Mediocre results: Reduce TP_ATR_MULT to 2.5 and optimize fast_period in MACD. Complete failure: Switch to a Mean Reversion strategy utilizing Bollinger Bands and a shorter timeframe (e.g., 4H) with a different risk/reward profile."
+        },
+        "scoring": {
+          "continuous_score": 73.00387979835988,
+          "drawdown_excess_pct": 5.523509452253997,
+          "components": {
+            "sharpe": 22.28914397674087,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.5,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 13.682339634835998,
+            "drawdown_excess": 4.602924543544997,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining MACD signal with RSI filter improves entry timing, while ATR-based stops manage risk in volatile markets.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7960408563121739,
+      "return_pct": 105.87308250908865,
+      "max_drawdown_pct": -40.523509452254,
+      "profit_factor": 2.1999570901918557,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 9,
+      "continuous_score": 73.00387979835988,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 22.28914397674087,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.5,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 13.682339634835998,
+          "drawdown_excess": 4.602924543544997,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 5.523509452253997
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +105.9%, PF 2.20, Expectancy 1176.37"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 40.5%, Vol 57.6%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.796, Sortino 0.919, Calmar 1.318"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 9, AvgW/L 6470.13/1470.51"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 7,
+          "short_signals": 3,
+          "total_signals": 10
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The RSI filters might be too restrictive, reducing trade frequency and potentially missing profitable opportunities. Reliance solely on MACD histogram for exits is risky; it\u2019s a noisy signal. ATR-based stops, while good for volatility, could prematurely exit during sustained trends. The 5.0x TP is aggressive and may lead to frequent exits before full trend realization.\n[Backup plan] If negative return, relax RSI filters (increase upper/lower bounds). If mediocre Sharpe, optimize ATR multipliers and consider a MACD histogram smoothing technique or alternative exit condition (e.g., price action confirmation). As an alternative, explore a breakout strategy based on volume and price range, abandoning MACD entirely."
+        },
+        "scoring": {
+          "continuous_score": 73.00387979835988,
+          "drawdown_excess_pct": 5.523509452253997,
+          "components": {
+            "sharpe": 22.28914397674087,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.5,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 13.682339634835998,
+            "drawdown_excess": 4.602924543544997,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining MACD momentum with RSI confirmation and ATR-based risk management aims to capture strong trends while minimizing false signals in choppy markets; the MACD identifies momentum shifts, RSI filters for overbought/oversold conditions, and ATR manages risk dynamically.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7960408563121739,
+      "return_pct": 105.87308250908865,
+      "max_drawdown_pct": -40.523509452254,
+      "profit_factor": 2.1999570901918557,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 9,
+      "continuous_score": 73.00387979835988,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 22.28914397674087,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.5,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 13.682339634835998,
+          "drawdown_excess": 4.602924543544997,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 5.523509452253997
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +105.9%, PF 2.20, Expectancy 1176.37"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 40.5%, Vol 57.6%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.796, Sortino 0.919, Calmar 1.318"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 9, AvgW/L 6470.13/1470.51"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 7,
+          "short_signals": 3,
+          "total_signals": 10
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on MACD crossovers can generate whipsaws, especially given the relatively short timeframe (1d). RSI filters might be too restrictive, missing potential trend entries. ATR-based stops, while good for risk management, could prematurely exit profitable trades if volatility spikes. The fixed TP/SL ratio is rigid and may not adapt to varying market conditions.\n[Backup plan] If poor results, I'll relax RSI filter thresholds and introduce a dynamic TP/SL based on recent volatility. If mediocre results, I'll optimize MACD periods and ATR multiple. Failing that, I'd switch to a breakout strategy using price action and volume confirmation, abandoning the momentum indicator combination."
+        },
+        "scoring": {
+          "continuous_score": 73.00387979835988,
+          "drawdown_excess_pct": 5.523509452253997,
+          "components": {
+            "sharpe": 22.28914397674087,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.5,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 13.682339634835998,
+            "drawdown_excess": 4.602924543544997,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Combining MACD for trend confirmation with RSI for overbought/oversold conditions, and filtering with ADX to avoid false signals in choppy markets, should improve signal quality and reduce whipsaws.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7960408563121739,
+      "return_pct": 105.87308250908865,
+      "max_drawdown_pct": -40.523509452254,
+      "profit_factor": 2.1999570901918557,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 9,
+      "continuous_score": 73.00387979835988,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 22.28914397674087,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.5,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 13.682339634835998,
+          "drawdown_excess": 4.602924543544997,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 5.523509452253997
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +105.9%, PF 2.20, Expectancy 1176.37"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 40.5%, Vol 57.6%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.796, Sortino 0.919, Calmar 1.318"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 9, AvgW/L 6470.13/1470.51"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 7,
+          "short_signals": 3,
+          "total_signals": 10
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on MACD crosses is prone to whipsaws, and the RSI filters might be too restrictive, missing profitable opportunities. The ATR-based stop-loss and take-profit, while simple, could be sub-optimal for this market and timeframe. The ADX filter was removed; this may have been a mistake, potentially increasing false signals.\n[Backup plan] If negative return, loosen RSI filters significantly (e.g., RSI > 25, < 75). For mediocre Sharpe, optimize ATR multiples (reduce TP, increase SL). If consistently poor, replace MACD with a simpler moving average crossover system and incorporate volatility scaling based on realized volatility."
+        },
+        "scoring": {
+          "continuous_score": 73.00387979835988,
+          "drawdown_excess_pct": 5.523509452253997,
+          "components": {
+            "sharpe": 22.28914397674087,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.5,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 13.682339634835998,
+            "drawdown_excess": 4.602924543544997,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 6,
+            "llm_positive": 5,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Refining the RSI filter within the MACD crossover system by tightening the bands improves signal clarity and reduces whipsaws, while maintaining a robust ATR-based risk management framework.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.6661882905496033,
+      "return_pct": 72.0266772195965,
+      "max_drawdown_pct": -40.523509452254,
+      "profit_factor": 1.5900095931139469,
+      "win_rate_pct": 30.0,
+      "trades": 10,
+      "continuous_score": 63.506541737454995,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 18.653272135388892,
+          "return": 44.0,
+          "profit_factor": 26.97186711378043,
+          "trades_confidence": 1.6666666666666665,
+          "win_rate": -1.5
+        },
+        "penalties": {
+          "drawdown_pressure": 13.682339634835998,
+          "drawdown_excess": 4.602924543544997,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 5.523509452253997
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +72.0%, PF 1.59, Expectancy 720.27"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 40.5%, Vol 58.9%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.666, Sortino 0.827, Calmar 0.936"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 30.0%, Trades 10, AvgW/L 6470.13/1743.96"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 9,
+          "short_signals": 3,
+          "total_signals": 12
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The RSI bands are tight, potentially missing valid signals and increasing sensitivity to noise. Reliance solely on MACD histogram for exits could lead to premature exits during sustained trends. The 5.0x ATR TP might be overly ambitious, reducing profitability and increasing drawdowns. The strategy's success hinges heavily on the interplay of MACD and RSI, making it vulnerable to regime shifts where these indicators diverge.\n[Backup plan] Poor results: Loosen RSI filter bands (e.g., 30-80) to capture more signals. Mediocre Sharpe: Optimize ATR multiple for TP and SL, or experiment with dynamic TP/SL based on volatility. Alternative: Incorporate a trend filter (e.g., moving average) to bias trades with the prevailing direction."
+        },
+        "scoring": {
+          "continuous_score": 63.506541737454995,
+          "drawdown_excess_pct": 5.523509452253997,
+          "components": {
+            "sharpe": 18.653272135388892,
+            "return": 44.0,
+            "profit_factor": 26.97186711378043,
+            "trades_confidence": 1.6666666666666665,
+            "win_rate": -1.5
+          },
+          "penalties": {
+            "drawdown_pressure": 13.682339634835998,
+            "drawdown_excess": 4.602924543544997,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "Combining MACD momentum shifts with RSI confirmation and ADX trend filtering aims to capitalize on strong trending moves while avoiding whipsaws in choppy conditions.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7412908315214439,
+      "return_pct": 99.34626855804501,
+      "max_drawdown_pct": -62.75039554430608,
+      "profit_factor": 1.4412381881991378,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 33,
+      "continuous_score": 41.426768189785534,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 20.75614328260043,
+          "return": 44.0,
+          "profit_factor": 20.17088860338916,
+          "trades_confidence": 5.5,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 28.500263696204055,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 27.75039554430608
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.3%, PF 1.44, Expectancy 301.05"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 62.8%, Vol 82.4%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.741, Sortino 0.939, Calmar 0.805"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 33, AvgW/L 2950.00/1023.42"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[AST001] Erreur de syntaxe ligne 90: cannot assign to function call here. Maybe you meant '==' instead of '='?",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 82: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 2
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 25,
+          "short_signals": 25,
+          "total_signals": 50
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on MACD crossovers is prone to whipsaws, potentially exacerbated by the relatively tight RSI bands. The ATR-based stop/profit is rigid and might miss out on longer trends or suffer premature exits. The combined RSI filters may overly restrict entries, especially in trending markets. The relatively small dataset (617 bars) introduces significant backtest overfitting risk.\n[Backup plan] Poor results: loosen RSI entry filters (extend upper/lower bounds). Mediocre results: optimize ATR multipliers, or introduce a dynamic position sizing based on ATR. Alternative approach: replace MACD with a simpler momentum indicator like a moving average crossover, incorporating volatility filters (e.g., ADX) for trend confirmation."
+        },
+        "scoring": {
+          "continuous_score": 41.426768189785534,
+          "drawdown_excess_pct": 27.75039554430608,
+          "components": {
+            "sharpe": 20.75614328260043,
+            "return": 44.0,
+            "profit_factor": 20.17088860338916,
+            "trades_confidence": 5.5,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 28.500263696204055,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 8,
+            "llm_positive": 7,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 7
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "Combining MACD for momentum shifts with RSI for overbought/oversold conditions, and filtering with ADX to avoid whipsaws in weak trending environments, should improve signal quality and reduce false entries.",
+      "change_type": "params",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.5846217981077093,
+      "return_pct": 53.234837994982065,
+      "max_drawdown_pct": -56.269659716160206,
+      "profit_factor": 1.6033594166091254,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 9,
+      "continuous_score": 39.047065532049864,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 16.36941034701586,
+          "return": 44.0,
+          "profit_factor": 27.582144759274307,
+          "trades_confidence": 1.5,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 24.179773144106804,
+          "drawdown_excess": 17.724716430133505,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 21.269659716160206
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +53.2%, PF 1.60, Expectancy 591.50"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 56.3%, Vol 59.1%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.585, Sortino 0.608, Calmar 0.511"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 9, AvgW/L 4715.52/1470.51"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 7,
+          "short_signals": 3,
+          "total_signals": 10
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on MACD crossovers is prone to whipsaws, especially given the relatively short timeframe. RSI filters might be too restrictive, missing valid opportunities. ATR-based stops/targets are blunt instruments, potentially cutting short winning trades or triggering premature exits. The ADX filter is missing \u2013 a critical element of the hypothesis \u2013 and will likely lead to poor performance.\n[Backup plan] If negative return, loosen RSI filters significantly and remove ADX filter entirely. If mediocre Sharpe, optimize ATR multipliers (reduce TP, increase SL) and shorten MACD fast period. If still failing, replace MACD with a simpler moving average crossover and incorporate volume confirmation for entries."
+        },
+        "scoring": {
+          "continuous_score": 39.047065532049864,
+          "drawdown_excess_pct": 21.269659716160206,
+          "components": {
+            "sharpe": 16.36941034701586,
+            "return": 44.0,
+            "profit_factor": 27.582144759274307,
+            "trades_confidence": 1.5,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 24.179773144106804,
+            "drawdown_excess": 17.724716430133505,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 8
+    },
+    {
+      "iteration": 10,
+      "hypothesis": "Combining MACD for trend direction with RSI for momentum confirmation and ADX for trend strength filters out whipsaws and improves signal robustness.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.8449968346843475,
+      "return_pct": 62.58883048539268,
+      "max_drawdown_pct": -95.34755151821324,
+      "profit_factor": 1.3599341676312364,
+      "win_rate_pct": 38.88888888888889,
+      "trades": 18,
+      "continuous_score": -59.71928858474365,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 23.65991137116173,
+          "return": 44.0,
+          "profit_factor": 16.45413337742795,
+          "trades_confidence": 3.0,
+          "win_rate": 1.1666666666666679
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 60.34755151821324
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +62.6%, PF 1.36, Expectancy 347.72"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 95.3%, Vol 234.6%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.845, Sortino 1.434, Calmar 0.350"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 38.9%, Trades 18, AvgW/L 3378.26/1580.82"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[AST001] Erreur de syntaxe ligne 75: cannot assign to function call here. Maybe you meant '==' instead of '='?",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 71: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 3
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 15,
+          "short_signals": 17,
+          "total_signals": 32
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on MACD crosses can generate false signals, especially in choppy markets. RSI filters might be too restrictive, missing profitable opportunities. ATR-based stops/TPs, while simple, may not adapt well to varying volatility regimes. The ADX filter is missing, which was a critical component of the initial hypothesis, and should be re-introduced.\n[Backup plan] Poor results: Remove RSI filters entirely and optimize MACD parameters for shorter cycles. Mediocre Sharpe: Reduce stop_atr_mult to 1.0 and decrease tp_atr_mult to 3.0. Alternative: Replace MACD with a simpler moving average crossover system and incorporate volume confirmation."
+        },
+        "scoring": {
+          "continuous_score": -59.71928858474365,
+          "drawdown_excess_pct": 60.34755151821324,
+          "components": {
+            "sharpe": 23.65991137116173,
+            "return": 44.0,
+            "profit_factor": 16.45413337742795,
+            "trades_confidence": 3.0,
+            "win_rate": 1.1666666666666679
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 9
+    }
+  ]
+}

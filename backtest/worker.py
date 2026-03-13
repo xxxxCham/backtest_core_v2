@@ -124,7 +124,7 @@ def _init_worker_with_dataframe_impl(
     # ═══════════════════════════════════════════════════════════════════════════
     import sys
     from pathlib import Path
-    project_root = Path(__file__).parent.parent  # d:\backtest_core
+    project_root = Path(__file__).parent.parent  # d:\backtest_core_v2
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 

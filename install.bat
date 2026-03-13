@@ -1,41 +1,55 @@
 @echo off
+setlocal
 REM ============================================================
-REM Backtest Core - Script d'Installation Automatique (Windows)
+REM Backtest Core V2 - Script d'Installation Automatique (Windows)
 REM ============================================================
-REM NOTE: Utilise le script PowerShell fix_venv_windows.ps1 pour une installation robuste
+
+set "ROOT_DIR=%~dp0"
+set "VENV_DIR=%ROOT_DIR%.venv"
+set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
 
 echo.
 echo ========================================
-echo  Backtest Core - Installation
+echo  Backtest Core V2 - Installation
 echo ========================================
 echo.
-echo Lancement du script PowerShell automatise...
-echo.
 
-REM Lancer le script PowerShell de réparation
-powershell -ExecutionPolicy Bypass -File "%~dp0fix_venv_windows.ps1"
+if exist "%VENV_PY%" (
+    echo [ETAPE 1/3] Environnement virtuel detecte: %VENV_PY%
+) else (
+    echo [ETAPE 1/3] Creation de l'environnement virtuel...
+    where py >nul 2>&1
+    if %errorlevel% equ 0 (
+        py -3.12 -m venv "%VENV_DIR%"
+    ) else (
+        python -m venv "%VENV_DIR%"
+    )
+    if %errorlevel% neq 0 (
+        echo [ERREUR] Creation de .venv echouee
+        echo Verifiez que Python 3.12 est installe et accessible.
+        pause
+        exit /b 1
+    )
+)
 
-if %errorlevel% neq 0 (
-    echo.
-    echo [ERREUR] L'installation a echoue
-    echo Consultez les messages ci-dessus pour plus de details
+if not exist "%VENV_PY%" (
+    echo [ERREUR] Interpreteur virtuel introuvable: %VENV_PY%
     pause
     exit /b 1
 )
 
 echo.
-echo ========================================
-echo  Installation terminee avec succes !
-echo ========================================
+echo [ETAPE 2/3] Mise a jour de pip...
+"%VENV_PY%" -m pip install --upgrade pip --quiet
+if %errorlevel% neq 0 (
+    echo [ERREUR] Mise a jour de pip echouee
+    pause
+    exit /b 1
+)
 
-REM Installer les dépendances
 echo.
 echo [ETAPE 3/3] Installation des dependances...
-echo [INFO] Mise a jour de pip...
-python -m pip install --upgrade pip --quiet
-
-echo [INFO] Installation de requirements.txt...
-pip install -r requirements.txt
+"%VENV_PY%" -m pip install -r "%ROOT_DIR%requirements.txt"
 if %errorlevel% neq 0 (
     echo [ERREUR] Installation des dependances echouee
     pause
@@ -51,12 +65,11 @@ echo Pour lancer l'interface:
 echo   1. Activer l'environnement: .venv\Scripts\activate
 echo   2. Lancer Streamlit:        streamlit run ui\app.py
 echo.
-echo Documentation complete: INSTALL.md
+echo Documentation complete: README.md
 echo.
 
-REM Test rapide
 echo [TEST] Verification des imports...
-python -c "import streamlit, pandas, numpy, plotly; print('[OK] Toutes les dependances sont installees!')"
+"%VENV_PY%" -c "import streamlit, pandas, numpy, plotly; print('[OK] Toutes les dependances sont installees!')"
 if %errorlevel% neq 0 (
     echo [ATTENTION] Certains imports ont echoue, verifiez requirements.txt
 )

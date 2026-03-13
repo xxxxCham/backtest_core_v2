@@ -11,7 +11,7 @@ from pathlib import Path
 # Ajouter le répertoire parent au PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tools.analyze_results import extract_all_results
+from tools.analyze_results import export_top_configs, extract_all_results, refresh_analysis_artifacts
 from tools.generate_html_report import generate_html_report
 
 
@@ -26,7 +26,7 @@ Exemples:
   python analyze.py --csv              # Exporter CSV uniquement
   python analyze.py --strategy ema     # Filtrer par stratégie
   python analyze.py --profitable       # Voir uniquement configs profitables
-  python analyze.py --top 10           # Afficher top 10 uniquement
+  python analyze.py --top 100          # Afficher top 100 uniquement
         """
     )
 
@@ -42,7 +42,7 @@ Exemples:
                        help='Filtrer par timeframe')
     parser.add_argument('--profitable', action='store_true',
                        help='Afficher uniquement les configurations profitables')
-    parser.add_argument('--top', type=int, default=None,
+    parser.add_argument('--top', type=int, default=100,
                        help='Nombre de meilleures configs à afficher')
     parser.add_argument('--min-pnl', type=float,
                        help='PnL minimum pour filtrage')
@@ -127,8 +127,31 @@ Exemples:
 
     # Génération HTML
     if args.html:
+        has_custom_filters = any(
+            [
+                args.strategy,
+                args.symbol,
+                args.timeframe,
+                args.profitable,
+                args.min_pnl is not None,
+                args.min_sharpe is not None,
+            ]
+        )
+        if not has_custom_filters:
+            stats = refresh_analysis_artifacts(top_n=args.top)
+            print(f"\n✅ Rapports HTML rafraîchis ({stats['filtered_results']} configs filtrées)")
+            return 0
+
         output = 'analysis_report_filtered.html' if len(filtered) < len(results) else 'analysis_report.html'
-        generate_html_report(filtered, output)
+        export_top_configs(filtered, top_n=args.top)
+        generate_html_report(
+            filtered,
+            output,
+            title='Backtest Analysis Report',
+            top_n=args.top,
+            filters_description='custom cli filters',
+            csv_path='analysis_top_configs.csv',
+        )
         return 0
 
     # Analyse console complète
@@ -170,7 +193,7 @@ Exemples:
     print(f"Meilleur: ${max(r['pnl'] for r in filtered):,.2f}")
     print(f"Pire: ${min(r['pnl'] for r in filtered):,.2f}")
 
-    print("\n💡 Astuce: Utilisez --html pour un rapport interactif")
+    print("\n💡 Astuce: Utilisez --html pour rafraîchir les rapports HTML")
     print("💡 Astuce: Utilisez --csv pour export Excel")
 
     return 0

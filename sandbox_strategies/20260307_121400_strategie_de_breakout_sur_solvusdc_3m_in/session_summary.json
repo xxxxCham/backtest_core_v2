@@ -1,0 +1,2284 @@
+{
+  "session_id": "20260307_121400_strategie_de_breakout_sur_solvusdc_3m_in",
+  "objective": "Strategie de Breakout sur SOLVUSDC 3m. Indicateurs : Stochastic, Bollinger Bands, ATR. Entree short apres breakout baissier de la bande inferieure confirme par Stochastique < 20. Stop-loss = 1.0x ATR, take-profit = 2.0x ATR.",
+  "status": "max_iterations",
+  "best_sharpe": 2.444098859688547,
+  "best_score": 100.0,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 10,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "logic",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.112043610298361,
+      "return_pct": 129.18794057228993,
+      "max_drawdown_pct": -19.419847229550037,
+      "profit_factor": 43.83500940734131,
+      "win_rate_pct": 83.33333333333334,
+      "trades": 6,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.0,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +129.2%, PF 43.84, Expectancy 2153.13"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.4%, Vol 152.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.112, Sortino 13.182, Calmar 6.323"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 83.3%, Trades 6, AvgW/L 2644.08/301.59"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback"
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "KeyError: 'bollinger'",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "KeyError: 'bollinger'",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core\\agents\\strategy_builder.py\", line 5617, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core\\agents\\strategy_builder.py\", line 4971, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core\\agents\\strategy_builder.py\", line 4948, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core\\sandbox_strategies\\20260307_121400_strategie_de_breakout_sur_solvusdc_3m_in\\strategy.py\", line 62, in generate_signals\n    bollinger = indicators['bollinger']\nKeyError: 'bollinger'",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Breakout strategies are notoriously whipsaw-prone, especially on volatile assets like SOLVUSDC. Relying solely on Stochastic and BBands for confirmation increases this risk; false breakouts are likely. The fixed 1.0x/2.0x ATR stop-loss/take-profit may be too tight, missing larger moves, or too loose, incurring unnecessary losses. The hypothesis of a fallback contract feels disconnected from the trading strategy itself.\n[Backup plan] If negative returns, switch from Stochastic to a more robust momentum indicator like MACD. If mediocre Sharpe, widen ATR multiple for stop/take (1.5x/3.0x). If failure persists, abandon breakout and explore a trend-following strategy using EMA and RSI for entry/exit signals, prioritizing risk management with dynamic position sizing."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.0,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.112043610298361,
+      "return_pct": 129.18794057228993,
+      "max_drawdown_pct": -19.419847229550037,
+      "profit_factor": 43.83500940734131,
+      "win_rate_pct": 83.33333333333334,
+      "trades": 6,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.0,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +129.2%, PF 43.84, Expectancy 2153.13"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.4%, Vol 152.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.112, Sortino 13.182, Calmar 6.323"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 83.3%, Trades 6, AvgW/L 2644.08/301.59"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Breakout strategies on 3-minute charts are notoriously whipsaw-prone, especially with SOL, known for volatility. Reliance on Stochastic < 20 for confirmation can generate false signals. ATR-based stop/profit is reasonable but may not adapt quickly enough to SOL's rapid price swings. The 'fallback contractuel' long entry feels disconnected and adds complexity without clear justification.\n[Backup plan] Poor results: Tighten stop-loss to 0.5x ATR, and add volume confirmation to breakout signals. Mediocre Sharpe: Optimize ATR multiple for both SL/TP, and consider dynamic Bollinger Band width adjustment. Alternative: Shift to a mean reversion strategy using a short-term EMA crossover and volatility-adjusted stop-loss on SOLVUSDC."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.0,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.112043610298361,
+      "return_pct": 129.18794057228993,
+      "max_drawdown_pct": -19.419847229550037,
+      "profit_factor": 43.83500940734131,
+      "win_rate_pct": 83.33333333333334,
+      "trades": 6,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.0,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +129.2%, PF 43.84, Expectancy 2153.13"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.4%, Vol 152.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.112, Sortino 13.182, Calmar 6.323"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 83.3%, Trades 6, AvgW/L 2644.08/301.59"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Breakout strategies on 3-minute charts are notoriously noisy and prone to whipsaws, especially with SOL/USDC\u2019s volatility. Reliance on Stochastic <20 for confirmation is a sensitive trigger, easily generating false signals. ATR-based stop-loss and take-profit, while common, might be too rigid given the asset's unpredictable price action. The 'fallback contractuel' description is vague and needs clarification - is it a hedge or a completely different strategy?\n[Backup plan] Poor results: Tighten the Stochastic oversold threshold (e.g., <15) and add a volume confirmation filter to entry. Mediocre Sharpe: Optimize ATR multiplier for stop/profit (grid search). If failure persists, pivot to a mean reversion strategy using a shorter EMA and RSI divergence signals, focusing on capturing smaller, more frequent reversals."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.0,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining Bollinger Band breakouts with Stochastic confirmation and ADX trend filtering aims to capture strong directional moves while minimizing false signals from whipsaws, enhancing robustness and profitability.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.1134916002586075,
+      "return_pct": 130.3350131066327,
+      "max_drawdown_pct": -19.31228795382782,
+      "profit_factor": 37.10151300307649,
+      "win_rate_pct": 85.71428571428571,
+      "trades": 7,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.1666666666666667,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +130.3%, PF 37.10, Expectancy 1861.93"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.3%, Vol 150.5%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.113, Sortino 13.127, Calmar 6.414"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 85.7%, Trades 7, AvgW/L 2232.42/361.02"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on a single, relatively short timeframe (3m) makes the strategy highly susceptible to noise and whipsaws, especially with breakout strategies. Stochastic's sensitivity and Bollinger Bands' lag could create conflicting signals. The fixed ATR multiple for stop-loss and take-profit might not adapt well to SOLVUSDC's volatility regime shifts.\n[Backup plan] Poor results: Implement a dynamic stop-loss based on volatility (e.g., Keltner Channels). Mediocre results: Optimize ATR multiple and Bollinger Band period. Alternative: Shift to a mean reversion strategy using volume-weighted average price (VWAP) and relative strength index (RSI) on a higher timeframe (5m or 10m) to reduce whipsaws."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.1666666666666667,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.112043610298361,
+      "return_pct": 129.18794057228993,
+      "max_drawdown_pct": -19.419847229550037,
+      "profit_factor": 43.83500940734131,
+      "win_rate_pct": 83.33333333333334,
+      "trades": 6,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.0,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +129.2%, PF 43.84, Expectancy 2153.13"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.4%, Vol 152.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.112, Sortino 13.182, Calmar 6.323"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 83.3%, Trades 6, AvgW/L 2644.08/301.59"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Breakout strategies are prone to whipsaws, especially on volatile assets like SOLVUSDC. Relying solely on Stochastic and Bollinger Bands for entry confirmation may generate false signals. The fixed 1x/2x ATR stop-loss/take-profit is rigid and doesn't adapt to changing volatility. Furthermore, the 'fallback contractuel' long entry is vaguely defined and risks conflicting signals.\n[Backup plan] Poor results: Introduce a volume filter to confirm breakouts. Mediocre results: Dynamically adjust stop-loss/take-profit based on recent ATR changes. Failure: Switch to a mean reversion strategy using a combination of EMAs and volatility bands, explicitly targeting periods of consolidation."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.0,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.112043610298361,
+      "return_pct": 129.18794057228993,
+      "max_drawdown_pct": -19.419847229550037,
+      "profit_factor": 43.83500940734131,
+      "win_rate_pct": 83.33333333333334,
+      "trades": 6,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.0,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +129.2%, PF 43.84, Expectancy 2153.13"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.4%, Vol 152.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.112, Sortino 13.182, Calmar 6.323"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 83.3%, Trades 6, AvgW/L 2644.08/301.59"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Breakout strategies on SOLVUSDC 3m are prone to whipsaws and false breakouts given the volatility. Reliance on Stochastic < 20 for confirmation is a potential lag indicator, and ATR-based stop/profit targets might be too rigid. The recent Sharpe ratios, while impressive, could be inflated by a lucky draw in the backtest window and aren't necessarily indicative of robustness.\n[Backup plan] Poor results: Tighten stop-loss to 0.5x ATR and introduce a volume filter to confirm breakouts. Mediocre results: Optimize ATR multiplier for SL/TP and experiment with a dynamic take-profit based on recent volatility. Alternative approach: Shift to a mean reversion strategy using Bollinger Bands and RSI, exploiting SOLVUSDC's tendency to revert to the mean after extreme movements."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.0,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 3,
+            "llm_positive": 2,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "Combining Bollinger Band breakouts with Stochastic confirmation aims to filter false breakouts and improve signal reliability on SOLVUSDC's 3-minute chart.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.1134916002586075,
+      "return_pct": 130.3350131066327,
+      "max_drawdown_pct": -19.31228795382782,
+      "profit_factor": 37.10151300307649,
+      "win_rate_pct": 85.71428571428571,
+      "trades": 7,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.1666666666666667,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +130.3%, PF 37.10, Expectancy 1861.93"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.3%, Vol 150.5%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.113, Sortino 13.127, Calmar 6.414"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 85.7%, Trades 7, AvgW/L 2232.42/361.02"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on short breakouts is risky given SOLVUSDC's volatility; confirmation alone might not be sufficient to avoid whipsaws. ATR-based stops/take-profits are standard but may be too simplistic, especially given the 3-minute timeframe's noise. The long entry condition is entirely different and inconsistent with the short logic, suggesting a potential design flaw. Recent high Sharpe ratios might be overfitting or due to a specific historical period.\n[Backup plan] Poor results: Simplify to *only* Bollinger Band breakouts with dynamic stop-loss based on volatility (e.g., Keltner Channels). Mediocre results: Optimize ATR multiplier for stop/take-profit, explore dynamic position sizing based on volatility. Alternative: Switch to a mean reversion strategy using a different indicator (e.g., RSI) on a longer timeframe (5m or 10m) to reduce noise."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.1666666666666667,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 7
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.112043610298361,
+      "return_pct": 129.18794057228993,
+      "max_drawdown_pct": -19.419847229550037,
+      "profit_factor": 43.83500940734131,
+      "win_rate_pct": 83.33333333333334,
+      "trades": 6,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.0,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +129.2%, PF 43.84, Expectancy 2153.13"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.4%, Vol 152.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.112, Sortino 13.182, Calmar 6.323"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 83.3%, Trades 6, AvgW/L 2644.08/301.59"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Breakout strategies on 3-minute charts are notoriously noisy and prone to whipsaws, especially with SOLVUSDC's volatility. Relying solely on Stochastic and Bollinger Bands for entry signals lacks robustness; ATR-based stop/profit is reasonable but may not be sufficient. The 'fallback contractuel' objective is vague and needs definition \u2013 it's currently unclear how it integrates with the breakout strategy.\n[Backup plan] Poor results: Introduce a volume filter requiring significant volume on the breakout. Mediocre Sharpe: Tighten the Stochastic oversold threshold (e.g., <15) and dynamically adjust ATR multiple for stop/profit based on recent volatility. Alternative: Shift to a mean reversion strategy utilizing EMA and RSI, focusing on short-term price deviations from the EMA."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.0,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 8
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "Combining Stochastic oversold confirmation with Bollinger Band breakouts aims to filter false signals and improve the reliability of breakout entries, while ADX ensures trend strength.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.444098859688547,
+      "return_pct": 47.68058108924408,
+      "max_drawdown_pct": -32.13872177625538,
+      "profit_factor": 16.44682507398386,
+      "win_rate_pct": 57.14285714285714,
+      "trades": 7,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.1666666666666667,
+          "win_rate": 6.642857142857142
+        },
+        "penalties": {
+          "drawdown_pressure": 8.092481184170254,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +47.7%, PF 16.45, Expectancy 681.15"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 32.1%, Vol 52.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.444, Sortino 3.070, Calmar 1.423"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 57.1%, Trades 7, AvgW/L 1269.18/102.89"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on a single 3-minute timeframe is highly susceptible to noise and whipsaws, especially with breakout strategies. Stochastic's sensitivity can generate false signals, and ATR-based stops/targets are blunt instruments easily triggered by volatility spikes. The ADX exit seems tacked on and potentially contradictory to the breakout premise; it's unclear how it's truly reinforcing trend strength. Finally, SOLVUSDC's liquidity and volatility could significantly impact performance.\n[Backup plan] Poor results: Switch to a higher timeframe (5m or 10m) to reduce noise. Mediocre Sharpe: Optimize ATR multiplier for stop/target and experiment with Stochastic lookback periods. If the strategy consistently fails, replace breakouts with a mean reversion strategy utilizing a Z-score based on a rolling average."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.1666666666666667,
+            "win_rate": 6.642857142857142
+          },
+          "penalties": {
+            "drawdown_pressure": 8.092481184170254,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 4,
+            "llm_positive": 3,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 9
+    },
+    {
+      "iteration": 10,
+      "hypothesis": "Combining Stochastic oversold confirmation with Bollinger Band breakouts aims to filter false breakouts, improving signal quality and reducing whipsaws on the 3-minute SOLVUSDC chart.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.444098859688547,
+      "return_pct": 47.68058108924408,
+      "max_drawdown_pct": -32.13872177625538,
+      "profit_factor": 16.44682507398386,
+      "win_rate_pct": 57.14285714285714,
+      "trades": 7,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.1666666666666667,
+          "win_rate": 6.642857142857142
+        },
+        "penalties": {
+          "drawdown_pressure": 8.092481184170254,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +47.7%, PF 16.45, Expectancy 681.15"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 32.1%, Vol 52.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.444, Sortino 3.070, Calmar 1.423"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 57.1%, Trades 7, AvgW/L 1269.18/102.89"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on a single, short-only breakout pattern is a significant weakness, vulnerable to market reversals and limited directional exposure. ATR-based stop/profit targets are simplistic and may not adapt well to SOLVUSDC's volatility shifts. Confirming oversold conditions with Stochastic *after* a breakout might be too late; the breakout might already be a false signal. The recent Sharpe ratio dip in Iteration 9 is concerning and warrants immediate investigation.\n[Backup plan] If results are poor, switch to a long-only breakout strategy, widening the Bollinger Band width to accommodate more volatility. For mediocre Sharpe, optimize ATR multiplier for SL/TP and consider dynamic SL based on recent volatility. As an alternative, explore a mean reversion strategy using a different oscillator and volume analysis to capitalize on short-term price fluctuations."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.1666666666666667,
+            "win_rate": 6.642857142857142
+          },
+          "penalties": {
+            "drawdown_pressure": 8.092481184170254,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 10
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 1,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "logic",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.112043610298361,
+      "return_pct": 129.18794057228993,
+      "max_drawdown_pct": -19.419847229550037,
+      "profit_factor": 43.83500940734131,
+      "win_rate_pct": 83.33333333333334,
+      "trades": 6,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.0,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +129.2%, PF 43.84, Expectancy 2153.13"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.4%, Vol 152.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.112, Sortino 13.182, Calmar 6.323"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 83.3%, Trades 6, AvgW/L 2644.08/301.59"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback"
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "KeyError: 'bollinger'",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "KeyError: 'bollinger'",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core\\agents\\strategy_builder.py\", line 5617, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core\\agents\\strategy_builder.py\", line 4971, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core\\agents\\strategy_builder.py\", line 4948, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core\\sandbox_strategies\\20260307_121400_strategie_de_breakout_sur_solvusdc_3m_in\\strategy.py\", line 62, in generate_signals\n    bollinger = indicators['bollinger']\nKeyError: 'bollinger'",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Breakout strategies are notoriously whipsaw-prone, especially on volatile assets like SOLVUSDC. Relying solely on Stochastic and BBands for confirmation increases this risk; false breakouts are likely. The fixed 1.0x/2.0x ATR stop-loss/take-profit may be too tight, missing larger moves, or too loose, incurring unnecessary losses. The hypothesis of a fallback contract feels disconnected from the trading strategy itself.\n[Backup plan] If negative returns, switch from Stochastic to a more robust momentum indicator like MACD. If mediocre Sharpe, widen ATR multiple for stop/take (1.5x/3.0x). If failure persists, abandon breakout and explore a trend-following strategy using EMA and RSI for entry/exit signals, prioritizing risk management with dynamic position sizing."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.0,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.112043610298361,
+      "return_pct": 129.18794057228993,
+      "max_drawdown_pct": -19.419847229550037,
+      "profit_factor": 43.83500940734131,
+      "win_rate_pct": 83.33333333333334,
+      "trades": 6,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.0,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +129.2%, PF 43.84, Expectancy 2153.13"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.4%, Vol 152.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.112, Sortino 13.182, Calmar 6.323"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 83.3%, Trades 6, AvgW/L 2644.08/301.59"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Breakout strategies on 3-minute charts are notoriously whipsaw-prone, especially with SOL, known for volatility. Reliance on Stochastic < 20 for confirmation can generate false signals. ATR-based stop/profit is reasonable but may not adapt quickly enough to SOL's rapid price swings. The 'fallback contractuel' long entry feels disconnected and adds complexity without clear justification.\n[Backup plan] Poor results: Tighten stop-loss to 0.5x ATR, and add volume confirmation to breakout signals. Mediocre Sharpe: Optimize ATR multiple for both SL/TP, and consider dynamic Bollinger Band width adjustment. Alternative: Shift to a mean reversion strategy using a short-term EMA crossover and volatility-adjusted stop-loss on SOLVUSDC."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.0,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.112043610298361,
+      "return_pct": 129.18794057228993,
+      "max_drawdown_pct": -19.419847229550037,
+      "profit_factor": 43.83500940734131,
+      "win_rate_pct": 83.33333333333334,
+      "trades": 6,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.0,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +129.2%, PF 43.84, Expectancy 2153.13"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.4%, Vol 152.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.112, Sortino 13.182, Calmar 6.323"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 83.3%, Trades 6, AvgW/L 2644.08/301.59"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Breakout strategies on 3-minute charts are notoriously noisy and prone to whipsaws, especially with SOL/USDC\u2019s volatility. Reliance on Stochastic <20 for confirmation is a sensitive trigger, easily generating false signals. ATR-based stop-loss and take-profit, while common, might be too rigid given the asset's unpredictable price action. The 'fallback contractuel' description is vague and needs clarification - is it a hedge or a completely different strategy?\n[Backup plan] Poor results: Tighten the Stochastic oversold threshold (e.g., <15) and add a volume confirmation filter to entry. Mediocre Sharpe: Optimize ATR multiplier for stop/profit (grid search). If failure persists, pivot to a mean reversion strategy using a shorter EMA and RSI divergence signals, focusing on capturing smaller, more frequent reversals."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.0,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining Bollinger Band breakouts with Stochastic confirmation and ADX trend filtering aims to capture strong directional moves while minimizing false signals from whipsaws, enhancing robustness and profitability.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.1134916002586075,
+      "return_pct": 130.3350131066327,
+      "max_drawdown_pct": -19.31228795382782,
+      "profit_factor": 37.10151300307649,
+      "win_rate_pct": 85.71428571428571,
+      "trades": 7,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.1666666666666667,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +130.3%, PF 37.10, Expectancy 1861.93"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.3%, Vol 150.5%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.113, Sortino 13.127, Calmar 6.414"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 85.7%, Trades 7, AvgW/L 2232.42/361.02"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on a single, relatively short timeframe (3m) makes the strategy highly susceptible to noise and whipsaws, especially with breakout strategies. Stochastic's sensitivity and Bollinger Bands' lag could create conflicting signals. The fixed ATR multiple for stop-loss and take-profit might not adapt well to SOLVUSDC's volatility regime shifts.\n[Backup plan] Poor results: Implement a dynamic stop-loss based on volatility (e.g., Keltner Channels). Mediocre results: Optimize ATR multiple and Bollinger Band period. Alternative: Shift to a mean reversion strategy using volume-weighted average price (VWAP) and relative strength index (RSI) on a higher timeframe (5m or 10m) to reduce whipsaws."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.1666666666666667,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.112043610298361,
+      "return_pct": 129.18794057228993,
+      "max_drawdown_pct": -19.419847229550037,
+      "profit_factor": 43.83500940734131,
+      "win_rate_pct": 83.33333333333334,
+      "trades": 6,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.0,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +129.2%, PF 43.84, Expectancy 2153.13"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.4%, Vol 152.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.112, Sortino 13.182, Calmar 6.323"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 83.3%, Trades 6, AvgW/L 2644.08/301.59"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Breakout strategies are prone to whipsaws, especially on volatile assets like SOLVUSDC. Relying solely on Stochastic and Bollinger Bands for entry confirmation may generate false signals. The fixed 1x/2x ATR stop-loss/take-profit is rigid and doesn't adapt to changing volatility. Furthermore, the 'fallback contractuel' long entry is vaguely defined and risks conflicting signals.\n[Backup plan] Poor results: Introduce a volume filter to confirm breakouts. Mediocre results: Dynamically adjust stop-loss/take-profit based on recent ATR changes. Failure: Switch to a mean reversion strategy using a combination of EMAs and volatility bands, explicitly targeting periods of consolidation."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.0,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.112043610298361,
+      "return_pct": 129.18794057228993,
+      "max_drawdown_pct": -19.419847229550037,
+      "profit_factor": 43.83500940734131,
+      "win_rate_pct": 83.33333333333334,
+      "trades": 6,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.0,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +129.2%, PF 43.84, Expectancy 2153.13"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.4%, Vol 152.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.112, Sortino 13.182, Calmar 6.323"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 83.3%, Trades 6, AvgW/L 2644.08/301.59"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Breakout strategies on SOLVUSDC 3m are prone to whipsaws and false breakouts given the volatility. Reliance on Stochastic < 20 for confirmation is a potential lag indicator, and ATR-based stop/profit targets might be too rigid. The recent Sharpe ratios, while impressive, could be inflated by a lucky draw in the backtest window and aren't necessarily indicative of robustness.\n[Backup plan] Poor results: Tighten stop-loss to 0.5x ATR and introduce a volume filter to confirm breakouts. Mediocre results: Optimize ATR multiplier for SL/TP and experiment with a dynamic take-profit based on recent volatility. Alternative approach: Shift to a mean reversion strategy using Bollinger Bands and RSI, exploiting SOLVUSDC's tendency to revert to the mean after extreme movements."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.0,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 3,
+            "llm_positive": 2,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "Combining Bollinger Band breakouts with Stochastic confirmation aims to filter false breakouts and improve signal reliability on SOLVUSDC's 3-minute chart.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.1134916002586075,
+      "return_pct": 130.3350131066327,
+      "max_drawdown_pct": -19.31228795382782,
+      "profit_factor": 37.10151300307649,
+      "win_rate_pct": 85.71428571428571,
+      "trades": 7,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.1666666666666667,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +130.3%, PF 37.10, Expectancy 1861.93"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.3%, Vol 150.5%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.113, Sortino 13.127, Calmar 6.414"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 85.7%, Trades 7, AvgW/L 2232.42/361.02"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on short breakouts is risky given SOLVUSDC's volatility; confirmation alone might not be sufficient to avoid whipsaws. ATR-based stops/take-profits are standard but may be too simplistic, especially given the 3-minute timeframe's noise. The long entry condition is entirely different and inconsistent with the short logic, suggesting a potential design flaw. Recent high Sharpe ratios might be overfitting or due to a specific historical period.\n[Backup plan] Poor results: Simplify to *only* Bollinger Band breakouts with dynamic stop-loss based on volatility (e.g., Keltner Channels). Mediocre results: Optimize ATR multiplier for stop/take-profit, explore dynamic position sizing based on volatility. Alternative: Switch to a mean reversion strategy using a different indicator (e.g., RSI) on a longer timeframe (5m or 10m) to reduce noise."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.1666666666666667,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 7
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.112043610298361,
+      "return_pct": 129.18794057228993,
+      "max_drawdown_pct": -19.419847229550037,
+      "profit_factor": 43.83500940734131,
+      "win_rate_pct": 83.33333333333334,
+      "trades": 6,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.0,
+          "win_rate": 9.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +129.2%, PF 43.84, Expectancy 2153.13"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 19.4%, Vol 152.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.112, Sortino 13.182, Calmar 6.323"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 83.3%, Trades 6, AvgW/L 2644.08/301.59"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Breakout strategies on 3-minute charts are notoriously noisy and prone to whipsaws, especially with SOLVUSDC's volatility. Relying solely on Stochastic and Bollinger Bands for entry signals lacks robustness; ATR-based stop/profit is reasonable but may not be sufficient. The 'fallback contractuel' objective is vague and needs definition \u2013 it's currently unclear how it integrates with the breakout strategy.\n[Backup plan] Poor results: Introduce a volume filter requiring significant volume on the breakout. Mediocre Sharpe: Tighten the Stochastic oversold threshold (e.g., <15) and dynamically adjust ATR multiple for stop/profit based on recent volatility. Alternative: Shift to a mean reversion strategy utilizing EMA and RSI, focusing on short-term price deviations from the EMA."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.0,
+            "win_rate": 9.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 8
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "Combining Stochastic oversold confirmation with Bollinger Band breakouts aims to filter false signals and improve the reliability of breakout entries, while ADX ensures trend strength.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.444098859688547,
+      "return_pct": 47.68058108924408,
+      "max_drawdown_pct": -32.13872177625538,
+      "profit_factor": 16.44682507398386,
+      "win_rate_pct": 57.14285714285714,
+      "trades": 7,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.1666666666666667,
+          "win_rate": 6.642857142857142
+        },
+        "penalties": {
+          "drawdown_pressure": 8.092481184170254,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +47.7%, PF 16.45, Expectancy 681.15"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 32.1%, Vol 52.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.444, Sortino 3.070, Calmar 1.423"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 57.1%, Trades 7, AvgW/L 1269.18/102.89"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on a single 3-minute timeframe is highly susceptible to noise and whipsaws, especially with breakout strategies. Stochastic's sensitivity can generate false signals, and ATR-based stops/targets are blunt instruments easily triggered by volatility spikes. The ADX exit seems tacked on and potentially contradictory to the breakout premise; it's unclear how it's truly reinforcing trend strength. Finally, SOLVUSDC's liquidity and volatility could significantly impact performance.\n[Backup plan] Poor results: Switch to a higher timeframe (5m or 10m) to reduce noise. Mediocre Sharpe: Optimize ATR multiplier for stop/target and experiment with Stochastic lookback periods. If the strategy consistently fails, replace breakouts with a mean reversion strategy utilizing a Z-score based on a rolling average."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.1666666666666667,
+            "win_rate": 6.642857142857142
+          },
+          "penalties": {
+            "drawdown_pressure": 8.092481184170254,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 4,
+            "llm_positive": 3,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 9
+    },
+    {
+      "iteration": 10,
+      "hypothesis": "Combining Stochastic oversold confirmation with Bollinger Band breakouts aims to filter false breakouts, improving signal quality and reducing whipsaws on the 3-minute SOLVUSDC chart.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 2.444098859688547,
+      "return_pct": 47.68058108924408,
+      "max_drawdown_pct": -32.13872177625538,
+      "profit_factor": 16.44682507398386,
+      "win_rate_pct": 57.14285714285714,
+      "trades": 7,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 56.0,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 1.1666666666666667,
+          "win_rate": 6.642857142857142
+        },
+        "penalties": {
+          "drawdown_pressure": 8.092481184170254,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +47.7%, PF 16.45, Expectancy 681.15"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 32.1%, Vol 52.1%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 2.444, Sortino 3.070, Calmar 1.423"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 57.1%, Trades 7, AvgW/L 1269.18/102.89"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 808,
+          "total_signals": 808
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on a single, short-only breakout pattern is a significant weakness, vulnerable to market reversals and limited directional exposure. ATR-based stop/profit targets are simplistic and may not adapt well to SOLVUSDC's volatility shifts. Confirming oversold conditions with Stochastic *after* a breakout might be too late; the breakout might already be a false signal. The recent Sharpe ratio dip in Iteration 9 is concerning and warrants immediate investigation.\n[Backup plan] If results are poor, switch to a long-only breakout strategy, widening the Bollinger Band width to accommodate more volatility. For mediocre Sharpe, optimize ATR multiplier for SL/TP and consider dynamic SL based on recent volatility. As an alternative, explore a mean reversion strategy using a different oscillator and volume analysis to capitalize on short-term price fluctuations."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 56.0,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 1.1666666666666667,
+            "win_rate": 6.642857142857142
+          },
+          "penalties": {
+            "drawdown_pressure": 8.092481184170254,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 10
+    }
+  ]
+}

@@ -20,6 +20,7 @@ import pandas as pd
 import pytest
 
 import agents.strategy_builder as strategy_builder_module
+from agents.llm_client import LLMConfig, LLMMessage, LLMProvider
 from agents.strategy_builder import (
     CatalogObjective,
     GENERATED_CLASS_NAME,
@@ -27,7 +28,10 @@ from agents.strategy_builder import (
     BuilderIteration,
     BuilderSession,
     StrategyBuilder,
+    _apply_signal_direction_constraint,
     _build_deterministic_fallback_code,
+    _infer_direction_constraint_from_objective,
+    _sanitize_proposal_payload,
     _validate_llm_logic_block,
     _repair_code,
     compute_continuous_builder_score,
@@ -132,6 +136,51 @@ def test_emit_completed_backtest_forwards_raw_result_to_callback():
     assert raw_result.meta["builder_session_id"] == "sess-1"
     assert raw_result.meta["builder_iteration"] == 3
     assert raw_result.meta["builder_objective"] == "test objective"
+
+
+def test_chat_llm_uses_phase_specific_client_for_analysis():
+    class _FakeClient:
+        def __init__(self, name: str):
+            self.name = name
+            self.calls = []
+            self.config = LLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model=name,
+                ollama_host=f"http://{name}.local:11434",
+            )
+
+        def chat(
+            self,
+            messages,
+            json_mode=False,
+            temperature=None,
+            max_tokens=None,
+        ):
+            self.calls.append(
+                {
+                    "messages": messages,
+                    "json_mode": json_mode,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                }
+            )
+            return SimpleNamespace(content=f"{self.name}-response")
+
+    default_client = _FakeClient("builder")
+    critic_client = _FakeClient("critic")
+    builder = StrategyBuilder(
+        llm_client=default_client,
+        phase_llm_clients={"analysis": critic_client},
+    )
+
+    response = builder._chat_llm(
+        [LLMMessage(role="user", content="analyse cette iteration")],
+        phase="analysis",
+    )
+
+    assert response.content == "critic-response"
+    assert len(critic_client.calls) == 1
+    assert len(default_client.calls) == 0
 
 
 def test_builder_run_emits_progress_events(
@@ -242,7 +291,221 @@ def test_builder_run_emits_progress_events(
         and event.get("sharpe") == 1.42
         for event in progress_events
     )
+    assert session.best_sharpe == pytest.approx(1.42)
     assert not any(event["event"] == "iteration_error" for event in progress_events)
+
+
+def test_builder_run_fallback_accept_tracks_best_sharpe(
+    monkeypatch,
+    tmp_path,
+    sample_ohlcv,
+    valid_strategy_code,
+):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.available_indicators = ["rsi", "atr"]
+
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "create_session_id",
+        staticmethod(lambda objective: "builder_fallback_accept_test"),
+    )
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "get_session_dir",
+        staticmethod(lambda session_id: tmp_path / session_id),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_validate_builder_dataset_exploitability",
+        lambda *args, **kwargs: (True, ""),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_build_deterministic_strategy_code",
+        lambda proposal, logic_block: valid_strategy_code,
+    )
+
+    builder._save_session_summary = lambda session: None
+    builder._safe_save_session_summary = lambda session: None
+    builder._ask_proposal = lambda session, last_iteration: (
+        {},
+        {"phase": "proposal", "final_valid": False},
+    )
+    builder._ask_code = lambda session, proposal, last_iteration: (
+        "signals[:] = 0.0",
+        {"phase": "code", "final_valid": True},
+    )
+    builder._save_and_load = lambda session, code, iteration_num: object
+    builder._auto_fix_required_indicators = lambda strategy_cls, code: strategy_cls
+    builder._precheck_signal_counts = lambda *args, **kwargs: {
+        "ok": True,
+        "total_signals": 2,
+        "long_signals": 1,
+        "short_signals": 1,
+    }
+    builder._ask_pre_reflection = lambda *args, **kwargs: ""
+    builder._run_backtest = lambda *args, **kwargs: SimpleNamespace(
+        metrics={
+            "total_return_pct": 12.5,
+            "sharpe_ratio": 1.42,
+            "sortino_ratio": 1.8,
+            "calmar_ratio": 1.1,
+            "max_drawdown_pct": -8.0,
+            "total_trades": 28,
+            "win_rate_pct": 41.0,
+            "profit_factor": 1.35,
+            "expectancy": 0.12,
+        },
+        meta={},
+    )
+    builder._ask_analysis = lambda *args, **kwargs: ("Analyse stable", "accept")
+
+    session = builder.run(
+        objective="Tester la progression Builder",
+        data=sample_ohlcv,
+        max_iterations=1,
+        target_sharpe=1.0,
+        symbol="BTCUSDC",
+        timeframe="1h",
+    )
+
+    assert session.status == "success"
+    assert session.best_sharpe == pytest.approx(1.42)
+    assert session.best_iteration is not None
+    assert session.best_iteration.is_fallback is True
+
+
+def test_infer_direction_constraint_from_objective_detects_buy_only():
+    objective = (
+        "Generate buy signals on BTCUSDC 4h timeframe. "
+        "Only execute buy orders."
+    )
+    assert _infer_direction_constraint_from_objective(objective) == "long_only"
+
+
+def test_sanitize_proposal_payload_clears_short_logic_for_long_only():
+    proposal = {
+        "strategy_name": "mean_reversion_test",
+        "hypothesis": "RSI oversold bounce",
+        "change_type": "logic",
+        "used_indicators": ["rsi", "atr"],
+        "entry_long_logic": "rsi crosses above 30",
+        "entry_short_logic": "rsi crosses below 70",
+        "exit_logic": "close crosses above ema",
+        "risk_management": "ATR-based stop/take-profit",
+        "default_params": {"rsi_period": 14},
+        "parameter_specs": {
+            "rsi_period": {"min": 5, "max": 30, "default": 14, "type": "int"}
+        },
+    }
+
+    cleaned = _sanitize_proposal_payload(
+        proposal,
+        available_indicators=["rsi", "atr", "ema"],
+        objective="Generate buy signals on BTCUSDC 4h timeframe. Only execute buy orders.",
+    )
+
+    assert cleaned["direction_constraint"] == "long_only"
+    assert cleaned["entry_long_logic"] == "rsi crosses above 30"
+    assert cleaned["entry_short_logic"] == ""
+
+
+def test_apply_signal_direction_constraint_removes_forbidden_side():
+    signals = pd.Series([1.0, -1.0, 0.0, -1.0, 1.0], dtype=np.float64)
+    constrained = _apply_signal_direction_constraint(signals, "long_only")
+    assert constrained.tolist() == [1.0, 0.0, 0.0, 0.0, 1.0]
+
+
+def test_builder_run_skips_backtest_for_pathological_signal_density(
+    monkeypatch,
+    tmp_path,
+    sample_ohlcv,
+    valid_strategy_code,
+):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.available_indicators = ["rsi", "atr"]
+
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "create_session_id",
+        staticmethod(lambda objective: "builder_signal_density_test"),
+    )
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "get_session_dir",
+        staticmethod(lambda session_id: tmp_path / session_id),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_validate_builder_dataset_exploitability",
+        lambda *args, **kwargs: (True, ""),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_build_deterministic_strategy_code",
+        lambda proposal, logic_block: valid_strategy_code,
+    )
+
+    builder._save_session_summary = lambda session: None
+    builder._safe_save_session_summary = lambda session: None
+    builder._ask_proposal = lambda session, last_iteration: (
+        {
+            "hypothesis": "Deduplication des signaux manquante",
+            "used_indicators": ["rsi", "atr"],
+            "change_type": "logic",
+            "default_params": {"rsi_period": 14, "atr_period": 14},
+        },
+        {"phase": "proposal", "final_valid": True},
+    )
+    builder._ask_code = lambda session, proposal, last_iteration: (
+        "signals[:] = 1.0",
+        {"phase": "code", "final_valid": True},
+    )
+    builder._save_and_load = lambda session, code, iteration_num: object
+    builder._auto_fix_required_indicators = lambda strategy_cls, code: strategy_cls
+    builder._precheck_signal_counts = lambda *args, **kwargs: {
+        "ok": True,
+        "bar_count": 1000,
+        "total_signals": 950,
+        "long_signals": 500,
+        "short_signals": 450,
+        "signal_density": 0.95,
+        "transition_signals": 120,
+        "transition_density": 0.12,
+        "repeated_same_signals": 830,
+        "repeated_same_ratio": 0.8736842105,
+    }
+
+    backtest_called = {"value": False}
+
+    def _unexpected_backtest(*args, **kwargs):
+        backtest_called["value"] = True
+        raise AssertionError("_run_backtest should not be called")
+
+    builder._run_backtest = _unexpected_backtest
+    builder._ask_analysis = lambda *args, **kwargs: ("Analyse overtrading", "stop")
+
+    session = builder.run(
+        objective="Tester le skip precheck Builder",
+        data=sample_ohlcv,
+        max_iterations=1,
+        target_sharpe=1.0,
+        symbol="BTCUSDC",
+        timeframe="1h",
+    )
+
+    assert backtest_called["value"] is False
+    assert session.iterations[0].diagnostic_category == "overtrading"
+    assert session.iterations[0].backtest_result.metrics["total_trades"] == 950
+    assert session.iterations[0].phase_feedback["precheck"]["backtest_skipped"] is True
+    assert (
+        session.iterations[0].phase_feedback["precheck"]["pathological_signal_density"]
+        is True
+    )
+    assert (
+        session.iterations[0].phase_feedback["precheck"]["skip_reason"]
+        == "pathological_signal_density"
+    )
 
 
 # ─── Tests validate_generated_code ───────────────────────────────────────

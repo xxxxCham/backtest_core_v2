@@ -1,0 +1,1974 @@
+{
+  "session_id": "20260313_101651_strategie_de_mean_reversion_sur_wusdc_30",
+  "objective": "Strategie de Mean-reversion sur WUSDC 30m. Indicateurs : Bollinger Bands(20,2), RSI(14), ATR. Entree long quand prix sous bande inferieure et RSI < 30. Stop-loss = 1.0x ATR, take-profit = 2.0x ATR.",
+  "status": "failed",
+  "best_sharpe": 0.7853172366260407,
+  "best_score": 80.46010101567485,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 9,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Mean-reversion strategy using Bollinger Bands and RSI exploits the tendency of prices to revert to the mean after extreme oversold conditions, while ATR ensures dynamic risk management that scales with volatility.",
+      "change_type": "both",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -148.06430921452173,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.78822370206964,
+      "win_rate_pct": 37.67660910518054,
+      "trades": 637,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -9.681202191102173,
+          "trades_confidence": 10.0,
+          "win_rate": 0.8029827315541618
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -148.1%, PF 0.79, Expectancy -23.24"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 779.3%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 37.7%, Trades 637, AvgW/L 229.62/176.11"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 466,
+          "short_signals": 379,
+          "total_signals": 845,
+          "signal_density": 0.03916751645499212,
+          "transition_signals": 464,
+          "transition_density": 0.021507369982386206,
+          "repeated_same_signals": 381,
+          "repeated_same_ratio": 0.450887573964497
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This mean-reversion strategy risks whipsaws during strong trending periods when prices break out of Bollinger Bands, and RSI alone may not distinguish between oversold and overbought trends. The fixed 1.0x/2.0x ATR risk management could be too rigid for volatile market conditions, and the exit logic based on Bollinger middle band may cause premature exits during sustained moves.\n[Backup plan] If results are poor, I'd test a trailing stop with dynamic ATR scaling or add a trend filter (like 50-period MA) to avoid entering against the trend. If mediocre, I'd adjust BB period to 15 or 25, or increase RSI threshold to 25. As alternative, I'd try a momentum-based approach using MACD histogram or stochastic crossover signals instead of pure mean-reversion."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -9.681202191102173,
+            "trades_confidence": 10.0,
+            "win_rate": 0.8029827315541618
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "decision": {
+          "stop_overridden": true
+        }
+      },
+      "rank": 9
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Adding ADX as a trend filter prevents entering trades during weak trend periods, reducing whipsaw losses and improving mean-reversion signal quality by ensuring price movements have sufficient momentum to justify the trade.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Mean-reversion strategy using Bollinger Bands with RSI filter captures momentum exhaustion near lower bands while avoiding false signals in weak trends. RSI below 30 confirms oversold conditions, increasing probability of reversal. ATR-based risk management ensures volatility-adjusted stops and profits.",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.46048959369428594,
+      "return_pct": -32.71684897210677,
+      "max_drawdown_pct": -49.56279540238565,
+      "profit_factor": 0.8378147155126824,
+      "win_rate_pct": 37.30569948186528,
+      "trades": 193,
+      "continuous_score": -86.46037631616485,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -12.893708623440006,
+          "return": -33.0,
+          "profit_factor": -7.414184433705949,
+          "trades_confidence": 10.0,
+          "win_rate": 0.6917098445595848
+        },
+        "penalties": {
+          "drawdown_pressure": 19.708530268257103,
+          "drawdown_excess": 12.135662835321376,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 14.562795402385653
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -32.7%, PF 0.84, Expectancy -16.95"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 49.6%, Vol 35.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.460, Sortino -0.462, Calmar -0.555"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 37.3%, Trades 193, AvgW/L 234.73/166.71"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 114,
+          "short_signals": 82,
+          "total_signals": 196,
+          "signal_density": 0.009085009733939001,
+          "transition_signals": 196,
+          "transition_density": 0.009085009733939001,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This mean-reversion strategy has several vulnerabilities: overfitting to Bollinger Bands parameters, ignoring trend strength, and potential whipsaws in ranging markets. The 30 RSI threshold may be too lenient, and ATR-based exits could be too conservative. The strategy assumes predictable mean-reversion in WUSDC, which may not hold during strong trends or volatility regimes.\n[Backup plan] If poor results, try: 1) Add trend filter (e.g., 50-period MA), 2) Increase RSI threshold to 25, 3) Use dynamic ATR multipliers (1.5x SL, 3x TP). If mediocre Sharpe, adjust BB period to 15 or 25, or add volatility breakouts. Alternative: Switch to momentum-based strategy using MACD crossovers with volatility filters, or implement a trend-following component to avoid losses during strong moves."
+        },
+        "scoring": {
+          "continuous_score": -86.46037631616485,
+          "drawdown_excess_pct": 14.562795402385653,
+          "components": {
+            "sharpe": -12.893708623440006,
+            "return": -33.0,
+            "profit_factor": -7.414184433705949,
+            "trades_confidence": 10.0,
+            "win_rate": 0.6917098445595848
+          },
+          "penalties": {
+            "drawdown_pressure": 19.708530268257103,
+            "drawdown_excess": 12.135662835321376,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining Bollinger Bands with RSI and ATR creates a robust mean-reversion strategy by using Bollinger breakouts as entry signals, RSI to confirm oversold/overbought conditions, and ATR for dynamic stop-loss and take-profit levels that adapt to volatility. This approach filters out weak signals and reduces false entries while maintaining proper risk management.",
+      "change_type": "logic",
+      "diagnostic_category": "losing_per_trade",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.43301308388706594,
+      "return_pct": -5.372811859692502,
+      "max_drawdown_pct": -11.826153655335581,
+      "profit_factor": 0.7335630317865807,
+      "win_rate_pct": 30.434782608695656,
+      "trades": 23,
+      "continuous_score": -39.75066696831388,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -12.124366348837846,
+          "return": -5.9100930456617515,
+          "profit_factor": -12.179975689756313,
+          "trades_confidence": 3.8333333333333335,
+          "win_rate": -1.3695652173913033
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -5.4%, PF 0.73, Expectancy -23.36"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 11.8%, Vol 6.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.433, Sortino -0.164, Calmar -0.371"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 30.4%, Trades 23, AvgW/L 211.32/126.03"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 15,
+          "short_signals": 12,
+          "total_signals": 27,
+          "signal_density": 0.0012515064429405767,
+          "transition_signals": 27,
+          "transition_density": 0.0012515064429405767,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This mean-reversion strategy suffers from overfitting to Bollinger Bands and RSI thresholds, with potential whipsaw signals during trending markets. The exit rule using middle band crossover may be too simplistic, and the fixed 1:2 ATR risk-reward ratio might not adapt well to varying market conditions. The strategy likely generates frequent false signals during consolidation phases and may underperform in strong trending environments.\n[Backup plan] If results are poor, I'd switch to a momentum filter (e.g., 50-period MA) to avoid mean-reversion trades during trends, or reduce the RSI threshold to 25. If Sharpe is mediocre, I'd adjust ATR multipliers to 1.5x/3.0x or add a volume filter. As alternative, I'd test a volatility breakout strategy with dynamic bands or a dual-threshold RSI approach."
+        },
+        "scoring": {
+          "continuous_score": -39.75066696831388,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -12.124366348837846,
+            "return": -5.9100930456617515,
+            "profit_factor": -12.179975689756313,
+            "trades_confidence": 3.8333333333333335,
+            "win_rate": -1.3695652173913033
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining Bollinger Bands with RSI creates a robust mean-reversion signal that filters out weak breakout attempts. The ATR-based risk management ensures position sizing adapts to volatility, while the adjusted parameters improve trade selection and reduce losses from overtrading.",
+      "change_type": "both",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7853172366260407,
+      "return_pct": 39.28490309771998,
+      "max_drawdown_pct": -27.03850126299285,
+      "profit_factor": 1.1686173928711854,
+      "win_rate_pct": 42.473118279569896,
+      "trades": 186,
+      "continuous_score": 80.46010101567485,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 21.98888262552914,
+          "return": 43.21339340749198,
+          "profit_factor": 7.708223674111332,
+          "trades_confidence": 10.0,
+          "win_rate": 2.241935483870969
+        },
+        "penalties": {
+          "drawdown_pressure": 4.692334175328566,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +39.3%, PF 1.17, Expectancy 21.12"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 27.0%, Vol 28.8%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.785, Sortino 0.943, Calmar 1.142"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 42.5%, Trades 186, AvgW/L 344.64/217.74"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 114,
+          "short_signals": 82,
+          "total_signals": 196,
+          "signal_density": 0.009085009733939001,
+          "transition_signals": 196,
+          "transition_density": 0.009085009733939001,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This mean-reversion strategy suffers from overfitting risks with tight Bollinger Bands (20,2) and RSI(14) parameters, potentially generating false signals during ranging markets. The exit rule using middle band crossover is too simplistic and may exit too early or too late. The combination of multiple indicators without proper filtering may lead to whipsaw trades, especially given the negative Sharpe ratios from previous iterations.\n[Backup plan] If results are poor, I'd switch to a momentum-based approach using ADX for trend confirmation before entering mean-reversion trades. If Sharpe is mediocre, I'd increase Bollinger period to 30 and RSI to 20, and adjust take-profit to 1.5x ATR. As alternative, I'd test a volatility-breakout strategy with ATR multipliers to avoid the mean-reversion assumption entirely."
+        },
+        "scoring": {
+          "continuous_score": 80.46010101567485,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 21.98888262552914,
+            "return": 43.21339340749198,
+            "profit_factor": 7.708223674111332,
+            "trades_confidence": 10.0,
+            "win_rate": 2.241935483870969
+          },
+          "penalties": {
+            "drawdown_pressure": 4.692334175328566,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Combining Bollinger Bands with RSI creates a robust mean-reversion signal by identifying extreme price levels where momentum is likely to reverse. The ATR-based risk management ensures position sizing adapts to volatility, reducing the impact of whipsaws in ranging markets.",
+      "change_type": "params",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.46048959369428594,
+      "return_pct": -32.71684897210677,
+      "max_drawdown_pct": -49.56279540238565,
+      "profit_factor": 0.8378147155126824,
+      "win_rate_pct": 37.30569948186528,
+      "trades": 193,
+      "continuous_score": -86.46037631616485,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -12.893708623440006,
+          "return": -33.0,
+          "profit_factor": -7.414184433705949,
+          "trades_confidence": 10.0,
+          "win_rate": 0.6917098445595848
+        },
+        "penalties": {
+          "drawdown_pressure": 19.708530268257103,
+          "drawdown_excess": 12.135662835321376,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 14.562795402385653
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -32.7%, PF 0.84, Expectancy -16.95"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 49.6%, Vol 35.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.460, Sortino -0.462, Calmar -0.555"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 37.3%, Trades 193, AvgW/L 234.73/166.71"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 114,
+          "short_signals": 82,
+          "total_signals": 196,
+          "signal_density": 0.009085009733939001,
+          "transition_signals": 196,
+          "transition_density": 0.009085009733939001,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy suffers from overfitting to Bollinger Bands and RSI thresholds, with potential whipsaw risks from crossing multiple signals. The exit rule may be too aggressive, exiting on RSI > 50 which could cut profits short. The fixed ATR multipliers (1.0x/2.0x) might not adapt well to varying market conditions.\n[Backup plan] If poor results, switch to a volatility-adjusted RSI threshold (e.g., RSI < 25 when ATR > median ATR) and use trailing stops. If mediocre Sharpe, optimize ATR multipliers (1.5x/3.0x) and add a momentum filter. Alternative: try a price action-based mean-reversion with Keltner Channels or MACD histogram for better signal confirmation."
+        },
+        "scoring": {
+          "continuous_score": -86.46037631616485,
+          "drawdown_excess_pct": 14.562795402385653,
+          "components": {
+            "sharpe": -12.893708623440006,
+            "return": -33.0,
+            "profit_factor": -7.414184433705949,
+            "trades_confidence": 10.0,
+            "win_rate": 0.6917098445595848
+          },
+          "penalties": {
+            "drawdown_pressure": 19.708530268257103,
+            "drawdown_excess": 12.135662835321376,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 1,
+            "llm_positive": 1,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "Combining Bollinger Bands with RSI and ATR creates a robust mean-reversion strategy by identifying overextended price moves (RSI) near volatility-adjusted bands (ATR), filtering for strong trends (ADX) to avoid false signals during ranging periods.",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -1.2418965774195738,
+      "return_pct": -24.20109295431115,
+      "max_drawdown_pct": -25.47888263481871,
+      "profit_factor": 0.5339032164182603,
+      "win_rate_pct": 30.952380952380953,
+      "trades": 42,
+      "continuous_score": -92.56846209015377,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -34.773104167748066,
+          "return": -26.621202249742268,
+          "profit_factor": -21.307281535165245,
+          "trades_confidence": 7.0,
+          "win_rate": -1.2142857142857144
+        },
+        "penalties": {
+          "drawdown_pressure": 3.6525884232124732,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -24.2%, PF 0.53, Expectancy -57.62"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.5%, Vol 11.9%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -1.242, Sortino -0.633, Calmar -0.791"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 31.0%, Trades 42, AvgW/L 213.24/179.04"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 23,
+          "short_signals": 19,
+          "total_signals": 42,
+          "signal_density": 0.001946787800129786,
+          "transition_signals": 42,
+          "transition_density": 0.001946787800129786,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This mean-reversion strategy risks whipsaws during strong trends when price breaks out of bands, and the exit rules may exit too early or too late. The combination of Bollinger Bands with RSI creates potential for false signals, especially in ranging markets where RSI can stay oversold for extended periods. The fixed ATR multipliers (1.0x/2.0x) may not adapt to varying market conditions, and the strategy lacks trend filtering beyond ADX which could lead to poor performance in choppy markets.\n[Backup plan] If results are poor, I'd add a trend filter (ADX > 20) to avoid trading against the trend, and modify exit rules to use trailing stops or volatility-adjusted exits. If Sharpe is mediocre, I'd test ATR multipliers between 1.5x-3.0x and adjust RSI threshold from 30 to 25-35. As alternative, I'd test a momentum-based breakout strategy with Bollinger bands as filters, or switch to a volatility scaling approach where position size adjusts with ATR rather than fixed stop-losses."
+        },
+        "scoring": {
+          "continuous_score": -92.56846209015377,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -34.773104167748066,
+            "return": -26.621202249742268,
+            "profit_factor": -21.307281535165245,
+            "trades_confidence": 7.0,
+            "win_rate": -1.2142857142857144
+          },
+          "penalties": {
+            "drawdown_pressure": 3.6525884232124732,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 8
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "Combining Bollinger Bands with RSI and ATR creates a robust mean-reversion system that identifies overextended moves while filtering for volatility and trend strength. When price touches the lower Bollinger band and RSI drops below 30, it signals an oversold condition that historically reverses. ATR ensures proper risk management by scaling stops and profits according to volatility, while trend strength filtering prevents entering against the prevailing direction.",
+      "change_type": "logic",
+      "diagnostic_category": "losing_per_trade",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.44997832489138023,
+      "return_pct": -5.840779136416822,
+      "max_drawdown_pct": -13.449169120348243,
+      "profit_factor": 0.7322296420912942,
+      "win_rate_pct": 30.76923076923077,
+      "trades": 26,
+      "continuous_score": -40.20107823016971,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -12.599393096958647,
+          "return": -6.424857050058505,
+          "profit_factor": -12.240930647255125,
+          "trades_confidence": 4.333333333333334,
+          "win_rate": -1.2692307692307692
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -5.8%, PF 0.73, Expectancy -22.46"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 13.4%, Vol 7.0%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.450, Sortino -0.165, Calmar -0.355"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 30.8%, Trades 26, AvgW/L 199.65/121.18"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 26,
+          "short_signals": 15,
+          "total_signals": 41,
+          "signal_density": 0.0019004357096505053,
+          "transition_signals": 27,
+          "transition_density": 0.0012515064429405767,
+          "repeated_same_signals": 14,
+          "repeated_same_ratio": 0.34146341463414637
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy suffers from overfitting risks with rigid entry rules (crossing lower band + RSI < 30) that may fail in ranging markets. The exit rule (crossing middle band) is too simplistic and may exit too early, while ATR filtering might be too conservative given the 30m timeframe. Recent iterations show increasing drawdown and negative Sharpe ratios, suggesting the system is becoming too aggressive or poorly timed.\n[Backup plan] If results are poor, I'd switch to a momentum-based filter (e.g., 50-period MA slope) to reduce false signals, or implement a dynamic ATR threshold (e.g., ATR > 1.5x historical average). If mediocre Sharpe, I'd reduce the RSI oversold threshold to 25, widen stop-loss to 1.5x ATR, or add a trend filter (e.g., 50-period MA > 20-period MA). As alternative, I'd test a volatility breakout system using Bollinger Band width expansion as a confirmation signal instead of mean-reversion."
+        },
+        "scoring": {
+          "continuous_score": -40.20107823016971,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -12.599393096958647,
+            "return": -6.424857050058505,
+            "profit_factor": -12.240930647255125,
+            "trades_confidence": 4.333333333333334,
+            "win_rate": -1.2692307692307692
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "Combining Bollinger Bands with RSI and ATR creates a robust mean-reversion strategy by identifying overextended price movements, filtering with ATR for volatility-adjusted entry timing, and using ATR-based stops to manage risk effectively in WUSDC 30m.",
+      "change_type": "both",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "stop",
+      "sharpe": -0.46048959369428594,
+      "return_pct": -32.71684897210677,
+      "max_drawdown_pct": -49.56279540238565,
+      "profit_factor": 0.8378147155126824,
+      "win_rate_pct": 37.30569948186528,
+      "trades": 193,
+      "continuous_score": -86.46037631616485,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -12.893708623440006,
+          "return": -33.0,
+          "profit_factor": -7.414184433705949,
+          "trades_confidence": 10.0,
+          "win_rate": 0.6917098445595848
+        },
+        "penalties": {
+          "drawdown_pressure": 19.708530268257103,
+          "drawdown_excess": 12.135662835321376,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 14.562795402385653
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -32.7%, PF 0.84, Expectancy -16.95"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 49.6%, Vol 35.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.460, Sortino -0.462, Calmar -0.555"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 37.3%, Trades 193, AvgW/L 234.73/166.71"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 114,
+          "short_signals": 82,
+          "total_signals": 196,
+          "signal_density": 0.009085009733939001,
+          "transition_signals": 196,
+          "transition_density": 0.009085009733939001,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This mean-reversion strategy suffers from overfitting risks with rigid entry rules, potential whipsaws in ranging markets, and poor risk-adjusted returns indicated by declining Sharpe ratios. The combination of Bollinger Bands with RSI may generate false signals during strong trends, while ATR-based stops might be too tight for WUSDC's volatility profile. The strategy's reliance on multiple indicator crossovers increases complexity without clear added value.\n[Backup plan] If results are poor, I'd switch to a simpler RSI-only mean-reversion with dynamic thresholds, or implement a trend filter to avoid trading against the direction. For mediocre Sharpe, I'd adjust ATR multipliers to 1.5x/3.0x and widen Bollinger Bands to 25/2.5. As alternative, I'd test a momentum-based breakout strategy with volatility scaling, or a pairs trading approach using WUSDC against correlated assets."
+        },
+        "scoring": {
+          "continuous_score": -86.46037631616485,
+          "drawdown_excess_pct": 14.562795402385653,
+          "components": {
+            "sharpe": -12.893708623440006,
+            "return": -33.0,
+            "profit_factor": -7.414184433705949,
+            "trades_confidence": 10.0,
+            "win_rate": 0.6917098445595848
+          },
+          "penalties": {
+            "drawdown_pressure": 19.708530268257103,
+            "drawdown_excess": 12.135662835321376,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 1,
+            "llm_positive": 1,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 7
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 5,
+      "hypothesis": "Combining Bollinger Bands with RSI creates a robust mean-reversion signal that filters out weak breakout attempts. The ATR-based risk management ensures position sizing adapts to volatility, while the adjusted parameters improve trade selection and reduce losses from overtrading.",
+      "change_type": "both",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7853172366260407,
+      "return_pct": 39.28490309771998,
+      "max_drawdown_pct": -27.03850126299285,
+      "profit_factor": 1.1686173928711854,
+      "win_rate_pct": 42.473118279569896,
+      "trades": 186,
+      "continuous_score": 80.46010101567485,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 21.98888262552914,
+          "return": 43.21339340749198,
+          "profit_factor": 7.708223674111332,
+          "trades_confidence": 10.0,
+          "win_rate": 2.241935483870969
+        },
+        "penalties": {
+          "drawdown_pressure": 4.692334175328566,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +39.3%, PF 1.17, Expectancy 21.12"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 27.0%, Vol 28.8%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.785, Sortino 0.943, Calmar 1.142"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 42.5%, Trades 186, AvgW/L 344.64/217.74"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 114,
+          "short_signals": 82,
+          "total_signals": 196,
+          "signal_density": 0.009085009733939001,
+          "transition_signals": 196,
+          "transition_density": 0.009085009733939001,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This mean-reversion strategy suffers from overfitting risks with tight Bollinger Bands (20,2) and RSI(14) parameters, potentially generating false signals during ranging markets. The exit rule using middle band crossover is too simplistic and may exit too early or too late. The combination of multiple indicators without proper filtering may lead to whipsaw trades, especially given the negative Sharpe ratios from previous iterations.\n[Backup plan] If results are poor, I'd switch to a momentum-based approach using ADX for trend confirmation before entering mean-reversion trades. If Sharpe is mediocre, I'd increase Bollinger period to 30 and RSI to 20, and adjust take-profit to 1.5x ATR. As alternative, I'd test a volatility-breakout strategy with ATR multipliers to avoid the mean-reversion assumption entirely."
+        },
+        "scoring": {
+          "continuous_score": 80.46010101567485,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 21.98888262552914,
+            "return": 43.21339340749198,
+            "profit_factor": 7.708223674111332,
+            "trades_confidence": 10.0,
+            "win_rate": 2.241935483870969
+          },
+          "penalties": {
+            "drawdown_pressure": 4.692334175328566,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Adding ADX as a trend filter prevents entering trades during weak trend periods, reducing whipsaw losses and improving mean-reversion signal quality by ensuring price movements have sufficient momentum to justify the trade.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining Bollinger Bands with RSI and ATR creates a robust mean-reversion strategy by using Bollinger breakouts as entry signals, RSI to confirm oversold/overbought conditions, and ATR for dynamic stop-loss and take-profit levels that adapt to volatility. This approach filters out weak signals and reduces false entries while maintaining proper risk management.",
+      "change_type": "logic",
+      "diagnostic_category": "losing_per_trade",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.43301308388706594,
+      "return_pct": -5.372811859692502,
+      "max_drawdown_pct": -11.826153655335581,
+      "profit_factor": 0.7335630317865807,
+      "win_rate_pct": 30.434782608695656,
+      "trades": 23,
+      "continuous_score": -39.75066696831388,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -12.124366348837846,
+          "return": -5.9100930456617515,
+          "profit_factor": -12.179975689756313,
+          "trades_confidence": 3.8333333333333335,
+          "win_rate": -1.3695652173913033
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -5.4%, PF 0.73, Expectancy -23.36"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 11.8%, Vol 6.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.433, Sortino -0.164, Calmar -0.371"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 30.4%, Trades 23, AvgW/L 211.32/126.03"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 15,
+          "short_signals": 12,
+          "total_signals": 27,
+          "signal_density": 0.0012515064429405767,
+          "transition_signals": 27,
+          "transition_density": 0.0012515064429405767,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This mean-reversion strategy suffers from overfitting to Bollinger Bands and RSI thresholds, with potential whipsaw signals during trending markets. The exit rule using middle band crossover may be too simplistic, and the fixed 1:2 ATR risk-reward ratio might not adapt well to varying market conditions. The strategy likely generates frequent false signals during consolidation phases and may underperform in strong trending environments.\n[Backup plan] If results are poor, I'd switch to a momentum filter (e.g., 50-period MA) to avoid mean-reversion trades during trends, or reduce the RSI threshold to 25. If Sharpe is mediocre, I'd adjust ATR multipliers to 1.5x/3.0x or add a volume filter. As alternative, I'd test a volatility breakout strategy with dynamic bands or a dual-threshold RSI approach."
+        },
+        "scoring": {
+          "continuous_score": -39.75066696831388,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -12.124366348837846,
+            "return": -5.9100930456617515,
+            "profit_factor": -12.179975689756313,
+            "trades_confidence": 3.8333333333333335,
+            "win_rate": -1.3695652173913033
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "Combining Bollinger Bands with RSI and ATR creates a robust mean-reversion system that identifies overextended moves while filtering for volatility and trend strength. When price touches the lower Bollinger band and RSI drops below 30, it signals an oversold condition that historically reverses. ATR ensures proper risk management by scaling stops and profits according to volatility, while trend strength filtering prevents entering against the prevailing direction.",
+      "change_type": "logic",
+      "diagnostic_category": "losing_per_trade",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.44997832489138023,
+      "return_pct": -5.840779136416822,
+      "max_drawdown_pct": -13.449169120348243,
+      "profit_factor": 0.7322296420912942,
+      "win_rate_pct": 30.76923076923077,
+      "trades": 26,
+      "continuous_score": -40.20107823016971,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -12.599393096958647,
+          "return": -6.424857050058505,
+          "profit_factor": -12.240930647255125,
+          "trades_confidence": 4.333333333333334,
+          "win_rate": -1.2692307692307692
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -5.8%, PF 0.73, Expectancy -22.46"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 13.4%, Vol 7.0%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.450, Sortino -0.165, Calmar -0.355"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 30.8%, Trades 26, AvgW/L 199.65/121.18"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 26,
+          "short_signals": 15,
+          "total_signals": 41,
+          "signal_density": 0.0019004357096505053,
+          "transition_signals": 27,
+          "transition_density": 0.0012515064429405767,
+          "repeated_same_signals": 14,
+          "repeated_same_ratio": 0.34146341463414637
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy suffers from overfitting risks with rigid entry rules (crossing lower band + RSI < 30) that may fail in ranging markets. The exit rule (crossing middle band) is too simplistic and may exit too early, while ATR filtering might be too conservative given the 30m timeframe. Recent iterations show increasing drawdown and negative Sharpe ratios, suggesting the system is becoming too aggressive or poorly timed.\n[Backup plan] If results are poor, I'd switch to a momentum-based filter (e.g., 50-period MA slope) to reduce false signals, or implement a dynamic ATR threshold (e.g., ATR > 1.5x historical average). If mediocre Sharpe, I'd reduce the RSI oversold threshold to 25, widen stop-loss to 1.5x ATR, or add a trend filter (e.g., 50-period MA > 20-period MA). As alternative, I'd test a volatility breakout system using Bollinger Band width expansion as a confirmation signal instead of mean-reversion."
+        },
+        "scoring": {
+          "continuous_score": -40.20107823016971,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -12.599393096958647,
+            "return": -6.424857050058505,
+            "profit_factor": -12.240930647255125,
+            "trades_confidence": 4.333333333333334,
+            "win_rate": -1.2692307692307692
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Mean-reversion strategy using Bollinger Bands with RSI filter captures momentum exhaustion near lower bands while avoiding false signals in weak trends. RSI below 30 confirms oversold conditions, increasing probability of reversal. ATR-based risk management ensures volatility-adjusted stops and profits.",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.46048959369428594,
+      "return_pct": -32.71684897210677,
+      "max_drawdown_pct": -49.56279540238565,
+      "profit_factor": 0.8378147155126824,
+      "win_rate_pct": 37.30569948186528,
+      "trades": 193,
+      "continuous_score": -86.46037631616485,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -12.893708623440006,
+          "return": -33.0,
+          "profit_factor": -7.414184433705949,
+          "trades_confidence": 10.0,
+          "win_rate": 0.6917098445595848
+        },
+        "penalties": {
+          "drawdown_pressure": 19.708530268257103,
+          "drawdown_excess": 12.135662835321376,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 14.562795402385653
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -32.7%, PF 0.84, Expectancy -16.95"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 49.6%, Vol 35.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.460, Sortino -0.462, Calmar -0.555"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 37.3%, Trades 193, AvgW/L 234.73/166.71"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 114,
+          "short_signals": 82,
+          "total_signals": 196,
+          "signal_density": 0.009085009733939001,
+          "transition_signals": 196,
+          "transition_density": 0.009085009733939001,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This mean-reversion strategy has several vulnerabilities: overfitting to Bollinger Bands parameters, ignoring trend strength, and potential whipsaws in ranging markets. The 30 RSI threshold may be too lenient, and ATR-based exits could be too conservative. The strategy assumes predictable mean-reversion in WUSDC, which may not hold during strong trends or volatility regimes.\n[Backup plan] If poor results, try: 1) Add trend filter (e.g., 50-period MA), 2) Increase RSI threshold to 25, 3) Use dynamic ATR multipliers (1.5x SL, 3x TP). If mediocre Sharpe, adjust BB period to 15 or 25, or add volatility breakouts. Alternative: Switch to momentum-based strategy using MACD crossovers with volatility filters, or implement a trend-following component to avoid losses during strong moves."
+        },
+        "scoring": {
+          "continuous_score": -86.46037631616485,
+          "drawdown_excess_pct": 14.562795402385653,
+          "components": {
+            "sharpe": -12.893708623440006,
+            "return": -33.0,
+            "profit_factor": -7.414184433705949,
+            "trades_confidence": 10.0,
+            "win_rate": 0.6917098445595848
+          },
+          "penalties": {
+            "drawdown_pressure": 19.708530268257103,
+            "drawdown_excess": 12.135662835321376,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Combining Bollinger Bands with RSI creates a robust mean-reversion signal by identifying extreme price levels where momentum is likely to reverse. The ATR-based risk management ensures position sizing adapts to volatility, reducing the impact of whipsaws in ranging markets.",
+      "change_type": "params",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.46048959369428594,
+      "return_pct": -32.71684897210677,
+      "max_drawdown_pct": -49.56279540238565,
+      "profit_factor": 0.8378147155126824,
+      "win_rate_pct": 37.30569948186528,
+      "trades": 193,
+      "continuous_score": -86.46037631616485,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -12.893708623440006,
+          "return": -33.0,
+          "profit_factor": -7.414184433705949,
+          "trades_confidence": 10.0,
+          "win_rate": 0.6917098445595848
+        },
+        "penalties": {
+          "drawdown_pressure": 19.708530268257103,
+          "drawdown_excess": 12.135662835321376,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 14.562795402385653
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -32.7%, PF 0.84, Expectancy -16.95"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 49.6%, Vol 35.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.460, Sortino -0.462, Calmar -0.555"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 37.3%, Trades 193, AvgW/L 234.73/166.71"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 114,
+          "short_signals": 82,
+          "total_signals": 196,
+          "signal_density": 0.009085009733939001,
+          "transition_signals": 196,
+          "transition_density": 0.009085009733939001,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy suffers from overfitting to Bollinger Bands and RSI thresholds, with potential whipsaw risks from crossing multiple signals. The exit rule may be too aggressive, exiting on RSI > 50 which could cut profits short. The fixed ATR multipliers (1.0x/2.0x) might not adapt well to varying market conditions.\n[Backup plan] If poor results, switch to a volatility-adjusted RSI threshold (e.g., RSI < 25 when ATR > median ATR) and use trailing stops. If mediocre Sharpe, optimize ATR multipliers (1.5x/3.0x) and add a momentum filter. Alternative: try a price action-based mean-reversion with Keltner Channels or MACD histogram for better signal confirmation."
+        },
+        "scoring": {
+          "continuous_score": -86.46037631616485,
+          "drawdown_excess_pct": 14.562795402385653,
+          "components": {
+            "sharpe": -12.893708623440006,
+            "return": -33.0,
+            "profit_factor": -7.414184433705949,
+            "trades_confidence": 10.0,
+            "win_rate": 0.6917098445595848
+          },
+          "penalties": {
+            "drawdown_pressure": 19.708530268257103,
+            "drawdown_excess": 12.135662835321376,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 1,
+            "llm_positive": 1,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "Combining Bollinger Bands with RSI and ATR creates a robust mean-reversion strategy by identifying overextended price movements, filtering with ATR for volatility-adjusted entry timing, and using ATR-based stops to manage risk effectively in WUSDC 30m.",
+      "change_type": "both",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "stop",
+      "sharpe": -0.46048959369428594,
+      "return_pct": -32.71684897210677,
+      "max_drawdown_pct": -49.56279540238565,
+      "profit_factor": 0.8378147155126824,
+      "win_rate_pct": 37.30569948186528,
+      "trades": 193,
+      "continuous_score": -86.46037631616485,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -12.893708623440006,
+          "return": -33.0,
+          "profit_factor": -7.414184433705949,
+          "trades_confidence": 10.0,
+          "win_rate": 0.6917098445595848
+        },
+        "penalties": {
+          "drawdown_pressure": 19.708530268257103,
+          "drawdown_excess": 12.135662835321376,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 14.562795402385653
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -32.7%, PF 0.84, Expectancy -16.95"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 49.6%, Vol 35.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.460, Sortino -0.462, Calmar -0.555"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 37.3%, Trades 193, AvgW/L 234.73/166.71"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 114,
+          "short_signals": 82,
+          "total_signals": 196,
+          "signal_density": 0.009085009733939001,
+          "transition_signals": 196,
+          "transition_density": 0.009085009733939001,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This mean-reversion strategy suffers from overfitting risks with rigid entry rules, potential whipsaws in ranging markets, and poor risk-adjusted returns indicated by declining Sharpe ratios. The combination of Bollinger Bands with RSI may generate false signals during strong trends, while ATR-based stops might be too tight for WUSDC's volatility profile. The strategy's reliance on multiple indicator crossovers increases complexity without clear added value.\n[Backup plan] If results are poor, I'd switch to a simpler RSI-only mean-reversion with dynamic thresholds, or implement a trend filter to avoid trading against the direction. For mediocre Sharpe, I'd adjust ATR multipliers to 1.5x/3.0x and widen Bollinger Bands to 25/2.5. As alternative, I'd test a momentum-based breakout strategy with volatility scaling, or a pairs trading approach using WUSDC against correlated assets."
+        },
+        "scoring": {
+          "continuous_score": -86.46037631616485,
+          "drawdown_excess_pct": 14.562795402385653,
+          "components": {
+            "sharpe": -12.893708623440006,
+            "return": -33.0,
+            "profit_factor": -7.414184433705949,
+            "trades_confidence": 10.0,
+            "win_rate": 0.6917098445595848
+          },
+          "penalties": {
+            "drawdown_pressure": 19.708530268257103,
+            "drawdown_excess": 12.135662835321376,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 1,
+            "llm_positive": 1,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 7
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "Combining Bollinger Bands with RSI and ATR creates a robust mean-reversion strategy by identifying overextended price moves (RSI) near volatility-adjusted bands (ATR), filtering for strong trends (ADX) to avoid false signals during ranging periods.",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -1.2418965774195738,
+      "return_pct": -24.20109295431115,
+      "max_drawdown_pct": -25.47888263481871,
+      "profit_factor": 0.5339032164182603,
+      "win_rate_pct": 30.952380952380953,
+      "trades": 42,
+      "continuous_score": -92.56846209015377,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -34.773104167748066,
+          "return": -26.621202249742268,
+          "profit_factor": -21.307281535165245,
+          "trades_confidence": 7.0,
+          "win_rate": -1.2142857142857144
+        },
+        "penalties": {
+          "drawdown_pressure": 3.6525884232124732,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -24.2%, PF 0.53, Expectancy -57.62"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.5%, Vol 11.9%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -1.242, Sortino -0.633, Calmar -0.791"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 31.0%, Trades 42, AvgW/L 213.24/179.04"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 23,
+          "short_signals": 19,
+          "total_signals": 42,
+          "signal_density": 0.001946787800129786,
+          "transition_signals": 42,
+          "transition_density": 0.001946787800129786,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This mean-reversion strategy risks whipsaws during strong trends when price breaks out of bands, and the exit rules may exit too early or too late. The combination of Bollinger Bands with RSI creates potential for false signals, especially in ranging markets where RSI can stay oversold for extended periods. The fixed ATR multipliers (1.0x/2.0x) may not adapt to varying market conditions, and the strategy lacks trend filtering beyond ADX which could lead to poor performance in choppy markets.\n[Backup plan] If results are poor, I'd add a trend filter (ADX > 20) to avoid trading against the trend, and modify exit rules to use trailing stops or volatility-adjusted exits. If Sharpe is mediocre, I'd test ATR multipliers between 1.5x-3.0x and adjust RSI threshold from 30 to 25-35. As alternative, I'd test a momentum-based breakout strategy with Bollinger bands as filters, or switch to a volatility scaling approach where position size adjusts with ATR rather than fixed stop-losses."
+        },
+        "scoring": {
+          "continuous_score": -92.56846209015377,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -34.773104167748066,
+            "return": -26.621202249742268,
+            "profit_factor": -21.307281535165245,
+            "trades_confidence": 7.0,
+            "win_rate": -1.2142857142857144
+          },
+          "penalties": {
+            "drawdown_pressure": 3.6525884232124732,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 8
+    },
+    {
+      "iteration": 1,
+      "hypothesis": "Mean-reversion strategy using Bollinger Bands and RSI exploits the tendency of prices to revert to the mean after extreme oversold conditions, while ATR ensures dynamic risk management that scales with volatility.",
+      "change_type": "both",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -148.06430921452173,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.78822370206964,
+      "win_rate_pct": 37.67660910518054,
+      "trades": 637,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -9.681202191102173,
+          "trades_confidence": 10.0,
+          "win_rate": 0.8029827315541618
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -148.1%, PF 0.79, Expectancy -23.24"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 779.3%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 37.7%, Trades 637, AvgW/L 229.62/176.11"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 21574,
+          "long_signals": 466,
+          "short_signals": 379,
+          "total_signals": 845,
+          "signal_density": 0.03916751645499212,
+          "transition_signals": 464,
+          "transition_density": 0.021507369982386206,
+          "repeated_same_signals": 381,
+          "repeated_same_ratio": 0.450887573964497
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This mean-reversion strategy risks whipsaws during strong trending periods when prices break out of Bollinger Bands, and RSI alone may not distinguish between oversold and overbought trends. The fixed 1.0x/2.0x ATR risk management could be too rigid for volatile market conditions, and the exit logic based on Bollinger middle band may cause premature exits during sustained moves.\n[Backup plan] If results are poor, I'd test a trailing stop with dynamic ATR scaling or add a trend filter (like 50-period MA) to avoid entering against the trend. If mediocre, I'd adjust BB period to 15 or 25, or increase RSI threshold to 25. As alternative, I'd try a momentum-based approach using MACD histogram or stochastic crossover signals instead of pure mean-reversion."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -9.681202191102173,
+            "trades_confidence": 10.0,
+            "win_rate": 0.8029827315541618
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "decision": {
+          "stop_overridden": true
+        }
+      },
+      "rank": 9
+    }
+  ]
+}

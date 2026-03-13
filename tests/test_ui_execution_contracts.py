@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+from streamlit.testing.v1 import AppTest
 
 import ui.builder_view as builder_view_module
 import agents.ollama_manager as ollama_manager_module
@@ -14,7 +16,9 @@ import streamlit as st
 from backtest.engine import BacktestEngine
 from backtest.worker import init_worker_with_dataframe, run_backtest_worker
 import ui.helpers as helpers_module
-from ui.exec_tabs import _prime_multiselect_state
+import ui.exec_tabs as exec_tabs_module
+import ui.sidebar as sidebar_module
+from ui.exec_tabs import _get_phase1_topology_from_session, _prime_multiselect_state
 from ui.helpers import (
     compute_period_days,
     format_pnl_with_daily,
@@ -23,6 +27,7 @@ from ui.helpers import (
     safe_run_backtest,
     _build_saved_run_label,
 )
+from agents.llm_router import build_phase1_topology
 from ui.main import (
     _build_multi_sweep_grid_entry,
     _build_param_combo_iter,
@@ -32,6 +37,8 @@ from ui.main import (
     render_main,
 )
 from ui.builder_view import (
+    _get_autonomous_recap_status_badge,
+    _history_best_sharpe,
     _choose_autonomous_objective_mode,
     _classify_autonomous_failure_origin,
     _find_first_valid_builder_market,
@@ -50,7 +57,16 @@ from ui.results_hub import (
     _normalize_backtest_overview_df,
 )
 from ui.sidebar import _apply_catalog_replay_request_to_state, _apply_config_guard, _resolve_default_cpu_workers
-from ui.state import SidebarState
+from ui.state import (
+    BUILDER_EXECUTION_MODE_DUAL_LANE,
+    BUILDER_EXECUTION_MODE_EXPERT,
+    BUILDER_EXECUTION_MODE_MONO,
+    SidebarState,
+    resolve_builder_dual_lane_preferences,
+    resolve_builder_execution_preferences,
+    resolve_builder_multi_llm_preferences,
+    resolve_builder_runtime_preferences,
+)
 
 
 def _sample_ohlcv(n_bars: int = 400) -> pd.DataFrame:
@@ -149,7 +165,7 @@ def _sample_sidebar_state(**overrides) -> SidebarState:
         "wfa_train_ratio": 0.7,
         "wfa_expanding": False,
         "builder_objective": "",
-        "builder_model": "deepseek-r1:32b",
+        "builder_model_single_llm": "deepseek-r1:32b",
         "builder_max_iterations": 10,
         "builder_target_sharpe": 1.0,
         "builder_capital": 10_000.0,
@@ -162,8 +178,12 @@ def _sample_sidebar_state(**overrides) -> SidebarState:
         "builder_autonomous": False,
         "builder_auto_pause": 10,
         "builder_auto_use_llm": True,
+        "builder_execution_mode": BUILDER_EXECUTION_MODE_MONO,
+        "builder_dual_lane_primary_model": "deepseek-r1:32b",
+        "builder_dual_lane_critic_model": "deepseek-r1:32b",
         "builder_multi_llm_enabled": False,
         "builder_multi_llm_profile": "24GB_balanced",
+        "builder_multi_llm_role_overrides": {},
         "builder_use_parametric_catalog": False,
     }
     payload.update(overrides)
@@ -256,6 +276,7 @@ def test_sample_sidebar_state_defaults_multi_llm_disabled():
 
     assert state.builder_multi_llm_enabled is False
     assert state.builder_multi_llm_profile == "24GB_balanced"
+    assert state.builder_multi_llm_role_overrides == {}
 
 
 def test_compute_period_days_handles_mixed_naive_and_utc_inputs():
@@ -371,6 +392,91 @@ def test_ensure_ollama_running_reports_empty_inventory(monkeypatch):
     assert "aucun modele detecte" in msg
 
 
+def test_ensure_ollama_running_uses_current_store_and_clears_gpu_pinning_on_default_host(
+    monkeypatch,
+):
+    attempts = {"count": 0}
+    captured: dict[str, object] = {}
+
+    def _fetch_stub(*args, **kwargs):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            return None, None, RuntimeError("down")
+        return {"models": [{"name": "qwen3-30b-a3b:q4_k_m"}]}, 200, None
+
+    def _popen_stub(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(pid=12345)
+
+    monkeypatch.setattr(ollama_manager_module, "_fetch_tags_payload", _fetch_stub)
+    monkeypatch.setattr(
+        ollama_manager_module,
+        "get_ollama_models_root",
+        lambda: Path(r"C:\AI\ollama\models"),
+    )
+    monkeypatch.setattr(ollama_manager_module.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(ollama_manager_module.subprocess, "Popen", _popen_stub)
+    monkeypatch.setattr(ollama_manager_module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setenv("OLLAMA_MODELS", r"D:\models\ollama")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
+    monkeypatch.setenv("GPU_DEVICE_ORDINAL", "0,1")
+
+    ok, msg = ollama_manager_module.ensure_ollama_running(
+        "http://127.0.0.1:11434",
+        gpu_target="GPU-0",
+    )
+
+    assert ok is True
+    assert "modele(s)" in msg
+
+    env = captured["kwargs"]["env"]
+    assert env["OLLAMA_MODELS"] == r"C:\AI\ollama\models"
+    assert "CUDA_VISIBLE_DEVICES" not in env
+    assert "GPU_DEVICE_ORDINAL" not in env
+
+
+def test_ensure_ollama_running_pins_gpu_for_dedicated_host(monkeypatch):
+    attempts = {"count": 0}
+    captured: dict[str, object] = {}
+
+    def _fetch_stub(*args, **kwargs):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            return None, None, RuntimeError("down")
+        return {"models": [{"name": "qwen3-coder:30b"}]}, 200, None
+
+    def _popen_stub(*args, **kwargs):
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(pid=12346)
+
+    monkeypatch.setattr(ollama_manager_module, "_fetch_tags_payload", _fetch_stub)
+    monkeypatch.setattr(
+        ollama_manager_module,
+        "get_ollama_models_root",
+        lambda: Path(r"C:\AI\ollama\models"),
+    )
+    monkeypatch.setattr(ollama_manager_module.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(ollama_manager_module.subprocess, "Popen", _popen_stub)
+    monkeypatch.setattr(ollama_manager_module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setenv("OLLAMA_MODELS", r"D:\models\ollama")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
+    monkeypatch.setenv("GPU_DEVICE_ORDINAL", "0,1")
+
+    ok, msg = ollama_manager_module.ensure_ollama_running(
+        "http://127.0.0.1:22434",
+        gpu_target="GPU-1",
+    )
+
+    assert ok is True
+    assert "modele(s)" in msg
+
+    env = captured["kwargs"]["env"]
+    assert env["OLLAMA_MODELS"] == r"C:\AI\ollama\models"
+    assert env["CUDA_VISIBLE_DEVICES"] == "1"
+    assert env["GPU_DEVICE_ORDINAL"] == "1"
+
+
 def test_prepare_builder_llm_passes_normalized_host_to_ollama_manager(monkeypatch):
     captured: dict[str, object] = {}
 
@@ -403,6 +509,31 @@ def test_prepare_builder_llm_passes_normalized_host_to_ollama_manager(monkeypatc
     assert ok is True
     assert resolved_model == "qwen2.5:14b"
     assert captured["host"] == "http://127.0.0.1:11434"
+
+
+def test_cleanup_all_models_uses_ps_not_tags(monkeypatch):
+    requested_urls: list[str] = []
+    unloaded: list[str] = []
+
+    def _fake_get(url, timeout=0):
+        requested_urls.append(url)
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {"models": [{"name": "qwen3-coder:30b"}]},
+        )
+
+    monkeypatch.setattr(ollama_manager_module.httpx, "get", _fake_get)
+    monkeypatch.setattr(
+        ollama_manager_module,
+        "unload_model",
+        lambda model_name, ollama_host=None: unloaded.append(model_name) or True,
+    )
+
+    cleaned = ollama_manager_module.cleanup_all_models("http://127.0.0.1:11434")
+
+    assert cleaned == 1
+    assert requested_urls == ["http://127.0.0.1:11434/api/ps"]
+    assert unloaded == ["qwen3-coder:30b"]
 
 
 def test_get_available_models_for_ui_prefers_installed_models_only(monkeypatch):
@@ -575,6 +706,42 @@ def test_choose_autonomous_objective_mode_keeps_llm_after_non_llm_incident():
     assert policy["reason"] == "llm_preferred_non_llm_incident"
 
 
+def test_get_autonomous_recap_status_badge_maps_positive_failed_run_to_success():
+    badge = _get_autonomous_recap_status_badge(
+        {"status": "failed", "best_return": 46.38}
+    )
+
+    assert badge == {"icon": "✚", "label": "succes", "tone": "positive"}
+
+
+def test_get_autonomous_recap_status_badge_keeps_positive_max_iterations_visible():
+    badge = _get_autonomous_recap_status_badge(
+        {"status": "max_iterations", "best_return": 12.5}
+    )
+
+    assert badge == {
+        "icon": "✚",
+        "label": "max_iterations",
+        "tone": "positive",
+    }
+
+
+def test_get_autonomous_recap_status_badge_marks_negative_return_with_red_minus():
+    badge = _get_autonomous_recap_status_badge(
+        {"status": "failed", "best_return": -9.55}
+    )
+
+    assert badge == {"icon": "−", "label": "negatif", "tone": "negative"}
+
+
+def test_get_autonomous_recap_status_badge_marks_zero_failed_run_as_failure():
+    badge = _get_autonomous_recap_status_badge(
+        {"status": "failed", "best_return": 0.0}
+    )
+
+    assert badge == {"icon": "✖", "label": "echec", "tone": "crash"}
+
+
 def test_classify_autonomous_failure_origin_detects_llm_runtime():
     exc = RuntimeError("httpx.ConnectError while contacting Ollama")
     origin = _classify_autonomous_failure_origin(
@@ -675,6 +842,133 @@ def test_render_main_auto_resumes_builder_autonomous_when_runtime_active(monkeyp
 
     assert captured["mode"] == "🏗️ Strategy Builder"
     assert captured["autonomous"] is True
+
+
+def test_restore_builder_autonomous_ui_state_from_runtime_rehydrates_builder_mode(
+    monkeypatch,
+):
+    st.session_state.clear()
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_autonomous_runtime_state",
+        lambda: {
+            "active": True,
+            "manual_stop": False,
+            "resume_ui_state": {
+                "builder_execution_mode": BUILDER_EXECUTION_MODE_DUAL_LANE,
+                "builder_model_single_llm": "qwen3:30b",
+                "builder_ollama_host": "http://127.0.0.1:22434",
+                "builder_auto_pause": 17,
+                "builder_auto_use_llm": True,
+                "builder_auto_market_pick": True,
+                "builder_preload_model": False,
+                "builder_keep_alive_minutes": 35,
+                "builder_unload_after_run": True,
+                "builder_auto_start_ollama": False,
+                "builder_multi_llm_enabled": True,
+                "builder_multi_llm_profile": "24GB_light_test",
+                "builder_multi_llm_role_overrides": {
+                    "idea_llm": "qwen3:30b",
+                    "builder_llm": "qwen3:30b",
+                    "critic_llm": "deepseek-r1:14b",
+                    "risk_llm": "deepseek-r1:14b",
+                },
+                "builder_dual_lane_primary_model": "qwen3:30b",
+                "builder_dual_lane_critic_model": "deepseek-r1:14b",
+            },
+        },
+    )
+
+    should_resume, payload = builder_view_module.restore_builder_autonomous_ui_state_from_runtime()
+
+    assert should_resume is True
+    assert payload["active"] is True
+    assert st.session_state["optimization_mode"] == "🏗️ Strategy Builder"
+    assert st.session_state["exec_mode_selector"] == "🏗️ Strategy Builder"
+    assert st.session_state["builder_autonomous"] is True
+    assert st.session_state["builder_autonomous_toggle"] is True
+    assert (
+        st.session_state["builder_execution_mode"]
+        == BUILDER_EXECUTION_MODE_DUAL_LANE
+    )
+    assert (
+        st.session_state["builder_execution_mode_select"]
+        == BUILDER_EXECUTION_MODE_DUAL_LANE
+    )
+    assert st.session_state["builder_ollama_host"] == "http://127.0.0.1:22434"
+    assert st.session_state["builder_auto_pause_slider"] == 17
+    assert st.session_state["builder_multi_llm_profile_select"] == "24GB_light_test"
+    assert (
+        st.session_state["builder_dual_lane_primary_model_select"] == "qwen3:30b"
+    )
+    assert (
+        st.session_state["builder_dual_lane_critic_model_select"]
+        == "deepseek-r1:14b"
+    )
+
+
+def test_render_main_skips_generic_param_validation_for_builder(monkeypatch):
+    st.session_state.clear()
+    st.session_state["ohlcv_df"] = None
+    st.session_state["ohlcv_status_msg"] = ""
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_objective="Builder robuste",
+    )
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(main_module, "validate_all_params", lambda params: (False, ["invalid"]))
+    monkeypatch.setattr(main_module, "show_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "ui.builder_view.render_builder_view",
+        lambda state, df, status_container: captured.update({"called": True}),
+    )
+
+    render_main(state, True, nullcontext())
+
+    assert captured["called"] is True
+
+
+def test_render_main_handles_builder_view_exception_without_stopping(monkeypatch):
+    st.session_state.clear()
+    st.session_state["is_running"] = False
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_objective="Builder robuste",
+    )
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(main_module, "show_status", lambda *args, **kwargs: captured.setdefault("status", True))
+    monkeypatch.setattr(st, "code", lambda *args, **kwargs: captured.setdefault("trace", True))
+    monkeypatch.setattr(
+        "ui.builder_view.render_builder_view",
+        lambda state, df, status_container: (_ for _ in ()).throw(RuntimeError("builder boom")),
+    )
+    monkeypatch.setattr(
+        "ui.builder_view.mark_builder_autonomous_runtime_stopped",
+        lambda **kwargs: captured.setdefault("stopped", kwargs),
+    )
+
+    render_main(state, True, nullcontext())
+
+    assert st.session_state["is_running"] is False
+    assert captured["status"] is True
+    assert captured["trace"] is True
+    assert captured["stopped"]["reason"] == "builder_view_crash"
+
+
+def test_history_best_sharpe_ignores_none_values():
+    history = [
+        {"best_sharpe": None},
+        {"best_sharpe": -0.4},
+        {"best_sharpe": 1.25},
+        {"best_sharpe": "0.8"},
+    ]
+
+    assert _history_best_sharpe(history) == 1.25
 
 
 def test_find_first_valid_builder_market_skips_rejected_pairs(monkeypatch):
@@ -1113,3 +1407,434 @@ def test_apply_catalog_replay_request_to_state_sets_sidebar_inputs():
     assert session_state["use_date_filter"] is True
     assert session_state["run_backtest_requested"] is True
     assert "run_123" in msg
+
+
+def test_app_exec_modes_render_without_activation_buttons():
+    at = AppTest.from_file("ui/app.py")
+
+    at.run(timeout=60)
+
+    button_labels = [button.label for button in at.button]
+    assert all(not label.startswith("→ Activer") for label in button_labels)
+    assert any(radio.label == "Mode d'exécution" for radio in at.radio)
+
+
+def test_app_builder_mode_is_directly_rendered_from_mode_selection():
+    at = AppTest.from_file("ui/app.py")
+    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
+
+    at.run(timeout=60)
+
+    button_labels = [button.label for button in at.button]
+    assert all(not label.startswith("→ Activer") for label in button_labels)
+    assert any(
+        text_area.label == "🎯 Objectif de la stratégie"
+        for text_area in at.text_area
+    )
+    assert any(
+        radio.label == "Mode d'exécution" and radio.value == "🏗️ Strategy Builder"
+        for radio in at.radio
+    )
+
+
+def test_app_builder_expert_mode_shows_only_expert_controls():
+    at = AppTest.from_file("ui/app.py")
+    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
+    at.session_state["builder_autonomous"] = False
+    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_EXPERT
+
+    at.run(timeout=60)
+
+    assert at.exception == []
+    assert any(
+        radio.label == "Architecture Builder"
+        and radio.value == BUILDER_EXECUTION_MODE_EXPERT
+        for radio in at.radio
+    )
+    if exec_tabs_module._MULTI_LLM_AVAILABLE:
+        assert any(
+            expander.label == "🧩 Configuration Expert Multi-Role"
+            for expander in at.expander
+        )
+    assert all(selectbox.label != "Modele LLM" for selectbox in at.selectbox)
+    assert all(
+        selectbox.label != "Modele lane principale"
+        for selectbox in at.selectbox
+    )
+
+
+def test_app_builder_mono_mode_shows_only_single_model_selector():
+    at = AppTest.from_file("ui/app.py")
+    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
+    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_MONO
+
+    at.run(timeout=60)
+
+    assert at.exception == []
+    assert any(selectbox.label == "Modele LLM" for selectbox in at.selectbox)
+    assert all(
+        expander.label != "🧩 Configuration Expert Multi-Role"
+        for expander in at.expander
+    )
+    assert all(
+        selectbox.label != "Modele lane principale"
+        for selectbox in at.selectbox
+    )
+
+
+def test_app_builder_multi_llm_purges_legacy_builder_model_state():
+    at = AppTest.from_file("ui/app.py")
+    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
+    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_MONO
+    at.session_state["builder_model"] = "alia-40b-local:latest"
+
+    at.run(timeout=60)
+
+    assert at.exception == []
+    assert "builder_model" not in at.session_state
+    assert str(at.session_state["builder_model_single_llm"]).startswith(
+        "alia-40b-local"
+    )
+
+
+def test_app_builder_dual_lane_shows_only_lane_controls():
+    at = AppTest.from_file("ui/app.py")
+    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
+    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_DUAL_LANE
+
+    at.run(timeout=60)
+
+    assert at.exception == []
+    assert any(
+        selectbox.label == "Modele lane principale"
+        for selectbox in at.selectbox
+    )
+    assert any(
+        selectbox.label == "Modele lane critique"
+        for selectbox in at.selectbox
+    )
+    assert all(selectbox.label != "Modele LLM" for selectbox in at.selectbox)
+    assert all(
+        expander.label != "🧩 Configuration Expert Multi-Role"
+        for expander in at.expander
+    )
+    assert (
+        at.session_state["builder_llm_routing_mode"]
+        == exec_tabs_module.LLM_ROUTING_MODE_COOPERATIVE
+    )
+    assert at.session_state["builder_multi_llm_enabled"] is True
+
+
+def test_app_builder_mode_switch_hides_previous_mode_controls():
+    at = AppTest.from_file("ui/app.py")
+    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
+    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_MONO
+
+    at.run(timeout=60)
+
+    builder_mode_radio = next(
+        radio for radio in at.radio if radio.label == "Architecture Builder"
+    )
+    builder_mode_radio.set_value(BUILDER_EXECUTION_MODE_DUAL_LANE)
+    at.run(timeout=60)
+
+    assert at.exception == []
+    assert any(
+        selectbox.label == "Modele lane principale"
+        for selectbox in at.selectbox
+    )
+    assert all(selectbox.label != "Modele LLM" for selectbox in at.selectbox)
+
+
+def test_summarize_topology_runtime_status_collapses_shared_endpoint():
+    topology = build_phase1_topology(
+        primary_host="http://127.0.0.1:11434",
+        control_host="http://127.0.0.1:11434",
+        primary_gpu_target="GPU-2",
+        control_gpu_target="GPU-1",
+    )
+
+    summary = exec_tabs_module._summarize_topology_runtime_status(
+        topology=topology,
+        routing_mode=exec_tabs_module.LLM_ROUTING_MODE_COOPERATIVE,
+    )
+
+    assert summary["show_single_endpoint"] is True
+    assert summary["shared_endpoint"] is True
+    assert summary["split_effective"] is False
+    assert summary["primary_host"] == "http://127.0.0.1:11434"
+    assert summary["control_gpu"] == "GPU-1"
+
+
+def test_app_exec_mode_radio_click_persists_mode_change():
+    at = AppTest.from_file("ui/app.py")
+
+    at.run(timeout=60)
+
+    mode_radio = next(radio for radio in at.radio if radio.label == "Mode d'exécution")
+    assert mode_radio.value == "Grille de Paramètres"
+
+    mode_radio.set_value("Backtest Simple")
+    at.run(timeout=60)
+
+    mode_radio = next(radio for radio in at.radio if radio.label == "Mode d'exécution")
+    assert mode_radio.value == "Backtest Simple"
+    assert at.session_state["optimization_mode"] == "Backtest Simple"
+
+
+def test_llm_tab_renders_without_widget_session_state_exception():
+    at = AppTest.from_file("ui/app.py")
+    at.session_state["optimization_mode"] = "🤖 Optimisation LLM"
+
+    at.run(timeout=60)
+
+    assert at.exception == []
+    assert any(
+        radio.label == "Mode d'exécution" and radio.value == "🤖 Optimisation LLM"
+        for radio in at.radio
+    )
+
+
+def test_topology_session_state_is_scoped_between_builder_and_llm_modes():
+    st.session_state.clear()
+    st.session_state["builder_llm_routing_mode"] = "cooperative_multi_gpu"
+    st.session_state["exec_llm_routing_mode"] = "cooperative_multi_gpu"
+    st.session_state["builder_llm_topology_config"] = build_phase1_topology(
+        primary_host="http://127.0.0.1:11434",
+        control_host="http://127.0.0.1:22434",
+        primary_gpu_target="GPU-0",
+        control_gpu_target="GPU-1",
+        trace_only=False,
+    ).to_dict()
+    st.session_state["exec_llm_topology_config"] = build_phase1_topology(
+        primary_host="http://127.0.0.1:33434",
+        control_host="http://127.0.0.1:44434",
+        primary_gpu_target="GPU-1",
+        control_gpu_target="GPU-0",
+        trace_only=True,
+    ).to_dict()
+
+    builder_topology = _get_phase1_topology_from_session(
+        "http://127.0.0.1:11434",
+        session_prefix="builder",
+        config_state_key="builder_llm_topology_config",
+        routing_mode_key="builder_llm_routing_mode",
+    )
+    exec_topology = _get_phase1_topology_from_session(
+        "http://127.0.0.1:33434",
+        session_prefix="exec",
+        config_state_key="exec_llm_topology_config",
+        routing_mode_key="exec_llm_routing_mode",
+    )
+
+    assert (
+        builder_topology.endpoints["control"].ollama_host
+        == "http://127.0.0.1:22434"
+    )
+    assert (
+        exec_topology.endpoints["control"].ollama_host
+        == "http://127.0.0.1:44434"
+    )
+    assert builder_topology.endpoints["builder_primary"].gpu_target == "GPU-0"
+    assert exec_topology.endpoints["builder_primary"].gpu_target == "GPU-1"
+
+
+def test_sidebar_resolves_builder_topology_from_live_session_fields():
+    st.session_state.clear()
+    st.session_state["builder_llm_routing_mode"] = "cooperative_multi_gpu"
+    st.session_state["builder_llm_topology_config"] = build_phase1_topology(
+        primary_host="http://127.0.0.1:11434",
+        control_host="http://127.0.0.1:22434",
+        primary_gpu_target="GPU-0",
+        control_gpu_target="GPU-1",
+    ).to_dict()
+    st.session_state["builder_llm_topology_control_host"] = "http://127.0.0.1:55434"
+    st.session_state["builder_llm_topology_primary_gpu_target"] = "GPU-1"
+    st.session_state["builder_llm_topology_control_gpu_target"] = "GPU-0"
+
+    topology = sidebar_module._resolve_live_llm_topology_config(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_ollama_host="http://127.0.0.1:11434",
+        exec_ollama_host="http://127.0.0.1:33434",
+    )
+
+    assert (
+        topology.endpoints["control"].ollama_host
+        == "http://127.0.0.1:55434"
+    )
+    assert topology.endpoints["builder_primary"].gpu_target == "GPU-1"
+    assert topology.endpoints["control"].gpu_target == "GPU-0"
+
+
+def test_resolve_builder_runtime_preferences_reads_sidebar_state_without_reset():
+    state = _sample_sidebar_state(
+        builder_preload_model=False,
+        builder_keep_alive_minutes=45,
+        builder_unload_after_run=True,
+        builder_auto_start_ollama=False,
+    )
+
+    resolved = resolve_builder_runtime_preferences(state)
+
+    assert resolved == {
+        "builder_auto_start_ollama": False,
+        "builder_preload_model": False,
+        "builder_keep_alive_minutes": 45,
+        "builder_unload_after_run": True,
+    }
+
+
+def test_resolve_builder_runtime_preferences_prefers_live_widget_values():
+    resolved = resolve_builder_runtime_preferences(
+        {
+            "builder_auto_start_ollama": True,
+            "builder_preload_model": True,
+            "builder_keep_alive_minutes": 20,
+            "builder_unload_after_run": False,
+            "builder_auto_start_ollama_toggle": False,
+            "builder_preload_model_toggle": False,
+            "builder_keep_alive_minutes_input": 60,
+            "builder_unload_after_run_toggle": True,
+        }
+    )
+
+    assert resolved == {
+        "builder_auto_start_ollama": False,
+        "builder_preload_model": False,
+        "builder_keep_alive_minutes": 60,
+        "builder_unload_after_run": True,
+    }
+
+
+def test_resolve_builder_execution_preferences_prefers_live_mode_widget():
+    resolved = resolve_builder_execution_preferences(
+        {
+            "builder_execution_mode": BUILDER_EXECUTION_MODE_MONO,
+            "builder_execution_mode_select": BUILDER_EXECUTION_MODE_DUAL_LANE,
+        }
+    )
+
+    assert resolved == {
+        "builder_execution_mode": BUILDER_EXECUTION_MODE_DUAL_LANE,
+        "builder_multi_llm_enabled": True,
+        "builder_llm_routing_mode": "cooperative_multi_gpu",
+    }
+
+
+def test_resolve_builder_execution_preferences_migrates_legacy_multi_llm_state():
+    resolved = resolve_builder_execution_preferences(
+        {
+            "builder_multi_llm_enabled_toggle": True,
+            "builder_llm_routing_mode": "single_endpoint",
+        }
+    )
+
+    assert resolved == {
+        "builder_execution_mode": BUILDER_EXECUTION_MODE_EXPERT,
+        "builder_multi_llm_enabled": True,
+        "builder_llm_routing_mode": "single_endpoint",
+    }
+
+
+def test_resolve_builder_dual_lane_preferences_prefers_live_widget_values():
+    resolved = resolve_builder_dual_lane_preferences(
+        {
+            "builder_model_single_llm": "qwen3:30b",
+            "builder_multi_llm_role_overrides": {
+                "builder_llm": "gemma3:12b",
+                "critic_llm": "deepseek-r1:14b",
+            },
+            "builder_dual_lane_primary_model": "mistral:7b-instruct",
+            "builder_dual_lane_critic_model": "llama3.1:8b",
+            "builder_dual_lane_primary_model_select": "qwen2.5:14b",
+            "builder_dual_lane_critic_model_select": "gemma3:27b",
+        }
+    )
+
+    assert resolved == {
+        "builder_dual_lane_primary_model": "qwen2.5:14b",
+        "builder_dual_lane_critic_model": "gemma3:27b",
+    }
+
+
+def test_resolve_builder_multi_llm_preferences_prefers_live_widget_values():
+    resolved = resolve_builder_multi_llm_preferences(
+        {
+            "builder_execution_mode": BUILDER_EXECUTION_MODE_EXPERT,
+            "builder_multi_llm_enabled": False,
+            "builder_multi_llm_profile": "24GB_balanced",
+            "builder_multi_llm_role_overrides": {
+                "builder_llm": ["qwen3-coder:30b", "gemma3:12b"],
+                "critic_llm": "deepseek-r1-distill:14b",
+            },
+            "builder_multi_llm_enabled_toggle": True,
+            "builder_multi_llm_profile_select": "24GB_light_test",
+            "builder_multi_llm_role_override_select_builder_llm": [
+                "gemma3:12b",
+                "qwen3-coder:30b",
+            ],
+            "builder_multi_llm_role_override_select_critic_llm": [],
+            "builder_multi_llm_role_override_select_risk_llm": [
+                "mistral:7b-instruct",
+                "deepseek-r1:14b",
+            ],
+        }
+    )
+
+    assert resolved == {
+        "builder_multi_llm_enabled": True,
+        "builder_multi_llm_profile": "24GB_light_test",
+        "builder_multi_llm_role_overrides": {
+            "builder_llm": ["gemma3:12b", "qwen3-coder:30b"],
+            "risk_llm": ["mistral:7b-instruct", "deepseek-r1:14b"],
+        },
+    }
+
+
+def test_resolve_builder_multi_llm_preferences_maps_dual_lane_to_four_roles():
+    resolved = resolve_builder_multi_llm_preferences(
+        {
+            "builder_execution_mode": BUILDER_EXECUTION_MODE_DUAL_LANE,
+            "builder_dual_lane_primary_model_select": "qwen3:30b",
+            "builder_dual_lane_critic_model_select": "deepseek-r1:14b",
+        }
+    )
+
+    assert resolved == {
+        "builder_multi_llm_enabled": True,
+        "builder_multi_llm_profile": "24GB_balanced",
+        "builder_multi_llm_role_overrides": {
+            "idea_llm": ["qwen3:30b"],
+            "builder_llm": ["qwen3:30b"],
+            "critic_llm": ["deepseek-r1:14b"],
+            "risk_llm": ["deepseek-r1:14b"],
+        },
+    }
+
+
+def test_pick_builder_session_role_overrides_selects_one_model_per_role(monkeypatch):
+    picks = iter(
+        [
+            "gemma3:12b",
+            "qwen3-coder:30b",
+            "deepseek-r1:14b",
+            "mistral:7b-instruct",
+        ]
+    )
+    monkeypatch.setattr(builder_view_module.random, "choice", lambda pool: next(picks))
+
+    selected = builder_view_module._pick_builder_session_role_overrides(
+        {
+            "idea_llm": ["gemma3:12b", "qwen2.5:14b"],
+            "builder_llm": ["qwen3-coder:30b", "qwen2.5-coder:14b"],
+            "critic_llm": ["deepseek-r1:14b"],
+            "risk_llm": ["mistral:7b-instruct", "llama3.1:8b"],
+        }
+    )
+
+    assert selected == {
+        "idea_llm": "gemma3:12b",
+        "builder_llm": "qwen3-coder:30b",
+        "critic_llm": "deepseek-r1:14b",
+        "risk_llm": "mistral:7b-instruct",
+    }

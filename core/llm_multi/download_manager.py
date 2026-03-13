@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .model_discovery import ModelInventory
+from utils.model_loader import get_huggingface_archive_root, get_ollama_models_root
 from .registry import resolve_profile_assignments
 
 DEFAULT_DOWNLOAD_LOG_DIR = Path(__file__).resolve().parent / "logs"
@@ -63,8 +64,8 @@ class ModelInstallResult:
 
 def _default_destination_root(backend: str) -> str:
     if backend == "huggingface":
-        return r"D:\models\huggingface"
-    return r"D:\models\ollama"
+        return str(get_huggingface_archive_root())
+    return str(get_ollama_models_root())
 
 
 def plan_missing_downloads(
@@ -85,8 +86,9 @@ def plan_missing_downloads(
     requests: List[ModelInstallRequest] = []
     for assignment in resolved["assignments"]:
         if (
-            assignment.available
+            not assignment.required
             or not assignment.requested_model
+            or assignment.available
             or not assignment.install_required
         ):
             continue
@@ -175,6 +177,7 @@ def install_missing_models(
 
         env = os.environ.copy()
         env["OLLAMA_HOST"] = host
+        env["OLLAMA_MODELS"] = str(get_ollama_models_root())
         completed = subprocess.run(
             command,
             capture_output=True,

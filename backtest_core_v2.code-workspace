@@ -1,7 +1,13 @@
 {
 	"folders": [
 		{
-			"path": "."
+			"path": ".",
+			"name": "backtest_core_v2"
+		},
+		{
+			"path": "K:\\models",
+			"name": "models_data",
+			"hidden": true
 		}
 	],
 	"settings": {
@@ -62,7 +68,7 @@
 			"**/.tmp_*": true,
 			"**/__pycache__/**": true
 		},
-		"python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+		"python.defaultInterpreterPath": "d:/backtest_core_v2/.venv/Scripts/python.exe",
 		"python.testing.pytestEnabled": true,
 		"python.testing.pytestArgs": [
 			"tests"
@@ -70,6 +76,7 @@
 		"python.envFile": "${workspaceFolder}\\.env",
 		"editor.formatOnSave": false,
 		"python.analysis.typeCheckingMode": "basic",
+		"python.analysis.diagnosticMode": "openFilesOnly",
 		"files.associations": {
 			"*.toml": "toml",
 			"*.yaml": "yaml",
@@ -79,10 +86,10 @@
 		"chat.useAgentSkills": true,
 		"powershell.cwd": "${workspaceFolder}",
 		"claudeCode.initialPermissionMode": "bypassPermissions",
-		"claudeCodeChat.permissions.yoloMode": true,
-		"pylint.interpreter": [
-			".venv/Scripts/python.exe"
-		]
+		"python.linting.pylintEnabled": false,
+		"python.linting.flake8Enabled": false,
+		"python.linting.mypyEnabled": false,
+		"codeQL.githubDatabase.download": "never"
 	},
 	"extensions": {
 		"recommendations": [
@@ -120,6 +127,13 @@
 				"type": "debugpy",
 				"request": "launch",
 				"program": "${workspaceFolder}/run_llm_optimization.py",
+				"console": "integratedTerminal"
+			},
+			{
+				"name": "Data Manager",
+				"type": "debugpy",
+				"request": "launch",
+				"program": "D:/.my_soft/gestionnaire_telechargement_multi-timeframe_clean/crypto_data_manager.py",
 				"console": "integratedTerminal"
 			}
 		]

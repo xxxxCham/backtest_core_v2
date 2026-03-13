@@ -1,21 +1,24 @@
 """
 Module-ID: utils.model_loader
 
-Purpose: Chargement et accès aux modèles depuis D:\\models\\models.json
+Purpose: Chargement et acces aux modeles depuis models.json avec resolution
+de chemins contemporaine (C/K/L/D) et alias de noms historiques.
 
 Role in pipeline: configuration
 
-Key components: load_models_json(), get_model_by_id(), get_models_by_category()
+Key components: load_models_json(), get_model_by_id(), get_models_json_path()
 
-Inputs: models.json path (default: D:\\models\\models.json)
+Inputs: models.json path, env vars MODELS_JSON_PATH / OLLAMA_MODELS /
+MODEL_LIBRARY_ROOTS / HUGGINGFACE_ARCHIVE_ROOT.
 
-Outputs: Dict de modèles avec infos (path, size, use_case, etc.)
+Outputs: Dict de modeles avec infos (path, size, use_case, etc.)
 
 Dependencies: json, pathlib
 
-Conventions: Fallback si fichier absent; cache en mémoire; modèles Ollama prioritaires.
+Conventions: fallback progressif si un chemin cible n'existe pas encore;
+cache en memoire; noms Ollama normalises pour eviter les regressions de selection.
 
-Read-if: Modification de la logique de chargement des modèles.
+Read-if: Modification de la logique de chargement des modeles.
 
 Skip-if: Vous utilisez directement get_available_models().
 """
@@ -25,16 +28,76 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 from utils.log import get_logger
 
 logger = get_logger(__name__)
 
-# Chemin par défaut vers models.json
-DEFAULT_MODELS_JSON_PATH = Path("D:\\models\\models.json")
+CURRENT_MODELS_JSON_PATH = Path(r"C:\AI\models\catalog\models.json")
+CURRENT_OLLAMA_MODELS_ROOT = Path(r"C:\AI\ollama\models")
+CURRENT_HUGGINGFACE_ARCHIVE_ROOT = Path(r"L:\models")
 
-# Cache en mémoire
+LEGACY_MODELS_JSON_CANDIDATES = (
+    Path(r"D:\models\models.json"),
+)
+
+LEGACY_OLLAMA_MODELS_CANDIDATES = (
+    Path(r"D:\models\ollama"),
+    Path(r"D:\models\models_via_ollamaGUI"),
+)
+
+LEGACY_HUGGINGFACE_ARCHIVE_ROOTS = (
+    Path(r"D:\models\huggingface"),
+)
+
+DEFAULT_MODELS_JSON_CANDIDATES = (
+    CURRENT_MODELS_JSON_PATH,
+    Path(r"C:\AI\models\models.json"),
+)
+
+DEFAULT_OLLAMA_MODELS_CANDIDATES = (
+    CURRENT_OLLAMA_MODELS_ROOT,
+)
+
+DEFAULT_MODEL_LIBRARY_ROOTS = (
+    Path(r"K:\models"),
+    Path(r"L:\models"),
+    Path(r"C:\AI\models\library"),
+)
+
+DEFAULT_HUGGINGFACE_ARCHIVE_ROOTS = (
+    CURRENT_HUGGINGFACE_ARCHIVE_ROOT,
+    Path(r"C:\AI\models\library\huggingface"),
+)
+
+# Mapping des anciens noms vers les noms runtime actuels.
+MODEL_NAME_ALIASES = {
+    "alia-40b-local:latest": "alia-40b-local",
+    "deepseek-coder-33b-local:latest": "deepseek-coder-33b-local",
+    "deepseek-moe-16b-local:latest": "deepseek-moe-16b-local",
+    "deepseek-r1-14b-local:latest": "deepseek-r1-14b-local",
+    "deepseek-r1-14b-local": "deepseek-r1-distill:14b",
+    "glm-4.7-flash-23b-local:latest": "glm-4.7-flash-23b-local",
+    "llama3.3-70b-2gpu": "llama3.3:70b-instruct-q4_K_M",
+    "llama3.3-70b-optimized": "llama3.3:70b-instruct-q4_K_M",
+    "llama3.3:70b": "llama3.3:70b-instruct-q4_K_M",
+    "m-moe-4x7b-dark-multiverse-uc-e32-24b-max-d_au-q6_k:latest": "m-moe-4x7b-dark-multiverse-uc-e32-24b-max-d_au-q6_k",
+    "nemotron-cascade-14b-local:latest": "nemotron-cascade-14b-local",
+    "nemotron-cascade-14b-thinking-claude-4.5-opus-distill.q8_0": "nemotron-cascade-14b-local",
+    "nemotron-orchestrator-8b:latest": "nemotron-orchestrator-8b",
+    "qwen3-coder-40b-local": "qwen3-coder:30b",
+    "qwen3-coder-next-40b-q3_k_xl": "qwen3-coder:30b",
+    "qwen3-coder-next-40b-q3_k_xl:latest": "qwen3-coder:30b",
+    "qwen3-coder-next": "qwen3-coder-next:q4_k_m",
+    "qwen3-coder-next-q4_k_m": "qwen3-coder-next:q4_k_m",
+    "qwen3-coder:30b-a3b-instruct": "qwen3-coder:30b",
+    "qwen3-30b-a3b": "qwen3-30b-a3b:q4_k_m",
+    "qwen3-30b-a3b-q4_k_m": "qwen3-30b-a3b:q4_k_m",
+    "qwen3-48b-savant:latest": "qwen3-48b-savant",
+}
+
+# Cache en memoire
 _models_cache: Optional[Dict] = None
 
 
@@ -52,48 +115,216 @@ def _windows_to_wsl_path(path: Path) -> Optional[Path]:
     return Path(f"/mnt/{drive}/{rest_posix}")
 
 
+def _iter_unique_paths(paths: Iterable[Path]) -> Iterable[Path]:
+    seen: set[str] = set()
+    for path in paths:
+        raw = str(path).strip()
+        if not raw:
+            continue
+        key = raw.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        yield Path(raw)
+
+
+def _split_env_paths(value: str) -> List[Path]:
+    if not value:
+        return []
+    return [Path(chunk.strip()) for chunk in value.split(";") if chunk.strip()]
+
+
+def _prefer_current_target(
+    configured: Iterable[Path],
+    current_target: Path,
+    legacy_targets: Iterable[Path],
+) -> List[Path]:
+    ordered = list(_iter_unique_paths(configured))
+    if not ordered or not current_target.exists():
+        return ordered
+
+    legacy_keys = {str(path).strip().lower() for path in legacy_targets if str(path).strip()}
+    if not legacy_keys:
+        return ordered
+
+    configured_keys = {str(path).strip().lower() for path in ordered if str(path).strip()}
+    if configured_keys.isdisjoint(legacy_keys):
+        return ordered
+
+    return list(_iter_unique_paths([current_target, *ordered]))
+
+
+def normalize_model_name(name: str) -> str:
+    """Normalise un nom de modele et resout les alias historiques."""
+    value = str(name or "").strip()
+    if not value:
+        return ""
+    if value.endswith(":latest"):
+        value = value[:-7]
+    return MODEL_NAME_ALIASES.get(value.lower(), value)
+
+
+def _entry_identifiers(entry: Dict) -> List[str]:
+    identifiers: List[str] = []
+
+    def add(candidate: object) -> None:
+        if not isinstance(candidate, str):
+            return
+        raw = candidate.strip()
+        normalized = normalize_model_name(raw)
+        for value in (raw, normalized):
+            if value and value not in identifiers:
+                identifiers.append(value)
+
+    add(entry.get("id"))
+    add(entry.get("ollama_name"))
+    add(entry.get("model_name"))
+    add(entry.get("name"))
+
+    model_name = str(entry.get("model_name") or "").strip()
+    tag = str(entry.get("tag") or "").strip()
+    if model_name and tag:
+        add(f"{model_name}:{tag}")
+
+    for field in ("path", "backup_path"):
+        raw_path = str(entry.get(field) or "").strip()
+        if not raw_path:
+            continue
+        add(raw_path)
+        candidate = Path(raw_path)
+        if candidate.suffix:
+            add(candidate.stem)
+            add(candidate.parent.name)
+        else:
+            add(candidate.name)
+
+    for alias in entry.get("aliases", []) or []:
+        add(alias)
+
+    return identifiers
+
+
+def get_candidate_models_json_paths() -> List[Path]:
+    """Retourne tous les emplacements candidats pour models.json."""
+    env_path = os.environ.get("MODELS_JSON_PATH", "").strip()
+    primary = [Path(env_path)] if env_path else []
+    primary = _prefer_current_target(
+        primary,
+        CURRENT_MODELS_JSON_PATH,
+        LEGACY_MODELS_JSON_CANDIDATES,
+    )
+    combined = list(
+        _iter_unique_paths(
+            [
+                *primary,
+                *DEFAULT_MODELS_JSON_CANDIDATES,
+                *LEGACY_MODELS_JSON_CANDIDATES,
+            ]
+        )
+    )
+    candidates: List[Path] = []
+    for candidate in combined:
+        candidates.append(candidate)
+        wsl_candidate = _windows_to_wsl_path(candidate)
+        if wsl_candidate is not None:
+            candidates.append(wsl_candidate)
+    return list(_iter_unique_paths(candidates))
+
+
 def get_models_json_path() -> Path:
     """
     Retourne le chemin vers models.json.
 
-    Peut être configuré via variable d'environnement MODELS_JSON_PATH.
-
-    Returns:
-        Path: Chemin vers models.json
+    Peut etre configure via variable d'environnement MODELS_JSON_PATH. Si la
+    cible souhaitee n'existe pas encore, on continue vers les fallbacks connus.
     """
-    env_path = os.environ.get("MODELS_JSON_PATH")
-    if env_path:
-        return Path(env_path)
+    candidates = get_candidate_models_json_paths()
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
-    if DEFAULT_MODELS_JSON_PATH.exists():
-        return DEFAULT_MODELS_JSON_PATH
 
-    wsl_path = _windows_to_wsl_path(DEFAULT_MODELS_JSON_PATH)
-    if wsl_path and wsl_path.exists():
-        return wsl_path
+def get_ollama_models_root() -> Path:
+    """
+    Retourne le repertoire du store Ollama.
 
-    return DEFAULT_MODELS_JSON_PATH
+    La cible contemporaine est ``C:\\AI\\ollama\\models``, avec fallback vers le
+    store historique ``D:\\models\\ollama`` tant que la bascule n'est pas achevee.
+    """
+    env_value = os.environ.get("OLLAMA_MODELS", "").strip()
+    configured = _split_env_paths(env_value) if env_value else []
+    configured = _prefer_current_target(
+        configured,
+        CURRENT_OLLAMA_MODELS_ROOT,
+        LEGACY_OLLAMA_MODELS_CANDIDATES,
+    )
+    ordered = list(
+        _iter_unique_paths(
+            [
+                *configured,
+                *DEFAULT_OLLAMA_MODELS_CANDIDATES,
+                *LEGACY_OLLAMA_MODELS_CANDIDATES,
+            ]
+        )
+    )
+    for candidate in ordered:
+        if candidate.exists():
+            return candidate
+    return ordered[0]
+
+
+def get_model_library_roots() -> List[Path]:
+    """
+    Retourne les racines de bibliotheques canoniques.
+
+    `MODEL_LIBRARY_ROOTS` accepte une liste separee par `;`.
+    """
+    env_value = os.environ.get("MODEL_LIBRARY_ROOTS", "").strip()
+    configured = _split_env_paths(env_value) if env_value else []
+    return list(_iter_unique_paths([*configured, *DEFAULT_MODEL_LIBRARY_ROOTS]))
+
+
+def get_huggingface_archive_root() -> Path:
+    """
+    Retourne le repertoire d'archive des sources Hugging Face.
+
+    L'architecture actuelle privilegie ``L:\\models``.
+    """
+    env_value = os.environ.get("HUGGINGFACE_ARCHIVE_ROOT", "").strip()
+    configured = _split_env_paths(env_value) if env_value else []
+    configured = _prefer_current_target(
+        configured,
+        CURRENT_HUGGINGFACE_ARCHIVE_ROOT,
+        LEGACY_HUGGINGFACE_ARCHIVE_ROOTS,
+    )
+    ordered = list(
+        _iter_unique_paths(
+            [
+                *configured,
+                *DEFAULT_HUGGINGFACE_ARCHIVE_ROOTS,
+                *LEGACY_HUGGINGFACE_ARCHIVE_ROOTS,
+            ]
+        )
+    )
+    for candidate in ordered:
+        if candidate.exists():
+            return candidate
+    return ordered[0]
 
 
 def load_models_json(force_reload: bool = False) -> Dict:
     """
-    Charge le fichier models.json depuis D:\\models\\models.json.
+    Charge le fichier models.json depuis l'emplacement le plus pertinent.
 
     Args:
-        force_reload: Si True, recharge le fichier même si déjà en cache
+        force_reload: Si True, recharge le fichier meme si deja en cache
 
     Returns:
-        Dict contenant la configuration des modèles
-
-    Example:
-        >>> data = load_models_json()
-        >>> ollama_models = data.get("ollama_models", [])
-        >>> for model in ollama_models:
-        ...     print(f"{model['id']}: {model['name']}")
+        Dict contenant la configuration des modeles
     """
     global _models_cache
 
-    # Retourner le cache si disponible
     if _models_cache is not None and not force_reload:
         return _models_cache
 
@@ -101,8 +332,8 @@ def load_models_json(force_reload: bool = False) -> Dict:
 
     if not models_path.exists():
         logger.warning(
-            "Fichier models.json introuvable à %s, utilisation de la config par défaut",
-            models_path
+            "Fichier models.json introuvable a %s, utilisation de la config par defaut",
+            models_path,
         )
         _models_cache = {
             "version": "1.0",
@@ -115,11 +346,10 @@ def load_models_json(force_reload: bool = False) -> Dict:
         return _models_cache
 
     try:
-        with open(models_path, encoding="utf-8-sig") as f:
-            _models_cache = json.load(f)
-        logger.info("✅ Chargé %d modèles depuis %s", _count_total_models(_models_cache), models_path)
+        with open(models_path, encoding="utf-8-sig") as handle:
+            _models_cache = json.load(handle)
+        logger.info("Charge %d modeles depuis %s", _count_total_models(_models_cache), models_path)
         return _models_cache
-
     except (json.JSONDecodeError, IOError) as exc:
         logger.error("Erreur lors du chargement de %s: %s", models_path, exc)
         _models_cache = {
@@ -134,7 +364,7 @@ def load_models_json(force_reload: bool = False) -> Dict:
 
 
 def _count_total_models(data: Dict) -> int:
-    """Compte le nombre total de modèles."""
+    """Compte le nombre total de modeles."""
     count = 0
     count += len(data.get("ollama_models", []))
     count += len(data.get("huggingface_models", []))
@@ -143,243 +373,133 @@ def _count_total_models(data: Dict) -> int:
 
 
 def get_all_ollama_models() -> List[Dict]:
-    """
-    Retourne tous les modèles Ollama disponibles.
-
-    Returns:
-        List[Dict]: Liste des modèles Ollama avec leurs métadonnées
-
-    Example:
-        >>> models = get_all_ollama_models()
-        >>> for m in models:
-        ...     print(f"{m['id']}: {m['size_gb']} GB - {m['use_case']}")
-    """
+    """Retourne tous les modeles Ollama disponibles."""
     data = load_models_json()
     return data.get("ollama_models", [])
 
 
 def get_all_huggingface_models() -> List[Dict]:
-    """Retourne tous les modèles HuggingFace disponibles."""
+    """Retourne tous les modeles HuggingFace disponibles."""
     data = load_models_json()
     return data.get("huggingface_models", [])
 
 
 def get_all_diffusion_models() -> List[Dict]:
-    """Retourne tous les modèles de diffusion disponibles."""
+    """Retourne tous les modeles de diffusion disponibles."""
     data = load_models_json()
     return data.get("diffusion_models", [])
 
 
 def get_model_by_id(model_id: str) -> Optional[Dict]:
-    """
-    Récupère un modèle par son ID.
-
-    Args:
-        model_id: ID du modèle (ex: "llama3.1-8b", "deepseek-r1-32b")
-
-    Returns:
-        Dict contenant les métadonnées du modèle ou None si introuvable
-
-    Example:
-        >>> model = get_model_by_id("llama3.1-8b")
-        >>> if model:
-        ...     print(f"Path: {model['path']}")
-        ...     print(f"Size: {model['size_gb']} GB")
-    """
+    """Recupere un modele par ID, nom Ollama ou alias historique."""
     if not model_id:
         return None
 
     data = load_models_json()
-    model_id = model_id.strip()
+    normalized_model_id = normalize_model_name(model_id)
 
-    # Chercher dans ollama_models
-    for model in data.get("ollama_models", []):
-        if model.get("id") == model_id:
-            return model
-
-    # Chercher dans huggingface_models
-    for model in data.get("huggingface_models", []):
-        if model.get("id") == model_id:
-            return model
-
-    # Chercher dans diffusion_models
-    for model in data.get("diffusion_models", []):
-        if model.get("id") == model_id:
-            return model
-
-    # Normaliser les noms Ollama (ex: nemotron-3-nano:30b -> model_name/tag)
-    if ":" in model_id:
-        base, tag = model_id.split(":", 1)
-        for model in data.get("ollama_models", []):
-            if model.get("model_name") == base and model.get("tag") == tag:
+    for section in ("ollama_models", "huggingface_models", "diffusion_models"):
+        for model in data.get(section, []):
+            identifiers = {
+                normalize_model_name(identifier)
+                for identifier in _entry_identifiers(model)
+            }
+            if normalized_model_id in identifiers:
                 return model
 
-        # Ex: llama3.3-70b-optimized:latest -> llama3.3-70b-optimized-latest
-        if "/" not in model_id:
-            dashed_id = model_id.replace(":", "-")
-            for model in data.get("ollama_models", []):
-                if model.get("id") == dashed_id:
-                    return model
-
-    # Fallback: match par model_name si unique
-    matches = [
-        m for m in data.get("ollama_models", [])
-        if m.get("model_name") == model_id
-    ]
-    if len(matches) == 1:
-        return matches[0]
-
-    logger.debug("Modèle %s introuvable dans models.json", model_id)
+    logger.debug("Modele %s introuvable dans models.json", model_id)
     return None
 
 
 def get_models_by_category(category: str) -> List[Dict]:
-    """
-    Récupère tous les modèles d'une catégorie.
-
-    Args:
-        category: Catégorie (ex: "general", "reasoning", "finance", "image_generation")
-
-    Returns:
-        List[Dict]: Liste des modèles de cette catégorie
-
-    Example:
-        >>> reasoning_models = get_models_by_category("reasoning")
-        >>> for m in reasoning_models:
-        ...     print(m['name'])
-    """
+    """Recupere tous les modeles d'une categorie."""
     data = load_models_json()
     categories = data.get("model_categories", {})
-
     model_ids = categories.get(category, [])
     if not model_ids:
         return []
 
-    # Récupérer les détails de chaque modèle
-    models = []
+    models: List[Dict] = []
     for model_id in model_ids:
         model = get_model_by_id(model_id)
         if model:
             models.append(model)
-
     return models
 
 
 def get_models_by_use_case(use_case: str) -> List[Dict]:
-    """
-    Récupère tous les modèles pour un cas d'usage.
-
-    Args:
-        use_case: Cas d'usage (ex: "general", "reasoning", "finance", "instruction")
-
-    Returns:
-        List[Dict]: Liste des modèles
-
-    Example:
-        >>> finance_models = get_models_by_use_case("reasoning_finance")
-        >>> for m in finance_models:
-        ...     print(f"{m['name']}: {m['description']}")
-    """
+    """Recupere tous les modeles pour un cas d'usage."""
     all_models = get_all_ollama_models() + get_all_huggingface_models()
-    return [m for m in all_models if m.get("use_case") == use_case]
+    return [model for model in all_models if model.get("use_case") == use_case]
 
 
 def get_recommended_model_for_task(task: str) -> Optional[str]:
-    """
-    Retourne le modèle recommandé pour une tâche.
-
-    Args:
-        task: Nom de la tâche (ex: "backtest_strategy_generation", "backtest_analysis")
-
-    Returns:
-        str: ID du modèle recommandé ou None
-
-    Example:
-        >>> model_id = get_recommended_model_for_task("backtest_strategy_generation")
-        >>> if model_id:
-        ...     model = get_model_by_id(model_id)
-        ...     print(f"Recommandé: {model['name']}")
-    """
+    """Retourne le modele recommande pour une tache."""
     data = load_models_json()
     recommendations = data.get("recommended_by_task", {})
-    return recommendations.get(task)
+    recommendation = recommendations.get(task)
+    if isinstance(recommendation, str):
+        return normalize_model_name(recommendation)
+    return recommendation
 
 
 def get_model_full_path(model_id: str) -> Optional[Path]:
-    """
-    Retourne le chemin complet vers un modèle.
-
-    Args:
-        model_id: ID du modèle
-
-    Returns:
-        Path: Chemin absolu vers le modèle ou None si introuvable
-
-    Example:
-        >>> path = get_model_full_path("llama3.1-8b")
-        >>> if path:
-        ...     print(f"Modèle à: {path}")
-    """
+    """Retourne le chemin complet vers un modele ou son backup canonique."""
     model = get_model_by_id(model_id)
     if not model:
         return None
 
     data = load_models_json()
-    base_dir = Path(data.get("models_directory", "D:\\models"))
-    relative_path = model.get("path", "")
-
-    if not relative_path:
+    base_dir = Path(data.get("models_directory") or r"C:\AI\models")
+    raw_path = str(model.get("path") or model.get("backup_path") or "").strip()
+    if not raw_path:
         return None
 
-    return base_dir / relative_path
+    candidate = Path(raw_path)
+    if candidate.is_absolute():
+        return candidate
+    return base_dir / candidate
 
 
 def get_ollama_model_names() -> List[str]:
     """
-    Retourne la liste des noms de modèles Ollama depuis models.json.
+    Retourne la liste des noms runtime Ollama depuis models.json.
 
-    Utilise le champ ``ollama_name`` pour correspondre exactement aux noms
-    retournés par ``ollama list``, évitant les doublons dans l'UI.
-
-    Returns:
-        List[str]: Noms Ollama normalisés (sans suffixe ``:latest``).
+    On privilegie `ollama_name`, avec normalisation des alias et suppression du
+    suffixe `:latest` pour garder une nomenclature stable dans l'UI.
     """
-    models = get_all_ollama_models()
-    names = []
-    for model in models:
-        ollama_name = model.get("ollama_name", "")
-        if ollama_name:
-            if ollama_name.endswith(":latest"):
-                ollama_name = ollama_name[: -len(":latest")]
-            names.append(ollama_name)
+    names: List[str] = []
+    for model in get_all_ollama_models():
+        preferred_name = (
+            model.get("ollama_name")
+            or (
+                f"{model['model_name']}:{model['tag']}"
+                if model.get("model_name") and model.get("tag")
+                else ""
+            )
+            or model.get("model_name")
+            or model.get("id", "")
+        )
+        canonical_name = normalize_model_name(str(preferred_name or "").strip())
+        if canonical_name and canonical_name not in names:
+            names.append(canonical_name)
     return names
 
 
 def get_model_info_for_ui(model_id: str) -> Dict:
-    """
-    Retourne les infos formattées pour l'UI.
-
-    Args:
-        model_id: ID du modèle
-
-    Returns:
-        Dict: Informations formattées {name, size_gb, description, use_case}
-
-    Example:
-        >>> info = get_model_info_for_ui("deepseek-r1-32b")
-        >>> st.caption(f"{info['size_gb']} GB - {info['description']}")
-    """
+    """Retourne les infos formatees pour l'UI."""
     model = get_model_by_id(model_id)
     if not model:
+        normalized_model_id = normalize_model_name(model_id)
         return {
-            "name": model_id,
+            "name": normalized_model_id or model_id,
             "size_gb": "?",
-            "description": "Modèle inconnu",
+            "description": "Modele inconnu",
             "use_case": "unknown",
         }
 
     return {
-        "name": model.get("name", model_id),
+        "name": model.get("name", normalize_model_name(model_id)),
         "size_gb": model.get("size_gb", "?"),
         "description": model.get("description", ""),
         "use_case": model.get("use_case", "general"),
@@ -389,15 +509,26 @@ def get_model_info_for_ui(model_id: str) -> Dict:
 
 
 __all__ = [
-    "load_models_json",
-    "get_all_ollama_models",
-    "get_all_huggingface_models",
+    "DEFAULT_HUGGINGFACE_ARCHIVE_ROOTS",
+    "DEFAULT_MODEL_LIBRARY_ROOTS",
+    "DEFAULT_MODELS_JSON_CANDIDATES",
+    "DEFAULT_OLLAMA_MODELS_CANDIDATES",
+    "MODEL_NAME_ALIASES",
     "get_all_diffusion_models",
+    "get_all_huggingface_models",
+    "get_all_ollama_models",
+    "get_candidate_models_json_paths",
+    "get_huggingface_archive_root",
     "get_model_by_id",
+    "get_model_full_path",
+    "get_model_info_for_ui",
+    "get_model_library_roots",
     "get_models_by_category",
     "get_models_by_use_case",
-    "get_recommended_model_for_task",
-    "get_model_full_path",
+    "get_models_json_path",
     "get_ollama_model_names",
-    "get_model_info_for_ui",
+    "get_ollama_models_root",
+    "get_recommended_model_for_task",
+    "load_models_json",
+    "normalize_model_name",
 ]

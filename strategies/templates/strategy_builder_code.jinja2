@@ -17,6 +17,11 @@ Do NOT output explanations before/after code.
 - Entry short: {{ proposal.entry_short_logic|default("N/A") }}
 - Exit: {{ proposal.exit_logic|default("N/A") }}
 - Risk: {{ proposal.risk_management|default("N/A") }}
+{% if direction_constraint == "long_only" %}
+- Direction constraint: LONG ONLY (all short entries must stay disabled)
+{% elif direction_constraint == "short_only" %}
+- Direction constraint: SHORT ONLY (all long entries must stay disabled)
+{% endif %}
 {% if proposal.default_params %}
 - Default params: {{ proposal.default_params|tojson }}
 {% endif %}
@@ -115,6 +120,11 @@ BOTH MODE:
 - ALWAYS define `long_mask`/`short_mask` before using them: `long_mask = np.zeros(len(df), dtype=bool)`.
 - NEVER write `df["signal"]` or `df["signals"]`. Signal values go in the `signals` variable ONLY.
 - The ONLY columns you may write to `df` are: `bb_stop_long`, `bb_tp_long`, `bb_stop_short`, `bb_tp_short`, `sl_level`, `tp_level`.
+{% if direction_constraint == "long_only" %}
+- LONG ONLY objective: never emit `-1.0` signals.
+{% elif direction_constraint == "short_only" %}
+- SHORT ONLY objective: never emit `1.0` signals.
+{% endif %}
 
 ### BOOLEAN INDEXING — CRITICAL SIZE RULE
 Every boolean mask used to index `signals`, `df`, or any array MUST have length `n = len(df)`.

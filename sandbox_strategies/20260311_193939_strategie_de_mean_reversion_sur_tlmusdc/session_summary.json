@@ -1,0 +1,262 @@
+{
+  "session_id": "20260311_193939_strategie_de_mean_reversion_sur_tlmusdc",
+  "objective": "Strategie de Mean-reversion sur TLMUSDC 1h. Indicateurs : Keltner Channels, RSI(14), ATR. Entree short quand prix touche bande superieure Keltner et RSI haut. Stop-loss = 1.5x ATR, take-profit = 3.0x ATR.",
+  "status": "running",
+  "best_sharpe": -Infinity,
+  "best_score": -Infinity,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 1,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Keltner Channels define volatility envelope; RSI identifies momentum bias; mean-reversion exploits price deviation from fair value within volatility bands",
+      "change_type": "accept",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.6690042062730805,
+      "return_pct": 43.49392907622638,
+      "max_drawdown_pct": -55.780298232540936,
+      "profit_factor": 1.1436770452017455,
+      "win_rate_pct": 39.04761904761905,
+      "trades": 210,
+      "continuous_score": 39.344049636057505,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 18.732117775646255,
+          "return": 44.0,
+          "profit_factor": 6.568093494936938,
+          "trades_confidence": 10.0,
+          "win_rate": 1.2142857142857153
+        },
+        "penalties": {
+          "drawdown_pressure": 23.853532155027292,
+          "drawdown_excess": 17.316915193784112,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 20.780298232540936
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +43.5%, PF 1.14, Expectancy 20.71"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 55.8%, Vol 47.3%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.669, Sortino 0.846, Calmar 0.623"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 39.0%, Trades 210, AvgW/L 422.21/236.50"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "NameError: name 'prev_close_rsi' is not defined",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "NameError: name 'prev_close_rsi' is not defined",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5635, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4989, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4966, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260311_193939_strategie_de_mean_reversion_sur_tlmusdc\\strategy.py\", line 113, in generate_signals\n    rsi_cross_below_50 = (rsi < 50) & (prev_close_rsi >= 50)\nNameError: name 'prev_close_rsi' is not defined",
+          "runtime_fix_validation_error": "[AST001] Erreur de syntaxe ligne 86: invalid syntax",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses include whipsaws from narrow Keltner bands, RSI divergence risks, and potential ATR scaling with price. Also, mean-reversion struggles in strong trending markets.\n[Backup plan] If performance is poor: widen Keltner rescale ATR to price, adjust RSI thresholds. If mediocre: optimize period, add volume filter, consider stochastic RSI. Alternative: switch to momentum strategy with trailing stop."
+        },
+        "scoring": {
+          "continuous_score": 39.344049636057505,
+          "drawdown_excess_pct": 20.780298232540936,
+          "components": {
+            "sharpe": 18.732117775646255,
+            "return": 44.0,
+            "profit_factor": 6.568093494936938,
+            "trades_confidence": 10.0,
+            "win_rate": 1.2142857142857153
+          },
+          "penalties": {
+            "drawdown_pressure": 23.853532155027292,
+            "drawdown_excess": 17.316915193784112,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 1,
+      "hypothesis": "Keltner Channels define volatility envelope; RSI identifies momentum bias; mean-reversion exploits price deviation from fair value within volatility bands",
+      "change_type": "accept",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.6690042062730805,
+      "return_pct": 43.49392907622638,
+      "max_drawdown_pct": -55.780298232540936,
+      "profit_factor": 1.1436770452017455,
+      "win_rate_pct": 39.04761904761905,
+      "trades": 210,
+      "continuous_score": 39.344049636057505,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 18.732117775646255,
+          "return": 44.0,
+          "profit_factor": 6.568093494936938,
+          "trades_confidence": 10.0,
+          "win_rate": 1.2142857142857153
+        },
+        "penalties": {
+          "drawdown_pressure": 23.853532155027292,
+          "drawdown_excess": 17.316915193784112,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 20.780298232540936
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +43.5%, PF 1.14, Expectancy 20.71"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 55.8%, Vol 47.3%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.669, Sortino 0.846, Calmar 0.623"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 39.0%, Trades 210, AvgW/L 422.21/236.50"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "NameError: name 'prev_close_rsi' is not defined",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "NameError: name 'prev_close_rsi' is not defined",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5635, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4989, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4966, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260311_193939_strategie_de_mean_reversion_sur_tlmusdc\\strategy.py\", line 113, in generate_signals\n    rsi_cross_below_50 = (rsi < 50) & (prev_close_rsi >= 50)\nNameError: name 'prev_close_rsi' is not defined",
+          "runtime_fix_validation_error": "[AST001] Erreur de syntaxe ligne 86: invalid syntax",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses include whipsaws from narrow Keltner bands, RSI divergence risks, and potential ATR scaling with price. Also, mean-reversion struggles in strong trending markets.\n[Backup plan] If performance is poor: widen Keltner rescale ATR to price, adjust RSI thresholds. If mediocre: optimize period, add volume filter, consider stochastic RSI. Alternative: switch to momentum strategy with trailing stop."
+        },
+        "scoring": {
+          "continuous_score": 39.344049636057505,
+          "drawdown_excess_pct": 20.780298232540936,
+          "components": {
+            "sharpe": 18.732117775646255,
+            "return": 44.0,
+            "profit_factor": 6.568093494936938,
+            "trades_confidence": 10.0,
+            "win_rate": 1.2142857142857153
+          },
+          "penalties": {
+            "drawdown_pressure": 23.853532155027292,
+            "drawdown_excess": 17.316915193784112,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    }
+  ]
+}

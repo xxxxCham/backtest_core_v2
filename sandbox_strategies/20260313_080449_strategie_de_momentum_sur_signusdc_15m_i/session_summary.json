@@ -1,0 +1,1356 @@
+{
+  "session_id": "20260313_080449_strategie_de_momentum_sur_signusdc_15m_i",
+  "objective": "Strategie de Momentum sur SIGNUSDC 15m. Indicateurs : MACD, ATR. Entree long quand MACD passe de negatif a positif (zero cross). Stop-loss = 1.5x ATR, take-profit = 3.0x ATR.",
+  "status": "failed",
+  "best_sharpe": -0.3334335380278089,
+  "best_score": -31.025032445814247,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 6,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "MACD zero cross provides a reliable momentum signal for trend entry, while ATR-based risk management ensures position sizing adapts to volatility, reducing loss magnitude during choppy market conditions",
+      "change_type": "both",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -264.49185577188985,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.5770113736496048,
+      "win_rate_pct": 33.648648648648646,
+      "trades": 740,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -19.33662291887521,
+          "trades_confidence": 10.0,
+          "win_rate": -0.40540540540540637
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -264.5%, PF 0.58, Expectancy -35.74"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 3517.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.6%, Trades 740, AvgW/L 144.90/127.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 29635,
+          "long_signals": 473,
+          "short_signals": 441,
+          "total_signals": 914,
+          "signal_density": 0.03084190990382993,
+          "transition_signals": 914,
+          "transition_density": 0.03084190990382993,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy risks false signals from MACD zero cross in ranging markets, potential whipsaws from sudden volatility spikes, and may miss trends if entries occur at market peaks. The fixed ATR multipliers (1.5x/3.0x) might be too rigid for varying market conditions, and the simple crossover logic could generate excessive trades during consolidation phases.\n[Backup plan] If results are poor, I'd test MACD histogram crossovers instead of simple lines, add a volatility filter (ATR > X period average) to reduce false signals. If mediocre Sharpe, I'd optimize ATR multipliers (try 2.0x/4.0x) and add a minimum price change filter. Alternative: Switch to a mean-reversion approach using Bollinger Bands or RSI divergence for SIGNUSDC's momentum swings, or implement a trend filter (like 20-period MA) to avoid counter-trend entries."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -19.33662291887521,
+            "trades_confidence": 10.0,
+            "win_rate": -0.40540540540540637
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "decision": {
+          "stop_overridden": true
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Adding RSI as a momentum filter reduces false signals from MACD crossovers by ensuring entries occur only when momentum is strong, while maintaining ATR-based risk management to adapt to volatility.",
+      "change_type": "logic",
+      "diagnostic_category": "needs_work",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.3334335380278089,
+      "return_pct": -10.254563104826648,
+      "max_drawdown_pct": -20.580032932678215,
+      "profit_factor": 0.8354521956012949,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 69,
+      "continuous_score": -31.025032445814247,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -9.33613906477865,
+          "return": -11.280019415309313,
+          "profit_factor": -7.522185343940804,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 0.3866886217854765,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -10.3%, PF 0.84, Expectancy -14.86"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 20.6%, Vol 20.5%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.333, Sortino -0.330, Calmar -0.584"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 69, AvgW/L 226.37/135.48"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 29635,
+          "long_signals": 29,
+          "short_signals": 43,
+          "total_signals": 72,
+          "signal_density": 0.0024295596423148306,
+          "transition_signals": 72,
+          "transition_density": 0.0024295596423148306,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's main weaknesses are overfitting to SIGNUSDC's specific volatility patterns, rigid RSI filters that may miss momentum shifts, and potential look-ahead bias in crossover signals. The 1.5x ATR stop-loss might be too tight for SIGNUSDC's volatility, while 3x TP could be too aggressive. The combination of MACD crossover with RSI filter may generate false signals during ranging markets.\n[Backup plan] If results are poor, I'd simplify to pure MACD crossover with dynamic ATR-based stops (1.0x-2.0x ATR) and remove RSI filter. If mediocre Sharpe, I'd adjust RSI threshold to 45-55 and TP to 2.0x ATR. Alternative: switch to mean-reversion filter (BBands) or volatility breakout approach using ATR multiples."
+        },
+        "scoring": {
+          "continuous_score": -31.025032445814247,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -9.33613906477865,
+            "return": -11.280019415309313,
+            "profit_factor": -7.522185343940804,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 0.3866886217854765,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining MACD zero-cross entry with ATR-based risk management filters out weak momentum signals and provides clear volatility-adjusted stop-loss/take-profit levels, improving risk-reward profile over simple trend-following approaches.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -264.49185577188985,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.5770113736496048,
+      "win_rate_pct": 33.648648648648646,
+      "trades": 740,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -19.33662291887521,
+          "trades_confidence": 10.0,
+          "win_rate": -0.40540540540540637
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -264.5%, PF 0.58, Expectancy -35.74"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 3517.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.6%, Trades 740, AvgW/L 144.90/127.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 29635,
+          "long_signals": 473,
+          "short_signals": 441,
+          "total_signals": 914,
+          "signal_density": 0.03084190990382993,
+          "transition_signals": 914,
+          "transition_density": 0.03084190990382993,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy suffers from overfitting risk due to the strict zero-cross entry rule, potential whipsaws in choppy markets, and may generate frequent false signals. The 1.5x/3.0x ATR levels might be too tight or loose depending on volatility regime. The exit logic using signal line cross is problematic as it's not a standard risk management approach.\n[Backup plan] If poor results, try: 1) Add price filter (e.g., close above 20-day EMA) to reduce false signals, 2) Adjust ATR multipliers to 2.0x/4.0x, 3) Implement trailing stop instead of fixed TP/SL. Alternative: Switch to RSI-based momentum with dynamic thresholds and volatility-adjusted position sizing."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -19.33662291887521,
+            "trades_confidence": 10.0,
+            "win_rate": -0.40540540540540637
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining MACD zero-cross with ATR-based risk management filters out weak momentum signals and reduces whipsaw losses, improving risk-adjusted returns by ensuring entries only occur during strong volatility regimes.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -264.49185577188985,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.5770113736496048,
+      "win_rate_pct": 33.648648648648646,
+      "trades": 740,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -19.33662291887521,
+          "trades_confidence": 10.0,
+          "win_rate": -0.40540540540540637
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -264.5%, PF 0.58, Expectancy -35.74"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 3517.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.6%, Trades 740, AvgW/L 144.90/127.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 29635,
+          "long_signals": 473,
+          "short_signals": 441,
+          "total_signals": 914,
+          "signal_density": 0.03084190990382993,
+          "transition_signals": 914,
+          "transition_density": 0.03084190990382993,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy suffers from overfitting to MACD zero-cross signals, which are prone to false signals and whipsaws. The fixed ATR multipliers (1.5x/3.0x) may be too rigid for varying market conditions, and the exit rules based on MACD signal line cross are too simplistic. The strategy likely generates excessive trading frequency with poor risk-adjusted returns.\n[Backup plan] If results are poor, I'd switch to a MACD histogram-based entry filter with a minimum threshold (e.g., hist > 0.1) and add a volatility regime filter (ATR > 20-period average). If mediocre Sharpe, I'd optimize ATR multipliers (1.0x/2.0x) and add a minimum price change filter. As alternative, I'd test a momentum filter using 20-period ROC > 0 with dynamic ATR stops."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -19.33662291887521,
+            "trades_confidence": 10.0,
+            "win_rate": -0.40540540540540637
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining RSI momentum with Bollinger Band volatility filtering creates a robust entry signal that avoids false breakouts in low-volatility environments, while ATR-based risk management ensures consistent reward-to-risk ratios across varying market conditions",
+      "change_type": "logic",
+      "diagnostic_category": "needs_work",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -1.2685873513755435,
+      "return_pct": -4.37838652484239,
+      "max_drawdown_pct": -4.37838652484239,
+      "profit_factor": 0.1599263484298397,
+      "win_rate_pct": 20.0,
+      "trades": 5,
+      "continuous_score": -88.00333768250852,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -35.520445838515215,
+          "return": -4.816225177326629,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.8333333333333333,
+          "win_rate": -4.5
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -4.4%, PF 0.16, Expectancy -87.57"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 4.4%, Vol 2.8%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -1.269, Sortino -0.261, Calmar -1.178"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 20.0%, Trades 5, AvgW/L 83.35/130.30"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 29635,
+          "long_signals": 4,
+          "short_signals": 1,
+          "total_signals": 5,
+          "signal_density": 0.00016871941960519654,
+          "transition_signals": 5,
+          "transition_density": 0.00016871941960519654,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy suffers from overfitting risks with multiple crossover conditions and lacks robustness in trending vs mean-reverting markets. The Bollinger Band filtering may generate whipsaws in sideways conditions, while RSI-based entries can lag during strong trends. The fixed 30-70 RSI exit thresholds are likely too rigid for varying market conditions.\n[Backup plan] If results are poor, I'd simplify to pure RSI momentum with ATR stops (RSI < 30 for long entries, 1.5x ATR stop, 3x ATR profit target). If mediocre Sharpe, I'd adjust RSI periods (14\u219221) and widen ATR multipliers (1.5\u21922.0, 3.0\u21924.0). As alternative, I'd test a breakout strategy with ATR volatility scaling or a simple moving average crossover with dynamic position sizing."
+        },
+        "scoring": {
+          "continuous_score": -88.00333768250852,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -35.520445838515215,
+            "return": -4.816225177326629,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.8333333333333333,
+            "win_rate": -4.5
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "MACD zero cross provides a reliable momentum signal that benefits from ATR-based risk management to filter out low-volatility noise and ensure profitable setups. This approach avoids overfitting by using only two well-established indicators with clear entry/exit logic.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "stop",
+      "sharpe": -20.0,
+      "return_pct": -264.49185577188985,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.5770113736496048,
+      "win_rate_pct": 33.648648648648646,
+      "trades": 740,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -19.33662291887521,
+          "trades_confidence": 10.0,
+          "win_rate": -0.40540540540540637
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -264.5%, PF 0.58, Expectancy -35.74"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 3517.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.6%, Trades 740, AvgW/L 144.90/127.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 29635,
+          "long_signals": 473,
+          "short_signals": 441,
+          "total_signals": 914,
+          "signal_density": 0.03084190990382993,
+          "transition_signals": 914,
+          "transition_density": 0.03084190990382993,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy suffers from overfitting risk due to the simplistic MACD zero-cross entry rule, which may generate false signals during ranging markets. The exit logic is flawed - exiting on MACD cross is counterintuitive and likely to cause early exits. ATR-based risk management is good, but the 1.5x/3.0x multipliers may be too tight or loose without proper optimization. The strategy lacks robustness testing across different market regimes and may be highly sensitive to lookback period settings.\n[Backup plan] If results are poor, I'd switch to a MACD histogram-based entry (histogram crossing above zero) with fixed take-profit/stop-loss levels instead of ATR multipliers. If Sharpe is mediocre, I'd optimize ATR period and multiplier values (e.g., 10-period ATR with 2.0x/4.0x), or add a volatility filter. As alternative, I'd test a dual-threshold MACD strategy with RSI confirmation to reduce false signals and improve entry quality."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -19.33662291887521,
+            "trades_confidence": 10.0,
+            "win_rate": -0.40540540540540637
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 6
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 2,
+      "hypothesis": "Adding RSI as a momentum filter reduces false signals from MACD crossovers by ensuring entries occur only when momentum is strong, while maintaining ATR-based risk management to adapt to volatility.",
+      "change_type": "logic",
+      "diagnostic_category": "needs_work",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.3334335380278089,
+      "return_pct": -10.254563104826648,
+      "max_drawdown_pct": -20.580032932678215,
+      "profit_factor": 0.8354521956012949,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 69,
+      "continuous_score": -31.025032445814247,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -9.33613906477865,
+          "return": -11.280019415309313,
+          "profit_factor": -7.522185343940804,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 0.3866886217854765,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -10.3%, PF 0.84, Expectancy -14.86"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 20.6%, Vol 20.5%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.333, Sortino -0.330, Calmar -0.584"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 69, AvgW/L 226.37/135.48"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 29635,
+          "long_signals": 29,
+          "short_signals": 43,
+          "total_signals": 72,
+          "signal_density": 0.0024295596423148306,
+          "transition_signals": 72,
+          "transition_density": 0.0024295596423148306,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's main weaknesses are overfitting to SIGNUSDC's specific volatility patterns, rigid RSI filters that may miss momentum shifts, and potential look-ahead bias in crossover signals. The 1.5x ATR stop-loss might be too tight for SIGNUSDC's volatility, while 3x TP could be too aggressive. The combination of MACD crossover with RSI filter may generate false signals during ranging markets.\n[Backup plan] If results are poor, I'd simplify to pure MACD crossover with dynamic ATR-based stops (1.0x-2.0x ATR) and remove RSI filter. If mediocre Sharpe, I'd adjust RSI threshold to 45-55 and TP to 2.0x ATR. Alternative: switch to mean-reversion filter (BBands) or volatility breakout approach using ATR multiples."
+        },
+        "scoring": {
+          "continuous_score": -31.025032445814247,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -9.33613906477865,
+            "return": -11.280019415309313,
+            "profit_factor": -7.522185343940804,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 0.3866886217854765,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining RSI momentum with Bollinger Band volatility filtering creates a robust entry signal that avoids false breakouts in low-volatility environments, while ATR-based risk management ensures consistent reward-to-risk ratios across varying market conditions",
+      "change_type": "logic",
+      "diagnostic_category": "needs_work",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -1.2685873513755435,
+      "return_pct": -4.37838652484239,
+      "max_drawdown_pct": -4.37838652484239,
+      "profit_factor": 0.1599263484298397,
+      "win_rate_pct": 20.0,
+      "trades": 5,
+      "continuous_score": -88.00333768250852,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -35.520445838515215,
+          "return": -4.816225177326629,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.8333333333333333,
+          "win_rate": -4.5
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -4.4%, PF 0.16, Expectancy -87.57"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 4.4%, Vol 2.8%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -1.269, Sortino -0.261, Calmar -1.178"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 20.0%, Trades 5, AvgW/L 83.35/130.30"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 29635,
+          "long_signals": 4,
+          "short_signals": 1,
+          "total_signals": 5,
+          "signal_density": 0.00016871941960519654,
+          "transition_signals": 5,
+          "transition_density": 0.00016871941960519654,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy suffers from overfitting risks with multiple crossover conditions and lacks robustness in trending vs mean-reverting markets. The Bollinger Band filtering may generate whipsaws in sideways conditions, while RSI-based entries can lag during strong trends. The fixed 30-70 RSI exit thresholds are likely too rigid for varying market conditions.\n[Backup plan] If results are poor, I'd simplify to pure RSI momentum with ATR stops (RSI < 30 for long entries, 1.5x ATR stop, 3x ATR profit target). If mediocre Sharpe, I'd adjust RSI periods (14\u219221) and widen ATR multipliers (1.5\u21922.0, 3.0\u21924.0). As alternative, I'd test a breakout strategy with ATR volatility scaling or a simple moving average crossover with dynamic position sizing."
+        },
+        "scoring": {
+          "continuous_score": -88.00333768250852,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -35.520445838515215,
+            "return": -4.816225177326629,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.8333333333333333,
+            "win_rate": -4.5
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 1,
+      "hypothesis": "MACD zero cross provides a reliable momentum signal for trend entry, while ATR-based risk management ensures position sizing adapts to volatility, reducing loss magnitude during choppy market conditions",
+      "change_type": "both",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -264.49185577188985,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.5770113736496048,
+      "win_rate_pct": 33.648648648648646,
+      "trades": 740,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -19.33662291887521,
+          "trades_confidence": 10.0,
+          "win_rate": -0.40540540540540637
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -264.5%, PF 0.58, Expectancy -35.74"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 3517.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.6%, Trades 740, AvgW/L 144.90/127.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 29635,
+          "long_signals": 473,
+          "short_signals": 441,
+          "total_signals": 914,
+          "signal_density": 0.03084190990382993,
+          "transition_signals": 914,
+          "transition_density": 0.03084190990382993,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy risks false signals from MACD zero cross in ranging markets, potential whipsaws from sudden volatility spikes, and may miss trends if entries occur at market peaks. The fixed ATR multipliers (1.5x/3.0x) might be too rigid for varying market conditions, and the simple crossover logic could generate excessive trades during consolidation phases.\n[Backup plan] If results are poor, I'd test MACD histogram crossovers instead of simple lines, add a volatility filter (ATR > X period average) to reduce false signals. If mediocre Sharpe, I'd optimize ATR multipliers (try 2.0x/4.0x) and add a minimum price change filter. Alternative: Switch to a mean-reversion approach using Bollinger Bands or RSI divergence for SIGNUSDC's momentum swings, or implement a trend filter (like 20-period MA) to avoid counter-trend entries."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -19.33662291887521,
+            "trades_confidence": 10.0,
+            "win_rate": -0.40540540540540637
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "decision": {
+          "stop_overridden": true
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining MACD zero-cross entry with ATR-based risk management filters out weak momentum signals and provides clear volatility-adjusted stop-loss/take-profit levels, improving risk-reward profile over simple trend-following approaches.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -264.49185577188985,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.5770113736496048,
+      "win_rate_pct": 33.648648648648646,
+      "trades": 740,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -19.33662291887521,
+          "trades_confidence": 10.0,
+          "win_rate": -0.40540540540540637
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -264.5%, PF 0.58, Expectancy -35.74"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 3517.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.6%, Trades 740, AvgW/L 144.90/127.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 29635,
+          "long_signals": 473,
+          "short_signals": 441,
+          "total_signals": 914,
+          "signal_density": 0.03084190990382993,
+          "transition_signals": 914,
+          "transition_density": 0.03084190990382993,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy suffers from overfitting risk due to the strict zero-cross entry rule, potential whipsaws in choppy markets, and may generate frequent false signals. The 1.5x/3.0x ATR levels might be too tight or loose depending on volatility regime. The exit logic using signal line cross is problematic as it's not a standard risk management approach.\n[Backup plan] If poor results, try: 1) Add price filter (e.g., close above 20-day EMA) to reduce false signals, 2) Adjust ATR multipliers to 2.0x/4.0x, 3) Implement trailing stop instead of fixed TP/SL. Alternative: Switch to RSI-based momentum with dynamic thresholds and volatility-adjusted position sizing."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -19.33662291887521,
+            "trades_confidence": 10.0,
+            "win_rate": -0.40540540540540637
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining MACD zero-cross with ATR-based risk management filters out weak momentum signals and reduces whipsaw losses, improving risk-adjusted returns by ensuring entries only occur during strong volatility regimes.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -264.49185577188985,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.5770113736496048,
+      "win_rate_pct": 33.648648648648646,
+      "trades": 740,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -19.33662291887521,
+          "trades_confidence": 10.0,
+          "win_rate": -0.40540540540540637
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -264.5%, PF 0.58, Expectancy -35.74"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 3517.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.6%, Trades 740, AvgW/L 144.90/127.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 29635,
+          "long_signals": 473,
+          "short_signals": 441,
+          "total_signals": 914,
+          "signal_density": 0.03084190990382993,
+          "transition_signals": 914,
+          "transition_density": 0.03084190990382993,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy suffers from overfitting to MACD zero-cross signals, which are prone to false signals and whipsaws. The fixed ATR multipliers (1.5x/3.0x) may be too rigid for varying market conditions, and the exit rules based on MACD signal line cross are too simplistic. The strategy likely generates excessive trading frequency with poor risk-adjusted returns.\n[Backup plan] If results are poor, I'd switch to a MACD histogram-based entry filter with a minimum threshold (e.g., hist > 0.1) and add a volatility regime filter (ATR > 20-period average). If mediocre Sharpe, I'd optimize ATR multipliers (1.0x/2.0x) and add a minimum price change filter. As alternative, I'd test a momentum filter using 20-period ROC > 0 with dynamic ATR stops."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -19.33662291887521,
+            "trades_confidence": 10.0,
+            "win_rate": -0.40540540540540637
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "MACD zero cross provides a reliable momentum signal that benefits from ATR-based risk management to filter out low-volatility noise and ensure profitable setups. This approach avoids overfitting by using only two well-established indicators with clear entry/exit logic.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "stop",
+      "sharpe": -20.0,
+      "return_pct": -264.49185577188985,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.5770113736496048,
+      "win_rate_pct": 33.648648648648646,
+      "trades": 740,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -19.33662291887521,
+          "trades_confidence": 10.0,
+          "win_rate": -0.40540540540540637
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -264.5%, PF 0.58, Expectancy -35.74"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 3517.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.6%, Trades 740, AvgW/L 144.90/127.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 29635,
+          "long_signals": 473,
+          "short_signals": 441,
+          "total_signals": 914,
+          "signal_density": 0.03084190990382993,
+          "transition_signals": 914,
+          "transition_density": 0.03084190990382993,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy suffers from overfitting risk due to the simplistic MACD zero-cross entry rule, which may generate false signals during ranging markets. The exit logic is flawed - exiting on MACD cross is counterintuitive and likely to cause early exits. ATR-based risk management is good, but the 1.5x/3.0x multipliers may be too tight or loose without proper optimization. The strategy lacks robustness testing across different market regimes and may be highly sensitive to lookback period settings.\n[Backup plan] If results are poor, I'd switch to a MACD histogram-based entry (histogram crossing above zero) with fixed take-profit/stop-loss levels instead of ATR multipliers. If Sharpe is mediocre, I'd optimize ATR period and multiplier values (e.g., 10-period ATR with 2.0x/4.0x), or add a volatility filter. As alternative, I'd test a dual-threshold MACD strategy with RSI confirmation to reduce false signals and improve entry quality."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -19.33662291887521,
+            "trades_confidence": 10.0,
+            "win_rate": -0.40540540540540637
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 6
+    }
+  ]
+}

@@ -98,6 +98,13 @@ def main() -> None:
 
     best_pnl_tracker = install_best_pnl_tracker()
 
+    try:
+        from ui.builder_view import restore_builder_autonomous_ui_state_from_runtime
+
+        restore_builder_autonomous_ui_state_from_runtime()
+    except Exception:
+        pass
+
     if not BACKEND_AVAILABLE:
         _clear_execution_lock()
         st.error("❌ Backend non disponible")

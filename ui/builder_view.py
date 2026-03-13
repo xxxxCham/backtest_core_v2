@@ -7,7 +7,7 @@ Role in pipeline: UI / interaction utilisateur
 
 Key components: render_builder_view, render_iteration_card, render_session_summary
 
-Inputs: SidebarState (builder_objective, builder_model, etc.), DataFrame OHLCV
+Inputs: SidebarState (builder_objective, builder_model_single_llm, etc.), DataFrame OHLCV
 
 Outputs: Affichage interactif des itérations et résultats du builder
 
@@ -23,10 +23,14 @@ Skip-if: Logique backend du builder (voir agents/strategy_builder.py)
 from __future__ import annotations
 
 import csv
+import html
 import io
 import json
 import logging
+import math
+import os
 import random
+import threading
 import time
 import traceback
 import re
@@ -38,6 +42,14 @@ from urllib.parse import urlparse
 import streamlit as st
 
 import httpx
+
+try:
+    import psutil
+
+    _HAS_PSUTIL = True
+except Exception:
+    psutil = None
+    _HAS_PSUTIL = False
 
 # ── Logging de diagnostic (TEMPORAIRE) ──
 logger = logging.getLogger(__name__)
@@ -72,12 +84,33 @@ from agents.thought_stream import STREAM_FILE
 from ui.helpers import _maybe_auto_save_run, safe_load_data, show_status
 
 try:
-    from core.llm_multi import DEFAULT_MULTI_LLM_PROFILE, MultiLLMSessionManager
+    from core.llm_multi import (
+        DEFAULT_MULTI_LLM_PROFILE,
+        MultiLLMSessionManager,
+        discover_local_models,
+    )
+    from core.llm_multi.roles import SIMPLE_MULTI_LLM_ACTIVE_ROLES
 
     _MULTI_LLM_RUNTIME_AVAILABLE = True
 except ImportError:
     DEFAULT_MULTI_LLM_PROFILE = "24GB_balanced"
     _MULTI_LLM_RUNTIME_AVAILABLE = False
+    discover_local_models = None
+    SIMPLE_MULTI_LLM_ACTIVE_ROLES = (
+        "idea_llm",
+        "builder_llm",
+        "critic_llm",
+        "risk_llm",
+    )
+
+from ui.state import (
+    BUILDER_AUTO_START_OLLAMA_DEFAULT,
+    BUILDER_KEEP_ALIVE_MINUTES_DEFAULT,
+    BUILDER_PRELOAD_MODEL_DEFAULT,
+    BUILDER_UNLOAD_AFTER_RUN_DEFAULT,
+    normalize_builder_multi_llm_role_pool_overrides,
+    resolve_builder_runtime_preferences,
+)
 
 
 _AUTONOMOUS_SUPERVISOR_STATE_FILE = SANDBOX_ROOT / "_autonomous_supervisor_state.json"
@@ -118,6 +151,28 @@ _STREAM_CODE_LINE_PREFIXES = (
     "sl_",
     "tp_",
 )
+
+
+def _safe_numeric_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def _format_optional_float(value: Any, pattern: str, default: str = "n/a") -> str:
+    try:
+        if value is None:
+            return default
+        return pattern.format(float(value))
+    except Exception:
+        return default
+
+
+def _history_best_sharpe(history: List[Dict[str, Any]]) -> float:
+    return max((_safe_numeric_float(item.get("best_sharpe"), 0.0) for item in history), default=0.0)
 
 
 def _extract_code_from_stream_text(text: str) -> str:
@@ -232,12 +287,20 @@ def _default_autonomous_runtime_state() -> Dict[str, Any]:
         "last_session_num": 0,
         "last_session_id": "",
         "last_session_status": "",
+        "last_progress_at": "",
+        "last_progress_event": "",
+        "last_progress_phase": "",
+        "last_progress_iteration": 0,
+        "pid": 0,
+        "process_rss_mb": 0.0,
+        "system_available_ram_mb": 0.0,
         "model": "",
         "ollama_host": "",
         "requested_source_mode": "",
         "effective_source_mode": "",
         "auto_market_pick": False,
         "resume_count": 0,
+        "resume_ui_state": {},
     }
 
 
@@ -256,6 +319,40 @@ def _parse_runtime_timestamp(value: Any) -> Optional[datetime]:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _collect_autonomous_runtime_process_metrics() -> Dict[str, Any]:
+    metrics: Dict[str, Any] = {
+        "pid": 0,
+        "process_rss_mb": 0.0,
+        "system_available_ram_mb": 0.0,
+    }
+    try:
+        metrics["pid"] = int(os.getpid())
+    except Exception:
+        metrics["pid"] = 0
+
+    if not _HAS_PSUTIL:
+        return metrics
+
+    try:
+        process = psutil.Process()
+        metrics["process_rss_mb"] = round(
+            float(process.memory_info().rss) / (1024.0 ** 2),
+            1,
+        )
+    except Exception:
+        metrics["process_rss_mb"] = 0.0
+
+    try:
+        metrics["system_available_ram_mb"] = round(
+            float(psutil.virtual_memory().available) / (1024.0 ** 2),
+            1,
+        )
+    except Exception:
+        metrics["system_available_ram_mb"] = 0.0
+
+    return metrics
 
 
 def _recent_soft_reset_timestamps(
@@ -409,12 +506,155 @@ def should_auto_resume_builder_autonomous(state: Any) -> tuple[bool, Dict[str, A
     return should_resume, payload
 
 
+def _build_builder_autonomous_resume_ui_state(state: Any) -> Dict[str, Any]:
+    role_overrides = normalize_builder_multi_llm_role_pool_overrides(
+        getattr(state, "builder_multi_llm_role_overrides", {}) or {}
+    )
+    return {
+        "builder_execution_mode": str(
+            getattr(state, "builder_execution_mode", "mono_single_llm")
+            or "mono_single_llm"
+        ),
+        "builder_model_single_llm": str(
+            getattr(state, "builder_model_single_llm", "") or ""
+        ),
+        "builder_ollama_host": str(
+            getattr(state, "builder_ollama_host", "") or ""
+        ),
+        "builder_auto_pause": int(getattr(state, "builder_auto_pause", 10) or 10),
+        "builder_auto_use_llm": bool(getattr(state, "builder_auto_use_llm", True)),
+        "builder_auto_market_pick": bool(
+            getattr(state, "builder_auto_market_pick", False)
+        ),
+        "builder_preload_model": bool(
+            getattr(state, "builder_preload_model", True)
+        ),
+        "builder_keep_alive_minutes": int(
+            getattr(state, "builder_keep_alive_minutes", 20) or 20
+        ),
+        "builder_unload_after_run": bool(
+            getattr(state, "builder_unload_after_run", True)
+        ),
+        "builder_auto_start_ollama": bool(
+            getattr(state, "builder_auto_start_ollama", True)
+        ),
+        "builder_multi_llm_enabled": bool(
+            getattr(state, "builder_multi_llm_enabled", False)
+        ),
+        "builder_multi_llm_profile": str(
+            getattr(state, "builder_multi_llm_profile", "") or ""
+        ),
+        "builder_multi_llm_role_overrides": {
+            str(role): list(models)
+            for role, models in role_overrides.items()
+            if str(role).strip() and list(models)
+        },
+        "builder_dual_lane_primary_model": str(
+            getattr(state, "builder_dual_lane_primary_model", "") or ""
+        ),
+        "builder_dual_lane_critic_model": str(
+            getattr(state, "builder_dual_lane_critic_model", "") or ""
+        ),
+    }
+
+
+def restore_builder_autonomous_ui_state_from_runtime() -> tuple[bool, Dict[str, Any]]:
+    """Restaure le mode Builder autonome dans la session Streamlit après redémarrage."""
+    payload = _load_autonomous_runtime_state()
+    should_resume = bool(payload.get("active")) and not bool(payload.get("manual_stop"))
+    if not should_resume:
+        return False, payload
+
+    resume_ui_state = payload.get("resume_ui_state", {})
+    if not isinstance(resume_ui_state, dict):
+        resume_ui_state = {}
+
+    st.session_state["optimization_mode"] = "🏗️ Strategy Builder"
+    st.session_state["exec_mode_selector"] = "🏗️ Strategy Builder"
+    st.session_state["builder_autonomous"] = True
+    st.session_state["builder_autonomous_toggle"] = True
+
+    builder_execution_mode = str(
+        resume_ui_state.get("builder_execution_mode", "") or ""
+    ).strip()
+    if builder_execution_mode:
+        st.session_state["builder_execution_mode"] = builder_execution_mode
+        st.session_state["builder_execution_mode_select"] = builder_execution_mode
+
+    builder_model_single_llm = str(
+        resume_ui_state.get("builder_model_single_llm", "") or ""
+    ).strip()
+    if builder_model_single_llm:
+        st.session_state["builder_model_single_llm"] = builder_model_single_llm
+
+    builder_ollama_host = str(
+        resume_ui_state.get("builder_ollama_host", "") or ""
+    ).strip()
+    if builder_ollama_host:
+        st.session_state["builder_ollama_host"] = builder_ollama_host
+
+    if "builder_auto_pause" in resume_ui_state:
+        pause_value = int(resume_ui_state.get("builder_auto_pause", 10) or 10)
+        st.session_state["builder_auto_pause"] = pause_value
+        st.session_state["builder_auto_pause_slider"] = pause_value
+
+    for name, widget_key in (
+        ("builder_auto_use_llm", "builder_auto_use_llm_toggle"),
+        ("builder_auto_market_pick", "builder_auto_market_pick_toggle"),
+        ("builder_preload_model", "builder_preload_model_toggle"),
+        ("builder_unload_after_run", "builder_unload_after_run_toggle"),
+        ("builder_auto_start_ollama", "builder_auto_start_ollama_toggle"),
+        ("builder_multi_llm_enabled", "builder_multi_llm_enabled_toggle"),
+    ):
+        if name not in resume_ui_state:
+            continue
+        value = bool(resume_ui_state.get(name))
+        st.session_state[name] = value
+        st.session_state[widget_key] = value
+
+    if "builder_keep_alive_minutes" in resume_ui_state:
+        keep_alive = int(
+            resume_ui_state.get("builder_keep_alive_minutes", 20) or 20
+        )
+        st.session_state["builder_keep_alive_minutes"] = keep_alive
+        st.session_state["builder_keep_alive_minutes_input"] = keep_alive
+
+    builder_multi_llm_profile = str(
+        resume_ui_state.get("builder_multi_llm_profile", "") or ""
+    ).strip()
+    if builder_multi_llm_profile:
+        st.session_state["builder_multi_llm_profile"] = builder_multi_llm_profile
+        st.session_state["builder_multi_llm_profile_select"] = (
+            builder_multi_llm_profile
+        )
+
+    role_overrides = resume_ui_state.get("builder_multi_llm_role_overrides", {})
+    if isinstance(role_overrides, dict):
+        cleaned_role_overrides = normalize_builder_multi_llm_role_pool_overrides(
+            role_overrides
+        )
+        st.session_state["builder_multi_llm_role_overrides"] = cleaned_role_overrides
+
+    for name, widget_key in (
+        ("builder_dual_lane_primary_model", "builder_dual_lane_primary_model_select"),
+        ("builder_dual_lane_critic_model", "builder_dual_lane_critic_model_select"),
+    ):
+        value = str(resume_ui_state.get(name, "") or "").strip()
+        if not value:
+            continue
+        st.session_state[name] = value
+        st.session_state[widget_key] = value
+
+    return True, payload
+
+
 def _mark_builder_autonomous_runtime_started(
     *,
     model: str,
     ollama_host: str,
     requested_source_mode: str,
     auto_market_pick: bool,
+    resume_ui_state: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     runtime = _load_autonomous_runtime_state()
     was_active = bool(runtime.get("active"))
@@ -426,11 +666,19 @@ def _mark_builder_autonomous_runtime_started(
     runtime["last_event"] = "autonomous_started"
     runtime["last_error"] = ""
     runtime["last_stop_reason"] = ""
+    runtime["last_progress_at"] = _utc_now_iso()
+    runtime["last_progress_event"] = "session_start"
+    runtime["last_progress_phase"] = "initialisation"
+    runtime["last_progress_iteration"] = 0
     runtime["model"] = str(model or "")
     runtime["ollama_host"] = str(ollama_host or "")
     runtime["requested_source_mode"] = str(requested_source_mode or "")
     runtime["effective_source_mode"] = ""
     runtime["auto_market_pick"] = bool(auto_market_pick)
+    runtime["resume_ui_state"] = (
+        dict(resume_ui_state) if isinstance(resume_ui_state, dict) else {}
+    )
+    runtime.update(_collect_autonomous_runtime_process_metrics())
     if was_active:
         runtime["resume_count"] = int(runtime.get("resume_count", 0) or 0) + 1
     _save_autonomous_runtime_state(runtime)
@@ -440,6 +688,7 @@ def _mark_builder_autonomous_runtime_started(
 def _heartbeat_builder_autonomous_runtime(**updates: Any) -> Dict[str, Any]:
     runtime = _load_autonomous_runtime_state()
     runtime["last_heartbeat_at"] = _utc_now_iso()
+    runtime.update(_collect_autonomous_runtime_process_metrics())
     for key, value in updates.items():
         if key in runtime:
             runtime[key] = value
@@ -460,6 +709,7 @@ def mark_builder_autonomous_runtime_stopped(
     runtime["last_event"] = "autonomous_stopped"
     runtime["last_stop_reason"] = str(reason or "")
     runtime["last_error"] = str(error or "")
+    runtime.update(_collect_autonomous_runtime_process_metrics())
     _save_autonomous_runtime_state(runtime)
     return runtime
 
@@ -504,6 +754,45 @@ def _history_entry_is_robust(entry: Dict[str, Any]) -> bool:
         and max_dd <= 45.0
         and trades >= 20
     )
+
+
+def _get_autonomous_recap_status_badge(entry: Dict[str, Any]) -> Dict[str, str]:
+    """Détermine le badge affiché dans le récapitulatif Builder autonome."""
+    status = str(entry.get("status", "") or "").strip().lower()
+    raw_return = entry.get("best_return")
+    return_pct: Optional[float] = None
+
+    try:
+        if raw_return not in (None, ""):
+            return_pct = float(raw_return)
+            if not math.isfinite(return_pct):
+                return_pct = None
+    except Exception:
+        return_pct = None
+
+    if return_pct is not None and return_pct > 0.0:
+        label = "max_iterations" if status == "max_iterations" else "succes"
+        return {"icon": "✚", "label": label, "tone": "positive"}
+
+    if return_pct is not None and return_pct < 0.0:
+        return {"icon": "−", "label": "negatif", "tone": "negative"}
+
+    fallback_badges = {
+        "success": {"icon": "✚", "label": "succes", "tone": "positive"},
+        "max_iterations": {"icon": "⏱️", "label": "max_iterations", "tone": "neutral"},
+        "failed": {"icon": "✖", "label": "echec", "tone": "crash"},
+        "error": {"icon": "✖", "label": "erreur", "tone": "crash"},
+        "crash": {"icon": "✖", "label": "crash", "tone": "crash"},
+        "running": {"icon": "…", "label": "en cours", "tone": "neutral"},
+    }
+    return fallback_badges.get(
+        status,
+        {"icon": "✖", "label": status or "incoherent", "tone": "crash"},
+    )
+
+
+def _escape_autonomous_recap_cell(value: Any) -> str:
+    return html.escape(str(value or "")).replace("\n", " ").replace("|", "&#124;")
 
 
 def _choose_autonomous_objective_mode(
@@ -920,8 +1209,8 @@ def render_iteration_card(
 def render_session_summary(session: Any) -> None:
     """Affiche le résumé final de la session builder."""
     status = getattr(session, "status", "unknown")
-    best_sharpe = getattr(session, "best_sharpe", float("-inf"))
-    best_score = getattr(session, "best_score", float("-inf"))
+    best_sharpe_raw = getattr(session, "best_sharpe", None)
+    best_score_raw = getattr(session, "best_score", None)
     n_iters = len(getattr(session, "iterations", []))
 
     # Statut global
@@ -934,9 +1223,10 @@ def render_session_summary(session: Any) -> None:
     icon, label = status_map.get(status, ("❓", status))
 
     st.markdown(f"### {icon} {label}")
-    score_txt = "n/a" if best_score == float("-inf") else f"{best_score:.2f}"
+    sharpe_txt = _format_optional_float(best_sharpe_raw, "{:.3f}")
+    score_txt = _format_optional_float(best_score_raw, "{:.2f}")
     st.markdown(
-        f"**Itérations:** {n_iters} | **Meilleur Sharpe:** {best_sharpe:.3f} | "
+        f"**Itérations:** {n_iters} | **Meilleur Sharpe:** {sharpe_txt} | "
         f"**Meilleur Score:** {score_txt}"
     )
 
@@ -1267,12 +1557,19 @@ def _prepare_builder_llm(
     preload_model: bool,
     keep_alive_minutes: int,
     auto_start_ollama: bool,
+    gpu_target: str | None = None,
     allow_model_fallback: bool = False,
 ) -> tuple[bool, str, str]:
     """Prépare Ollama + modèle pour le Strategy Builder (check + warmup)."""
     ollama_host = _normalize_ollama_host(ollama_host)
     if auto_start_ollama and _is_local_ollama_host(ollama_host):
-        ok, msg = ensure_ollama_running(ollama_host=ollama_host)
+        try:
+            ok, msg = ensure_ollama_running(
+                ollama_host=ollama_host,
+                gpu_target=gpu_target,
+            )
+        except TypeError:
+            ok, msg = ensure_ollama_running(ollama_host=ollama_host)
         if not ok:
             return False, msg, model
 
@@ -1442,6 +1739,32 @@ def _stable_random_pick(session_key: str, candidates: List[str], fallback: str) 
     picked = random.choice(normalized)
     st.session_state[session_key] = picked
     return picked
+
+
+def _pick_builder_session_role_overrides(
+    role_pools: Dict[str, List[str]],
+) -> Dict[str, str]:
+    selected: Dict[str, str] = {}
+    for role in SIMPLE_MULTI_LLM_ACTIVE_ROLES:
+        pool = [
+            str(candidate or "").strip()
+            for candidate in list(role_pools.get(role, []) or [])
+            if str(candidate or "").strip()
+        ]
+        if not pool:
+            continue
+        selected[role] = random.choice(pool)
+    return selected
+
+
+def _format_builder_role_pool_summary(role_pools: Dict[str, List[str]]) -> str:
+    parts: List[str] = []
+    for role in SIMPLE_MULTI_LLM_ACTIVE_ROLES:
+        pool = list(role_pools.get(role, []) or [])
+        if not pool:
+            continue
+        parts.append(f"{role}=[{' | '.join(pool)}]")
+    return ", ".join(parts)
 
 
 def _pick_non_recent_market(
@@ -1623,6 +1946,193 @@ def _has_builder_market_df(df: Any) -> bool:
         return len(df) > 0
     except Exception:
         return False
+
+
+def _release_runtime_ollama_model(
+    *,
+    model: str,
+    ollama_host: str,
+) -> tuple[bool, str]:
+    """Décharge proprement un modèle si encore présent en mémoire."""
+    normalized_model = str(model or "").strip()
+    if not normalized_model:
+        return True, "aucun modele a liberer"
+    unloaded = _unload_ollama_model(model=normalized_model, ollama_host=ollama_host)
+    if unloaded:
+        return True, f"modele `{normalized_model}` decharge"
+    loaded, loaded_detail = _is_model_loaded_in_ollama_ps(
+        model=normalized_model,
+        ollama_host=ollama_host,
+    )
+    if not loaded:
+        return True, f"modele `{normalized_model}` deja libere ({loaded_detail})"
+    return False, f"impossible de decharger `{normalized_model}` ({loaded_detail})"
+
+
+def _ensure_multi_llm_runtime_hosts(
+    manager: Optional["MultiLLMSessionManager"],
+    *,
+    active_roles: Optional[List[str]] = None,
+) -> tuple[bool, List[str]]:
+    if manager is None:
+        return True, []
+
+    ensured_messages: List[str] = []
+    seen_hosts: set[tuple[str, str]] = set()
+    roles = active_roles or list(SIMPLE_MULTI_LLM_ACTIVE_ROLES)
+    for role in roles:
+        assignment = manager.resolve_role_assignment(role)
+        if (
+            assignment is None
+            or not assignment.available
+            or assignment.backend != "ollama"
+            or not assignment.resolved_model
+        ):
+            continue
+        route = manager.resolve_role_route(role)
+        host_key = (
+            str(route.ollama_host or "").strip(),
+            str(route.gpu_target or "").strip(),
+        )
+        if host_key in seen_hosts:
+            continue
+        seen_hosts.add(host_key)
+        ok, msg = ensure_ollama_running(
+            ollama_host=route.ollama_host,
+            gpu_target=route.gpu_target or None,
+        )
+        if not ok:
+            return False, [msg]
+        ensured_messages.append(msg)
+    return True, ensured_messages
+
+
+def _release_multi_llm_runtime(
+    manager: Optional["MultiLLMSessionManager"],
+) -> List[Dict[str, Any]]:
+    if manager is None:
+        return []
+    try:
+        return manager.release_runtime_models()
+    except Exception as exc:
+        logger.warning("builder_multi_llm_runtime_release_failed error=%s", exc)
+        return []
+
+
+def _build_builder_runtime_diagnostic_payload(
+    manager: Optional["MultiLLMSessionManager"],
+    *,
+    mode: str,
+    event: str,
+    phase: str,
+    iteration: int,
+    max_iterations: int,
+    status: str = "",
+    session_label: str = "",
+    objective: str = "",
+) -> Dict[str, Any]:
+    snapshot = manager.runtime_flow_snapshot() if manager is not None else {}
+    objective_preview = " ".join(str(objective or "").split())
+    if len(objective_preview) > 220:
+        objective_preview = objective_preview[:220] + "..."
+    return {
+        "updated_at": _utc_now_iso(),
+        "mode": str(mode or "").strip() or "multi_llm",
+        "profile_name": str(
+            snapshot.get("profile_name", getattr(manager, "profile_name", "")) or ""
+        ),
+        "event": str(event or "").strip() or "-",
+        "phase": str(phase or "").strip() or "-",
+        "iteration": int(iteration or 0),
+        "max_iterations": int(max_iterations or 0),
+        "status": str(status or "").strip(),
+        "session_label": str(session_label or "").strip(),
+        "objective_preview": objective_preview,
+        "host_rows": list(snapshot.get("host_rows", []) or []),
+        "role_rows": list(snapshot.get("role_rows", []) or []),
+        "recent_events": list(snapshot.get("recent_events", []) or []),
+        "active_models_by_host": dict(snapshot.get("active_models_by_host", {}) or {}),
+        "missing_roles": list(snapshot.get("missing_roles", []) or []),
+    }
+
+
+def _render_builder_runtime_diagnostic_panel(
+    diagnostic: Dict[str, Any],
+    *,
+    placeholder: Any,
+    expanded: bool = False,
+) -> None:
+    with placeholder.container():
+        with st.expander("🛰️ Diagnostic runtime inter-modeles", expanded=expanded):
+            summary_parts = [
+                f"profil=`{diagnostic.get('profile_name', '-') or '-'}`",
+                f"event=`{diagnostic.get('event', '-') or '-'}`",
+                f"phase=`{diagnostic.get('phase', '-') or '-'}`",
+                f"iteration={int(diagnostic.get('iteration', 0) or 0)}/{int(diagnostic.get('max_iterations', 0) or 0)}",
+            ]
+            status = str(diagnostic.get("status", "") or "").strip()
+            if status:
+                summary_parts.append(f"status=`{status}`")
+            session_label = str(diagnostic.get("session_label", "") or "").strip()
+            if session_label:
+                summary_parts.append(session_label)
+            st.caption(" | ".join(summary_parts))
+
+            objective_preview = str(diagnostic.get("objective_preview", "") or "").strip()
+            if objective_preview:
+                st.caption(f"Objectif: {objective_preview}")
+
+            host_rows = list(diagnostic.get("host_rows", []) or [])
+            if host_rows:
+                st.markdown("**Hosts runtime**")
+                st.dataframe(host_rows, width="stretch", hide_index=True)
+
+            role_rows = list(diagnostic.get("role_rows", []) or [])
+            if role_rows:
+                st.markdown("**Roles actifs / resolus**")
+                st.dataframe(role_rows, width="stretch", hide_index=True)
+
+            recent_events = list(diagnostic.get("recent_events", []) or [])
+            if recent_events:
+                st.markdown("**Derniers switches observes**")
+                st.dataframe(recent_events, width="stretch", hide_index=True)
+            else:
+                st.caption("Aucun switch runtime enregistre pour cette session.")
+
+
+def _sync_builder_runtime_diagnostic(
+    manager: Optional["MultiLLMSessionManager"],
+    *,
+    mode: str,
+    event: str,
+    phase: str,
+    iteration: int,
+    max_iterations: int,
+    status: str = "",
+    session_label: str = "",
+    objective: str = "",
+    placeholder: Any = None,
+    expanded: bool = False,
+) -> Dict[str, Any]:
+    diagnostic = _build_builder_runtime_diagnostic_payload(
+        manager,
+        mode=mode,
+        event=event,
+        phase=phase,
+        iteration=iteration,
+        max_iterations=max_iterations,
+        status=status,
+        session_label=session_label,
+        objective=objective,
+    )
+    st.session_state["builder_runtime_diagnostic"] = diagnostic
+    if placeholder is not None:
+        _render_builder_runtime_diagnostic_panel(
+            diagnostic,
+            placeholder=placeholder,
+            expanded=expanded,
+        )
+    return diagnostic
 
 
 def _build_builder_market_probe_pairs(
@@ -1828,11 +2338,16 @@ def _run_single_builder_session(
     session_label: str = "",
     skip_llm_prepare: bool = False,
     show_config_caption: bool = True,
+    autonomous_runtime_watchdog: bool = False,
+    phase_llm_clients: Optional[Dict[str, Any]] = None,
+    multi_llm_manager: Optional["MultiLLMSessionManager"] = None,
 ) -> Any:
     """Exécute une session builder unique et affiche les résultats.
 
     Args:
         skip_llm_prepare: Si True, ne pas refaire les checks/warmup (déjà fait en amont).
+        autonomous_runtime_watchdog: Si True, émet un heartbeat périodique
+            et des métriques process pour permettre une relance externe.
 
     Returns:
         BuilderSession ou None en cas d'erreur/interruption.
@@ -1851,6 +2366,25 @@ def _run_single_builder_session(
 
     # Préchargement du modèle Ollama en VRAM
     runtime_model = model
+    runtime_model_released = False
+
+    def _release_runtime_model() -> None:
+        nonlocal runtime_model_released
+        if runtime_model_released or not unload_after_run:
+            return
+        runtime_model_released = True
+        with st.spinner(f"💾 Déchargement du modèle `{runtime_model}`…"):
+            released, detail = _release_runtime_ollama_model(
+                model=runtime_model,
+                ollama_host=ollama_host,
+            )
+            if released:
+                st.caption(f"✅ {detail}")
+                if st.session_state.get("builder_model_effective") == runtime_model:
+                    st.session_state["builder_model_effective"] = ""
+            else:
+                st.warning(f"⚠️ {detail}")
+
     if not skip_llm_prepare:
         with st.spinner(f"⏳ Préparation LLM `{model}` ({ollama_host})…"):
             ok, msg, resolved_model = _prepare_builder_llm(
@@ -1870,12 +2404,31 @@ def _run_single_builder_session(
                     )
             else:
                 st.error(f"❌ {msg}")
+                if unload_after_run and resolved_model:
+                    _release_runtime_ollama_model(
+                        model=resolved_model,
+                        ollama_host=ollama_host,
+                    )
                 return None
 
     st.session_state["builder_model_effective"] = runtime_model
 
     progress_bar = st.progress(0.0, text="Initialisation...")
     progress_detail_placeholder = st.empty()
+    runtime_diag_placeholder = st.empty() if multi_llm_manager is not None else None
+    if multi_llm_manager is not None and runtime_diag_placeholder is not None:
+        _sync_builder_runtime_diagnostic(
+            multi_llm_manager,
+            mode="multi_llm",
+            event="session_bootstrap",
+            phase="initialisation",
+            iteration=0,
+            max_iterations=max_iterations,
+            session_label=session_label,
+            objective=objective,
+            placeholder=runtime_diag_placeholder,
+            expanded=True,
+        )
 
     # Zone de streaming LLM
     stream_placeholder = st.empty()
@@ -1918,6 +2471,22 @@ def _run_single_builder_session(
                 "event": event,
             }
         )
+
+        if autonomous_runtime_watchdog:
+            try:
+                _heartbeat_builder_autonomous_runtime(
+                    last_event=f"builder_{event or 'progress'}",
+                    last_progress_at=_utc_now_iso(),
+                    last_progress_event=event,
+                    last_progress_phase=phase,
+                    last_progress_iteration=iteration,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "builder_autonomous_progress_heartbeat_failed event=%s error=%s",
+                    event,
+                    exc,
+                )
 
         phase_fraction = {
             "proposal": 0.18,
@@ -1983,6 +2552,19 @@ def _run_single_builder_session(
                         )
                     except Exception:
                         pass
+            if multi_llm_manager is not None and runtime_diag_placeholder is not None:
+                _sync_builder_runtime_diagnostic(
+                    multi_llm_manager,
+                    mode="multi_llm",
+                    event=event or "progress",
+                    phase=phase,
+                    iteration=iteration,
+                    max_iterations=max_iters,
+                    session_label=session_label,
+                    objective=objective,
+                    placeholder=runtime_diag_placeholder,
+                    expanded=True,
+                )
         except Exception:
             pass
 
@@ -2012,9 +2594,46 @@ def _run_single_builder_session(
         ollama_host=ollama_host,
     )
 
+    watchdog_stop_event = threading.Event()
+    watchdog_thread: Optional[threading.Thread] = None
+
+    def _autonomous_watchdog_loop() -> None:
+        while not watchdog_stop_event.wait(10.0):
+            try:
+                runtime_state = _load_autonomous_runtime_state()
+                if not bool(runtime_state.get("active")) or bool(runtime_state.get("manual_stop")):
+                    break
+                _heartbeat_builder_autonomous_runtime(
+                    last_event="session_heartbeat",
+                    last_progress_event=str(_progress_state.get("event", "") or ""),
+                    last_progress_phase=str(_progress_state.get("phase", "") or ""),
+                    last_progress_iteration=int(_progress_state.get("iteration", 0) or 0),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "builder_autonomous_watchdog_heartbeat_failed error=%s",
+                    exc,
+                )
+
+    if autonomous_runtime_watchdog:
+        _heartbeat_builder_autonomous_runtime(
+            last_event="builder_session_bootstrap",
+            last_progress_at=_utc_now_iso(),
+            last_progress_event="session_start",
+            last_progress_phase="initialisation",
+            last_progress_iteration=0,
+        )
+        watchdog_thread = threading.Thread(
+            target=_autonomous_watchdog_loop,
+            name="builder-autonomous-heartbeat",
+            daemon=True,
+        )
+        watchdog_thread.start()
+
     builder = StrategyBuilder(
         llm_config=llm_config,
         llm_topology_config=llm_topology_config,
+        phase_llm_clients=phase_llm_clients,
         stream_callback=_on_llm_stream,
         backtest_completed_callback=_maybe_auto_save_run,
         progress_callback=_on_builder_progress,
@@ -2044,12 +2663,47 @@ def _run_single_builder_session(
         except KeyboardInterrupt:
             live_status.update(label="⚠️ Interrompu", state="error")
             st.warning("Construction interrompue par l'utilisateur.")
+            if multi_llm_manager is not None and runtime_diag_placeholder is not None:
+                _sync_builder_runtime_diagnostic(
+                    multi_llm_manager,
+                    mode="multi_llm",
+                    event="session_interrupted",
+                    phase=str(_progress_state.get("phase", "") or "runtime"),
+                    iteration=int(_progress_state.get("iteration", 0) or 0),
+                    max_iterations=max_iterations,
+                    status="interrupted",
+                    session_label=session_label,
+                    objective=objective,
+                    placeholder=runtime_diag_placeholder,
+                    expanded=True,
+                )
+            _release_runtime_model()
             return None
         except Exception as exc:
             live_status.update(label=f"❌ Erreur: {exc}", state="error")
             show_status("error", f"Erreur Strategy Builder: {exc}")
             st.code(traceback.format_exc())
+            if multi_llm_manager is not None and runtime_diag_placeholder is not None:
+                _sync_builder_runtime_diagnostic(
+                    multi_llm_manager,
+                    mode="multi_llm",
+                    event="session_error",
+                    phase=str(_progress_state.get("phase", "") or "runtime"),
+                    iteration=int(_progress_state.get("iteration", 0) or 0),
+                    max_iterations=max_iterations,
+                    status="error",
+                    session_label=session_label,
+                    objective=objective,
+                    placeholder=runtime_diag_placeholder,
+                    expanded=True,
+                )
+            _release_runtime_model()
             return None
+        finally:
+            if autonomous_runtime_watchdog:
+                watchdog_stop_event.set()
+                if watchdog_thread is not None:
+                    watchdog_thread.join(timeout=2.0)
 
         elapsed = time.perf_counter() - start_time
         live_status.update(
@@ -2075,12 +2729,22 @@ def _run_single_builder_session(
         st.markdown("---")
         render_session_summary(session)
 
-    if unload_after_run:
-        with st.spinner(f"💾 Déchargement du modèle `{runtime_model}`…"):
-            if _unload_ollama_model(model=runtime_model, ollama_host=ollama_host):
-                st.caption(f"✅ Modèle `{runtime_model}` déchargé")
-            else:
-                st.warning(f"⚠️ Impossible de décharger `{runtime_model}`")
+    if multi_llm_manager is not None and runtime_diag_placeholder is not None:
+        _sync_builder_runtime_diagnostic(
+            multi_llm_manager,
+            mode="multi_llm",
+            event="session_done",
+            phase=str(_progress_state.get("phase", "") or "analysis"),
+            iteration=len(getattr(session, "iterations", []) or []),
+            max_iterations=max_iterations,
+            status=str(getattr(session, "status", "") or ""),
+            session_label=session_label,
+            objective=objective,
+            placeholder=runtime_diag_placeholder,
+            expanded=True,
+        )
+
+    _release_runtime_model()
 
     return session
 
@@ -2098,12 +2762,7 @@ def _render_autonomous_recap(
         return
 
     def _fmt_float(value: Any, pattern: str, default: str = "n/a") -> str:
-        try:
-            if value is None:
-                return default
-            return pattern.format(float(value))
-        except Exception:
-            return default
+        return _format_optional_float(value, pattern, default=default)
 
     def _fmt_int(value: Any, default: str = "n/a") -> str:
         try:
@@ -2126,9 +2785,7 @@ def _render_autonomous_recap(
             f"policy={str(supervisor.get('last_selected_source_reason', '-') or '-')}"
         )
 
-    header = "| # | Source | Objectif (résumé) | Statut | Score | Sharpe | Return | Max DD | Trades | Durée |"
-    separator = "|---|---|---|---|---|---|---|---|---|---|"
-    rows = [header, separator]
+    table_rows: List[str] = []
     export_rows: List[Dict[str, Any]] = []
 
     for i, h in enumerate(history, 1):
@@ -2148,19 +2805,32 @@ def _render_autonomous_recap(
         trades = h.get("best_trades")
         duration = h.get("duration", 0)
 
-        status_icon = {"success": "🏆", "max_iterations": "⏱️", "failed": "❌"}.get(
-            status, "❓"
+        badge = _get_autonomous_recap_status_badge(h)
+        status_html = (
+            f"<span class='builder-autonomous-recap-status "
+            f"builder-autonomous-recap-status--{badge['tone']}'>"
+            f"{_escape_autonomous_recap_cell(badge['icon'])} "
+            f"{_escape_autonomous_recap_cell(badge['label'])}</span>"
         )
-        rows.append(
-            f"| {i} | {source} | {obj_short} | {status_icon} {status} | "
-            f"{_fmt_float(score, '{:.2f}')} | {_fmt_float(sharpe, '{:.3f}')} | "
-            f"{_fmt_float(ret, '{:+.2f}%')} | {_fmt_float(max_dd, '{:.2f}%')} | "
-            f"{_fmt_int(trades)} | {duration:.0f}s |"
+        table_rows.append(
+            "<tr>"
+            f"<td class='builder-autonomous-recap-num'>{i}</td>"
+            f"<td>{_escape_autonomous_recap_cell(source)}</td>"
+            f"<td>{_escape_autonomous_recap_cell(obj_short)}</td>"
+            f"<td>{status_html}</td>"
+            f"<td class='builder-autonomous-recap-num'>{_escape_autonomous_recap_cell(_fmt_float(score, '{:.2f}'))}</td>"
+            f"<td class='builder-autonomous-recap-num'>{_escape_autonomous_recap_cell(_fmt_float(sharpe, '{:.3f}'))}</td>"
+            f"<td class='builder-autonomous-recap-num'>{_escape_autonomous_recap_cell(_fmt_float(ret, '{:+.2f}%'))}</td>"
+            f"<td class='builder-autonomous-recap-num'>{_escape_autonomous_recap_cell(_fmt_float(max_dd, '{:.2f}%'))}</td>"
+            f"<td class='builder-autonomous-recap-num'>{_escape_autonomous_recap_cell(_fmt_int(trades))}</td>"
+            f"<td class='builder-autonomous-recap-num'>{_escape_autonomous_recap_cell(f'{duration:.0f}s')}</td>"
+            "</tr>"
         )
         export_rows.append(
             {
                 "session_num": h.get("session_num"),
                 "status": status,
+                "status_display": f"{badge['icon']} {badge['label']}",
                 "best_score": score,
                 "best_sharpe": sharpe,
                 "best_return_pct": ret,
@@ -2181,7 +2851,63 @@ def _render_autonomous_recap(
             }
         )
 
-    st.markdown("\n".join(rows))
+    recap_table_html = """
+<style>
+.builder-autonomous-recap-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+}
+.builder-autonomous-recap-table th,
+.builder-autonomous-recap-table td {
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+    text-align: left;
+    vertical-align: top;
+}
+.builder-autonomous-recap-table th {
+    font-weight: 700;
+}
+.builder-autonomous-recap-num {
+    text-align: right;
+    white-space: nowrap;
+}
+.builder-autonomous-recap-status {
+    font-weight: 700;
+    white-space: nowrap;
+}
+.builder-autonomous-recap-status--positive {
+    color: #16a34a;
+}
+.builder-autonomous-recap-status--negative,
+.builder-autonomous-recap-status--crash {
+    color: #dc2626;
+}
+.builder-autonomous-recap-status--neutral {
+    color: #b45309;
+}
+</style>
+<table class="builder-autonomous-recap-table">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Source</th>
+      <th>Objectif (resume)</th>
+      <th>Statut</th>
+      <th>Score</th>
+      <th>Sharpe</th>
+      <th>Return</th>
+      <th>Max DD</th>
+      <th>Trades</th>
+      <th>Duree</th>
+    </tr>
+  </thead>
+  <tbody>
+""" + "\n".join(table_rows) + """
+  </tbody>
+</table>
+"""
+    st.markdown(recap_table_html, unsafe_allow_html=True)
 
     # Meilleur global
     if history:
@@ -2254,7 +2980,7 @@ def render_builder_view(
     - **Manuel** : exécute une session unique avec l'objectif saisi
     - **Autonome 24/24** : génère des objectifs automatiquement et boucle
     """
-    model = state.builder_model
+    model = state.builder_model_single_llm
     max_iterations = state.builder_max_iterations
     target_sharpe = state.builder_target_sharpe
     ollama_host = str(
@@ -2262,10 +2988,11 @@ def render_builder_view(
         or "http://127.0.0.1:11434"
     ).strip()
     ollama_host = _normalize_ollama_host(ollama_host)
-    preload_model = bool(getattr(state, "builder_preload_model", True))
-    keep_alive_minutes = int(getattr(state, "builder_keep_alive_minutes", 20))
-    unload_after_run = bool(getattr(state, "builder_unload_after_run", False))
-    auto_start_ollama = bool(getattr(state, "builder_auto_start_ollama", True))
+    runtime_preferences = resolve_builder_runtime_preferences(state)
+    preload_model = bool(runtime_preferences["builder_preload_model"])
+    keep_alive_minutes = int(runtime_preferences["builder_keep_alive_minutes"])
+    unload_after_run = bool(runtime_preferences["builder_unload_after_run"])
+    auto_start_ollama = bool(runtime_preferences["builder_auto_start_ollama"])
     auto_market_pick = bool(getattr(state, "builder_auto_market_pick", False))
     builder_multi_llm_enabled = bool(
         getattr(state, "builder_multi_llm_enabled", False)
@@ -2274,6 +3001,11 @@ def render_builder_view(
         getattr(state, "builder_multi_llm_profile", DEFAULT_MULTI_LLM_PROFILE)
         or DEFAULT_MULTI_LLM_PROFILE
     )
+    builder_multi_llm_role_overrides = normalize_builder_multi_llm_role_pool_overrides(
+        getattr(state, "builder_multi_llm_role_overrides", {}) or {}
+    )
+    if not builder_multi_llm_enabled:
+        st.session_state.pop("builder_runtime_diagnostic", None)
     capital_raw = getattr(state, "builder_capital", 10000.0)
     try:
         capital = float(capital_raw)
@@ -2358,8 +3090,18 @@ def render_builder_view(
         if "builder_tested_markets" not in st.session_state:
             st.session_state["builder_tested_markets"] = []
 
-        tested_markets = st.session_state["builder_tested_markets"]
-        recently_tested_tokens = {m["symbol"] for m in tested_markets[-20:]}  # 20 derniers
+        raw_tested_markets = st.session_state.get("builder_tested_markets", [])
+        if isinstance(raw_tested_markets, list):
+            tested_markets = [item for item in raw_tested_markets if isinstance(item, dict)]
+        else:
+            tested_markets = []
+        if tested_markets != raw_tested_markets:
+            st.session_state["builder_tested_markets"] = tested_markets
+        recently_tested_tokens = {
+            str(item.get("symbol", "") or "").strip().upper()
+            for item in tested_markets[-20:]
+            if str(item.get("symbol", "") or "").strip()
+        }  # 20 derniers
 
         # Priorité aux tokens NON récemment testés
         untested_tokens = [t for t in shuffled_tokens if t not in recently_tested_tokens]
@@ -2518,36 +3260,184 @@ def render_builder_view(
         st.markdown("---")
 
         run_model = model
+        run_ollama_host = ollama_host
+        run_ollama_gpu_target = ""
         run_symbol = symbol
         run_timeframe = timeframe
         run_df = df
         skip_llm_prepare = False
+        run_phase_llm_clients: Dict[str, Any] = {}
+        manual_multi_llm_manager: Optional[MultiLLMSessionManager] = None
+        manual_session_role_overrides: Dict[str, str] = {}
+
+        if builder_multi_llm_enabled:
+            if not _MULTI_LLM_RUNTIME_AVAILABLE:
+                st.error("Mode multi-LLM indisponible dans ce workspace.")
+                st.session_state.is_running = False
+                return
+            manual_session_role_overrides = _pick_builder_session_role_overrides(
+                builder_multi_llm_role_overrides
+            )
+            manual_multi_llm_manager = MultiLLMSessionManager(
+                profile_name=builder_multi_llm_profile,
+                base_llm_config=LLMConfig(
+                    provider=LLMProvider.OLLAMA,
+                    model=model,
+                    ollama_host=ollama_host,
+                ),
+                llm_topology_config=getattr(state, "llm_topology_config", None),
+                role_overrides=manual_session_role_overrides or None,
+            )
+            if auto_start_ollama:
+                ok, startup_messages = _ensure_multi_llm_runtime_hosts(
+                    manual_multi_llm_manager
+                )
+                if not ok:
+                    st.error("\n".join(startup_messages))
+                    st.session_state.is_running = False
+                    return
+            builder_assignment = manual_multi_llm_manager.resolve_role_assignment(
+                "builder_llm"
+            )
+            builder_route = manual_multi_llm_manager.resolve_role_route("builder_llm")
+            if builder_assignment is None or not builder_assignment.available:
+                st.error(
+                    "Le role `builder_llm` du profil multi-LLM n'est pas utilisable "
+                    f"sur `{builder_route.ollama_host}`."
+                )
+                _release_multi_llm_runtime(manual_multi_llm_manager)
+                st.session_state.is_running = False
+                return
+            run_model = manual_multi_llm_manager.resolve_builder_model()
+            run_ollama_host = builder_route.ollama_host
+            run_ollama_gpu_target = str(builder_route.gpu_target or "")
+            run_phase_llm_clients = manual_multi_llm_manager.build_builder_phase_clients()
+            _sync_builder_runtime_diagnostic(
+                manual_multi_llm_manager,
+                mode="multi_llm",
+                event="manual_runtime_ready",
+                phase="initialisation",
+                iteration=0,
+                max_iterations=max_iterations,
+                session_label="Builder manuel",
+                objective=objective,
+            )
+            if manual_multi_llm_manager.missing_roles:
+                st.warning(
+                    "Multi-LLM partiel: roles manquants = "
+                    + ", ".join(manual_multi_llm_manager.missing_roles)
+                )
+            else:
+                st.caption(
+                    f"Mode multi-LLM manuel: builder_llm=`{run_model}` @ `{run_ollama_host}`"
+                )
+            if builder_multi_llm_role_overrides:
+                st.caption(
+                    "Pools par role: " + _format_builder_role_pool_summary(
+                        builder_multi_llm_role_overrides
+                    )
+                )
+            if manual_session_role_overrides:
+                st.caption(
+                    "Tirage session: "
+                    + ", ".join(
+                        f"{role}=`{selected_model}`"
+                        for role, selected_model in manual_session_role_overrides.items()
+                    )
+                )
 
         llm_client_for_market = None
         if auto_market_pick:
-            with st.spinner(f"⏳ Préparation LLM `{model}` ({ollama_host})…"):
+            market_model = run_model
+            market_host = run_ollama_host
+            market_gpu_target = run_ollama_gpu_target
+            market_role = "builder_llm"
+            if (
+                builder_multi_llm_enabled
+                and manual_multi_llm_manager is not None
+            ):
+                idea_assignment = manual_multi_llm_manager.resolve_role_assignment(
+                    "idea_llm"
+                )
+                if (
+                    idea_assignment is not None
+                    and idea_assignment.available
+                    and idea_assignment.resolved_model
+                ):
+                    market_role = "idea_llm"
+                    market_model = idea_assignment.resolved_model
+                    idea_route = manual_multi_llm_manager.resolve_role_route(
+                        "idea_llm"
+                    )
+                    market_host = idea_route.ollama_host
+                    market_gpu_target = str(idea_route.gpu_target or "")
+            with st.spinner(
+                f"⏳ Préparation LLM `{market_model}` ({market_host})…"
+            ):
                 ok, msg, resolved_model = _prepare_builder_llm(
-                    model=model,
-                    ollama_host=ollama_host,
+                    model=market_model,
+                    ollama_host=market_host,
+                    gpu_target=market_gpu_target or None,
                     preload_model=preload_model,
                     keep_alive_minutes=keep_alive_minutes,
                     auto_start_ollama=auto_start_ollama,
                 )
                 if ok:
                     st.caption(f"✅ {msg}")
-                    run_model = resolved_model
+                    market_model = resolved_model
+                    if manual_multi_llm_manager is not None:
+                        manual_multi_llm_manager.activate_runtime_model(
+                            market_model,
+                            ollama_host=market_host,
+                            gpu_target=market_gpu_target or None,
+                            role=market_role,
+                            reason="market_selection_prepare",
+                        )
+                        _sync_builder_runtime_diagnostic(
+                            manual_multi_llm_manager,
+                            mode="multi_llm",
+                            event="market_runtime_ready",
+                            phase="objective_gen",
+                            iteration=0,
+                            max_iterations=max_iterations,
+                            session_label="Builder manuel",
+                            objective=objective,
+                        )
                 else:
                     st.error(f"❌ {msg}")
+                    _release_multi_llm_runtime(manual_multi_llm_manager)
                     st.session_state.is_running = False
                     return
 
-            llm_client_for_market = create_llm_client(
-                LLMConfig(
-                    provider=LLMProvider.OLLAMA,
-                    model=run_model,
-                    ollama_host=ollama_host,
-                ),
-            )
+            if (
+                builder_multi_llm_enabled
+                and manual_multi_llm_manager is not None
+            ):
+                llm_client_for_market = manual_multi_llm_manager.build_role_client(
+                    market_role
+                )
+                if llm_client_for_market is None:
+                    llm_client_for_market = create_llm_client(
+                        LLMConfig(
+                            provider=LLMProvider.OLLAMA,
+                            model=market_model,
+                            ollama_host=market_host,
+                        ),
+                    )
+                else:
+                    llm_client_for_market.config.model = market_model
+                    llm_client_for_market.config.ollama_host = market_host
+            else:
+                llm_client_for_market = create_llm_client(
+                    LLMConfig(
+                        provider=LLMProvider.OLLAMA,
+                        model=market_model,
+                        ollama_host=market_host,
+                    ),
+                )
+                run_model = market_model
+                run_ollama_host = market_host
+                skip_llm_prepare = True
             with st.spinner("🧭 Sélection automatique du marché (token/TF)…"):
                 run_symbol, run_timeframe, run_df, market_pick = _pick_market_for_objective(
                     state=state,
@@ -2574,12 +3464,53 @@ def render_builder_view(
             )
             if reason:
                 st.caption(f"Raison LLM: {reason}")
-            skip_llm_prepare = True
+
+        if (
+            builder_multi_llm_enabled
+            and manual_multi_llm_manager is not None
+        ):
+            with st.spinner(
+                f"⏳ Préparation builder_llm `{run_model}` ({run_ollama_host})…"
+            ):
+                ok, msg, resolved_model = _prepare_builder_llm(
+                    model=run_model,
+                    ollama_host=run_ollama_host,
+                    gpu_target=run_ollama_gpu_target or None,
+                    preload_model=preload_model,
+                    keep_alive_minutes=keep_alive_minutes,
+                    auto_start_ollama=auto_start_ollama,
+                )
+                if ok:
+                    st.caption(f"✅ {msg}")
+                    run_model = resolved_model
+                    manual_multi_llm_manager.activate_runtime_model(
+                        run_model,
+                        ollama_host=run_ollama_host,
+                        gpu_target=run_ollama_gpu_target or None,
+                        role="builder_llm",
+                        reason="builder_session_prepare",
+                    )
+                    _sync_builder_runtime_diagnostic(
+                        manual_multi_llm_manager,
+                        mode="multi_llm",
+                        event="builder_runtime_ready",
+                        phase="code",
+                        iteration=0,
+                        max_iterations=max_iterations,
+                        session_label="Builder manuel",
+                        objective=objective,
+                    )
+                    skip_llm_prepare = True
+                else:
+                    st.error(f"❌ {msg}")
+                    _release_multi_llm_runtime(manual_multi_llm_manager)
+                    st.session_state.is_running = False
+                    return
 
         session = _run_single_builder_session(
             objective=objective,
             model=run_model,
-            ollama_host=ollama_host,
+            ollama_host=run_ollama_host,
             llm_topology_config=getattr(state, "llm_topology_config", None),
             preload_model=preload_model,
             keep_alive_minutes=keep_alive_minutes,
@@ -2594,7 +3525,22 @@ def render_builder_view(
             slippage_bps=slippage_bps,
             df=run_df,
             skip_llm_prepare=skip_llm_prepare,
+            phase_llm_clients=run_phase_llm_clients or None,
+            multi_llm_manager=manual_multi_llm_manager,
         )
+        _release_multi_llm_runtime(manual_multi_llm_manager)
+        if manual_multi_llm_manager is not None:
+            _sync_builder_runtime_diagnostic(
+                manual_multi_llm_manager,
+                mode="multi_llm",
+                event="manual_cleanup",
+                phase="cleanup",
+                iteration=len(getattr(session, "iterations", []) or []) if session is not None else 0,
+                max_iterations=max_iterations,
+                status=str(getattr(session, "status", "") or ("error" if session is None else "")),
+                session_label="Builder manuel",
+                objective=objective,
+            )
 
         if session is not None:
             st.session_state["builder_session"] = session
@@ -2602,7 +3548,8 @@ def render_builder_view(
             with status_container:
                 show_status(
                     "success" if session.status == "success" else "info",
-                    f"Builder terminé: {session.status} (Sharpe {session.best_sharpe:.3f})",
+                    "Builder terminé: "
+                    f"{session.status} (Sharpe {_format_optional_float(getattr(session, 'best_sharpe', None), '{:.3f}')})",
                 )
         else:
             st.session_state.is_running = False
@@ -2644,6 +3591,15 @@ def render_builder_view(
     )
     if builder_multi_llm_enabled:
         st.caption(f"Profil multi-LLM: {builder_multi_llm_profile}")
+        st.caption(
+            "Decision de boucle: routeur deterministe local apres "
+            "`critic_llm` et `risk_llm`."
+        )
+        if builder_multi_llm_role_overrides:
+            st.caption(
+                "Pools par role: "
+                + _format_builder_role_pool_summary(builder_multi_llm_role_overrides)
+            )
 
     # Flux de pensée
     with st.expander("📂 Flux de pensée en terminal (optionnel)", expanded=False):
@@ -2659,18 +3615,18 @@ def render_builder_view(
     st.markdown("---")
 
     multi_llm_manager: Optional[MultiLLMSessionManager] = None
+    multi_llm_inventory: Any = None
+    builder_runtime_host = ollama_host
+    builder_runtime_gpu_target = ""
     if builder_multi_llm_enabled:
         if not _MULTI_LLM_RUNTIME_AVAILABLE:
             show_status("error", "Mode multi-LLM indisponible dans ce workspace.")
             st.session_state.is_running = False
             return
-        if auto_start_ollama and _is_local_ollama_host(ollama_host):
-            ok, msg = ensure_ollama_running(ollama_host=ollama_host)
-            if not ok:
-                show_status("error", msg)
-                st.session_state.is_running = False
-                return
-            st.caption(f"✅ {msg}")
+        multi_llm_inventory = discover_local_models(
+            ollama_host=ollama_host,
+            include_live_ollama=True,
+        )
         multi_llm_manager = MultiLLMSessionManager(
             profile_name=builder_multi_llm_profile,
             base_llm_config=LLMConfig(
@@ -2678,23 +3634,48 @@ def render_builder_view(
                 model=model,
                 ollama_host=ollama_host,
             ),
+            inventory=multi_llm_inventory,
+            llm_topology_config=getattr(state, "llm_topology_config", None),
+            role_overrides=None,
         )
+        if auto_start_ollama:
+            ok, messages = _ensure_multi_llm_runtime_hosts(multi_llm_manager)
+            if not ok:
+                show_status("error", "\n".join(messages))
+                st.session_state.is_running = False
+                return
+            for msg in messages:
+                st.caption(f"✅ {msg}")
         role_runtime_summary = " | ".join(
             (
                 f"{assignment.role}=`{assignment.resolved_model or assignment.requested_model or '-'}"
+                f"`@{multi_llm_manager.resolve_role_route(assignment.role).ollama_host}"
                 f"{'' if assignment.available else ' [indisponible]'}"
-                "`"
             )
             for assignment in multi_llm_manager.assignments
+            if assignment.role in SIMPLE_MULTI_LLM_ACTIVE_ROLES
         )
         if role_runtime_summary:
             st.caption(f"Roles runtime: {role_runtime_summary}")
         builder_assignment = multi_llm_manager.resolve_role_assignment("builder_llm")
+        builder_route = multi_llm_manager.resolve_role_route("builder_llm")
+        builder_runtime_host = builder_route.ollama_host
+        builder_runtime_gpu_target = str(builder_route.gpu_target or "")
+        _sync_builder_runtime_diagnostic(
+            multi_llm_manager,
+            mode="multi_llm",
+            event="autonomous_runtime_ready",
+            phase="initialisation",
+            iteration=0,
+            max_iterations=max_iterations,
+            session_label="Builder autonome",
+            objective="",
+        )
         if builder_assignment is None or not builder_assignment.available:
             show_status(
                 "error",
-                "Le role `builder_llm` du profil multi-LLM n'est pas utilisable "
-                f"sur `{ollama_host}`. Corrige le profil ou l'hôte avant de lancer.",
+                "Le role `builder_llm` par defaut du profil multi-LLM n'est pas utilisable "
+                f"sur `{builder_runtime_host}`. Corrige le profil ou l'hôte avant de lancer.",
             )
             st.session_state.is_running = False
             return
@@ -2704,13 +3685,19 @@ def render_builder_view(
                 + ", ".join(multi_llm_manager.missing_roles)
             )
         else:
-            st.caption("✅ Tous les roles multi-LLM sont resolus pour le runtime actif.")
+            st.caption("✅ Tous les roles LLM actifs sont resolus pour le runtime actif.")
+        if builder_multi_llm_role_overrides:
+            st.caption(
+                "Pools par role: "
+                + _format_builder_role_pool_summary(builder_multi_llm_role_overrides)
+            )
     else:
         # Préparer LLM une seule fois pour toute la boucle autonome
         with st.spinner(f"⏳ Préparation LLM `{model}` ({ollama_host})…"):
             ok, msg, resolved_model = _prepare_builder_llm(
                 model=model,
                 ollama_host=ollama_host,
+                gpu_target=None,
                 preload_model=preload_model,
                 keep_alive_minutes=keep_alive_minutes,
                 auto_start_ollama=auto_start_ollama,
@@ -2724,11 +3711,16 @@ def render_builder_view(
                 return
 
     objective_indicators = _get_builder_compatible_indicators(df)
+    resume_ui_state = _build_builder_autonomous_resume_ui_state(state)
+    resume_ui_state["builder_model_single_llm"] = str(model or "")
+    resume_ui_state["builder_ollama_host"] = str(ollama_host or "")
+
     _mark_builder_autonomous_runtime_started(
         model=model,
         ollama_host=ollama_host,
         requested_source_mode=requested_objective_mode,
         auto_market_pick=auto_market_pick,
+        resume_ui_state=resume_ui_state,
     )
 
     # Historique des sessions autonomes
@@ -2766,10 +3758,15 @@ def render_builder_view(
         effective_objective_mode = requested_objective_mode
         effective_auto_market_pick = auto_market_pick
         session_model = model
+        session_llm_host = builder_runtime_host
+        session_llm_gpu_target = builder_runtime_gpu_target
+        session_phase_llm_clients: Dict[str, Any] = {}
+        session_role_overrides: Dict[str, str] = {}
         llm_client_for_obj = None
         llm_client_for_market = None
         multi_llm_role_outputs: Dict[str, Any] = {}
         multi_llm_router_decision: Dict[str, Any] = {}
+        multi_llm_shared_memory: Dict[str, Any] = {}
 
         # ── Protection globale : toute exception est rattrapee pour continuer ──
         try:
@@ -2834,40 +3831,71 @@ def render_builder_view(
                 auto_market_pick=effective_auto_market_pick,
             )
 
-            if builder_multi_llm_enabled and multi_llm_manager is not None:
-                if auto_start_ollama and _is_local_ollama_host(ollama_host):
-                    ok, msg = ensure_ollama_running(ollama_host=ollama_host)
-                    if not ok:
-                        raise RuntimeError(msg)
-                session_model = multi_llm_manager.resolve_builder_model(model)
-                with st.spinner(f"⏳ Vérification builder_llm session #{session_num}…"):
-                    ok, msg, resolved_model = _prepare_builder_llm(
-                        model=session_model,
+            if builder_multi_llm_enabled:
+                session_role_overrides = _pick_builder_session_role_overrides(
+                    builder_multi_llm_role_overrides
+                )
+                multi_llm_manager = MultiLLMSessionManager(
+                    profile_name=builder_multi_llm_profile,
+                    base_llm_config=LLMConfig(
+                        provider=LLMProvider.OLLAMA,
+                        model=model,
                         ollama_host=ollama_host,
-                        preload_model=preload_model,
-                        keep_alive_minutes=keep_alive_minutes,
-                        auto_start_ollama=auto_start_ollama,
+                    ),
+                    inventory=multi_llm_inventory,
+                    llm_topology_config=getattr(state, "llm_topology_config", None),
+                    role_overrides=session_role_overrides or None,
+                )
+                if auto_start_ollama and _is_local_ollama_host(builder_runtime_host):
+                    ok, msg = ensure_ollama_running(
+                        ollama_host=builder_runtime_host,
+                        gpu_target=builder_runtime_gpu_target or None,
                     )
                     if not ok:
                         raise RuntimeError(msg)
-                    session_model = resolved_model
-                st.caption(
-                    f"Session #{session_num} | builder_llm=`{session_model}` | "
-                    f"profil=`{builder_multi_llm_profile}`"
+                session_model = multi_llm_manager.resolve_builder_model()
+                builder_route = multi_llm_manager.resolve_role_route("builder_llm")
+                session_llm_host = builder_route.ollama_host
+                session_llm_gpu_target = str(builder_route.gpu_target or "")
+                session_phase_llm_clients = (
+                    multi_llm_manager.build_builder_phase_clients()
                 )
-                if effective_auto_market_pick:
-                    llm_client_for_market = create_llm_client(
-                        LLMConfig(
-                            provider=LLMProvider.OLLAMA,
-                            model=session_model,
-                            ollama_host=ollama_host,
+                if session_role_overrides:
+                    st.caption(
+                        "Tirage session: "
+                        + ", ".join(
+                            f"{role}=`{selected_model}`"
+                            for role, selected_model in session_role_overrides.items()
                         )
                     )
+                if effective_auto_market_pick:
+                    market_role = "builder_llm"
+                    idea_assignment = multi_llm_manager.resolve_role_assignment(
+                        "idea_llm"
+                    )
+                    if (
+                        idea_assignment is not None
+                        and idea_assignment.available
+                        and idea_assignment.resolved_model
+                    ):
+                        market_role = "idea_llm"
+                    llm_client_for_market = multi_llm_manager.build_role_client(
+                        market_role
+                    )
+                    if llm_client_for_market is None:
+                        llm_client_for_market = create_llm_client(
+                            LLMConfig(
+                                provider=LLMProvider.OLLAMA,
+                                model=session_model,
+                                ollama_host=session_llm_host,
+                            )
+                        )
             else:
                 with st.spinner(f"⏳ Vérification LLM session #{session_num}…"):
                     ok, msg, resolved_model = _prepare_builder_llm(
                         model=model,
                         ollama_host=ollama_host,
+                        gpu_target=None,
                         preload_model=preload_model,
                         keep_alive_minutes=keep_alive_minutes,
                         auto_start_ollama=auto_start_ollama,
@@ -3084,18 +4112,57 @@ def render_builder_view(
                     session_symbol,
                     session_timeframe,
                 )
+            if builder_multi_llm_enabled and multi_llm_manager is not None:
+                multi_llm_manager.set_selected_market(
+                    symbol=session_symbol,
+                    timeframe=session_timeframe,
+                )
 
             # ── Exécuter la session (remplace l'affichage précédent) ──
+            if builder_multi_llm_enabled and multi_llm_manager is not None:
+                with st.spinner(f"⏳ Préparation builder_llm session #{session_num}…"):
+                    ok, msg, resolved_model = _prepare_builder_llm(
+                        model=session_model,
+                        ollama_host=session_llm_host,
+                        gpu_target=session_llm_gpu_target or None,
+                        preload_model=preload_model,
+                        keep_alive_minutes=keep_alive_minutes,
+                        auto_start_ollama=auto_start_ollama,
+                    )
+                    if not ok:
+                        raise RuntimeError(msg)
+                    session_model = resolved_model
+                    multi_llm_manager.activate_runtime_model(
+                        session_model,
+                        ollama_host=session_llm_host,
+                        gpu_target=session_llm_gpu_target or None,
+                        role="builder_llm",
+                        reason="builder_session_prepare",
+                    )
+                    _sync_builder_runtime_diagnostic(
+                        multi_llm_manager,
+                        mode="multi_llm",
+                        event="builder_runtime_ready",
+                        phase="code",
+                        iteration=session_num,
+                        max_iterations=max_iterations,
+                        session_label=f"Session autonome #{session_num}",
+                        objective=objective,
+                    )
+                st.caption(
+                    f"Session #{session_num} | builder_llm=`{session_model}` | "
+                    f"host=`{session_llm_host}` | profil=`{builder_multi_llm_profile}`"
+                )
             with session_placeholder.container():
                 t0 = time.perf_counter()
                 session = _run_single_builder_session(
                     objective=objective,
                     model=session_model,
-                    ollama_host=ollama_host,
+                    ollama_host=session_llm_host,
                     llm_topology_config=getattr(state, "llm_topology_config", None),
                     preload_model=preload_model,
                     keep_alive_minutes=keep_alive_minutes,
-                    unload_after_run=False,
+                    unload_after_run=True,
                     auto_start_ollama=auto_start_ollama,
                     max_iterations=max_iterations,
                     target_sharpe=target_sharpe,
@@ -3108,6 +4175,9 @@ def render_builder_view(
                     session_label=f"🔄 Session autonome #{session_num}",
                     skip_llm_prepare=True,
                     show_config_caption=False,
+                    autonomous_runtime_watchdog=True,
+                    phase_llm_clients=session_phase_llm_clients or None,
+                    multi_llm_manager=multi_llm_manager,
                 )
                 duration = time.perf_counter() - t0
 
@@ -3137,6 +4207,27 @@ def render_builder_view(
                 st.caption(
                     f"Multi-LLM router: {router_action}"
                     + (f" | {router_reason}" if router_reason else "")
+                )
+                multi_llm_shared_memory = multi_llm_manager.consume_shared_memory()
+
+            if (
+                builder_multi_llm_enabled
+                and multi_llm_manager is not None
+                and not multi_llm_shared_memory
+            ):
+                multi_llm_shared_memory = multi_llm_manager.consume_shared_memory()
+            if builder_multi_llm_enabled and multi_llm_manager is not None:
+                _release_multi_llm_runtime(multi_llm_manager)
+                _sync_builder_runtime_diagnostic(
+                    multi_llm_manager,
+                    mode="multi_llm",
+                    event="autonomous_cleanup",
+                    phase="cleanup",
+                    iteration=session_num,
+                    max_iterations=max_iterations,
+                    status=str(getattr(session, "status", "") or ("error" if session is None else "")),
+                    session_label=f"Session autonome #{session_num}",
+                    objective=objective,
                 )
 
             # ── Enregistrer le résultat ──
@@ -3181,6 +4272,16 @@ def render_builder_view(
                     "multi_llm_profile": (
                         builder_multi_llm_profile if builder_multi_llm_enabled else ""
                     ),
+                    "multi_llm_role_override_pools": (
+                        dict(builder_multi_llm_role_overrides)
+                        if builder_multi_llm_enabled
+                        else {}
+                    ),
+                    "multi_llm_role_overrides": (
+                        dict(session_role_overrides)
+                        if builder_multi_llm_enabled
+                        else {}
+                    ),
                     "multi_llm_assignments": (
                         [
                             assignment.to_dict()
@@ -3192,6 +4293,7 @@ def render_builder_view(
                     "multi_llm_builder_model": session_model,
                     "multi_llm_router_decision": multi_llm_router_decision,
                     "multi_llm_role_outputs": multi_llm_role_outputs,
+                    "multi_llm_shared_memory": multi_llm_shared_memory,
                 }
                 history.append(history_entry)
                 history[:] = _trim_autonomous_history(history)
@@ -3258,6 +4360,16 @@ def render_builder_view(
                     "multi_llm_profile": (
                         builder_multi_llm_profile if builder_multi_llm_enabled else ""
                     ),
+                    "multi_llm_role_override_pools": (
+                        dict(builder_multi_llm_role_overrides)
+                        if builder_multi_llm_enabled
+                        else {}
+                    ),
+                    "multi_llm_role_overrides": (
+                        dict(session_role_overrides)
+                        if builder_multi_llm_enabled
+                        else {}
+                    ),
                     "multi_llm_assignments": (
                         [
                             assignment.to_dict()
@@ -3269,6 +4381,7 @@ def render_builder_view(
                     "multi_llm_builder_model": session_model,
                     "multi_llm_router_decision": multi_llm_router_decision,
                     "multi_llm_role_outputs": multi_llm_role_outputs,
+                    "multi_llm_shared_memory": multi_llm_shared_memory,
                 }
                 history.append(history_entry)
                 history[:] = _trim_autonomous_history(history)
@@ -3332,10 +4445,16 @@ def render_builder_view(
 
 
         except KeyboardInterrupt:
+            if builder_multi_llm_enabled and multi_llm_manager is not None:
+                multi_llm_manager.reset_shared_memory()
+                _release_multi_llm_runtime(multi_llm_manager)
             logger.info("Mode autonome interrompu par l'utilisateur (KeyboardInterrupt)")
             terminal_reason = "keyboard_interrupt"
             break
         except Exception as _loop_exc:
+            if builder_multi_llm_enabled and multi_llm_manager is not None:
+                multi_llm_shared_memory = multi_llm_manager.consume_shared_memory()
+                _release_multi_llm_runtime(multi_llm_manager)
             _consecutive_errors += 1
             _exc_tb = traceback.format_exc()
             failure_origin = _classify_autonomous_failure_origin(_loop_exc, _exc_tb)
@@ -3384,6 +4503,17 @@ def render_builder_view(
                 "multi_llm_profile": (
                     builder_multi_llm_profile if builder_multi_llm_enabled else ""
                 ),
+                "multi_llm_role_override_pools": (
+                    dict(builder_multi_llm_role_overrides)
+                    if builder_multi_llm_enabled
+                    else {}
+                ),
+                "multi_llm_role_overrides": (
+                    dict(session_role_overrides)
+                    if builder_multi_llm_enabled
+                    else {}
+                ),
+                "multi_llm_shared_memory": multi_llm_shared_memory,
             })
             history[:] = _trim_autonomous_history(history)
             st.session_state["builder_autonomous_history"] = history
@@ -3462,6 +4592,12 @@ def render_builder_view(
             for remaining in range(effective_pause, 0, -1):
                 if not st.session_state.get("is_running", False):
                     break
+                _heartbeat_builder_autonomous_runtime(
+                    last_event="countdown",
+                    last_progress_event="countdown",
+                    last_progress_phase="pause",
+                    last_progress_iteration=0,
+                )
                 countdown_placeholder.info(
                     f"⏱️ Prochaine session dans **{remaining}s**..."
                 )
@@ -3481,9 +4617,7 @@ def render_builder_view(
 
     with status_container:
         n = len(history)
-        best_ever = max(
-            (h.get("best_sharpe", 0) for h in history), default=0,
-        )
+        best_ever = _history_best_sharpe(history)
         show_status(
             "success" if best_ever > 0 else "info",
             f"Mode autonome terminé : {n} sessions | Meilleur Sharpe: {best_ever:.3f}",

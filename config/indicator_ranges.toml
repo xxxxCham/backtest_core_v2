@@ -2,7 +2,7 @@
 # ==================================================================
 #
 # Ce fichier définit les plages de test et pas d'optimisation recommandés
-# pour les indicateurs techniques utilisés par backtest_core.
+# pour les indicateurs techniques utilisés par backtest-core-v2.
 #
 # Format: [category.param]
 #   min = valeur minimale

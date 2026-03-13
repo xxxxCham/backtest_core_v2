@@ -1,0 +1,2274 @@
+{
+  "session_id": "20260312_055500_strategie_de_mean_reversion_sur_mmtusdc",
+  "objective": "Strategie de Mean-reversion sur MMTUSDC 4h. Indicateurs : ADX, RSI(14), ATR. Entree long quand ADX < 20 (marche lateral) et RSI < 30. Reversion en marche sans tendance. Stop-loss = 1.0x ATR, take-profit = 2.0x ATR.",
+  "status": "max_iterations",
+  "best_sharpe": 1.3874746721317377,
+  "best_score": 100.0,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 10,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Combining ADX < 20 for lateral movement detection with RSI < 30 indicates potential oversold conditions, suggesting a mean-reversion opportunity. The ATR-based stop-loss and take-profit ensure risk control while allowing the trade to run in favorable conditions.",
+      "change_type": "both",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[SIG001] `for i in range(...)` interdit dans la logique Builder.",
+          "logic_retry_used": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 10
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Incorporating ATR into entry conditions ensures that we only enter mean-reversion trades during periods of low volatility, improving signal quality and reducing false signals in trending markets.",
+      "change_type": "logic",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: comparaison `adx ...` alors que `adx` est un indicator dict. Utiliser une sous-cl\u00e9 (ex: adx['adx']).",
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "NameError: name 'adx' is not defined",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "NameError: name 'adx' is not defined",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5771, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5091, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5068, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260312_055500_strategie_de_mean_reversion_sur_mmtusdc\\strategy.py\", line 72, in generate_signals\n    long_entry = (adx < 20) & (rsi < 30) & (atr < 0.05)\nNameError: name 'adx' is not defined",
+          "runtime_fix_validation_error": "[IND001] Usage invalide: comparaison `adx_values ...` alors que `adx_values` est un indicator dict. Utiliser une sous-cl\u00e9 (ex: adx_values['adx']).",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining ADX <20 for non-trending conditions and RSI <30 ensures we only enter when market is in a sideways trend and oversold, increasing the likelihood of mean reversion. Using ATR-based stops and targets standardizes risk exposure.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Incorporating ADX and RSI filters improves entry timing by identifying oversold conditions in non-trending markets, reducing false signals.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Leveraging RSI and ADX to identify strong mean-reversion opportunities during low trending conditions, while filtering out noise with ATR-based risk management.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Introducing CCI to filter trending markets and reduce false signals during ranges. Combining CCI with RSI for entry, and using Donchian channels for exit.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy uses RSI and CCI to identify oversold conditions and filter trends, but it may struggle with prolonged trends due to the Donchian exit. The reliance on a single time frame (4h) could miss higher frequency opportunities. Additionally, using only ADX for trend filtering might not account for market momentum shifts adequately.\n[Backup plan] If results are poor, switch to a different time frame or add another indicator like MACD. If Sharpe ratio is low, adjust entry/exit parameters (e.g., RSI levels) or consider adding a volatility filter. As an alternative, try a breakout strategy using Bollinger Bands or a trend-following approach with EMAs."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 5,
+            "llm_positive": 4,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "Combining RSI and ADX filters with Bollinger bands creates a robust mean-reversion strategy. The Bollinger bands provide the structure for entry and exit points, while RSI and ADX ensure that we are entering during low-trend or oversold conditions, which should lead to stronger reversions.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "Integration of ADX into entry logic to filter trending markets reduces false signals during trending sessions.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 7
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "Baisse de l'ADX avec RSI en zone oversold favorise une reversion en mean-reversion sur MMTUSDC. L'utilisation du Bollinger Band permet de capturer les reversals de prix.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This mean-reversion strategy relies heavily on ADX, RSI, and Bollinger Bands. Potential weaknesses include overtrading in volatile markets due to quick Bollinger Band crossovers, whipsawing, and the assumption that market conditions remain consistent. Additionally, the fixed stop-loss and take-profit levels may not adapt well to changing volatility. The strategy might fail during trending markets or periods of high uncertainty.\n[Backup plan] If results are poor, I would switch to a trend-following approach using MACD or moving averages. If Sharpe ratio is low, I'd adjust parameters like increasing the ADX threshold or Bollinger Band standard deviation. An alternative approach could be to combine multiple indicators for confirmation or switch to a different timeframe."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 8,
+            "llm_positive": 7,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 8
+    },
+    {
+      "iteration": 10,
+      "hypothesis": "Incorporating ADX as a filter for RSI-based mean reversion improves signal quality by reducing false entries during trending markets. The ATR-based risk management ensures proper risk-reward ratios, while limiting trades to high volatility environments through ATR thresholds.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy uses RSI and ADX to filter for mean-reversion signals, which is solid. However, relying solely on these indicators might miss nuances in market behavior. Additionally, the fixed ATR-based stop-loss and take-profit could be too rigid in volatile markets. The Bollinger Bands exit criteria might not always align with the intended reversion signal, especially if the market is trending or making false breaks.\n[Backup plan] If results are poor, consider adjusting the entry filters to include more volatility metrics like Volume or moving average crossovers. If Sharpe ratio is low, tweak the ATR thresholds for stop-loss and take-profit to better suit market conditions. As an alternative approach, explore a momentum-based strategy using MACD or other trend-following indicators."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 9
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 2,
+      "hypothesis": "Incorporating ATR into entry conditions ensures that we only enter mean-reversion trades during periods of low volatility, improving signal quality and reducing false signals in trending markets.",
+      "change_type": "logic",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: comparaison `adx ...` alors que `adx` est un indicator dict. Utiliser une sous-cl\u00e9 (ex: adx['adx']).",
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "NameError: name 'adx' is not defined",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "NameError: name 'adx' is not defined",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5771, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5091, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5068, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260312_055500_strategie_de_mean_reversion_sur_mmtusdc\\strategy.py\", line 72, in generate_signals\n    long_entry = (adx < 20) & (rsi < 30) & (atr < 0.05)\nNameError: name 'adx' is not defined",
+          "runtime_fix_validation_error": "[IND001] Usage invalide: comparaison `adx_values ...` alors que `adx_values` est un indicator dict. Utiliser une sous-cl\u00e9 (ex: adx_values['adx']).",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining ADX <20 for non-trending conditions and RSI <30 ensures we only enter when market is in a sideways trend and oversold, increasing the likelihood of mean reversion. Using ATR-based stops and targets standardizes risk exposure.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Incorporating ADX and RSI filters improves entry timing by identifying oversold conditions in non-trending markets, reducing false signals.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Leveraging RSI and ADX to identify strong mean-reversion opportunities during low trending conditions, while filtering out noise with ATR-based risk management.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Introducing CCI to filter trending markets and reduce false signals during ranges. Combining CCI with RSI for entry, and using Donchian channels for exit.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy uses RSI and CCI to identify oversold conditions and filter trends, but it may struggle with prolonged trends due to the Donchian exit. The reliance on a single time frame (4h) could miss higher frequency opportunities. Additionally, using only ADX for trend filtering might not account for market momentum shifts adequately.\n[Backup plan] If results are poor, switch to a different time frame or add another indicator like MACD. If Sharpe ratio is low, adjust entry/exit parameters (e.g., RSI levels) or consider adding a volatility filter. As an alternative, try a breakout strategy using Bollinger Bands or a trend-following approach with EMAs."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 5,
+            "llm_positive": 4,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "Combining RSI and ADX filters with Bollinger bands creates a robust mean-reversion strategy. The Bollinger bands provide the structure for entry and exit points, while RSI and ADX ensure that we are entering during low-trend or oversold conditions, which should lead to stronger reversions.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "Integration of ADX into entry logic to filter trending markets reduces false signals during trending sessions.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 7
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "Baisse de l'ADX avec RSI en zone oversold favorise une reversion en mean-reversion sur MMTUSDC. L'utilisation du Bollinger Band permet de capturer les reversals de prix.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This mean-reversion strategy relies heavily on ADX, RSI, and Bollinger Bands. Potential weaknesses include overtrading in volatile markets due to quick Bollinger Band crossovers, whipsawing, and the assumption that market conditions remain consistent. Additionally, the fixed stop-loss and take-profit levels may not adapt well to changing volatility. The strategy might fail during trending markets or periods of high uncertainty.\n[Backup plan] If results are poor, I would switch to a trend-following approach using MACD or moving averages. If Sharpe ratio is low, I'd adjust parameters like increasing the ADX threshold or Bollinger Band standard deviation. An alternative approach could be to combine multiple indicators for confirmation or switch to a different timeframe."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 8,
+            "llm_positive": 7,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 8
+    },
+    {
+      "iteration": 10,
+      "hypothesis": "Incorporating ADX as a filter for RSI-based mean reversion improves signal quality by reducing false entries during trending markets. The ATR-based risk management ensures proper risk-reward ratios, while limiting trades to high volatility environments through ATR thresholds.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.3874746721317377,
+      "return_pct": 99.44306235572348,
+      "max_drawdown_pct": -25.872537805779434,
+      "profit_factor": 3.0280311476835604,
+      "win_rate_pct": 52.94117647058824,
+      "trades": 17,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 38.849290819688655,
+          "return": 44.0,
+          "profit_factor": 32.0,
+          "trades_confidence": 2.833333333333333,
+          "win_rate": 5.382352941176471
+        },
+        "penalties": {
+          "drawdown_pressure": 3.915025203852956,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +99.4%, PF 3.03, Expectancy 584.96"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 25.9%, Vol 156.0%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.387, Sortino 4.291, Calmar 26.201"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 52.9%, Trades 17, AvgW/L 1649.75/612.93"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 13,
+          "short_signals": 5,
+          "total_signals": 18,
+          "signal_density": 0.024390243902439025,
+          "transition_signals": 18,
+          "transition_density": 0.024390243902439025,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy uses RSI and ADX to filter for mean-reversion signals, which is solid. However, relying solely on these indicators might miss nuances in market behavior. Additionally, the fixed ATR-based stop-loss and take-profit could be too rigid in volatile markets. The Bollinger Bands exit criteria might not always align with the intended reversion signal, especially if the market is trending or making false breaks.\n[Backup plan] If results are poor, consider adjusting the entry filters to include more volatility metrics like Volume or moving average crossovers. If Sharpe ratio is low, tweak the ATR thresholds for stop-loss and take-profit to better suit market conditions. As an alternative approach, explore a momentum-based strategy using MACD or other trend-following indicators."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 38.849290819688655,
+            "return": 44.0,
+            "profit_factor": 32.0,
+            "trades_confidence": 2.833333333333333,
+            "win_rate": 5.382352941176471
+          },
+          "penalties": {
+            "drawdown_pressure": 3.915025203852956,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 9
+    },
+    {
+      "iteration": 1,
+      "hypothesis": "Combining ADX < 20 for lateral movement detection with RSI < 30 indicates potential oversold conditions, suggesting a mean-reversion opportunity. The ATR-based stop-loss and take-profit ensure risk control while allowing the trade to run in favorable conditions.",
+      "change_type": "both",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[SIG001] `for i in range(...)` interdit dans la logique Builder.",
+          "logic_retry_used": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 738,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 10
+    }
+  ]
+}

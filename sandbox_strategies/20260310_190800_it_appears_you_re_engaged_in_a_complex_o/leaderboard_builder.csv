@@ -1,0 +1,6 @@
+rank,iteration,decision,continuous_score,sharpe,return_pct,max_drawdown_pct,profit_factor,win_rate_pct,trades,change_type,diagnostic_category,is_fallback,error,hypothesis
+1,6,stop,-50.0,0.0,0.0,0.0,0,0.0,0,logic,no_trades,True,,Using tighter risk parameters improves capital preservation in volatile conditions
+2,1,continue,-100.0,0.3016931155403538,-11.967380658187867,-90.46814113178753,0.9727559585816269,40.51446945337621,311,logic,ruined,True,,"Bollinger breakout signals trend continuation with ADX confirming trend strength, reducing whipsaws compared to pure breakout strategies"
+3,3,continue,-100.0,-20.0,-418.54865090024936,-100.0,0.7297355507045863,27.12727272727273,1375,logic,ruined,True,,Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.
+4,4,continue,-100.0,-20.0,-188.03737518235565,-100.0,0.8149782599926365,34.941520467836256,684,logic,ruined,True,,ATR filters extreme price movement while RSI identifies trend direction for entry signals
+5,5,continue,-100.0,0.3016931155403538,-11.967380658187867,-90.46814113178753,0.9727559585816269,40.51446945337621,311,logic,ruined,True,,Bollinger breakout with ADX trend filter reduces false signals in ranging markets

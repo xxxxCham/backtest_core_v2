@@ -1,0 +1,1722 @@
+{
+  "session_id": "20260307_072212_momentum_sur_orcausdc_4h_indicateurs_aro",
+  "objective": "Momentum sur ORCAUSDC 4h. Indicateurs : AROON + SUPERTREND + ATR. Entr\u00e9es : Aroon bullish converge avec Supertrend direction haussi\u00e8re et Volume Oscillator confirme la tendance. Sorties : Croisement baissier du Supertrend et divergence n\u00e9gative du Volume Oscillator, avec un filtre horaire de liquidit\u00e9 privil\u00e9giant les heures de chevauchement des march\u00e9s asiatiques et am\u00e9ricains. Risk management : Stop Loss \u00e0 1.5x l'ATR, Take Profit \u00e0 2x l'ATR, ajust\u00e9 en fonction de l'onchain_smoothing.",
+  "status": "failed",
+  "best_sharpe": 0.0,
+  "best_score": -26.0,
+  "auto_reset_count": 1,
+  "recovery_events": [
+    {
+      "iteration": 6,
+      "trigger": "deterministic_fallbacks",
+      "reason": "4 fallbacks d\u00e9terministes (seuil=4)",
+      "recovered": true,
+      "reset_count": 1,
+      "anchor_source": "best_iteration",
+      "anchor_iteration": 2,
+      "preserved_best_iteration": 2,
+      "consecutive_failures_before_reset": 0,
+      "fallback_count_before_reset": 4,
+      "timestamp": "2026-03-07T07:25:42.171054"
+    }
+  ],
+  "total_iterations": 9,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Combining Aroon for trend initiation, Supertrend for directional confirmation, and Volume Oscillator for momentum validation aims to filter false signals and capitalize on strong, liquid uptrends during overlapping Asian/US market hours.",
+      "change_type": "both",
+      "diagnostic_category": "needs_work",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.449765520748088,
+      "return_pct": 16.563950683198055,
+      "max_drawdown_pct": -30.599893531762383,
+      "profit_factor": 1.124280736624665,
+      "win_rate_pct": 51.11111111111111,
+      "trades": 45,
+      "continuous_score": 41.76192308079789,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 12.593434580946465,
+          "return": 18.22034575151786,
+          "profit_factor": 5.681405102841828,
+          "trades_confidence": 7.5,
+          "win_rate": 4.833333333333332
+        },
+        "penalties": {
+          "drawdown_pressure": 7.066595687841589,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "B",
+          "detail": "Return +16.6%, PF 1.12, Expectancy 36.81"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 30.6%, Vol 33.4%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.450, Sortino 0.236, Calmar 0.475"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 51.1%, Trades 45, AvgW/L 651.49/605.81"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: `aroon['bullish_percent']` pour indicateur dict 'aroon'. Sous-cl\u00e9s valides: aroon_down, aroon_up.",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 90: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 0
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 30,
+          "short_signals": 19,
+          "total_signals": 49
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on three indicators increases complexity and potential for overfitting. Aroon's slow response may lag significant price moves, while Supertrend\u2019s inherent whipsaws could trigger frequent, unprofitable exits. The volume oscillator's confirmation might be noisy and prone to false positives, especially given the relatively illiquid ORCAUSDC market. The filter based on Asian/US market hours is a good idea but might be too restrictive.\n[Backup plan] If negative returns, simplify to *just* Supertrend with ATR-based stops and a dynamic TP based on volatility. If mediocre Sharpe, optimize ATR period and Supertrend multiplier. As a complete alternative, explore a Mean Reversion strategy using Bollinger Bands and volume-weighted average price, focusing on short-term reversals."
+        },
+        "scoring": {
+          "continuous_score": 41.76192308079789,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 12.593434580946465,
+            "return": 18.22034575151786,
+            "profit_factor": 5.681405102841828,
+            "trades_confidence": 7.5,
+            "win_rate": 4.833333333333332
+          },
+          "penalties": {
+            "drawdown_pressure": 7.066595687841589,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Combining Supertrend for trend direction, Aroon for reversal confirmation, and Volume Oscillator for momentum validation aims to filter out false signals and capitalize on strong, sustained trends in ORCAUSDC.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.02914173852468006,
+      "return_pct": -73.53461226333566,
+      "max_drawdown_pct": -75.31346117273984,
+      "profit_factor": 0.8359931235018441,
+      "win_rate_pct": 39.6551724137931,
+      "trades": 116,
+      "continuous_score": -98.79251494772393,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -0.8159686786910417,
+          "return": -33.0,
+          "profit_factor": -7.497457211344272,
+          "trades_confidence": 10.0,
+          "win_rate": 1.396551724137931
+        },
+        "penalties": {
+          "drawdown_pressure": 36.875640781826554,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 40.313461172739835
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -73.5%, PF 0.84, Expectancy -63.39"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 75.3%, Vol 149.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.029, Sortino -0.051, Calmar -0.919"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 39.7%, Trades 116, AvgW/L 814.84/640.52"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 485,
+          "short_signals": 0,
+          "total_signals": 485
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on three indicators for entry creates a high signal friction risk; convergence might be infrequent, leading to whipsaws. Supertrend's inherent lag could cause late entries and exits, while the Volume Oscillator's sensitivity to noise is concerning. The onchain_smoothing adjustment adds complexity and potential for overfitting. The filter based on market hours is interesting but may not be consistently impactful.\n[Backup plan] Poor results: Simplify to Supertrend alone with ATR-based stops/targets. Mediocre Sharpe: Optimize ATR multiplier for both SL/TP and onchain_smoothing. Alternative: Shift to a mean reversion strategy using Bollinger Bands and volume-based confirmation signals, exploiting ORCAUSDC's potential for short-term price oscillations."
+        },
+        "scoring": {
+          "continuous_score": -98.79251494772393,
+          "drawdown_excess_pct": 40.313461172739835,
+          "components": {
+            "sharpe": -0.8159686786910417,
+            "return": -33.0,
+            "profit_factor": -7.497457211344272,
+            "trades_confidence": 10.0,
+            "win_rate": 1.396551724137931
+          },
+          "penalties": {
+            "drawdown_pressure": 36.875640781826554,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining Aroon for trend reversal confirmation with Supertrend for trend direction and Volume Oscillator for momentum provides a more robust signal than relying on any single indicator, mitigating whipsaws and improving directional accuracy.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": null,
+      "return_pct": null,
+      "max_drawdown_pct": null,
+      "profit_factor": null,
+      "win_rate_pct": null,
+      "trades": null,
+      "continuous_score": null,
+      "score_breakdown": null,
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: op\u00e9rateur logique bitwise avec constante num\u00e9rique. Utiliser des comparaisons bool\u00e9ennes de part et d'autre.",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 98: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 1
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      }
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining Aroon's reversal signals with Supertrend's trend direction and Volume Oscillator's confirmation aims to filter out false breakouts and capitalize on momentum shifts, with Asian/US market overlap hours enhancing liquidity.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -125.54168207357112,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.7913808984217582,
+      "win_rate_pct": 31.98198198198198,
+      "trades": 222,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -9.536873215005341,
+          "trades_confidence": 10.0,
+          "win_rate": -0.9054054054054057
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -125.5%, PF 0.79, Expectancy -56.55"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 26693.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 32.0%, Trades 222, AvgW/L 670.75/398.53"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: `aroon['bullish_percent']` pour indicateur dict 'aroon'. Sous-cl\u00e9s valides: aroon_down, aroon_up.",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 90: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 2
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 114,
+          "short_signals": 140,
+          "total_signals": 254
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on three indicators for entry creates significant potential for overfitting and whipsaws, particularly given ORCAUSDC's volatility. Supertrend's inherent lag and Aroon's slow response to abrupt shifts are concerning. The hourly liquidity filter is likely to have minimal impact, and the ATR-based stop/take profit may be too tight for this asset.\n[Backup plan] Poor results: Simplify to *only* Supertrend direction with Volume Oscillator confirmation for entries. Mediocre results: Optimize ATR multiplier for stop/take profit, and experiment with Aroon period length. Alternative approach: Explore a Mean Reversion strategy based on ORCAUSDC's on-chain metrics and volatility, rather than momentum."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -9.536873215005341,
+            "trades_confidence": 10.0,
+            "win_rate": -0.9054054054054057
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining Aroon's reversal signals with Supertrend's trend direction, filtered by volume oscillator, aims to capture early trend changes while avoiding whipsaws, and volume oscillator confirms the momentum.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.08959339232598681,
+      "return_pct": -63.105548789315755,
+      "max_drawdown_pct": -86.83703493435239,
+      "profit_factor": 0.784029312187324,
+      "win_rate_pct": 41.37931034482759,
+      "trades": 87,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -2.5086149851276307,
+          "return": -33.0,
+          "profit_factor": -9.872945728579475,
+          "trades_confidence": 10.0,
+          "win_rate": 1.913793103448276
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 51.83703493435239
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -63.1%, PF 0.78, Expectancy -72.54"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 86.8%, Vol 111.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.090, Sortino -0.127, Calmar -0.675"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 41.4%, Trades 87, AvgW/L 636.36/572.93"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: `aroon['upcross']` pour indicateur dict 'aroon'. Sous-cl\u00e9s valides: aroon_down, aroon_up.",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 90: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 3
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 45,
+          "short_signals": 64,
+          "total_signals": 109
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on three indicators for entry creates a high probability of false positives, especially given ORCAUSDC's volatility. Supertrend's lag and Aroon's delayed signals may conflict, generating whipsaws. The volume oscillator filter, while intended to confirm, could be noise. The hourly liquidity filter is likely insignificant compared to the overall strategy risk.\n[Backup plan] Poor results: Simplify entry to *only* Supertrend direction changes confirmed by ATR-based volatility filter. Mediocre results: Optimize ATR multiple for SL/TP and experiment with Aroon period length. Complete failure: Switch to a mean reversion strategy using Bollinger Bands and volume-weighted average price, focusing on short-term price discrepancies."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 51.83703493435239,
+          "components": {
+            "sharpe": -2.5086149851276307,
+            "return": -33.0,
+            "profit_factor": -9.872945728579475,
+            "trades_confidence": 10.0,
+            "win_rate": 1.913793103448276
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 7
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Combining Aroon for trend reversal signals with Supertrend for trend confirmation and volume oscillator for momentum reinforces entries and reduces whipsaws, while ADX filters out choppy markets.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.02914173852468006,
+      "return_pct": -73.53461226333566,
+      "max_drawdown_pct": -75.31346117273984,
+      "profit_factor": 0.8359931235018441,
+      "win_rate_pct": 39.6551724137931,
+      "trades": 116,
+      "continuous_score": -98.79251494772393,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -0.8159686786910417,
+          "return": -33.0,
+          "profit_factor": -7.497457211344272,
+          "trades_confidence": 10.0,
+          "win_rate": 1.396551724137931
+        },
+        "penalties": {
+          "drawdown_pressure": 36.875640781826554,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 40.313461172739835
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -73.5%, PF 0.84, Expectancy -63.39"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 75.3%, Vol 149.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.029, Sortino -0.051, Calmar -0.919"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 39.7%, Trades 116, AvgW/L 814.84/640.52"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "session_reset": {
+          "iteration": 6,
+          "trigger": "deterministic_fallbacks",
+          "reason": "4 fallbacks d\u00e9terministes (seuil=4)",
+          "recovered": true,
+          "reset_count": 1,
+          "anchor_source": "best_iteration",
+          "anchor_iteration": 2,
+          "preserved_best_iteration": 2,
+          "consecutive_failures_before_reset": 0,
+          "fallback_count_before_reset": 4,
+          "timestamp": "2026-03-07T07:25:42.171054"
+        },
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 485,
+          "short_signals": 0,
+          "total_signals": 485
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on multiple indicators for entry creates a high barrier to consistent signal generation, risking missed opportunities or false positives. The ADX filter is missing, a critical omission for momentum strategies. Combining momentum with Supertrend (already reactive) might amplify whipsaws rather than reduce them. The reliance on hourly liquidity windows is likely to have a minor impact and may be noise.\n[Backup plan] Poor results: Simplify to *only* Supertrend with ATR-based stops/targets, removing Aroon and Volume Oscillator. Mediocre results: Optimize ATR multiplier for both stop loss/take profit and onchain_smoothing; experiment with Supertrend period. Failed approach: Switch to a mean reversion strategy using Bollinger Bands and volume-weighted average price, focusing on short-term imbalances."
+        },
+        "scoring": {
+          "continuous_score": -98.79251494772393,
+          "drawdown_excess_pct": 40.313461172739835,
+          "components": {
+            "sharpe": -0.8159686786910417,
+            "return": -33.0,
+            "profit_factor": -7.497457211344272,
+            "trades_confidence": 10.0,
+            "win_rate": 1.396551724137931
+          },
+          "penalties": {
+            "drawdown_pressure": 36.875640781826554,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 1,
+            "llm_positive": 0,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "Combining Aroon for trend reversal, Supertrend for trend direction, and Volume Oscillator for confirmation aims to filter out false signals and capitalize on momentum shifts during periods of increased liquidity.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.02914173852468006,
+      "return_pct": -73.53461226333566,
+      "max_drawdown_pct": -75.31346117273984,
+      "profit_factor": 0.8359931235018441,
+      "win_rate_pct": 39.6551724137931,
+      "trades": 116,
+      "continuous_score": -98.79251494772393,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -0.8159686786910417,
+          "return": -33.0,
+          "profit_factor": -7.497457211344272,
+          "trades_confidence": 10.0,
+          "win_rate": 1.396551724137931
+        },
+        "penalties": {
+          "drawdown_pressure": 36.875640781826554,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 40.313461172739835
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -73.5%, PF 0.84, Expectancy -63.39"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 75.3%, Vol 149.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.029, Sortino -0.051, Calmar -0.919"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 39.7%, Trades 116, AvgW/L 814.84/640.52"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 485,
+          "short_signals": 0,
+          "total_signals": 485
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on three indicators for entry creates a high signal friction risk, potentially over-optimizing to historical noise. Volume Oscillator confirmation is vague and could be a significant source of false positives. The hourly liquidity filter is likely too narrow and may exclude profitable opportunities. Recent iterations show consistently poor performance, suggesting fundamental flaws in the core logic.\n[Backup plan] If negative return, simplify to just Supertrend and ATR for entry/exit. If low Sharpe, increase ATR-based stop loss distance and reduce Take Profit ratio. As an alternative, explore a Mean Reversion strategy using RSI and a volatility filter, capitalizing on ORCAUSDC\u2019s potential for mean reversion."
+        },
+        "scoring": {
+          "continuous_score": -98.79251494772393,
+          "drawdown_excess_pct": 40.313461172739835,
+          "components": {
+            "sharpe": -0.8159686786910417,
+            "return": -33.0,
+            "profit_factor": -7.497457211344272,
+            "trades_confidence": 10.0,
+            "win_rate": 1.396551724137931
+          },
+          "penalties": {
+            "drawdown_pressure": 36.875640781826554,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "Combining Aroon for trend direction, Supertrend for confirmation, and Volume Oscillator to filter false signals should improve trend following while reducing whipsaws.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.02914173852468006,
+      "return_pct": -73.53461226333566,
+      "max_drawdown_pct": -75.31346117273984,
+      "profit_factor": 0.8359931235018441,
+      "win_rate_pct": 39.6551724137931,
+      "trades": 116,
+      "continuous_score": -98.79251494772393,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -0.8159686786910417,
+          "return": -33.0,
+          "profit_factor": -7.497457211344272,
+          "trades_confidence": 10.0,
+          "win_rate": 1.396551724137931
+        },
+        "penalties": {
+          "drawdown_pressure": 36.875640781826554,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 40.313461172739835
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -73.5%, PF 0.84, Expectancy -63.39"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 75.3%, Vol 149.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.029, Sortino -0.051, Calmar -0.919"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 39.7%, Trades 116, AvgW/L 814.84/640.52"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 485,
+          "short_signals": 0,
+          "total_signals": 485
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on three indicators for entry creates significant complexity and potential for overfitting, especially given the limited 2474 bars. Supertrend\u2019s inherent lag and ATR's volatility sensitivity could exacerbate whipsaws, while the volume oscillator's effectiveness on ORCAUSDC is questionable. The time-of-day liquidity filter might be a distraction, introducing unnecessary complexity without significant benefit.\n[Backup plan] Poor results: Simplify to *only* Supertrend with ATR-based stop loss/take profit. Mediocre results: Optimize ATR period and Supertrend multiplier via walk-forward analysis. Failed approach: Switch to a mean reversion strategy using Bollinger Bands and volume confirmation, focusing on short-term price deviations from the moving average."
+        },
+        "scoring": {
+          "continuous_score": -98.79251494772393,
+          "drawdown_excess_pct": 40.313461172739835,
+          "components": {
+            "sharpe": -0.8159686786910417,
+            "return": -33.0,
+            "profit_factor": -7.497457211344272,
+            "trades_confidence": 10.0,
+            "win_rate": 1.396551724137931
+          },
+          "penalties": {
+            "drawdown_pressure": 36.875640781826554,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "Combining Aroon's reversal signals with Supertrend's trend direction and Volume Oscillator's confirmation aims to filter out false breakouts and improve signal reliability, especially during periods of low liquidity.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "stop",
+      "sharpe": null,
+      "return_pct": null,
+      "max_drawdown_pct": null,
+      "profit_factor": null,
+      "win_rate_pct": null,
+      "trades": null,
+      "continuous_score": null,
+      "score_breakdown": null,
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 1,
+            "llm_positive": 0,
+            "fallback_positive": 1
+          }
+        }
+      }
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 1,
+      "hypothesis": "Combining Aroon for trend initiation, Supertrend for directional confirmation, and Volume Oscillator for momentum validation aims to filter false signals and capitalize on strong, liquid uptrends during overlapping Asian/US market hours.",
+      "change_type": "both",
+      "diagnostic_category": "needs_work",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.449765520748088,
+      "return_pct": 16.563950683198055,
+      "max_drawdown_pct": -30.599893531762383,
+      "profit_factor": 1.124280736624665,
+      "win_rate_pct": 51.11111111111111,
+      "trades": 45,
+      "continuous_score": 41.76192308079789,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 12.593434580946465,
+          "return": 18.22034575151786,
+          "profit_factor": 5.681405102841828,
+          "trades_confidence": 7.5,
+          "win_rate": 4.833333333333332
+        },
+        "penalties": {
+          "drawdown_pressure": 7.066595687841589,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "B",
+          "detail": "Return +16.6%, PF 1.12, Expectancy 36.81"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 30.6%, Vol 33.4%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.450, Sortino 0.236, Calmar 0.475"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 51.1%, Trades 45, AvgW/L 651.49/605.81"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: `aroon['bullish_percent']` pour indicateur dict 'aroon'. Sous-cl\u00e9s valides: aroon_down, aroon_up.",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 90: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 0
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 30,
+          "short_signals": 19,
+          "total_signals": 49
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on three indicators increases complexity and potential for overfitting. Aroon's slow response may lag significant price moves, while Supertrend\u2019s inherent whipsaws could trigger frequent, unprofitable exits. The volume oscillator's confirmation might be noisy and prone to false positives, especially given the relatively illiquid ORCAUSDC market. The filter based on Asian/US market hours is a good idea but might be too restrictive.\n[Backup plan] If negative returns, simplify to *just* Supertrend with ATR-based stops and a dynamic TP based on volatility. If mediocre Sharpe, optimize ATR period and Supertrend multiplier. As a complete alternative, explore a Mean Reversion strategy using Bollinger Bands and volume-weighted average price, focusing on short-term reversals."
+        },
+        "scoring": {
+          "continuous_score": 41.76192308079789,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 12.593434580946465,
+            "return": 18.22034575151786,
+            "profit_factor": 5.681405102841828,
+            "trades_confidence": 7.5,
+            "win_rate": 4.833333333333332
+          },
+          "penalties": {
+            "drawdown_pressure": 7.066595687841589,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Combining Supertrend for trend direction, Aroon for reversal confirmation, and Volume Oscillator for momentum validation aims to filter out false signals and capitalize on strong, sustained trends in ORCAUSDC.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.02914173852468006,
+      "return_pct": -73.53461226333566,
+      "max_drawdown_pct": -75.31346117273984,
+      "profit_factor": 0.8359931235018441,
+      "win_rate_pct": 39.6551724137931,
+      "trades": 116,
+      "continuous_score": -98.79251494772393,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -0.8159686786910417,
+          "return": -33.0,
+          "profit_factor": -7.497457211344272,
+          "trades_confidence": 10.0,
+          "win_rate": 1.396551724137931
+        },
+        "penalties": {
+          "drawdown_pressure": 36.875640781826554,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 40.313461172739835
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -73.5%, PF 0.84, Expectancy -63.39"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 75.3%, Vol 149.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.029, Sortino -0.051, Calmar -0.919"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 39.7%, Trades 116, AvgW/L 814.84/640.52"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 485,
+          "short_signals": 0,
+          "total_signals": 485
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on three indicators for entry creates a high signal friction risk; convergence might be infrequent, leading to whipsaws. Supertrend's inherent lag could cause late entries and exits, while the Volume Oscillator's sensitivity to noise is concerning. The onchain_smoothing adjustment adds complexity and potential for overfitting. The filter based on market hours is interesting but may not be consistently impactful.\n[Backup plan] Poor results: Simplify to Supertrend alone with ATR-based stops/targets. Mediocre Sharpe: Optimize ATR multiplier for both SL/TP and onchain_smoothing. Alternative: Shift to a mean reversion strategy using Bollinger Bands and volume-based confirmation signals, exploiting ORCAUSDC's potential for short-term price oscillations."
+        },
+        "scoring": {
+          "continuous_score": -98.79251494772393,
+          "drawdown_excess_pct": 40.313461172739835,
+          "components": {
+            "sharpe": -0.8159686786910417,
+            "return": -33.0,
+            "profit_factor": -7.497457211344272,
+            "trades_confidence": 10.0,
+            "win_rate": 1.396551724137931
+          },
+          "penalties": {
+            "drawdown_pressure": 36.875640781826554,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Combining Aroon for trend reversal signals with Supertrend for trend confirmation and volume oscillator for momentum reinforces entries and reduces whipsaws, while ADX filters out choppy markets.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.02914173852468006,
+      "return_pct": -73.53461226333566,
+      "max_drawdown_pct": -75.31346117273984,
+      "profit_factor": 0.8359931235018441,
+      "win_rate_pct": 39.6551724137931,
+      "trades": 116,
+      "continuous_score": -98.79251494772393,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -0.8159686786910417,
+          "return": -33.0,
+          "profit_factor": -7.497457211344272,
+          "trades_confidence": 10.0,
+          "win_rate": 1.396551724137931
+        },
+        "penalties": {
+          "drawdown_pressure": 36.875640781826554,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 40.313461172739835
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -73.5%, PF 0.84, Expectancy -63.39"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 75.3%, Vol 149.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.029, Sortino -0.051, Calmar -0.919"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 39.7%, Trades 116, AvgW/L 814.84/640.52"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "session_reset": {
+          "iteration": 6,
+          "trigger": "deterministic_fallbacks",
+          "reason": "4 fallbacks d\u00e9terministes (seuil=4)",
+          "recovered": true,
+          "reset_count": 1,
+          "anchor_source": "best_iteration",
+          "anchor_iteration": 2,
+          "preserved_best_iteration": 2,
+          "consecutive_failures_before_reset": 0,
+          "fallback_count_before_reset": 4,
+          "timestamp": "2026-03-07T07:25:42.171054"
+        },
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 485,
+          "short_signals": 0,
+          "total_signals": 485
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on multiple indicators for entry creates a high barrier to consistent signal generation, risking missed opportunities or false positives. The ADX filter is missing, a critical omission for momentum strategies. Combining momentum with Supertrend (already reactive) might amplify whipsaws rather than reduce them. The reliance on hourly liquidity windows is likely to have a minor impact and may be noise.\n[Backup plan] Poor results: Simplify to *only* Supertrend with ATR-based stops/targets, removing Aroon and Volume Oscillator. Mediocre results: Optimize ATR multiplier for both stop loss/take profit and onchain_smoothing; experiment with Supertrend period. Failed approach: Switch to a mean reversion strategy using Bollinger Bands and volume-weighted average price, focusing on short-term imbalances."
+        },
+        "scoring": {
+          "continuous_score": -98.79251494772393,
+          "drawdown_excess_pct": 40.313461172739835,
+          "components": {
+            "sharpe": -0.8159686786910417,
+            "return": -33.0,
+            "profit_factor": -7.497457211344272,
+            "trades_confidence": 10.0,
+            "win_rate": 1.396551724137931
+          },
+          "penalties": {
+            "drawdown_pressure": 36.875640781826554,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 1,
+            "llm_positive": 0,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "Combining Aroon for trend reversal, Supertrend for trend direction, and Volume Oscillator for confirmation aims to filter out false signals and capitalize on momentum shifts during periods of increased liquidity.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.02914173852468006,
+      "return_pct": -73.53461226333566,
+      "max_drawdown_pct": -75.31346117273984,
+      "profit_factor": 0.8359931235018441,
+      "win_rate_pct": 39.6551724137931,
+      "trades": 116,
+      "continuous_score": -98.79251494772393,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -0.8159686786910417,
+          "return": -33.0,
+          "profit_factor": -7.497457211344272,
+          "trades_confidence": 10.0,
+          "win_rate": 1.396551724137931
+        },
+        "penalties": {
+          "drawdown_pressure": 36.875640781826554,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 40.313461172739835
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -73.5%, PF 0.84, Expectancy -63.39"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 75.3%, Vol 149.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.029, Sortino -0.051, Calmar -0.919"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 39.7%, Trades 116, AvgW/L 814.84/640.52"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 485,
+          "short_signals": 0,
+          "total_signals": 485
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on three indicators for entry creates a high signal friction risk, potentially over-optimizing to historical noise. Volume Oscillator confirmation is vague and could be a significant source of false positives. The hourly liquidity filter is likely too narrow and may exclude profitable opportunities. Recent iterations show consistently poor performance, suggesting fundamental flaws in the core logic.\n[Backup plan] If negative return, simplify to just Supertrend and ATR for entry/exit. If low Sharpe, increase ATR-based stop loss distance and reduce Take Profit ratio. As an alternative, explore a Mean Reversion strategy using RSI and a volatility filter, capitalizing on ORCAUSDC\u2019s potential for mean reversion."
+        },
+        "scoring": {
+          "continuous_score": -98.79251494772393,
+          "drawdown_excess_pct": 40.313461172739835,
+          "components": {
+            "sharpe": -0.8159686786910417,
+            "return": -33.0,
+            "profit_factor": -7.497457211344272,
+            "trades_confidence": 10.0,
+            "win_rate": 1.396551724137931
+          },
+          "penalties": {
+            "drawdown_pressure": 36.875640781826554,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "Combining Aroon for trend direction, Supertrend for confirmation, and Volume Oscillator to filter false signals should improve trend following while reducing whipsaws.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.02914173852468006,
+      "return_pct": -73.53461226333566,
+      "max_drawdown_pct": -75.31346117273984,
+      "profit_factor": 0.8359931235018441,
+      "win_rate_pct": 39.6551724137931,
+      "trades": 116,
+      "continuous_score": -98.79251494772393,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -0.8159686786910417,
+          "return": -33.0,
+          "profit_factor": -7.497457211344272,
+          "trades_confidence": 10.0,
+          "win_rate": 1.396551724137931
+        },
+        "penalties": {
+          "drawdown_pressure": 36.875640781826554,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 40.313461172739835
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -73.5%, PF 0.84, Expectancy -63.39"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 75.3%, Vol 149.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.029, Sortino -0.051, Calmar -0.919"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 39.7%, Trades 116, AvgW/L 814.84/640.52"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 485,
+          "short_signals": 0,
+          "total_signals": 485
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on three indicators for entry creates significant complexity and potential for overfitting, especially given the limited 2474 bars. Supertrend\u2019s inherent lag and ATR's volatility sensitivity could exacerbate whipsaws, while the volume oscillator's effectiveness on ORCAUSDC is questionable. The time-of-day liquidity filter might be a distraction, introducing unnecessary complexity without significant benefit.\n[Backup plan] Poor results: Simplify to *only* Supertrend with ATR-based stop loss/take profit. Mediocre results: Optimize ATR period and Supertrend multiplier via walk-forward analysis. Failed approach: Switch to a mean reversion strategy using Bollinger Bands and volume confirmation, focusing on short-term price deviations from the moving average."
+        },
+        "scoring": {
+          "continuous_score": -98.79251494772393,
+          "drawdown_excess_pct": 40.313461172739835,
+          "components": {
+            "sharpe": -0.8159686786910417,
+            "return": -33.0,
+            "profit_factor": -7.497457211344272,
+            "trades_confidence": 10.0,
+            "win_rate": 1.396551724137931
+          },
+          "penalties": {
+            "drawdown_pressure": 36.875640781826554,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining Aroon's reversal signals with Supertrend's trend direction and Volume Oscillator's confirmation aims to filter out false breakouts and capitalize on momentum shifts, with Asian/US market overlap hours enhancing liquidity.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -125.54168207357112,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.7913808984217582,
+      "win_rate_pct": 31.98198198198198,
+      "trades": 222,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -9.536873215005341,
+          "trades_confidence": 10.0,
+          "win_rate": -0.9054054054054057
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -125.5%, PF 0.79, Expectancy -56.55"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 26693.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 32.0%, Trades 222, AvgW/L 670.75/398.53"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: `aroon['bullish_percent']` pour indicateur dict 'aroon'. Sous-cl\u00e9s valides: aroon_down, aroon_up.",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 90: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 2
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 114,
+          "short_signals": 140,
+          "total_signals": 254
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on three indicators for entry creates significant potential for overfitting and whipsaws, particularly given ORCAUSDC's volatility. Supertrend's inherent lag and Aroon's slow response to abrupt shifts are concerning. The hourly liquidity filter is likely to have minimal impact, and the ATR-based stop/take profit may be too tight for this asset.\n[Backup plan] Poor results: Simplify to *only* Supertrend direction with Volume Oscillator confirmation for entries. Mediocre results: Optimize ATR multiplier for stop/take profit, and experiment with Aroon period length. Alternative approach: Explore a Mean Reversion strategy based on ORCAUSDC's on-chain metrics and volatility, rather than momentum."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -9.536873215005341,
+            "trades_confidence": 10.0,
+            "win_rate": -0.9054054054054057
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining Aroon's reversal signals with Supertrend's trend direction, filtered by volume oscillator, aims to capture early trend changes while avoiding whipsaws, and volume oscillator confirms the momentum.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.08959339232598681,
+      "return_pct": -63.105548789315755,
+      "max_drawdown_pct": -86.83703493435239,
+      "profit_factor": 0.784029312187324,
+      "win_rate_pct": 41.37931034482759,
+      "trades": 87,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -2.5086149851276307,
+          "return": -33.0,
+          "profit_factor": -9.872945728579475,
+          "trades_confidence": 10.0,
+          "win_rate": 1.913793103448276
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 51.83703493435239
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -63.1%, PF 0.78, Expectancy -72.54"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 86.8%, Vol 111.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.090, Sortino -0.127, Calmar -0.675"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 41.4%, Trades 87, AvgW/L 636.36/572.93"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: `aroon['upcross']` pour indicateur dict 'aroon'. Sous-cl\u00e9s valides: aroon_down, aroon_up.",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 90: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 3
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 45,
+          "short_signals": 64,
+          "total_signals": 109
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on three indicators for entry creates a high probability of false positives, especially given ORCAUSDC's volatility. Supertrend's lag and Aroon's delayed signals may conflict, generating whipsaws. The volume oscillator filter, while intended to confirm, could be noise. The hourly liquidity filter is likely insignificant compared to the overall strategy risk.\n[Backup plan] Poor results: Simplify entry to *only* Supertrend direction changes confirmed by ATR-based volatility filter. Mediocre results: Optimize ATR multiple for SL/TP and experiment with Aroon period length. Complete failure: Switch to a mean reversion strategy using Bollinger Bands and volume-weighted average price, focusing on short-term price discrepancies."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 51.83703493435239,
+          "components": {
+            "sharpe": -2.5086149851276307,
+            "return": -33.0,
+            "profit_factor": -9.872945728579475,
+            "trades_confidence": 10.0,
+            "win_rate": 1.913793103448276
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 7
+    }
+  ]
+}

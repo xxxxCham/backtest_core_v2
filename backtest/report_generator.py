@@ -293,7 +293,7 @@ def generate_summary_report(
     report_lines.extend([
         "---",
         "",
-        "*Rapport généré automatiquement par backtest_core*",
+        "*Rapport généré automatiquement par backtest-core-v2*",
     ])
 
     report_content = "\n".join(report_lines)

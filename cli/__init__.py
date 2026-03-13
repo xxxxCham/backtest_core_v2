@@ -50,7 +50,7 @@ def create_parser() -> argparse.ArgumentParser:
     """Crée le parser principal avec toutes les sous-commandes."""
 
     parser = argparse.ArgumentParser(
-        prog="backtest_core",
+        prog="backtest-core-v2",
         description="Moteur de backtesting pour stratégies de trading",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""

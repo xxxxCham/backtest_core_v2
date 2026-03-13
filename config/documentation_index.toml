@@ -4,7 +4,7 @@
 [meta]
 version = "1.0.0"
 last_update = "2026-03-10"
-description = "Index centralisé de toute la documentation du projet backtest_core_v2"
+description = "Index centralisé de toute la documentation du projet backtest-core-v2"
 
 [documentation.reorganization_20260310]
 titre = "Reorganisation docs racine"
@@ -13,8 +13,7 @@ description = "Docs techniques de la racine deplacees vers docs/markdowns avec c
 docs_racine_essentielles = [
     "AGENTS.md",
     "README.md",
-    "GUIDE_CREATION_NOUVELLE_STRATEGIE.md",
-    "GUIDE_NOUVELLE_STRATEGIE.md"
+    "GUIDE_CREATION_NOUVELLE_STRATEGIE.md"
 ]
 nouvel_emplacement_docs_techniques = "docs/markdowns/"
 
@@ -91,6 +90,13 @@ fichier = "use_profitable_configs.py"
 type = "outil_cli"
 commandes = ["--list", "--preset NAME", "--backtest NAME", "--data FILE"]
 description = "Outil CLI Python pour charger et utiliser les presets de configurations rentables"
+
+[documentation.multi_llm_simple_roles]
+titre = "Roles du mode multi-LLM simple"
+fichier = "docs/markdowns/MULTI_LLM_SIMPLE_ROLES.md"
+date_creation = "2026-03-10"
+type = "guide_runtime"
+description = "Guide des 5 roles du Builder autonome multi-LLM simple, avec pipeline, fonctions et snapshot runtime valide sur l'hote Ollama local."
 
 [archive]
 date_archivage = "2026-01-04"

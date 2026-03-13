@@ -37,13 +37,29 @@ def _role_preference_from_payload(role: str, payload: Dict[str, Any]) -> RolePre
     )
 
 
+def _normalize_override_candidates(override_model: Any) -> List[str]:
+    if isinstance(override_model, str):
+        normalized = str(override_model or "").strip()
+        return [normalized] if normalized else []
+    if isinstance(override_model, (list, tuple, set)):
+        ordered: List[str] = []
+        seen: set[str] = set()
+        for raw_candidate in override_model:
+            normalized = str(raw_candidate or "").strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            ordered.append(normalized)
+        return ordered
+    return []
+
+
 def _candidate_order(
     preference: RolePreference,
-    override_model: Optional[str],
+    override_model: Any,
 ) -> List[str]:
     ordered: List[str] = []
-    if override_model:
-        ordered.append(str(override_model).strip())
+    ordered.extend(_normalize_override_candidates(override_model))
     ordered.extend(preference.preferred_models)
     ordered.extend(preference.fallback_models)
     seen: set[str] = set()
@@ -72,7 +88,7 @@ def resolve_profile_assignments(
     inventory: ModelInventory,
     *,
     config_path: Optional[str | Path] = None,
-    role_overrides: Optional[Dict[str, str]] = None,
+    role_overrides: Optional[Dict[str, Any]] = None,
     require_live_ollama: bool = False,
 ) -> Dict[str, Any]:
     payload = load_multi_llm_config(config_path)
@@ -117,6 +133,7 @@ def resolve_profile_assignments(
                 role=role,
                 backend=preference.backend,
                 requested_model=resolved_request,
+                required=preference.required,
                 resolved_model=deferred_model.name,
                 verified=deferred_model.verified_available,
                 source=deferred_model.source,
@@ -135,6 +152,7 @@ def resolve_profile_assignments(
                 role=role,
                 backend=preference.backend,
                 requested_model=resolved_request,
+                required=preference.required,
                 reason=(
                     "no local match found"
                     if requested_candidates
@@ -153,6 +171,7 @@ def resolve_profile_assignments(
                 role=role,
                 backend=preference.backend,
                 requested_model=resolved_request,
+                required=preference.required,
                 resolved_model=resolved_model.name,
                 source=resolved_model.source,
                 reason="catalog reference found but not verified locally",
@@ -170,6 +189,7 @@ def resolve_profile_assignments(
                 role=role,
                 backend=preference.backend,
                 requested_model=resolved_request,
+                required=preference.required,
                 resolved_model=resolved_model.name,
                 available=True,
                 verified=True,

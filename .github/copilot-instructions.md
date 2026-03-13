@@ -1,4 +1,4 @@
-# Backtest Core — Instructions Copilot
+# Backtest Core V2 — Instructions Copilot
 
 Suivre `AGENTS.md` (source de verite) pour ce depot.
 

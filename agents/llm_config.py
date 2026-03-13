@@ -27,6 +27,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
+from utils.model_loader import normalize_model_name
+
 # Import conditionnel des dépendances LLM
 try:
     from agents.llm_client import LLMConfig, LLMProvider
@@ -59,9 +61,9 @@ DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 
 RECOMMENDED_FOR_STRATEGY = [
     "deepseek-r1:8b",
-    "qwen2.5:14b",
+    "qwen2.5:32b",
     "gemma3:27b",
-    "llama3.3:70b",
+    "llama3.3:70b-instruct-q4_K_M",
 ]
 
 OPENAI_MODELS = [
@@ -298,14 +300,15 @@ def get_model_display_name(model_name: str) -> str:
     if not LLM_AVAILABLE or KNOWN_MODELS is None:
         return model_name
 
-    info = KNOWN_MODELS.get(model_name)
+    normalized_name = normalize_model_name(model_name)
+    info = KNOWN_MODELS.get(normalized_name) or KNOWN_MODELS.get(model_name)
     if info:
         if info.category == ModelCategory.LIGHT:
-            return f"[L] {model_name}"
+            return f"[L] {normalized_name}"
         if info.category == ModelCategory.MEDIUM:
-            return f"[M] {model_name}"
-        return f"[H] {model_name}"
-    return model_name
+            return f"[M] {normalized_name}"
+        return f"[H] {normalized_name}"
+    return normalized_name
 
 
 def create_display_mappings(model_names: List[str]) -> tuple[Dict[str, str], Dict[str, str]]:

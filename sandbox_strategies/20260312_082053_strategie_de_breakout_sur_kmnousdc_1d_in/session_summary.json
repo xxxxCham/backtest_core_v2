@@ -1,0 +1,1330 @@
+{
+  "session_id": "20260312_082053_strategie_de_breakout_sur_kmnousdc_1d_in",
+  "objective": "Strategie de Breakout sur KMNOUSDC 1d. Indicateurs : Stochastic, Bollinger Bands, ATR. Entree long apres breakout de la bande superieure Bollinger confirme par Stochastique > 80. Stop-loss = 1.0x ATR, take-profit = 2.0x ATR.",
+  "status": "failed",
+  "best_sharpe": 0.632330115479751,
+  "best_score": -26.0,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 6,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "A breakout above the upper Bollinger band signals a shift to a strong trend, and a Stochastic reading above 80 confirms that the price is in overbought momentum, thereby filtering out weak breakouts and reducing false signals; ATR-based SL/TP adapts to current volatility for balanced risk.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 563,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "A breakout above the Bollinger upper band coupled with a moderately high stochastic value (above 70) indicates a strong upward momentum that is more likely to sustain, while still filtering out weak or false breakouts that would occur with a stricter 80+ threshold. The same logic applies to downtrends. Using ATR for stop\u2011loss and take\u2011profit ties risk to current volatility, improving risk\u2011adjusted returns.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.27621779313027806,
+      "return_pct": -8.826497314694134,
+      "max_drawdown_pct": -68.20967348618507,
+      "profit_factor": 0.9481222597029445,
+      "win_rate_pct": 40.0,
+      "trades": 25,
+      "continuous_score": -62.81971833812359,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 7.7340982076477856,
+          "return": -9.709147046163547,
+          "profit_factor": -2.3715538421511084,
+          "trades_confidence": 4.166666666666667,
+          "win_rate": 1.5
+        },
+        "penalties": {
+          "drawdown_pressure": 32.13978232412338,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 33.20967348618507
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -8.8%, PF 0.95, Expectancy -35.31"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 68.2%, Vol 68.2%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.276, Sortino 0.199, Calmar -0.085"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 40.0%, Trades 25, AvgW/L 1613.14/1134.27"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 563,
+          "long_signals": 16,
+          "short_signals": 37,
+          "total_signals": 53,
+          "signal_density": 0.0941385435168739,
+          "transition_signals": 26,
+          "transition_density": 0.046181172291296625,
+          "repeated_same_signals": 27,
+          "repeated_same_ratio": 0.5094339622641509
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Weaknesses: 1) The 70% stochastic threshold may still allow weak or false breakouts; 2) A single\u2011day Bollinger breakout is highly sensitive to noise; 3) Exit rule (cross below middle band or stoch<50) may be too vague and allow slippage; 4) ATR\u2011based SL/TP may be too tight/loose for a highly volatile pair. If negative returns: tighten the entry to require a 2\u2011day close above the upper band or raise the stochastic filter to 80%; add a minimum volume filter. If Sharpe is low: experiment with a 1.5\u00d7ATR stop and 3\u00d7ATR TP, or use a 20\u2011period Bollinger with 2.5\u03c3 to reduce whipsaw. Alternative: switch to a trend\u2011following breakout using a 50\u2011period MA + ATR filter, or combine with ADX >20 to confirm strength before entering.\n[Backup plan] 1) Re\u2011run with stochastic threshold 80 and 2\u2011day confirmation. 2) Increase SL to 1.5\u00d7ATR and TP to 3\u00d7ATR. 3) Add a volume filter (volume > 1.5\u00d7MA volume). 4) If still underperforming, replace Bollinger breakout with a 20\u2011period SMA breakout and keep ATR risk management."
+        },
+        "scoring": {
+          "continuous_score": -62.81971833812359,
+          "drawdown_excess_pct": 33.20967348618507,
+          "components": {
+            "sharpe": 7.7340982076477856,
+            "return": -9.709147046163547,
+            "profit_factor": -2.3715538421511084,
+            "trades_confidence": 4.166666666666667,
+            "win_rate": 1.5
+          },
+          "penalties": {
+            "drawdown_pressure": 32.13978232412338,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "A breakout above the upper Bollinger band that is also confirmed by the Stochastic %K staying above 80 indicates a strong momentum shift; adding a volatility filter with ATR ensures that the breakout occurs in a sufficiently volatile regime, reducing the chance of false breakouts and thereby lowering drawdown.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -58.38177934328631,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.6826364760186758,
+      "win_rate_pct": 34.78260869565217,
+      "trades": 23,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -14.50804681057482,
+          "trades_confidence": 3.8333333333333335,
+          "win_rate": -0.0652173913043484
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -58.4%, PF 0.68, Expectancy -253.83"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 1019.0%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 34.8%, Trades 23, AvgW/L 1569.71/1226.39"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 563,
+          "long_signals": 12,
+          "short_signals": 35,
+          "total_signals": 47,
+          "signal_density": 0.08348134991119005,
+          "transition_signals": 24,
+          "transition_density": 0.04262877442273535,
+          "repeated_same_signals": 23,
+          "repeated_same_ratio": 0.48936170212765956
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1) Over\u2011sensitive entry (Stoch >80 and Bollinger upper) may trigger on noise; 2) Using only close > upper band ignores intrabar dynamics; 3) Exit rule (middle band or Stoch<50) is too reactive and may cut gains; 4) Fixed ATR multiples may not adapt to regime shifts; 5) 1d data with only 563 bars limits statistical power.\n[Backup plan] If returns stay negative, switch to a higher ATR multiplier (1.5x) to avoid premature stops and test a 3\u2011period EMA filter to confirm trend strength. If Sharpe is low, tighten Stoch threshold to >90 and lengthen Bollinger period to 20 for smoother bands, while moving stop to 0.8x ATR. As a fallback, try a dual\u2011timeframe approach: use 4h Stoch confirmation before 1d entry, or replace Bollinger with a Donchian channel breakout combined with a volatility breakout filter."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -14.50804681057482,
+            "trades_confidence": 3.8333333333333335,
+            "win_rate": -0.0652173913043484
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "A breakout beyond the Bollinger upper band signals potential momentum, but only in a strong trend confirmed by ADX > 25; the Stochastic overbought/oversold levels ensure the breakout is not a temporary spike, reducing false entries in ranging markets.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -68.42292698463821,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.35888158157510774,
+      "win_rate_pct": 27.27272727272727,
+      "trades": 11,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 1.8333333333333333,
+          "win_rate": -2.3181818181818192
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -68.4%, PF 0.36, Expectancy -622.03"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 441.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 27.3%, Trades 11, AvgW/L 1276.71/1334.05"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 563,
+          "long_signals": 6,
+          "short_signals": 11,
+          "total_signals": 17,
+          "signal_density": 0.03019538188277087,
+          "transition_signals": 12,
+          "transition_density": 0.021314387211367674,
+          "repeated_same_signals": 5,
+          "repeated_same_ratio": 0.29411764705882354
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy may suffer from too many filters that cut out most opportunities, especially if the Stochastic is already overbought at a breakout\u2014this often signals a temporary spike rather than a sustained move. Relying on the middle band as an exit can trigger too early during volatile swings, and the ADX threshold of 20 may be too low to guard against weak trends. The fixed 1\u00d7ATR stop and 2\u00d7ATR take\u2011profit may not adapt to changing volatility, causing frequent whipsaws in a 1\u2011day timeframe. With only 563 bars, the backtest might be overfitting to a short sample, and the combination of Bollinger, Stochastic, and ADX could produce redundant signals.\n\nbackup_plan\":\"If returns remain negative, replace the Stochastic overbought filter with a simple breakout confirmation (e.g., price stays above the upper band for 2 consecutive closes) and raise the ADX threshold to 30 to ensure a stronger trend. For a low Sharpe, tighten the stop to 0.75\u00d7ATR and increase the TP to 3\u00d7ATR, and consider extending the Bollinger period to 20 or adding a 50\u2011period SMA to filter out sideways markets. As an alternative, switch to a volatility\u2011breakout model using the Donchian channel or a Keltner channel with ATR\u2011based SL/TP, and use a single trend indicator (e.g., EMA crossover) to simplify the entry logic.}"
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 1.8333333333333333,
+            "win_rate": -2.3181818181818192
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "A true breakout is more likely when price closes beyond the upper Bollinger band while the Stochastic %K is over 80, indicating momentum, and the ATR exceeds a minimal volatility threshold to avoid false signals in low\u2011volatility periods. ATR\u2011based stops and targets lock in risk and reward proportional to current market noise.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.632330115479751,
+      "return_pct": -41.98172161299951,
+      "max_drawdown_pct": -97.70985102161917,
+      "profit_factor": 0.5346172038859718,
+      "win_rate_pct": 16.666666666666664,
+      "trades": 6,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 17.70524323343303,
+          "return": -33.0,
+          "profit_factor": -21.274642108069862,
+          "trades_confidence": 1.0,
+          "win_rate": -5.5
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 62.70985102161917
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -42.0%, PF 0.53, Expectancy -699.70"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 97.7%, Vol 723.3%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.632, Sortino 1.533, Calmar -0.305"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 16.7%, Trades 6, AvgW/L 4822.73/1804.18"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 563,
+          "long_signals": 4,
+          "short_signals": 7,
+          "total_signals": 11,
+          "signal_density": 0.019538188277087035,
+          "transition_signals": 5,
+          "transition_density": 0.008880994671403197,
+          "repeated_same_signals": 6,
+          "repeated_same_ratio": 0.5454545454545454
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy is overly restrictive: it only trades long on a single breakout condition, ignores market trend, and uses a fixed 80% Stoch threshold that may trigger in overbought but weak moves. The ATR filter is vague and the exit rule (middle band or Stoch<50) can be too late, while the 1x/2x ATR stop\u2011target may be too tight in high\u2011volatility periods. Without a short side or trend filter, it is exposed to false breakouts and whipsaws, leading to the observed negative Sharpe and returns.\n[Backup plan] If results stay negative, first add a trend filter (e.g., 50\u2011day SMA > price for long, < price for short) and allow short entries on lower Bollinger breakouts with Stoch <20. If Sharpe remains low, increase the target to 3x ATR, tighten the stop to 0.75x ATR, and lower the Stoch entry threshold to 70 to capture earlier momentum. As a fallback, switch to a volatility\u2011breakout using Keltner channels and a 1\u2011day ATR filter, with a trailing stop based on the channel width."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 62.70985102161917,
+          "components": {
+            "sharpe": 17.70524323343303,
+            "return": -33.0,
+            "profit_factor": -21.274642108069862,
+            "trades_confidence": 1.0,
+            "win_rate": -5.5
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "A price that breaks above the Bollinger upper band while the Stochastic %K is over 80 indicates strong bullish momentum; pairing this with a minimum ATR level filters out low\u2011volatility false breakouts, improving entry quality. The same logic applied to the lower band captures bearish moves. Exiting when the price crosses the middle band or the Stochastic falls below 50 limits exposure to trend reversals.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "stop",
+      "sharpe": 0.21338710178160783,
+      "return_pct": -43.9172026155267,
+      "max_drawdown_pct": -83.69023145799027,
+      "profit_factor": 0.4235785063141448,
+      "win_rate_pct": 16.666666666666664,
+      "trades": 6,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 5.974838849885019,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 1.0,
+          "win_rate": -5.5
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 48.690231457990265
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -43.9%, PF 0.42, Expectancy -731.95"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 83.7%, Vol 117.3%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.213, Sortino 0.100, Calmar -0.374"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 16.7%, Trades 6, AvgW/L 3227.22/1523.79"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 563,
+          "long_signals": 4,
+          "short_signals": 7,
+          "total_signals": 11,
+          "signal_density": 0.019538188277087035,
+          "transition_signals": 5,
+          "transition_density": 0.008880994671403197,
+          "repeated_same_signals": 6,
+          "repeated_same_ratio": 0.5454545454545454
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Weaknesses: 1) Stoch >80 is a very tight overbought filter that may miss most breakouts; 2) ATR > atr_min is vague\u2014no exact value, so volatility filter is inconsistent; 3) Exit on middle band or Stoch <50 can trigger early, especially on 1\u2011day data where noise is high; 4) No trend or directional bias beyond the Bollinger bands, so the strategy may trade whipsaws. If results remain negative, I would first add a simple trend filter (e.g., price above 200\u2011day EMA for longs) to reduce false breakouts. For a low Sharpe, tightening the ATR stop\u2011loss to 0.8\u00d7ATR and increasing take\u2011profit to 3\u00d7ATR could improve risk\u2011reward; alternatively, lower the Stoch entry threshold to 70 to capture more trades. If the strategy still fails, I would switch to a dual\u2011time\u2011frame breakout: use 4\u2011hour Bollinger bands with 1\u2011day Stoch confirmation, or replace Stoch with RSI 14 <30 for shorts and >70 for longs, and keep the ATR\u2011based SL/TP.\n[Backup plan] 1. Add a trend filter: require price > 200\u2011EMA for longs and < 200\u2011EMA for shorts. 2. Set a fixed ATR multiplier for SL/TP: SL=1\u00d7ATR, TP=3\u00d7ATR. 3. Lower Stoch entry threshold to 70 and exit when Stoch <50 or price crosses the 50\u2011period SMA. 4. If still underperforming, test a volume\u2011weighted breakout: entry when price > upper Bollinger AND volume > 1.5\u00d7 SMA(volume). 5. As a last resort, replace Bollinger with Donchian channel and use a simple moving average crossover for confirmation."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 48.690231457990265,
+          "components": {
+            "sharpe": 5.974838849885019,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 1.0,
+            "win_rate": -5.5
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 6
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 1,
+      "hypothesis": "A breakout above the upper Bollinger band signals a shift to a strong trend, and a Stochastic reading above 80 confirms that the price is in overbought momentum, thereby filtering out weak breakouts and reducing false signals; ATR-based SL/TP adapts to current volatility for balanced risk.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 563,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "A breakout above the Bollinger upper band coupled with a moderately high stochastic value (above 70) indicates a strong upward momentum that is more likely to sustain, while still filtering out weak or false breakouts that would occur with a stricter 80+ threshold. The same logic applies to downtrends. Using ATR for stop\u2011loss and take\u2011profit ties risk to current volatility, improving risk\u2011adjusted returns.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.27621779313027806,
+      "return_pct": -8.826497314694134,
+      "max_drawdown_pct": -68.20967348618507,
+      "profit_factor": 0.9481222597029445,
+      "win_rate_pct": 40.0,
+      "trades": 25,
+      "continuous_score": -62.81971833812359,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 7.7340982076477856,
+          "return": -9.709147046163547,
+          "profit_factor": -2.3715538421511084,
+          "trades_confidence": 4.166666666666667,
+          "win_rate": 1.5
+        },
+        "penalties": {
+          "drawdown_pressure": 32.13978232412338,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 33.20967348618507
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -8.8%, PF 0.95, Expectancy -35.31"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 68.2%, Vol 68.2%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.276, Sortino 0.199, Calmar -0.085"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 40.0%, Trades 25, AvgW/L 1613.14/1134.27"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 563,
+          "long_signals": 16,
+          "short_signals": 37,
+          "total_signals": 53,
+          "signal_density": 0.0941385435168739,
+          "transition_signals": 26,
+          "transition_density": 0.046181172291296625,
+          "repeated_same_signals": 27,
+          "repeated_same_ratio": 0.5094339622641509
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Weaknesses: 1) The 70% stochastic threshold may still allow weak or false breakouts; 2) A single\u2011day Bollinger breakout is highly sensitive to noise; 3) Exit rule (cross below middle band or stoch<50) may be too vague and allow slippage; 4) ATR\u2011based SL/TP may be too tight/loose for a highly volatile pair. If negative returns: tighten the entry to require a 2\u2011day close above the upper band or raise the stochastic filter to 80%; add a minimum volume filter. If Sharpe is low: experiment with a 1.5\u00d7ATR stop and 3\u00d7ATR TP, or use a 20\u2011period Bollinger with 2.5\u03c3 to reduce whipsaw. Alternative: switch to a trend\u2011following breakout using a 50\u2011period MA + ATR filter, or combine with ADX >20 to confirm strength before entering.\n[Backup plan] 1) Re\u2011run with stochastic threshold 80 and 2\u2011day confirmation. 2) Increase SL to 1.5\u00d7ATR and TP to 3\u00d7ATR. 3) Add a volume filter (volume > 1.5\u00d7MA volume). 4) If still underperforming, replace Bollinger breakout with a 20\u2011period SMA breakout and keep ATR risk management."
+        },
+        "scoring": {
+          "continuous_score": -62.81971833812359,
+          "drawdown_excess_pct": 33.20967348618507,
+          "components": {
+            "sharpe": 7.7340982076477856,
+            "return": -9.709147046163547,
+            "profit_factor": -2.3715538421511084,
+            "trades_confidence": 4.166666666666667,
+            "win_rate": 1.5
+          },
+          "penalties": {
+            "drawdown_pressure": 32.13978232412338,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "A breakout above the upper Bollinger band that is also confirmed by the Stochastic %K staying above 80 indicates a strong momentum shift; adding a volatility filter with ATR ensures that the breakout occurs in a sufficiently volatile regime, reducing the chance of false breakouts and thereby lowering drawdown.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -58.38177934328631,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.6826364760186758,
+      "win_rate_pct": 34.78260869565217,
+      "trades": 23,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -14.50804681057482,
+          "trades_confidence": 3.8333333333333335,
+          "win_rate": -0.0652173913043484
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -58.4%, PF 0.68, Expectancy -253.83"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 1019.0%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 34.8%, Trades 23, AvgW/L 1569.71/1226.39"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 563,
+          "long_signals": 12,
+          "short_signals": 35,
+          "total_signals": 47,
+          "signal_density": 0.08348134991119005,
+          "transition_signals": 24,
+          "transition_density": 0.04262877442273535,
+          "repeated_same_signals": 23,
+          "repeated_same_ratio": 0.48936170212765956
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1) Over\u2011sensitive entry (Stoch >80 and Bollinger upper) may trigger on noise; 2) Using only close > upper band ignores intrabar dynamics; 3) Exit rule (middle band or Stoch<50) is too reactive and may cut gains; 4) Fixed ATR multiples may not adapt to regime shifts; 5) 1d data with only 563 bars limits statistical power.\n[Backup plan] If returns stay negative, switch to a higher ATR multiplier (1.5x) to avoid premature stops and test a 3\u2011period EMA filter to confirm trend strength. If Sharpe is low, tighten Stoch threshold to >90 and lengthen Bollinger period to 20 for smoother bands, while moving stop to 0.8x ATR. As a fallback, try a dual\u2011timeframe approach: use 4h Stoch confirmation before 1d entry, or replace Bollinger with a Donchian channel breakout combined with a volatility breakout filter."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -14.50804681057482,
+            "trades_confidence": 3.8333333333333335,
+            "win_rate": -0.0652173913043484
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "A breakout beyond the Bollinger upper band signals potential momentum, but only in a strong trend confirmed by ADX > 25; the Stochastic overbought/oversold levels ensure the breakout is not a temporary spike, reducing false entries in ranging markets.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -68.42292698463821,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.35888158157510774,
+      "win_rate_pct": 27.27272727272727,
+      "trades": 11,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 1.8333333333333333,
+          "win_rate": -2.3181818181818192
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -68.4%, PF 0.36, Expectancy -622.03"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 441.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 27.3%, Trades 11, AvgW/L 1276.71/1334.05"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 563,
+          "long_signals": 6,
+          "short_signals": 11,
+          "total_signals": 17,
+          "signal_density": 0.03019538188277087,
+          "transition_signals": 12,
+          "transition_density": 0.021314387211367674,
+          "repeated_same_signals": 5,
+          "repeated_same_ratio": 0.29411764705882354
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy may suffer from too many filters that cut out most opportunities, especially if the Stochastic is already overbought at a breakout\u2014this often signals a temporary spike rather than a sustained move. Relying on the middle band as an exit can trigger too early during volatile swings, and the ADX threshold of 20 may be too low to guard against weak trends. The fixed 1\u00d7ATR stop and 2\u00d7ATR take\u2011profit may not adapt to changing volatility, causing frequent whipsaws in a 1\u2011day timeframe. With only 563 bars, the backtest might be overfitting to a short sample, and the combination of Bollinger, Stochastic, and ADX could produce redundant signals.\n\nbackup_plan\":\"If returns remain negative, replace the Stochastic overbought filter with a simple breakout confirmation (e.g., price stays above the upper band for 2 consecutive closes) and raise the ADX threshold to 30 to ensure a stronger trend. For a low Sharpe, tighten the stop to 0.75\u00d7ATR and increase the TP to 3\u00d7ATR, and consider extending the Bollinger period to 20 or adding a 50\u2011period SMA to filter out sideways markets. As an alternative, switch to a volatility\u2011breakout model using the Donchian channel or a Keltner channel with ATR\u2011based SL/TP, and use a single trend indicator (e.g., EMA crossover) to simplify the entry logic.}"
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 1.8333333333333333,
+            "win_rate": -2.3181818181818192
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "A true breakout is more likely when price closes beyond the upper Bollinger band while the Stochastic %K is over 80, indicating momentum, and the ATR exceeds a minimal volatility threshold to avoid false signals in low\u2011volatility periods. ATR\u2011based stops and targets lock in risk and reward proportional to current market noise.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.632330115479751,
+      "return_pct": -41.98172161299951,
+      "max_drawdown_pct": -97.70985102161917,
+      "profit_factor": 0.5346172038859718,
+      "win_rate_pct": 16.666666666666664,
+      "trades": 6,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 17.70524323343303,
+          "return": -33.0,
+          "profit_factor": -21.274642108069862,
+          "trades_confidence": 1.0,
+          "win_rate": -5.5
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 62.70985102161917
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -42.0%, PF 0.53, Expectancy -699.70"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 97.7%, Vol 723.3%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.632, Sortino 1.533, Calmar -0.305"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 16.7%, Trades 6, AvgW/L 4822.73/1804.18"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 563,
+          "long_signals": 4,
+          "short_signals": 7,
+          "total_signals": 11,
+          "signal_density": 0.019538188277087035,
+          "transition_signals": 5,
+          "transition_density": 0.008880994671403197,
+          "repeated_same_signals": 6,
+          "repeated_same_ratio": 0.5454545454545454
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy is overly restrictive: it only trades long on a single breakout condition, ignores market trend, and uses a fixed 80% Stoch threshold that may trigger in overbought but weak moves. The ATR filter is vague and the exit rule (middle band or Stoch<50) can be too late, while the 1x/2x ATR stop\u2011target may be too tight in high\u2011volatility periods. Without a short side or trend filter, it is exposed to false breakouts and whipsaws, leading to the observed negative Sharpe and returns.\n[Backup plan] If results stay negative, first add a trend filter (e.g., 50\u2011day SMA > price for long, < price for short) and allow short entries on lower Bollinger breakouts with Stoch <20. If Sharpe remains low, increase the target to 3x ATR, tighten the stop to 0.75x ATR, and lower the Stoch entry threshold to 70 to capture earlier momentum. As a fallback, switch to a volatility\u2011breakout using Keltner channels and a 1\u2011day ATR filter, with a trailing stop based on the channel width."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 62.70985102161917,
+          "components": {
+            "sharpe": 17.70524323343303,
+            "return": -33.0,
+            "profit_factor": -21.274642108069862,
+            "trades_confidence": 1.0,
+            "win_rate": -5.5
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "A price that breaks above the Bollinger upper band while the Stochastic %K is over 80 indicates strong bullish momentum; pairing this with a minimum ATR level filters out low\u2011volatility false breakouts, improving entry quality. The same logic applied to the lower band captures bearish moves. Exiting when the price crosses the middle band or the Stochastic falls below 50 limits exposure to trend reversals.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "stop",
+      "sharpe": 0.21338710178160783,
+      "return_pct": -43.9172026155267,
+      "max_drawdown_pct": -83.69023145799027,
+      "profit_factor": 0.4235785063141448,
+      "win_rate_pct": 16.666666666666664,
+      "trades": 6,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 5.974838849885019,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 1.0,
+          "win_rate": -5.5
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 48.690231457990265
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -43.9%, PF 0.42, Expectancy -731.95"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 83.7%, Vol 117.3%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.213, Sortino 0.100, Calmar -0.374"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 16.7%, Trades 6, AvgW/L 3227.22/1523.79"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 563,
+          "long_signals": 4,
+          "short_signals": 7,
+          "total_signals": 11,
+          "signal_density": 0.019538188277087035,
+          "transition_signals": 5,
+          "transition_density": 0.008880994671403197,
+          "repeated_same_signals": 6,
+          "repeated_same_ratio": 0.5454545454545454
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Weaknesses: 1) Stoch >80 is a very tight overbought filter that may miss most breakouts; 2) ATR > atr_min is vague\u2014no exact value, so volatility filter is inconsistent; 3) Exit on middle band or Stoch <50 can trigger early, especially on 1\u2011day data where noise is high; 4) No trend or directional bias beyond the Bollinger bands, so the strategy may trade whipsaws. If results remain negative, I would first add a simple trend filter (e.g., price above 200\u2011day EMA for longs) to reduce false breakouts. For a low Sharpe, tightening the ATR stop\u2011loss to 0.8\u00d7ATR and increasing take\u2011profit to 3\u00d7ATR could improve risk\u2011reward; alternatively, lower the Stoch entry threshold to 70 to capture more trades. If the strategy still fails, I would switch to a dual\u2011time\u2011frame breakout: use 4\u2011hour Bollinger bands with 1\u2011day Stoch confirmation, or replace Stoch with RSI 14 <30 for shorts and >70 for longs, and keep the ATR\u2011based SL/TP.\n[Backup plan] 1. Add a trend filter: require price > 200\u2011EMA for longs and < 200\u2011EMA for shorts. 2. Set a fixed ATR multiplier for SL/TP: SL=1\u00d7ATR, TP=3\u00d7ATR. 3. Lower Stoch entry threshold to 70 and exit when Stoch <50 or price crosses the 50\u2011period SMA. 4. If still underperforming, test a volume\u2011weighted breakout: entry when price > upper Bollinger AND volume > 1.5\u00d7 SMA(volume). 5. As a last resort, replace Bollinger with Donchian channel and use a simple moving average crossover for confirmation."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 48.690231457990265,
+          "components": {
+            "sharpe": 5.974838849885019,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 1.0,
+            "win_rate": -5.5
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 6
+    }
+  ]
+}

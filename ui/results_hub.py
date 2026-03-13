@@ -22,6 +22,10 @@ Skip-if: Vous utilisez seulement ui.results.
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -41,6 +45,7 @@ from utils.run_tracker import RunTracker
 
 RESULTS_DIR = Path("backtest_results")
 RUNS_DIR = Path("runs")
+GRADUATION_RESULTS_DIR = Path("catalog/graduation_results")
 
 
 def _safe_read_csv(path: Path) -> pd.DataFrame:
@@ -50,6 +55,371 @@ def _safe_read_csv(path: Path) -> pd.DataFrame:
         return pd.read_csv(path)
     except Exception:
         return pd.DataFrame()
+
+
+def _load_candidate_report(*filenames: str) -> tuple[dict[str, Any], pd.DataFrame]:
+    for name in filenames:
+        path = GRADUATION_RESULTS_DIR / name
+        if not path.exists():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        candidates = payload.get("candidates") or []
+        df = pd.DataFrame(candidates)
+        if not df.empty:
+            numeric_cols = [
+                "best_return_pct",
+                "best_profit_factor",
+                "best_score",
+                "best_sharpe",
+                "best_trades",
+                "best_max_drawdown_pct",
+                "best_win_rate_pct",
+                "sweep_robustness_pct",
+                "wfa_stability",
+                "wfa_avg_test_return_pct",
+            ]
+            df = _coerce_numeric(df, numeric_cols)
+        payload["_report_path"] = str(path)
+        return payload, df
+    return {}, pd.DataFrame()
+
+
+def _load_graduation_report() -> tuple[dict[str, Any], pd.DataFrame]:
+    return _load_candidate_report("graduation_full.json", "graduation_p1.json")
+
+
+def _load_positive_import_report() -> tuple[dict[str, Any], pd.DataFrame]:
+    return _load_candidate_report("positive_imports_graduation.json", "positive_artifacts_import.json")
+
+
+def _load_progress_payload(filename: str) -> dict[str, Any]:
+    path = Path("catalog/graduation_results") / filename
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    payload["_progress_path"] = str(path)
+    return payload
+
+
+def _load_log_tail(filename: str, *, max_lines: int = 25) -> str:
+    path = Path("catalog/graduation_results") / filename
+    if not path.exists():
+        return ""
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return ""
+    return "\n".join(lines[-max_lines:])
+
+
+def _progress_age_seconds(updated_at: str) -> Optional[float]:
+    if not updated_at:
+        return None
+    try:
+        dt = datetime.fromisoformat(updated_at)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds()
+
+
+def _render_progress_section(*, title: str, payload: dict[str, Any], log_filename: str) -> None:
+    st.markdown(f"### {title}")
+    if not payload:
+        st.write("ℹ️ Aucun état d'exécution en cours.")
+        return
+
+    stats = payload.get("stats") or {}
+    candidate = payload.get("current_candidate") or {}
+    age_seconds = _progress_age_seconds(str(payload.get("updated_at") or ""))
+    age_label = ""
+    if age_seconds is not None:
+        age_label = f"{int(age_seconds)}s"
+
+    cols = st.columns(6)
+    cols[0].metric("Statut", str(payload.get("status") or "?"))
+    cols[1].metric("Phase", str(payload.get("current_phase") or "?"))
+    cols[2].metric("Avancement", f"{payload.get('current_index', 0)}/{payload.get('current_total', 0)}")
+    cols[3].metric("P2", int(stats.get("p2_survivors", 0)))
+    cols[4].metric("P3", int(stats.get("p3_survivors", 0)))
+    cols[5].metric("P4", int(stats.get("p4_survivors", 0)))
+
+    strategy_label = str(candidate.get("strategy_name") or candidate.get("session_id") or "").strip()
+    if strategy_label:
+        st.write(f"**Stratégie en cours** : `{strategy_label}`")
+    source_parts = [
+        str(candidate.get("source_symbol") or "").strip(),
+        str(candidate.get("source_timeframe") or "").strip(),
+        str(candidate.get("source_run_id") or "").strip(),
+    ]
+    source_parts = [part for part in source_parts if part]
+    if source_parts:
+        st.caption(" | ".join(source_parts))
+
+    updated_at = str(payload.get("updated_at") or "").strip()
+    if updated_at:
+        st.caption(f"Dernière mise à jour: {updated_at} UTC" + (f" ({age_label})" if age_label else ""))
+
+    if payload.get("status") == "running" and age_seconds is not None and age_seconds > 180:
+        st.warning("Le run est marqué `running` mais la progression n'a pas bougé depuis plus de 3 minutes.")
+    elif payload.get("status") == "failed":
+        st.error(str(payload.get("error") or "Le run a échoué."))
+    elif payload.get("status") == "completed":
+        st.success("Le run est terminé.")
+
+    log_tail = _load_log_tail(log_filename)
+    if log_tail:
+        with st.expander("Dernières lignes du log", expanded=False):
+            st.code(log_tail, language="text")
+
+    with st.expander("État brut", expanded=False):
+        st.json(payload)
+
+
+def _start_background_graduation_job(*, args: list[str], log_filename: str) -> tuple[bool, str]:
+    output_dir = Path("catalog/graduation_results")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_path = output_dir / log_filename
+    command = [sys.executable, "-m", "catalog.graduation", *args]
+    try:
+        with open(log_path, "a", encoding="utf-8") as log_handle:
+            process = subprocess.Popen(
+                command,
+                cwd=str(Path.cwd()),
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+            )
+    except Exception as exc:
+        return False, f"Échec du lancement: {exc}"
+    return True, f"Run lancé en arrière-plan (PID {process.pid}). Log: {log_path}"
+
+
+def _render_candidate_report_section(
+    *,
+    title: str,
+    payload: dict[str, Any],
+    df: pd.DataFrame,
+    key_prefix: str,
+) -> None:
+    st.markdown(f"### {title}")
+    if not payload:
+        st.write("ℹ️ Aucun rapport disponible.")
+        return
+
+    stats = payload.get("stats") or {}
+    metric_cols = st.columns(6)
+    metric_cols[0].metric("Rapport", payload.get("phase", "?"))
+    metric_cols[1].metric("Candidats", int(payload.get("total_candidates", 0)))
+    metric_cols[2].metric("P2", int(stats.get("p2_survivors", 0)))
+    metric_cols[3].metric("P3", int(stats.get("p3_survivors", 0)))
+    metric_cols[4].metric("P4", int(stats.get("p4_survivors", 0)))
+    metric_cols[5].metric("Sync", int(stats.get("catalog_synced", 0)))
+    st.caption(f"Source: {payload.get('_report_path', '')}")
+
+    if df.empty:
+        st.write("ℹ️ Le rapport est présent mais ne contient aucun candidat.")
+        return
+
+    phase_options = ["Toutes"] + sorted(df["phase"].dropna().astype(str).unique().tolist()) if "phase" in df.columns else ["Toutes"]
+    decision_options = ["Toutes"] + sorted(df["decision"].dropna().astype(str).unique().tolist()) if "decision" in df.columns else ["Toutes"]
+    source_options = ["Toutes"] + sorted(df["source_kind"].dropna().astype(str).unique().tolist()) if "source_kind" in df.columns else ["Toutes"]
+
+    filter_cols = st.columns(3)
+    phase_filter = filter_cols[0].selectbox("Phase", phase_options, key=f"{key_prefix}_phase_filter")
+    decision_filter = filter_cols[1].selectbox("Décision", decision_options, key=f"{key_prefix}_decision_filter")
+    source_filter = filter_cols[2].selectbox("Source", source_options, key=f"{key_prefix}_source_filter")
+
+    filtered = df.copy()
+    if phase_filter != "Toutes" and "phase" in filtered.columns:
+        filtered = filtered[filtered["phase"] == phase_filter]
+    if decision_filter != "Toutes" and "decision" in filtered.columns:
+        filtered = filtered[filtered["decision"] == decision_filter]
+    if source_filter != "Toutes" and "source_kind" in filtered.columns:
+        filtered = filtered[filtered["source_kind"] == source_filter]
+
+    sort_col = "best_return_pct" if "best_return_pct" in filtered.columns else None
+    if sort_col:
+        filtered = filtered.sort_values(by=sort_col, ascending=False, na_position="last")
+
+    preferred_cols = [
+        "strategy_name",
+        "session_id",
+        "source_run_id",
+        "source_symbol",
+        "source_timeframe",
+        "source_kind",
+        "phase",
+        "decision",
+        "best_return_pct",
+        "best_profit_factor",
+        "best_sharpe",
+        "best_trades",
+        "multi_ctx_pass",
+        "tokens_tested",
+        "sweep_robustness_pct",
+        "wfa_stability",
+        "wfa_avg_test_return_pct",
+        "rejection_reason",
+        "catalog_category",
+        "catalog_entry_id",
+    ]
+    visible_cols = [col for col in preferred_cols if col in filtered.columns]
+    st.dataframe(filtered[visible_cols], width="stretch", hide_index=True)
+
+    if filtered.empty:
+        return
+
+    detail_labels = []
+    detail_map: dict[str, dict[str, Any]] = {}
+    for row in filtered.to_dict(orient="records"):
+        strategy_name = str(row.get("strategy_name") or row.get("session_id") or "candidate")
+        source_run_id = str(row.get("source_run_id") or "").strip()
+        phase = str(row.get("phase") or "").strip()
+        label = strategy_name
+        if source_run_id:
+            label += f" | {source_run_id}"
+        if phase:
+            label += f" | {phase}"
+        if label in detail_map:
+            label += f" | {row.get('catalog_entry_id') or row.get('session_id')}"
+        detail_labels.append(label)
+        detail_map[label] = row
+
+    selected_label = st.selectbox(
+        "Détail stratégie",
+        options=detail_labels,
+        key=f"{key_prefix}_detail_select",
+    )
+    selected_row = detail_map[selected_label]
+    with st.expander("Détail du traitement", expanded=False):
+        st.json(selected_row)
+
+
+def _render_graduation_tab() -> None:
+    st.caption("Lecture du pipeline sandbox → graduation depuis `catalog/graduation_results`.")
+
+    control_col_a, control_col_b, control_col_c, control_col_d, control_col_e, control_col_f = st.columns([1, 1, 1, 1, 1.2, 0.8])
+    sync_catalog = control_col_e.checkbox(
+        "Synchroniser le strategy catalog",
+        value=True,
+        key="graduation_sync_catalog",
+    )
+    if control_col_f.button("Rafraîchir", key="graduation_refresh", use_container_width=True):
+        st.rerun()
+    if control_col_a.button("Scanner P1", key="graduation_run_p1", use_container_width=True):
+        from catalog.graduation import GraduationConfig, save_graduation_report, scan_sandbox, sync_graduation_to_catalog
+
+        with st.spinner("Scan P1 en cours..."):
+            config = GraduationConfig(sync_catalog=sync_catalog)
+            candidates = scan_sandbox(config)
+            synced = sync_graduation_to_catalog(candidates, config) if sync_catalog else []
+            save_graduation_report(
+                candidates,
+                config.output_dir,
+                phase="P1_repechage",
+                filename="graduation_p1.json",
+            )
+        st.session_state["graduation_status_msg"] = (
+            f"P1 terminé: {len(candidates)} candidat(s)"
+            + (f", {len(synced)} sync catalogue" if sync_catalog else "")
+        )
+        st.rerun()
+
+    if control_col_b.button("Lancer P1→P5", key="graduation_run_full", type="primary", use_container_width=True):
+        from catalog.graduation import GraduationConfig, run_full_graduation
+
+        with st.spinner("Pipeline de graduation en cours..."):
+            result = run_full_graduation(GraduationConfig(sync_catalog=sync_catalog))
+        stats = result.get("stats") or {}
+        st.session_state["graduation_status_msg"] = (
+            f"Pipeline terminé: P1={stats.get('p1_candidates', 0)}, "
+            f"P2={stats.get('p2_survivors', 0)}, P3={stats.get('p3_survivors', 0)}, "
+            f"P4={stats.get('p4_survivors', 0)}, P5={stats.get('p5_promoted', 0)}"
+            + (f", sync={stats.get('catalog_synced', 0)}" if sync_catalog else "")
+        )
+        st.rerun()
+
+    if control_col_c.button(
+        "Importer positifs",
+        key="graduation_import_positive_artifacts",
+        use_container_width=True,
+    ):
+        from catalog.graduation import GraduationConfig, import_positive_artifacts_to_catalog
+
+        with st.spinner("Import des artefacts positifs en cours..."):
+            report = import_positive_artifacts_to_catalog(GraduationConfig(sync_catalog=sync_catalog))
+        stats = report.get("stats") or {}
+        st.session_state["graduation_status_msg"] = (
+            f"Import positifs terminé: {stats.get('catalog_entries_touched', 0)} entrée(s), "
+            f"{stats.get('builder_sessions_copied', 0)} session(s) copiée(s), "
+            f"{stats.get('duplicates_skipped', 0)} doublon(s) ignoré(s)"
+        )
+        st.rerun()
+
+    if control_col_d.button(
+        "Traiter positifs",
+        key="graduation_run_positive_imports",
+        type="secondary",
+        use_container_width=True,
+    ):
+        args = ["--positive-import-full"]
+        if sync_catalog:
+            args.append("--sync-catalog")
+        ok, message = _start_background_graduation_job(
+            args=args,
+            log_filename="positive_imports_run.log",
+        )
+        st.session_state["graduation_status_msg"] = message
+        if not ok:
+            st.session_state["graduation_status_error"] = True
+        else:
+            st.session_state["graduation_status_error"] = False
+        st.rerun()
+
+    status_msg = st.session_state.get("graduation_status_msg")
+    if status_msg:
+        if st.session_state.get("graduation_status_error"):
+            st.error(status_msg)
+        else:
+            st.info(status_msg)
+
+    sandbox_payload, sandbox_df = _load_graduation_report()
+    positive_payload, positive_df = _load_positive_import_report()
+    positive_progress = _load_progress_payload("positive_imports_progress.json")
+    if not sandbox_payload and not positive_payload and not positive_progress:
+        st.write(
+            "ℹ️ Aucun rapport de graduation trouvé. Exécutez `python -m catalog.graduation --full`, "
+            "`python -m catalog.graduation --import-positive-artifacts` ou "
+            "`python -m catalog.graduation --positive-import-full`."
+        )
+        return
+
+    _render_candidate_report_section(
+        title="Pipeline Sandbox",
+        payload=sandbox_payload,
+        df=sandbox_df,
+        key_prefix="graduation_sandbox",
+    )
+    st.markdown("---")
+    _render_progress_section(
+        title="État du traitement des artefacts positifs",
+        payload=positive_progress,
+        log_filename="positive_imports_run.log",
+    )
+    st.markdown("---")
+    _render_candidate_report_section(
+        title="Artefacts Positifs",
+        payload=positive_payload,
+        df=positive_df,
+        key_prefix="graduation_positive",
+    )
 
 
 def _coerce_numeric(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
@@ -713,6 +1083,7 @@ def render_results_hub(*, embedded: bool = False) -> None:
         "Comparaison",
         "Stock unifié",
         "Promotion / Catalogue",
+        "Graduation",
     ])
 
     with tabs[0]:
@@ -1064,3 +1435,6 @@ def render_results_hub(*, embedded: bool = False) -> None:
                         st.session_state["_catalog_replay_request"] = replay_request
                         st.session_state["saved_runs_status"] = replay_msg
                         st.rerun()
+
+    with tabs[10]:
+        _render_graduation_tab()

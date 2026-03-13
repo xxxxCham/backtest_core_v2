@@ -81,8 +81,20 @@ from ui.helpers import (
     render_saved_runs_panel,
     validate_param,
 )
-from ui.state import SidebarState
+from ui.state import (
+    BUILDER_EXECUTION_MODE_MONO,
+    BUILDER_AUTO_START_OLLAMA_DEFAULT,
+    BUILDER_KEEP_ALIVE_MINUTES_DEFAULT,
+    BUILDER_PRELOAD_MODEL_DEFAULT,
+    BUILDER_UNLOAD_AFTER_RUN_DEFAULT,
+    SidebarState,
+    resolve_builder_dual_lane_preferences,
+    resolve_builder_execution_preferences,
+    resolve_builder_multi_llm_preferences,
+    resolve_builder_runtime_preferences,
+)
 from ui.components.strategy_catalog_panel import render_strategy_catalog_panel
+from ui.exec_tabs import _get_phase1_topology_from_session
 from data.loader import is_valid_timeframe
 from utils.observability import is_debug_enabled, set_log_level
 from utils.parameters import normalize_param_ranges
@@ -442,6 +454,27 @@ def _extract_llm_topology_signature(llm_topology_config: Any) -> Optional[Dict[s
     return None
 
 
+def _resolve_live_llm_topology_config(
+    *,
+    optimization_mode: str,
+    builder_ollama_host: str,
+    exec_ollama_host: str,
+) -> LLMTopologyConfig:
+    if optimization_mode == "🏗️ Strategy Builder":
+        return _get_phase1_topology_from_session(
+            builder_ollama_host,
+            session_prefix="builder",
+            config_state_key="builder_llm_topology_config",
+            routing_mode_key="builder_llm_routing_mode",
+        )
+    return _get_phase1_topology_from_session(
+        exec_ollama_host,
+        session_prefix="exec",
+        config_state_key="exec_llm_topology_config",
+        routing_mode_key="exec_llm_routing_mode",
+    )
+
+
 def _build_config_signature(state: SidebarState) -> str:
     """Construit une signature stable de la configuration appliquée."""
     payload = {
@@ -496,7 +529,7 @@ def _build_config_signature(state: SidebarState) -> str:
         "disabled_params": sorted(state.disabled_params or []),
         # Strategy Builder
         "builder_objective": state.builder_objective,
-        "builder_model": state.builder_model,
+        "builder_model_single_llm": state.builder_model_single_llm,
         "builder_max_iterations": state.builder_max_iterations,
         "builder_target_sharpe": state.builder_target_sharpe,
         "builder_capital": state.builder_capital,
@@ -509,8 +542,15 @@ def _build_config_signature(state: SidebarState) -> str:
         "builder_autonomous": state.builder_autonomous,
         "builder_auto_pause": state.builder_auto_pause,
         "builder_auto_use_llm": state.builder_auto_use_llm,
+        "builder_execution_mode": state.builder_execution_mode,
+        "builder_dual_lane_primary_model": state.builder_dual_lane_primary_model,
+        "builder_dual_lane_critic_model": state.builder_dual_lane_critic_model,
         "builder_multi_llm_enabled": state.builder_multi_llm_enabled,
         "builder_multi_llm_profile": state.builder_multi_llm_profile,
+        "builder_multi_llm_role_overrides": {
+            str(role): str(model)
+            for role, model in sorted((state.builder_multi_llm_role_overrides or {}).items())
+        },
         "builder_use_parametric_catalog": state.builder_use_parametric_catalog,
     }
 
@@ -562,6 +602,7 @@ def _apply_catalog_replay_request_to_state(
     params = dict(replay_request.get("params", {}) or {})
 
     session_state["optimization_mode"] = "Backtest Simple"
+    session_state["exec_mode_selector"] = "Backtest Simple"
     session_state["strategy_selection_mode"] = "📋 Classique"
     session_state["symbols_select"] = [symbol]
     session_state["timeframes_select"] = [timeframe]
@@ -1598,30 +1639,55 @@ def render_sidebar() -> SidebarState:
     llm_use_multi_agent = False
     llm_unload_during_backtest = default_llm_unload
     llm_model = None
-    llm_routing_mode = str(
+    exec_llm_routing_mode = str(
         st.session_state.get("exec_llm_routing_mode", "single_endpoint")
         or "single_endpoint"
+    )
+    builder_llm_routing_mode = str(
+        st.session_state.get("builder_llm_routing_mode", "single_endpoint")
+        or "single_endpoint"
+    )
+    llm_routing_mode = (
+        builder_llm_routing_mode
+        if optimization_mode == "🏗️ Strategy Builder"
+        else exec_llm_routing_mode
     )
 
     # ── Strategy Builder defaults ──
     builder_objective = ""
-    builder_model = "deepseek-r1:32b"
+    builder_model_single_llm = "deepseek-r1:32b"
     builder_max_iterations = 10
     builder_target_sharpe = 1.0
     builder_capital = 10000.0
     builder_ollama_host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
-    builder_preload_model = True
-    builder_keep_alive_minutes = 20
-    builder_unload_after_run = False
-    builder_auto_start_ollama = True
+    exec_ollama_host = str(
+        st.session_state.get(
+            "exec_llm_ollama_host",
+            os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434"),
+        )
+        or os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+    )
+    builder_preload_model = BUILDER_PRELOAD_MODEL_DEFAULT
+    builder_keep_alive_minutes = BUILDER_KEEP_ALIVE_MINUTES_DEFAULT
+    builder_unload_after_run = BUILDER_UNLOAD_AFTER_RUN_DEFAULT
+    builder_auto_start_ollama = BUILDER_AUTO_START_OLLAMA_DEFAULT
     builder_auto_market_pick = False
     builder_autonomous = False
     builder_auto_pause = 10
     builder_auto_use_llm = True
+    builder_execution_mode = BUILDER_EXECUTION_MODE_MONO
+    builder_dual_lane_primary_model = "deepseek-r1:32b"
+    builder_dual_lane_critic_model = "deepseek-r1:32b"
     builder_multi_llm_enabled = False
     builder_multi_llm_profile = "24GB_balanced"
+    builder_multi_llm_role_overrides: Dict[str, List[str]] = {}
     builder_use_parametric_catalog = False
-    topology_data = st.session_state.get("exec_llm_topology_config")
+    topology_state_key = (
+        "builder_llm_topology_config"
+        if optimization_mode == "🏗️ Strategy Builder"
+        else "exec_llm_topology_config"
+    )
+    topology_data = st.session_state.get(topology_state_key)
     if isinstance(topology_data, LLMTopologyConfig):
         llm_topology_config = topology_data
     elif isinstance(topology_data, dict):
@@ -1638,18 +1704,67 @@ def render_sidebar() -> SidebarState:
     if optimization_mode == "🏗️ Strategy Builder":
         # UI Builder déplacée dans ui.exec_tabs._render_builder_tab()
         # Ici, on lit uniquement l'état pour alimenter SidebarState sans dupliquer les widgets.
+        llm_routing_mode = str(
+            st.session_state.get("builder_llm_routing_mode", builder_llm_routing_mode)
+            or builder_llm_routing_mode
+        )
         builder_autonomous = bool(st.session_state.get("builder_autonomous", False))
         builder_auto_pause = int(st.session_state.get("builder_auto_pause", 10))
         builder_auto_use_llm = bool(st.session_state.get("builder_auto_use_llm", True))
         builder_use_parametric_catalog = bool(st.session_state.get("builder_use_parametric_catalog", False))
         builder_objective = str(st.session_state.get("builder_objective", ""))
         builder_auto_market_pick = bool(st.session_state.get("builder_auto_market_pick", True))
-        builder_model = str(st.session_state.get("builder_model", "deepseek-r1:32b"))
+        legacy_builder_model = str(
+            st.session_state.pop("builder_model", "") or ""
+        ).strip()
+        builder_model_single_llm = str(
+            st.session_state.get("builder_model_single_llm")
+            or legacy_builder_model
+            or "deepseek-r1:32b"
+        )
+        st.session_state["builder_model_single_llm"] = builder_model_single_llm
+        builder_execution_preferences = resolve_builder_execution_preferences(
+            st.session_state
+        )
+        builder_execution_mode = str(
+            builder_execution_preferences["builder_execution_mode"]
+        )
+        llm_routing_mode = str(
+            builder_execution_preferences["builder_llm_routing_mode"]
+        )
+        st.session_state["builder_execution_mode"] = builder_execution_mode
+        st.session_state["builder_llm_routing_mode"] = llm_routing_mode
+        dual_lane_preferences = resolve_builder_dual_lane_preferences(
+            st.session_state
+        )
+        builder_dual_lane_primary_model = str(
+            dual_lane_preferences["builder_dual_lane_primary_model"]
+        )
+        builder_dual_lane_critic_model = str(
+            dual_lane_preferences["builder_dual_lane_critic_model"]
+        )
+        st.session_state["builder_dual_lane_primary_model"] = (
+            builder_dual_lane_primary_model
+        )
+        st.session_state["builder_dual_lane_critic_model"] = (
+            builder_dual_lane_critic_model
+        )
+        builder_multi_llm_preferences = resolve_builder_multi_llm_preferences(
+            st.session_state
+        )
         builder_multi_llm_enabled = bool(
-            st.session_state.get("builder_multi_llm_enabled", False)
+            builder_multi_llm_preferences["builder_multi_llm_enabled"]
         )
         builder_multi_llm_profile = str(
-            st.session_state.get("builder_multi_llm_profile", "24GB_balanced")
+            builder_multi_llm_preferences["builder_multi_llm_profile"]
+        )
+        builder_multi_llm_role_overrides = dict(
+            builder_multi_llm_preferences["builder_multi_llm_role_overrides"]
+        )
+        st.session_state["builder_multi_llm_enabled"] = builder_multi_llm_enabled
+        st.session_state["builder_multi_llm_profile"] = builder_multi_llm_profile
+        st.session_state["builder_multi_llm_role_overrides"] = dict(
+            builder_multi_llm_role_overrides
         )
         builder_ollama_host = str(
             st.session_state.get(
@@ -1657,13 +1772,25 @@ def render_sidebar() -> SidebarState:
                 os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434"),
             )
         )
-        builder_auto_start_ollama = bool(st.session_state.get("builder_auto_start_ollama", True))
-        builder_preload_model = bool(st.session_state.get("builder_preload_model", True))
-        builder_keep_alive_minutes = int(st.session_state.get("builder_keep_alive_minutes", 20))
-        builder_unload_after_run = bool(st.session_state.get("builder_unload_after_run", False))
+        runtime_preferences = resolve_builder_runtime_preferences(st.session_state)
+        builder_auto_start_ollama = bool(
+            runtime_preferences["builder_auto_start_ollama"]
+        )
+        builder_preload_model = bool(runtime_preferences["builder_preload_model"])
+        builder_keep_alive_minutes = int(
+            runtime_preferences["builder_keep_alive_minutes"]
+        )
+        builder_unload_after_run = bool(
+            runtime_preferences["builder_unload_after_run"]
+        )
         builder_max_iterations = int(st.session_state.get("builder_max_iters_slider", 10))
         builder_target_sharpe = float(st.session_state.get("builder_target_sharpe_input", 1.0))
         builder_capital = float(st.session_state.get("builder_capital_input", 10000.0))
+        llm_topology_config = _resolve_live_llm_topology_config(
+            optimization_mode=optimization_mode,
+            builder_ollama_host=builder_ollama_host,
+            exec_ollama_host=exec_ollama_host,
+        )
 
         st.sidebar.caption("⚙️ Configuration Builder déplacée dans l'onglet principal Strategy Builder")
 
@@ -1674,14 +1801,14 @@ def render_sidebar() -> SidebarState:
         llm_use_multi_agent = bool(st.session_state.get("exec_llm_use_multi_agent", False))
         role_model_config = st.session_state.get("exec_llm_role_model_config")
         llm_routing_mode = str(
-            st.session_state.get("exec_llm_routing_mode", llm_routing_mode)
-            or llm_routing_mode
+            st.session_state.get("exec_llm_routing_mode", exec_llm_routing_mode)
+            or exec_llm_routing_mode
         )
-        topology_data = st.session_state.get("exec_llm_topology_config")
-        if isinstance(topology_data, LLMTopologyConfig):
-            llm_topology_config = topology_data
-        elif isinstance(topology_data, dict):
-            llm_topology_config = LLMTopologyConfig.from_dict(topology_data)
+        llm_topology_config = _resolve_live_llm_topology_config(
+            optimization_mode=optimization_mode,
+            builder_ollama_host=builder_ollama_host,
+            exec_ollama_host=exec_ollama_host,
+        )
         llm_max_iterations = int(st.session_state.get("exec_llm_max_iterations", 10))
         llm_use_walk_forward = bool(st.session_state.get("exec_llm_use_walk_forward", True))
         llm_unload_during_backtest = bool(st.session_state.get("exec_llm_unload", default_llm_unload))
@@ -1703,6 +1830,11 @@ def render_sidebar() -> SidebarState:
     _sidebar_section("⚡ Accélération GPU")
     st.sidebar.caption("Mode CPU-only: GPU désactivé.")
     st.sidebar.caption("• Numba JIT + cache RAM utilisés • VRAM libérée pour autres usages")
+    if optimization_mode == "🏗️ Strategy Builder":
+        st.sidebar.caption(
+            "Le routage GPU des LLM Ollama se regle dans l'onglet principal "
+            "`Strategy Builder`, pas dans cette section backtest."
+        )
     os.environ["BACKTEST_USE_GPU"] = "0"
     os.environ["BACKTEST_GPU_QUEUE_ENABLED"] = "0"
 
@@ -2325,7 +2457,7 @@ def render_sidebar() -> SidebarState:
         wfa_expanding=wfa_expanding,
         # Strategy Builder
         builder_objective=builder_objective,
-        builder_model=builder_model,
+        builder_model_single_llm=builder_model_single_llm,
         builder_max_iterations=builder_max_iterations,
         builder_target_sharpe=builder_target_sharpe,
         builder_capital=builder_capital,
@@ -2339,8 +2471,12 @@ def render_sidebar() -> SidebarState:
         builder_autonomous=builder_autonomous,
         builder_auto_pause=builder_auto_pause,
         builder_auto_use_llm=builder_auto_use_llm,
+        builder_execution_mode=builder_execution_mode,
+        builder_dual_lane_primary_model=builder_dual_lane_primary_model,
+        builder_dual_lane_critic_model=builder_dual_lane_critic_model,
         builder_multi_llm_enabled=builder_multi_llm_enabled,
         builder_multi_llm_profile=builder_multi_llm_profile,
+        builder_multi_llm_role_overrides=builder_multi_llm_role_overrides,
         # Catalogue paramétrique
         builder_use_parametric_catalog=builder_use_parametric_catalog,
     )

@@ -1,5 +1,5 @@
 """
-Backtest Core - Agents LLM Module
+Backtest Core V2 - Agents LLM Module
 =================================
 
 Système d'optimisation autonome par agents LLM.

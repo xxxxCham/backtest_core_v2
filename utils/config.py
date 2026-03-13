@@ -55,7 +55,7 @@ class Config:
 
     # Chemins
     data_dir: Path = field(default_factory=_default_data_dir)
-    # Modèles LLM: configurés via D:\models\models.json (voir utils.model_loader)
+    # Modèles LLM: configurés via le catalogue central C:\AI\models\catalog\models.json (voir utils.model_loader)
 
     # Capital & Trading
     initial_capital: float = 10_000.0

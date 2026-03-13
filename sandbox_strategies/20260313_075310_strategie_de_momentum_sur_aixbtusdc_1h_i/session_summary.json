@@ -1,0 +1,1396 @@
+{
+  "session_id": "20260313_075310_strategie_de_momentum_sur_aixbtusdc_1h_i",
+  "objective": "Strategie de Momentum sur AIXBTUSDC 1h. Indicateurs : EMA(10), EMA(30), ATR. Calculer ROC = (close - close[12]) / close[12]. Entree short quand ROC < 0 et EMA(10) < EMA(30). Stop-loss = 1.5x ATR, take-profit = 3.0x ATR.",
+  "status": "failed",
+  "best_sharpe": 0.11652347810617611,
+  "best_score": -26.0,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 6,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Using ROC as a momentum filter combined with EMA crossovers creates a robust mean-reversion signal that benefits from ATR-based risk management to adapt to volatility changes and avoid whipsaws in ranging markets",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -50.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 0.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: indexation multi-dim `ema_fast[..., ...]` sur indicateur 1D."
+        },
+        "precheck": {
+          "ok": false,
+          "error": "NameError: name 'roc' is not defined",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "NameError: name 'roc' is not defined",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_v2\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5218, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_v2\\sandbox_strategies\\20260313_075310_strategie_de_momentum_sur_aixbtusdc_1h_i\\strategy.py\", line 88, in generate_signals\n    long_condition = (roc > 0) & (ema[0] > ema[1])\nNameError: name 'roc' is not defined",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's main weaknesses include overfitting to ROC period (12) which may cause look-ahead bias, reliance on single EMA crossover without volatility confirmation, and potential whipsaws from EMA crossovers in ranging markets. The 12-period ROC might be too short for reliable momentum signals, and the exit rules don't account for profit-taking or trailing stops.\n[Backup plan] If results are poor, I'd test ROC periods 20-25 and add ATR volatility filter (ATR > threshold) to entry. If mediocre Sharpe, I'd increase stop-loss to 2x ATR and add trailing stops. Alternative approach: use MACD histogram with ATR volatility filter instead of EMA crossovers, or implement a multi-timeframe confirmation system."
+        },
+        "scoring": {
+          "continuous_score": -50.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Combining ROC with EMA trend filter helps identify momentum shifts while ATR-based risk management ensures position sizing adapts to volatility, reducing losses during sudden market moves",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 9959,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "The revised strategy uses EMA crossovers with ROC as a momentum filter to identify strong trend reversals, while ATR-based risk management ensures appropriate position sizing and stop-loss/take-profit levels that scale with volatility. This combination improves trade selection by filtering false breakouts and managing risk dynamically.",
+      "change_type": "logic",
+      "diagnostic_category": "insufficient_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -1.4013022667683535,
+      "return_pct": -24.111195068456226,
+      "max_drawdown_pct": -24.111195068456226,
+      "profit_factor": 0.0,
+      "win_rate_pct": 0.0,
+      "trades": 3,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -39.23646346951389,
+          "return": -26.52231457530185,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.5,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 2.7407967123041503,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -24.1%, PF 0.00, Expectancy -803.71"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 24.1%, Vol 11.5%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -1.401, Sortino -0.267, Calmar -0.894"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 3, AvgW/L 0.00/803.71"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 9959,
+          "long_signals": 31,
+          "short_signals": 0,
+          "total_signals": 31,
+          "signal_density": 0.0031127623255346923,
+          "transition_signals": 7,
+          "transition_density": 0.0007028818154433176,
+          "repeated_same_signals": 24,
+          "repeated_same_ratio": 0.7741935483870968
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy's main weaknesses include overfitting to AIXBTUSDC's specific volatility patterns, potential look-ahead bias in ROC calculation, and rigid EMA crossovers that may miss gradual trend changes. The 12-period ROC might be too sensitive to noise, and ATR-based TP/SL may be too tight for crypto's high volatility. Entry rules could generate frequent whipsaws in ranging markets.\n[Backup plan] If results are poor, I'd test a 20-period ROC with EMA(20) instead of EMA(30), or switch to a volatility-adjusted ROC threshold. For mediocre Sharpe, I'd increase TP/SL to 2.0x/4.0x ATR and add a volatility filter (ATR > threshold). Alternative: try a mean-reversion approach with Bollinger Bands + ROC, or switch to a MACD-based momentum filter with dynamic entry thresholds."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -39.23646346951389,
+            "return": -26.52231457530185,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.5,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 2.7407967123041503,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining EMA crossovers with ROC momentum and ATR volatility filtering creates a robust trend-following system that avoids false signals during low-volatility periods while capturing strong momentum moves in trending markets",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -97.57126556028088,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.8086659670037731,
+      "win_rate_pct": 34.22459893048128,
+      "trades": 187,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -8.746698651256086,
+          "trades_confidence": 10.0,
+          "win_rate": -0.23262032085561657
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -97.6%, PF 0.81, Expectancy -52.18"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 1940.9%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 34.2%, Trades 187, AvgW/L 644.35/414.60"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "IndexError: too many indices for array: array is 0-dimensional, but 1 were indexed",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "IndexError: too many indices for array: array is 0-dimensional, but 1 were indexed. FIX: a boolean mask used for indexing has the wrong length. df has 9959 rows. Every boolean mask MUST also have exactly 9959 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_v2\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5221, in _guarded_generate_signals\n    raise IndexError(\nIndexError: too many indices for array: array is 0-dimensional, but 1 were indexed. FIX: a boolean mask used for indexing has the wrong length. df has 9959 rows. Every boolean mask MUST also have exactly 9959 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_fix_retry_error": "IndexError: too many indices for array: array is 0-dimensional, but 1 were indexed. FIX: a boolean mask used for indexing has the wrong length. df has 9959 rows. Every boolean mask MUST also have exactly 9959 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy suffers from overfitting risk with multiple moving averages and ROC calculation, potential look-ahead bias in entry signals, and may generate whipsaw losses during choppy markets. The 12-period ROC might be too sensitive to short-term noise, and the EMA(10) < EMA(30) filter could cause frequent false signals. The fixed ATR multipliers (1.5x/3.0x) may not adapt to changing volatility conditions.\n[Backup plan] If results are poor, I'd switch to a simpler entry: EMA(10) crosses above EMA(30) with ROC < 0, and reduce ATR multipliers to 1.0x/2.0x. For mediocre Sharpe, I'd test EMA(15) instead of EMA(10), or add a volatility filter (ATR > threshold). Alternative: Use RSI momentum with fixed stop-loss instead of ATR, or implement a trend strength filter using ADX."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -8.746698651256086,
+            "trades_confidence": 10.0,
+            "win_rate": -0.23262032085561657
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "decision": {
+          "stop_overridden": true
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "The combination of ROC momentum with EMA crossovers and ATR-based risk management filters out weak trends and reduces whipsaw losses, focusing on strong momentum moves that are likely to continue in the direction of the crossover.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -50.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 0.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "IndexError: too many indices for array: array is 1-dimensional, but 2 were indexed",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "IndexError: too many indices for array: array is 1-dimensional, but 2 were indexed. FIX: a boolean mask used for indexing has the wrong length. df has 9959 rows. Every boolean mask MUST also have exactly 9959 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_v2\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5221, in _guarded_generate_signals\n    raise IndexError(\nIndexError: too many indices for array: array is 1-dimensional, but 2 were indexed. FIX: a boolean mask used for indexing has the wrong length. df has 9959 rows. Every boolean mask MUST also have exactly 9959 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_fix_retry_error": "IndexError: too many indices for array: array is 1-dimensional, but 2 were indexed. FIX: a boolean mask used for indexing has the wrong length. df has 9959 rows. Every boolean mask MUST also have exactly 9959 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy suffers from overfitting to AIXBTUSDC's specific volatility and may be prone to false signals during range-bound conditions. The 12-period ROC lag creates delayed entries, and the EMA crossovers may generate whipsaws. The fixed ATR multipliers (1.5x/3.0x) might be too tight or loose for current market conditions.\n[Backup plan] If poor results, switch to a 5-period ROC with EMA(5) vs EMA(20) and use dynamic ATR multipliers (2.0x/4.0x). If mediocre Sharpe, increase ROC lookback to 20 periods and add a volatility filter. Alternative: try a mean-reversion approach with Bollinger Bands and RSI for contrarian positioning."
+        },
+        "scoring": {
+          "continuous_score": -50.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Combining ROC with EMA crossover creates a momentum filter that identifies weakening trends early, while ATR-based risk management ensures proper position sizing and volatility-adjusted stops that adapt to market conditions without overfitting to fixed thresholds",
+      "change_type": "logic",
+      "diagnostic_category": "overtrading",
+      "error": null,
+      "decision": "stop",
+      "sharpe": 0.11652347810617611,
+      "return_pct": -51.68320015466741,
+      "max_drawdown_pct": -79.14529529144187,
+      "profit_factor": 0.9605947215886322,
+      "win_rate_pct": 28.95408163265306,
+      "trades": 784,
+      "continuous_score": -94.78269914014064,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 3.262657386972931,
+          "return": -33.0,
+          "profit_factor": -1.8013841559482406,
+          "trades_confidence": 10.0,
+          "win_rate": -1.8137755102040816
+        },
+        "penalties": {
+          "drawdown_pressure": 39.430196860961246,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 44.14529529144187
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -51.7%, PF 0.96, Expectancy -6.59"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 79.1%, Vol 105.4%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.117, Sortino 0.152, Calmar -0.597"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 29.0%, Trades 784, AvgW/L 555.02/235.47"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: indexation multi-dim `ema_fast[..., ...]` sur indicateur 1D.",
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "NameError: name 'roc' is not defined",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "NameError: name 'roc' is not defined",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_v2\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5218, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_v2\\sandbox_strategies\\20260313_075310_strategie_de_momentum_sur_aixbtusdc_1h_i\\strategy.py\", line 80, in generate_signals\n    long_condition = (roc < 0) & (ema.ema_fast < ema.ema_slow)\nNameError: name 'roc' is not defined",
+          "runtime_fix_validation_error": "[IND001] Usage invalide: cl\u00e9 string `ema['fast']` sur indicateur ndarray. Utiliser directement l'array.",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy suffers from overfitting to the specific ROC period (12) and potential look-ahead bias in EMA crossovers. The fixed 12-period ROC may not generalize well across different market conditions, and the exit rules could generate whipsawing trades. ATR-based stops might be too tight or loose depending on volatility regime, and the strategy appears to have no position sizing or risk management for trade frequency.\n[Backup plan] If results are poor, I'd switch to a longer ROC period (20-24) with a simple EMA crossover filter (no ROC) to reduce noise. If Sharpe is mediocre, I'd increase stop-loss to 2.0xATR and take-profit to 4.0xATR to reduce transaction costs. As alternative, I'd test a volatility-adjusted ROC threshold with a 30-period ROC and dynamic ATR window (20-period) for more robust filtering."
+        },
+        "scoring": {
+          "continuous_score": -94.78269914014064,
+          "drawdown_excess_pct": 44.14529529144187,
+          "components": {
+            "sharpe": 3.262657386972931,
+            "return": -33.0,
+            "profit_factor": -1.8013841559482406,
+            "trades_confidence": 10.0,
+            "win_rate": -1.8137755102040816
+          },
+          "penalties": {
+            "drawdown_pressure": 39.430196860961246,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 4
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 2,
+      "hypothesis": "Combining ROC with EMA trend filter helps identify momentum shifts while ATR-based risk management ensures position sizing adapts to volatility, reducing losses during sudden market moves",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 9959,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 1,
+      "hypothesis": "Using ROC as a momentum filter combined with EMA crossovers creates a robust mean-reversion signal that benefits from ATR-based risk management to adapt to volatility changes and avoid whipsaws in ranging markets",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -50.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 0.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: indexation multi-dim `ema_fast[..., ...]` sur indicateur 1D."
+        },
+        "precheck": {
+          "ok": false,
+          "error": "NameError: name 'roc' is not defined",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "NameError: name 'roc' is not defined",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_v2\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5218, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_v2\\sandbox_strategies\\20260313_075310_strategie_de_momentum_sur_aixbtusdc_1h_i\\strategy.py\", line 88, in generate_signals\n    long_condition = (roc > 0) & (ema[0] > ema[1])\nNameError: name 'roc' is not defined",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's main weaknesses include overfitting to ROC period (12) which may cause look-ahead bias, reliance on single EMA crossover without volatility confirmation, and potential whipsaws from EMA crossovers in ranging markets. The 12-period ROC might be too short for reliable momentum signals, and the exit rules don't account for profit-taking or trailing stops.\n[Backup plan] If results are poor, I'd test ROC periods 20-25 and add ATR volatility filter (ATR > threshold) to entry. If mediocre Sharpe, I'd increase stop-loss to 2x ATR and add trailing stops. Alternative approach: use MACD histogram with ATR volatility filter instead of EMA crossovers, or implement a multi-timeframe confirmation system."
+        },
+        "scoring": {
+          "continuous_score": -50.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "The combination of ROC momentum with EMA crossovers and ATR-based risk management filters out weak trends and reduces whipsaw losses, focusing on strong momentum moves that are likely to continue in the direction of the crossover.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -50.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 0.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "IndexError: too many indices for array: array is 1-dimensional, but 2 were indexed",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "IndexError: too many indices for array: array is 1-dimensional, but 2 were indexed. FIX: a boolean mask used for indexing has the wrong length. df has 9959 rows. Every boolean mask MUST also have exactly 9959 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_v2\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5221, in _guarded_generate_signals\n    raise IndexError(\nIndexError: too many indices for array: array is 1-dimensional, but 2 were indexed. FIX: a boolean mask used for indexing has the wrong length. df has 9959 rows. Every boolean mask MUST also have exactly 9959 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_fix_retry_error": "IndexError: too many indices for array: array is 1-dimensional, but 2 were indexed. FIX: a boolean mask used for indexing has the wrong length. df has 9959 rows. Every boolean mask MUST also have exactly 9959 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy suffers from overfitting to AIXBTUSDC's specific volatility and may be prone to false signals during range-bound conditions. The 12-period ROC lag creates delayed entries, and the EMA crossovers may generate whipsaws. The fixed ATR multipliers (1.5x/3.0x) might be too tight or loose for current market conditions.\n[Backup plan] If poor results, switch to a 5-period ROC with EMA(5) vs EMA(20) and use dynamic ATR multipliers (2.0x/4.0x). If mediocre Sharpe, increase ROC lookback to 20 periods and add a volatility filter. Alternative: try a mean-reversion approach with Bollinger Bands and RSI for contrarian positioning."
+        },
+        "scoring": {
+          "continuous_score": -50.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Combining ROC with EMA crossover creates a momentum filter that identifies weakening trends early, while ATR-based risk management ensures proper position sizing and volatility-adjusted stops that adapt to market conditions without overfitting to fixed thresholds",
+      "change_type": "logic",
+      "diagnostic_category": "overtrading",
+      "error": null,
+      "decision": "stop",
+      "sharpe": 0.11652347810617611,
+      "return_pct": -51.68320015466741,
+      "max_drawdown_pct": -79.14529529144187,
+      "profit_factor": 0.9605947215886322,
+      "win_rate_pct": 28.95408163265306,
+      "trades": 784,
+      "continuous_score": -94.78269914014064,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 3.262657386972931,
+          "return": -33.0,
+          "profit_factor": -1.8013841559482406,
+          "trades_confidence": 10.0,
+          "win_rate": -1.8137755102040816
+        },
+        "penalties": {
+          "drawdown_pressure": 39.430196860961246,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 44.14529529144187
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -51.7%, PF 0.96, Expectancy -6.59"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 79.1%, Vol 105.4%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.117, Sortino 0.152, Calmar -0.597"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 29.0%, Trades 784, AvgW/L 555.02/235.47"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: indexation multi-dim `ema_fast[..., ...]` sur indicateur 1D.",
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "NameError: name 'roc' is not defined",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "NameError: name 'roc' is not defined",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_v2\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5218, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_v2\\sandbox_strategies\\20260313_075310_strategie_de_momentum_sur_aixbtusdc_1h_i\\strategy.py\", line 80, in generate_signals\n    long_condition = (roc < 0) & (ema.ema_fast < ema.ema_slow)\nNameError: name 'roc' is not defined",
+          "runtime_fix_validation_error": "[IND001] Usage invalide: cl\u00e9 string `ema['fast']` sur indicateur ndarray. Utiliser directement l'array.",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy suffers from overfitting to the specific ROC period (12) and potential look-ahead bias in EMA crossovers. The fixed 12-period ROC may not generalize well across different market conditions, and the exit rules could generate whipsawing trades. ATR-based stops might be too tight or loose depending on volatility regime, and the strategy appears to have no position sizing or risk management for trade frequency.\n[Backup plan] If results are poor, I'd switch to a longer ROC period (20-24) with a simple EMA crossover filter (no ROC) to reduce noise. If Sharpe is mediocre, I'd increase stop-loss to 2.0xATR and take-profit to 4.0xATR to reduce transaction costs. As alternative, I'd test a volatility-adjusted ROC threshold with a 30-period ROC and dynamic ATR window (20-period) for more robust filtering."
+        },
+        "scoring": {
+          "continuous_score": -94.78269914014064,
+          "drawdown_excess_pct": 44.14529529144187,
+          "components": {
+            "sharpe": 3.262657386972931,
+            "return": -33.0,
+            "profit_factor": -1.8013841559482406,
+            "trades_confidence": 10.0,
+            "win_rate": -1.8137755102040816
+          },
+          "penalties": {
+            "drawdown_pressure": 39.430196860961246,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "The revised strategy uses EMA crossovers with ROC as a momentum filter to identify strong trend reversals, while ATR-based risk management ensures appropriate position sizing and stop-loss/take-profit levels that scale with volatility. This combination improves trade selection by filtering false breakouts and managing risk dynamically.",
+      "change_type": "logic",
+      "diagnostic_category": "insufficient_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -1.4013022667683535,
+      "return_pct": -24.111195068456226,
+      "max_drawdown_pct": -24.111195068456226,
+      "profit_factor": 0.0,
+      "win_rate_pct": 0.0,
+      "trades": 3,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -39.23646346951389,
+          "return": -26.52231457530185,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.5,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 2.7407967123041503,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -24.1%, PF 0.00, Expectancy -803.71"
+        },
+        "risk": {
+          "grade": "B",
+          "detail": "MaxDD 24.1%, Vol 11.5%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -1.401, Sortino -0.267, Calmar -0.894"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 3, AvgW/L 0.00/803.71"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 9959,
+          "long_signals": 31,
+          "short_signals": 0,
+          "total_signals": 31,
+          "signal_density": 0.0031127623255346923,
+          "transition_signals": 7,
+          "transition_density": 0.0007028818154433176,
+          "repeated_same_signals": 24,
+          "repeated_same_ratio": 0.7741935483870968
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy's main weaknesses include overfitting to AIXBTUSDC's specific volatility patterns, potential look-ahead bias in ROC calculation, and rigid EMA crossovers that may miss gradual trend changes. The 12-period ROC might be too sensitive to noise, and ATR-based TP/SL may be too tight for crypto's high volatility. Entry rules could generate frequent whipsaws in ranging markets.\n[Backup plan] If results are poor, I'd test a 20-period ROC with EMA(20) instead of EMA(30), or switch to a volatility-adjusted ROC threshold. For mediocre Sharpe, I'd increase TP/SL to 2.0x/4.0x ATR and add a volatility filter (ATR > threshold). Alternative: try a mean-reversion approach with Bollinger Bands + ROC, or switch to a MACD-based momentum filter with dynamic entry thresholds."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -39.23646346951389,
+            "return": -26.52231457530185,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.5,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 2.7407967123041503,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining EMA crossovers with ROC momentum and ATR volatility filtering creates a robust trend-following system that avoids false signals during low-volatility periods while capturing strong momentum moves in trending markets",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -97.57126556028088,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.8086659670037731,
+      "win_rate_pct": 34.22459893048128,
+      "trades": 187,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -8.746698651256086,
+          "trades_confidence": 10.0,
+          "win_rate": -0.23262032085561657
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -97.6%, PF 0.81, Expectancy -52.18"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 1940.9%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 34.2%, Trades 187, AvgW/L 644.35/414.60"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "IndexError: too many indices for array: array is 0-dimensional, but 1 were indexed",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "IndexError: too many indices for array: array is 0-dimensional, but 1 were indexed. FIX: a boolean mask used for indexing has the wrong length. df has 9959 rows. Every boolean mask MUST also have exactly 9959 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_v2\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_v2\\agents\\strategy_builder.py\", line 5221, in _guarded_generate_signals\n    raise IndexError(\nIndexError: too many indices for array: array is 0-dimensional, but 1 were indexed. FIX: a boolean mask used for indexing has the wrong length. df has 9959 rows. Every boolean mask MUST also have exactly 9959 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_fix_retry_error": "IndexError: too many indices for array: array is 0-dimensional, but 1 were indexed. FIX: a boolean mask used for indexing has the wrong length. df has 9959 rows. Every boolean mask MUST also have exactly 9959 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] This strategy suffers from overfitting risk with multiple moving averages and ROC calculation, potential look-ahead bias in entry signals, and may generate whipsaw losses during choppy markets. The 12-period ROC might be too sensitive to short-term noise, and the EMA(10) < EMA(30) filter could cause frequent false signals. The fixed ATR multipliers (1.5x/3.0x) may not adapt to changing volatility conditions.\n[Backup plan] If results are poor, I'd switch to a simpler entry: EMA(10) crosses above EMA(30) with ROC < 0, and reduce ATR multipliers to 1.0x/2.0x. For mediocre Sharpe, I'd test EMA(15) instead of EMA(10), or add a volatility filter (ATR > threshold). Alternative: Use RSI momentum with fixed stop-loss instead of ATR, or implement a trend strength filter using ADX."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -8.746698651256086,
+            "trades_confidence": 10.0,
+            "win_rate": -0.23262032085561657
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "decision": {
+          "stop_overridden": true
+        }
+      },
+      "rank": 6
+    }
+  ]
+}

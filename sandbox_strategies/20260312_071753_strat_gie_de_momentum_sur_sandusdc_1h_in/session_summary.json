@@ -1,0 +1,484 @@
+{
+  "session_id": "20260312_071753_strat_gie_de_momentum_sur_sandusdc_1h_in",
+  "objective": "Strat\u00e9gie de momentum sur SANDUSDC 1h. Indicateurs : EMA(20), EMA(50), RSI(14), ATR(14). Entr\u00e9e longue lorsque EMA(20) > EMA(50) et RSI > 50. Sortie lorsque EMA(20) < EMA(50) ou RSI < 50. Stop-loss = 1.5x ATR, take-profit = 3.0x ATR.\nStrategy family: momentum.\nHypothesis: Cette strat\u00e9gie exploite les tendances haussi\u00e8res \u00e0 court terme en identifiant un croisement d'EMAs avec confirmation RSI, tout en g\u00e9rant le risque via un stop-loss dynamique bas\u00e9 sur l'ATR.\nConstraints: Pas de lookahead : les d\u00e9cisions sont bas\u00e9es uniquement sur les donn\u00e9es historiques disponibles; Utilisation exclusivement des indicateurs list\u00e9s dans le catalogue",
+  "status": "running",
+  "best_sharpe": 0.0,
+  "best_score": -26.0,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 2,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "This strategy captures momentum by using EMA crossovers as a trend filter and RSI as a confirmation indicator. The combination of these indicators helps identify strong trending moves with high probability while filtering out weaker signals.",
+      "change_type": "both",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 787,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "The combination of EMA trend and RSI provides a robust filter for momentum signals. The EMA crossover indicates a strong trend, while RSI ensures overbought/oversold conditions to avoid whipsaws. ATR-based risk management filters out low volatility signals.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -2.313177562004881,
+      "return_pct": -66.34115866061545,
+      "max_drawdown_pct": -76.34773209367354,
+      "profit_factor": 0.7711845288888657,
+      "win_rate_pct": 40.65934065934066,
+      "trades": 273,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -10.460135822223284,
+          "trades_confidence": 10.0,
+          "win_rate": 1.697802197802197
+        },
+        "penalties": {
+          "drawdown_pressure": 37.56515472911569,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 41.34773209367354
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -66.3%, PF 0.77, Expectancy -24.30"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 76.3%, Vol 76.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -2.313, Sortino -2.206, Calmar -1.247"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 40.7%, Trades 273, AvgW/L 201.43/178.97"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "IndexError: invalid index to scalar variable.",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "IndexError: invalid index to scalar variable.. FIX: a boolean mask used for indexing has the wrong length. df has 787 rows. Every boolean mask MUST also have exactly 787 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5904, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5218, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5194, in _guarded_generate_signals\n    raise IndexError(\nIndexError: invalid index to scalar variable.. FIX: a boolean mask used for indexing has the wrong length. df has 787 rows. Every boolean mask MUST also have exactly 787 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] La strat\u00e9gie actuelle repose sur une combinaison d'EMAs et de RSI pour d\u00e9tecter des tendances haussi\u00e8res. Cependant, elle pourrait manquer des opportunit\u00e9s si la volatilit\u00e9 est trop \u00e9lev\u00e9e ou si les prix fluctuent sans tendance claire. De plus, l'utilisation exclusive des EMAs et du RSI ignore d'autres indicateurs qui pourraient am\u00e9liorer la pr\u00e9cision. Enfin, le placement des stops et des profits limites pourrait \u00eatre ajust\u00e9 pour minimiser les pertes.\n[Backup plan] Si les r\u00e9sultats sont mauvais, essayer d'ajouter un filtre de volatilit\u00e9 comme l'ATR ou une moyenne mobile suppl\u00e9mentaire. Si les r\u00e9sultats sont m\u00e9diocres, ajuster les param\u00e8tres des EMAs et du RSI pour am\u00e9liorer le risque/rendement. En cas d'\u00e9chec complet, explorer une approche de scalping ou un mod\u00e8le de machine learning pour pr\u00e9dire les tendances."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 41.34773209367354,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -10.460135822223284,
+            "trades_confidence": 10.0,
+            "win_rate": 1.697802197802197
+          },
+          "penalties": {
+            "drawdown_pressure": 37.56515472911569,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 1,
+      "hypothesis": "This strategy captures momentum by using EMA crossovers as a trend filter and RSI as a confirmation indicator. The combination of these indicators helps identify strong trending moves with high probability while filtering out weaker signals.",
+      "change_type": "both",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 787,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "The combination of EMA trend and RSI provides a robust filter for momentum signals. The EMA crossover indicates a strong trend, while RSI ensures overbought/oversold conditions to avoid whipsaws. ATR-based risk management filters out low volatility signals.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -2.313177562004881,
+      "return_pct": -66.34115866061545,
+      "max_drawdown_pct": -76.34773209367354,
+      "profit_factor": 0.7711845288888657,
+      "win_rate_pct": 40.65934065934066,
+      "trades": 273,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -10.460135822223284,
+          "trades_confidence": 10.0,
+          "win_rate": 1.697802197802197
+        },
+        "penalties": {
+          "drawdown_pressure": 37.56515472911569,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 41.34773209367354
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -66.3%, PF 0.77, Expectancy -24.30"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 76.3%, Vol 76.6%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -2.313, Sortino -2.206, Calmar -1.247"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 40.7%, Trades 273, AvgW/L 201.43/178.97"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "IndexError: invalid index to scalar variable.",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "IndexError: invalid index to scalar variable.. FIX: a boolean mask used for indexing has the wrong length. df has 787 rows. Every boolean mask MUST also have exactly 787 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5904, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5218, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5194, in _guarded_generate_signals\n    raise IndexError(\nIndexError: invalid index to scalar variable.. FIX: a boolean mask used for indexing has the wrong length. df has 787 rows. Every boolean mask MUST also have exactly 787 elements. Common cause: np.diff() returns n-1 elements, or array[window:] returns n-window elements. Use np.insert(np.diff(x), 0, 0.0) or np.zeros(n) with conditional fill instead of slicing.",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] La strat\u00e9gie actuelle repose sur une combinaison d'EMAs et de RSI pour d\u00e9tecter des tendances haussi\u00e8res. Cependant, elle pourrait manquer des opportunit\u00e9s si la volatilit\u00e9 est trop \u00e9lev\u00e9e ou si les prix fluctuent sans tendance claire. De plus, l'utilisation exclusive des EMAs et du RSI ignore d'autres indicateurs qui pourraient am\u00e9liorer la pr\u00e9cision. Enfin, le placement des stops et des profits limites pourrait \u00eatre ajust\u00e9 pour minimiser les pertes.\n[Backup plan] Si les r\u00e9sultats sont mauvais, essayer d'ajouter un filtre de volatilit\u00e9 comme l'ATR ou une moyenne mobile suppl\u00e9mentaire. Si les r\u00e9sultats sont m\u00e9diocres, ajuster les param\u00e8tres des EMAs et du RSI pour am\u00e9liorer le risque/rendement. En cas d'\u00e9chec complet, explorer une approche de scalping ou un mod\u00e8le de machine learning pour pr\u00e9dire les tendances."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 41.34773209367354,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -10.460135822223284,
+            "trades_confidence": 10.0,
+            "win_rate": 1.697802197802197
+          },
+          "penalties": {
+            "drawdown_pressure": 37.56515472911569,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    }
+  ]
+}

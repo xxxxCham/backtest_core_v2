@@ -1,68 +1,69 @@
 {
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Streamlit UI (app.py - RECOMMANDÉ)",
-            "type": "python",
-            "request": "launch",
-            "module": "streamlit",
-            "args": [
-                "run",
-                "ui/app.py",
-                "--server.headless=false"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}",
-                "MODELS_JSON_PATH": "D:\\models\\models.json",
-                "CUDA_VISIBLE_DEVICES": "0,1"
-            }
-        },
-        {
-            "name": "Streamlit UI (main.py - NON FONCTIONNEL)",
-            "type": "python",
-            "request": "launch",
-            "module": "streamlit",
-            "args": [
-                "run",
-                "ui/main.py",
-                "--server.headless=false"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}",
-                "MODELS_JSON_PATH": "D:\\models\\models.json"
-            }
-        },
-        {
-            "name": "Python: Test actuel",
-            "type": "python",
-            "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}",
-                "MODELS_JSON_PATH": "D:\\models\\models.json"
-            }
-        },
-        {
-            "name": "Python: Pytest (fichier actuel)",
-            "type": "python",
-            "request": "launch",
-            "module": "pytest",
-            "args": [
-                "${file}",
-                "-v",
-                "-s"
-            ],
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            }
-        }
-    ]
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Streamlit UI (app.py - RECOMMANDE)",
+      "type": "python",
+      "request": "launch",
+      "module": "streamlit",
+      "args": [
+        "run",
+        "ui/app.py",
+        "--server.headless=false"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}\\.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "CUDA_VISIBLE_DEVICES": "0,1"
+      }
+    },
+    {
+      "name": "Streamlit UI (main.py - NON FONCTIONNEL)",
+      "type": "python",
+      "request": "launch",
+      "module": "streamlit",
+      "args": [
+        "run",
+        "ui/main.py",
+        "--server.headless=false"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}\\.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "Python: Test actuel",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}\\.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "Python: Pytest (fichier actuel)",
+      "type": "python",
+      "request": "launch",
+      "module": "pytest",
+      "args": [
+        "${file}",
+        "-v",
+        "-s"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}\\.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    }
+  ]
 }

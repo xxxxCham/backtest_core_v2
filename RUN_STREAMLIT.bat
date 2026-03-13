@@ -2,7 +2,8 @@
 setlocal
 
 REM ============================================================================
-REM BACKTEST CORE MULTI-LLM - Lanceur Streamlit avec nettoyage automatique
+REM BACKTEST CORE V2 - Lanceur unique Streamlit
+REM Point d'entree unique pour l'application UI.
 REM ============================================================================
 
 set SCRIPT_DIR=%~dp0
@@ -10,6 +11,12 @@ cd /d "%SCRIPT_DIR%"
 
 if not defined BACKTEST_STREAMLIT_PORT (
     set "BACKTEST_STREAMLIT_PORT=8502"
+)
+if not defined BACKTEST_STREAMLIT_STALE_RUNTIME_CLAIM_TIMEOUT_SEC (
+    set "BACKTEST_STREAMLIT_STALE_RUNTIME_CLAIM_TIMEOUT_SEC=120"
+)
+if not defined BACKTEST_STREAMLIT_RESTART_DELAY_SEC (
+    set "BACKTEST_STREAMLIT_RESTART_DELAY_SEC=5"
 )
 set "BACKTEST_WORKSPACE_VARIANT=multillm_parallel"
 
@@ -90,6 +97,14 @@ set "MKL_NUM_THREADS=32"
 set "OPENBLAS_NUM_THREADS=32"
 set "NUMEXPR_MAX_THREADS=32"
 set "BACKTEST_USE_GPU=0"
+set "MODELS_JSON_PATH=C:\AI\models\catalog\models.json"
+set "OLLAMA_MODELS=C:\AI\ollama\models"
+set "MODEL_LIBRARY_ROOTS=K:\models;L:\models;C:\AI\models\library"
+set "HUGGINGFACE_ARCHIVE_ROOT=L:\models"
+set "CUDA_VISIBLE_DEVICES="
+set "GPU_DEVICE_ORDINAL="
+set "HIP_VISIBLE_DEVICES="
+set "ROCR_VISIBLE_DEVICES="
 
 if not defined BACKTEST_DATA_DIR (
     if exist "D:\.my_soft\gestionnaire_telechargement_multi-timeframe\processed\parquet" (
@@ -107,11 +122,14 @@ echo       [OK] OPENBLAS_NUM_THREADS=32
 echo       [OK] NUMEXPR_MAX_THREADS=32
 echo       [OK] Threading: OpenMP
 echo       [OK] GPU desactive
+echo       [OK] MODELS_JSON_PATH=%MODELS_JSON_PATH%
+echo       [OK] OLLAMA_MODELS=%OLLAMA_MODELS%
 if defined BACKTEST_DATA_DIR (
     echo       [OK] BACKTEST_DATA_DIR=%BACKTEST_DATA_DIR%
 ) else (
     echo       [INFO] BACKTEST_DATA_DIR non force (auto-detection loader)
 )
+echo       [OK] WATCHDOG relance sur sortie process seulement / delai=%BACKTEST_STREAMLIT_RESTART_DELAY_SEC%s
 echo.
 
 REM ============================================================================
@@ -129,7 +147,10 @@ echo   Appuyez sur Ctrl+C pour arreter
 echo ========================================================================
 echo.
 
-python -m streamlit run ui\app.py --server.port %BACKTEST_STREAMLIT_PORT% --server.maxUploadSize 500
+python tools\streamlit_watchdog.py ^
+  --port %BACKTEST_STREAMLIT_PORT% ^
+  --stale-runtime-claim-timeout-sec %BACKTEST_STREAMLIT_STALE_RUNTIME_CLAIM_TIMEOUT_SEC% ^
+  --restart-delay-sec %BACKTEST_STREAMLIT_RESTART_DELAY_SEC%
 
 echo.
 echo ========================================================================

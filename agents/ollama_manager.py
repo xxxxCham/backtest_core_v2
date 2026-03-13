@@ -35,8 +35,16 @@ from urllib.parse import urlparse
 import httpx
 
 from utils.log import get_logger
+from utils.model_loader import get_ollama_models_root
 
 logger = get_logger(__name__)
+
+_OLLAMA_GPU_VISIBILITY_ENV_KEYS = (
+    "CUDA_VISIBLE_DEVICES",
+    "GPU_DEVICE_ORDINAL",
+    "HIP_VISIBLE_DEVICES",
+    "ROCR_VISIBLE_DEVICES",
+)
 
 
 def _get_ollama_host(override: Optional[str] = None) -> str:
@@ -61,6 +69,61 @@ def _is_local_ollama_host(ollama_host: Optional[str] = None) -> bool:
     parsed = urlparse(host)
     hostname = (parsed.hostname or "").lower()
     return hostname in {"127.0.0.1", "localhost", "::1"}
+
+
+def _gpu_target_to_visible_devices(gpu_target: Optional[str] = None) -> Optional[str]:
+    value = str(gpu_target or "").strip().upper()
+    if not value or value == "AUTO":
+        return None
+    if value.startswith("GPU-"):
+        index = value[4:]
+        return index if index.isdigit() else None
+    return value if value.isdigit() else None
+
+
+def _resolve_visible_devices_for_host(
+    ollama_host: Optional[str],
+    gpu_target: Optional[str] = None,
+) -> Optional[str]:
+    """Résout un pinning GPU uniquement pour des endpoints dédiés.
+
+    Sur l'endpoint local partagé par défaut (`127.0.0.1:11434`), Ollama doit
+    voir l'ensemble des GPUs pour pouvoir répartir correctement les gros
+    modèles. Le pinning explicite reste utilisé pour des hosts/ports dédiés.
+    """
+    visible_devices = _gpu_target_to_visible_devices(gpu_target)
+    if visible_devices is None:
+        return None
+
+    host = _get_ollama_host(ollama_host)
+    parsed = urlparse(host)
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    if _is_local_ollama_host(host) and port == 11434:
+        return None
+    return visible_devices
+
+
+def _build_ollama_subprocess_env(
+    ollama_host: Optional[str] = None,
+    *,
+    gpu_target: Optional[str] = None,
+) -> dict[str, str]:
+    """Construit un environnement propre pour `ollama serve`."""
+    env = os.environ.copy()
+    env["OLLAMA_HOST"] = _get_ollama_host(ollama_host)
+    env["OLLAMA_MODELS"] = str(get_ollama_models_root())
+
+    visible_devices = _resolve_visible_devices_for_host(ollama_host, gpu_target)
+    if visible_devices is not None:
+        env["CUDA_VISIBLE_DEVICES"] = visible_devices
+        env["GPU_DEVICE_ORDINAL"] = visible_devices
+        env["HIP_VISIBLE_DEVICES"] = visible_devices
+        env["ROCR_VISIBLE_DEVICES"] = visible_devices
+    else:
+        for key in _OLLAMA_GPU_VISIBILITY_ENV_KEYS:
+            env.pop(key, None)
+
+    return env
 
 
 def _fetch_tags_payload(
@@ -335,7 +398,11 @@ def gpu_compute_context(
         manager.reload(state)
 
 
-def ensure_ollama_running(ollama_host: Optional[str] = None) -> Tuple[bool, str]:
+def ensure_ollama_running(
+    ollama_host: Optional[str] = None,
+    *,
+    gpu_target: Optional[str] = None,
+) -> Tuple[bool, str]:
     """
     S'assure qu'Ollama est démarré et fonctionnel.
 
@@ -369,15 +436,18 @@ def ensure_ollama_running(ollama_host: Optional[str] = None) -> Tuple[bool, str]
     logger.info("🚀 Démarrage d'Ollama...")
     try:
         is_windows = platform.system() == "Windows"
+        env = _build_ollama_subprocess_env(ollama_host, gpu_target=gpu_target)
 
         if is_windows:
-            # Windows : Lancer avec flags de création console
-            kwargs = {"creationflags": subprocess.CREATE_NEW_CONSOLE}
+            # Windows : daemon de fond sans nouvelle console visible.
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            kwargs = {"creationflags": creationflags} if creationflags else {}
 
             subprocess.Popen(
                 ["ollama", "serve"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                env=env,
                 **kwargs
             )
         else:
@@ -385,7 +455,8 @@ def ensure_ollama_running(ollama_host: Optional[str] = None) -> Tuple[bool, str]
             subprocess.Popen(
                 ["ollama", "serve"],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stderr=subprocess.DEVNULL,
+                env=env,
             )
 
         # 3. Attendre qu'Ollama soit prêt (max 10s)
@@ -402,19 +473,28 @@ def ensure_ollama_running(ollama_host: Optional[str] = None) -> Tuple[bool, str]
             model_count = len(payload.get("models", []) or [])
             if model_count > 0:
                 logger.info(
-                    "✅ Ollama démarré avec succès (après %ss) sur %s | %d modèle(s)",
+                    "✅ Ollama démarré avec succès (après %ss) sur %s | %d modèle(s) | gpu=%s",
                     i + 1,
                     ollama_host,
                     model_count,
+                    gpu_target or "auto",
                 )
-                return True, f"✅ Ollama démarré ({i+1}s) | {model_count} modele(s)"
+                suffix = f" | GPU {gpu_target}" if gpu_target else ""
+                return True, (
+                    f"✅ Ollama démarré ({i+1}s) sur {ollama_host} | "
+                    f"{model_count} modele(s){suffix}"
+                )
 
             logger.warning(
                 "⚠️ Ollama démarré sur %s (après %ss) mais aucun modèle n'est détecté",
                 ollama_host,
                 i + 1,
             )
-            return True, f"⚠️ Ollama démarré ({i+1}s) mais aucun modele detecte"
+            suffix = f" | GPU {gpu_target}" if gpu_target else ""
+            return True, (
+                f"⚠️ Ollama démarré ({i+1}s) sur {ollama_host} mais aucun modele detecte"
+                f"{suffix}"
+            )
 
         return False, "⏱️ Timeout - Ollama n'a pas démarré en 10s"
 
@@ -461,10 +541,10 @@ def cleanup_all_models(ollama_host: Optional[str] = None) -> int:
     Returns:
         int: Nombre de modèles déchargés
     """
-    tags_url = _ollama_url("/api/tags", ollama_host)
+    ps_url = _ollama_url("/api/ps", ollama_host)
     try:
         # Lister les modèles chargés
-        response = httpx.get(tags_url, timeout=5.0)
+        response = httpx.get(ps_url, timeout=5.0)
         if response.status_code != 200:
             return 0
 

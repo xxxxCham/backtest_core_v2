@@ -1,6 +1,6 @@
 # Multi-LLM Builder
 
-Cette variante existe uniquement dans `D:\backtest_core_multillm`.
+Cette variante existe uniquement dans `D:\backtest_core_v2`.
 Le projet source `D:\backtest_core` reste inchangé.
 
 ## Objectif
@@ -20,7 +20,8 @@ Les LLM pilotent uniquement:
 - la generation/ajustement de la strategie
 - la critique
 - l'analyse risque
-- la decision d'iteration
+
+La decision d'iteration du mode simple est maintenant locale et deterministe.
 
 ## Architecture
 
@@ -58,7 +59,8 @@ Chaque profil mappe:
 - `builder_llm`
 - `critic_llm`
 - `risk_llm`
-- `execution_router_llm`
+
+Le routeur LLM historique reste decrit dans les profils pour audit, mais il n'est plus charge par le mode multi-LLM simple.
 
 ## Decouverte locale
 

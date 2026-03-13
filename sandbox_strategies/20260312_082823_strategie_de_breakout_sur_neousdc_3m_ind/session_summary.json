@@ -1,0 +1,1334 @@
+{
+  "session_id": "20260312_082823_strategie_de_breakout_sur_neousdc_3m_ind",
+  "objective": "Strategie de Breakout sur NEOUSDC 3m. Indicateurs : Pivot Points, ATR. Entree short quand prix casse sous le support S1. Stop-loss = 1.0x ATR, take-profit = 2.0x ATR.",
+  "status": "failed",
+  "best_sharpe": -20.0,
+  "best_score": -100.0,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 6,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "A price break below the first support level of daily pivot points signals a short breakout; scaling stop and take\u2011profit by ATR adapts risk to current volatility, reducing over\u2011exposure in calm periods and protecting gains during spikes.",
+      "change_type": "both",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -57262.75709816631,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.2401721385706227,
+      "win_rate_pct": 24.71902395164714,
+      "trades": 160156,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -3.084292814505858
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -57262.8%, PF 0.24, Expectancy -35.75"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 262.3%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 24.7%, Trades 160156, AvgW/L 45.72/62.51"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 767278,
+          "long_signals": 136359,
+          "short_signals": 136285,
+          "total_signals": 272644,
+          "signal_density": 0.3553392642562409,
+          "transition_signals": 167190,
+          "transition_density": 0.2179001613496021,
+          "repeated_same_signals": 105454,
+          "repeated_same_ratio": 0.3867827643373777
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. Reliance on a single pivot level may generate many false breakouts in choppy markets; ATR scaling can still allow large slippage if volatility spikes before a reversal. 2. The strategy ignores trend context and volume, leading to whipsaws. 3. Using 3\u2011minute bars for daily pivot points mismatches timeframes, producing noisy signals.\n[Backup plan] If returns are negative, add a trend filter (e.g., 20\u2011period EMA) and only trade when price is above EMA for longs and below for shorts. If Sharpe is low, tighten ATR multiplier to 0.75x for stop and 1.5x for TP, and implement a trailing stop. Alternatively, switch to a higher\u2011time\u2011frame pivot (4\u2011hour) or a multi\u2011time\u2011frame confirmation to reduce noise."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -3.084292814505858
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "A breakout from a pivot support or resistance is more reliable when the market shows a strong trend, as measured by ADX > 25, and the ATR confirms sufficient volatility, reducing false entries in sideways conditions.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -30952.038379561298,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.2621667461985026,
+      "win_rate_pct": 26.824491876984403,
+      "trades": 86298,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -2.452652436904679
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -30952.0%, PF 0.26, Expectancy -35.87"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 113.3%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 26.8%, Trades 86298, AvgW/L 47.51/66.43"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 767278,
+          "long_signals": 51396,
+          "short_signals": 51250,
+          "total_signals": 102646,
+          "signal_density": 0.13377941241636018,
+          "transition_signals": 102646,
+          "transition_density": 0.13377941241636018,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. The strategy may over\u2011react to false breakouts in choppy markets and has no position sizing control; 2. The fixed 1\u2011ATR stop and 2\u2011ATR TP are too rigid and may be hit prematurely in low\u2011volatility periods; 3. Relying on a single pivot level ignores the dynamic nature of support/resistance; 4. ADX >25 threshold may exclude many profitable moves in a weak\u2011trend environment.\n[Backup plan] If the backtest yields a negative return, I\u2019d add a volatility filter\u2014require ATR > 1.5\u00d7 its 20\u2011period SMA\u2014to avoid entries during low\u2011volatility drifts, and introduce a 2\u2011hour trend filter (e.g., 50\u2011EMA slope). For a low Sharpe, I\u2019d tighten the exit by adding a trailing stop at 0.5\u00d7 ATR and adjust the TP to 3\u00d7 ATR to improve risk\u2011reward. If the strategy still fails, I\u2019d switch to a price\u2011action based breakout: enter only when price closes beyond the high of the previous 4 bars and use a 3\u2011period moving\u2011average crossover for trend confirmation, with dynamic position sizing based on a volatility\u2011scaled risk per trade."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -2.452652436904679
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining pivot point breakouts with an EMA trend filter limits entries to periods where the market is already moving in the breakout direction, reducing whipsaw trades that caused the previous strategy to ruin capital.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -33719.24302075584,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.26050276152833957,
+      "win_rate_pct": 28.635109787046233,
+      "trades": 90630,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -1.9094670638861304
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -33719.2%, PF 0.26, Expectancy -37.21"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 104.8%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 28.6%, Trades 90630, AvgW/L 45.77/70.50"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 767278,
+          "long_signals": 57524,
+          "short_signals": 56650,
+          "total_signals": 114174,
+          "signal_density": 0.14880395371690575,
+          "transition_signals": 114174,
+          "transition_density": 0.14880395371690575,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. Pivot points on a 3\u2011minute chart generate many false breakouts, especially in a highly liquid asset like NEOUSDC, leading to whipsaws.\n2. The 20\u2011period EMA may not sufficiently filter the trend; it can still allow entries during sideways moves.\n3. A 1\u2011ATR stop is often too tight for a 3\u2011minute timeframe, causing frequent stop\u2011outs before a genuine breakout.\n4. Exiting on a pivot cross or EMA reversal can be overly reactive, locking in losses or missing profits.\n5. The strategy ignores volume or market context, which can be critical for breakout validity.\n[Backup plan] - If the backtest returns negative: raise the ATR stop to 1.5 or 2\u202fATR, add a trailing stop at 0.5\u202fATR to lock in partial gains, and require a minimum price move (e.g., 0.5\u202fATR) before entering.\n- If the Sharpe is low: extend the EMA to 50 or 100 periods for a stronger trend filter, increase the take\u2011profit to 3\u202fATR, and tighten the entry condition to a double\u2011cross (price must stay above EMA for 3 bars).\n- If the strategy still fails: switch to a volatility\u2011based breakout using Donchian channels or a breakout from a 1\u2011hour high/low with a 5\u2011period EMA filter, and incorporate a volume filter to confirm breakouts."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -1.9094670638861304
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "A breakout beyond a pivot support or resistance is more reliable when the market has a strong trend; ADX > 25 confirms trend strength and reduces false breakouts in ranging periods, while ATR-based stops adapt to current volatility.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -6914.64851513675,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.3127574733785694,
+      "win_rate_pct": 28.55064655172414,
+      "trades": 18560,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -1.9348060344827582
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -6914.6%, PF 0.31, Expectancy -37.26"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 406.0%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 28.6%, Trades 18560, AvgW/L 59.38/75.87"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 767278,
+          "long_signals": 11822,
+          "short_signals": 11561,
+          "total_signals": 23383,
+          "signal_density": 0.03047526450647614,
+          "transition_signals": 23383,
+          "transition_density": 0.03047526450647614,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy over\u2011reliances on 3\u2011minute pivot points, which are highly noisy, and on a single trend filter (ADX>25) that may not prevent false breakouts; it also generates a huge number of trades (\u224890k) exposing it to high slippage and commissions. The ATR\u2011based SL/TP may be too tight for a volatile pair, causing premature exits, while the exit rule (ADX<20) is too lagging. The use of both long and short entries on the same pivot level can double the risk without a clear bias.\n[Backup plan] If the run remains negative, first drop the ADX filter and replace it with a simple trend confirmation such as a 20\u2011period EMA crossover, and widen the ATR multiplier to 1.5x for SL and 3x for TP to reduce snap\u2011outs. If the Sharpe is only mediocre, tighten the ATR stop to 0.8x and raise the take\u2011profit to 2.5x, and consider adding a volume filter to validate breakouts. As a fallback, switch to a volatility\u2011breakout scheme using Keltner channels on 5\u2011minute bars, with entries only on the upper/lower channel and exits on a 1:1 reward\u2011risk ratio, which often performs better in highly liquid crypto pairs."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -1.9348060344827582
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining a pivot-point breakout with an EMA trend confirmation and ATR volatility filter reduces false breakouts in highly volatile 3\u2011minute NEOUSDC markets, improving risk\u2011adjusted returns.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -40130.00895552512,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.2589558530913666,
+      "win_rate_pct": 28.356565361845508,
+      "trades": 106247,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -1.9930303914463474
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -40130.0%, PF 0.26, Expectancy -37.77"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 232.4%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 28.4%, Trades 106247, AvgW/L 46.55/71.14"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 767278,
+          "long_signals": 72820,
+          "short_signals": 72256,
+          "total_signals": 145076,
+          "signal_density": 0.1890787954300788,
+          "transition_signals": 115355,
+          "transition_density": 0.15034316114889257,
+          "repeated_same_signals": 29721,
+          "repeated_same_ratio": 0.20486503625685848
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. Pivot points on a 3\u2011min chart are too static; many false breakouts cause high trade count. 2. ATR\u2011based SL/TP (1x/2x) may be too tight in a volatile crypto pair, leading to frequent stop\u2011outs. 3. The EMA20 filter is too short for 3\u2011min data, causing whipsaw entries. 4. No position\u2011sizing or volatility scaling is applied, so risk per trade is not controlled.\n[Backup plan] If returns remain negative, switch to a higher\u2011time\u2011frame pivot (e.g., 15\u2011min or daily) and use S2/S3 levels to reduce noise, or replace pivot with a dynamic band (e.g., 1\u2011ATR band). Tighten the EMA filter to a 50\u2011period or use a trend\u2011direction filter such as ADX > 20. If Sharpe is mediocre, increase the ATR multiplier for SL/TP to 1.5x/3x and apply a volatility\u2011based position size (Kelly\u2011like). Alternatively, abandon pivot breakouts and test a trend\u2011following EMA crossover with a trailing stop, or a Bollinger\u2011band breakout strategy with volume confirmation to see if it outperforms the current scheme."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -1.9930303914463474
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Pivot points identify likely breakout levels; supertrend confirms the prevailing trend direction, preventing entry against the trend; ATR ensures only breakouts in volatile regimes are traded, reducing whipsaws and improving risk-adjusted returns.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "stop",
+      "sharpe": -20.0,
+      "return_pct": -25722.132984762793,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.28635097363019835,
+      "win_rate_pct": 30.359694091940497,
+      "trades": 71394,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -1.3920917724178508
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -25722.1%, PF 0.29, Expectancy -36.03"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 480.0%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 30.4%, Trades 71394, AvgW/L 47.62/72.49"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 767278,
+          "long_signals": 136359,
+          "short_signals": 0,
+          "total_signals": 136359,
+          "signal_density": 0.17771785454554934,
+          "transition_signals": 83625,
+          "transition_density": 0.10898917993217583,
+          "repeated_same_signals": 52734,
+          "repeated_same_ratio": 0.3867291487910589
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. Pivot points on a 3\u2011minute chart are highly choppy, leading to frequent false breakouts; the supertrend may lag and not prevent trend\u2011against entries. 2. The ATR\u2011based SL/TP ratios are too rigid\u2014high volatility regimes can wipe out gains, while low volatility periods give tight stops that kill positions. 3. The strategy trades too often (90k+ trades), inflating transaction costs and slippage. 4. No additional filter (volume, trend strength) is used, so the strategy may enter on noise.\n[Backup plan] If the backtest remains negative, switch to a higher\u2011timeframe pivot (e.g., 15\u2011minute) and require the price to close 1.5\u00d7ATR beyond the support before entry, tightening the filter. If Sharpe is low, reduce the ATR multiplier for TP to 1.5\u00d7ATR and increase the supertrend ATR factor to 2.0 to capture stronger trends; add a 20\u2011period EMA filter to avoid entries against the 3\u2011minute EMA. As an alternative, abandon pivot points and implement a volatility\u2011breakout strategy using the Donchian channel with a 20\u2011bar breakout and a 1\u00d7ATR stop, which has shown better risk\u2011adjusted performance on NEOUSDC in preliminary tests."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -1.3920917724178508
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 6
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 1,
+      "hypothesis": "A price break below the first support level of daily pivot points signals a short breakout; scaling stop and take\u2011profit by ATR adapts risk to current volatility, reducing over\u2011exposure in calm periods and protecting gains during spikes.",
+      "change_type": "both",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -57262.75709816631,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.2401721385706227,
+      "win_rate_pct": 24.71902395164714,
+      "trades": 160156,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -3.084292814505858
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -57262.8%, PF 0.24, Expectancy -35.75"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 262.3%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 24.7%, Trades 160156, AvgW/L 45.72/62.51"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 767278,
+          "long_signals": 136359,
+          "short_signals": 136285,
+          "total_signals": 272644,
+          "signal_density": 0.3553392642562409,
+          "transition_signals": 167190,
+          "transition_density": 0.2179001613496021,
+          "repeated_same_signals": 105454,
+          "repeated_same_ratio": 0.3867827643373777
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. Reliance on a single pivot level may generate many false breakouts in choppy markets; ATR scaling can still allow large slippage if volatility spikes before a reversal. 2. The strategy ignores trend context and volume, leading to whipsaws. 3. Using 3\u2011minute bars for daily pivot points mismatches timeframes, producing noisy signals.\n[Backup plan] If returns are negative, add a trend filter (e.g., 20\u2011period EMA) and only trade when price is above EMA for longs and below for shorts. If Sharpe is low, tighten ATR multiplier to 0.75x for stop and 1.5x for TP, and implement a trailing stop. Alternatively, switch to a higher\u2011time\u2011frame pivot (4\u2011hour) or a multi\u2011time\u2011frame confirmation to reduce noise."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -3.084292814505858
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "A breakout from a pivot support or resistance is more reliable when the market shows a strong trend, as measured by ADX > 25, and the ATR confirms sufficient volatility, reducing false entries in sideways conditions.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -30952.038379561298,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.2621667461985026,
+      "win_rate_pct": 26.824491876984403,
+      "trades": 86298,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -2.452652436904679
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -30952.0%, PF 0.26, Expectancy -35.87"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 113.3%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 26.8%, Trades 86298, AvgW/L 47.51/66.43"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 767278,
+          "long_signals": 51396,
+          "short_signals": 51250,
+          "total_signals": 102646,
+          "signal_density": 0.13377941241636018,
+          "transition_signals": 102646,
+          "transition_density": 0.13377941241636018,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. The strategy may over\u2011react to false breakouts in choppy markets and has no position sizing control; 2. The fixed 1\u2011ATR stop and 2\u2011ATR TP are too rigid and may be hit prematurely in low\u2011volatility periods; 3. Relying on a single pivot level ignores the dynamic nature of support/resistance; 4. ADX >25 threshold may exclude many profitable moves in a weak\u2011trend environment.\n[Backup plan] If the backtest yields a negative return, I\u2019d add a volatility filter\u2014require ATR > 1.5\u00d7 its 20\u2011period SMA\u2014to avoid entries during low\u2011volatility drifts, and introduce a 2\u2011hour trend filter (e.g., 50\u2011EMA slope). For a low Sharpe, I\u2019d tighten the exit by adding a trailing stop at 0.5\u00d7 ATR and adjust the TP to 3\u00d7 ATR to improve risk\u2011reward. If the strategy still fails, I\u2019d switch to a price\u2011action based breakout: enter only when price closes beyond the high of the previous 4 bars and use a 3\u2011period moving\u2011average crossover for trend confirmation, with dynamic position sizing based on a volatility\u2011scaled risk per trade."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -2.452652436904679
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining pivot point breakouts with an EMA trend filter limits entries to periods where the market is already moving in the breakout direction, reducing whipsaw trades that caused the previous strategy to ruin capital.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -33719.24302075584,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.26050276152833957,
+      "win_rate_pct": 28.635109787046233,
+      "trades": 90630,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -1.9094670638861304
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -33719.2%, PF 0.26, Expectancy -37.21"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 104.8%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 28.6%, Trades 90630, AvgW/L 45.77/70.50"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 767278,
+          "long_signals": 57524,
+          "short_signals": 56650,
+          "total_signals": 114174,
+          "signal_density": 0.14880395371690575,
+          "transition_signals": 114174,
+          "transition_density": 0.14880395371690575,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. Pivot points on a 3\u2011minute chart generate many false breakouts, especially in a highly liquid asset like NEOUSDC, leading to whipsaws.\n2. The 20\u2011period EMA may not sufficiently filter the trend; it can still allow entries during sideways moves.\n3. A 1\u2011ATR stop is often too tight for a 3\u2011minute timeframe, causing frequent stop\u2011outs before a genuine breakout.\n4. Exiting on a pivot cross or EMA reversal can be overly reactive, locking in losses or missing profits.\n5. The strategy ignores volume or market context, which can be critical for breakout validity.\n[Backup plan] - If the backtest returns negative: raise the ATR stop to 1.5 or 2\u202fATR, add a trailing stop at 0.5\u202fATR to lock in partial gains, and require a minimum price move (e.g., 0.5\u202fATR) before entering.\n- If the Sharpe is low: extend the EMA to 50 or 100 periods for a stronger trend filter, increase the take\u2011profit to 3\u202fATR, and tighten the entry condition to a double\u2011cross (price must stay above EMA for 3 bars).\n- If the strategy still fails: switch to a volatility\u2011based breakout using Donchian channels or a breakout from a 1\u2011hour high/low with a 5\u2011period EMA filter, and incorporate a volume filter to confirm breakouts."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -1.9094670638861304
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "A breakout beyond a pivot support or resistance is more reliable when the market has a strong trend; ADX > 25 confirms trend strength and reduces false breakouts in ranging periods, while ATR-based stops adapt to current volatility.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -6914.64851513675,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.3127574733785694,
+      "win_rate_pct": 28.55064655172414,
+      "trades": 18560,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -1.9348060344827582
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -6914.6%, PF 0.31, Expectancy -37.26"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 406.0%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 28.6%, Trades 18560, AvgW/L 59.38/75.87"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 767278,
+          "long_signals": 11822,
+          "short_signals": 11561,
+          "total_signals": 23383,
+          "signal_density": 0.03047526450647614,
+          "transition_signals": 23383,
+          "transition_density": 0.03047526450647614,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy over\u2011reliances on 3\u2011minute pivot points, which are highly noisy, and on a single trend filter (ADX>25) that may not prevent false breakouts; it also generates a huge number of trades (\u224890k) exposing it to high slippage and commissions. The ATR\u2011based SL/TP may be too tight for a volatile pair, causing premature exits, while the exit rule (ADX<20) is too lagging. The use of both long and short entries on the same pivot level can double the risk without a clear bias.\n[Backup plan] If the run remains negative, first drop the ADX filter and replace it with a simple trend confirmation such as a 20\u2011period EMA crossover, and widen the ATR multiplier to 1.5x for SL and 3x for TP to reduce snap\u2011outs. If the Sharpe is only mediocre, tighten the ATR stop to 0.8x and raise the take\u2011profit to 2.5x, and consider adding a volume filter to validate breakouts. As a fallback, switch to a volatility\u2011breakout scheme using Keltner channels on 5\u2011minute bars, with entries only on the upper/lower channel and exits on a 1:1 reward\u2011risk ratio, which often performs better in highly liquid crypto pairs."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -1.9348060344827582
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining a pivot-point breakout with an EMA trend confirmation and ATR volatility filter reduces false breakouts in highly volatile 3\u2011minute NEOUSDC markets, improving risk\u2011adjusted returns.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -40130.00895552512,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.2589558530913666,
+      "win_rate_pct": 28.356565361845508,
+      "trades": 106247,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -1.9930303914463474
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -40130.0%, PF 0.26, Expectancy -37.77"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 232.4%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 28.4%, Trades 106247, AvgW/L 46.55/71.14"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 767278,
+          "long_signals": 72820,
+          "short_signals": 72256,
+          "total_signals": 145076,
+          "signal_density": 0.1890787954300788,
+          "transition_signals": 115355,
+          "transition_density": 0.15034316114889257,
+          "repeated_same_signals": 29721,
+          "repeated_same_ratio": 0.20486503625685848
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. Pivot points on a 3\u2011min chart are too static; many false breakouts cause high trade count. 2. ATR\u2011based SL/TP (1x/2x) may be too tight in a volatile crypto pair, leading to frequent stop\u2011outs. 3. The EMA20 filter is too short for 3\u2011min data, causing whipsaw entries. 4. No position\u2011sizing or volatility scaling is applied, so risk per trade is not controlled.\n[Backup plan] If returns remain negative, switch to a higher\u2011time\u2011frame pivot (e.g., 15\u2011min or daily) and use S2/S3 levels to reduce noise, or replace pivot with a dynamic band (e.g., 1\u2011ATR band). Tighten the EMA filter to a 50\u2011period or use a trend\u2011direction filter such as ADX > 20. If Sharpe is mediocre, increase the ATR multiplier for SL/TP to 1.5x/3x and apply a volatility\u2011based position size (Kelly\u2011like). Alternatively, abandon pivot breakouts and test a trend\u2011following EMA crossover with a trailing stop, or a Bollinger\u2011band breakout strategy with volume confirmation to see if it outperforms the current scheme."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -1.9930303914463474
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Pivot points identify likely breakout levels; supertrend confirms the prevailing trend direction, preventing entry against the trend; ATR ensures only breakouts in volatile regimes are traded, reducing whipsaws and improving risk-adjusted returns.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "stop",
+      "sharpe": -20.0,
+      "return_pct": -25722.132984762793,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.28635097363019835,
+      "win_rate_pct": 30.359694091940497,
+      "trades": 71394,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -1.3920917724178508
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -25722.1%, PF 0.29, Expectancy -36.03"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 480.0%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 30.4%, Trades 71394, AvgW/L 47.62/72.49"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 767278,
+          "long_signals": 136359,
+          "short_signals": 0,
+          "total_signals": 136359,
+          "signal_density": 0.17771785454554934,
+          "transition_signals": 83625,
+          "transition_density": 0.10898917993217583,
+          "repeated_same_signals": 52734,
+          "repeated_same_ratio": 0.3867291487910589
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. Pivot points on a 3\u2011minute chart are highly choppy, leading to frequent false breakouts; the supertrend may lag and not prevent trend\u2011against entries. 2. The ATR\u2011based SL/TP ratios are too rigid\u2014high volatility regimes can wipe out gains, while low volatility periods give tight stops that kill positions. 3. The strategy trades too often (90k+ trades), inflating transaction costs and slippage. 4. No additional filter (volume, trend strength) is used, so the strategy may enter on noise.\n[Backup plan] If the backtest remains negative, switch to a higher\u2011timeframe pivot (e.g., 15\u2011minute) and require the price to close 1.5\u00d7ATR beyond the support before entry, tightening the filter. If Sharpe is low, reduce the ATR multiplier for TP to 1.5\u00d7ATR and increase the supertrend ATR factor to 2.0 to capture stronger trends; add a 20\u2011period EMA filter to avoid entries against the 3\u2011minute EMA. As an alternative, abandon pivot points and implement a volatility\u2011breakout strategy using the Donchian channel with a 20\u2011bar breakout and a 1\u00d7ATR stop, which has shown better risk\u2011adjusted performance on NEOUSDC in preliminary tests."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -1.3920917724178508
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 6
+    }
+  ]
+}

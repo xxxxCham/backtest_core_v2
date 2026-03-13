@@ -11,7 +11,6 @@ Moteur de backtest multi-LLM avec acceleration GPU pour strategies de trading al
 
 - `AGENTS.md` : regles, historique, journal de maintenance.
 - `GUIDE_CREATION_NOUVELLE_STRATEGIE.md` : guide principal pour ajouter une strategie.
-- `GUIDE_NOUVELLE_STRATEGIE.md` : variante guide workflow strategie.
 
 ## Docs Techniques Completes
 

@@ -9,11 +9,18 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import httpx
 
-from utils.model_loader import get_models_json_path, load_models_json
+from utils.model_loader import (
+    get_model_library_roots,
+    get_models_json_path,
+    get_ollama_models_root,
+    load_models_json,
+    normalize_model_name,
+)
 
 DEFAULT_MODEL_SEARCH_ROOTS = (
-    Path(r"D:\models\huggingface"),
-    Path(r"D:\models\ollama"),
+    Path(r"C:\AI\ollama\models"),
+    Path(r"K:\models"),
+    Path(r"L:\models"),
     Path(r"C:\LLM-Local"),
     Path(r"C:\Users\o3-Pro\Llama_ccp_win"),
 )
@@ -22,11 +29,9 @@ _MODEL_FILE_SUFFIXES = {".gguf", ".safetensors", ".bin"}
 
 
 def canonical_model_name(name: str) -> str:
-    value = str(name or "").strip()
+    value = normalize_model_name(str(name or "").strip())
     if not value:
         return ""
-    if value.endswith(":latest"):
-        value = value[:-7]
     return value.lower()
 
 
@@ -154,10 +159,7 @@ class ModelInventory:
 
 
 def _preferred_search_roots(extra_roots: Optional[Iterable[str | Path]] = None) -> List[Path]:
-    roots: List[Path] = list(DEFAULT_MODEL_SEARCH_ROOTS)
-    env_ollama_models = os.environ.get("OLLAMA_MODELS")
-    if env_ollama_models:
-        roots.append(Path(env_ollama_models))
+    roots: List[Path] = [get_ollama_models_root(), *get_model_library_roots(), *DEFAULT_MODEL_SEARCH_ROOTS]
     models_json_path = get_models_json_path()
     roots.append(models_json_path.parent)
     if extra_roots:
@@ -167,9 +169,12 @@ def _preferred_search_roots(extra_roots: Optional[Iterable[str | Path]] = None) 
     seen: set[str] = set()
     for root in roots:
         normalized = str(root).strip()
-        if not normalized or normalized in seen:
+        if not normalized:
             continue
-        seen.add(normalized)
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
         ordered.append(Path(normalized))
     return ordered
 
@@ -256,7 +261,7 @@ def _discover_from_models_json(registry: Dict[str, DiscoveredModel]) -> None:
         )
 
     for entry in payload.get("huggingface_models", []):
-        name = entry.get("name") or entry.get("id")
+        name = entry.get("id") or entry.get("name")
         if not name:
             continue
         candidate_path = str(entry.get("path") or "").strip()
@@ -355,7 +360,10 @@ def _discover_from_generic_roots(registry: Dict[str, DiscoveredModel], roots: It
             marker_str = str(marker).lower().replace("/", "\\")
             if "\\models\\huggingface\\" in marker_str or "\\models\\ollama\\" in marker_str:
                 continue
-            name = marker.parent.name if marker.name == "config.json" else marker.stem
+            if marker.name == "config.json" or marker.stem.startswith("model"):
+                name = marker.parent.name
+            else:
+                name = marker.stem
             backend = (
                 "huggingface"
                 if marker.suffix.lower() == ".safetensors" or marker.name == "config.json"

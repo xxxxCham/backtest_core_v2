@@ -5,6 +5,9 @@
   "discovery": {
     "prefer_existing": true,
     "search_roots": [
+      "C:\\AI\\ollama\\models",
+      "K:\\models",
+      "L:\\models",
       "D:\\models\\huggingface",
       "D:\\models\\ollama",
       "C:\\LLM-Local",
@@ -19,12 +22,11 @@
         "idea_llm": {
           "backend": "ollama",
           "preferred_models": [
-            "qwen3:14b",
             "qwen2.5:32b",
             "gemma3:12b"
           ],
           "fallback_models": [
-            "deepseek-moe-16b-local:latest",
+            "deepseek-moe-16b-local",
             "mistral:7b-instruct"
           ],
           "required": true,
@@ -33,11 +35,11 @@
         "builder_llm": {
           "backend": "ollama",
           "preferred_models": [
-            "qwen3-coder:30b-a3b-instruct",
+            "qwen3-30b-a3b:q4_k_m",
             "qwen3-coder:30b"
           ],
           "fallback_models": [
-            "deepseek-coder-33b-local:latest",
+            "deepseek-coder-33b-local",
             "gpt-oss:20b"
           ],
           "required": true,
@@ -58,11 +60,10 @@
         "risk_llm": {
           "backend": "ollama",
           "preferred_models": [
-            "dragonllm-qwen-open-finance-r:8b",
-            "martain7r/finance-llama-8b:q4_k_m"
+            "martain7r/finance-llama-8b:q4_k_m",
+            "fin-llama-33b:33b"
           ],
           "fallback_models": [
-            "fin-llama-33b:33b",
             "deepseek-r1-distill:14b"
           ],
           "required": true,
@@ -71,15 +72,79 @@
         "execution_router_llm": {
           "backend": "ollama",
           "preferred_models": [
-            "granite4.0-micro",
-            "nemotron-orchestrator-8b:latest"
+            "nemotron-orchestrator-8b",
+            "mistral:7b-instruct"
           ],
           "fallback_models": [
+            "deepseek-moe-16b-local"
+          ],
+          "required": false,
+          "description": "Legacy LLM router kept for audit only; the simple multi-LLM mode now uses a deterministic local router."
+        }
+      }
+    },
+    "24GB_light_test": {
+      "description": "Lightweight local smoke-test profile for Builder multi-role validation with smaller models and faster reloads.",
+      "roles": {
+        "idea_llm": {
+          "backend": "ollama",
+          "preferred_models": [
             "mistral:7b-instruct",
-            "deepseek-moe-16b-local:latest"
+            "gemma3:12b"
+          ],
+          "fallback_models": [
+            "deepseek-r1:8b"
           ],
           "required": true,
-          "description": "Routes accept/iterate/recover decisions."
+          "description": "Fast ideation for smoke tests and role-routing validation."
+        },
+        "builder_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "gemma3:12b",
+            "mistral:7b-instruct"
+          ],
+          "fallback_models": [
+            "qwen3-30b-a3b:q4_k_m"
+          ],
+          "required": true,
+          "description": "Keeps Builder code generation light enough for rapid local test loops."
+        },
+        "critic_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "deepseek-r1:8b",
+            "gemma3:12b"
+          ],
+          "fallback_models": [
+            "mistral:7b-instruct"
+          ],
+          "required": true,
+          "description": "Light critique focused on smoke-testing the review path."
+        },
+        "risk_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "martain7r/finance-llama-8b:q4_k_m",
+            "deepseek-r1:8b"
+          ],
+          "fallback_models": [
+            "mistral:7b-instruct"
+          ],
+          "required": true,
+          "description": "Small risk model for fast Builder multi-role validation."
+        },
+        "execution_router_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "nemotron-orchestrator-8b",
+            "mistral:7b-instruct"
+          ],
+          "fallback_models": [
+            "mistral:7b-instruct"
+          ],
+          "required": false,
+          "description": "Legacy LLM router kept for audit only; the simple multi-LLM mode now uses a deterministic local router."
         }
       }
     },
@@ -89,7 +154,7 @@
         "idea_llm": {
           "backend": "ollama",
           "preferred_models": [
-            "deepseek-moe-16b-local:latest",
+            "deepseek-moe-16b-local",
             "mistral:7b-instruct"
           ],
           "fallback_models": [
@@ -101,8 +166,9 @@
         "builder_llm": {
           "backend": "ollama",
           "preferred_models": [
+            "qwen3-30b-a3b:q4_k_m",
             "qwen3-coder:30b",
-            "deepseek-coder-33b-local:latest"
+            "deepseek-coder-33b-local"
           ],
           "fallback_models": [
             "gpt-oss:20b"
@@ -137,14 +203,14 @@
         "execution_router_llm": {
           "backend": "ollama",
           "preferred_models": [
-            "nemotron-orchestrator-8b:latest",
+            "nemotron-orchestrator-8b",
             "mistral:7b-instruct"
           ],
           "fallback_models": [
-            "deepseek-moe-16b-local:latest"
+            "deepseek-moe-16b-local"
           ],
-          "required": true,
-          "description": "Lightweight routing."
+          "required": false,
+          "description": "Legacy LLM router kept for audit only; the simple multi-LLM mode now uses a deterministic local router."
         }
       }
     },
@@ -166,8 +232,9 @@
         "builder_llm": {
           "backend": "ollama",
           "preferred_models": [
+            "qwen3-30b-a3b:q4_k_m",
             "qwen3-coder:30b",
-            "deepseek-coder-33b-local:latest"
+            "deepseek-coder-33b-local"
           ],
           "fallback_models": [
             "gpt-oss:20b"
@@ -190,7 +257,6 @@
         "risk_llm": {
           "backend": "ollama",
           "preferred_models": [
-            "dragonllm-qwen-open-finance-r:8b",
             "martain7r/finance-llama-8b:q4_k_m",
             "fin-llama-33b:33b"
           ],
@@ -203,14 +269,14 @@
         "execution_router_llm": {
           "backend": "ollama",
           "preferred_models": [
-            "granite4.0-micro",
-            "nemotron-orchestrator-8b:latest"
+            "nemotron-orchestrator-8b",
+            "mistral:7b-instruct"
           ],
           "fallback_models": [
             "mistral:7b-instruct"
           ],
-          "required": true,
-          "description": "Light routing control."
+          "required": false,
+          "description": "Legacy LLM router kept for audit only; the simple multi-LLM mode now uses a deterministic local router."
         }
       }
     }

@@ -1,0 +1,1295 @@
+{
+  "session_id": "20260310_190800_it_appears_you_re_engaged_in_a_complex_o",
+  "objective": "It appears you're engaged in a complex orchestration of LLMs for strategy evaluation! You've provided a detailed log of interactions with several models (Nemotron, others via Ollama), and a JSON schema defining the desired output format.  The repeated, exhaustive list of checks (\"\\u6709\\u6ca1\\u6709...\") strongly suggests you're testing for data integrity and potential failure modes in the JSON generation process.  Here's a breakdown of what I see and how I can help, along with addressing the likely underlying problem:\n\n**Understanding the Situation**\n\n* **LLM Orchestration:** You're using a chain of LLMs.  `execution_router_llm` (Nemotron) is the final step, responsible for generating the JSON.  The other LLMs (like the one providing \"Yes\") likely contribute to earlier stages of the process (analysis, critique, etc.).\n* **Rigorous Testing:**  The extremely long list of checks in the Nemotron output is a clear indication you're systematically probing for issues: invalid characters, incorrect formatting, data type errors, missing fields, and potential injection vulnerabilities. This is *excellent* practice for production-level LLM applications.\n* **Problem: Repetitive Output:** The core issue is the *massive* repetition of the same checks in the Nemotron output. This indicates a bug or a loop in the prompt or the model's response generation process. It's not producing the desired JSON; it's stuck repeating the validation questions.\n* **JSON Schema:** You've defined a well-structured JSON schema with clear requirements for `objective`, `rationale`, `constraints`, and `strategy_family`.\n\n**How to Fix the Repetitive Output**\n\nThe problem is almost certainly in the prompt you're sending to `execution_router_llm` (Nemotron). Here are the most likely causes and solutions:\n\n1. **Prompt Looping:** The prompt itself might contain instructions that cause the model to recursively ask the same questions.  Look for phrases like \"Repeat these checks...\" or \"Ensure the following conditions are met...\" within your prompt.  *Remove any instructions that tell the model to repeat the validation checks.*\n\n2. **Incomplete Instructions:** The prompt might be missing a clear instruction to *stop* checking and *generate the JSON*.  Add an explicit statement like: \"After completing the analysis, generate a valid JSON object conforming to the following schema: [your JSON schema]\".\n\n3. **Context Window Overflow:**  If the prompt is very long (including the context from previous LLM interactions), it might be exceeding the model's context window.  This can lead to truncated responses or repetitive behavior.  *Reduce the length of the prompt by removing unnecessary information.*\n\n4. **Incorrect Prompt Formatting:**  The prompt might be formatted in a way that confuses the model.  Experiment with different prompt structures.  For example, try using a clear separation between the analysis instructions and the JSON schema.\n\n5. **Temperature/Top_P Settings:**  A high temperature or top_p value can increase the randomness of the model's output, potentially leading to repetition.  *Lower these values to encourage more deterministic responses.*  Start with temperature = 0.0 and top_p = 0.0.\n\n**Debugging Steps**\n\n1. **Isolate the Problem:**  Send a *very simple* prompt to `execution_router_llm` (Nemotron) that only asks it to generate a basic JSON object.  For example:  \"Generate a JSON object with a 'name' field set to 'test'.\"  If this works, the problem is definitely in the more complex prompt.\n\n2. **Simplify the Prompt:**  Gradually add complexity back to the prompt, testing after each addition. This will help you identify the exact part of the prompt that's causing the issue.\n\n3. **Examine the Full Prompt:**  Print the *entire* prompt that's being sent to `execution_router_llm`.  This will help you identify any hidden instructions or formatting errors.\n\n4. **Check the Input to Nemotron:** Ensure that the data passed to Nemotron is correct and formatted as expe",
+  "status": "failed",
+  "best_sharpe": -Infinity,
+  "best_score": -Infinity,
+  "auto_reset_count": 1,
+  "recovery_events": [
+    {
+      "iteration": 5,
+      "trigger": "deterministic_fallbacks",
+      "reason": "4 fallbacks d\u00e9terministes (seuil=4)",
+      "recovered": true,
+      "reset_count": 1,
+      "anchor_source": "last_iteration_fallback",
+      "anchor_iteration": 4,
+      "preserved_best_iteration": null,
+      "consecutive_failures_before_reset": 0,
+      "fallback_count_before_reset": 4,
+      "timestamp": "2026-03-10T19:14:45.893059"
+    }
+  ],
+  "total_iterations": 6,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Bollinger breakout signals trend continuation with ADX confirming trend strength, reducing whipsaws compared to pure breakout strategies",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.3016931155403538,
+      "return_pct": -11.967380658187867,
+      "max_drawdown_pct": -90.46814113178753,
+      "profit_factor": 0.9727559585816269,
+      "win_rate_pct": 40.51446945337621,
+      "trades": 311,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 8.447407235129905,
+          "return": -13.164118724006654,
+          "profit_factor": -1.2454418934113423,
+          "trades_confidence": 10.0,
+          "win_rate": 1.6543408360128622
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 55.46814113178753
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -12.0%, PF 0.97, Expectancy -3.85"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 90.5%, Vol 86.3%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.302, Sortino 0.366, Calmar -0.141"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 40.5%, Trades 311, AvgW/L 339.13/237.44"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 2,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "text",
+          "final_valid": false,
+          "validation_error": "[AST001] Erreur de syntaxe ligne 72: invalid syntax",
+          "validation_error_retry": "[IND001] Usage invalide: op\u00e9rateur logique bitwise avec constante num\u00e9rique. Utiliser des comparaisons bool\u00e9ennes de part et d'autre.",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 0
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 173,
+          "short_signals": 158,
+          "total_signals": 331
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses: false breakout signals during high volatility, lagging indicators, risk of consecutive losses during strong trends\n[Backup plan] Switch to EMA crossover with RSI confirmation or implement trailing stop"
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 55.46814113178753,
+          "components": {
+            "sharpe": 8.447407235129905,
+            "return": -13.164118724006654,
+            "profit_factor": -1.2454418934113423,
+            "trades_confidence": 10.0,
+            "win_rate": 1.6543408360128622
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Bollinger breakout signals quality trades when RSI confirms momentum and ADX confirms trend direction",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": null,
+      "return_pct": null,
+      "max_drawdown_pct": null,
+      "profit_factor": null,
+      "win_rate_pct": null,
+      "trades": null,
+      "continuous_score": null,
+      "score_breakdown": null,
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 2,
+          "realign_success": true,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: comparaison `adx ...` alors que `adx` est un indicator dict. Utiliser une sous-cl\u00e9 (ex: adx['adx']).",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 93: invalid syntax",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 1
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      }
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -418.54865090024936,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.7297355507045863,
+      "win_rate_pct": 27.12727272727273,
+      "trades": 1375,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -12.354946253504627,
+          "trades_confidence": 10.0,
+          "win_rate": -2.3618181818181814
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -418.5%, PF 0.73, Expectancy -30.44"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 886.9%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 27.1%, Trades 1375, AvgW/L 302.98/154.56"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback"
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "KeyError: 'atr_multiplier_entry'",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "KeyError: 'atr_multiplier_entry'",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5635, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4989, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4966, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260310_190800_it_appears_you_re_engaged_in_a_complex_o\\strategy.py\", line 93, in generate_signals\n    atr_multiplier_entry = params[\"atr_multiplier_entry\"]\nKeyError: 'atr_multiplier_entry'",
+          "runtime_fix_validation_error": "[CLASS001] Classe 'BuilderGeneratedStrategy' absente. Classes trouv\u00e9es: []",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Risk parameters and momentum rules need stress-testing. Potential flaws include signal delay and whipsaws around entry points.\n[Backup plan] Test shorter timeframes for quicker signals, explore machine learning for predictive entry, or shift to a different strategy like mean reversion."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -12.354946253504627,
+            "trades_confidence": 10.0,
+            "win_rate": -2.3618181818181814
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "ATR filters extreme price movement while RSI identifies trend direction for entry signals",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -188.03737518235565,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.8149782599926365,
+      "win_rate_pct": 34.941520467836256,
+      "trades": 684,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -8.458136686050903,
+          "trades_confidence": 10.0,
+          "win_rate": -0.017543859649123306
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -188.0%, PF 0.81, Expectancy -27.49"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 1463.8%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 34.9%, Trades 684, AvgW/L 346.55/228.38"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: comparaison `adx ...` alors que `adx` est un indicator dict. Utiliser une sous-cl\u00e9 (ex: adx['adx']).",
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "NameError: name 'close' is not defined",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "NameError: name 'close' is not defined",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5635, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4989, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4966, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260310_190800_it_appears_you_re_engaged_in_a_complex_o\\strategy.py\", line 73, in generate_signals\n    long_conditions = (close > indicators['bollinger']['upper']) & (rsi > 50) & (adx > 25)\nNameError: name 'close' is not defined",
+          "runtime_fix_retry_error": "RuntimeError: \u00c9chec calcul indicateur requis 'close': Indicateur inconnu: 'close'. Disponibles: bollinger, atr, rsi, ema, sma, macd, adx, stochastic, vwap, donchian, cci, keltner, mfi, williams_r, momentum, obv, roc, aroon, supertrend, fear_greed, fibonacci_levels, ichimoku, onchain_smoothing, pi_cycle, pivot_points, psar, standard_deviation, volume_oscillator, vortex, amplitude_hunter, stoch_rsi",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] I'll assess strategy vulnerabilities and prepare adaptive responses for potential backtest outcomes.\n[Backup plan] If current approach underperforms, I'll explore alternative strategies like mean reversion, different timeframes, or new indicator combinations."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -8.458136686050903,
+            "trades_confidence": 10.0,
+            "win_rate": -0.017543859649123306
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Bollinger breakout with ADX trend filter reduces false signals in ranging markets",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.3016931155403538,
+      "return_pct": -11.967380658187867,
+      "max_drawdown_pct": -90.46814113178753,
+      "profit_factor": 0.9727559585816269,
+      "win_rate_pct": 40.51446945337621,
+      "trades": 311,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 8.447407235129905,
+          "return": -13.164118724006654,
+          "profit_factor": -1.2454418934113423,
+          "trades_confidence": 10.0,
+          "win_rate": 1.6543408360128622
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 55.46814113178753
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -12.0%, PF 0.97, Expectancy -3.85"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 90.5%, Vol 86.3%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.302, Sortino 0.366, Calmar -0.141"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 40.5%, Trades 311, AvgW/L 339.13/237.44"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "session_reset": {
+          "iteration": 5,
+          "trigger": "deterministic_fallbacks",
+          "reason": "4 fallbacks d\u00e9terministes (seuil=4)",
+          "recovered": true,
+          "reset_count": 1,
+          "anchor_source": "last_iteration_fallback",
+          "anchor_iteration": 4,
+          "preserved_best_iteration": null,
+          "consecutive_failures_before_reset": 0,
+          "fallback_count_before_reset": 4,
+          "timestamp": "2026-03-10T19:14:45.893059"
+        },
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "AttributeError: 'BuilderGeneratedStrategy' object has no attribute '_check_trend'",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "AttributeError: 'BuilderGeneratedStrategy' object has no attribute '_check_trend'",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5635, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4989, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4966, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260310_190800_it_appears_you_re_engaged_in_a_complex_o\\strategy.py\", line 100, in generate_signals\n    (self._check_trend(params[\"adx_value\"], params[\"adx_threshold\"]))\nAttributeError: 'BuilderGeneratedStrategy' object has no attribute '_check_trend'",
+          "runtime_fix_validation_error": "[CLASS001] Classe 'BuilderGeneratedStrategy' absente. Classes trouv\u00e9es: []",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Short-term volatility and potential macro shifts could impact strategy performance. Divergence between price action and momentum indicators may create temporary entry risks.\n[Backup plan] Consider switching to mean reversion strategy in strong range-bound markets or implementing dynamic stop-loss mechanisms."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 55.46814113178753,
+          "components": {
+            "sharpe": 8.447407235129905,
+            "return": -13.164118724006654,
+            "profit_factor": -1.2454418934113423,
+            "trades_confidence": 10.0,
+            "win_rate": 1.6543408360128622
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "decision": {
+          "stop_overridden": true
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Using tighter risk parameters improves capital preservation in volatile conditions",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "stop",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -50.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 0.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "params",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "KeyError: 'adx'",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "KeyError: 'adx'",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5635, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4989, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4966, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260310_190800_it_appears_you_re_engaged_in_a_complex_o\\strategy.py\", line 93, in generate_signals\n    adx = indicators['adx']\nKeyError: 'adx'",
+          "runtime_fix_validation_error": "[CLASS001] Classe 'BuilderGeneratedStrategy' absente. Classes trouv\u00e9es: []",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] I'm assessing strategy weaknesses and contingency planning. Key risks include potential market regime shifts, parameter sensitivity, and possible information quality issues. I'll focus on robustness, parameter optimization, and alternative approaches.\n[Backup plan] If current strategy underperforms: 1) Refine entry/exit rules with tighter risk parameters 2) Implement volatility-based position sizing 3) Explore mean reversion opportunities during extreme conditions 4) Consider alternative asset classes or strategies like pairs trading."
+        },
+        "scoring": {
+          "continuous_score": -50.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 1
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 6,
+      "hypothesis": "Using tighter risk parameters improves capital preservation in volatile conditions",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "stop",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -50.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 0.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "params",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "KeyError: 'adx'",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "KeyError: 'adx'",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5635, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4989, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4966, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260310_190800_it_appears_you_re_engaged_in_a_complex_o\\strategy.py\", line 93, in generate_signals\n    adx = indicators['adx']\nKeyError: 'adx'",
+          "runtime_fix_validation_error": "[CLASS001] Classe 'BuilderGeneratedStrategy' absente. Classes trouv\u00e9es: []",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] I'm assessing strategy weaknesses and contingency planning. Key risks include potential market regime shifts, parameter sensitivity, and possible information quality issues. I'll focus on robustness, parameter optimization, and alternative approaches.\n[Backup plan] If current strategy underperforms: 1) Refine entry/exit rules with tighter risk parameters 2) Implement volatility-based position sizing 3) Explore mean reversion opportunities during extreme conditions 4) Consider alternative asset classes or strategies like pairs trading."
+        },
+        "scoring": {
+          "continuous_score": -50.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 1,
+      "hypothesis": "Bollinger breakout signals trend continuation with ADX confirming trend strength, reducing whipsaws compared to pure breakout strategies",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.3016931155403538,
+      "return_pct": -11.967380658187867,
+      "max_drawdown_pct": -90.46814113178753,
+      "profit_factor": 0.9727559585816269,
+      "win_rate_pct": 40.51446945337621,
+      "trades": 311,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 8.447407235129905,
+          "return": -13.164118724006654,
+          "profit_factor": -1.2454418934113423,
+          "trades_confidence": 10.0,
+          "win_rate": 1.6543408360128622
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 55.46814113178753
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -12.0%, PF 0.97, Expectancy -3.85"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 90.5%, Vol 86.3%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.302, Sortino 0.366, Calmar -0.141"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 40.5%, Trades 311, AvgW/L 339.13/237.44"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 2,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "text",
+          "final_valid": false,
+          "validation_error": "[AST001] Erreur de syntaxe ligne 72: invalid syntax",
+          "validation_error_retry": "[IND001] Usage invalide: op\u00e9rateur logique bitwise avec constante num\u00e9rique. Utiliser des comparaisons bool\u00e9ennes de part et d'autre.",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 0
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 173,
+          "short_signals": 158,
+          "total_signals": 331
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses: false breakout signals during high volatility, lagging indicators, risk of consecutive losses during strong trends\n[Backup plan] Switch to EMA crossover with RSI confirmation or implement trailing stop"
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 55.46814113178753,
+          "components": {
+            "sharpe": 8.447407235129905,
+            "return": -13.164118724006654,
+            "profit_factor": -1.2454418934113423,
+            "trades_confidence": 10.0,
+            "win_rate": 1.6543408360128622
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -418.54865090024936,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.7297355507045863,
+      "win_rate_pct": 27.12727272727273,
+      "trades": 1375,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -12.354946253504627,
+          "trades_confidence": 10.0,
+          "win_rate": -2.3618181818181814
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -418.5%, PF 0.73, Expectancy -30.44"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 886.9%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 27.1%, Trades 1375, AvgW/L 302.98/154.56"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback"
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "KeyError: 'atr_multiplier_entry'",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "KeyError: 'atr_multiplier_entry'",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5635, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4989, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4966, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260310_190800_it_appears_you_re_engaged_in_a_complex_o\\strategy.py\", line 93, in generate_signals\n    atr_multiplier_entry = params[\"atr_multiplier_entry\"]\nKeyError: 'atr_multiplier_entry'",
+          "runtime_fix_validation_error": "[CLASS001] Classe 'BuilderGeneratedStrategy' absente. Classes trouv\u00e9es: []",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Risk parameters and momentum rules need stress-testing. Potential flaws include signal delay and whipsaws around entry points.\n[Backup plan] Test shorter timeframes for quicker signals, explore machine learning for predictive entry, or shift to a different strategy like mean reversion."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -12.354946253504627,
+            "trades_confidence": 10.0,
+            "win_rate": -2.3618181818181814
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "ATR filters extreme price movement while RSI identifies trend direction for entry signals",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -188.03737518235565,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.8149782599926365,
+      "win_rate_pct": 34.941520467836256,
+      "trades": 684,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -8.458136686050903,
+          "trades_confidence": 10.0,
+          "win_rate": -0.017543859649123306
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -188.0%, PF 0.81, Expectancy -27.49"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 1463.8%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 34.9%, Trades 684, AvgW/L 346.55/228.38"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: comparaison `adx ...` alors que `adx` est un indicator dict. Utiliser une sous-cl\u00e9 (ex: adx['adx']).",
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "NameError: name 'close' is not defined",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "NameError: name 'close' is not defined",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5635, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4989, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4966, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260310_190800_it_appears_you_re_engaged_in_a_complex_o\\strategy.py\", line 73, in generate_signals\n    long_conditions = (close > indicators['bollinger']['upper']) & (rsi > 50) & (adx > 25)\nNameError: name 'close' is not defined",
+          "runtime_fix_retry_error": "RuntimeError: \u00c9chec calcul indicateur requis 'close': Indicateur inconnu: 'close'. Disponibles: bollinger, atr, rsi, ema, sma, macd, adx, stochastic, vwap, donchian, cci, keltner, mfi, williams_r, momentum, obv, roc, aroon, supertrend, fear_greed, fibonacci_levels, ichimoku, onchain_smoothing, pi_cycle, pivot_points, psar, standard_deviation, volume_oscillator, vortex, amplitude_hunter, stoch_rsi",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] I'll assess strategy vulnerabilities and prepare adaptive responses for potential backtest outcomes.\n[Backup plan] If current approach underperforms, I'll explore alternative strategies like mean reversion, different timeframes, or new indicator combinations."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -8.458136686050903,
+            "trades_confidence": 10.0,
+            "win_rate": -0.017543859649123306
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Bollinger breakout with ADX trend filter reduces false signals in ranging markets",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.3016931155403538,
+      "return_pct": -11.967380658187867,
+      "max_drawdown_pct": -90.46814113178753,
+      "profit_factor": 0.9727559585816269,
+      "win_rate_pct": 40.51446945337621,
+      "trades": 311,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 8.447407235129905,
+          "return": -13.164118724006654,
+          "profit_factor": -1.2454418934113423,
+          "trades_confidence": 10.0,
+          "win_rate": 1.6543408360128622
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 55.46814113178753
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -12.0%, PF 0.97, Expectancy -3.85"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 90.5%, Vol 86.3%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.302, Sortino 0.366, Calmar -0.141"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 40.5%, Trades 311, AvgW/L 339.13/237.44"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "session_reset": {
+          "iteration": 5,
+          "trigger": "deterministic_fallbacks",
+          "reason": "4 fallbacks d\u00e9terministes (seuil=4)",
+          "recovered": true,
+          "reset_count": 1,
+          "anchor_source": "last_iteration_fallback",
+          "anchor_iteration": 4,
+          "preserved_best_iteration": null,
+          "consecutive_failures_before_reset": 0,
+          "fallback_count_before_reset": 4,
+          "timestamp": "2026-03-10T19:14:45.893059"
+        },
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "source": "deterministic_fallback"
+        },
+        "precheck": {
+          "ok": false,
+          "error": "AttributeError: 'BuilderGeneratedStrategy' object has no attribute '_check_trend'",
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0
+        },
+        "backtest": {
+          "runtime_error": "AttributeError: 'BuilderGeneratedStrategy' object has no attribute '_check_trend'",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5635, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4989, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 4966, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260310_190800_it_appears_you_re_engaged_in_a_complex_o\\strategy.py\", line 100, in generate_signals\n    (self._check_trend(params[\"adx_value\"], params[\"adx_threshold\"]))\nAttributeError: 'BuilderGeneratedStrategy' object has no attribute '_check_trend'",
+          "runtime_fix_validation_error": "[CLASS001] Classe 'BuilderGeneratedStrategy' absente. Classes trouv\u00e9es: []",
+          "runtime_fix_fallback_deterministic_used": true,
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Short-term volatility and potential macro shifts could impact strategy performance. Divergence between price action and momentum indicators may create temporary entry risks.\n[Backup plan] Consider switching to mean reversion strategy in strong range-bound markets or implementing dynamic stop-loss mechanisms."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 55.46814113178753,
+          "components": {
+            "sharpe": 8.447407235129905,
+            "return": -13.164118724006654,
+            "profit_factor": -1.2454418934113423,
+            "trades_confidence": 10.0,
+            "win_rate": 1.6543408360128622
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        },
+        "decision": {
+          "stop_overridden": true
+        }
+      },
+      "rank": 5
+    }
+  ]
+}

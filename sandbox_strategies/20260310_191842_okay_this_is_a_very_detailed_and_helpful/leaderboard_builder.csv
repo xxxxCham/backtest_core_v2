@@ -1,0 +1,5 @@
+rank,iteration,decision,continuous_score,sharpe,return_pct,max_drawdown_pct,profit_factor,win_rate_pct,trades,change_type,diagnostic_category,is_fallback,error,hypothesis
+1,1,continue,-100.0,-20.0,-149.44953583941455,-100.0,0.1677612698271879,3.571428571428571,84,logic,ruined,False,,"ATR filters noise, RSI confirms momentum for trend entries"
+2,3,continue,-100.0,-20.0,-590.1738932539303,-100.0,0.47817818681534435,38.92140468227424,2392,logic,ruined,True,,Bollinger breakout with ADX trend filter reduces false signals in ranging markets
+3,5,continue,-100.0,-20.0,-1568.9241784612427,-100.0,0.35636293463083657,28.676789587852497,4610,logic,ruined,True,,"why this should improve results (explain the edge, not just the indicators)"
+4,6,stop,-100.0,-20.0,-1467.7947304355862,-100.0,0.3544078925582105,30.45356371490281,4167,logic,ruined,True,,Bollinger breakout with ADX trend filter reduces false signals in ranging markets

@@ -27,6 +27,7 @@ numexpr>=2.8.0              # Évaluation rapide expressions NumPy (2-10x)
 
 # === Testing ===
 pytest>=7.4.0               # Framework de tests unitaires
+pytest-cov>=4.0.0           # Couverture de tests
 
 # === Data Formats ===
 pyarrow>=14.0.0             # Lecture/écriture Parquet
@@ -41,6 +42,9 @@ httpx>=0.27.0               # Client HTTP (Ollama)
 # === Visualization Advanced ===
 seaborn>=0.12.0             # Graphiques statistiques élégants
 plotly-resampler>=0.9.0     # Downsampling intelligent pour gros datasets
+
+# === Compilation & Performance Extrême ===
+cython>=3.0.0               # Compilation C pour boucles critiques
 
 # === Utilities ===
 tqdm>=4.65.0                # Progress bars élégantes

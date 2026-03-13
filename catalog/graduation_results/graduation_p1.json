@@ -1,0 +1,2495 @@
+{
+  "phase": "P1_repechage",
+  "total_candidates": 34,
+  "by_status": {
+    "max_iterations": 9,
+    "success": 8,
+    "failed": 17
+  },
+  "candidates": [
+    {
+      "session_id": "20260307_200230_based_on_your_instructions_and_the_requi",
+      "objective": "Based on your instructions and the required output format, here is the JSON response that meets these requirements:\n\n```",
+      "origin_status": "max_iterations",
+      "best_iteration": 10,
+      "best_return_pct": 688.09,
+      "best_profit_factor": 2.3718,
+      "best_score": 100.0,
+      "best_sharpe": 0.589,
+      "best_trades": 195,
+      "best_max_drawdown_pct": -22.18,
+      "best_win_rate_pct": 38.46,
+      "inclusion_reasons": [
+        "status=max_iterations",
+        "return=688.1%>0",
+        "score=100.0>40.0",
+        "PF=2.43>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260307_200230_based_on_your_instructions_and_the_requi\\strategy_v10.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -286.73,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7269,
+            "trades": 769,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -24.98,
+            "max_drawdown_pct": 57.34,
+            "profit_factor": 0.9418,
+            "trades": 175,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": 28.48,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 1.0343,
+            "trades": 378,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -143.34,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7141,
+            "trades": 101,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -138.46,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.741,
+            "trades": 255,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 103.13,
+            "max_drawdown_pct": 27.04,
+            "profit_factor": 1.3619,
+            "trades": 70,
+            "passed": "True"
+          }
+        },
+        "passed_count": 1,
+        "total_contexts": 6,
+        "pass_rate": 16.7
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=1/6<2"
+    },
+    {
+      "session_id": "20260307_194921_based_on_the_instructions_and_required_o",
+      "objective": "Based on the instructions and required output format, here is the JSON response that meets the user's requirements:\n\n```",
+      "origin_status": "success",
+      "best_iteration": 1,
+      "best_return_pct": 267.86,
+      "best_profit_factor": 1.9539,
+      "best_score": 100.0,
+      "best_sharpe": 1.4393,
+      "best_trades": 210,
+      "best_max_drawdown_pct": -24.55,
+      "best_win_rate_pct": 22.86,
+      "inclusion_reasons": [
+        "status=success",
+        "return=267.9%>0",
+        "score=100.0>40.0",
+        "PF=1.95>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260307_194921_based_on_the_instructions_and_required_o\\strategy_v1.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -335.36,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.6996,
+            "trades": 938,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -30.39,
+            "max_drawdown_pct": 58.93,
+            "profit_factor": 0.9327,
+            "trades": 209,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": 11.45,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 1.0131,
+            "trades": 465,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -137.86,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7316,
+            "trades": 119,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -147.07,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7379,
+            "trades": 299,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 109.52,
+            "max_drawdown_pct": 27.21,
+            "profit_factor": 1.3752,
+            "trades": 85,
+            "passed": "True"
+          }
+        },
+        "passed_count": 1,
+        "total_contexts": 6,
+        "pass_rate": 16.7
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=1/6<2"
+    },
+    {
+      "session_id": "20260307_223241_here_is_a_summary_and_final_output_based",
+      "objective": "Here is a summary and final output based on the provided JSON instructions and session details:\n\n### Summary:\n- **Object",
+      "origin_status": "max_iterations",
+      "best_iteration": 22,
+      "best_return_pct": 159.52,
+      "best_profit_factor": 5.3271,
+      "best_score": 100.0,
+      "best_sharpe": 1.2787,
+      "best_trades": 5,
+      "best_max_drawdown_pct": -13.73,
+      "best_win_rate_pct": 60.0,
+      "inclusion_reasons": [
+        "status=max_iterations",
+        "return=159.5%>0",
+        "score=100.0>40.0",
+        "PF=inf>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260307_223241_here_is_a_summary_and_final_output_based\\strategy_v22.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -327.11,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7735,
+            "trades": 1328,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -122.9,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8258,
+            "trades": 332,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -150.53,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8626,
+            "trades": 600,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -142.39,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7779,
+            "trades": 180,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -117.35,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8265,
+            "trades": 414,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 131.72,
+            "max_drawdown_pct": 38.44,
+            "profit_factor": 1.3118,
+            "trades": 126,
+            "passed": "True"
+          }
+        },
+        "passed_count": 1,
+        "total_contexts": 6,
+        "pass_rate": 16.7
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=1/6<2"
+    },
+    {
+      "session_id": "20260308_013557_based_on_your_requirements_and_the_provi",
+      "objective": "Based on your requirements and the provided context, here is a concise summary along with actionable next steps for impr",
+      "origin_status": "success",
+      "best_iteration": 1,
+      "best_return_pct": 104.84,
+      "best_profit_factor": 2.3537,
+      "best_score": 100.0,
+      "best_sharpe": 1.4114,
+      "best_trades": 24,
+      "best_max_drawdown_pct": -35.13,
+      "best_win_rate_pct": 50.0,
+      "inclusion_reasons": [
+        "status=success",
+        "return=104.8%>0",
+        "score=100.0>40.0",
+        "PF=2.35>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_013557_based_on_your_requirements_and_the_provi\\strategy_v1.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -80.58,
+            "max_drawdown_pct": 83.05,
+            "profit_factor": 0.8653,
+            "trades": 547,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -66.76,
+            "max_drawdown_pct": 80.89,
+            "profit_factor": 0.8093,
+            "trades": 156,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -221.82,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5296,
+            "trades": 232,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -69.18,
+            "max_drawdown_pct": 96.4,
+            "profit_factor": 0.771,
+            "trades": 82,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -22.81,
+            "max_drawdown_pct": 47.32,
+            "profit_factor": 0.9199,
+            "trades": 174,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 60.76,
+            "max_drawdown_pct": 47.97,
+            "profit_factor": 1.2504,
+            "trades": 62,
+            "passed": "True"
+          }
+        },
+        "passed_count": 1,
+        "total_contexts": 6,
+        "pass_rate": 16.7
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=1/6<2"
+    },
+    {
+      "session_id": "20260309_144839_based_on_the_provided_session_details_an",
+      "objective": "Based on the provided session details and feedback from various LLMs, here's a structured summary of key points and next",
+      "origin_status": "success",
+      "best_iteration": 8,
+      "best_return_pct": 99.59,
+      "best_profit_factor": 1.6647,
+      "best_score": 100.0,
+      "best_sharpe": 1.1042,
+      "best_trades": 50,
+      "best_max_drawdown_pct": -17.86,
+      "best_win_rate_pct": 42.0,
+      "inclusion_reasons": [
+        "status=success",
+        "return=99.6%>0",
+        "score=100.0>40.0",
+        "PF=1.66>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260309_144839_based_on_the_provided_session_details_an\\strategy_v8.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -200.54,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7263,
+            "trades": 598,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -45.12,
+            "max_drawdown_pct": 84.13,
+            "profit_factor": 0.8814,
+            "trades": 171,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -32.01,
+            "max_drawdown_pct": 49.33,
+            "profit_factor": 0.9262,
+            "trades": 243,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -45.62,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8447,
+            "trades": 93,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -103.87,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7068,
+            "trades": 186,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": -71.94,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.758,
+            "trades": 67,
+            "passed": false
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260308_050337_based_on_the_provided_information_and_ev",
+      "objective": "Based on the provided information and evaluations, here is a concise summary in JSON format:\n\n```json\n{\n\"objective\": \"Th",
+      "origin_status": "success",
+      "best_iteration": 2,
+      "best_return_pct": 88.92,
+      "best_profit_factor": 2.4962,
+      "best_score": 100.0,
+      "best_sharpe": 2.12,
+      "best_trades": 43,
+      "best_max_drawdown_pct": -11.73,
+      "best_win_rate_pct": 51.16,
+      "inclusion_reasons": [
+        "status=success",
+        "return=88.9%>0",
+        "score=100.0>40.0",
+        "PF=2.50>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_050337_based_on_the_provided_information_and_ev\\strategy_v2.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -409.4,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5401,
+            "trades": 600,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -177.96,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.6029,
+            "trades": 184,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -104.41,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7319,
+            "trades": 211,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -114.71,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.6611,
+            "trades": 76,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -178.02,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5118,
+            "trades": 184,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": -180.44,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.4877,
+            "trades": 67,
+            "passed": false
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260308_054239_json_llm_1_2_3_mean_reversion_json_json",
+      "objective": "根据提供的 JSON 数据和来自各种语言模型（LLM）的分析，以下是用于改进交易策略的关键部分的简洁摘要：\n\n### 目标：\n通过优化入市标准并实施稳健的风险管理规则来提高策略的稳健性和性能指标。\n\n### 理由：\n当前策略显示出过度拟合迹",
+      "origin_status": "success",
+      "best_iteration": 1,
+      "best_return_pct": 78.42,
+      "best_profit_factor": 2.0533,
+      "best_score": 100.0,
+      "best_sharpe": 1.9142,
+      "best_trades": 49,
+      "best_max_drawdown_pct": -13.98,
+      "best_win_rate_pct": 46.94,
+      "inclusion_reasons": [
+        "status=success",
+        "return=78.4%>0",
+        "score=100.0>40.0",
+        "PF=2.05>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_054239_json_llm_1_2_3_mean_reversion_json_json\\strategy_v1.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -415.74,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5552,
+            "trades": 638,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -142.0,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.6978,
+            "trades": 201,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -106.2,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7442,
+            "trades": 228,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -137.28,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.6197,
+            "trades": 81,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -155.43,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5797,
+            "trades": 194,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": -184.09,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.4992,
+            "trades": 71,
+            "passed": false
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260308_010605_based_on_the_provided_data_here_is_a_con",
+      "objective": "Based on the provided data, here is a concise summary along with actionable next steps for improving the trading strateg",
+      "origin_status": "success",
+      "best_iteration": 5,
+      "best_return_pct": 26.98,
+      "best_profit_factor": 1.4555,
+      "best_score": 100.0,
+      "best_sharpe": 1.7226,
+      "best_trades": 40,
+      "best_max_drawdown_pct": -21.19,
+      "best_win_rate_pct": 45.0,
+      "inclusion_reasons": [
+        "status=success",
+        "return=27.0%>0",
+        "score=100.0>40.0",
+        "PF=1.46>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_010605_based_on_the_provided_data_here_is_a_con\\strategy_v5.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -458.32,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.6768,
+            "trades": 1329,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -20.15,
+            "max_drawdown_pct": 50.05,
+            "profit_factor": 0.9637,
+            "trades": 299,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -73.12,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.935,
+            "trades": 645,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -139.5,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.743,
+            "trades": 156,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -141.84,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8,
+            "trades": 450,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 15.77,
+            "max_drawdown_pct": 51.34,
+            "profit_factor": 1.0411,
+            "trades": 120,
+            "passed": "False"
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260308_181947_based_on_your_requirements_here_is_a_sim",
+      "objective": "Based on your requirements, here is a simplified JSON output for trading strategy information:\n\n```json\n{\n\"objective\": \"",
+      "origin_status": "max_iterations",
+      "best_iteration": 2,
+      "best_return_pct": 651.89,
+      "best_profit_factor": 1.8691,
+      "best_score": 97.77,
+      "best_sharpe": 0.5667,
+      "best_trades": 340,
+      "best_max_drawdown_pct": -26.28,
+      "best_win_rate_pct": 35.29,
+      "inclusion_reasons": [
+        "status=max_iterations",
+        "return=742.7%>0",
+        "score=97.8>40.0",
+        "PF=1.94>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_181947_based_on_your_requirements_here_is_a_sim\\strategy_v2.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -321.41,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7711,
+            "trades": 1282,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -134.24,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8071,
+            "trades": 325,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -179.94,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8338,
+            "trades": 582,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -121.48,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8058,
+            "trades": 177,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -122.38,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.817,
+            "trades": 408,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 118.89,
+            "max_drawdown_pct": 40.45,
+            "profit_factor": 1.2818,
+            "trades": 124,
+            "passed": "True"
+          }
+        },
+        "passed_count": 1,
+        "total_contexts": 6,
+        "pass_rate": 16.7
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=1/6<2"
+    },
+    {
+      "session_id": "20260307_225140_based_on_the_instructions_and_session_de",
+      "objective": "Based on the instructions and session details provided, here is a concise summary and final output:\n\n### Summary:\n- **Ob",
+      "origin_status": "success",
+      "best_iteration": 4,
+      "best_return_pct": 80.16,
+      "best_profit_factor": 1.2918,
+      "best_score": 95.89,
+      "best_sharpe": 1.0258,
+      "best_trades": 137,
+      "best_max_drawdown_pct": -24.22,
+      "best_win_rate_pct": 43.8,
+      "inclusion_reasons": [
+        "status=success",
+        "return=80.2%>0",
+        "score=95.9>40.0",
+        "PF=1.29>1.1"
+      ],
+      "phase": "P4",
+      "decision": "REJECTED",
+      "strategy_file": "20260307_225140_based_on_the_instructions_and_session_de\\strategy_v4.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -49.02,
+            "max_drawdown_pct": 65.23,
+            "profit_factor": 0.8653,
+            "trades": 337,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -30.69,
+            "max_drawdown_pct": 41.6,
+            "profit_factor": 0.8163,
+            "trades": 87,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -140.3,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7068,
+            "trades": 266,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -17.15,
+            "max_drawdown_pct": 46.36,
+            "profit_factor": 0.9034,
+            "trades": 57,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": 13.2,
+            "max_drawdown_pct": 31.63,
+            "profit_factor": 1.0449,
+            "trades": 197,
+            "passed": "True"
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 50.81,
+            "max_drawdown_pct": 15.79,
+            "profit_factor": 1.4861,
+            "trades": 43,
+            "passed": "True"
+          }
+        },
+        "passed_count": 2,
+        "total_contexts": 6,
+        "pass_rate": 33.3
+      },
+      "sweep_robustness_pct": 100.0,
+      "wfa_stability": 0,
+      "rejection_reason": "WFA instable 0.00<0.5"
+    },
+    {
+      "session_id": "20260308_001331_the_provided_json_data_describes_a_compl",
+      "objective": "The provided JSON data describes a complex trading strategy evaluation process involving multiple AI models (LLMs) to cr",
+      "origin_status": "max_iterations",
+      "best_iteration": 1,
+      "best_return_pct": 56.36,
+      "best_profit_factor": 2.6314,
+      "best_score": 88.44,
+      "best_sharpe": 0.7435,
+      "best_trades": 6,
+      "best_max_drawdown_pct": -28.82,
+      "best_win_rate_pct": 50.0,
+      "inclusion_reasons": [
+        "status=max_iterations",
+        "return=56.4%>0",
+        "score=88.4>40.0",
+        "PF=2.63>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_001331_the_provided_json_data_describes_a_compl\\strategy_v1.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -240.85,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7343,
+            "trades": 840,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -42.17,
+            "max_drawdown_pct": 61.28,
+            "profit_factor": 0.8927,
+            "trades": 194,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": 33.13,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 1.0456,
+            "trades": 410,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -107.32,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7197,
+            "trades": 107,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -101.8,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7729,
+            "trades": 272,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 107.32,
+            "max_drawdown_pct": 20.63,
+            "profit_factor": 1.4931,
+            "trades": 76,
+            "passed": "True"
+          }
+        },
+        "passed_count": 1,
+        "total_contexts": 6,
+        "pass_rate": 16.7
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=1/6<2"
+    },
+    {
+      "session_id": "20260308_032645_json_objective_action_iterate_rationale",
+      "objective": "json\n{\n\"objective\": \"{\\\"action\\\": \\\"iterate\\\"}\",\n\"rationale\": \"The deterministic builder shows a decent Sharpe ratio (0.",
+      "origin_status": "success",
+      "best_iteration": 1,
+      "best_return_pct": 132.86,
+      "best_profit_factor": 1.2482,
+      "best_score": 86.13,
+      "best_sharpe": 1.0206,
+      "best_trades": 157,
+      "best_max_drawdown_pct": -33.72,
+      "best_win_rate_pct": 39.49,
+      "inclusion_reasons": [
+        "status=success",
+        "return=132.9%>0",
+        "score=86.1>40.0",
+        "PF=1.25>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_032645_json_objective_action_iterate_rationale\\strategy_v1.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -664.2,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.6915,
+            "trades": 2166,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -53.59,
+            "max_drawdown_pct": 77.27,
+            "profit_factor": 0.9423,
+            "trades": 519,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -69.74,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.9571,
+            "trades": 1043,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -145.82,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8317,
+            "trades": 265,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -160.07,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8497,
+            "trades": 711,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 80.92,
+            "max_drawdown_pct": 50.51,
+            "profit_factor": 1.1487,
+            "trades": 189,
+            "passed": "False"
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260307_233417_based_on_your_provided_instructions_and",
+      "objective": "Based on your provided instructions and required output, here is a concise JSON response for critiquing the trading stra",
+      "origin_status": "max_iterations",
+      "best_iteration": 6,
+      "best_return_pct": 104.6,
+      "best_profit_factor": 2.2932,
+      "best_score": 85.18,
+      "best_sharpe": 0.954,
+      "best_trades": 11,
+      "best_max_drawdown_pct": -39.82,
+      "best_win_rate_pct": 54.55,
+      "inclusion_reasons": [
+        "status=max_iterations",
+        "return=104.6%>0",
+        "score=85.2>40.0",
+        "PF=2.29>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260307_233417_based_on_your_provided_instructions_and\\strategy_v6.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -445.46,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7131,
+            "trades": 1339,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -106.81,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8642,
+            "trades": 372,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -117.18,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8749,
+            "trades": 553,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -123.3,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7786,
+            "trades": 174,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -197.31,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7043,
+            "trades": 385,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": -274.91,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5039,
+            "trades": 126,
+            "passed": false
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260307_214408_the_json_snippet_provided_seems_to_conta",
+      "objective": "The JSON snippet provided seems to contain several repetitions and does not adhere to a standard structure. Below are th",
+      "origin_status": "max_iterations",
+      "best_iteration": 2,
+      "best_return_pct": 21.95,
+      "best_profit_factor": 2.2552,
+      "best_score": 78.93,
+      "best_sharpe": 0.7484,
+      "best_trades": 5,
+      "best_max_drawdown_pct": -14.15,
+      "best_win_rate_pct": 80.0,
+      "inclusion_reasons": [
+        "status=max_iterations",
+        "return=21.9%>0",
+        "score=78.9>40.0",
+        "PF=2.26>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260307_214408_the_json_snippet_provided_seems_to_conta\\strategy_v2.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -210.09,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.3654,
+            "trades": 778,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -23.4,
+            "max_drawdown_pct": 28.55,
+            "profit_factor": 0.7489,
+            "trades": 176,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -196.32,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.4467,
+            "trades": 603,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -62.46,
+            "max_drawdown_pct": 75.93,
+            "profit_factor": 0.5892,
+            "trades": 138,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -147.64,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.4681,
+            "trades": 463,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": -21.28,
+            "max_drawdown_pct": 27.22,
+            "profit_factor": 0.7615,
+            "trades": 104,
+            "passed": false
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260307_203900_based_on_your_instructions_and_the_conte",
+      "objective": "Based on your instructions and the context provided, here is a concise JSON output that meets all specified requirements",
+      "origin_status": "failed",
+      "best_iteration": 5,
+      "best_return_pct": 46.39,
+      "best_profit_factor": 1.4029,
+      "best_score": 77.99,
+      "best_sharpe": 0.6022,
+      "best_trades": 32,
+      "best_max_drawdown_pct": -33.87,
+      "best_win_rate_pct": 43.75,
+      "inclusion_reasons": [
+        "return=46.4%>0",
+        "score=78.0>40.0",
+        "PF=1.40>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260307_203900_based_on_your_instructions_and_the_conte\\strategy_v5.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -211.88,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7187,
+            "trades": 616,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -78.19,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7991,
+            "trades": 167,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": 22.7,
+            "max_drawdown_pct": 54.61,
+            "profit_factor": 1.0551,
+            "trades": 231,
+            "passed": "False"
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -79.87,
+            "max_drawdown_pct": 88.56,
+            "profit_factor": 0.7018,
+            "trades": 77,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -141.29,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5794,
+            "trades": 167,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": -131.62,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5683,
+            "trades": 60,
+            "passed": false
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260307_212349_based_on_the_provided_session_details_an",
+      "objective": "Based on the provided session details and the user's request for an evaluation, here is a concise response to evaluate h",
+      "origin_status": "max_iterations",
+      "best_iteration": 2,
+      "best_return_pct": 40.87,
+      "best_profit_factor": 1.6185,
+      "best_score": 73.45,
+      "best_sharpe": 0.5567,
+      "best_trades": 8,
+      "best_max_drawdown_pct": -32.75,
+      "best_win_rate_pct": 37.5,
+      "inclusion_reasons": [
+        "status=max_iterations",
+        "return=40.9%>0",
+        "score=73.4>40.0",
+        "PF=1.62>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260307_212349_based_on_the_provided_session_details_an\\strategy_v2.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -327.11,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7735,
+            "trades": 1328,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -122.9,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8258,
+            "trades": 332,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -150.53,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8626,
+            "trades": 600,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -142.39,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7779,
+            "trades": 180,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -117.35,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8265,
+            "trades": 414,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 131.72,
+            "max_drawdown_pct": 38.44,
+            "profit_factor": 1.3118,
+            "trades": 126,
+            "passed": "True"
+          }
+        },
+        "passed_count": 1,
+        "total_contexts": 6,
+        "pass_rate": 16.7
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=1/6<2"
+    },
+    {
+      "session_id": "20260308_014915_json_action_iterate",
+      "objective": "json\n{\n\"action\": \"iterate\"\n}",
+      "origin_status": "max_iterations",
+      "best_iteration": 1,
+      "best_return_pct": 13.39,
+      "best_profit_factor": 3.6275,
+      "best_score": 67.61,
+      "best_sharpe": 0.7527,
+      "best_trades": 7,
+      "best_max_drawdown_pct": -5.14,
+      "best_win_rate_pct": 57.14,
+      "inclusion_reasons": [
+        "status=max_iterations",
+        "return=13.4%>0",
+        "score=67.6>40.0",
+        "PF=3.63>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_014915_json_action_iterate\\strategy_v1.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -385.42,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.4886,
+            "trades": 1659,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -101.13,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.6523,
+            "trades": 423,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -268.21,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.496,
+            "trades": 778,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -51.14,
+            "max_drawdown_pct": 68.43,
+            "profit_factor": 0.7963,
+            "trades": 235,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -176.55,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5133,
+            "trades": 542,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 3.31,
+            "max_drawdown_pct": 34.42,
+            "profit_factor": 1.0174,
+            "trades": 172,
+            "passed": "True"
+          }
+        },
+        "passed_count": 1,
+        "total_contexts": 6,
+        "pass_rate": 16.7
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=1/6<2"
+    },
+    {
+      "session_id": "20260308_064827_based_on_the_json_data_and_the_instructi",
+      "objective": "Based on the JSON data and the instructions provided, here's a synthesized summary for the trading strategy evaluation:\n",
+      "origin_status": "failed",
+      "best_iteration": 6,
+      "best_return_pct": 22.89,
+      "best_profit_factor": 1.6614,
+      "best_score": 64.25,
+      "best_sharpe": 0.5325,
+      "best_trades": 2,
+      "best_max_drawdown_pct": -24.35,
+      "best_win_rate_pct": 50.0,
+      "inclusion_reasons": [
+        "return=59.6%>0",
+        "score=64.3>40.0",
+        "PF=1.66>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_064827_based_on_the_json_data_and_the_instructi\\strategy_v6.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -409.4,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5401,
+            "trades": 600,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -177.96,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.6029,
+            "trades": 184,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -104.41,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7319,
+            "trades": 211,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -114.71,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.6611,
+            "trades": 76,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -178.02,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5118,
+            "trades": 184,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": -180.44,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.4877,
+            "trades": 67,
+            "passed": false
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260308_194851_based_on_the_provided_json_data_and_inst",
+      "objective": "Based on the provided JSON data and instructions, here is a concise summary with actionable next steps:\n\n### Concise Obj",
+      "origin_status": "failed",
+      "best_iteration": 4,
+      "best_return_pct": 15.65,
+      "best_profit_factor": 1.2018,
+      "best_score": 62.26,
+      "best_sharpe": 0.8952,
+      "best_trades": 79,
+      "best_max_drawdown_pct": -21.92,
+      "best_win_rate_pct": 41.77,
+      "inclusion_reasons": [
+        "return=15.6%>0",
+        "score=62.3>40.0",
+        "PF=1.20>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_194851_based_on_the_provided_json_data_and_inst\\strategy_v4.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -86.63,
+            "max_drawdown_pct": 89.54,
+            "profit_factor": 0.7858,
+            "trades": 331,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -24.84,
+            "max_drawdown_pct": 48.0,
+            "profit_factor": 0.8866,
+            "trades": 97,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -190.34,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.4398,
+            "trades": 136,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -5.51,
+            "max_drawdown_pct": 50.05,
+            "profit_factor": 0.9711,
+            "trades": 59,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -29.05,
+            "max_drawdown_pct": 48.83,
+            "profit_factor": 0.8279,
+            "trades": 79,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": -41.95,
+            "max_drawdown_pct": 74.96,
+            "profit_factor": 0.7769,
+            "trades": 28,
+            "passed": false
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260307_202117_the_json_structure_provided_in_the_execu",
+      "objective": "The JSON structure provided in the execution router's response appears to be an accurate representation based on user in",
+      "origin_status": "max_iterations",
+      "best_iteration": 1,
+      "best_return_pct": 40.91,
+      "best_profit_factor": 1.1033,
+      "best_score": 56.37,
+      "best_sharpe": 0.5164,
+      "best_trades": 238,
+      "best_max_drawdown_pct": -40.95,
+      "best_win_rate_pct": 42.02,
+      "inclusion_reasons": [
+        "status=max_iterations",
+        "return=40.9%>0",
+        "score=56.4>40.0",
+        "PF=1.10>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260307_202117_the_json_structure_provided_in_the_execu\\strategy_v1.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -51.58,
+            "max_drawdown_pct": 75.24,
+            "profit_factor": 0.9551,
+            "trades": 1085,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": 43.64,
+            "max_drawdown_pct": 36.98,
+            "profit_factor": 1.0722,
+            "trades": 304,
+            "passed": "True"
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -157.86,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7894,
+            "trades": 426,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -66.79,
+            "max_drawdown_pct": 93.88,
+            "profit_factor": 0.8544,
+            "trades": 137,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": 48.71,
+            "max_drawdown_pct": 58.32,
+            "profit_factor": 1.108,
+            "trades": 308,
+            "passed": "False"
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": -28.56,
+            "max_drawdown_pct": 78.05,
+            "profit_factor": 0.9359,
+            "trades": 105,
+            "passed": false
+          }
+        },
+        "passed_count": 1,
+        "total_contexts": 6,
+        "pass_rate": 16.7
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=1/6<2"
+    },
+    {
+      "session_id": "20260308_041331_based_on_your_instructions_and_the_evalu",
+      "objective": "Based on your instructions and the evaluations provided, here is a concise summary of the recommendation:\n\n```json\n{\n\"ob",
+      "origin_status": "failed",
+      "best_iteration": 4,
+      "best_return_pct": 80.45,
+      "best_profit_factor": 1.0863,
+      "best_score": 52.07,
+      "best_sharpe": 0.6193,
+      "best_trades": 227,
+      "best_max_drawdown_pct": -44.12,
+      "best_win_rate_pct": 36.56,
+      "inclusion_reasons": [
+        "return=80.4%>0",
+        "score=52.1>40.0",
+        "PF=1.12>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_041331_based_on_your_instructions_and_the_evalu\\strategy_v4.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -790.93,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7566,
+            "trades": 3215,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -44.7,
+            "max_drawdown_pct": 77.53,
+            "profit_factor": 0.9701,
+            "trades": 802,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -307.34,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8646,
+            "trades": 1394,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -97.01,
+            "max_drawdown_pct": 98.6,
+            "profit_factor": 0.922,
+            "trades": 393,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -159.36,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8936,
+            "trades": 988,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 130.27,
+            "max_drawdown_pct": 52.04,
+            "profit_factor": 1.1469,
+            "trades": 279,
+            "passed": "False"
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260307_215611_the_json_snippet_provided_appears_to_con",
+      "objective": "The JSON snippet provided appears to contain repetitive phrases and lacks a proper structure, leading to potential issue",
+      "origin_status": "failed",
+      "best_iteration": 3,
+      "best_return_pct": 75.85,
+      "best_profit_factor": 1.3276,
+      "best_score": 51.33,
+      "best_sharpe": 0.5115,
+      "best_trades": 132,
+      "best_max_drawdown_pct": -50.68,
+      "best_win_rate_pct": 40.15,
+      "inclusion_reasons": [
+        "return=75.8%>0",
+        "score=51.3>40.0",
+        "PF=1.33>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260307_215611_the_json_snippet_provided_appears_to_con\\strategy_v3.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -47.65,
+            "max_drawdown_pct": 69.9,
+            "profit_factor": 0.8911,
+            "trades": 358,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -40.15,
+            "max_drawdown_pct": 61.21,
+            "profit_factor": 0.8251,
+            "trades": 106,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": 62.81,
+            "max_drawdown_pct": 50.68,
+            "profit_factor": 1.2554,
+            "trades": 137,
+            "passed": "False"
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -83.02,
+            "max_drawdown_pct": 88.52,
+            "profit_factor": 0.643,
+            "trades": 65,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -6.81,
+            "max_drawdown_pct": 40.71,
+            "profit_factor": 0.9628,
+            "trades": 84,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": -9.77,
+            "max_drawdown_pct": 69.62,
+            "profit_factor": 0.9321,
+            "trades": 30,
+            "passed": false
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260309_134541_based_on_your_provided_json_data_and_ins",
+      "objective": "Based on your provided JSON data and instructions, here is a structured summary that meets the required output format:\n\n",
+      "origin_status": "failed",
+      "best_iteration": 2,
+      "best_return_pct": 14.24,
+      "best_profit_factor": 1.1,
+      "best_score": 42.64,
+      "best_sharpe": 0.5387,
+      "best_trades": 177,
+      "best_max_drawdown_pct": -26.33,
+      "best_win_rate_pct": 40.11,
+      "inclusion_reasons": [
+        "return=14.2%>0",
+        "score=42.6>40.0"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260309_134541_based_on_your_provided_json_data_and_ins\\strategy_v2.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -92.38,
+            "max_drawdown_pct": 93.71,
+            "profit_factor": 0.8492,
+            "trades": 556,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -76.95,
+            "max_drawdown_pct": 88.46,
+            "profit_factor": 0.7864,
+            "trades": 158,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -227.91,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5235,
+            "trades": 236,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -69.18,
+            "max_drawdown_pct": 96.4,
+            "profit_factor": 0.771,
+            "trades": 82,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -22.81,
+            "max_drawdown_pct": 47.32,
+            "profit_factor": 0.9199,
+            "trades": 174,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 60.76,
+            "max_drawdown_pct": 47.97,
+            "profit_factor": 1.2504,
+            "trades": 62,
+            "passed": "True"
+          }
+        },
+        "passed_count": 1,
+        "total_contexts": 6,
+        "pass_rate": 16.7
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=1/6<2"
+    },
+    {
+      "session_id": "20260308_062746_json_json_1_objective_2_target_sharpe_1",
+      "objective": "这段 JSON 数据描述了什么？用中文解释。\n\n这段 JSON 数据描述了一个交易策略的评估和改进建议。具体内容如下：\n\n1. **objective（目标）**：通过优化入场条件和稳健的风险管理规则来提高交易策略的稳定性和性能。\n2. *",
+      "origin_status": "failed",
+      "best_iteration": 1,
+      "best_return_pct": 18.56,
+      "best_profit_factor": 1.1582,
+      "best_score": 40.68,
+      "best_sharpe": 0.6149,
+      "best_trades": 69,
+      "best_max_drawdown_pct": -35.43,
+      "best_win_rate_pct": 23.19,
+      "inclusion_reasons": [
+        "return=41.6%>0",
+        "score=40.7>40.0",
+        "PF=1.18>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_062746_json_json_1_objective_2_target_sharpe_1\\strategy_v1.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -89.82,
+            "max_drawdown_pct": 91.4,
+            "profit_factor": 0.8522,
+            "trades": 551,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -76.95,
+            "max_drawdown_pct": 88.46,
+            "profit_factor": 0.7864,
+            "trades": 158,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -229.61,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.519,
+            "trades": 234,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -69.18,
+            "max_drawdown_pct": 96.4,
+            "profit_factor": 0.771,
+            "trades": 82,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -22.81,
+            "max_drawdown_pct": 47.32,
+            "profit_factor": 0.9199,
+            "trades": 174,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 60.76,
+            "max_drawdown_pct": 47.97,
+            "profit_factor": 1.2504,
+            "trades": 62,
+            "passed": "True"
+          }
+        },
+        "passed_count": 1,
+        "total_contexts": 6,
+        "pass_rate": 16.7
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=1/6<2"
+    },
+    {
+      "session_id": "20260308_171338_here_s_a_summary_of_the_evaluation_proce",
+      "objective": "Here's a summary of the evaluation process and the final verdict for the trading strategy based on the information provi",
+      "origin_status": "failed",
+      "best_iteration": 1,
+      "best_return_pct": 29.43,
+      "best_profit_factor": 1.1538,
+      "best_score": 37.6,
+      "best_sharpe": 0.6089,
+      "best_trades": 35,
+      "best_max_drawdown_pct": -45.79,
+      "best_win_rate_pct": 40.0,
+      "inclusion_reasons": [
+        "return=29.4%>0",
+        "PF=1.15>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_171338_here_s_a_summary_of_the_evaluation_proce\\strategy_v1.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -467.03,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.677,
+            "trades": 1210,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -123.15,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8237,
+            "trades": 331,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -403.74,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.6193,
+            "trades": 531,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -62.92,
+            "max_drawdown_pct": 85.17,
+            "profit_factor": 0.8885,
+            "trades": 172,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -111.08,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8089,
+            "trades": 288,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": -48.72,
+            "max_drawdown_pct": 83.81,
+            "profit_factor": 0.8747,
+            "trades": 81,
+            "passed": false
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260308_053244_based_on_the_provided_json_data_and_the",
+      "objective": "Based on the provided JSON data and the analysis from various language models (LLMs), here is a concise summary of the k",
+      "origin_status": "failed",
+      "best_iteration": 6,
+      "best_return_pct": 0.02,
+      "best_profit_factor": Infinity,
+      "best_score": 33.19,
+      "best_sharpe": 0.0,
+      "best_trades": 1,
+      "best_max_drawdown_pct": -0.05,
+      "best_win_rate_pct": 100.0,
+      "inclusion_reasons": [
+        "return=0.0%>0",
+        "PF=inf>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_053244_based_on_the_provided_json_data_and_the\\strategy_v6.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": 0.0,
+            "max_drawdown_pct": 0.0,
+            "profit_factor": 1.0,
+            "trades": 0,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": 0.0,
+            "max_drawdown_pct": 0.0,
+            "profit_factor": 1.0,
+            "trades": 0,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": 0.0,
+            "max_drawdown_pct": 0.0,
+            "profit_factor": 1.0,
+            "trades": 0,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": 0.0,
+            "max_drawdown_pct": 0.0,
+            "profit_factor": 1.0,
+            "trades": 0,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": 0.0,
+            "max_drawdown_pct": 0.0,
+            "profit_factor": 1.0,
+            "trades": 0,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 0.0,
+            "max_drawdown_pct": 0.0,
+            "profit_factor": 1.0,
+            "trades": 0,
+            "passed": false
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260308_023703_based_on_the_provided_context_and_sessio",
+      "objective": "Based on the provided context and session summaries, here is a concise summary and analysis:\n\n### Session Summary:\n- **O",
+      "origin_status": "failed",
+      "best_iteration": 3,
+      "best_return_pct": 34.46,
+      "best_profit_factor": 1.0465,
+      "best_score": 20.67,
+      "best_sharpe": 0.6068,
+      "best_trades": 465,
+      "best_max_drawdown_pct": -59.56,
+      "best_win_rate_pct": 35.05,
+      "inclusion_reasons": [
+        "return=34.5%>0"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_023703_based_on_the_provided_context_and_sessio\\strategy_v3.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -635.86,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.4348,
+            "trades": 2450,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -106.97,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.724,
+            "trades": 607,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -4660.8,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.1738,
+            "trades": 996,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -4553.74,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.0759,
+            "trades": 298,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -1111.53,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.4565,
+            "trades": 388,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 83.1,
+            "max_drawdown_pct": 85.51,
+            "profit_factor": 1.1441,
+            "trades": 156,
+            "passed": "False"
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260308_024734_based_on_the_provided_session_summaries",
+      "objective": "Based on the provided session summaries and analysis, here is a concise summary and required output structure:\n\n### Sess",
+      "origin_status": "failed",
+      "best_iteration": 7,
+      "best_return_pct": 6.73,
+      "best_profit_factor": 1.2744,
+      "best_score": 13.28,
+      "best_sharpe": 0.2983,
+      "best_trades": 3,
+      "best_max_drawdown_pct": -30.52,
+      "best_win_rate_pct": 33.33,
+      "inclusion_reasons": [
+        "return=11.5%>0",
+        "PF=1.27>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_024734_based_on_the_provided_session_summaries\\strategy_v7.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -157.03,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.789,
+            "trades": 671,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -41.13,
+            "max_drawdown_pct": 62.9,
+            "profit_factor": 0.8977,
+            "trades": 189,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -266.59,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5275,
+            "trades": 275,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -49.74,
+            "max_drawdown_pct": 92.76,
+            "profit_factor": 0.8528,
+            "trades": 101,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -4.3,
+            "max_drawdown_pct": 48.64,
+            "profit_factor": 0.9859,
+            "trades": 199,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 46.03,
+            "max_drawdown_pct": 54.12,
+            "profit_factor": 1.1574,
+            "trades": 73,
+            "passed": "False"
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260308_185840_based_on_your_instructions_and_requireme",
+      "objective": "Based on your instructions and requirements, here is a concise JSON output that represents the trading strategy:\n\n```jso",
+      "origin_status": "failed",
+      "best_iteration": 1,
+      "best_return_pct": 3.8,
+      "best_profit_factor": 1.2298,
+      "best_score": 8.74,
+      "best_sharpe": 0.188,
+      "best_trades": 11,
+      "best_max_drawdown_pct": -16.38,
+      "best_win_rate_pct": 18.18,
+      "inclusion_reasons": [
+        "return=3.8%>0",
+        "PF=1.23>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_185840_based_on_your_instructions_and_requireme\\strategy_v1.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -664.2,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.6915,
+            "trades": 2166,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -53.59,
+            "max_drawdown_pct": 77.27,
+            "profit_factor": 0.9423,
+            "trades": 519,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -69.74,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.9571,
+            "trades": 1043,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -145.82,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8317,
+            "trades": 265,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -160.07,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8497,
+            "trades": 711,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 80.92,
+            "max_drawdown_pct": 50.51,
+            "profit_factor": 1.1487,
+            "trades": 189,
+            "passed": "False"
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    },
+    {
+      "session_id": "20260309_152852_strategie_de_mean_reversion_sur_cvxusdc",
+      "objective": "Strategie de Mean-reversion sur CVXUSDC 30m. Indicateurs : RSI(14), ATR. Utiliser RSI court terme (params rsi_period=3) ",
+      "origin_status": "failed",
+      "best_iteration": 3,
+      "best_return_pct": 1.68,
+      "best_profit_factor": 1.0943,
+      "best_score": 7.94,
+      "best_sharpe": 0.1943,
+      "best_trades": 9,
+      "best_max_drawdown_pct": -17.99,
+      "best_win_rate_pct": 44.44,
+      "inclusion_reasons": [
+        "return=1.7%>0"
+      ],
+      "phase": "P4",
+      "decision": "REJECTED",
+      "strategy_file": "20260309_152852_strategie_de_mean_reversion_sur_cvxusdc\\strategy_v3.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -3.79,
+            "max_drawdown_pct": 22.75,
+            "profit_factor": 0.93,
+            "trades": 29,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": 5.75,
+            "max_drawdown_pct": 10.38,
+            "profit_factor": 1.237,
+            "trades": 15,
+            "passed": "True"
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -22.01,
+            "max_drawdown_pct": 32.82,
+            "profit_factor": 0.0,
+            "trades": 3,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -31.5,
+            "max_drawdown_pct": 37.89,
+            "profit_factor": 0.0,
+            "trades": 2,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": 0.61,
+            "max_drawdown_pct": 19.94,
+            "profit_factor": 1.0275,
+            "trades": 5,
+            "passed": "True"
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 0.0,
+            "max_drawdown_pct": 0.0,
+            "profit_factor": 1.0,
+            "trades": 0,
+            "passed": false
+          }
+        },
+        "passed_count": 2,
+        "total_contexts": 6,
+        "pass_rate": 33.3
+      },
+      "sweep_robustness_pct": 100.0,
+      "wfa_stability": 0,
+      "rejection_reason": "WFA instable 0.00<0.5"
+    },
+    {
+      "session_id": "20260309_131046_based_on_your_detailed_instructions_and",
+      "objective": "Based on your detailed instructions and the JSON data provided, it seems you are seeking a refined critique of an existi",
+      "origin_status": "failed",
+      "best_iteration": 5,
+      "best_return_pct": -15.84,
+      "best_profit_factor": 0.8949,
+      "best_score": -34.8,
+      "best_sharpe": -0.0452,
+      "best_trades": 36,
+      "best_max_drawdown_pct": -28.45,
+      "best_win_rate_pct": 36.11,
+      "inclusion_reasons": [
+        "return=14.3%>0"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260309_131046_based_on_your_detailed_instructions_and\\strategy_v5.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -80.58,
+            "max_drawdown_pct": 83.05,
+            "profit_factor": 0.8653,
+            "trades": 547,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -66.76,
+            "max_drawdown_pct": 80.89,
+            "profit_factor": 0.8093,
+            "trades": 156,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -221.82,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5296,
+            "trades": 232,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -69.18,
+            "max_drawdown_pct": 96.4,
+            "profit_factor": 0.771,
+            "trades": 82,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -22.81,
+            "max_drawdown_pct": 47.32,
+            "profit_factor": 0.9199,
+            "trades": 174,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 60.76,
+            "max_drawdown_pct": 47.97,
+            "profit_factor": 1.2504,
+            "trades": 62,
+            "passed": "True"
+          }
+        },
+        "passed_count": 1,
+        "total_contexts": 6,
+        "pass_rate": 16.7
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=1/6<2"
+    },
+    {
+      "session_id": "20260308_170342_based_on_the_provided_information_the_mu",
+      "objective": "Based on the provided information, the multi-LLM evaluation process for the trading strategy has concluded that signific",
+      "origin_status": "failed",
+      "best_iteration": 3,
+      "best_return_pct": -9.87,
+      "best_profit_factor": 0.1612,
+      "best_score": -72.82,
+      "best_sharpe": -0.8496,
+      "best_trades": 23,
+      "best_max_drawdown_pct": -10.57,
+      "best_win_rate_pct": 8.7,
+      "inclusion_reasons": [
+        "return=179.7%>0"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_170342_based_on_the_provided_information_the_mu\\strategy_v3.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -3.58,
+            "max_drawdown_pct": 3.67,
+            "profit_factor": 0.1877,
+            "trades": 15,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -1.01,
+            "max_drawdown_pct": 1.01,
+            "profit_factor": 0.0,
+            "trades": 1,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -1.09,
+            "max_drawdown_pct": 1.6,
+            "profit_factor": 0.5244,
+            "trades": 3,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": 1.01,
+            "max_drawdown_pct": 0.05,
+            "profit_factor": Infinity,
+            "trades": 1,
+            "passed": "True"
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -1.12,
+            "max_drawdown_pct": 1.53,
+            "profit_factor": 0.3724,
+            "trades": 5,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 0.0,
+            "max_drawdown_pct": 0.0,
+            "profit_factor": 1.0,
+            "trades": 0,
+            "passed": false
+          }
+        },
+        "passed_count": 1,
+        "total_contexts": 6,
+        "pass_rate": 16.7
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=1/6<2"
+    },
+    {
+      "session_id": "20260309_143024_based_on_the_feedback_and_analysis_from",
+      "objective": "Based on the feedback and analysis from the multi-LLM team, here is a concise summary of improvements needed for the bac",
+      "origin_status": "failed",
+      "best_iteration": 3,
+      "best_return_pct": 8512.68,
+      "best_profit_factor": 4.7475,
+      "best_score": -96.36,
+      "best_sharpe": -20.0,
+      "best_trades": 1396,
+      "best_max_drawdown_pct": -100.0,
+      "best_win_rate_pct": 33.81,
+      "inclusion_reasons": [
+        "return=8911.0%>0",
+        "PF=7.81>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260309_143024_based_on_the_feedback_and_analysis_from\\strategy_v3.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -339.67,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8229,
+            "trades": 1799,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -24.25,
+            "max_drawdown_pct": 70.84,
+            "profit_factor": 0.9732,
+            "trades": 449,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -199.13,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8538,
+            "trades": 760,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -129.41,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8343,
+            "trades": 231,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -92.9,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.8904,
+            "trades": 527,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": 111.18,
+            "max_drawdown_pct": 35.57,
+            "profit_factor": 1.193,
+            "trades": 165,
+            "passed": "True"
+          }
+        },
+        "passed_count": 1,
+        "total_contexts": 6,
+        "pass_rate": 16.7
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=1/6<2"
+    },
+    {
+      "session_id": "20260308_150440_based_on_the_provided_data_and_instructi",
+      "objective": "Based on the provided data and instructions, here is a synthesized summary and final JSON output for the trading strateg",
+      "origin_status": "failed",
+      "best_iteration": 6,
+      "best_return_pct": 157.4,
+      "best_profit_factor": 1.1615,
+      "best_score": -100.0,
+      "best_sharpe": -20.0,
+      "best_trades": 1036,
+      "best_max_drawdown_pct": -100.0,
+      "best_win_rate_pct": 34.46,
+      "inclusion_reasons": [
+        "return=157.4%>0",
+        "PF=1.16>1.1"
+      ],
+      "phase": "P2",
+      "decision": "REJECTED",
+      "strategy_file": "20260308_150440_based_on_the_provided_data_and_instructi\\strategy_v6.py",
+      "multi_ctx_results": {
+        "contexts": {
+          "BTCUSDC_1h": {
+            "return_pct": -409.4,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5401,
+            "trades": 600,
+            "passed": false
+          },
+          "BTCUSDC_4h": {
+            "return_pct": -177.96,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.6029,
+            "trades": 184,
+            "passed": false
+          },
+          "SOLUSDC_1h": {
+            "return_pct": -104.41,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.7319,
+            "trades": 211,
+            "passed": false
+          },
+          "SOLUSDC_4h": {
+            "return_pct": -114.71,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.6611,
+            "trades": 76,
+            "passed": false
+          },
+          "AVAXUSDC_1h": {
+            "return_pct": -178.02,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.5118,
+            "trades": 184,
+            "passed": false
+          },
+          "AVAXUSDC_4h": {
+            "return_pct": -180.44,
+            "max_drawdown_pct": 100.0,
+            "profit_factor": 0.4877,
+            "trades": 67,
+            "passed": false
+          }
+        },
+        "passed_count": 0,
+        "total_contexts": 6,
+        "pass_rate": 0.0
+      },
+      "sweep_robustness_pct": null,
+      "wfa_stability": null,
+      "rejection_reason": "contexts=0/6<2"
+    }
+  ]
+}

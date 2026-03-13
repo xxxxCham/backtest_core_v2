@@ -150,6 +150,47 @@ NUMBA_SUPPORTED_METRICS = {
 }
 
 
+def _read_positive_int_env(var_name: str) -> Optional[int]:
+    """Lit une variable d'environnement entière positive."""
+    raw_value = str(os.getenv(var_name, "") or "").strip()
+    if not raw_value:
+        return None
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _get_numba_thread_ceiling() -> Optional[int]:
+    """
+    Retourne le plafond de threads impose par le runtime courant.
+
+    Cas important:
+    - les workers multiprocess bornent Numba a 1 thread pour eviter le nested
+      parallelism;
+    - le backend sweep Numba ne doit ensuite jamais essayer de remonter au-dela
+      de cette limite, sinon Numba leve:
+      "Cannot set NUMBA_NUM_THREADS to a different value once the threads have
+      been launched".
+    """
+    caps: List[int] = []
+    for env_name in ("BACKTEST_WORKER_THREADS", "NUMBA_NUM_THREADS"):
+        env_value = _read_positive_int_env(env_name)
+        if env_value is not None:
+            caps.append(env_value)
+
+    if HAS_NUMBA and get_num_threads is not None:
+        try:
+            caps.append(max(1, int(get_num_threads())))
+        except Exception:
+            pass
+
+    if not caps:
+        return None
+    return max(1, min(caps))
+
+
 def normalize_numba_strategy_key(strategy_key: str) -> str:
     """Normalise une clé stratégie pour les heuristiques de sweep Numba."""
     return str(strategy_key or "").lower().replace("-", "_").replace(" ", "_")
@@ -965,22 +1006,29 @@ def _get_numba_thread_count(
     if chunk_size <= 0:
         return 1
 
+    ceiling = _get_numba_thread_ceiling()
+
     if thread_override is not None:
-        return max(1, int(thread_override))
+        requested = max(1, int(thread_override))
+        return min(requested, ceiling) if ceiling is not None else requested
 
     recommended = get_recommended_worker_count(max_cap=os.cpu_count() or 1)
     profile = _get_numba_thread_profile(strategy_lower)
     work_units = chunk_size * max(1, n_bars) * profile["cost_multiplier"]
 
+    target_threads = max(1, recommended)
     if chunk_size < 64 or work_units < profile["to_4_threads"]:
-        return 1
-    if chunk_size < 128 or work_units < profile["to_8_threads"]:
-        return min(recommended, 4)
-    if chunk_size < 512 or work_units < profile["to_16_threads"]:
-        return min(recommended, 8)
-    if chunk_size < 2048 or work_units < profile["to_16_threads"] * 4:
-        return min(recommended, 16)
-    return max(1, recommended)
+        target_threads = 1
+    elif chunk_size < 128 or work_units < profile["to_8_threads"]:
+        target_threads = min(recommended, 4)
+    elif chunk_size < 512 or work_units < profile["to_16_threads"]:
+        target_threads = min(recommended, 8)
+    elif chunk_size < 2048 or work_units < profile["to_16_threads"] * 4:
+        target_threads = min(recommended, 16)
+
+    if ceiling is not None:
+        target_threads = min(target_threads, ceiling)
+    return max(1, target_threads)
 
 
 @contextmanager
@@ -992,11 +1040,33 @@ def _numba_thread_context(thread_count: int):
 
     previous = get_num_threads()
     applied = max(1, int(thread_count))
-    set_num_threads(applied)
+    active_threads = previous
+
     try:
-        yield get_num_threads()
+        if applied != previous:
+            set_num_threads(applied)
+        active_threads = get_num_threads()
+    except Exception as exc:
+        active_threads = get_num_threads()
+        logger.warning(
+            "[NUMBA] thread change refused current=%s requested=%s; keeping current pool (%s)",
+            active_threads,
+            applied,
+            exc,
+        )
+    try:
+        yield active_threads
     finally:
-        set_num_threads(previous)
+        try:
+            current = get_num_threads()
+            if previous != current:
+                set_num_threads(previous)
+        except Exception as exc:
+            logger.debug(
+                "[NUMBA] restore thread count skipped previous=%s (%s)",
+                previous,
+                exc,
+            )
 
 
 def _extract_param_array(

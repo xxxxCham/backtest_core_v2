@@ -41,10 +41,10 @@ BUILTIN_PRESETS: Dict[str, Dict[str, Any]] = {
         "name": "Optimal",
         "description": "Configuration optimale basée sur benchmarks Dec 2025",
         "models": {
-            "analyst": ["qwen2.5:14b"],
+            "analyst": ["qwen2.5:32b"],
             "strategist": ["gemma3:27b"],
-            "critic": ["llama3.3-70b-optimized"],
-            "validator": ["llama3.3-70b-optimized"]
+            "critic": ["llama3.3:70b-instruct-q4_K_M"],
+            "validator": ["llama3.3:70b-instruct-q4_K_M"]
         },
         "builtin": True
     },
@@ -63,7 +63,7 @@ BUILTIN_PRESETS: Dict[str, Dict[str, Any]] = {
         "name": "Équilibré",
         "description": "Mix light/medium/heavy pour compromis performance/vitesse",
         "models": {
-            "analyst": ["qwen2.5:14b"],
+            "analyst": ["qwen2.5:32b"],
             "strategist": ["gemma3:27b"],
             "critic": ["deepseek-r1:32b"],
             "validator": ["qwq:32b"]
@@ -76,8 +76,8 @@ BUILTIN_PRESETS: Dict[str, Dict[str, Any]] = {
         "models": {
             "analyst": ["qwen2.5:32b"],
             "strategist": ["deepseek-r1:32b"],
-            "critic": ["llama3.3-70b-optimized"],
-            "validator": ["llama3.3-70b-optimized"]
+            "critic": ["llama3.3:70b-instruct-q4_K_M"],
+            "validator": ["llama3.3:70b-instruct-q4_K_M"]
         },
         "builtin": True
     }

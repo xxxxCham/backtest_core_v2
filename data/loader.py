@@ -294,9 +294,9 @@ def _path_has_supported_data(path: Path) -> bool:
 
 
 # Chemins de données via variables d'environnement (prioritaires)
-THREADX_DATA_DIR = _optional_env_path("BACKTEST_CORE_DATA_DIR")
-GESTIONNAIRE_DATA_DIR = _optional_env_path("BACKTEST_CORE_GESTIONNAIRE_DIR")
-GESTIONNAIRE_RAW_DIR = _optional_env_path("BACKTEST_CORE_RAW_DIR")
+THREADX_DATA_DIR = _optional_env_path("BACKTEST_CORE_V2_DATA_DIR")
+GESTIONNAIRE_DATA_DIR = _optional_env_path("BACKTEST_CORE_V2_GESTIONNAIRE_DIR")
+GESTIONNAIRE_RAW_DIR = _optional_env_path("BACKTEST_CORE_V2_RAW_DIR")
 
 # Compatibilité Windows (auto-détection banque externe sans env obligatoire).
 LEGACY_WINDOWS_DATA_DIRS: List[Path] = _build_legacy_windows_data_dirs()

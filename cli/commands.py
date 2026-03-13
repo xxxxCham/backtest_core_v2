@@ -4380,7 +4380,7 @@ def cmd_builder(args) -> int:
                 "(fallbacks deterministes conserves)"
             )
         else:
-            print("  ✅ Tous les roles multi-LLM sont resolus localement")
+            print("  ✅ Tous les roles LLM actifs sont resolus localement")
         print()
 
         def _builder_runner(run_objective: str, run_model: str):
@@ -4414,7 +4414,6 @@ def cmd_builder(args) -> int:
             available_indicators=builder.available_indicators,
             history_tail=[],
             target_sharpe=args.target_sharpe,
-            fallback_builder_model=llm_config.model,
             builder_runner=_builder_runner,
             fallback_objective=objective,
         )
@@ -4423,7 +4422,7 @@ def cmd_builder(args) -> int:
         print(f"  🎯 Objectif final : {objective}")
         print(f"  🏗️  builder_llm  : {multi_cycle.builder_model}")
         print(
-            f"  🧭 Router        : {multi_cycle.router_decision.get('action', 'iterate')} "
+            f"  🧭 Routeur local : {multi_cycle.router_decision.get('action', 'iterate')} "
             f"| {multi_cycle.router_decision.get('reason', '')}"
         )
     else:

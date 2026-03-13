@@ -1,0 +1,2047 @@
+{
+  "session_id": "20260307_081044_fiche_strategie_v1_id_mean_reversion_bol",
+  "objective": "FICHE_STRATEGIE v1 id: mean_reversion_bollinger_rsi archetype: mean_reversion_bollinger_rsi family: mean_reversion timeframe: side: both indicators: - bollinger(period=10, std_dev=2.1) - rsi(period=12) - atr(period=14) entry: - long: close < bollinger.lower and rsi < 25 - short: close > bollinger.upper and rsi > 80 exit: - condition: cross_any(close, bollinger.middle) or cross_any(rsi, 50) risk: stop_atr_mult: 1.0 tp_atr_mult: 3.0 description: ATR stop-loss (1.0x) and take-profit (3.0x) constraints: - no_lookahead: true - only_registry_indicators: true",
+  "status": "max_iterations",
+  "best_sharpe": 1.4563877575948547,
+  "best_score": 86.40142561591361,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 10,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with RSI to filter for overbought/oversold conditions, and ADX to confirm trend strength, aims to reduce false signals and improve the quality of mean reversion trades.",
+      "change_type": "accept",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.4743745717735474,
+      "return_pct": -61.92109569162745,
+      "max_drawdown_pct": -85.13676838751205,
+      "profit_factor": 0.3451511412496959,
+      "win_rate_pct": 15.0,
+      "trades": 20,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -13.282488009659328,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 3.333333333333333,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 50.13676838751205
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -61.9%, PF 0.35, Expectancy -309.61"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 85.1%, Vol 133.9%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.474, Sortino -0.371, Calmar -1.057"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 15.0%, Trades 20, AvgW/L 1087.89/556.22"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 26,
+          "short_signals": 2,
+          "total_signals": 28
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy\u2019s reliance on strict RSI thresholds (25/80) might be too rigid, missing potential trades or generating whipsaws. The fixed ATR multiple for stop-loss and take-profit lacks dynamic adjustment to market volatility. Combining a mean reversion strategy with a volatility indicator like ATR introduces complexity that could be detrimental if not calibrated correctly. The strategy also assumes a relatively stable mean, which might not hold true across the entire dataset.\n[Backup plan] If negative returns, loosen RSI thresholds (e.g., 20/85) and consider a dynamic stop-loss based on a shorter-period ATR. If mediocre Sharpe, optimize ATR multipliers and Bollinger Band standard deviations via grid search. If persistently failing, switch to a simpler strategy using only Bollinger Bands and a dynamic entry/exit based on band width changes."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 50.13676838751205,
+          "components": {
+            "sharpe": -13.282488009659328,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 3.333333333333333,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 9
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with ADX for trend confirmation aims to reduce false signals and improve the robustness of the strategy by only entering trades aligned with the prevailing trend.",
+      "change_type": "logic",
+      "diagnostic_category": "low_win_rate",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.1323557796957039,
+      "return_pct": -10.966611254149283,
+      "max_drawdown_pct": -26.559706453538173,
+      "profit_factor": 0.8702088715308598,
+      "win_rate_pct": 29.166666666666668,
+      "trades": 24,
+      "continuous_score": -35.825680576753875,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -3.705961831479709,
+          "return": -12.06327237956421,
+          "profit_factor": -5.933308730017838,
+          "trades_confidence": 4.0,
+          "win_rate": -1.7499999999999998
+        },
+        "penalties": {
+          "drawdown_pressure": 4.373137635692116,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -11.0%, PF 0.87, Expectancy -45.69"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 26.6%, Vol 50.4%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.132, Sortino -0.113, Calmar -0.910"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 29.2%, Trades 24, AvgW/L 1050.40/497.03"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: comparaison `adx ...` alors que `adx` est un indicator dict. Utiliser une sous-cl\u00e9 (ex: adx['adx']).",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 81: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 0
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 20,
+          "short_signals": 5,
+          "total_signals": 25
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on ADX for trend confirmation introduces complexity and potential lag, possibly filtering out profitable mean reversion opportunities. The strict entry conditions (triple criteria) may be too restrictive, resulting in low trade frequency. The ATR-based stop-loss and take-profit are standard, but may not be optimal for LINEAUSDC\u2019s volatility. The hypothesis assumes ADX and RSI will consistently filter false signals, which may not hold.\n[Backup plan] If negative return, relax ADX entry thresholds (e.g., ADX > 15) and/or remove ADX entirely to test pure Bollinger/RSI mean reversion. For mediocre Sharpe, optimize ATR multipliers (0.5x-2.0x) and Bollinger Band std_dev (1.5-2.5). If still failing, switch to a volatility breakout strategy using Keltner Channels instead of Bollinger Bands, focusing on price expansion."
+        },
+        "scoring": {
+          "continuous_score": -35.825680576753875,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -3.705961831479709,
+            "return": -12.06327237956421,
+            "profit_factor": -5.933308730017838,
+            "trades_confidence": 4.0,
+            "win_rate": -1.7499999999999998
+          },
+          "penalties": {
+            "drawdown_pressure": 4.373137635692116,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 8
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with ADX as a trend filter will reduce false signals during periods of low volatility and strong trends, improving win rate.",
+      "change_type": "both",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "continue",
+      "sharpe": null,
+      "return_pct": null,
+      "max_drawdown_pct": null,
+      "profit_factor": null,
+      "win_rate_pct": null,
+      "trades": null,
+      "continuous_score": null,
+      "score_breakdown": null,
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: comparaison `adx ...` alors que `adx` est un indicator dict. Utiliser une sous-cl\u00e9 (ex: adx['adx']).",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 81: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 1
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      }
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with RSI to filter for overbought/oversold conditions, and ADX to confirm trend strength, should reduce whipsaws and improve signal quality in LINEAUSDC.",
+      "change_type": "logic",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.6045292476659216,
+      "return_pct": 68.40152506607352,
+      "max_drawdown_pct": -40.17206053625336,
+      "profit_factor": 1.5448544067778192,
+      "win_rate_pct": 42.10526315789473,
+      "trades": 57,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 44.92681893464581,
+          "return": 44.0,
+          "profit_factor": 24.907630024128878,
+          "trades_confidence": 9.5,
+          "win_rate": 2.1315789473684195
+        },
+        "penalties": {
+          "drawdown_pressure": 13.448040357502242,
+          "drawdown_excess": 4.310050446877802,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 5.172060536253362
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +68.4%, PF 1.54, Expectancy 120.00"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 40.2%, Vol 67.9%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 1.605, Sortino 1.835, Calmar 6.130"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 42.1%, Trades 57, AvgW/L 808.09/380.43"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: op\u00e9ration arithm\u00e9tique sur `adx` qui est un indicator dict. Utiliser une sous-cl\u00e9 (ex: adx['adx']).",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 81: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 2
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 30,
+          "short_signals": 42,
+          "total_signals": 72
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on ADX for trend confirmation introduces complexity and potential lag, which could filter out profitable short-term reversals. The strict RSI and Bollinger Band entry conditions might miss opportunities, especially in sideways markets. The fixed ATR multiple for stop-loss and take-profit lacks dynamic adjustment based on volatility changes.\n[Backup plan] If negative return, relax RSI entry thresholds (e.g., RSI < 35 long, >70 short) and remove ADX filter. If mediocre Sharpe, optimize ATR multipliers and Bollinger Band std_dev. If consistently failing, replace RSI with a simpler oscillator like Stochastic or consider a momentum-based approach using MACD."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 5.172060536253362,
+          "components": {
+            "sharpe": 44.92681893464581,
+            "return": 44.0,
+            "profit_factor": 24.907630024128878,
+            "trades_confidence": 9.5,
+            "win_rate": 2.1315789473684195
+          },
+          "penalties": {
+            "drawdown_pressure": 13.448040357502242,
+            "drawdown_excess": 4.310050446877802,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining Bollinger Band mean reversion with RSI confirmation and ADX trend filtering aims to reduce false signals and improve the robustness of the strategy in varying market conditions.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.4563877575948547,
+      "return_pct": 62.62897726189943,
+      "max_drawdown_pct": -44.80309293476932,
+      "profit_factor": 1.3680951707433797,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 87,
+      "continuous_score": 86.40142561591361,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 40.778857212655936,
+          "return": 44.0,
+          "profit_factor": 16.827207805411646,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 16.53539528984621,
+          "drawdown_excess": 8.169244112307764,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.803092934769317
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +62.6%, PF 1.37, Expectancy 71.99"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.8%, Vol 74.2%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.456, Sortino 1.534, Calmar 4.880"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 87, AvgW/L 802.66/293.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 45,
+          "short_signals": 46,
+          "total_signals": 91
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on ADX as a trend filter is a key vulnerability; it's prone to whipsaws and may not accurately reflect underlying trends in LINEAUSDC. The fixed ATR multiple for stop-loss and take-profit is rigid and may not adapt to the asset's volatility profile. The RSI thresholds (25/80) are arbitrary and may not be optimal for this specific market's behavior. Finally, the combination of two mean-reversion indicators might lead to conflicting signals and increased noise.\n[Backup plan] If negative return: Remove ADX entirely and re-evaluate RSI thresholds dynamically using a rolling optimization. If mediocre Sharpe: Reduce TP_ATR_mult to 1.5, and experiment with a dynamic stop-loss based on recent volatility (e.g., a moving average of ATR). If both fail: Replace the RSI with a simpler momentum indicator like a moving average crossover, focusing purely on Bollinger Band mean reversion."
+        },
+        "scoring": {
+          "continuous_score": 86.40142561591361,
+          "drawdown_excess_pct": 9.803092934769317,
+          "components": {
+            "sharpe": 40.778857212655936,
+            "return": 44.0,
+            "profit_factor": 16.827207805411646,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 16.53539528984621,
+            "drawdown_excess": 8.169244112307764,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with ADX as a trend filter will reduce false breakouts and improve signal quality, especially in choppy markets.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.4563877575948547,
+      "return_pct": 62.62897726189943,
+      "max_drawdown_pct": -44.80309293476932,
+      "profit_factor": 1.3680951707433797,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 87,
+      "continuous_score": 86.40142561591361,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 40.778857212655936,
+          "return": 44.0,
+          "profit_factor": 16.827207805411646,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 16.53539528984621,
+          "drawdown_excess": 8.169244112307764,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.803092934769317
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +62.6%, PF 1.37, Expectancy 71.99"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.8%, Vol 74.2%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.456, Sortino 1.534, Calmar 4.880"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 87, AvgW/L 802.66/293.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 45,
+          "short_signals": 46,
+          "total_signals": 91
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on ADX as a trend filter introduces complexity and potential lag, which could reduce profitable entries. The ATR-based stop and take profit are fixed, failing to adapt to market volatility. The RSI thresholds (25/80) are arbitrary and may not be optimal for LINEAUSDC. Finally, the combined conditions for entry might be too restrictive, missing opportunities.\n[Backup plan] If negative return, relax the ADX filter completely (remove it). For mediocre Sharpe, optimize RSI thresholds via grid search and adjust ATR multipliers dynamically based on recent volatility. If consistently failing, replace RSI with a simpler momentum indicator like MACD or explore a different mean reversion technique altogether, such as a Kalman filter."
+        },
+        "scoring": {
+          "continuous_score": 86.40142561591361,
+          "drawdown_excess_pct": 9.803092934769317,
+          "components": {
+            "sharpe": 40.778857212655936,
+            "return": 44.0,
+            "profit_factor": 16.827207805411646,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 16.53539528984621,
+            "drawdown_excess": 8.169244112307764,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 3,
+            "llm_positive": 2,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with ADX as a trend filter reduces whipsaws and improves signal quality by only entering trades when the underlying trend is strong.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.4111473730757278,
+      "return_pct": 59.96813538225626,
+      "max_drawdown_pct": -44.80309293476932,
+      "profit_factor": 1.330839535305334,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 87,
+      "continuous_score": 83.43158008649596,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 39.51212644612038,
+          "return": 44.0,
+          "profit_factor": 15.124093042529553,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 16.53539528984621,
+          "drawdown_excess": 8.169244112307764,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.803092934769317
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +60.0%, PF 1.33, Expectancy 68.93"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.8%, Vol 75.2%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.411, Sortino 1.505, Calmar 4.606"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 87, AvgW/L 831.82/312.52"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 45,
+          "short_signals": 46,
+          "total_signals": 91
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The ADX filter, while intended to reduce whipsaws, might be overly restrictive, leading to missed opportunities and reduced trade frequency. Reliance on just crossing the middle Bollinger Band for exits could be premature, especially in ranging markets. The ATR-based stop-loss and take-profit are rigid and may not adapt well to different market conditions. Finally, RSI 30/80 thresholds are standard but might be too aggressive for LINEAUSDC.\n[Backup plan] Poor results: Relax ADX filter (increase threshold or remove entirely). Mediocre results: Optimize RSI thresholds and TP/SL multipliers via grid search. Alternative approach: Implement a volatility-adjusted position sizing model to manage risk and potentially improve returns in varying market conditions."
+        },
+        "scoring": {
+          "continuous_score": 83.43158008649596,
+          "drawdown_excess_pct": 9.803092934769317,
+          "components": {
+            "sharpe": 39.51212644612038,
+            "return": 44.0,
+            "profit_factor": 15.124093042529553,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 16.53539528984621,
+            "drawdown_excess": 8.169244112307764,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 7
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with RSI to confirm overbought/oversold conditions, and ADX to filter out trending markets, aims to improve signal quality and reduce false entries.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.4563877575948547,
+      "return_pct": 62.62897726189943,
+      "max_drawdown_pct": -44.80309293476932,
+      "profit_factor": 1.3680951707433797,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 87,
+      "continuous_score": 86.40142561591361,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 40.778857212655936,
+          "return": 44.0,
+          "profit_factor": 16.827207805411646,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 16.53539528984621,
+          "drawdown_excess": 8.169244112307764,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.803092934769317
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +62.6%, PF 1.37, Expectancy 71.99"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.8%, Vol 74.2%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.456, Sortino 1.534, Calmar 4.880"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 87, AvgW/L 802.66/293.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 45,
+          "short_signals": 46,
+          "total_signals": 91
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on ADX for trend filtering is a significant potential weakness; it's notoriously noisy and can easily trigger false positives. Fixed ATR multipliers for stop-loss and take-profit are rigid and may not adapt to LINEAUSDC's volatility. The combined entry conditions (Bollinger, RSI, ADX) are complex and prone to whipsawing, especially given the 4h timeframe's limited signal clarity.\n[Backup plan] Poor results: Remove ADX entirely and simplify entry to only Bollinger Band and RSI. Mediocre results: Optimize ATR multipliers dynamically based on recent volatility. Alternative approach: Explore a simpler momentum strategy using only RSI and price crossovers, avoiding Bollinger Bands entirely."
+        },
+        "scoring": {
+          "continuous_score": 86.40142561591361,
+          "drawdown_excess_pct": 9.803092934769317,
+          "components": {
+            "sharpe": 40.778857212655936,
+            "return": 44.0,
+            "profit_factor": 16.827207805411646,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 16.53539528984621,
+            "drawdown_excess": 8.169244112307764,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with RSI for overbought/oversold confirmation, filtered by ADX to avoid false signals during strong trends, improves signal quality and reduces whipsaws.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.4563877575948547,
+      "return_pct": 62.62897726189943,
+      "max_drawdown_pct": -44.80309293476932,
+      "profit_factor": 1.3680951707433797,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 87,
+      "continuous_score": 86.40142561591361,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 40.778857212655936,
+          "return": 44.0,
+          "profit_factor": 16.827207805411646,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 16.53539528984621,
+          "drawdown_excess": 8.169244112307764,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.803092934769317
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +62.6%, PF 1.37, Expectancy 71.99"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.8%, Vol 74.2%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.456, Sortino 1.534, Calmar 4.880"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 87, AvgW/L 802.66/293.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 45,
+          "short_signals": 46,
+          "total_signals": 91
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on ADX for trend filtering is a significant risk; it's a lagging indicator and might still generate whipsaws. The fixed ATR multiple for TP/SL is inflexible and could lead to prematurely closed winning trades or unnecessary losses. RSI 25/80 are arbitrary thresholds needing optimization, and the cross_any exit is simplistic, potentially missing out on continued mean reversion. Finally, the 4h timeframe on LINEAUSDC might be too slow to capture opportunities effectively.\n[Backup plan] Poor results: Remove ADX entirely and test a dynamic stop-loss based on volatility (e.g., a percentage of ATR). Mediocre results: Optimize RSI thresholds using walk-forward analysis; experiment with a more sophisticated exit strategy, like a trailing stop or volatility-based exit. Alternative approach: Shift to a momentum-based strategy using MACD and volume indicators, focusing on identifying short-term price divergences."
+        },
+        "scoring": {
+          "continuous_score": 86.40142561591361,
+          "drawdown_excess_pct": 9.803092934769317,
+          "components": {
+            "sharpe": 40.778857212655936,
+            "return": 44.0,
+            "profit_factor": 16.827207805411646,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 16.53539528984621,
+            "drawdown_excess": 8.169244112307764,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 6,
+            "llm_positive": 5,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 10,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with ADX as a trend filter reduces false breakouts and improves signal quality in trending markets.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.4563877575948547,
+      "return_pct": 62.62897726189943,
+      "max_drawdown_pct": -44.80309293476932,
+      "profit_factor": 1.3680951707433797,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 87,
+      "continuous_score": 86.40142561591361,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 40.778857212655936,
+          "return": 44.0,
+          "profit_factor": 16.827207805411646,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 16.53539528984621,
+          "drawdown_excess": 8.169244112307764,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.803092934769317
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +62.6%, PF 1.37, Expectancy 71.99"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.8%, Vol 74.2%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.456, Sortino 1.534, Calmar 4.880"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 87, AvgW/L 802.66/293.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 45,
+          "short_signals": 46,
+          "total_signals": 91
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on RSI and Bollinger Bands can generate whipsaws, especially given the 4h timeframe. ADX filtering is good, but its threshold (20/25) might be too restrictive or too loose, missing profitable opportunities or triggering false signals. The fixed ATR multiple TP/SL is rigid and doesn't adapt to market volatility. Overfitting to the recent history is a significant concern given the consistently high Sharpe.\n[Backup plan] Poor results: Loosen RSI entry thresholds (e.g., RSI < 35) to capture more signals. Mediocre results: Optimize ADX thresholds via sensitivity analysis and reduce TP/SL ATR multiplier to 2.0. Alternative approach: Replace ADX with a volatility-based filter (e.g., Keltner Channels) or incorporate a momentum oscillator like MACD."
+        },
+        "scoring": {
+          "continuous_score": 86.40142561591361,
+          "drawdown_excess_pct": 9.803092934769317,
+          "components": {
+            "sharpe": 40.778857212655936,
+            "return": 44.0,
+            "profit_factor": 16.827207805411646,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 16.53539528984621,
+            "drawdown_excess": 8.169244112307764,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 6
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 4,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with RSI to filter for overbought/oversold conditions, and ADX to confirm trend strength, should reduce whipsaws and improve signal quality in LINEAUSDC.",
+      "change_type": "logic",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.6045292476659216,
+      "return_pct": 68.40152506607352,
+      "max_drawdown_pct": -40.17206053625336,
+      "profit_factor": 1.5448544067778192,
+      "win_rate_pct": 42.10526315789473,
+      "trades": 57,
+      "continuous_score": 100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 44.92681893464581,
+          "return": 44.0,
+          "profit_factor": 24.907630024128878,
+          "trades_confidence": 9.5,
+          "win_rate": 2.1315789473684195
+        },
+        "penalties": {
+          "drawdown_pressure": 13.448040357502242,
+          "drawdown_excess": 4.310050446877802,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 5.172060536253362
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +68.4%, PF 1.54, Expectancy 120.00"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 40.2%, Vol 67.9%"
+        },
+        "efficiency": {
+          "grade": "A",
+          "detail": "Sharpe 1.605, Sortino 1.835, Calmar 6.130"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 42.1%, Trades 57, AvgW/L 808.09/380.43"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: op\u00e9ration arithm\u00e9tique sur `adx` qui est un indicator dict. Utiliser une sous-cl\u00e9 (ex: adx['adx']).",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 81: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 2
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 30,
+          "short_signals": 42,
+          "total_signals": 72
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on ADX for trend confirmation introduces complexity and potential lag, which could filter out profitable short-term reversals. The strict RSI and Bollinger Band entry conditions might miss opportunities, especially in sideways markets. The fixed ATR multiple for stop-loss and take-profit lacks dynamic adjustment based on volatility changes.\n[Backup plan] If negative return, relax RSI entry thresholds (e.g., RSI < 35 long, >70 short) and remove ADX filter. If mediocre Sharpe, optimize ATR multipliers and Bollinger Band std_dev. If consistently failing, replace RSI with a simpler oscillator like Stochastic or consider a momentum-based approach using MACD."
+        },
+        "scoring": {
+          "continuous_score": 100.0,
+          "drawdown_excess_pct": 5.172060536253362,
+          "components": {
+            "sharpe": 44.92681893464581,
+            "return": 44.0,
+            "profit_factor": 24.907630024128878,
+            "trades_confidence": 9.5,
+            "win_rate": 2.1315789473684195
+          },
+          "penalties": {
+            "drawdown_pressure": 13.448040357502242,
+            "drawdown_excess": 4.310050446877802,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "Combining Bollinger Band mean reversion with RSI confirmation and ADX trend filtering aims to reduce false signals and improve the robustness of the strategy in varying market conditions.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.4563877575948547,
+      "return_pct": 62.62897726189943,
+      "max_drawdown_pct": -44.80309293476932,
+      "profit_factor": 1.3680951707433797,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 87,
+      "continuous_score": 86.40142561591361,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 40.778857212655936,
+          "return": 44.0,
+          "profit_factor": 16.827207805411646,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 16.53539528984621,
+          "drawdown_excess": 8.169244112307764,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.803092934769317
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +62.6%, PF 1.37, Expectancy 71.99"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.8%, Vol 74.2%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.456, Sortino 1.534, Calmar 4.880"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 87, AvgW/L 802.66/293.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 45,
+          "short_signals": 46,
+          "total_signals": 91
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on ADX as a trend filter is a key vulnerability; it's prone to whipsaws and may not accurately reflect underlying trends in LINEAUSDC. The fixed ATR multiple for stop-loss and take-profit is rigid and may not adapt to the asset's volatility profile. The RSI thresholds (25/80) are arbitrary and may not be optimal for this specific market's behavior. Finally, the combination of two mean-reversion indicators might lead to conflicting signals and increased noise.\n[Backup plan] If negative return: Remove ADX entirely and re-evaluate RSI thresholds dynamically using a rolling optimization. If mediocre Sharpe: Reduce TP_ATR_mult to 1.5, and experiment with a dynamic stop-loss based on recent volatility (e.g., a moving average of ATR). If both fail: Replace the RSI with a simpler momentum indicator like a moving average crossover, focusing purely on Bollinger Band mean reversion."
+        },
+        "scoring": {
+          "continuous_score": 86.40142561591361,
+          "drawdown_excess_pct": 9.803092934769317,
+          "components": {
+            "sharpe": 40.778857212655936,
+            "return": 44.0,
+            "profit_factor": 16.827207805411646,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 16.53539528984621,
+            "drawdown_excess": 8.169244112307764,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with ADX as a trend filter will reduce false breakouts and improve signal quality, especially in choppy markets.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.4563877575948547,
+      "return_pct": 62.62897726189943,
+      "max_drawdown_pct": -44.80309293476932,
+      "profit_factor": 1.3680951707433797,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 87,
+      "continuous_score": 86.40142561591361,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 40.778857212655936,
+          "return": 44.0,
+          "profit_factor": 16.827207805411646,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 16.53539528984621,
+          "drawdown_excess": 8.169244112307764,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.803092934769317
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +62.6%, PF 1.37, Expectancy 71.99"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.8%, Vol 74.2%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.456, Sortino 1.534, Calmar 4.880"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 87, AvgW/L 802.66/293.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 45,
+          "short_signals": 46,
+          "total_signals": 91
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on ADX as a trend filter introduces complexity and potential lag, which could reduce profitable entries. The ATR-based stop and take profit are fixed, failing to adapt to market volatility. The RSI thresholds (25/80) are arbitrary and may not be optimal for LINEAUSDC. Finally, the combined conditions for entry might be too restrictive, missing opportunities.\n[Backup plan] If negative return, relax the ADX filter completely (remove it). For mediocre Sharpe, optimize RSI thresholds via grid search and adjust ATR multipliers dynamically based on recent volatility. If consistently failing, replace RSI with a simpler momentum indicator like MACD or explore a different mean reversion technique altogether, such as a Kalman filter."
+        },
+        "scoring": {
+          "continuous_score": 86.40142561591361,
+          "drawdown_excess_pct": 9.803092934769317,
+          "components": {
+            "sharpe": 40.778857212655936,
+            "return": 44.0,
+            "profit_factor": 16.827207805411646,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 16.53539528984621,
+            "drawdown_excess": 8.169244112307764,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 3,
+            "llm_positive": 2,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with RSI to confirm overbought/oversold conditions, and ADX to filter out trending markets, aims to improve signal quality and reduce false entries.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.4563877575948547,
+      "return_pct": 62.62897726189943,
+      "max_drawdown_pct": -44.80309293476932,
+      "profit_factor": 1.3680951707433797,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 87,
+      "continuous_score": 86.40142561591361,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 40.778857212655936,
+          "return": 44.0,
+          "profit_factor": 16.827207805411646,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 16.53539528984621,
+          "drawdown_excess": 8.169244112307764,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.803092934769317
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +62.6%, PF 1.37, Expectancy 71.99"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.8%, Vol 74.2%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.456, Sortino 1.534, Calmar 4.880"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 87, AvgW/L 802.66/293.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 45,
+          "short_signals": 46,
+          "total_signals": 91
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on ADX for trend filtering is a significant potential weakness; it's notoriously noisy and can easily trigger false positives. Fixed ATR multipliers for stop-loss and take-profit are rigid and may not adapt to LINEAUSDC's volatility. The combined entry conditions (Bollinger, RSI, ADX) are complex and prone to whipsawing, especially given the 4h timeframe's limited signal clarity.\n[Backup plan] Poor results: Remove ADX entirely and simplify entry to only Bollinger Band and RSI. Mediocre results: Optimize ATR multipliers dynamically based on recent volatility. Alternative approach: Explore a simpler momentum strategy using only RSI and price crossovers, avoiding Bollinger Bands entirely."
+        },
+        "scoring": {
+          "continuous_score": 86.40142561591361,
+          "drawdown_excess_pct": 9.803092934769317,
+          "components": {
+            "sharpe": 40.778857212655936,
+            "return": 44.0,
+            "profit_factor": 16.827207805411646,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 16.53539528984621,
+            "drawdown_excess": 8.169244112307764,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with RSI for overbought/oversold confirmation, filtered by ADX to avoid false signals during strong trends, improves signal quality and reduces whipsaws.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.4563877575948547,
+      "return_pct": 62.62897726189943,
+      "max_drawdown_pct": -44.80309293476932,
+      "profit_factor": 1.3680951707433797,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 87,
+      "continuous_score": 86.40142561591361,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 40.778857212655936,
+          "return": 44.0,
+          "profit_factor": 16.827207805411646,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 16.53539528984621,
+          "drawdown_excess": 8.169244112307764,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.803092934769317
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +62.6%, PF 1.37, Expectancy 71.99"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.8%, Vol 74.2%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.456, Sortino 1.534, Calmar 4.880"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 87, AvgW/L 802.66/293.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "logic",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 45,
+          "short_signals": 46,
+          "total_signals": 91
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on ADX for trend filtering is a significant risk; it's a lagging indicator and might still generate whipsaws. The fixed ATR multiple for TP/SL is inflexible and could lead to prematurely closed winning trades or unnecessary losses. RSI 25/80 are arbitrary thresholds needing optimization, and the cross_any exit is simplistic, potentially missing out on continued mean reversion. Finally, the 4h timeframe on LINEAUSDC might be too slow to capture opportunities effectively.\n[Backup plan] Poor results: Remove ADX entirely and test a dynamic stop-loss based on volatility (e.g., a percentage of ATR). Mediocre results: Optimize RSI thresholds using walk-forward analysis; experiment with a more sophisticated exit strategy, like a trailing stop or volatility-based exit. Alternative approach: Shift to a momentum-based strategy using MACD and volume indicators, focusing on identifying short-term price divergences."
+        },
+        "scoring": {
+          "continuous_score": 86.40142561591361,
+          "drawdown_excess_pct": 9.803092934769317,
+          "components": {
+            "sharpe": 40.778857212655936,
+            "return": 44.0,
+            "profit_factor": 16.827207805411646,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 16.53539528984621,
+            "drawdown_excess": 8.169244112307764,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 6,
+            "llm_positive": 5,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 10,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with ADX as a trend filter reduces false breakouts and improves signal quality in trending markets.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.4563877575948547,
+      "return_pct": 62.62897726189943,
+      "max_drawdown_pct": -44.80309293476932,
+      "profit_factor": 1.3680951707433797,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 87,
+      "continuous_score": 86.40142561591361,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 40.778857212655936,
+          "return": 44.0,
+          "profit_factor": 16.827207805411646,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 16.53539528984621,
+          "drawdown_excess": 8.169244112307764,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.803092934769317
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +62.6%, PF 1.37, Expectancy 71.99"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.8%, Vol 74.2%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.456, Sortino 1.534, Calmar 4.880"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 87, AvgW/L 802.66/293.35"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 45,
+          "short_signals": 46,
+          "total_signals": 91
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy's reliance on RSI and Bollinger Bands can generate whipsaws, especially given the 4h timeframe. ADX filtering is good, but its threshold (20/25) might be too restrictive or too loose, missing profitable opportunities or triggering false signals. The fixed ATR multiple TP/SL is rigid and doesn't adapt to market volatility. Overfitting to the recent history is a significant concern given the consistently high Sharpe.\n[Backup plan] Poor results: Loosen RSI entry thresholds (e.g., RSI < 35) to capture more signals. Mediocre results: Optimize ADX thresholds via sensitivity analysis and reduce TP/SL ATR multiplier to 2.0. Alternative approach: Replace ADX with a volatility-based filter (e.g., Keltner Channels) or incorporate a momentum oscillator like MACD."
+        },
+        "scoring": {
+          "continuous_score": 86.40142561591361,
+          "drawdown_excess_pct": 9.803092934769317,
+          "components": {
+            "sharpe": 40.778857212655936,
+            "return": 44.0,
+            "profit_factor": 16.827207805411646,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 16.53539528984621,
+            "drawdown_excess": 8.169244112307764,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "stagnation": {
+          "identical_metrics": true
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with ADX as a trend filter reduces whipsaws and improves signal quality by only entering trades when the underlying trend is strong.",
+      "change_type": "params",
+      "diagnostic_category": "target_reached",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 1.4111473730757278,
+      "return_pct": 59.96813538225626,
+      "max_drawdown_pct": -44.80309293476932,
+      "profit_factor": 1.330839535305334,
+      "win_rate_pct": 33.33333333333333,
+      "trades": 87,
+      "continuous_score": 83.43158008649596,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 39.51212644612038,
+          "return": 44.0,
+          "profit_factor": 15.124093042529553,
+          "trades_confidence": 10.0,
+          "win_rate": -0.5000000000000013
+        },
+        "penalties": {
+          "drawdown_pressure": 16.53539528984621,
+          "drawdown_excess": 8.169244112307764,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 9.803092934769317
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +60.0%, PF 1.33, Expectancy 68.93"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 44.8%, Vol 75.2%"
+        },
+        "efficiency": {
+          "grade": "B",
+          "detail": "Sharpe 1.411, Sortino 1.505, Calmar 4.606"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 33.3%, Trades 87, AvgW/L 831.82/312.52"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "params",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 45,
+          "short_signals": 46,
+          "total_signals": 91
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The ADX filter, while intended to reduce whipsaws, might be overly restrictive, leading to missed opportunities and reduced trade frequency. Reliance on just crossing the middle Bollinger Band for exits could be premature, especially in ranging markets. The ATR-based stop-loss and take-profit are rigid and may not adapt well to different market conditions. Finally, RSI 30/80 thresholds are standard but might be too aggressive for LINEAUSDC.\n[Backup plan] Poor results: Relax ADX filter (increase threshold or remove entirely). Mediocre results: Optimize RSI thresholds and TP/SL multipliers via grid search. Alternative approach: Implement a volatility-adjusted position sizing model to manage risk and potentially improve returns in varying market conditions."
+        },
+        "scoring": {
+          "continuous_score": 83.43158008649596,
+          "drawdown_excess_pct": 9.803092934769317,
+          "components": {
+            "sharpe": 39.51212644612038,
+            "return": 44.0,
+            "profit_factor": 15.124093042529553,
+            "trades_confidence": 10.0,
+            "win_rate": -0.5000000000000013
+          },
+          "penalties": {
+            "drawdown_pressure": 16.53539528984621,
+            "drawdown_excess": 8.169244112307764,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 7
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with ADX for trend confirmation aims to reduce false signals and improve the robustness of the strategy by only entering trades aligned with the prevailing trend.",
+      "change_type": "logic",
+      "diagnostic_category": "low_win_rate",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.1323557796957039,
+      "return_pct": -10.966611254149283,
+      "max_drawdown_pct": -26.559706453538173,
+      "profit_factor": 0.8702088715308598,
+      "win_rate_pct": 29.166666666666668,
+      "trades": 24,
+      "continuous_score": -35.825680576753875,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -3.705961831479709,
+          "return": -12.06327237956421,
+          "profit_factor": -5.933308730017838,
+          "trades_confidence": 4.0,
+          "win_rate": -1.7499999999999998
+        },
+        "penalties": {
+          "drawdown_pressure": 4.373137635692116,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -11.0%, PF 0.87, Expectancy -45.69"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 26.6%, Vol 50.4%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.132, Sortino -0.113, Calmar -0.910"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 29.2%, Trades 24, AvgW/L 1050.40/497.03"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[IND001] Usage invalide: comparaison `adx ...` alors que `adx` est un indicator dict. Utiliser une sous-cl\u00e9 (ex: adx['adx']).",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 81: unexpected indent",
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback",
+          "fallback_variant": 0
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 20,
+          "short_signals": 5,
+          "total_signals": 25
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The reliance on ADX for trend confirmation introduces complexity and potential lag, possibly filtering out profitable mean reversion opportunities. The strict entry conditions (triple criteria) may be too restrictive, resulting in low trade frequency. The ATR-based stop-loss and take-profit are standard, but may not be optimal for LINEAUSDC\u2019s volatility. The hypothesis assumes ADX and RSI will consistently filter false signals, which may not hold.\n[Backup plan] If negative return, relax ADX entry thresholds (e.g., ADX > 15) and/or remove ADX entirely to test pure Bollinger/RSI mean reversion. For mediocre Sharpe, optimize ATR multipliers (0.5x-2.0x) and Bollinger Band std_dev (1.5-2.5). If still failing, switch to a volatility breakout strategy using Keltner Channels instead of Bollinger Bands, focusing on price expansion."
+        },
+        "scoring": {
+          "continuous_score": -35.825680576753875,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -3.705961831479709,
+            "return": -12.06327237956421,
+            "profit_factor": -5.933308730017838,
+            "trades_confidence": 4.0,
+            "win_rate": -1.7499999999999998
+          },
+          "penalties": {
+            "drawdown_pressure": 4.373137635692116,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 8
+    },
+    {
+      "iteration": 1,
+      "hypothesis": "Combining Bollinger Bands for mean reversion with RSI to filter for overbought/oversold conditions, and ADX to confirm trend strength, aims to reduce false signals and improve the quality of mean reversion trades.",
+      "change_type": "accept",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.4743745717735474,
+      "return_pct": -61.92109569162745,
+      "max_drawdown_pct": -85.13676838751205,
+      "profit_factor": 0.3451511412496959,
+      "win_rate_pct": 15.0,
+      "trades": 20,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -13.282488009659328,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 3.333333333333333,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 50.13676838751205
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -61.9%, PF 0.35, Expectancy -309.61"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 85.1%, Vol 133.9%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.474, Sortino -0.371, Calmar -1.057"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 15.0%, Trades 20, AvgW/L 1087.89/556.22"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "long_signals": 26,
+          "short_signals": 2,
+          "total_signals": 28
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy\u2019s reliance on strict RSI thresholds (25/80) might be too rigid, missing potential trades or generating whipsaws. The fixed ATR multiple for stop-loss and take-profit lacks dynamic adjustment to market volatility. Combining a mean reversion strategy with a volatility indicator like ATR introduces complexity that could be detrimental if not calibrated correctly. The strategy also assumes a relatively stable mean, which might not hold true across the entire dataset.\n[Backup plan] If negative returns, loosen RSI thresholds (e.g., 20/85) and consider a dynamic stop-loss based on a shorter-period ATR. If mediocre Sharpe, optimize ATR multipliers and Bollinger Band standard deviations via grid search. If persistently failing, switch to a simpler strategy using only Bollinger Bands and a dynamic entry/exit based on band width changes."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 50.13676838751205,
+          "components": {
+            "sharpe": -13.282488009659328,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 3.333333333333333,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 9
+    }
+  ]
+}

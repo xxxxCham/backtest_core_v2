@@ -1,0 +1,1330 @@
+{
+  "session_id": "20260312_083207_strategie_de_momentum_trend_following_su",
+  "objective": "Strategie de Momentum / Trend-following sur ROSEUSDC 30m. Indicateurs : EMA(20), SMA(50), ATR. Entree short lorsque EMA(20) croise en dessous de SMA(50), sortie sur retournement. Stop-loss = 1.0x ATR, take-profit = 2.0x ATR.",
+  "status": "failed",
+  "best_sharpe": 0.0,
+  "best_score": -26.0,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 6,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "When the short\u2011term EMA(20) crosses below the long\u2011term SMA(50), it signals a shift from bullish to bearish momentum; the SMA provides a trend confirmation band, reducing whipsaw entries in sideways markets. Using ATR for stop\u2011loss and take\u2011profit normalizes risk across varying volatility regimes, ensuring consistent risk\u2011reward ratios.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -1.0206389461753478,
+      "return_pct": -75.22832828122384,
+      "max_drawdown_pct": -92.4611591633801,
+      "profit_factor": 0.7002298451183342,
+      "win_rate_pct": 37.916666666666664,
+      "trades": 240,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -28.577890492909738,
+          "return": -33.0,
+          "profit_factor": -13.703778508876152,
+          "trades_confidence": 10.0,
+          "win_rate": 0.8749999999999992
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 57.4611591633801
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -75.2%, PF 0.70, Expectancy -31.35"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 92.5%, Vol 102.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -1.021, Sortino -1.362, Calmar -0.969"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 37.9%, Trades 240, AvgW/L 193.10/168.43"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 10826,
+          "long_signals": 123,
+          "short_signals": 120,
+          "total_signals": 243,
+          "signal_density": 0.022445963421392944,
+          "transition_signals": 243,
+          "transition_density": 0.022445963421392944,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses include over-reliance on a single crossover that can generate false signals in choppy markets, limited use of ATR scaling that may be too tight in high volatility periods, and lack of position sizing logic or dynamic stop adjustments. The strategy also ignores volume or order flow cues, which could filter out weak crossovers. Moreover, the 30\u2011minute timeframe may produce too many trades, inflating transaction costs.\n[Backup plan] If returns are negative, add a volume\u2011filtered filter (e.g., require volume > 1.5\u00d7 SMA of volume) or a trend\u2011strength check such as a higher\u2011period EMA (e.g., EMA200) to confirm the overall market direction. If Sharpe is low, widen the ATR multiplier for stop\u2011loss to 1.5\u00d7 and adjust take\u2011profit to 3\u00d7 ATR, or shorten the EMA period to 10 to capture quicker shifts. If the strategy still fails, switch to a breakout\u2011based approach using a Donchian channel or a volatility breakout on the same 30\u2011min candle, and consider adding a trailing stop to lock in gains."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 57.4611591633801,
+          "components": {
+            "sharpe": -28.577890492909738,
+            "return": -33.0,
+            "profit_factor": -13.703778508876152,
+            "trades_confidence": 10.0,
+            "win_rate": 0.8749999999999992
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Using the EMA20/SMA50 crossover as a primary trend signal is noisy in sideways markets; adding an ADX>25 filter ensures only strong trends trigger entries, while requiring price to be above (for longs) or below (for shorts) the EMA reduces whipsaw entries. This combination should improve edge by limiting trades to confirmed trend conditions and ATR-based risk limits keep losses proportional to volatility.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -323.10478743271636,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.7012722605931745,
+      "win_rate_pct": 33.958333333333336,
+      "trades": 960,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -13.65612523002631,
+          "trades_confidence": 10.0,
+          "win_rate": -0.31249999999999933
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -323.1%, PF 0.70, Expectancy -33.66"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 552.9%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 34.0%, Trades 960, AvgW/L 232.67/170.60"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 10826,
+          "long_signals": 1637,
+          "short_signals": 1618,
+          "total_signals": 3255,
+          "signal_density": 0.3006650655828561,
+          "transition_signals": 510,
+          "transition_density": 0.047108812118972845,
+          "repeated_same_signals": 2745,
+          "repeated_same_ratio": 0.8433179723502304
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The EMA20/SMA50 crossover is inherently lagging and prone to whipsaws in ranging markets; the ADX>25 filter helps but still allows false signals when the market is trending weakly but below the threshold. Exit only on a crossover can be too late, missing profit targets and exposing the trade to reversal risk. ATR\u2011based SL/TP may be too wide in low\u2011volatility periods and too tight when volatility spikes, leading to premature stop\u2011outs or missed gains. The strategy also lacks a dynamic position\u2011sizing or a trailing mechanism, which limits risk\u2011adjusted returns.\n[Backup plan] If the backtest remains negative, I would tighten the ADX filter to >30 or add a short\u2011term RSI overbought/oversold confirmation to filter out weak trend entries. For a mediocre Sharpe, I\u2019d experiment with a 1.5\u00d7 ATR take\u2011profit and a 0.75\u00d7 ATR stop, or shift to a 1\u00d7 ATR trailing stop once the price moves 0.5\u00d7 ATR in our favor. Alternatively, I\u2019d replace the EMA/SMA crossover with a dual\u2011timeframe trend confirmation (e.g., 1\u2011hour EMA vs 4\u2011hour SMA) and incorporate a breakout filter using recent highs/lows. If these tweaks fail, I\u2019d pivot to a momentum\u2011oscillator strategy (e.g., RSI 14 with 70/30 thresholds) combined with a volatility\u2011adjusted position size to capture short\u2011term directional moves while protecting against trend reversals."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -13.65612523002631,
+            "trades_confidence": 10.0,
+            "win_rate": -0.31249999999999933
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "EMA20 crossing SMA50 signals a trend shift, but only acting when ADX > 25 ensures the trend is strong; ATR-based risk limits capture volatility, preventing large losses in choppy markets.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -280.75698446201784,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.7164872939974375,
+      "win_rate_pct": 34.87833140208575,
+      "trades": 863,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -12.96058084583143,
+          "trades_confidence": 10.0,
+          "win_rate": -0.03650057937427534
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -280.8%, PF 0.72, Expectancy -32.53"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 590.4%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 34.9%, Trades 863, AvgW/L 235.72/176.21"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 10826,
+          "long_signals": 1499,
+          "short_signals": 1496,
+          "total_signals": 2995,
+          "signal_density": 0.27664880842416406,
+          "transition_signals": 406,
+          "transition_density": 0.037502309255496025,
+          "repeated_same_signals": 2589,
+          "repeated_same_ratio": 0.864440734557596
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. The EMA20/SMA50 crossover is a lagging signal prone to whipsaws in sideways markets; relying solely on ADX > 25 may still allow false entries during trendless periods. 2. ATR\u2011based SL/TP can be too tight in high volatility, cutting profitable moves, or too loose in low volatility, causing large losses. 3. The strategy ignores market microstructure and could suffer from high slippage on a 30\u2011min crypto pair. 4. The use of a single time\u2011frame and only trend filters limits adaptability to regime changes.\n[Backup plan] If the backtest remains negative, introduce a volatility filter: require a minimum ATR/price ratio (e.g., ATR > 0.5% of close) before taking a position to avoid low\u2011volatility whipsaws. If Sharpe is low, tighten the exit rule by adding a trailing ATR or a short\u2011term RSI divergence check to capture partial retracements. Alternatively, test a dual\u2011time\u2011frame confirmation (e.g., 1\u2011hour EMA/SMA alignment) or switch to a momentum oscillator (MACD or CCI) for entry signals to reduce lag. If all fails, pivot to a mean\u2011reversion strategy using Bollinger Bands on the same pair and timeframe, with tighter ATR\u2011based SL/TP."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -12.96058084583143,
+            "trades_confidence": 10.0,
+            "win_rate": -0.03650057937427534
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "A short EMA crossing below a longer SMA is a weak signal when the EMA\u2013SMA spread is small relative to market volatility; requiring the spread to exceed one ATR filters out low\u2011volatility false crossovers, improving trend persistence and reducing overtrading.",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -3.120384472352328,
+      "return_pct": -38.3301673032077,
+      "max_drawdown_pct": -42.45410621587675,
+      "profit_factor": 0.4284994541475641,
+      "win_rate_pct": 26.82926829268293,
+      "trades": 82,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -2.451219512195121
+        },
+        "penalties": {
+          "drawdown_pressure": 14.969404143917833,
+          "drawdown_excess": 6.21175517989729,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 7.454106215876749
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -38.3%, PF 0.43, Expectancy -46.74"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 42.5%, Vol 16.8%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -3.120, Sortino -2.834, Calmar -1.278"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 26.8%, Trades 82, AvgW/L 130.63/111.78"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 10826,
+          "long_signals": 124,
+          "short_signals": 101,
+          "total_signals": 225,
+          "signal_density": 0.020783299464252725,
+          "transition_signals": 68,
+          "transition_density": 0.006281174949196379,
+          "repeated_same_signals": 157,
+          "repeated_same_ratio": 0.6977777777777778
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The EMA\u2011SMA cross with a single ATR filter is too sensitive in a 30\u2011minute candle, leading to many false reversals and high turnover; the 1\u00d7 ATR stop is tight and slippage or whipsaws will erode profits. The strategy also ignores directionality beyond the cross, so it trades in sideways markets and doesn\u2019t adapt to volatility spikes. The lack of a trend confirmation (e.g., ADX or higher\u2011time\u2011frame trend) makes it vulnerable to false signals. The current risk\u2011reward (1:2) is too low relative to the frequent losses, and the 240\u2011plus trades per iteration suggest over\u2011trading.\n[Backup plan] If the backtest remains negative, switch to a higher\u2011time\u2011frame trend filter (e.g., use 1\u2011hour EMA(20) vs. SMA(50) and only trade when the 4\u2011hour EMA is above SMA and ADX>25) or increase the ATR multiplier for the spread threshold to 1.5\u00d7 ATR. If Sharpe is mediocre, tighten the stop to 0.8\u00d7 ATR and raise the take\u2011profit to 3\u00d7 ATR, or add a momentum filter such as a 14\u2011period ROC >0 for longs and <0 for shorts. As a fallback, replace the cross\u2011based entry with a breakout strategy: enter short when the price closes below a 2\u2011period lower Bollinger Band and exit on a 1\u2011period EMA re\u2011cross, ensuring a clearer trend bias and reducing noise."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 7.454106215876749,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -2.451219512195121
+          },
+          "penalties": {
+            "drawdown_pressure": 14.969404143917833,
+            "drawdown_excess": 6.21175517989729,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "The EMA(20) crossing the SMA(50) signals a change in short\u2011term momentum; when the distance between the two averages exceeds a multiple of ATR the trend is strong enough to warrant a trade, reducing whipsaw entries in low\u2011volatility periods.",
+      "change_type": "logic",
+      "diagnostic_category": "needs_work",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -2.5541786689100188,
+      "return_pct": -6.670129264416301,
+      "max_drawdown_pct": -6.670129264416301,
+      "profit_factor": 0.06881264604808021,
+      "win_rate_pct": 12.5,
+      "trades": 8,
+      "continuous_score": -98.0038088575246,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -7.33714219085793,
+          "profit_factor": -24.0,
+          "trades_confidence": 1.3333333333333333,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -6.7%, PF 0.07, Expectancy -83.38"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 6.7%, Vol 3.0%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -2.554, Sortino -0.966, Calmar -1.585"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 12.5%, Trades 8, AvgW/L 49.29/102.33"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 10826,
+          "long_signals": 8,
+          "short_signals": 3,
+          "total_signals": 11,
+          "signal_density": 0.0010160724182523555,
+          "transition_signals": 7,
+          "transition_density": 0.0006465915388878626,
+          "repeated_same_signals": 4,
+          "repeated_same_ratio": 0.36363636363636365
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The EMA20/SMA50 cross is very sensitive to noise and generates many false signals, especially in low\u2011volatility periods; the 1.5\u00d7ATR filter may still allow weak trends, and the current stop/TP sizing (1\u00d7/2\u00d7ATR) is too tight, leading to frequent whipsaws. The high trade count in early iterations indicates over\u2011trading and poor risk\u2011reward balance. There is no filter for market direction or liquidity, and slippage is ignored.\n[Backup plan] If the strategy keeps losing, first tighten the entry to require (EMA\u2011SMA)\u202f>\u202f2\u00d7ATR and add a minimum 10\u2011bar volume filter to avoid thin\u2011liquidity swings; increase the ATR multiplier for the stop to 1.5\u00d7 and TP to 3\u00d7 to improve risk\u2011reward. If Sharpe remains mediocre, extend the trend filter to SMA\u202f100 or use a 50\u2011period EMA instead of SMA, and consider a 3\u00d7ATR stop. As a fallback, switch to a breakout\u2011based trend follower: enter long when the 30\u2011min close exceeds the 1\u2011hour high by 1\u00d7ATR and exit on a 2\u00d7ATR pullback, which often reduces whipsaws in crypto markets."
+        },
+        "scoring": {
+          "continuous_score": -98.0038088575246,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -7.33714219085793,
+            "profit_factor": -24.0,
+            "trades_confidence": 1.3333333333333333,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "Combining a short\u2011term EMA crossover with a trend\u2011strength filter based on the distance between EMA and SMA relative to ATR captures only robust trend reversals, while the ATR\u2011based stop\u2011loss and take\u2011profit manage volatility exposure, improving risk\u2011adjusted returns on the 30m ROSEUSDC chart.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "stop",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 10826,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 1
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 6,
+      "hypothesis": "Combining a short\u2011term EMA crossover with a trend\u2011strength filter based on the distance between EMA and SMA relative to ATR captures only robust trend reversals, while the ATR\u2011based stop\u2011loss and take\u2011profit manage volatility exposure, improving risk\u2011adjusted returns on the 30m ROSEUSDC chart.",
+      "change_type": "logic",
+      "diagnostic_category": "no_trades",
+      "error": null,
+      "decision": "stop",
+      "sharpe": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "profit_factor": 1.0,
+      "win_rate_pct": 0.0,
+      "trades": 0,
+      "continuous_score": -26.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 0.0,
+          "return": 0.0,
+          "profit_factor": 0.0,
+          "trades_confidence": 0.0,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "C",
+          "detail": "Return +0.0%, PF 1.00, Expectancy 0.00"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 0.0%, Vol 0.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.000, Sortino 0.000, Calmar 0.000"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 0.0%, Trades 0, AvgW/L 0.00/0.00"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 10826,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0,
+          "backtest_skipped": true
+        },
+        "scoring": {
+          "continuous_score": -26.0,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": 0.0,
+            "return": 0.0,
+            "profit_factor": 0.0,
+            "trades_confidence": 0.0,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 0,
+            "llm_positive": 0,
+            "fallback_positive": 0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "The EMA(20) crossing the SMA(50) signals a change in short\u2011term momentum; when the distance between the two averages exceeds a multiple of ATR the trend is strong enough to warrant a trade, reducing whipsaw entries in low\u2011volatility periods.",
+      "change_type": "logic",
+      "diagnostic_category": "needs_work",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -2.5541786689100188,
+      "return_pct": -6.670129264416301,
+      "max_drawdown_pct": -6.670129264416301,
+      "profit_factor": 0.06881264604808021,
+      "win_rate_pct": 12.5,
+      "trades": 8,
+      "continuous_score": -98.0038088575246,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -7.33714219085793,
+          "profit_factor": -24.0,
+          "trades_confidence": 1.3333333333333333,
+          "win_rate": -6.0
+        },
+        "penalties": {
+          "drawdown_pressure": 0.0,
+          "drawdown_excess": 0.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 0.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -6.7%, PF 0.07, Expectancy -83.38"
+        },
+        "risk": {
+          "grade": "A",
+          "detail": "MaxDD 6.7%, Vol 3.0%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -2.554, Sortino -0.966, Calmar -1.585"
+        },
+        "signal_quality": {
+          "grade": "F",
+          "detail": "WR 12.5%, Trades 8, AvgW/L 49.29/102.33"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 10826,
+          "long_signals": 8,
+          "short_signals": 3,
+          "total_signals": 11,
+          "signal_density": 0.0010160724182523555,
+          "transition_signals": 7,
+          "transition_density": 0.0006465915388878626,
+          "repeated_same_signals": 4,
+          "repeated_same_ratio": 0.36363636363636365
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The EMA20/SMA50 cross is very sensitive to noise and generates many false signals, especially in low\u2011volatility periods; the 1.5\u00d7ATR filter may still allow weak trends, and the current stop/TP sizing (1\u00d7/2\u00d7ATR) is too tight, leading to frequent whipsaws. The high trade count in early iterations indicates over\u2011trading and poor risk\u2011reward balance. There is no filter for market direction or liquidity, and slippage is ignored.\n[Backup plan] If the strategy keeps losing, first tighten the entry to require (EMA\u2011SMA)\u202f>\u202f2\u00d7ATR and add a minimum 10\u2011bar volume filter to avoid thin\u2011liquidity swings; increase the ATR multiplier for the stop to 1.5\u00d7 and TP to 3\u00d7 to improve risk\u2011reward. If Sharpe remains mediocre, extend the trend filter to SMA\u202f100 or use a 50\u2011period EMA instead of SMA, and consider a 3\u00d7ATR stop. As a fallback, switch to a breakout\u2011based trend follower: enter long when the 30\u2011min close exceeds the 1\u2011hour high by 1\u00d7ATR and exit on a 2\u00d7ATR pullback, which often reduces whipsaws in crypto markets."
+        },
+        "scoring": {
+          "continuous_score": -98.0038088575246,
+          "drawdown_excess_pct": 0.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -7.33714219085793,
+            "profit_factor": -24.0,
+            "trades_confidence": 1.3333333333333333,
+            "win_rate": -6.0
+          },
+          "penalties": {
+            "drawdown_pressure": 0.0,
+            "drawdown_excess": 0.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 1,
+      "hypothesis": "When the short\u2011term EMA(20) crosses below the long\u2011term SMA(50), it signals a shift from bullish to bearish momentum; the SMA provides a trend confirmation band, reducing whipsaw entries in sideways markets. Using ATR for stop\u2011loss and take\u2011profit normalizes risk across varying volatility regimes, ensuring consistent risk\u2011reward ratios.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -1.0206389461753478,
+      "return_pct": -75.22832828122384,
+      "max_drawdown_pct": -92.4611591633801,
+      "profit_factor": 0.7002298451183342,
+      "win_rate_pct": 37.916666666666664,
+      "trades": 240,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -28.577890492909738,
+          "return": -33.0,
+          "profit_factor": -13.703778508876152,
+          "trades_confidence": 10.0,
+          "win_rate": 0.8749999999999992
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 57.4611591633801
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -75.2%, PF 0.70, Expectancy -31.35"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 92.5%, Vol 102.2%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -1.021, Sortino -1.362, Calmar -0.969"
+        },
+        "signal_quality": {
+          "grade": "C",
+          "detail": "WR 37.9%, Trades 240, AvgW/L 193.10/168.43"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 10826,
+          "long_signals": 123,
+          "short_signals": 120,
+          "total_signals": 243,
+          "signal_density": 0.022445963421392944,
+          "transition_signals": 243,
+          "transition_density": 0.022445963421392944,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses include over-reliance on a single crossover that can generate false signals in choppy markets, limited use of ATR scaling that may be too tight in high volatility periods, and lack of position sizing logic or dynamic stop adjustments. The strategy also ignores volume or order flow cues, which could filter out weak crossovers. Moreover, the 30\u2011minute timeframe may produce too many trades, inflating transaction costs.\n[Backup plan] If returns are negative, add a volume\u2011filtered filter (e.g., require volume > 1.5\u00d7 SMA of volume) or a trend\u2011strength check such as a higher\u2011period EMA (e.g., EMA200) to confirm the overall market direction. If Sharpe is low, widen the ATR multiplier for stop\u2011loss to 1.5\u00d7 and adjust take\u2011profit to 3\u00d7 ATR, or shorten the EMA period to 10 to capture quicker shifts. If the strategy still fails, switch to a breakout\u2011based approach using a Donchian channel or a volatility breakout on the same 30\u2011min candle, and consider adding a trailing stop to lock in gains."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 57.4611591633801,
+          "components": {
+            "sharpe": -28.577890492909738,
+            "return": -33.0,
+            "profit_factor": -13.703778508876152,
+            "trades_confidence": 10.0,
+            "win_rate": 0.8749999999999992
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Using the EMA20/SMA50 crossover as a primary trend signal is noisy in sideways markets; adding an ADX>25 filter ensures only strong trends trigger entries, while requiring price to be above (for longs) or below (for shorts) the EMA reduces whipsaw entries. This combination should improve edge by limiting trades to confirmed trend conditions and ATR-based risk limits keep losses proportional to volatility.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -323.10478743271636,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.7012722605931745,
+      "win_rate_pct": 33.958333333333336,
+      "trades": 960,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -13.65612523002631,
+          "trades_confidence": 10.0,
+          "win_rate": -0.31249999999999933
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -323.1%, PF 0.70, Expectancy -33.66"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 552.9%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 34.0%, Trades 960, AvgW/L 232.67/170.60"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 10826,
+          "long_signals": 1637,
+          "short_signals": 1618,
+          "total_signals": 3255,
+          "signal_density": 0.3006650655828561,
+          "transition_signals": 510,
+          "transition_density": 0.047108812118972845,
+          "repeated_same_signals": 2745,
+          "repeated_same_ratio": 0.8433179723502304
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The EMA20/SMA50 crossover is inherently lagging and prone to whipsaws in ranging markets; the ADX>25 filter helps but still allows false signals when the market is trending weakly but below the threshold. Exit only on a crossover can be too late, missing profit targets and exposing the trade to reversal risk. ATR\u2011based SL/TP may be too wide in low\u2011volatility periods and too tight when volatility spikes, leading to premature stop\u2011outs or missed gains. The strategy also lacks a dynamic position\u2011sizing or a trailing mechanism, which limits risk\u2011adjusted returns.\n[Backup plan] If the backtest remains negative, I would tighten the ADX filter to >30 or add a short\u2011term RSI overbought/oversold confirmation to filter out weak trend entries. For a mediocre Sharpe, I\u2019d experiment with a 1.5\u00d7 ATR take\u2011profit and a 0.75\u00d7 ATR stop, or shift to a 1\u00d7 ATR trailing stop once the price moves 0.5\u00d7 ATR in our favor. Alternatively, I\u2019d replace the EMA/SMA crossover with a dual\u2011timeframe trend confirmation (e.g., 1\u2011hour EMA vs 4\u2011hour SMA) and incorporate a breakout filter using recent highs/lows. If these tweaks fail, I\u2019d pivot to a momentum\u2011oscillator strategy (e.g., RSI 14 with 70/30 thresholds) combined with a volatility\u2011adjusted position size to capture short\u2011term directional moves while protecting against trend reversals."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -13.65612523002631,
+            "trades_confidence": 10.0,
+            "win_rate": -0.31249999999999933
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "EMA20 crossing SMA50 signals a trend shift, but only acting when ADX > 25 ensures the trend is strong; ATR-based risk limits capture volatility, preventing large losses in choppy markets.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -280.75698446201784,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.7164872939974375,
+      "win_rate_pct": 34.87833140208575,
+      "trades": 863,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -12.96058084583143,
+          "trades_confidence": 10.0,
+          "win_rate": -0.03650057937427534
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -280.8%, PF 0.72, Expectancy -32.53"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 590.4%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 34.9%, Trades 863, AvgW/L 235.72/176.21"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 10826,
+          "long_signals": 1499,
+          "short_signals": 1496,
+          "total_signals": 2995,
+          "signal_density": 0.27664880842416406,
+          "transition_signals": 406,
+          "transition_density": 0.037502309255496025,
+          "repeated_same_signals": 2589,
+          "repeated_same_ratio": 0.864440734557596
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. The EMA20/SMA50 crossover is a lagging signal prone to whipsaws in sideways markets; relying solely on ADX > 25 may still allow false entries during trendless periods. 2. ATR\u2011based SL/TP can be too tight in high volatility, cutting profitable moves, or too loose in low volatility, causing large losses. 3. The strategy ignores market microstructure and could suffer from high slippage on a 30\u2011min crypto pair. 4. The use of a single time\u2011frame and only trend filters limits adaptability to regime changes.\n[Backup plan] If the backtest remains negative, introduce a volatility filter: require a minimum ATR/price ratio (e.g., ATR > 0.5% of close) before taking a position to avoid low\u2011volatility whipsaws. If Sharpe is low, tighten the exit rule by adding a trailing ATR or a short\u2011term RSI divergence check to capture partial retracements. Alternatively, test a dual\u2011time\u2011frame confirmation (e.g., 1\u2011hour EMA/SMA alignment) or switch to a momentum oscillator (MACD or CCI) for entry signals to reduce lag. If all fails, pivot to a mean\u2011reversion strategy using Bollinger Bands on the same pair and timeframe, with tighter ATR\u2011based SL/TP."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -12.96058084583143,
+            "trades_confidence": 10.0,
+            "win_rate": -0.03650057937427534
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "A short EMA crossing below a longer SMA is a weak signal when the EMA\u2013SMA spread is small relative to market volatility; requiring the spread to exceed one ATR filters out low\u2011volatility false crossovers, improving trend persistence and reducing overtrading.",
+      "change_type": "logic",
+      "diagnostic_category": "wrong_direction",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -3.120384472352328,
+      "return_pct": -38.3301673032077,
+      "max_drawdown_pct": -42.45410621587675,
+      "profit_factor": 0.4284994541475641,
+      "win_rate_pct": 26.82926829268293,
+      "trades": 82,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -24.0,
+          "trades_confidence": 10.0,
+          "win_rate": -2.451219512195121
+        },
+        "penalties": {
+          "drawdown_pressure": 14.969404143917833,
+          "drawdown_excess": 6.21175517989729,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 7.454106215876749
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -38.3%, PF 0.43, Expectancy -46.74"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 42.5%, Vol 16.8%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -3.120, Sortino -2.834, Calmar -1.278"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 26.8%, Trades 82, AvgW/L 130.63/111.78"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 10826,
+          "long_signals": 124,
+          "short_signals": 101,
+          "total_signals": 225,
+          "signal_density": 0.020783299464252725,
+          "transition_signals": 68,
+          "transition_density": 0.006281174949196379,
+          "repeated_same_signals": 157,
+          "repeated_same_ratio": 0.6977777777777778
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The EMA\u2011SMA cross with a single ATR filter is too sensitive in a 30\u2011minute candle, leading to many false reversals and high turnover; the 1\u00d7 ATR stop is tight and slippage or whipsaws will erode profits. The strategy also ignores directionality beyond the cross, so it trades in sideways markets and doesn\u2019t adapt to volatility spikes. The lack of a trend confirmation (e.g., ADX or higher\u2011time\u2011frame trend) makes it vulnerable to false signals. The current risk\u2011reward (1:2) is too low relative to the frequent losses, and the 240\u2011plus trades per iteration suggest over\u2011trading.\n[Backup plan] If the backtest remains negative, switch to a higher\u2011time\u2011frame trend filter (e.g., use 1\u2011hour EMA(20) vs. SMA(50) and only trade when the 4\u2011hour EMA is above SMA and ADX>25) or increase the ATR multiplier for the spread threshold to 1.5\u00d7 ATR. If Sharpe is mediocre, tighten the stop to 0.8\u00d7 ATR and raise the take\u2011profit to 3\u00d7 ATR, or add a momentum filter such as a 14\u2011period ROC >0 for longs and <0 for shorts. As a fallback, replace the cross\u2011based entry with a breakout strategy: enter short when the price closes below a 2\u2011period lower Bollinger Band and exit on a 1\u2011period EMA re\u2011cross, ensuring a clearer trend bias and reducing noise."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 7.454106215876749,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -24.0,
+            "trades_confidence": 10.0,
+            "win_rate": -2.451219512195121
+          },
+          "penalties": {
+            "drawdown_pressure": 14.969404143917833,
+            "drawdown_excess": 6.21175517989729,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 6
+    }
+  ]
+}

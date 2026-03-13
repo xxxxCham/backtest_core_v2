@@ -1,0 +1,2064 @@
+{
+  "session_id": "20260312_112756_strategie_de_momentum_sur_neousdc_1h_ind",
+  "objective": "Strategie de Momentum sur NEOUSDC 1h. Indicateurs : MACD (histogram), ATR. Entree short quand MACD histogram decroissant et negatif. Stop-loss = 1.5x ATR, take-profit = 3.0x ATR.",
+  "status": "max_iterations",
+  "best_sharpe": 0.9905637551972297,
+  "best_score": 86.31140363771192,
+  "auto_reset_count": 0,
+  "recovery_events": [],
+  "total_iterations": 10,
+  "available_indicators": [
+    "bollinger",
+    "atr",
+    "rsi",
+    "ema",
+    "sma",
+    "macd",
+    "adx",
+    "stochastic",
+    "vwap",
+    "donchian",
+    "cci",
+    "keltner",
+    "mfi",
+    "williams_r",
+    "momentum",
+    "obv",
+    "roc",
+    "aroon",
+    "supertrend",
+    "fibonacci_levels",
+    "ichimoku",
+    "onchain_smoothing",
+    "pi_cycle",
+    "pivot_points",
+    "psar",
+    "standard_deviation",
+    "volume_oscillator",
+    "vortex",
+    "amplitude_hunter",
+    "stoch_rsi"
+  ],
+  "iterations": [
+    {
+      "iteration": 1,
+      "hypothesis": "A negative MACD histogram that is trending downward signals a weakening bullish momentum; entering short in this regime captures the anticipated reversal, while using ATR-based stops protects against sudden volatility spikes.",
+      "change_type": "both",
+      "diagnostic_category": "",
+      "error": "Validation \u00e9chou\u00e9e: [AST001] Erreur de syntaxe ligne 23: ':' expected after dictionary key | retry: [AST001] Erreur de syntaxe ligne 23: ':' expected after dictionary key | fallback: [AST001] Erreur de syntaxe ligne 23: ':' expected after dictionary key",
+      "decision": "",
+      "sharpe": null,
+      "return_pct": null,
+      "max_drawdown_pct": null,
+      "profit_factor": null,
+      "win_rate_pct": null,
+      "trades": null,
+      "continuous_score": null,
+      "score_breakdown": null,
+      "score_card": null,
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true,
+          "validation_error": "[AST001] Erreur de syntaxe ligne 23: ':' expected after dictionary key",
+          "validation_error_retry": "[AST001] Erreur de syntaxe ligne 23: ':' expected after dictionary key"
+        }
+      }
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7300414124663783,
+      "return_pct": 29.94346074339781,
+      "max_drawdown_pct": -84.95389888560263,
+      "profit_factor": 1.2704877848383183,
+      "win_rate_pct": 50.0,
+      "trades": 10,
+      "continuous_score": 3.9107889117859713,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 20.441159549058593,
+          "return": 32.937806817737595,
+          "profit_factor": 12.36515587832312,
+          "trades_confidence": 1.6666666666666665,
+          "win_rate": 4.5
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 49.95389888560263
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +29.9%, PF 1.27, Expectancy 299.43"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 85.0%, Vol 316.7%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.730, Sortino 2.234, Calmar 0.433"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 50.0%, Trades 10, AvgW/L 2812.90/2214.03"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback"
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "KeyError: 'macd'",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "KeyError: 'macd'",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5218, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260312_112756_strategie_de_momentum_sur_neousdc_1h_ind\\strategy.py\", line 64, in generate_signals\n    macd_hist = np.nan_to_num(indicators['macd'][\"histogram\"])\nKeyError: 'macd'",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. The MACD histogram alone may trigger many false signals, especially on a 1h chart; it ignores overall trend and market noise. 2. The ATR\u2011based SL/TP might be too wide for a short\u2011term pair, causing large drawdowns or missed exits. 3. Using a 1d market view for a 1h pair is inconsistent and could mis\u2011align the strategy\u2019s time horizon.\n[Backup plan] If returns are negative, add a trend filter (e.g., 50\u2011EMA or 20\u2011period RSI >50 for longs, <50 for shorts) before accepting a MACD signal and tighten the ATR multiplier (e.g., 1.0x SL, 2.0x TP). If Sharpe is low, reduce the risk\u2011reward ratio to 1:1.5 and shorten the ATR period to 7 or 10 to better capture intraday volatility. As an alternative, switch to a breakout/mean\u2011reversion framework using Bollinger Bands or Keltner Channels on the same 1h NEOUSDC pair, with entry on band breaches and exit on opposite side or time\u2011based limits."
+        },
+        "scoring": {
+          "continuous_score": 3.9107889117859713,
+          "drawdown_excess_pct": 49.95389888560263,
+          "components": {
+            "sharpe": 20.441159549058593,
+            "return": 32.937806817737595,
+            "profit_factor": 12.36515587832312,
+            "trades_confidence": 1.6666666666666665,
+            "win_rate": 4.5
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining a declining negative MACD histogram with a strong trend confirmation from ADX and a price position below a long\u2011term EMA reduces entry noise during weak or sideways periods, thereby limiting large drawdowns while preserving momentum trades.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -133.506517951526,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.4797384667279322,
+      "win_rate_pct": 31.57894736842105,
+      "trades": 19,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -23.783384378151673,
+          "trades_confidence": 3.1666666666666665,
+          "win_rate": -1.0263157894736845
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -133.5%, PF 0.48, Expectancy -702.67"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 2183.9%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 31.6%, Trades 19, AvgW/L 2051.80/1973.96"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": true,
+          "issues": [],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 26,
+          "short_signals": 28,
+          "total_signals": 54,
+          "signal_density": 0.17647058823529413,
+          "transition_signals": 22,
+          "transition_density": 0.0718954248366013,
+          "repeated_same_signals": 32,
+          "repeated_same_ratio": 0.5925925925925926
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses include: reliance on a single\u2011time\u2011frame MACD histogram that can produce whipsaws in low\u2011volatility periods; the fixed 1.5\u00d7ATR stop and 3\u00d7ATR take\u2011profit may not adapt to changing market conditions; the ADX >25 filter may be too strict, cutting out profitable moves; the EMA filter is static and may lag in trending markets; and the exit rule (crossing 0 or ADX<20) can trigger too early during noisy markets.\n[Backup plan] If the run yields a negative return, first try tightening the ATR stop to 1\u00d7ATR and adding a volatility filter (e.g., only trade when ATR > 1.5\u00d7 its 20\u2011period SMA). For a mediocre Sharpe, reduce the take\u2011profit to 2\u00d7ATR and extend the EMA to a longer period (e.g., 200) to filter out more noise. If the strategy still fails, switch to a dual\u2011time\u2011frame momentum approach using a higher\u2011time\u2011frame (4h) ADX confirmation combined with a lower\u2011time\u2011frame (15m) RSI overbought/oversold entries, and replace the MACD with a Bollinger\u2011Band breakout filter."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -23.783384378151673,
+            "trades_confidence": 3.1666666666666665,
+            "win_rate": -1.0263157894736845
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 9
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "A breakout from Bollinger bands combined with a rising MACD histogram captures strong directional momentum while filtering out false signals in ranging markets; ATR-based sizing adapts risk to current volatility.",
+      "change_type": "logic",
+      "diagnostic_category": "needs_work",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.16962468684565477,
+      "return_pct": -24.768243431063603,
+      "max_drawdown_pct": -48.60945302605742,
+      "profit_factor": 0.71614855850279,
+      "win_rate_pct": 45.45454545454545,
+      "trades": 11,
+      "continuous_score": -90.41510747225277,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -4.749491231678333,
+          "return": -27.245067774169964,
+          "profit_factor": -12.976065897015314,
+          "trades_confidence": 1.8333333333333333,
+          "win_rate": 3.1363636363636362
+        },
+        "penalties": {
+          "drawdown_pressure": 19.072968684038283,
+          "drawdown_excess": 11.341210855047851,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 13.609453026057423
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -24.8%, PF 0.72, Expectancy -225.17"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 48.6%, Vol 53.4%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.170, Sortino -0.153, Calmar -0.594"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 45.5%, Trades 11, AvgW/L 1249.79/1454.30"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 10,
+          "short_signals": 4,
+          "total_signals": 14,
+          "signal_density": 0.0457516339869281,
+          "transition_signals": 14,
+          "transition_density": 0.0457516339869281,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy is highly dependent on a narrow set of conditions (Bollinger breakout + rising MACD histogram), which can be fragile in ranging or low\u2011volatility periods; the 1\u2011hour timeframe may produce many false positives and the ATR\u2011based SL/TP may not capture the true risk\u2011reward of each move. The exit logic (crossing zero or middle band) is too simplistic and can let profits evaporate quickly. Additionally, the use of the same ATR multiplier for all trades ignores changing market regimes.\n[Backup plan] If the backtest yields a negative return, drop the Bollinger upper\u2011band filter and trade on the MACD histogram alone, adding an ADX > 25 trend filter. If Sharpe remains low, tighten the TP to 2\u00d7ATR, add a trailing stop at 0.5\u00d7ATR, and consider shortening the ATR period to 10 for more responsive sizing. As a fallback, switch to a Keltner\u2011channel breakout with RSI confirmation on the 1\u2011hour chart, which has historically proven more robust in volatile crypto pairs."
+        },
+        "scoring": {
+          "continuous_score": -90.41510747225277,
+          "drawdown_excess_pct": 13.609453026057423,
+          "components": {
+            "sharpe": -4.749491231678333,
+            "return": -27.245067774169964,
+            "profit_factor": -12.976065897015314,
+            "trades_confidence": 1.8333333333333333,
+            "win_rate": 3.1363636363636362
+          },
+          "penalties": {
+            "drawdown_pressure": 19.072968684038283,
+            "drawdown_excess": 11.341210855047851,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 8
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "A falling negative MACD histogram combined with a price break below the lower Bollinger band captures genuine short momentum, while ATR-based stops adapt to market volatility.",
+      "change_type": "logic",
+      "diagnostic_category": "needs_work",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.05932834379998698,
+      "return_pct": -15.900646641000149,
+      "max_drawdown_pct": -45.1599381801324,
+      "profit_factor": 0.8687731957595279,
+      "win_rate_pct": 46.666666666666664,
+      "trades": 15,
+      "continuous_score": -61.06836457132071,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 1.6611936263996354,
+          "return": -17.490711305100163,
+          "profit_factor": -5.99893962242158,
+          "trades_confidence": 2.5,
+          "win_rate": 3.4999999999999996
+        },
+        "penalties": {
+          "drawdown_pressure": 16.773292120088264,
+          "drawdown_excess": 8.466615150110334,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 10.1599381801324
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -15.9%, PF 0.87, Expectancy -106.00"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 45.2%, Vol 60.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.059, Sortino 0.067, Calmar -0.414"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 46.7%, Trades 15, AvgW/L 1503.84/1514.61"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": true,
+          "issues": [],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 22,
+          "short_signals": 12,
+          "total_signals": 34,
+          "signal_density": 0.1111111111111111,
+          "transition_signals": 14,
+          "transition_density": 0.0457516339869281,
+          "repeated_same_signals": 20,
+          "repeated_same_ratio": 0.5882352941176471
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Weaknesses include reliance on a single indicator combination that may overfit, lack of trend confirmation, tight ATR stops that can be hit by noise, and no volatility regime filter; the 1h timeframe may also produce many whipsaws.\n[Backup plan] If returns are negative, try a stricter entry such as requiring price below the lower Bollinger band and a 2\u2011day trend filter, and widen the stop to 2x ATR while keeping TP at 3x ATR. If Sharpe is low, reduce the ATR multiplier for stops to 1.2x and tighten the TP to 2.5x ATR, or shorten the MACD period to 12/26/9 for quicker signals. If the strategy fails altogether, switch to a trend\u2011following MACD\u2011EMA combo with a volatility\u2011adjusted position sizing or test a mean\u2011reversion on the Bollinger bands with a 20\u2011period SMA."
+        },
+        "scoring": {
+          "continuous_score": -61.06836457132071,
+          "drawdown_excess_pct": 10.1599381801324,
+          "components": {
+            "sharpe": 1.6611936263996354,
+            "return": -17.490711305100163,
+            "profit_factor": -5.99893962242158,
+            "trades_confidence": 2.5,
+            "win_rate": 3.4999999999999996
+          },
+          "penalties": {
+            "drawdown_pressure": 16.773292120088264,
+            "drawdown_excess": 8.466615150110334,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 7
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "MACD histogram slope confirms momentum direction while ADX > 25 filters for strong trends; ATR provides volatility\u2011adjusted risk limits, reducing false entries in choppy markets.",
+      "change_type": "logic",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.961628443004384,
+      "return_pct": 77.93326092565127,
+      "max_drawdown_pct": -42.1290233623133,
+      "profit_factor": 1.5343422761496457,
+      "win_rate_pct": 42.857142857142854,
+      "trades": 21,
+      "continuous_score": 80.51627969892232,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 26.92559640412275,
+          "return": 44.0,
+          "profit_factor": 24.42707548112666,
+          "trades_confidence": 3.5,
+          "win_rate": 2.357142857142856
+        },
+        "penalties": {
+          "drawdown_pressure": 14.7526822415422,
+          "drawdown_excess": 5.940852801927749,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 7.129023362313298
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +77.9%, PF 1.53, Expectancy 371.11"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 42.1%, Vol 76.0%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.962, Sortino 1.816, Calmar 2.357"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 42.9%, Trades 21, AvgW/L 2486.47/1215.41"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 49,
+          "short_signals": 31,
+          "total_signals": 80,
+          "signal_density": 0.26143790849673204,
+          "transition_signals": 26,
+          "transition_density": 0.08496732026143791,
+          "repeated_same_signals": 54,
+          "repeated_same_ratio": 0.675
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1) The strategy relies solely on MACD histogram slope and ADX, ignoring price action and volume, making it prone to false signals in sideways markets. 2) ATR\u2011based SL/TP may be too wide for a 1\u2011hour chart, diluting risk\u2011reward and allowing large drawdowns. 3) The exit rule (cross zero or ADX<20) is too blunt and may close positions too late or too early. 4) The backtest shows persistent losses, indicating over\u2011fitting or an unsuitable market/period. 5) Slippage and transaction costs are not considered, which can erode returns in a high\u2011frequency setup.\n[Backup plan] If results stay negative, switch to a trend\u2011following EMA\u2011MACD combo with a tighter ATR multiplier (1.0x for SL, 2.5x for TP) and add an RSI filter (RSI<30 for shorts, >70 for longs) to reduce whipsaws.  If Sharpe remains low, tighten the ADX filter to >35, shorten the look\u2011back for histogram slope (e.g., 3 bars instead of 5), and implement a trailing stop at 0.5x ATR to lock in gains.  As an alternative, abandon MACD and use a simple breakout system on 1\u2011hour NEOUSDC: enter long when price closes above the 20\u2011bar high and exit at 1.5x ATR or when price touches the 20\u2011bar low; for shorts, reverse the logic.  This approach leverages volatility directly and has proven robustness in similar crypto pairs."
+        },
+        "scoring": {
+          "continuous_score": 80.51627969892232,
+          "drawdown_excess_pct": 7.129023362313298,
+          "components": {
+            "sharpe": 26.92559640412275,
+            "return": 44.0,
+            "profit_factor": 24.42707548112666,
+            "trades_confidence": 3.5,
+            "win_rate": 2.357142857142856
+          },
+          "penalties": {
+            "drawdown_pressure": 14.7526822415422,
+            "drawdown_excess": 5.940852801927749,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 2,
+            "llm_positive": 1,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "MACD histogram momentum reversals combined with a strong ADX trend filter generate high\u2011confidence entries, while ATR\u2011based risk limits adapt to market volatility and help preserve capital during turbulent periods.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.9488360554902698,
+      "return_pct": 76.38291500765762,
+      "max_drawdown_pct": -47.37577351430531,
+      "profit_factor": 1.5182040630099103,
+      "win_rate_pct": 45.0,
+      "trades": 20,
+      "continuous_score": 72.02641121034168,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 26.567409553727554,
+          "return": 44.0,
+          "profit_factor": 23.689328594738758,
+          "trades_confidence": 3.333333333333333,
+          "win_rate": 3.0
+        },
+        "penalties": {
+          "drawdown_pressure": 18.250515676203538,
+          "drawdown_excess": 10.313144595254425,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 12.375773514305308
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +76.4%, PF 1.52, Expectancy 381.91"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 47.4%, Vol 78.3%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.949, Sortino 1.719, Calmar 2.052"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 45.0%, Trades 20, AvgW/L 2486.47/1339.99"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 49,
+          "short_signals": 31,
+          "total_signals": 80,
+          "signal_density": 0.26143790849673204,
+          "transition_signals": 26,
+          "transition_density": 0.08496732026143791,
+          "repeated_same_signals": 54,
+          "repeated_same_ratio": 0.675
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. MACD histogram alone can lag, especially in volatile markets, leading to late entries and whipsaws; relying on a single trend filter (ADX) may not capture regime changes. 2. Fixed ATR multiples (1.5/3.0) may be too tight in high\u2011volatility periods, causing premature exits, or too loose in calm periods, exposing to large drawdowns. 3. The 1\u2011hour NEOUSDC timeframe may suffer from high noise and low liquidity, impacting signal reliability. 4. Lack of a volatility\u2011adaptive stop/take\u2011profit or position sizing beyond ATR could distort risk/reward balance.\n[Backup plan] If returns are negative, switch to a 4\u2011hour or daily timeframe and use a dual\u2011momentum filter (e.g., combine MACD histogram with RSI divergence) to reduce noise. If Sharpe is low, tighten the ADX threshold to >30, lengthen MACD periods (e.g., 26/12) to filter out false reversals, and introduce a trailing stop at 0.8\u00d7ATR to lock in gains. Alternatively, test a trend\u2011following strategy using a moving\u2011average crossover with ATR\u2011based position sizing to see if a simpler approach outperforms."
+        },
+        "scoring": {
+          "continuous_score": 72.02641121034168,
+          "drawdown_excess_pct": 12.375773514305308,
+          "components": {
+            "sharpe": 26.567409553727554,
+            "return": 44.0,
+            "profit_factor": 23.689328594738758,
+            "trades_confidence": 3.333333333333333,
+            "win_rate": 3.0
+          },
+          "penalties": {
+            "drawdown_pressure": 18.250515676203538,
+            "drawdown_excess": 10.313144595254425,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "The MACD histogram falling into negative territory indicates accelerating bearish momentum; combining this with an ADX filter (>25) ensures the trend is strong, while ATR\u2011scaled stop\u2011loss and take\u2011profit dynamically adjust to market volatility, improving risk\u2011reward balance and reducing over\u2011exposure in low\u2011volatility periods.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.961628443004384,
+      "return_pct": 77.93326092565127,
+      "max_drawdown_pct": -42.1290233623133,
+      "profit_factor": 1.5343422761496457,
+      "win_rate_pct": 42.857142857142854,
+      "trades": 21,
+      "continuous_score": 80.51627969892232,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 26.92559640412275,
+          "return": 44.0,
+          "profit_factor": 24.42707548112666,
+          "trades_confidence": 3.5,
+          "win_rate": 2.357142857142856
+        },
+        "penalties": {
+          "drawdown_pressure": 14.7526822415422,
+          "drawdown_excess": 5.940852801927749,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 7.129023362313298
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +77.9%, PF 1.53, Expectancy 371.11"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 42.1%, Vol 76.0%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.962, Sortino 1.816, Calmar 2.357"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 42.9%, Trades 21, AvgW/L 2486.47/1215.41"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 49,
+          "short_signals": 31,
+          "total_signals": 80,
+          "signal_density": 0.26143790849673204,
+          "transition_signals": 26,
+          "transition_density": 0.08496732026143791,
+          "repeated_same_signals": 54,
+          "repeated_same_ratio": 0.675
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. The MACD histogram rule is noisy on 1\u2011hour NEOUSDC and can generate many whipsaws; 2. The ADX filter (>25) may block profitable moves in weaker trends; 3. Using a 1.5\u00d7ATR stop and 3\u00d7ATR TP may be too rigid for volatile crypto markets; 4. Exiting only on zero\u2011cross or ADX drop can delay exits, eroding gains.\n[Backup plan] If the run yields a negative return, replace the MACD histogram trigger with a MACD line cross (short when MACD falls below signal) and add a volume\u2011above\u2011average filter to reduce false entries. If Sharpe remains low, tighten the ATR stop to 1\u00d7ATR and raise TP to 4\u00d7ATR, or optimise the ADX threshold to 20\u201330. Alternatively, pivot to a breakout\u2011based strategy using 1\u2011hour Bollinger Band breakouts with a 1.5\u00d7ATR stop and 3\u00d7ATR TP to test a different momentum engine."
+        },
+        "scoring": {
+          "continuous_score": 80.51627969892232,
+          "drawdown_excess_pct": 7.129023362313298,
+          "components": {
+            "sharpe": 26.92559640412275,
+            "return": 44.0,
+            "profit_factor": 24.42707548112666,
+            "trades_confidence": 3.5,
+            "win_rate": 2.357142857142856
+          },
+          "penalties": {
+            "drawdown_pressure": 14.7526822415422,
+            "drawdown_excess": 5.940852801927749,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "When the MACD histogram is negative and trending downward, it signals a weakening bullish momentum; applying an ADX filter (>25) confirms that the market is in a strong trend phase, reducing whipsaw entries; ATR-based SL/TP scales risk to current volatility, improving consistency in varied market conditions.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.986863319599753,
+      "return_pct": 81.13650435759861,
+      "max_drawdown_pct": -41.697446918061914,
+      "profit_factor": 1.54730013050442,
+      "win_rate_pct": 42.857142857142854,
+      "trades": 21,
+      "continuous_score": 82.46257996618797,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 27.632172948793084,
+          "return": 44.0,
+          "profit_factor": 25.019434537344917,
+          "trades_confidence": 3.5,
+          "win_rate": 2.357142857142856
+        },
+        "penalties": {
+          "drawdown_pressure": 14.464964612041275,
+          "drawdown_excess": 5.581205765051594,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 6.697446918061914
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +81.1%, PF 1.55, Expectancy 386.36"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 41.7%, Vol 75.4%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.987, Sortino 1.858, Calmar 2.484"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 42.9%, Trades 21, AvgW/L 2548.72/1235.41"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 47,
+          "short_signals": 33,
+          "total_signals": 80,
+          "signal_density": 0.26143790849673204,
+          "transition_signals": 27,
+          "transition_density": 0.08823529411764706,
+          "repeated_same_signals": 53,
+          "repeated_same_ratio": 0.6625
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The MACD histogram rule alone may generate many false signals in sideways markets despite the ADX filter; the 1.5x/3.0x ATR SL/TP could be too tight in high\u2011volatility crypto, causing frequent stop\u2011outs. The 1\u2011hour timeframe on NEOUSDC has limited data (306 bars) which risks overfitting; the adx threshold of 25 may miss weaker but profitable trends. The exit rule (cross zero or adx<20) may lag, letting losses creep. The strategy lacks position sizing beyond ATR scaling and ignores potential slippage or transaction costs.\n[Backup plan] If returns turn negative, switch to a 2\u2011hour MACD histogram filter to reduce noise and widen the ADX threshold to 30 for stronger trends. For low Sharpe, tighten the SL to 1.0x ATR and TP to 2.5x ATR to improve risk\u2011reward, and add a trailing stop based on a moving average. If the approach fails, test a breakout strategy using 20\u2011period SMA crossovers with a 1\u2011day ATR for sizing, or incorporate a volatility\u2011adjusted bias using the Keltner channel to capture trend strength more robustly."
+        },
+        "scoring": {
+          "continuous_score": 82.46257996618797,
+          "drawdown_excess_pct": 6.697446918061914,
+          "components": {
+            "sharpe": 27.632172948793084,
+            "return": 44.0,
+            "profit_factor": 25.019434537344917,
+            "trades_confidence": 3.5,
+            "win_rate": 2.357142857142856
+          },
+          "penalties": {
+            "drawdown_pressure": 14.464964612041275,
+            "drawdown_excess": 5.581205765051594,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 5,
+            "llm_positive": 4,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 10,
+      "hypothesis": "The MACD histogram captures momentum shifts; a positive increasing histogram indicates a strengthening uptrend and a negative decreasing histogram signals a weakening downtrend. Coupling this with an ADX filter (>25) ensures only strong trends are traded, while ATR-based risk limits adapt to market volatility, reducing drawdown in choppy periods.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.9905637551972297,
+      "return_pct": 81.39098014835982,
+      "max_drawdown_pct": -39.941239157470086,
+      "profit_factor": 1.5716010643711325,
+      "win_rate_pct": 42.857142857142854,
+      "trades": 21,
+      "continuous_score": 86.31140363771192,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 27.73578514552243,
+          "return": 44.0,
+          "profit_factor": 26.13033437125177,
+          "trades_confidence": 3.5,
+          "win_rate": 2.357142857142856
+        },
+        "penalties": {
+          "drawdown_pressure": 13.294159438313391,
+          "drawdown_excess": 4.117699297891739,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 4.941239157470086
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +81.4%, PF 1.57, Expectancy 387.58"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 39.9%, Vol 74.4%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.991, Sortino 1.860, Calmar 2.602"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 42.9%, Trades 21, AvgW/L 2486.47/1186.59"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 49,
+          "short_signals": 31,
+          "total_signals": 80,
+          "signal_density": 0.26143790849673204,
+          "transition_signals": 26,
+          "transition_density": 0.08496732026143791,
+          "repeated_same_signals": 54,
+          "repeated_same_ratio": 0.675
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses include over\u2011reliance on a single indicator pair (MACD histogram + ADX) that may generate many false signals in sideways markets, lack of position\u2011sizing adaptation beyond ATR, and no consideration of transaction costs or slippage. The strategy also ignores price action nuances such as support/resistance or candlestick patterns that could refine entries/exits. If the run turns negative, I would first tighten the MACD filter to require a larger histogram magnitude or add a secondary trend filter like a 50\u2011period EMA. For a mediocre Sharpe, lowering the ATR\u2011based stop to 1.0\u00d7 and tightening the take\u2011profit to 2.0\u00d7 could improve risk\u2011reward, and adding a momentum confirmation such as RSI >70 for longs or <30 for shorts may reduce whipsaws. If the approach still fails, I\u2019d switch to a volatility\u2011breakout strategy on the 1h timeframe, using a 20\u2011period ATR breakout with a 1.5\u00d7 ATR stop and 3\u00d7 ATR target, or explore a multi\u2011time\u2011frame confirmation (e.g., 4h trend direction) to filter trades."
+        },
+        "scoring": {
+          "continuous_score": 86.31140363771192,
+          "drawdown_excess_pct": 4.941239157470086,
+          "components": {
+            "sharpe": 27.73578514552243,
+            "return": 44.0,
+            "profit_factor": 26.13033437125177,
+            "trades_confidence": 3.5,
+            "win_rate": 2.357142857142856
+          },
+          "penalties": {
+            "drawdown_pressure": 13.294159438313391,
+            "drawdown_excess": 4.117699297891739,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    }
+  ],
+  "leaderboard": [
+    {
+      "iteration": 10,
+      "hypothesis": "The MACD histogram captures momentum shifts; a positive increasing histogram indicates a strengthening uptrend and a negative decreasing histogram signals a weakening downtrend. Coupling this with an ADX filter (>25) ensures only strong trends are traded, while ATR-based risk limits adapt to market volatility, reducing drawdown in choppy periods.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.9905637551972297,
+      "return_pct": 81.39098014835982,
+      "max_drawdown_pct": -39.941239157470086,
+      "profit_factor": 1.5716010643711325,
+      "win_rate_pct": 42.857142857142854,
+      "trades": 21,
+      "continuous_score": 86.31140363771192,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 27.73578514552243,
+          "return": 44.0,
+          "profit_factor": 26.13033437125177,
+          "trades_confidence": 3.5,
+          "win_rate": 2.357142857142856
+        },
+        "penalties": {
+          "drawdown_pressure": 13.294159438313391,
+          "drawdown_excess": 4.117699297891739,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 4.941239157470086
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +81.4%, PF 1.57, Expectancy 387.58"
+        },
+        "risk": {
+          "grade": "C",
+          "detail": "MaxDD 39.9%, Vol 74.4%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.991, Sortino 1.860, Calmar 2.602"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 42.9%, Trades 21, AvgW/L 2486.47/1186.59"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 49,
+          "short_signals": 31,
+          "total_signals": 80,
+          "signal_density": 0.26143790849673204,
+          "transition_signals": 26,
+          "transition_density": 0.08496732026143791,
+          "repeated_same_signals": 54,
+          "repeated_same_ratio": 0.675
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses include over\u2011reliance on a single indicator pair (MACD histogram + ADX) that may generate many false signals in sideways markets, lack of position\u2011sizing adaptation beyond ATR, and no consideration of transaction costs or slippage. The strategy also ignores price action nuances such as support/resistance or candlestick patterns that could refine entries/exits. If the run turns negative, I would first tighten the MACD filter to require a larger histogram magnitude or add a secondary trend filter like a 50\u2011period EMA. For a mediocre Sharpe, lowering the ATR\u2011based stop to 1.0\u00d7 and tightening the take\u2011profit to 2.0\u00d7 could improve risk\u2011reward, and adding a momentum confirmation such as RSI >70 for longs or <30 for shorts may reduce whipsaws. If the approach still fails, I\u2019d switch to a volatility\u2011breakout strategy on the 1h timeframe, using a 20\u2011period ATR breakout with a 1.5\u00d7 ATR stop and 3\u00d7 ATR target, or explore a multi\u2011time\u2011frame confirmation (e.g., 4h trend direction) to filter trades."
+        },
+        "scoring": {
+          "continuous_score": 86.31140363771192,
+          "drawdown_excess_pct": 4.941239157470086,
+          "components": {
+            "sharpe": 27.73578514552243,
+            "return": 44.0,
+            "profit_factor": 26.13033437125177,
+            "trades_confidence": 3.5,
+            "win_rate": 2.357142857142856
+          },
+          "penalties": {
+            "drawdown_pressure": 13.294159438313391,
+            "drawdown_excess": 4.117699297891739,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 1
+    },
+    {
+      "iteration": 9,
+      "hypothesis": "When the MACD histogram is negative and trending downward, it signals a weakening bullish momentum; applying an ADX filter (>25) confirms that the market is in a strong trend phase, reducing whipsaw entries; ATR-based SL/TP scales risk to current volatility, improving consistency in varied market conditions.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.986863319599753,
+      "return_pct": 81.13650435759861,
+      "max_drawdown_pct": -41.697446918061914,
+      "profit_factor": 1.54730013050442,
+      "win_rate_pct": 42.857142857142854,
+      "trades": 21,
+      "continuous_score": 82.46257996618797,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 27.632172948793084,
+          "return": 44.0,
+          "profit_factor": 25.019434537344917,
+          "trades_confidence": 3.5,
+          "win_rate": 2.357142857142856
+        },
+        "penalties": {
+          "drawdown_pressure": 14.464964612041275,
+          "drawdown_excess": 5.581205765051594,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 6.697446918061914
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +81.1%, PF 1.55, Expectancy 386.36"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 41.7%, Vol 75.4%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.987, Sortino 1.858, Calmar 2.484"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 42.9%, Trades 21, AvgW/L 2548.72/1235.41"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 47,
+          "short_signals": 33,
+          "total_signals": 80,
+          "signal_density": 0.26143790849673204,
+          "transition_signals": 27,
+          "transition_density": 0.08823529411764706,
+          "repeated_same_signals": 53,
+          "repeated_same_ratio": 0.6625
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The MACD histogram rule alone may generate many false signals in sideways markets despite the ADX filter; the 1.5x/3.0x ATR SL/TP could be too tight in high\u2011volatility crypto, causing frequent stop\u2011outs. The 1\u2011hour timeframe on NEOUSDC has limited data (306 bars) which risks overfitting; the adx threshold of 25 may miss weaker but profitable trends. The exit rule (cross zero or adx<20) may lag, letting losses creep. The strategy lacks position sizing beyond ATR scaling and ignores potential slippage or transaction costs.\n[Backup plan] If returns turn negative, switch to a 2\u2011hour MACD histogram filter to reduce noise and widen the ADX threshold to 30 for stronger trends. For low Sharpe, tighten the SL to 1.0x ATR and TP to 2.5x ATR to improve risk\u2011reward, and add a trailing stop based on a moving average. If the approach fails, test a breakout strategy using 20\u2011period SMA crossovers with a 1\u2011day ATR for sizing, or incorporate a volatility\u2011adjusted bias using the Keltner channel to capture trend strength more robustly."
+        },
+        "scoring": {
+          "continuous_score": 82.46257996618797,
+          "drawdown_excess_pct": 6.697446918061914,
+          "components": {
+            "sharpe": 27.632172948793084,
+            "return": 44.0,
+            "profit_factor": 25.019434537344917,
+            "trades_confidence": 3.5,
+            "win_rate": 2.357142857142856
+          },
+          "penalties": {
+            "drawdown_pressure": 14.464964612041275,
+            "drawdown_excess": 5.581205765051594,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 9,
+            "required_positive": 2,
+            "observed_positive": 5,
+            "llm_positive": 4,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 2
+    },
+    {
+      "iteration": 6,
+      "hypothesis": "MACD histogram slope confirms momentum direction while ADX > 25 filters for strong trends; ATR provides volatility\u2011adjusted risk limits, reducing false entries in choppy markets.",
+      "change_type": "logic",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.961628443004384,
+      "return_pct": 77.93326092565127,
+      "max_drawdown_pct": -42.1290233623133,
+      "profit_factor": 1.5343422761496457,
+      "win_rate_pct": 42.857142857142854,
+      "trades": 21,
+      "continuous_score": 80.51627969892232,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 26.92559640412275,
+          "return": 44.0,
+          "profit_factor": 24.42707548112666,
+          "trades_confidence": 3.5,
+          "win_rate": 2.357142857142856
+        },
+        "penalties": {
+          "drawdown_pressure": 14.7526822415422,
+          "drawdown_excess": 5.940852801927749,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 7.129023362313298
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +77.9%, PF 1.53, Expectancy 371.11"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 42.1%, Vol 76.0%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.962, Sortino 1.816, Calmar 2.357"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 42.9%, Trades 21, AvgW/L 2486.47/1215.41"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 49,
+          "short_signals": 31,
+          "total_signals": 80,
+          "signal_density": 0.26143790849673204,
+          "transition_signals": 26,
+          "transition_density": 0.08496732026143791,
+          "repeated_same_signals": 54,
+          "repeated_same_ratio": 0.675
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1) The strategy relies solely on MACD histogram slope and ADX, ignoring price action and volume, making it prone to false signals in sideways markets. 2) ATR\u2011based SL/TP may be too wide for a 1\u2011hour chart, diluting risk\u2011reward and allowing large drawdowns. 3) The exit rule (cross zero or ADX<20) is too blunt and may close positions too late or too early. 4) The backtest shows persistent losses, indicating over\u2011fitting or an unsuitable market/period. 5) Slippage and transaction costs are not considered, which can erode returns in a high\u2011frequency setup.\n[Backup plan] If results stay negative, switch to a trend\u2011following EMA\u2011MACD combo with a tighter ATR multiplier (1.0x for SL, 2.5x for TP) and add an RSI filter (RSI<30 for shorts, >70 for longs) to reduce whipsaws.  If Sharpe remains low, tighten the ADX filter to >35, shorten the look\u2011back for histogram slope (e.g., 3 bars instead of 5), and implement a trailing stop at 0.5x ATR to lock in gains.  As an alternative, abandon MACD and use a simple breakout system on 1\u2011hour NEOUSDC: enter long when price closes above the 20\u2011bar high and exit at 1.5x ATR or when price touches the 20\u2011bar low; for shorts, reverse the logic.  This approach leverages volatility directly and has proven robustness in similar crypto pairs."
+        },
+        "scoring": {
+          "continuous_score": 80.51627969892232,
+          "drawdown_excess_pct": 7.129023362313298,
+          "components": {
+            "sharpe": 26.92559640412275,
+            "return": 44.0,
+            "profit_factor": 24.42707548112666,
+            "trades_confidence": 3.5,
+            "win_rate": 2.357142857142856
+          },
+          "penalties": {
+            "drawdown_pressure": 14.7526822415422,
+            "drawdown_excess": 5.940852801927749,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        },
+        "decision": {
+          "positive_progress_gate": {
+            "iteration": 6,
+            "required_positive": 1,
+            "observed_positive": 2,
+            "llm_positive": 1,
+            "fallback_positive": 1
+          }
+        }
+      },
+      "rank": 3
+    },
+    {
+      "iteration": 8,
+      "hypothesis": "The MACD histogram falling into negative territory indicates accelerating bearish momentum; combining this with an ADX filter (>25) ensures the trend is strong, while ATR\u2011scaled stop\u2011loss and take\u2011profit dynamically adjust to market volatility, improving risk\u2011reward balance and reducing over\u2011exposure in low\u2011volatility periods.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.961628443004384,
+      "return_pct": 77.93326092565127,
+      "max_drawdown_pct": -42.1290233623133,
+      "profit_factor": 1.5343422761496457,
+      "win_rate_pct": 42.857142857142854,
+      "trades": 21,
+      "continuous_score": 80.51627969892232,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 26.92559640412275,
+          "return": 44.0,
+          "profit_factor": 24.42707548112666,
+          "trades_confidence": 3.5,
+          "win_rate": 2.357142857142856
+        },
+        "penalties": {
+          "drawdown_pressure": 14.7526822415422,
+          "drawdown_excess": 5.940852801927749,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 7.129023362313298
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +77.9%, PF 1.53, Expectancy 371.11"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 42.1%, Vol 76.0%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.962, Sortino 1.816, Calmar 2.357"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 42.9%, Trades 21, AvgW/L 2486.47/1215.41"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 49,
+          "short_signals": 31,
+          "total_signals": 80,
+          "signal_density": 0.26143790849673204,
+          "transition_signals": 26,
+          "transition_density": 0.08496732026143791,
+          "repeated_same_signals": 54,
+          "repeated_same_ratio": 0.675
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. The MACD histogram rule is noisy on 1\u2011hour NEOUSDC and can generate many whipsaws; 2. The ADX filter (>25) may block profitable moves in weaker trends; 3. Using a 1.5\u00d7ATR stop and 3\u00d7ATR TP may be too rigid for volatile crypto markets; 4. Exiting only on zero\u2011cross or ADX drop can delay exits, eroding gains.\n[Backup plan] If the run yields a negative return, replace the MACD histogram trigger with a MACD line cross (short when MACD falls below signal) and add a volume\u2011above\u2011average filter to reduce false entries. If Sharpe remains low, tighten the ATR stop to 1\u00d7ATR and raise TP to 4\u00d7ATR, or optimise the ADX threshold to 20\u201330. Alternatively, pivot to a breakout\u2011based strategy using 1\u2011hour Bollinger Band breakouts with a 1.5\u00d7ATR stop and 3\u00d7ATR TP to test a different momentum engine."
+        },
+        "scoring": {
+          "continuous_score": 80.51627969892232,
+          "drawdown_excess_pct": 7.129023362313298,
+          "components": {
+            "sharpe": 26.92559640412275,
+            "return": 44.0,
+            "profit_factor": 24.42707548112666,
+            "trades_confidence": 3.5,
+            "win_rate": 2.357142857142856
+          },
+          "penalties": {
+            "drawdown_pressure": 14.7526822415422,
+            "drawdown_excess": 5.940852801927749,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 4
+    },
+    {
+      "iteration": 7,
+      "hypothesis": "MACD histogram momentum reversals combined with a strong ADX trend filter generate high\u2011confidence entries, while ATR\u2011based risk limits adapt to market volatility and help preserve capital during turbulent periods.",
+      "change_type": "params",
+      "diagnostic_category": "approaching_target",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.9488360554902698,
+      "return_pct": 76.38291500765762,
+      "max_drawdown_pct": -47.37577351430531,
+      "profit_factor": 1.5182040630099103,
+      "win_rate_pct": 45.0,
+      "trades": 20,
+      "continuous_score": 72.02641121034168,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 26.567409553727554,
+          "return": 44.0,
+          "profit_factor": 23.689328594738758,
+          "trades_confidence": 3.333333333333333,
+          "win_rate": 3.0
+        },
+        "penalties": {
+          "drawdown_pressure": 18.250515676203538,
+          "drawdown_excess": 10.313144595254425,
+          "insufficient_trades": 0.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 12.375773514305308
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +76.4%, PF 1.52, Expectancy 381.91"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 47.4%, Vol 78.3%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.949, Sortino 1.719, Calmar 2.052"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 45.0%, Trades 20, AvgW/L 2486.47/1339.99"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "local_patch",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "final_valid": true,
+          "source": "params_patch",
+          "final_kind": "python"
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 49,
+          "short_signals": 31,
+          "total_signals": 80,
+          "signal_density": 0.26143790849673204,
+          "transition_signals": 26,
+          "transition_density": 0.08496732026143791,
+          "repeated_same_signals": 54,
+          "repeated_same_ratio": 0.675
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. MACD histogram alone can lag, especially in volatile markets, leading to late entries and whipsaws; relying on a single trend filter (ADX) may not capture regime changes. 2. Fixed ATR multiples (1.5/3.0) may be too tight in high\u2011volatility periods, causing premature exits, or too loose in calm periods, exposing to large drawdowns. 3. The 1\u2011hour NEOUSDC timeframe may suffer from high noise and low liquidity, impacting signal reliability. 4. Lack of a volatility\u2011adaptive stop/take\u2011profit or position sizing beyond ATR could distort risk/reward balance.\n[Backup plan] If returns are negative, switch to a 4\u2011hour or daily timeframe and use a dual\u2011momentum filter (e.g., combine MACD histogram with RSI divergence) to reduce noise. If Sharpe is low, tighten the ADX threshold to >30, lengthen MACD periods (e.g., 26/12) to filter out false reversals, and introduce a trailing stop at 0.8\u00d7ATR to lock in gains. Alternatively, test a trend\u2011following strategy using a moving\u2011average crossover with ATR\u2011based position sizing to see if a simpler approach outperforms."
+        },
+        "scoring": {
+          "continuous_score": 72.02641121034168,
+          "drawdown_excess_pct": 12.375773514305308,
+          "components": {
+            "sharpe": 26.567409553727554,
+            "return": 44.0,
+            "profit_factor": 23.689328594738758,
+            "trades_confidence": 3.333333333333333,
+            "win_rate": 3.0
+          },
+          "penalties": {
+            "drawdown_pressure": 18.250515676203538,
+            "drawdown_excess": 10.313144595254425,
+            "insufficient_trades": 0.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 5
+    },
+    {
+      "iteration": 2,
+      "hypothesis": "Fallback contractuel: proposition g\u00e9n\u00e9r\u00e9e automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "change_type": "logic",
+      "diagnostic_category": "high_drawdown",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.7300414124663783,
+      "return_pct": 29.94346074339781,
+      "max_drawdown_pct": -84.95389888560263,
+      "profit_factor": 1.2704877848383183,
+      "win_rate_pct": 50.0,
+      "trades": 10,
+      "continuous_score": 3.9107889117859713,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 20.441159549058593,
+          "return": 32.937806817737595,
+          "profit_factor": 12.36515587832312,
+          "trades_confidence": 1.6666666666666665,
+          "win_rate": 4.5
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 0.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 49.95389888560263
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "A",
+          "detail": "Return +29.9%, PF 1.27, Expectancy 299.43"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 85.0%, Vol 316.7%"
+        },
+        "efficiency": {
+          "grade": "C",
+          "detail": "Sharpe 0.730, Sortino 2.234, Calmar 0.433"
+        },
+        "signal_quality": {
+          "grade": "A",
+          "detail": "WR 50.0%, Trades 10, AvgW/L 2812.90/2214.03"
+        }
+      },
+      "is_fallback": true,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": false,
+          "issues": [
+            "placeholder_entry_long_logic"
+          ],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": false,
+          "issues_after_retry": [
+            "placeholder_entry_long_logic"
+          ],
+          "fallback_deterministic_used": true,
+          "source": "deterministic_fallback"
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": false,
+          "error": "KeyError: 'macd'",
+          "bar_count": 0,
+          "long_signals": 0,
+          "short_signals": 0,
+          "total_signals": 0,
+          "signal_density": 0.0,
+          "transition_signals": 0,
+          "transition_density": 0.0,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "backtest": {
+          "runtime_error": "KeyError: 'macd'",
+          "runtime_traceback_tail": "Traceback (most recent call last):\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5931, in run\n    bt_result = self._run_backtest(\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5245, in _run_backtest\n    result = engine.run(\n  File \"D:\\backtest_core_multillm\\backtest\\engine.py\", line 268, in run\n    signals = strategy.generate_signals(df, indicators, final_params)\n  File \"D:\\backtest_core_multillm\\agents\\strategy_builder.py\", line 5218, in _guarded_generate_signals\n    raw = original_generate_signals(df_local, indicators_local, params_local)\n  File \"D:\\backtest_core_multillm\\sandbox_strategies\\20260312_112756_strategie_de_momentum_sur_neousdc_1h_ind\\strategy.py\", line 64, in generate_signals\n    macd_hist = np.nan_to_num(indicators['macd'][\"histogram\"])\nKeyError: 'macd'",
+          "runtime_fix_applied": true
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] 1. The MACD histogram alone may trigger many false signals, especially on a 1h chart; it ignores overall trend and market noise. 2. The ATR\u2011based SL/TP might be too wide for a short\u2011term pair, causing large drawdowns or missed exits. 3. Using a 1d market view for a 1h pair is inconsistent and could mis\u2011align the strategy\u2019s time horizon.\n[Backup plan] If returns are negative, add a trend filter (e.g., 50\u2011EMA or 20\u2011period RSI >50 for longs, <50 for shorts) before accepting a MACD signal and tighten the ATR multiplier (e.g., 1.0x SL, 2.0x TP). If Sharpe is low, reduce the risk\u2011reward ratio to 1:1.5 and shorten the ATR period to 7 or 10 to better capture intraday volatility. As an alternative, switch to a breakout/mean\u2011reversion framework using Bollinger Bands or Keltner Channels on the same 1h NEOUSDC pair, with entry on band breaches and exit on opposite side or time\u2011based limits."
+        },
+        "scoring": {
+          "continuous_score": 3.9107889117859713,
+          "drawdown_excess_pct": 49.95389888560263,
+          "components": {
+            "sharpe": 20.441159549058593,
+            "return": 32.937806817737595,
+            "profit_factor": 12.36515587832312,
+            "trades_confidence": 1.6666666666666665,
+            "win_rate": 4.5
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 0.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 6
+    },
+    {
+      "iteration": 5,
+      "hypothesis": "A falling negative MACD histogram combined with a price break below the lower Bollinger band captures genuine short momentum, while ATR-based stops adapt to market volatility.",
+      "change_type": "logic",
+      "diagnostic_category": "needs_work",
+      "error": null,
+      "decision": "continue",
+      "sharpe": 0.05932834379998698,
+      "return_pct": -15.900646641000149,
+      "max_drawdown_pct": -45.1599381801324,
+      "profit_factor": 0.8687731957595279,
+      "win_rate_pct": 46.666666666666664,
+      "trades": 15,
+      "continuous_score": -61.06836457132071,
+      "score_breakdown": {
+        "components": {
+          "sharpe": 1.6611936263996354,
+          "return": -17.490711305100163,
+          "profit_factor": -5.99893962242158,
+          "trades_confidence": 2.5,
+          "win_rate": 3.4999999999999996
+        },
+        "penalties": {
+          "drawdown_pressure": 16.773292120088264,
+          "drawdown_excess": 8.466615150110334,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 10.1599381801324
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "D",
+          "detail": "Return -15.9%, PF 0.87, Expectancy -106.00"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 45.2%, Vol 60.0%"
+        },
+        "efficiency": {
+          "grade": "D",
+          "detail": "Sharpe 0.059, Sortino 0.067, Calmar -0.414"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 46.7%, Trades 15, AvgW/L 1503.84/1514.61"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": true,
+          "issues": [],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": true,
+          "change_type_overridden": {
+            "from": "both",
+            "to": "logic",
+            "reason": "diagnostic_policy"
+          }
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 22,
+          "short_signals": 12,
+          "total_signals": 34,
+          "signal_density": 0.1111111111111111,
+          "transition_signals": 14,
+          "transition_density": 0.0457516339869281,
+          "repeated_same_signals": 20,
+          "repeated_same_ratio": 0.5882352941176471
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Weaknesses include reliance on a single indicator combination that may overfit, lack of trend confirmation, tight ATR stops that can be hit by noise, and no volatility regime filter; the 1h timeframe may also produce many whipsaws.\n[Backup plan] If returns are negative, try a stricter entry such as requiring price below the lower Bollinger band and a 2\u2011day trend filter, and widen the stop to 2x ATR while keeping TP at 3x ATR. If Sharpe is low, reduce the ATR multiplier for stops to 1.2x and tighten the TP to 2.5x ATR, or shorten the MACD period to 12/26/9 for quicker signals. If the strategy fails altogether, switch to a trend\u2011following MACD\u2011EMA combo with a volatility\u2011adjusted position sizing or test a mean\u2011reversion on the Bollinger bands with a 20\u2011period SMA."
+        },
+        "scoring": {
+          "continuous_score": -61.06836457132071,
+          "drawdown_excess_pct": 10.1599381801324,
+          "components": {
+            "sharpe": 1.6611936263996354,
+            "return": -17.490711305100163,
+            "profit_factor": -5.99893962242158,
+            "trades_confidence": 2.5,
+            "win_rate": 3.4999999999999996
+          },
+          "penalties": {
+            "drawdown_pressure": 16.773292120088264,
+            "drawdown_excess": 8.466615150110334,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 7
+    },
+    {
+      "iteration": 4,
+      "hypothesis": "A breakout from Bollinger bands combined with a rising MACD histogram captures strong directional momentum while filtering out false signals in ranging markets; ATR-based sizing adapts risk to current volatility.",
+      "change_type": "logic",
+      "diagnostic_category": "needs_work",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -0.16962468684565477,
+      "return_pct": -24.768243431063603,
+      "max_drawdown_pct": -48.60945302605742,
+      "profit_factor": 0.71614855850279,
+      "win_rate_pct": 45.45454545454545,
+      "trades": 11,
+      "continuous_score": -90.41510747225277,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -4.749491231678333,
+          "return": -27.245067774169964,
+          "profit_factor": -12.976065897015314,
+          "trades_confidence": 1.8333333333333333,
+          "win_rate": 3.1363636363636362
+        },
+        "penalties": {
+          "drawdown_pressure": 19.072968684038283,
+          "drawdown_excess": 11.341210855047851,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 0.0
+        },
+        "drawdown_excess_pct": 13.609453026057423
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -24.8%, PF 0.72, Expectancy -225.17"
+        },
+        "risk": {
+          "grade": "D",
+          "detail": "MaxDD 48.6%, Vol 53.4%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -0.170, Sortino -0.153, Calmar -0.594"
+        },
+        "signal_quality": {
+          "grade": "B",
+          "detail": "WR 45.5%, Trades 11, AvgW/L 1249.79/1454.30"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "issues": [],
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 10,
+          "short_signals": 4,
+          "total_signals": 14,
+          "signal_density": 0.0457516339869281,
+          "transition_signals": 14,
+          "transition_density": 0.0457516339869281,
+          "repeated_same_signals": 0,
+          "repeated_same_ratio": 0.0
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] The strategy is highly dependent on a narrow set of conditions (Bollinger breakout + rising MACD histogram), which can be fragile in ranging or low\u2011volatility periods; the 1\u2011hour timeframe may produce many false positives and the ATR\u2011based SL/TP may not capture the true risk\u2011reward of each move. The exit logic (crossing zero or middle band) is too simplistic and can let profits evaporate quickly. Additionally, the use of the same ATR multiplier for all trades ignores changing market regimes.\n[Backup plan] If the backtest yields a negative return, drop the Bollinger upper\u2011band filter and trade on the MACD histogram alone, adding an ADX > 25 trend filter. If Sharpe remains low, tighten the TP to 2\u00d7ATR, add a trailing stop at 0.5\u00d7ATR, and consider shortening the ATR period to 10 for more responsive sizing. As a fallback, switch to a Keltner\u2011channel breakout with RSI confirmation on the 1\u2011hour chart, which has historically proven more robust in volatile crypto pairs."
+        },
+        "scoring": {
+          "continuous_score": -90.41510747225277,
+          "drawdown_excess_pct": 13.609453026057423,
+          "components": {
+            "sharpe": -4.749491231678333,
+            "return": -27.245067774169964,
+            "profit_factor": -12.976065897015314,
+            "trades_confidence": 1.8333333333333333,
+            "win_rate": 3.1363636363636362
+          },
+          "penalties": {
+            "drawdown_pressure": 19.072968684038283,
+            "drawdown_excess": 11.341210855047851,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 0.0
+          }
+        }
+      },
+      "rank": 8
+    },
+    {
+      "iteration": 3,
+      "hypothesis": "Combining a declining negative MACD histogram with a strong trend confirmation from ADX and a price position below a long\u2011term EMA reduces entry noise during weak or sideways periods, thereby limiting large drawdowns while preserving momentum trades.",
+      "change_type": "logic",
+      "diagnostic_category": "ruined",
+      "error": null,
+      "decision": "continue",
+      "sharpe": -20.0,
+      "return_pct": -133.506517951526,
+      "max_drawdown_pct": -100.0,
+      "profit_factor": 0.4797384667279322,
+      "win_rate_pct": 31.57894736842105,
+      "trades": 19,
+      "continuous_score": -100.0,
+      "score_breakdown": {
+        "components": {
+          "sharpe": -42.0,
+          "return": -33.0,
+          "profit_factor": -23.783384378151673,
+          "trades_confidence": 3.1666666666666665,
+          "win_rate": -1.0263157894736845
+        },
+        "penalties": {
+          "drawdown_pressure": 40.0,
+          "drawdown_excess": 20.0,
+          "insufficient_trades": 8.0,
+          "non_positive_return": 12.0,
+          "ruined": 80.0
+        },
+        "drawdown_excess_pct": 65.0
+      },
+      "score_card": {
+        "profitability": {
+          "grade": "F",
+          "detail": "Return -133.5%, PF 0.48, Expectancy -702.67"
+        },
+        "risk": {
+          "grade": "F",
+          "detail": "MaxDD 100.0%, Vol 2183.9%"
+        },
+        "efficiency": {
+          "grade": "F",
+          "detail": "Sharpe -20.000, Sortino -20.000, Calmar -20.000"
+        },
+        "signal_quality": {
+          "grade": "D",
+          "detail": "WR 31.6%, Trades 19, AvgW/L 2051.80/1973.96"
+        }
+      },
+      "is_fallback": false,
+      "phase_feedback": {
+        "proposal": {
+          "phase": "proposal",
+          "initial_kind": "json",
+          "realign_attempts": 1,
+          "realign_success": true,
+          "issues": [],
+          "error_code": "DSL001",
+          "final_kind": "json",
+          "final_valid": true
+        },
+        "code": {
+          "phase": "code",
+          "initial_kind": "python",
+          "realign_attempts": 0,
+          "realign_success": false,
+          "safe_path_mode": "off",
+          "final_kind": "python",
+          "final_valid": true
+        },
+        "precheck": {
+          "ok": true,
+          "bar_count": 306,
+          "long_signals": 26,
+          "short_signals": 28,
+          "total_signals": 54,
+          "signal_density": 0.17647058823529413,
+          "transition_signals": 22,
+          "transition_density": 0.0718954248366013,
+          "repeated_same_signals": 32,
+          "repeated_same_ratio": 0.5925925925925926
+        },
+        "pre_reflection": {
+          "text": "[Pre-reflection] Potential weaknesses include: reliance on a single\u2011time\u2011frame MACD histogram that can produce whipsaws in low\u2011volatility periods; the fixed 1.5\u00d7ATR stop and 3\u00d7ATR take\u2011profit may not adapt to changing market conditions; the ADX >25 filter may be too strict, cutting out profitable moves; the EMA filter is static and may lag in trending markets; and the exit rule (crossing 0 or ADX<20) can trigger too early during noisy markets.\n[Backup plan] If the run yields a negative return, first try tightening the ATR stop to 1\u00d7ATR and adding a volatility filter (e.g., only trade when ATR > 1.5\u00d7 its 20\u2011period SMA). For a mediocre Sharpe, reduce the take\u2011profit to 2\u00d7ATR and extend the EMA to a longer period (e.g., 200) to filter out more noise. If the strategy still fails, switch to a dual\u2011time\u2011frame momentum approach using a higher\u2011time\u2011frame (4h) ADX confirmation combined with a lower\u2011time\u2011frame (15m) RSI overbought/oversold entries, and replace the MACD with a Bollinger\u2011Band breakout filter."
+        },
+        "scoring": {
+          "continuous_score": -100.0,
+          "drawdown_excess_pct": 65.0,
+          "components": {
+            "sharpe": -42.0,
+            "return": -33.0,
+            "profit_factor": -23.783384378151673,
+            "trades_confidence": 3.1666666666666665,
+            "win_rate": -1.0263157894736845
+          },
+          "penalties": {
+            "drawdown_pressure": 40.0,
+            "drawdown_excess": 20.0,
+            "insufficient_trades": 8.0,
+            "non_positive_return": 12.0,
+            "ruined": 80.0
+          }
+        }
+      },
+      "rank": 9
+    }
+  ]
+}

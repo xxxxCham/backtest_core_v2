@@ -227,7 +227,7 @@ t_core
 .venv_old/
 
 # -----------------------------------------------------------------------------
-# backtest_core: generated artifacts and local-only files (2026 update)
+# backtest-core-v2: generated artifacts and local-only files (2026 update)
 # -----------------------------------------------------------------------------
 
 # Temporary workspaces / probes created during local experiments

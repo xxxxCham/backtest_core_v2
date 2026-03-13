@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional, Set
 
 import httpx
 
-from utils.model_loader import get_all_ollama_models
+from utils.model_loader import get_all_ollama_models, normalize_model_name
 from utils.observability import get_obs_logger
 
 logger = get_obs_logger(__name__)
@@ -85,12 +85,13 @@ def _ollama_name_from_library_entry(entry: Dict[str, Any]) -> Optional[str]:
     model_name = entry.get("model_name")
     tag = entry.get("tag")
     if model_name and tag:
-        if tag == "latest":
-            return model_name
-        return f"{model_name}:{tag}"
+        return normalize_model_name(f"{model_name}:{tag}")
     if model_name:
-        return model_name
-    return entry.get("id")
+        return normalize_model_name(str(model_name))
+    ollama_name = entry.get("ollama_name")
+    if ollama_name:
+        return normalize_model_name(str(ollama_name))
+    return normalize_model_name(str(entry.get("id") or "")) or None
 
 
 def _model_info_from_library_entry(entry: Dict[str, Any]) -> Optional[ModelInfo]:
@@ -114,12 +115,8 @@ def _model_info_from_library_entry(entry: Dict[str, Any]) -> Optional[ModelInfo]
 
 
 def _normalize_model_name(name: str) -> str:
-    """Normalise un nom de modèle (supprime le tag latest et garde le complet)."""
-    if not name:
-        return ""
-    if name.endswith(":latest"):
-        return name.rsplit(":", 1)[0]
-    return name
+    """Normalise un nom de modele via la couche centrale de model_loader."""
+    return normalize_model_name(name)
 
 
 class ModelCategory(Enum):
@@ -225,6 +222,14 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         avg_response_time_s=90.0,
         params_billions=22.0,
     ),
+    "qwen3-coder-next:q4_k_m": ModelInfo(
+        name="qwen3-coder-next:q4_k_m",
+        category=ModelCategory.MEDIUM,
+        description="Qwen3 Coder Next 24.6B Q4_K_M - code, contexte 262k, runtime C:\\AI",
+        recommended_for=["strategist", "critic"],
+        avg_response_time_s=70.0,
+        params_billions=24.6,
+    ),
     "gemma3:27b": ModelInfo(
         name="gemma3:27b",
         category=ModelCategory.MEDIUM,
@@ -241,6 +246,14 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         recommended_for=["analyst", "strategist", "critic"],
         avg_response_time_s=25.0,
         params_billions=23.0,
+    ),
+    "qwen3-30b-a3b:q4_k_m": ModelInfo(
+        name="qwen3-30b-a3b:q4_k_m",
+        category=ModelCategory.MEDIUM,
+        description="Qwen3 30B A3B Q4_K_M - MoE coding/reasoning, runtime C:\\AI",
+        recommended_for=["strategist", "critic"],
+        avg_response_time_s=55.0,
+        params_billions=30.5,
     ),
 
     # Heavy models (> 30B) - Puissants mais lents
@@ -284,10 +297,10 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         avg_response_time_s=180.0,
         params_billions=33.3,
     ),
-    "qwen3-coder-40b-local": ModelInfo(
-        name="qwen3-coder-40b-local",
+    "qwen3-coder:30b": ModelInfo(
+        name="qwen3-coder:30b",
         category=ModelCategory.HEAVY,
-        description="Qwen3 Coder 40B (3B actifs) - MoE code generation, Q3_K_XL",
+        description="Qwen3 Coder 30B runtime (backup GGUF qwen3-coder-next-40b-Q3_K_XL)",
         recommended_for=["strategist", "critic"],
         avg_response_time_s=60.0,
         params_billions=41.0,
@@ -367,26 +380,24 @@ class RoleModelAssignment:
         available = []
 
         for model_name in self.models:
-            # Vérifier si installé
-            if installed_models and model_name not in installed_models:
+            resolved_name = _normalize_model_name(model_name) or model_name
+
+            if installed_models and resolved_name not in installed_models and model_name not in installed_models:
                 continue
 
-            # Vérifier la catégorie et taille
-            model_info = KNOWN_MODELS.get(model_name)
+            model_info = KNOWN_MODELS.get(resolved_name) or KNOWN_MODELS.get(model_name)
             if model_info:
-                # Modèles > 50B : exclus sauf autorisation explicite
                 if model_info.requires_manual_approval and not allow_very_large:
                     logger.debug(
-                        f"Modèle {model_name} exclu (>{MAX_AUTO_SELECT_PARAMS_B}B params, approbation requise)"
+                        f"Modele {resolved_name} exclu (>{MAX_AUTO_SELECT_PARAMS_B}B params, approbation requise)"
                     )
                     continue
 
-                # Modèles lourds (catégorie) : vérifier les conditions d'itération
                 if model_info.category == ModelCategory.HEAVY:
                     if not allow_heavy and iteration < self.allow_heavy_after_iteration:
                         continue
 
-            available.append(model_name)
+            available.append(resolved_name)
 
         return available
 
@@ -411,7 +422,7 @@ class RoleModelConfig:
     strategist: RoleModelAssignment = field(default_factory=lambda: RoleModelAssignment(
         role="strategist",
         models=["deepseek-r1:8b", "gemma3:12b", "deepseek-r1-distill:14b", "mistral:22b",
-                "glm-4.7-flash-23b-local", "deepseek-coder-33b-local", "qwen3-coder-40b-local"],
+                "glm-4.7-flash-23b-local", "deepseek-coder-33b-local", "qwen3-coder:30b"],
         allow_heavy_after_iteration=3,
     ))
 
@@ -541,14 +552,15 @@ class RoleModelConfig:
         return None
 
     def get_model_info(self, model_name: str) -> Optional[ModelInfo]:
-        """Retourne les infos d'un modèle."""
-        return KNOWN_MODELS.get(model_name)
+        """Retourne les infos d'un modele."""
+        resolved_name = _normalize_model_name(model_name)
+        return KNOWN_MODELS.get(resolved_name) or KNOWN_MODELS.get(model_name)
 
     def set_role_models(self, role: str, models: List[str]) -> None:
-        """Configure les modèles pour un rôle."""
+        """Configure les modeles pour un role."""
         assignment = self.get_role_assignment(role)
-        assignment.models = models
-        logger.info(f"Modèles pour {role}: {models}")
+        assignment.models = [_normalize_model_name(model) for model in models]
+        logger.info(f"Modeles pour {role}: {assignment.models}")
 
     def to_dict(self) -> Dict[str, Any]:
         """Sérialise la configuration."""
@@ -580,7 +592,7 @@ class RoleModelConfig:
             if role in data:
                 role_data = data[role]
                 assignment = config.get_role_assignment(role)
-                assignment.models = role_data.get("models", assignment.models)
+                assignment.models = [_normalize_model_name(m) for m in role_data.get("models", assignment.models)]
                 assignment.allow_heavy_after_iteration = role_data.get(
                     "allow_heavy_after_iteration",
                     assignment.allow_heavy_after_iteration
@@ -602,11 +614,9 @@ def list_available_models() -> List[ModelInfo]:
     if data:
         models = data.get("models", [])
         for m in models:
-            name = m.get("name", "")
+            name = _normalize_model_name(m.get("name", ""))
             if not name:
                 continue
-            if name.endswith(":latest"):
-                name = name.rsplit(":", 1)[0]
             if name in KNOWN_MODELS:
                 result_by_name[name] = KNOWN_MODELS[name]
                 continue
