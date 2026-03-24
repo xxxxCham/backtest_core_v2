@@ -1,0 +1,9 @@
+{
+  "strategy": "ema_cross",
+  "symbol": "BTCUSDT",
+  "timeframe": "1h",
+  "params": {
+    "fast_period": 12,
+    "slow_period": 26
+  }
+}

@@ -1,0 +1,2 @@
+run_id,created_at,mode,status,strategy,symbol,timeframe,n_trades,total_return_pct,sharpe_ratio,max_drawdown_pct,period_start,period_end,duration_sec,artifact_path,schema_version
+v3_run_eth_4h,2026-03-25T09:45:00Z,backtest,success,rsi_reversal,ETHUSDT,4h,2,1.8,1.45,-0.7,2025-01-01T00:00:00Z,2025-01-02T04:00:00Z,0.21,examples/end_to_end/stores/result_store_v3/runs/v3_run_eth_4h,3

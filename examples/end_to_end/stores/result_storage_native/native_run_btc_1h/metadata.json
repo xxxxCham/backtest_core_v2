@@ -1,0 +1,33 @@
+{
+  "run_id": "native_run_btc_1h",
+  "timestamp": "2026-03-25T09:30:00+00:00",
+  "strategy": "ema_cross",
+  "symbol": "BTCUSDT",
+  "timeframe": "1h",
+  "params": {
+    "fast_period": 10,
+    "slow_period": 30
+  },
+  "metrics": {
+    "total_pnl": 65.0,
+    "total_return_pct": 0.65,
+    "max_drawdown_pct": -0.22,
+    "sharpe_ratio": 1.28,
+    "sortino_ratio": 1.41,
+    "profit_factor": 1.34,
+    "win_rate_pct": 50.0,
+    "total_trades": 2
+  },
+  "n_bars": 8,
+  "n_trades": 2,
+  "period_start": "2025-01-01T00:00:00Z",
+  "period_end": "2025-01-01T07:00:00Z",
+  "duration_sec": 0.18,
+  "mode": "builder",
+  "status": "ok",
+  "extra_metadata": {
+    "origin": "builder",
+    "builder_session_id": "demo-sess-btc-1h",
+    "builder_iteration": 2
+  }
+}

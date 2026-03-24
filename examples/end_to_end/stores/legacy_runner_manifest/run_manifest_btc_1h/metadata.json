@@ -1,0 +1,18 @@
+{
+  "run_id": "run_manifest_btc_1h",
+  "created_at": "2026-03-25T10:05:00Z",
+  "mode": "backtest",
+  "status": "ok",
+  "strategy": "ema_cross",
+  "symbol": "BTCUSDT",
+  "timeframe": "1h",
+  "n_bars": 8,
+  "n_trades": 2,
+  "period_start": "2025-01-01T00:00:00Z",
+  "period_end": "2025-01-01T07:00:00Z",
+  "duration_sec": 0.16,
+  "extra": {
+    "source": "legacy_runner_manifest",
+    "notes": "Example of a pre-v3 run folder with sidecar metrics/config files."
+  }
+}

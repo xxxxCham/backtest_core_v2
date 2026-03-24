@@ -1,0 +1,32 @@
+{
+  "run_id": "v3_run_eth_4h",
+  "created_at": "2026-03-25T09:45:00Z",
+  "mode": "backtest",
+  "status": "success",
+  "strategy": "rsi_reversal",
+  "symbol": "ETHUSDT",
+  "timeframe": "4h",
+  "n_trades": 2,
+  "total_return_pct": 1.8,
+  "sharpe_ratio": 1.45,
+  "max_drawdown_pct": -0.7,
+  "period_start": "2025-01-01T00:00:00Z",
+  "period_end": "2025-01-02T04:00:00Z",
+  "duration_sec": 0.21,
+  "params": {
+    "rsi_period": 14,
+    "overbought": 70,
+    "oversold": 30
+  },
+  "extra": {
+    "initial_capital": 10000.0,
+    "source": "result_store_v3_demo",
+    "artifact_note": "csv_mirror_for_github"
+  },
+  "schema_version": 3,
+  "artifacts": {
+    "equity": "equity.csv",
+    "trades": "trades.csv",
+    "returns": "returns.csv"
+  }
+}

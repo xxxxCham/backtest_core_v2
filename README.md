@@ -12,6 +12,12 @@ Moteur de backtest multi-LLM avec acceleration GPU pour strategies de trading al
 - `AGENTS.md` : regles, historique, journal de maintenance.
 - `GUIDE_CREATION_NOUVELLE_STRATEGIE.md` : guide principal pour ajouter une strategie.
 
+## Exemples Legers Versionnes
+
+- `examples/README.md` : point d'entree des exemples versionnes.
+- `examples/end_to_end/README.md` : mini parcours de bout en bout avec OHLCV, resultats natifs, layout v3 et manifest legacy.
+- `data/sample_data/generate_sample.py` : regeneration des petits CSV d'exemple commits dans `examples/end_to_end/data`.
+
 ## Docs Techniques Completes
 
 La documentation technique detaillee est centralisee sous `docs/markdowns/`.
