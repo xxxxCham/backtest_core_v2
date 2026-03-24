@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 import pandas as pd
 
+from .store_v3 import BacktestStoreV3
+
 
 ARTIFACTS_DIR_ENV_VAR = "BACKTEST_ARTIFACTS_DIR"
 RESULTS_DIR_ENV_VAR = "BACKTEST_RESULTS_DIR"
@@ -255,35 +257,119 @@ class ResultStore:
         self.runs_dir = self.root_dir / "runs"
         self.index_path = self.root_dir / "index.csv"
         self.golden_path = self.root_dir / "golden_runs.csv"
+        self._store_v3 = BacktestStoreV3(root_dir=self.root_dir)
         self.root_dir.mkdir(parents=True, exist_ok=True)
         self.runs_dir.mkdir(parents=True, exist_ok=True)
         self._ensure_index_file()
 
     def _ensure_index_file(self) -> None:
         if not self.index_path.exists():
-            pd.DataFrame(columns=self._INDEX_COLUMNS).to_csv(self.index_path, index=False, encoding="utf-8")
+            self._export_index_cache(pd.DataFrame(columns=self._INDEX_COLUMNS))
+
+    @staticmethod
+    def _legacy_status(status: Any) -> Any:
+        return "ok" if str(status or "").strip().lower() == "success" else status
+
+    def _build_v3_extra(
+        self,
+        *,
+        metadata_extra: dict[str, Any] | None = None,
+        meta: dict[str, Any] | None = None,
+        diagnostics: Any = None,
+    ) -> dict[str, Any]:
+        payload = dict(meta or {})
+        for key, value in dict(metadata_extra or {}).items():
+            if key == "params":
+                continue
+            payload[key] = value
+        if diagnostics is not None:
+            payload["diagnostics"] = diagnostics
+        return payload
+
+    def _v3_index_to_legacy(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return pd.DataFrame(columns=self._INDEX_COLUMNS)
+
+        extra_series = df["extra"] if "extra" in df.columns else pd.Series([{}] * len(df))
+        legacy = pd.DataFrame(
+            {
+                "run_id": df.get("run_id"),
+                "mode": df.get("mode"),
+                "status": df.get("status").apply(self._legacy_status) if "status" in df.columns else None,
+                "created_at": df.get("created_at"),
+                "strategy": df.get("strategy"),
+                "symbol": df.get("symbol"),
+                "timeframe": df.get("timeframe"),
+                "n_trades": df.get("n_trades"),
+                "total_return_pct": df.get("total_return_pct"),
+                "sharpe_ratio": df.get("sharpe_ratio"),
+                "parent_run_id": extra_series.apply(
+                    lambda payload: payload.get("parent_run_id") if isinstance(payload, dict) else None
+                ),
+            }
+        )
+        for column in self._INDEX_COLUMNS:
+            if column not in legacy.columns:
+                legacy[column] = None
+        return legacy[self._INDEX_COLUMNS]
+
+    def _export_index_cache(self, df: pd.DataFrame | None = None) -> None:
+        cache_df = df if df is not None else self._v3_index_to_legacy(self._store_v3.query_runs(limit=0, status=None))
+        cache_df.to_csv(self.index_path, index=False, encoding="utf-8")
+
+    def _export_golden_cache(self) -> Path:
+        columns = ["run_id", "tagged_at", "reason", "priority", "notes"]
+        rows: list[dict[str, Any]] = []
+        try:
+            df = self._store_v3.query_runs(limit=0, status=None)
+        except Exception as exc:
+            logger.warning("Failed to query V3 store for golden export: %s", exc)
+            df = pd.DataFrame()
+
+        if not df.empty:
+            extra_series = df["extra"] if "extra" in df.columns else pd.Series([{}] * len(df))
+            for run_id, extra in zip(df["run_id"], extra_series):
+                if not isinstance(extra, dict):
+                    continue
+                golden = extra.get("golden")
+                if not isinstance(golden, dict):
+                    continue
+                rows.append(
+                    {
+                        "run_id": str(run_id),
+                        "tagged_at": golden.get("tagged_at", ""),
+                        "reason": golden.get("reason", ""),
+                        "priority": golden.get("priority", 1),
+                        "notes": golden.get("notes", ""),
+                    }
+                )
+
+        pd.DataFrame(rows, columns=columns).to_csv(self.golden_path, index=False, encoding="utf-8")
+        return self.golden_path
 
     def load_index(self) -> pd.DataFrame:
-        if not self.index_path.exists():
-            return pd.DataFrame(columns=self._INDEX_COLUMNS)
         try:
-            return pd.read_csv(self.index_path)
+            df = self._v3_index_to_legacy(self._store_v3.query_runs(limit=0, status=None))
+            self._export_index_cache(df)
+            return df
         except Exception as exc:
-            logger.warning("Failed to load index %s: %s", self.index_path, exc)
-            return pd.DataFrame(columns=self._INDEX_COLUMNS)
+            logger.warning("Failed to load V3 index %s: %s", self._store_v3.db_path, exc)
+            if not self.index_path.exists():
+                return pd.DataFrame(columns=self._INDEX_COLUMNS)
+            try:
+                return pd.read_csv(self.index_path)
+            except Exception as csv_exc:
+                logger.warning("Failed to load fallback index %s: %s", self.index_path, csv_exc)
+                return pd.DataFrame(columns=self._INDEX_COLUMNS)
+
+    def migrate_legacy_store(self, *, root_dir: str | Path | None = None) -> dict[str, Any]:
+        summary = self._store_v3.migrate_from_legacy(root_dir=root_dir or self.root_dir)
+        self._export_index_cache()
+        self._export_golden_cache()
+        return summary
 
     def _append_index(self, row: dict[str, Any]) -> None:
-        df = self.load_index()
-        row_payload = {col: _as_jsonable(row.get(col)) for col in self._INDEX_COLUMNS}
-        if df.empty:
-            df = pd.DataFrame([row_payload], columns=self._INDEX_COLUMNS)
-        else:
-            next_idx = len(df)
-            for col in self._INDEX_COLUMNS:
-                if col not in df.columns:
-                    df[col] = None
-            df.loc[next_idx, self._INDEX_COLUMNS] = [row_payload.get(col) for col in self._INDEX_COLUMNS]
-        df.to_csv(self.index_path, index=False, encoding="utf-8")
+        self._export_index_cache()
 
     def _build_base_run_id(
         self,
@@ -400,84 +486,32 @@ class ResultStore:
         timeframe = str(meta.get("timeframe") or metadata_extra.get("timeframe") or "unknown")
         params = dict(meta.get("params") or metadata_extra.get("params") or {})
         metrics = self._coerce_metrics(getattr(result, "metrics", {}))
-
-        run_id = self._ensure_unique_run_id(
-            self._build_base_run_id(
-                strategy=strategy,
-                symbol=symbol,
-                timeframe=timeframe,
-                requested_run_id=requested_run_id or meta.get("run_id"),
-                created_at=created_at,
-            )
-        )
-        run_dir = self.runs_dir / run_id
-        run_dir.mkdir(parents=True, exist_ok=False)
-
-        metadata = {
-            "run_id": run_id,
-            "mode": mode,
-            "status": status,
-            "created_at": created_at,
-            "strategy": strategy,
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "params": params,
-            "period_start": meta.get("period_start") or metadata_extra.get("period_start"),
-            "period_end": meta.get("period_end") or metadata_extra.get("period_end"),
-            "n_bars": meta.get("n_bars"),
-            "n_trades": int(len(getattr(result, "trades", []))) if hasattr(result, "trades") else 0,
-            "seed": metadata_extra.get("seed"),
-            "data_source": metadata_extra.get("data_source", {}),
-            "engine_settings": metadata_extra.get("engine_settings", {}),
-            "extra": {k: v for k, v in metadata_extra.items() if k not in {"data_source", "engine_settings", "params"}},
-        }
-        config_snapshot = {
-            "strategy": strategy,
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "params": params,
-            "config_snapshot_extra": metadata_extra.get("config_snapshot_extra", {}),
-        }
-        self._write_common_files(
-            run_dir=run_dir,
-            metadata=metadata,
+        saved = self._store_v3.save_run(
+            result,
+            run_id=requested_run_id or meta.get("run_id"),
+            created_at=created_at,
+            mode=mode,
+            status=status,
+            strategy=strategy,
+            symbol=symbol,
+            timeframe=timeframe,
             metrics=metrics,
-            config_snapshot=config_snapshot,
-            diagnostics=diagnostics,
+            params=params,
+            period_start=meta.get("period_start") or metadata_extra.get("period_start"),
+            period_end=meta.get("period_end") or metadata_extra.get("period_end"),
+            duration_sec=meta.get("duration_sec") or metadata_extra.get("duration_sec"),
+            extra=self._build_v3_extra(metadata_extra=metadata_extra, meta=meta, diagnostics=diagnostics),
         )
-
-        equity_df = self._to_dataframe(getattr(result, "equity", None), "equity")
-        equity_df.to_csv(run_dir / "equity.csv", index=True, encoding="utf-8")
-        trades_df = self._to_dataframe(getattr(result, "trades", None), "trades")
-        trades_df.to_csv(run_dir / "trades.csv", index=False, encoding="utf-8")
-        if hasattr(result, "returns"):
-            returns_df = self._to_dataframe(getattr(result, "returns", None), "returns")
-            returns_df.to_csv(run_dir / "returns.csv", index=True, encoding="utf-8")
-
-        self._append_index(
-            {
-                "run_id": run_id,
-                "mode": mode,
-                "status": status,
-                "created_at": created_at,
-                "strategy": strategy,
-                "symbol": symbol,
-                "timeframe": timeframe,
-                "n_trades": metadata.get("n_trades", 0),
-                "total_return_pct": metrics.get("total_return_pct"),
-                "sharpe_ratio": metrics.get("sharpe_ratio"),
-                "parent_run_id": None,
-            }
-        )
+        self._export_index_cache()
         return self._record_from_payload(
-            run_id=run_id,
-            run_dir=run_dir,
+            run_id=str(saved["run_id"]),
+            run_dir=Path(saved["artifact_path"]),
             mode=mode,
             strategy=strategy,
             symbol=symbol,
             timeframe=timeframe,
             status=status,
-            created_at=created_at,
+            created_at=str(saved["created_at"]),
         )
 
     def save_summary_run(
@@ -496,77 +530,32 @@ class ResultStore:
     ) -> ResultRecord:
         metadata_extra = dict(metadata_extra or {})
         created_at = _coerce_created_at(metadata_extra.get("created_at")).isoformat()
-        run_id = self._ensure_unique_run_id(
-            self._build_base_run_id(
-                strategy=strategy,
-                symbol=symbol,
-                timeframe=timeframe,
-                requested_run_id=requested_run_id,
-                created_at=created_at,
-            )
-        )
-        run_dir = self.runs_dir / run_id
-        run_dir.mkdir(parents=True, exist_ok=False)
-
-        metadata = {
-            "run_id": run_id,
-            "mode": mode,
-            "status": status,
-            "created_at": created_at,
-            "strategy": strategy,
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "params": params or {},
-            "period_start": metadata_extra.get("period_start"),
-            "period_end": metadata_extra.get("period_end"),
-            "seed": metadata_extra.get("seed"),
-            "data_source": metadata_extra.get("data_source", {}),
-            "engine_settings": metadata_extra.get("engine_settings", {}),
-            "extra": {
-                k: v
-                for k, v in metadata_extra.items()
-                if k not in {"data_source", "engine_settings"}
-            },
-        }
-        config_snapshot = {
-            "strategy": strategy,
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "params": params or {},
-            "config_snapshot_extra": metadata_extra.get("config_snapshot_extra", {}),
-        }
-        self._write_common_files(
-            run_dir=run_dir,
-            metadata=metadata,
+        saved = self._store_v3.save_run(
+            run_id=requested_run_id,
+            created_at=created_at,
+            mode=mode,
+            status=status,
+            strategy=strategy,
+            symbol=symbol,
+            timeframe=timeframe,
             metrics=metrics or {},
-            config_snapshot=config_snapshot,
-            diagnostics=diagnostics,
+            params=params or {},
+            equity=pd.Series([1.0], name="equity"),
+            period_start=metadata_extra.get("period_start"),
+            period_end=metadata_extra.get("period_end"),
+            duration_sec=metadata_extra.get("duration_sec"),
+            extra=self._build_v3_extra(metadata_extra=metadata_extra, diagnostics=diagnostics),
         )
-
-        self._append_index(
-            {
-                "run_id": run_id,
-                "mode": mode,
-                "status": status,
-                "created_at": created_at,
-                "strategy": strategy,
-                "symbol": symbol,
-                "timeframe": timeframe,
-                "n_trades": int((metrics or {}).get("total_trades", 0) or 0),
-                "total_return_pct": (metrics or {}).get("total_return_pct"),
-                "sharpe_ratio": (metrics or {}).get("sharpe_ratio"),
-                "parent_run_id": None,
-            }
-        )
+        self._export_index_cache()
         return self._record_from_payload(
-            run_id=run_id,
-            run_dir=run_dir,
+            run_id=str(saved["run_id"]),
+            run_dir=Path(saved["artifact_path"]),
             mode=mode,
             strategy=strategy,
             symbol=symbol,
             timeframe=timeframe,
             status=status,
-            created_at=created_at,
+            created_at=str(saved["created_at"]),
         )
 
     @staticmethod
@@ -621,15 +610,9 @@ class ResultStore:
                 diagnostics=fold,
                 status="ok",
             )
-            df = self.load_index()
-            if not df.empty and "run_id" in df.columns:
-                match = df["run_id"].astype(str) == record.run_id
-                if match.any():
-                    if "parent_run_id" in df.columns:
-                        df["parent_run_id"] = df["parent_run_id"].astype("object")
-                    df.loc[match, "parent_run_id"] = parent_run_id
-                    df.to_csv(self.index_path, index=False, encoding="utf-8")
+            self._store_v3.merge_run_extra(record.run_id, {"parent_run_id": parent_run_id})
             records.append(record)
+        self._export_index_cache()
         return records
 
     def tag_run_as_golden(
@@ -640,16 +623,6 @@ class ResultStore:
         priority: int = 1,
         notes: str | None = None,
     ) -> Path:
-        columns = ["run_id", "tagged_at", "reason", "priority", "notes"]
-        if self.golden_path.exists():
-            try:
-                df = pd.read_csv(self.golden_path)
-            except Exception as exc:
-                logger.warning("Failed to read golden runs %s: %s", self.golden_path, exc)
-                df = pd.DataFrame(columns=columns)
-        else:
-            df = pd.DataFrame(columns=columns)
-
         payload = {
             "run_id": str(run_id),
             "tagged_at": _now_utc_iso(),
@@ -657,14 +630,11 @@ class ResultStore:
             "priority": int(priority),
             "notes": notes or "",
         }
-        if "run_id" in df.columns and (df["run_id"].astype(str) == str(run_id)).any():
-            mask = df["run_id"].astype(str) == str(run_id)
-            for key, value in payload.items():
-                df.loc[mask, key] = value
-        else:
-            df = pd.concat([df, pd.DataFrame([payload])], ignore_index=True)
-        df.to_csv(self.golden_path, index=False, encoding="utf-8")
-        return self.golden_path
+        updated = self._store_v3.merge_run_extra(str(run_id), {"golden": payload})
+        if not updated:
+            logger.warning("Cannot tag missing run_id %s as golden", run_id)
+            return self._export_golden_cache()
+        return self._export_golden_cache()
 
 
 __all__ = ["ResultRecord", "ResultStore"]

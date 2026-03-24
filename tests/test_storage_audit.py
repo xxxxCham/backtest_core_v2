@@ -69,11 +69,84 @@ def test_save_result_serializes_timestamp_extra_metadata(tmp_path):
     storage.save_result(result)
 
     metadata = json.loads(
-        (tmp_path / "backtest_results" / "native_run_001" / "metadata.json").read_text(
+        (tmp_path / "backtest_results" / "runs" / "native_run_001" / "metadata.json").read_text(
             encoding="utf-8"
         )
     )
     assert metadata["period_start"] == "2026-03-07T17:35:19+00:00"
+
+
+def test_load_result_falls_back_to_legacy_root_layout(tmp_path):
+    storage_root = tmp_path / "backtest_results"
+    legacy_run_dir = storage_root / "legacy_run_001"
+    legacy_run_dir.mkdir(parents=True)
+
+    sample = _sample_native_result()
+    metadata = {
+        "run_id": "legacy_run_001",
+        "timestamp": "2026-03-07T17:35:19+00:00",
+        "strategy": sample.meta["strategy"],
+        "symbol": sample.meta["symbol"],
+        "timeframe": sample.meta["timeframe"],
+        "params": sample.meta["params"],
+        "metrics": sample.metrics,
+        "n_bars": len(sample.equity),
+        "n_trades": len(sample.trades),
+        "period_start": sample.meta["period_start"],
+        "period_end": sample.meta["period_end"],
+        "duration_sec": 0.5,
+        "mode": "builder",
+        "status": "ok",
+        "extra_metadata": {"builder_session_id": "legacy-sess"},
+    }
+    (legacy_run_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    sample.equity.to_frame(name="equity").to_parquet(legacy_run_dir / "equity.parquet")
+    sample.trades.to_parquet(legacy_run_dir / "trades.parquet", index=False)
+    sample.returns.to_frame(name="returns").to_parquet(legacy_run_dir / "returns.parquet")
+
+    storage = ResultStorage(storage_root)
+
+    loaded = storage.load_result("legacy_run_001")
+
+    assert loaded.meta["builder_session_id"] == "legacy-sess"
+    assert loaded.meta["strategy"] == sample.meta["strategy"]
+
+
+def test_migrate_legacy_layout_to_runs_dir_moves_native_runs(tmp_path):
+    storage_root = tmp_path / "backtest_results"
+    sample = _sample_native_result()
+    legacy_run_id = "legacy_migrate_001"
+    migrated_source = storage_root / legacy_run_id
+    migrated_source.mkdir(parents=True)
+    metadata = {
+        "run_id": legacy_run_id,
+        "timestamp": "2026-03-07T17:35:19+00:00",
+        "strategy": sample.meta["strategy"],
+        "symbol": sample.meta["symbol"],
+        "timeframe": sample.meta["timeframe"],
+        "params": sample.meta["params"],
+        "metrics": sample.metrics,
+        "n_bars": len(sample.equity),
+        "n_trades": len(sample.trades),
+        "period_start": sample.meta["period_start"],
+        "period_end": sample.meta["period_end"],
+        "duration_sec": 0.5,
+        "mode": "builder",
+        "status": "ok",
+        "extra_metadata": {"builder_session_id": "legacy-migrate"},
+    }
+    (migrated_source / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    sample.equity.to_frame(name="equity").to_parquet(migrated_source / "equity.parquet")
+    sample.trades.to_parquet(migrated_source / "trades.parquet", index=False)
+    sample.returns.to_frame(name="returns").to_parquet(migrated_source / "returns.parquet")
+
+    storage = ResultStorage(storage_root)
+    migrated = storage.migrate_legacy_layout_to_runs_dir()
+
+    assert migrated == 1
+    assert not migrated_source.exists()
+    assert (storage_root / "runs" / legacy_run_id / "metadata.json").exists()
+    assert storage.load_result(legacy_run_id).meta["strategy"] == sample.meta["strategy"]
 
 
 def test_audit_storage_indexes_nested_runner_manifests(tmp_path):

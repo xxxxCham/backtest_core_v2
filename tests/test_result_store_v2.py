@@ -1,19 +1,12 @@
 from __future__ import annotations
 
-import importlib.util
-import sys
+import json
 from types import SimpleNamespace
-from pathlib import Path
 
 import pandas as pd
 
-_MODULE_PATH = Path(__file__).resolve().parents[1] / "backtest" / "result_store.py"
-_SPEC = importlib.util.spec_from_file_location("backtest_result_store_v2", _MODULE_PATH)
-assert _SPEC and _SPEC.loader
-_MODULE = importlib.util.module_from_spec(_SPEC)
-sys.modules[_SPEC.name] = _MODULE
-_SPEC.loader.exec_module(_MODULE)
-ResultStore = _MODULE.ResultStore
+from backtest.result_store import ResultStore
+from backtest.store_v3 import BacktestStoreV3
 
 
 def _sample_run_result():
@@ -56,11 +49,9 @@ def test_result_store_writes_backtest_artifacts_and_index(tmp_path):
     run_dir = tmp_path / "backtest_results" / "runs" / record.run_id
 
     assert (run_dir / "metadata.json").exists()
-    assert (run_dir / "metrics.json").exists()
-    assert (run_dir / "config_snapshot.json").exists()
-    assert (run_dir / "versions.json").exists()
-    assert (run_dir / "equity.csv").exists()
-    assert (run_dir / "trades.csv").exists()
+    assert (run_dir / "equity.parquet").exists()
+    assert (run_dir / "trades.parquet").exists()
+    assert (run_dir / "returns.parquet").exists()
 
     index_df = store.load_index()
     assert not index_df.empty
@@ -127,3 +118,129 @@ def test_result_store_walk_forward_and_golden_set(tmp_path):
     manifest_path = store.tag_run_as_golden(parent.run_id, reason="stable_oos", priority=1, notes="retest engine clean")
     manifest_df = pd.read_csv(manifest_path)
     assert parent.run_id in set(manifest_df["run_id"].astype(str))
+
+
+def test_result_store_migrate_legacy_store_imports_runs_and_is_idempotent(tmp_path):
+    root = tmp_path / "backtest_results"
+    runs_dir = root / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+
+    canonical_run = runs_dir / "runner_run"
+    canonical_run.mkdir()
+    (canonical_run / "metadata.json").write_text(
+        """
+{
+  "run_id": "runner_run",
+  "created_at": "2026-03-01T00:00:00+00:00",
+  "mode": "backtest",
+  "status": "ok",
+  "strategy": "ema_cross",
+  "symbol": "BTCUSDT",
+  "timeframe": "1h"
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    (canonical_run / "metrics.json").write_text(
+        '{"total_return_pct": 12.5, "sharpe_ratio": 1.8, "max_drawdown_pct": -4.2, "total_trades": 5}',
+        encoding="utf-8",
+    )
+    (canonical_run / "config_snapshot.json").write_text('{"params": {"fast": 10, "slow": 30}}', encoding="utf-8")
+    pd.DataFrame({"equity": [10000.0, 10100.0]}).to_csv(canonical_run / "equity.csv", index=False)
+    pd.DataFrame({"pnl": [10.0]}).to_csv(canonical_run / "trades.csv", index=False)
+    pd.DataFrame({"returns": [0.0, 0.01]}).to_csv(canonical_run / "returns.csv", index=False)
+
+    legacy_run = root / "legacy_native"
+    legacy_run.mkdir()
+    (legacy_run / "metadata.json").write_text(
+        """
+{
+  "run_id": "legacy_native",
+  "timestamp": "2026-03-02T00:00:00+00:00",
+  "strategy": "rsi_reversal",
+  "symbol": "ETHUSDT",
+  "timeframe": "4h",
+  "params": {"period": 14},
+  "metrics": {
+    "total_return_pct": 3.2,
+    "sharpe_ratio": 0.9,
+    "max_drawdown_pct": -6.0,
+    "total_trades": 2
+  },
+  "n_bars": 250,
+  "n_trades": 2,
+  "period_start": "2026-01-01T00:00:00+00:00",
+  "period_end": "2026-02-01T00:00:00+00:00",
+  "duration_sec": 1.5,
+  "mode": "backtest",
+  "status": "ok",
+  "extra_metadata": {"source": "legacy"}
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    pd.DataFrame({"equity": [10000.0, 10050.0]}).to_csv(legacy_run / "equity.csv", index=False)
+    pd.DataFrame({"pnl": [5.0]}).to_csv(legacy_run / "trades.csv", index=False)
+
+    pd.DataFrame(
+        [
+            {
+                "run_id": "runner_run",
+                "mode": "backtest",
+                "status": "ok",
+                "created_at": "2026-03-01T00:00:00+00:00",
+                "strategy": "ema_cross",
+                "symbol": "BTCUSDT",
+                "timeframe": "1h",
+                "n_trades": 5,
+                "total_return_pct": 12.5,
+                "sharpe_ratio": 1.8,
+                "parent_run_id": "",
+            }
+        ]
+    ).to_csv(root / "index.csv", index=False)
+
+    (root / "index.json").write_text(
+        json.dumps(
+            {
+                "legacy_native": {
+                    "run_id": "legacy_native",
+                    "timestamp": "2026-03-02T00:00:00+00:00",
+                    "strategy": "rsi_reversal",
+                    "symbol": "ETHUSDT",
+                    "timeframe": "4h",
+                    "params": {"period": 14},
+                    "metrics": {"total_return_pct": 3.2, "sharpe_ratio": 0.9, "max_drawdown_pct": -6.0, "total_trades": 2},
+                    "n_bars": 250,
+                    "n_trades": 2,
+                    "period_start": "2026-01-01T00:00:00+00:00",
+                    "period_end": "2026-02-01T00:00:00+00:00",
+                    "duration_sec": 1.5,
+                    "mode": "backtest",
+                    "status": "ok",
+                    "extra_metadata": {"source": "legacy"}
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    store = ResultStore(root)
+    summary = store.migrate_legacy_store()
+    assert summary["migrated_runs"] == 2
+    assert summary["success_runs"] == 1
+    assert summary["partial_runs"] == 1
+
+    df = store.load_index()
+    statuses = dict(zip(df["run_id"], df["status"]))
+    assert statuses["runner_run"] == "ok"
+    assert statuses["legacy_native"] == "partial"
+
+    v3 = BacktestStoreV3(root_dir=root)
+    imported = v3.query_runs(limit=0, status=None).set_index("run_id")
+    assert imported.loc["runner_run", "params"]["fast"] == 10
+    assert imported.loc["legacy_native", "extra"]["missing_artifacts"] == ["returns"]
+
+    second_summary = store.migrate_legacy_store()
+    assert second_summary["skipped_existing"] == 2

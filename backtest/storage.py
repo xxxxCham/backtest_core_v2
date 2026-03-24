@@ -9,11 +9,11 @@ Key components: ResultStorage, StoredResultMetadata, get_storage
 
 Inputs: RunResult, run_id, auto_cleanup flag
 
-Outputs: Fichiers JSON/Parquet dans backtest_results/{run_id}/, index.json
+Outputs: Fichiers JSON/Parquet dans backtest_results/runs/{run_id}/, index.json dérivé
 
 Dependencies: pandas, pathlib, json, optionnel: pyarrow (Parquet)
 
-Conventions: Structure run_id/metadata.json + equity.parquet + trades.parquet; index.json catalogue; auto_cleanup garde N derniers runs.
+Conventions: Structure runs/run_id/metadata.json + equity.parquet + trades.parquet; fallback lecture legacy backtest_results/{run_id}/; index.json catalogue dérivé; auto_cleanup garde N derniers runs.
 
 Read-if: Persistance résultats, recherche historique, ou gestion stockage.
 
@@ -36,6 +36,15 @@ import pandas as pd
 
 from backtest.engine import RunResult
 from backtest.result_store import get_results_root_dir
+from backtest.store_metadata import (
+    build_store_row_from_metadata,
+    is_native_result_metadata,
+    is_v3_result_metadata,
+    load_metadata_payload,
+    normalize_status_for_legacy,
+    normalize_status_for_store,
+)
+from backtest.store_v3 import BacktestStoreV3
 from backtest.sweep import SweepResults
 from metrics_types import PerformanceMetricsPct, normalize_metrics
 from utils.log import get_logger
@@ -154,9 +163,7 @@ def _write_dataframe_csv(df: pd.DataFrame, path: Path) -> None:
 
 
 def _load_json_file(path: Path) -> Dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
-        payload = json.load(f)
-    return payload if isinstance(payload, dict) else {}
+    return load_metadata_payload(path)
 
 
 def _as_jsonable(value: Any) -> Any:
@@ -210,7 +217,53 @@ def _has_any_child_metadata(directory: Path) -> bool:
 
 
 def _is_native_stored_metadata(meta: Dict[str, Any]) -> bool:
-    return "timestamp" in meta and isinstance(meta.get("metrics"), dict)
+    return is_native_result_metadata(meta)
+
+
+def _is_v3_stored_metadata(meta: Dict[str, Any]) -> bool:
+    return is_v3_result_metadata(meta)
+
+
+def _status_from_store(status: Any) -> str:
+    return normalize_status_for_legacy(status)
+
+
+def _status_to_store(status: Any) -> str:
+    return normalize_status_for_store(status)
+
+
+def _stored_metadata_from_payload(meta: Dict[str, Any], run_id_hint: Optional[str] = None) -> StoredResultMetadata:
+    if not (_is_native_stored_metadata(meta) or _is_v3_stored_metadata(meta)):
+        raise ValueError("Unsupported stored metadata schema")
+
+    row = build_store_row_from_metadata(meta, run_id_hint=run_id_hint)
+    metrics = normalize_metrics(
+        {
+            "total_return_pct": row.get("total_return_pct"),
+            "sharpe_ratio": row.get("sharpe_ratio"),
+            "max_drawdown_pct": row.get("max_drawdown_pct"),
+            "total_trades": row.get("n_trades"),
+        },
+        "pct",
+    )
+    extra_metadata = dict(row.get("extra", {}) or {})
+    return StoredResultMetadata(
+        run_id=str(row.get("run_id") or run_id_hint or ""),
+        timestamp=str(row.get("created_at") or datetime.now().isoformat()),
+        strategy=str(row.get("strategy") or "unknown"),
+        symbol=str(row.get("symbol") or "unknown"),
+        timeframe=str(row.get("timeframe") or "unknown"),
+        params=dict(row.get("params", {}) or {}),
+        metrics=metrics,
+        n_bars=int(extra_metadata.get("n_bars") or 0),
+        n_trades=int(row.get("n_trades") or 0),
+        period_start=str(row.get("period_start") or ""),
+        period_end=str(row.get("period_end") or ""),
+        duration_sec=float(row.get("duration_sec") or 0.0),
+        mode=str(row.get("mode") or "backtest"),
+        status=_status_from_store(row.get("status")),
+        extra_metadata=extra_metadata,
+    )
 
 
 def _native_run_missing_files(run_dir: Path) -> List[str]:
@@ -325,11 +378,14 @@ class ResultStorage:
         _ensure_writable_tempdir()
 
         self.storage_dir = get_results_root_dir(storage_dir)
+        self.runs_dir = self.storage_dir / "runs"
         self.auto_save = auto_save
         self.compress = compress
+        self._store_v3 = BacktestStoreV3(root_dir=self.storage_dir)
 
         # Créer le répertoire si nécessaire
         self.storage_dir.mkdir(parents=True, exist_ok=True)
+        self.runs_dir.mkdir(parents=True, exist_ok=True)
 
         # Chemin de l'index
         self.index_path = self.storage_dir / "index.json"
@@ -338,6 +394,120 @@ class ResultStorage:
         self._index: Dict[str, StoredResultMetadata] = self._load_index()
 
         logger.info(f"ResultStorage initialisé: {self.storage_dir} ({len(self._index)} résultats)")
+
+    def _canonical_run_dir(self, run_id: str) -> Path:
+        return self.runs_dir / run_id
+
+    def _legacy_run_dir(self, run_id: str) -> Path:
+        return self.storage_dir / run_id
+
+    def _resolve_run_dir(self, run_id: str) -> Path:
+        canonical_dir = self._canonical_run_dir(run_id)
+        if canonical_dir.exists():
+            return canonical_dir
+
+        legacy_dir = self._legacy_run_dir(run_id)
+        if legacy_dir.exists():
+            return legacy_dir
+
+        raise FileNotFoundError(f"Run inexistant: {run_id}")
+
+    def _metadata_from_v3_row(self, row: Dict[str, Any]) -> StoredResultMetadata:
+        metrics = normalize_metrics(
+            {
+                "total_return_pct": row.get("total_return_pct"),
+                "sharpe_ratio": row.get("sharpe_ratio"),
+                "max_drawdown_pct": row.get("max_drawdown_pct"),
+                "total_trades": row.get("n_trades"),
+            },
+            "pct",
+        )
+        extra_metadata = dict(row.get("extra", {}) or {})
+        return StoredResultMetadata(
+            run_id=str(row.get("run_id", "")),
+            timestamp=str(row.get("created_at", datetime.now().isoformat())),
+            strategy=str(row.get("strategy", "unknown")),
+            symbol=str(row.get("symbol", "unknown")),
+            timeframe=str(row.get("timeframe", "unknown")),
+            params=dict(row.get("params", {}) or {}),
+            metrics=metrics,
+            n_bars=int(extra_metadata.get("n_bars") or 0),
+            n_trades=int(row.get("n_trades") or 0),
+            period_start=str(row.get("period_start") or ""),
+            period_end=str(row.get("period_end") or ""),
+            duration_sec=float(row.get("duration_sec") or 0.0),
+            mode=str(row.get("mode") or "backtest"),
+            status=_status_from_store(row.get("status")),
+            extra_metadata=extra_metadata,
+        )
+
+    def _iter_legacy_run_dirs(self):
+        for item in self.storage_dir.iterdir():
+            if not item.is_dir() or item.name in {"_catalog", "__pycache__", "runs"}:
+                continue
+            metadata_path = item / "metadata.json"
+            if not metadata_path.exists():
+                continue
+            try:
+                meta_dict = _load_json_file(metadata_path)
+            except Exception:
+                continue
+            if _is_native_stored_metadata(meta_dict):
+                yield item
+
+    def _iter_canonical_run_dirs(self):
+        if not self.runs_dir.exists():
+            return
+        for item in self.runs_dir.iterdir():
+            if not item.is_dir():
+                continue
+            metadata_path = item / "metadata.json"
+            if not metadata_path.exists():
+                continue
+            try:
+                meta_dict = _load_json_file(metadata_path)
+            except Exception:
+                continue
+            if _is_native_stored_metadata(meta_dict) or _is_v3_stored_metadata(meta_dict):
+                yield item
+
+    def _build_stored_metadata(self, run_dir: Path) -> StoredResultMetadata:
+        return _stored_metadata_from_payload(_load_json_file(run_dir / "metadata.json"), run_id_hint=run_dir.name)
+
+    def _refresh_index_cache(self) -> Dict[str, StoredResultMetadata]:
+        index: Dict[str, StoredResultMetadata] = {}
+
+        try:
+            v3_df = self._store_v3.query_runs(limit=0, status=None)
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible de lire l'index v3: {e}")
+            v3_df = pd.DataFrame()
+
+        if not v3_df.empty:
+            for row in v3_df.to_dict(orient="records"):
+                try:
+                    metadata = self._metadata_from_v3_row(row)
+                    index[metadata.run_id] = metadata
+                except Exception as e:
+                    logger.warning(f"⚠️ Ligne v3 ignorée pour {row.get('run_id')}: {e}")
+
+        for run_dir in self._iter_canonical_run_dirs() or []:
+            if run_dir.name in index:
+                continue
+            try:
+                index[run_dir.name] = self._build_stored_metadata(run_dir)
+            except Exception as e:
+                logger.warning(f"⚠️ Run canonique non indexé {run_dir.name}: {e}")
+
+        for run_dir in self._iter_legacy_run_dirs():
+            if run_dir.name in index:
+                continue
+            try:
+                index[run_dir.name] = self._build_stored_metadata(run_dir)
+            except Exception as e:
+                logger.warning(f"⚠️ Run legacy non indexé {run_dir.name}: {e}")
+
+        return index
 
     # =========================================================================
     # SAUVEGARDE
@@ -360,16 +530,7 @@ class ResultStorage:
         Returns:
             run_id du résultat sauvegardé
         """
-        # Récupérer ou générer le run_id
-        if run_id is None:
-            run_id = result.meta.get("run_id", f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-
-        # Créer le répertoire du run
-        run_dir = self.storage_dir / run_id
-        run_dir.mkdir(parents=True, exist_ok=True)
-
         try:
-            # 1. Sauvegarder les métadonnées
             metrics_pct = normalize_metrics(result.metrics, "pct")
             meta_n_bars = result.meta.get("n_bars")
             try:
@@ -386,10 +547,29 @@ class ResultStorage:
             extra_metadata = _extract_result_extra_metadata(result.meta)
             mode = str(result.meta.get("mode") or result.meta.get("origin") or "backtest")
             status = "partial" if extra_metadata.get("ui_partial_run") else str(result.meta.get("status") or "ok")
+            period_start = _as_jsonable(result.meta.get("period_start", ""))
+            period_end = _as_jsonable(result.meta.get("period_end", ""))
+            saved = self._store_v3.save_run(
+                run_id=run_id or result.meta.get("run_id"),
+                mode=mode,
+                status=_status_to_store(status),
+                strategy=result.meta.get("strategy", "unknown"),
+                symbol=result.meta.get("symbol", "unknown"),
+                timeframe=result.meta.get("timeframe", "unknown"),
+                metrics=result.metrics,
+                params=result.meta.get("params", {}),
+                equity=result.equity,
+                trades=result.trades,
+                returns=result.returns,
+                period_start=period_start,
+                period_end=period_end,
+                duration_sec=result.meta.get("duration_sec", 0.0),
+                extra={**dict(result.meta or {}), "n_bars": n_bars, **extra_metadata},
+            )
 
             metadata = StoredResultMetadata(
-                run_id=run_id,
-                timestamp=datetime.now().isoformat(),
+                run_id=saved["run_id"],
+                timestamp=str(saved.get("created_at") or datetime.now().isoformat()),
                 strategy=result.meta.get("strategy", "unknown"),
                 symbol=result.meta.get("symbol", "unknown"),
                 timeframe=result.meta.get("timeframe", "unknown"),
@@ -397,109 +577,30 @@ class ResultStorage:
                 metrics=metrics_pct,
                 n_bars=n_bars,
                 n_trades=n_trades,
-                period_start=result.meta.get("period_start", ""),
-                period_end=result.meta.get("period_end", ""),
+                period_start=str(period_start),
+                period_end=str(period_end),
                 duration_sec=result.meta.get("duration_sec", 0.0),
                 mode=mode,
-                status=status,
+                status=_status_from_store(saved.get("status")),
                 extra_metadata=extra_metadata,
             )
 
-            metadata_path = run_dir / "metadata.json"
-            _dump_json(metadata_path, metadata.to_dict())
-
-            # 2. Sauvegarder la courbe d'équité
-            equity_path = run_dir / "equity.parquet"
-            equity_df = result.equity.to_frame(name="equity")
-            _safe_to_parquet(
-                equity_df,
-                equity_path,
-                compression="snappy" if self.compress else None,
-                index=True,
-            )
-            _write_series_csv(result.equity, run_dir / "equity.csv", "equity")
-
-            # 3. Sauvegarder les trades
-            trades_path = run_dir / "trades.parquet"
-            _safe_to_parquet(
-                result.trades,
-                trades_path,
-                compression="snappy" if self.compress else None,
-                index=False,
-            )
-            _write_dataframe_csv(result.trades, run_dir / "trades.csv")
-
-            # 4. Sauvegarder les returns
-            returns_path = run_dir / "returns.parquet"
-            returns_df = result.returns.to_frame(name="returns")
-            _safe_to_parquet(
-                returns_df,
-                returns_path,
-                compression="snappy" if self.compress else None,
-                index=True,
-            )
-            _write_series_csv(result.returns, run_dir / "returns.csv", "returns")
-
-            # 4b. Rapport JSON/MD (artefacts unifiés)
-            report_payload = {
-                "run_id": run_id,
-                "timestamp": metadata.timestamp,
-                "strategy": metadata.strategy,
-                "symbol": metadata.symbol,
-                "timeframe": metadata.timeframe,
-                "params": metadata.params,
-                "metrics": metadata.to_dict().get("metrics", metrics_pct),
-                "n_bars": metadata.n_bars,
-                "n_trades": metadata.n_trades,
-                "period_start": metadata.period_start,
-                "period_end": metadata.period_end,
-                "duration_sec": metadata.duration_sec,
-                "mode": metadata.mode,
-                "status": metadata.status,
-                "extra_metadata": metadata.extra_metadata,
-            }
-            report_json_path = run_dir / "report.json"
-            _dump_json(report_json_path, report_payload)
-
-            report_md_path = run_dir / "report.md"
-            report_lines = [
-                "# Rapport Backtest",
-                "",
-                f"- Run ID: `{run_id}`",
-                f"- Stratégie: **{metadata.strategy}**",
-                f"- Symbole: **{metadata.symbol}**",
-                f"- Timeframe: **{metadata.timeframe}**",
-                f"- Période: {metadata.period_start} → {metadata.period_end}",
-                f"- Trades: {metadata.n_trades}",
-                "",
-                "## Métriques clés",
-                "",
-                f"- Return %: {metrics_pct.get('total_return_pct', 0):.2f}%",
-                f"- Sharpe: {metrics_pct.get('sharpe_ratio', 0):.2f}",
-                f"- Max DD %: {metrics_pct.get('max_drawdown_pct', metrics_pct.get('max_drawdown', 0)):.2f}%",
-            ]
-            report_md_path.write_text("\n".join(report_lines), encoding="utf-8")
-
-            # 5. Mettre à jour l'index
-            self._index[run_id] = metadata
+            self._index[metadata.run_id] = metadata
             self._save_index()
 
             # NOTE: build_catalogs() n'est PAS appelé automatiquement ici pour préserver
             # les performances. Appelez-le manuellement ou via UI si nécessaire.
 
-            logger.info(f"✅ Résultat sauvegardé: {run_id} ({metadata.strategy})")
+            logger.info(f"✅ Résultat sauvegardé: {metadata.run_id} ({metadata.strategy})")
 
             # Nettoyage optionnel
             if auto_cleanup:
                 self._cleanup_old_results()
 
-            return run_id
+            return metadata.run_id
 
         except Exception as e:
             logger.error(f"❌ Erreur lors de la sauvegarde: {e}")
-            # Nettoyer en cas d'erreur
-            if run_dir.exists():
-                shutil.rmtree(run_dir)
             raise
 
     def save_sweep_results(
@@ -575,17 +676,13 @@ class ResultStorage:
         Raises:
             FileNotFoundError: Si le run_id n'existe pas
         """
-        run_dir = self.storage_dir / run_id
-
-        if not run_dir.exists():
-            raise FileNotFoundError(f"Run inexistant: {run_id}")
+        run_dir = self._resolve_run_dir(run_id)
 
         try:
             # 1. Charger les métadonnées
             metadata_path = run_dir / "metadata.json"
-            with open(metadata_path, "r", encoding="utf-8") as f:
-                metadata_dict = json.load(f)
-            metadata = StoredResultMetadata.from_dict(metadata_dict)
+            metadata_dict = _load_json_file(metadata_path)
+            metadata = _stored_metadata_from_payload(metadata_dict, run_id_hint=run_id)
 
             # 2. Charger l'équité
             equity_path = run_dir / "equity.parquet"
@@ -624,6 +721,7 @@ class ResultStorage:
                     "strategy": metadata.strategy,
                     "symbol": metadata.symbol,
                     "timeframe": metadata.timeframe,
+                    "timestamp": metadata.timestamp,
                     "params": metadata.params,
                     "n_bars": metadata.n_bars,
                     "period_start": metadata.period_start,
@@ -826,9 +924,9 @@ class ResultStorage:
         Returns:
             True si supprimé, False sinon
         """
-        run_dir = self.storage_dir / run_id
-
-        if not run_dir.exists():
+        try:
+            run_dir = self._resolve_run_dir(run_id)
+        except FileNotFoundError:
             logger.warning(f"⚠️ Run inexistant: {run_id}")
             return False
 
@@ -898,30 +996,33 @@ class ResultStorage:
     # =========================================================================
 
     def _load_index(self) -> Dict[str, StoredResultMetadata]:
-        """Charge l'index depuis le disque."""
+        """Charge l'index dérivé depuis SQLite v3 avec fallback legacy."""
+        try:
+            index = self._refresh_index_cache()
+            if index:
+                return index
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du chargement dérivé de l'index: {e}")
+
         if not self.index_path.exists():
             return {}
 
         try:
-            with open(self.index_path, "r", encoding="utf-8") as f:
-                index_data = json.load(f)
-
-            # Reconstruire les objets StoredResultMetadata
-            index = {}
+            index_data = _load_json_file(self.index_path)
+            index: Dict[str, StoredResultMetadata] = {}
             for run_id, meta_dict in index_data.items():
                 try:
-                    index[run_id] = StoredResultMetadata.from_dict(meta_dict)
+                    metadata = _stored_metadata_from_payload(meta_dict, run_id_hint=run_id)
+                    index[run_id] = metadata
                 except Exception as e:
                     logger.warning(f"⚠️ Métadonnée corrompue pour {run_id}: {e}")
-
             return index
-
         except Exception as e:
-            logger.error(f"❌ Erreur lors du chargement de l'index: {e}")
+            logger.error(f"❌ Erreur lors du fallback index.json: {e}")
             return {}
 
     def _save_index(self) -> None:
-        """Sauvegarde l'index sur le disque."""
+        """Sauvegarde l'index dérivé sur le disque."""
         try:
             index_data = {
                 run_id: meta.to_dict()
@@ -944,28 +1045,8 @@ class ResultStorage:
         """
         logger.info("🔄 Reconstruction de l'index...")
 
-        self._index = {}
-        count = 0
-
-        for run_dir in self.storage_dir.iterdir():
-            if not run_dir.is_dir():
-                continue
-
-            metadata_path = run_dir / "metadata.json"
-            if not metadata_path.exists():
-                continue
-
-            try:
-                meta_dict = _load_json_file(metadata_path)
-                if not _is_native_stored_metadata(meta_dict):
-                    continue
-
-                metadata = StoredResultMetadata.from_dict(meta_dict)
-                self._index[metadata.run_id] = metadata
-                count += 1
-
-            except Exception as e:
-                logger.warning(f"⚠️ Impossible de charger {run_dir.name}: {e}")
+        self._index = self._refresh_index_cache()
+        count = len(self._index)
 
         self._save_index()
         logger.info(f"✅ Index reconstruit: {count} résultats")
@@ -985,8 +1066,8 @@ class ResultStorage:
         metadata_path = run_dir / "metadata.json"
         meta_dict = _load_json_file(metadata_path)
 
-        if _is_native_stored_metadata(meta_dict):
-            metadata = StoredResultMetadata.from_dict(meta_dict)
+        if _is_native_stored_metadata(meta_dict) or _is_v3_stored_metadata(meta_dict):
+            metadata = _stored_metadata_from_payload(meta_dict, run_id_hint=run_dir.name)
             issues = _native_run_missing_files(run_dir)
             return {
                 "artifact_type": "saved_run",
@@ -1120,6 +1201,7 @@ class ResultStorage:
                 "id": run_id,
                 "run_id": run_id,
                 "path": run_id,
+                "storage_path": f"runs/{run_id}",
                 "timestamp": metadata.timestamp,
                 "mode": metadata.mode,
                 "status": metadata.status,
@@ -1251,11 +1333,16 @@ class ResultStorage:
                 self._save_index()
                 fixed.append("Index.json créé")
 
-        # 2. Scanner les dossiers racine réellement gérés par ResultStorage
+        # 2. Scanner les dossiers réellement gérés par ResultStorage
         actual_dirs = set()
         container_dirs = set()
         for item in self.storage_dir.iterdir():
             if not item.is_dir() or item.name in ["_catalog", "__pycache__"]:
+                continue
+            if item.name == "runs":
+                container_dirs.add(item.name)
+                for run_dir in self._iter_canonical_run_dirs() or []:
+                    actual_dirs.add(run_dir.name)
                 continue
             metadata_path = item / "metadata.json"
             if metadata_path.exists():
@@ -1264,7 +1351,7 @@ class ResultStorage:
                 except Exception as e:
                     errors.append(f"Impossible de lire metadata.json dans {item.name}: {e}")
                     continue
-                if _is_native_stored_metadata(meta_dict):
+                if _is_native_stored_metadata(meta_dict) or _is_v3_stored_metadata(meta_dict):
                     actual_dirs.add(item.name)
                 else:
                     container_dirs.add(item.name)
@@ -1289,10 +1376,12 @@ class ResultStorage:
             if auto_fix:
                 # Tenter de charger et indexer
                 try:
-                    metadata_path = self.storage_dir / dir_name / "metadata.json"
+                    metadata_path = self._canonical_run_dir(dir_name) / "metadata.json"
+                    if not metadata_path.exists():
+                        metadata_path = self._legacy_run_dir(dir_name) / "metadata.json"
                     if metadata_path.exists():
                         meta_dict = _load_json_file(metadata_path)
-                        metadata = StoredResultMetadata.from_dict(meta_dict)
+                        metadata = _stored_metadata_from_payload(meta_dict, run_id_hint=dir_name)
                         self._index[metadata.run_id] = metadata
                         fixed.append(f"Ajouté à l'index: {dir_name}")
                     else:
@@ -1302,8 +1391,9 @@ class ResultStorage:
 
         # 4. Vérifier les fichiers requis pour chaque run indexé
         for run_id in list(self._index.keys()):
-            run_dir = self.storage_dir / run_id
-            if not run_dir.exists():
+            try:
+                run_dir = self._resolve_run_dir(run_id)
+            except FileNotFoundError:
                 continue  # Déjà traité ci-dessus
 
             missing_files = _native_run_missing_files(run_dir)
@@ -1326,6 +1416,29 @@ class ResultStorage:
             "warnings": warnings,
             "fixed": fixed,
         }
+
+    def migrate_legacy_layout_to_runs_dir(self, delete_legacy: bool = True) -> int:
+        """Migre manuellement les runs legacy racine vers le layout canonique runs/<run_id>."""
+        migrated = 0
+
+        for legacy_dir in list(self._iter_legacy_run_dirs()):
+            run_id = legacy_dir.name
+            if self._canonical_run_dir(run_id).exists():
+                logger.warning(f"⚠️ Migration ignorée, cible déjà présente: {run_id}")
+                continue
+
+            result = self.load_result(run_id)
+            self.save_result(result, run_id=run_id)
+            migrated += 1
+
+            if delete_legacy and legacy_dir.exists():
+                shutil.rmtree(legacy_dir)
+
+        if migrated:
+            self._index = self._refresh_index_cache()
+            self._save_index()
+
+        return migrated
 
 
 # =============================================================================
@@ -1361,10 +1474,20 @@ def get_storage(
     return _storage_instance
 
 
+def migrate_legacy_layout_to_runs_dir(
+    storage_dir: Optional[Union[str, Path]] = None,
+    delete_legacy: bool = True,
+) -> int:
+    """Migre manuellement les runs legacy racine vers runs/<run_id>."""
+    storage = ResultStorage(storage_dir=storage_dir)
+    return storage.migrate_legacy_layout_to_runs_dir(delete_legacy=delete_legacy)
+
+
 __all__ = [
     "ResultStorage",
     "StoredResultMetadata",
     "get_storage",
+    "migrate_legacy_layout_to_runs_dir",
 ]
 
 

@@ -159,3 +159,27 @@ def test_watchdog_script_runs_directly_from_tools_path():
 
     assert result.returncode == 0
     assert "Watchdog Streamlit autonome" in result.stdout
+
+
+def test_save_runtime_state_retries_transient_permission_error(monkeypatch, tmp_path):
+    runtime_state_path = tmp_path / "_autonomous_runtime_state.json"
+    original_write_text = Path.write_text
+    attempts = {"count": 0}
+
+    def flaky_write_text(self, data, *args, **kwargs):
+        if self.parent == runtime_state_path.parent and self.name.endswith(".tmp"):
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                raise PermissionError(13, "Permission denied", str(self))
+        return original_write_text(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", flaky_write_text)
+
+    watchdog_module._save_runtime_state(
+        runtime_state_path,
+        _runtime(active=False, manual_stop=False, pid=0),
+    )
+
+    payload = watchdog_module._load_runtime_state(runtime_state_path)
+    assert payload["active"] is False
+    assert attempts["count"] == 2

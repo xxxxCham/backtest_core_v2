@@ -14,6 +14,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,6 +33,11 @@ try:
 except Exception:
     psutil = None
     _HAS_PSUTIL = False
+
+
+_RUNTIME_STATE_LOCK = threading.Lock()
+_RUNTIME_STATE_SAVE_RETRIES = 3
+_RUNTIME_STATE_SAVE_RETRY_DELAY_SEC = 0.2
 
 
 def _parse_runtime_timestamp(value: Any) -> datetime | None:
@@ -79,9 +85,51 @@ def _save_runtime_state(path: Path, runtime: Dict[str, Any]) -> None:
         "runtime": dict(runtime),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(".tmp")
-    tmp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    tmp_path.replace(path)
+    serialized = json.dumps(payload, indent=2, ensure_ascii=False)
+    last_exc: BaseException | None = None
+
+    with _RUNTIME_STATE_LOCK:
+        for attempt in range(_RUNTIME_STATE_SAVE_RETRIES):
+            tmp_path = _build_unique_runtime_tmp_path(path)
+            try:
+                tmp_path.write_text(serialized, encoding="utf-8")
+                os.replace(tmp_path, path)
+                return
+            except Exception as exc:
+                last_exc = exc
+                _cleanup_runtime_tmp_file(tmp_path)
+                should_retry = (
+                    attempt < (_RUNTIME_STATE_SAVE_RETRIES - 1)
+                    and _is_transient_runtime_save_error(exc)
+                )
+                if should_retry:
+                    time.sleep(_RUNTIME_STATE_SAVE_RETRY_DELAY_SEC * (attempt + 1))
+                    continue
+                break
+
+    if last_exc is not None:
+        raise last_exc
+
+
+def _is_transient_runtime_save_error(exc: BaseException) -> bool:
+    if isinstance(exc, PermissionError):
+        return True
+    winerror = getattr(exc, "winerror", None)
+    errno = getattr(exc, "errno", None)
+    return winerror == 32 or errno in {13, 32}
+
+
+def _cleanup_runtime_tmp_file(tmp_path: Path) -> None:
+    try:
+        if tmp_path.exists():
+            tmp_path.unlink()
+    except Exception:
+        pass
+
+
+def _build_unique_runtime_tmp_path(target_path: Path) -> Path:
+    suffix = f".{os.getpid()}.{threading.get_ident()}.{time.time_ns()}.tmp"
+    return target_path.with_name(f"{target_path.name}{suffix}")
 
 
 def _runtime_requests_restart(runtime: Dict[str, Any]) -> bool:
@@ -122,7 +170,13 @@ def _clear_stale_runtime_claim(
     cleaned["last_error"] = ""
     cleaned["pid"] = 0
     cleaned["process_rss_mb"] = 0.0
-    _save_runtime_state(path, cleaned)
+    try:
+        _save_runtime_state(path, cleaned)
+    except Exception as exc:
+        print(
+            f"[watchdog] warning: unable to persist cleared runtime claim ({exc})",
+            flush=True,
+        )
     return cleaned
 
 
