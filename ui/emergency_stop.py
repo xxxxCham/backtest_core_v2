@@ -299,7 +299,7 @@ class EmergencyStopHandler:
             if hasattr(session_state, "is_running"):
                 session_state.is_running = False
             if hasattr(session_state, "stop_requested"):
-                session_state.stop_requested = False
+                session_state.stop_requested = True
 
             # Nettoyer TOUS les résultats et contextes précédents
             llm_keys_to_clean = [

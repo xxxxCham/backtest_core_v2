@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
+import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,9 +12,15 @@ import pandas as pd
 from streamlit.testing.v1 import AppTest
 
 import ui.builder_view as builder_view_module
+import ui.components.agent_timeline as agent_timeline_module
+import ui.components.monitor as monitor_module
+import agents.model_config as model_config_module
 import agents.ollama_manager as ollama_manager_module
 import backtest.worker as worker_module
 import streamlit as st
+import ui.emergency_stop as emergency_stop_module
+import ui.components.sweep_monitor as sweep_monitor_module
+import ui.components.validation_viewer as validation_viewer_module
 from backtest.engine import BacktestEngine
 from backtest.worker import init_worker_with_dataframe, run_backtest_worker
 import ui.helpers as helpers_module
@@ -38,6 +46,7 @@ from ui.main import (
 )
 from ui.builder_view import (
     _get_autonomous_recap_status_badge,
+    _get_builder_code_provenance_badge,
     _history_best_sharpe,
     _choose_autonomous_objective_mode,
     _classify_autonomous_failure_origin,
@@ -54,8 +63,13 @@ from ui.results_hub import (
     _add_pnl_per_day,
     _build_catalog_replay_request,
     _build_run_row_replay_request,
+    _extract_catalog_postfilter_fields,
+    _get_numeric_column_config,
     _normalize_backtest_overview_df,
+    _normalize_graduation_candidate_df,
+    _safe_read_csv,
 )
+from ui.components.strategy_catalog_panel import _catalog_postfilter_fields
 from ui.sidebar import _apply_catalog_replay_request_to_state, _apply_config_guard, _resolve_default_cpu_workers
 from ui.state import (
     BUILDER_EXECUTION_MODE_DUAL_LANE,
@@ -156,6 +170,13 @@ def _sample_sidebar_state(**overrides) -> SidebarState:
         "llm_compare_max_runs": 0,
         "llm_compare_use_preset": False,
         "llm_compare_generate_report": False,
+        "llm_inference_mode": "global",
+        "llm_inference_global_settings": {
+            "temperature": 0.7,
+            "max_tokens": 2000,
+            "num_ctx": None,
+        },
+        "llm_inference_model_profiles": {},
         "initial_capital": 10_000.0,
         "leverage": 1.0,
         "leverage_enabled": False,
@@ -300,6 +321,8 @@ def test_normalize_backtest_overview_df_aliases_prefixed_metrics():
             {
                 "metrics_total_pnl": "123.5",
                 "metrics_total_return_pct": "6.25",
+                "metrics_benchmark_return_pct": "12.0",
+                "metrics_alpha_simple_pct": "-5.75",
                 "metrics_sharpe_ratio": "1.4",
                 "metrics_max_drawdown_pct": "-9.5",
             }
@@ -310,8 +333,145 @@ def test_normalize_backtest_overview_df_aliases_prefixed_metrics():
 
     assert normalized.loc[0, "total_pnl"] == 123.5
     assert normalized.loc[0, "total_return_pct"] == 6.25
+    assert normalized.loc[0, "benchmark_return_pct"] == 12.0
+    assert normalized.loc[0, "alpha_simple_pct"] == -5.75
     assert normalized.loc[0, "sharpe_ratio"] == 1.4
     assert normalized.loc[0, "max_drawdown_pct"] == -9.5
+
+
+def test_results_hub_numeric_config_exposes_alpha_columns():
+    config = _get_numeric_column_config()
+
+    assert "benchmark_return_pct" in config
+    assert "alpha_simple_pct" in config
+    assert "metrics_benchmark_return_pct" in config
+    assert "metrics_alpha_simple_pct" in config
+
+
+def test_normalize_graduation_candidate_df_derives_benchmark_matrix_columns():
+    df = pd.DataFrame(
+        [
+            {
+                "strategy_name": "ema_cross",
+                "configured_contexts": ["BTCUSDC_1h", "ETHUSDC_1h", "BTCUSDC_4h"],
+                "loaded_contexts": ["BTCUSDC_1h", "ETHUSDC_1h"],
+                "missing_contexts": ["BTCUSDC_4h"],
+                "tested_timeframes": ["1h", "4h"],
+                "benchmark_results": {
+                    "crypto_liquid_benchmark_v1_core": {
+                        "tokens": ["BTCUSDC", "ETHUSDC"],
+                        "timeframes": ["1h", "4h"],
+                    },
+                    "crypto_liquid_benchmark_v3_balanced": {
+                        "tokens": ["BTCUSDC", "LINKUSDC"],
+                        "timeframes": ["1h", "4h"],
+                    },
+                },
+                "benchmark_consensus": {
+                    "required_benchmark_name": "crypto_liquid_benchmark_v1_core",
+                    "required_passed": True,
+                    "benchmarks_passed": ["crypto_liquid_benchmark_v1_core"],
+                    "benchmarks_total": 2,
+                    "consensus_passed": False,
+                    "contradicted": True,
+                },
+                "multi_ctx_results": {"passed_count": 2, "total_contexts": 3},
+            }
+        ]
+    )
+
+    normalized = _normalize_graduation_candidate_df(df)
+
+    assert normalized.loc[0, "configured_context_count"] == 3
+    assert normalized.loc[0, "loaded_context_count"] == 2
+    assert normalized.loc[0, "missing_context_count"] == 1
+    assert normalized.loc[0, "tested_benchmark_names"] == (
+        "crypto_liquid_benchmark_v1_core,crypto_liquid_benchmark_v3_balanced"
+    )
+    assert normalized.loc[0, "tested_tokens"] == "BTCUSDC,ETHUSDC,LINKUSDC"
+    assert normalized.loc[0, "timeframes_tested"] == "1h,4h"
+    assert normalized.loc[0, "benchmark_pass_summary"] == "1/2"
+    assert normalized.loc[0, "required_benchmark_name"] == "crypto_liquid_benchmark_v1_core"
+    assert bool(normalized.loc[0, "required_benchmark_passed"]) is True
+    assert normalized.loc[0, "contradiction_state"] == "contradicted"
+    assert normalized.loc[0, "context_pass_summary"] == "2/3"
+
+
+def test_extract_catalog_postfilter_fields_normalizes_positive_pipeline_meta():
+    entry = {
+        "meta": {
+            "positive_pipeline_phase": "P3",
+            "positive_pipeline_decision": "WATCHLIST",
+            "positive_pipeline_p2_verdict": "PASSED",
+            "positive_pipeline_p3_verdict": "PASSED",
+            "positive_pipeline_coverage_pct": 75.0,
+            "positive_pipeline_passed_count": 3,
+            "positive_pipeline_total_contexts": 4,
+            "positive_pipeline_tested_timeframes": ["1h", "4h"],
+            "positive_pipeline_benchmark_results": {
+                "crypto_liquid_benchmark_v1_core": {"tokens": ["BTCUSDC", "ETHUSDC"]},
+                "crypto_liquid_benchmark_v3_balanced": {"tokens": ["LINKUSDC"]},
+            },
+            "positive_pipeline_benchmark_consensus": {
+                "required_benchmark_name": "crypto_liquid_benchmark_v1_core",
+                "required_passed": True,
+                "benchmarks_passed": ["crypto_liquid_benchmark_v1_core"],
+                "benchmarks_total": 2,
+                "contradicted": True,
+            },
+        },
+        "last_metrics_snapshot": {},
+    }
+
+    extracted = _extract_catalog_postfilter_fields(entry)
+
+    assert extracted["phase"] == "P3"
+    assert extracted["decision"] == "WATCHLIST"
+    assert extracted["p2_verdict"] == "PASSED"
+    assert extracted["p3_verdict"] == "PASSED"
+    assert extracted["coverage_pct"] == 75.0
+    assert extracted["context_pass_summary"] == "3/4"
+    assert extracted["required_benchmark_name"] == "crypto_liquid_benchmark_v1_core"
+    assert extracted["required_benchmark_passed"] is True
+    assert extracted["benchmark_pass_summary"] == "1/2"
+    assert extracted["contradiction_state"] == "contradicted"
+    assert extracted["tested_benchmark_names"] == (
+        "crypto_liquid_benchmark_v1_core,crypto_liquid_benchmark_v3_balanced"
+    )
+    assert extracted["tested_tokens"] == "BTCUSDC,ETHUSDC,LINKUSDC"
+    assert extracted["timeframes_tested"] == "1h,4h"
+
+
+def test_catalog_postfilter_fields_supports_generic_canonical_meta():
+    entry = {
+        "meta": {
+            "phase": "P4",
+            "decision": "REVIEW",
+            "coverage_pct": 83.3,
+            "passed_context_count": 5,
+            "total_context_count": 6,
+            "benchmark_consensus": {
+                "required_benchmark_name": "crypto_liquid_benchmark_v1_core",
+                "benchmarks_passed": [
+                    "crypto_liquid_benchmark_v1_core",
+                    "crypto_liquid_benchmark_v3_balanced",
+                ],
+                "benchmarks_total": 3,
+                "consensus_passed": True,
+            },
+        },
+        "last_metrics_snapshot": {},
+    }
+
+    extracted = _catalog_postfilter_fields(entry)
+
+    assert extracted["phase"] == "P4"
+    assert extracted["decision"] == "REVIEW"
+    assert extracted["benchmark_summary"] == "2/3"
+    assert extracted["context_summary"] == "5/6"
+    assert extracted["coverage_pct"] == 83.3
+    assert extracted["required_benchmark"] == "crypto_liquid_benchmark_v1_core"
+    assert extracted["contradiction_state"] == "passed"
 
 
 def test_add_pnl_per_day_handles_string_dates_without_dt_accessor_crash():
@@ -330,6 +490,26 @@ def test_add_pnl_per_day_handles_string_dates_without_dt_accessor_crash():
 
     assert enriched.loc[0, "period_days"] == 30.0
     assert enriched.loc[0, "pnl_per_day"] == 10.0
+
+
+def test_safe_read_csv_disables_low_memory_for_mixed_catalog_columns(tmp_path, monkeypatch):
+    csv_path = tmp_path / "overview.csv"
+    csv_path.write_text("a,b\n1,x\n2,y\n", encoding="utf-8")
+
+    captured: dict[str, object] = {}
+
+    def _fake_read_csv(path, *args, **kwargs):
+        captured["path"] = path
+        captured["kwargs"] = kwargs
+        return pd.DataFrame([{"a": 1, "b": "x"}])
+
+    monkeypatch.setattr(pd, "read_csv", _fake_read_csv)
+
+    result = _safe_read_csv(csv_path)
+
+    assert not result.empty
+    assert captured["path"] == csv_path
+    assert captured["kwargs"]["low_memory"] is False
 
 
 def test_sanitize_builder_stream_text_masks_prompt_echo_in_code_phase():
@@ -511,6 +691,145 @@ def test_prepare_builder_llm_passes_normalized_host_to_ollama_manager(monkeypatc
     assert captured["host"] == "http://127.0.0.1:11434"
 
 
+def test_prepare_builder_llm_resilient_falls_back_to_lazy_load(monkeypatch):
+    calls: list[dict[str, object]] = []
+
+    def _prepare_stub(**kwargs):
+        calls.append(dict(kwargs))
+        if len(calls) == 1:
+            return (
+                False,
+                "Impossible de précharger `acereason-nemotron:14b-q5_k_m` sur http://127.0.0.1:22434. "
+                "Détail: timeout warmup (300s)",
+                "acereason-nemotron:14b-q5_k_m",
+            )
+        return (
+            True,
+            "Ollama OK (http://127.0.0.1:22434) — warmup désactivé.",
+            "acereason-nemotron:14b-q5_k_m",
+        )
+
+    monkeypatch.setattr(builder_view_module, "_prepare_builder_llm", _prepare_stub)
+
+    ok, msg, resolved_model, lazy_fallback_used = (
+        builder_view_module._prepare_builder_llm_resilient(
+            model="acereason-nemotron:14b-q5_k_m",
+            ollama_host="http://127.0.0.1:22434",
+            preload_model=True,
+            keep_alive_minutes=20,
+            auto_start_ollama=True,
+            allow_lazy_fallback=True,
+        )
+    )
+
+    assert ok is True
+    assert resolved_model == "acereason-nemotron:14b-q5_k_m"
+    assert lazy_fallback_used is True
+    assert "Fallback automatique vers un démarrage lazy-load." in msg
+    assert calls[0]["preload_model"] is True
+    assert calls[1]["preload_model"] is False
+    assert calls[1]["model"] == "acereason-nemotron:14b-q5_k_m"
+
+
+def test_role_model_config_prefers_catalog_when_ollama_is_down(monkeypatch):
+    warnings: list[str] = []
+    sleeps: list[float] = []
+
+    monkeypatch.setattr(
+        model_config_module,
+        "get_ollama_runtime_model_names",
+        lambda: ["qwen2.5:14b"],
+    )
+    monkeypatch.setattr(
+        model_config_module.httpx,
+        "get",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            ConnectionRefusedError("[WinError 10061] Connection refused")
+        ),
+    )
+    monkeypatch.setattr(model_config_module.time, "sleep", lambda seconds: sleeps.append(seconds))
+    monkeypatch.setattr(
+        model_config_module.logger,
+        "warning",
+        lambda message, *args: warnings.append(str(message)),
+    )
+
+    config = model_config_module.RoleModelConfig()
+
+    installed = config.get_installed_models()
+    assert "qwen2.5:14b" in installed
+    assert sleeps == []
+    assert warnings == []
+
+
+def test_render_builder_view_marks_and_stops_autonomous_runtime_when_startup_probe_fails(
+    monkeypatch,
+):
+    st.session_state.clear()
+    st.session_state["is_running"] = True
+    events: list[tuple[str, dict[str, object]]] = []
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_autonomous=True,
+        builder_auto_market_pick=True,
+        available_tokens=["ETHUSDC"],
+        available_timeframes=["1h"],
+        symbol="",
+        timeframe="",
+    )
+
+    monkeypatch.setattr(builder_view_module, "_inject_builder_view_styles", lambda: None)
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "warning", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "info", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "error", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module, "show_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_mark_builder_autonomous_runtime_started",
+        lambda **kwargs: events.append(("start", dict(kwargs))) or {},
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_heartbeat_builder_autonomous_runtime",
+        lambda **kwargs: events.append(("heartbeat", dict(kwargs))) or {},
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "mark_builder_autonomous_runtime_stopped",
+        lambda **kwargs: events.append(("stop", dict(kwargs))) or {},
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_find_first_valid_builder_market",
+        lambda **kwargs: ("", "", None, {"failures": []}),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_prepare_builder_llm_resilient",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("Le warmup LLM ne doit pas démarrer si la sonde marché échoue")
+        ),
+    )
+
+    builder_view_module.render_builder_view(
+        state=state,
+        df=None,
+        status_container=nullcontext(),
+    )
+
+    assert events[0][0] == "start"
+    assert any(
+        name == "heartbeat" and payload.get("last_event") == "startup_probe"
+        for name, payload in events
+    )
+    stop_payload = next(payload for name, payload in events if name == "stop")
+    assert stop_payload["reason"] == "startup_market_probe_failed"
+    assert st.session_state["is_running"] is False
+
+
 def test_cleanup_all_models_uses_ps_not_tags(monkeypatch):
     requested_urls: list[str] = []
     unloaded: list[str] = []
@@ -539,7 +858,7 @@ def test_cleanup_all_models_uses_ps_not_tags(monkeypatch):
 def test_get_available_models_for_ui_prefers_installed_models_only(monkeypatch):
     monkeypatch.setattr(
         model_selector_module,
-        "list_ollama_models",
+        "_get_installed_ollama_models",
         lambda ollama_host=None: ["qwen2.5:14b", "mistral:7b-instruct"],
     )
     monkeypatch.setattr(
@@ -560,7 +879,7 @@ def test_get_available_models_for_ui_prefers_installed_models_only(monkeypatch):
 def test_get_available_models_for_ui_can_merge_library_models_when_enabled(monkeypatch):
     monkeypatch.setattr(
         model_selector_module,
-        "list_ollama_models",
+        "_get_installed_ollama_models",
         lambda ollama_host=None: ["deepseek-r1:32b"],
     )
     monkeypatch.setattr(
@@ -577,6 +896,19 @@ def test_get_available_models_for_ui_can_merge_library_models_when_enabled(monke
     assert "deepseek-r1:32b" in models
     assert "alia-40b-local:latest" in models
     assert "qwen2.5:32b" in models
+
+
+def test_get_library_models_uses_runtime_inventory(monkeypatch):
+    monkeypatch.setattr(
+        model_selector_module,
+        "get_ollama_runtime_model_names",
+        lambda: ["qwen3-30b-a3b:q4_k_m", "deepseek-r1:32b"],
+    )
+
+    assert model_selector_module._get_library_models() == [
+        "qwen3-30b-a3b:q4_k_m",
+        "deepseek-r1:32b",
+    ]
 
 
 def test_render_model_selector_prefills_manual_value_when_inventory_empty(monkeypatch):
@@ -649,6 +981,194 @@ def test_render_model_selector_maps_current_value_to_available_option(monkeypatc
     assert selected == "alia-40b-local"
 
 
+def test_get_model_details_does_not_guess_remote_gpu_fit(monkeypatch):
+    monkeypatch.setattr(
+        model_selector_module,
+        "_fetch_ollama_details",
+        lambda ollama_host=None: {
+            "qwen2.5:14b": {
+                "size_gb": 10.0,
+                "parameters": "14B",
+                "quantization": "Q4",
+                "family": "qwen",
+            }
+        },
+    )
+    monkeypatch.setattr(model_selector_module, "get_model_by_id", lambda model_name: {})
+    monkeypatch.setattr(model_selector_module, "_get_total_vram_gb", lambda: 24.0)
+
+    remote = model_selector_module.get_model_details(
+        "qwen2.5:14b",
+        ollama_host="http://10.0.0.12:11434",
+    )
+    local = model_selector_module.get_model_details(
+        "qwen2.5:14b",
+        ollama_host="http://127.0.0.1:11434",
+    )
+
+    assert remote["fits_gpu"] is None
+    assert local["fits_gpu"] is True
+
+
+def test_get_model_details_exposes_catalog_display_name(monkeypatch):
+    monkeypatch.setattr(
+        model_selector_module,
+        "_fetch_ollama_details",
+        lambda ollama_host=None: {
+            "nemotron-cascade-14b-local": {
+                "size_gb": 14.6,
+                "parameters": "14B",
+                "quantization": "Q8_0",
+                "family": "nemotron",
+            }
+        },
+    )
+    monkeypatch.setattr(
+        model_selector_module,
+        "get_model_by_id",
+        lambda model_name: {
+            "name": "Nemotron Cascade 14B Claude Opus Distill",
+            "aliases": [
+                "nemotron-cascade-14b-thinking-claude-4.5-opus-distill.q8_0:latest"
+            ],
+        },
+    )
+
+    details = model_selector_module.get_model_details("nemotron-cascade-14b-local")
+
+    assert details["display_name"] == "Nemotron Cascade 14B Claude Opus Distill"
+    assert (
+        "nemotron-cascade-14b-thinking-claude-4.5-opus-distill.q8_0:latest"
+        in details["aliases"]
+    )
+    formatted = model_selector_module._format_model_option(
+        "nemotron-cascade-14b-local",
+        details,
+    )
+    assert "Nemotron Cascade 14B Claude Opus Distill" in formatted
+    assert "nemotron-cascade-14b-local" in formatted
+
+
+def test_model_selector_reuses_single_inventory_fetch_for_names_and_details(monkeypatch):
+    model_selector_module._ollama_inventory_cache.clear()
+    requested_urls: list[str] = []
+    current_time = {"value": 1_000.0}
+
+    class _FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "models": [
+                    {
+                        "name": "qwen3-coder:30b",
+                        "size": 10 * (1024**3),
+                        "details": {
+                            "parameter_size": "30B",
+                            "quantization_level": "Q4_K_M",
+                            "family": "qwen",
+                            "format": "gguf",
+                        },
+                    }
+                ]
+            }
+
+    def _fake_get(url, timeout=0):
+        requested_urls.append(url)
+        return _FakeResponse()
+
+    monkeypatch.setattr(model_selector_module.time, "time", lambda: current_time["value"])
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "get", _fake_get)
+
+    names = model_selector_module._get_installed_ollama_models("http://127.0.0.1:11434")
+    details = model_selector_module._fetch_ollama_details("http://127.0.0.1:11434")
+
+    assert names == ["qwen3-coder:30b"]
+    assert details["qwen3-coder:30b"]["parameters"] == "30B"
+    assert requested_urls == ["http://127.0.0.1:11434/api/tags"]
+
+    current_time["value"] += 10
+    names_again = model_selector_module._get_installed_ollama_models("http://127.0.0.1:11434")
+    details_again = model_selector_module._fetch_ollama_details("http://127.0.0.1:11434")
+
+    assert names_again == names
+    assert details_again == details
+    assert requested_urls == ["http://127.0.0.1:11434/api/tags"]
+
+
+def test_agent_timeline_round_trip_preserves_metrics_and_decisions():
+    timeline = agent_timeline_module.AgentActivityTimeline("session")
+    timeline.log_activity(
+        agent_timeline_module.AgentType.ANALYST,
+        agent_timeline_module.ActivityType.ANALYSIS,
+        "analyse",
+    )
+    timeline.log_metrics(1.2, 0.15, 0.08, 0.6)
+    timeline.log_decision(
+        agent_timeline_module.AgentType.CRITIC,
+        agent_timeline_module.DecisionType.APPROVE,
+        "ok",
+        confidence=0.9,
+    )
+
+    restored = agent_timeline_module.AgentActivityTimeline.from_dict(timeline.to_dict())
+
+    assert len(restored.activities) == 1
+    assert len(restored.metrics_history) == 1
+    assert len(restored.decisions) == 1
+
+
+def test_validation_report_without_windows_is_failed():
+    report = validation_viewer_module.ValidationReport(
+        strategy_name="demo",
+        created_at=datetime.now(),
+        windows=[],
+    )
+
+    assert report.overall_status is validation_viewer_module.ValidationStatus.FAILED
+    assert report.is_valid is False
+
+
+def test_sweep_progress_chart_uses_non_overlapping_counts():
+    stats = sweep_monitor_module.SweepStats(
+        total_combinations=10,
+        evaluated=5,
+        pruned=2,
+        errors=1,
+    )
+
+    fig = sweep_monitor_module._create_progress_chart(stats)
+
+    assert list(fig.data[0].labels) == ["Terminés", "Prunés", "Erreurs", "Restants"]
+    assert list(fig.data[0].values) == [2, 2, 1, 5]
+
+
+def test_system_monitor_reads_gpu_metrics_when_nvml_is_available(monkeypatch):
+    fake_pynvml = SimpleNamespace(
+        nvmlInit=lambda: None,
+        nvmlDeviceGetCount=lambda: 1,
+        nvmlDeviceGetHandleByIndex=lambda index: object(),
+        nvmlDeviceGetUtilizationRates=lambda handle: SimpleNamespace(gpu=55),
+        nvmlDeviceGetMemoryInfo=lambda handle: SimpleNamespace(
+            used=4 * 1024**3,
+            total=8 * 1024**3,
+        ),
+    )
+    monkeypatch.setitem(__import__("sys").modules, "pynvml", fake_pynvml)
+    monkeypatch.setattr(monitor_module, "PSUTIL_AVAILABLE", False)
+
+    monitor = monitor_module.SystemMonitor()
+    reading = monitor.get_current_reading()
+
+    assert monitor.gpu_available is True
+    assert reading.gpu_percent == 55
+    assert reading.gpu_memory_percent == 50.0
+
+
 def test_resolve_selector_current_value_prefers_widget_state_over_stale_explicit_value():
     st.session_state.clear()
     st.session_state["builder_model_select"] = "qwen2.5:32b"
@@ -661,7 +1181,7 @@ def test_resolve_selector_current_value_prefers_widget_state_over_stale_explicit
     assert selected == "qwen2.5:32b"
 
 
-def test_choose_autonomous_objective_mode_escalates_to_parametric_when_recent_runs_are_robust():
+def test_choose_autonomous_objective_mode_keeps_llm_when_recent_runs_are_robust():
     history = [
         {
             "status": "success",
@@ -684,8 +1204,8 @@ def test_choose_autonomous_objective_mode_escalates_to_parametric_when_recent_ru
 
     policy = _choose_autonomous_objective_mode("llm", history, supervisor)
 
-    assert policy["mode"] == "parametric"
-    assert policy["reason"] == "healthy_complexity_escalation"
+    assert policy["mode"] == "llm"
+    assert policy["reason"] == "requested"
 
 
 def test_choose_autonomous_objective_mode_keeps_llm_after_non_llm_incident():
@@ -706,23 +1226,23 @@ def test_choose_autonomous_objective_mode_keeps_llm_after_non_llm_incident():
     assert policy["reason"] == "llm_preferred_non_llm_incident"
 
 
-def test_get_autonomous_recap_status_badge_maps_positive_failed_run_to_success():
+def test_get_autonomous_recap_status_badge_keeps_failed_status_even_with_positive_best_return():
     badge = _get_autonomous_recap_status_badge(
         {"status": "failed", "best_return": 46.38}
     )
 
-    assert badge == {"icon": "✚", "label": "succes", "tone": "positive"}
+    assert badge == {"icon": "✖", "label": "echec", "tone": "crash"}
 
 
-def test_get_autonomous_recap_status_badge_keeps_positive_max_iterations_visible():
+def test_get_autonomous_recap_status_badge_keeps_max_iterations_status_even_with_positive_best_return():
     badge = _get_autonomous_recap_status_badge(
         {"status": "max_iterations", "best_return": 12.5}
     )
 
     assert badge == {
-        "icon": "✚",
+        "icon": "⏱️",
         "label": "max_iterations",
-        "tone": "positive",
+        "tone": "neutral",
     }
 
 
@@ -740,6 +1260,971 @@ def test_get_autonomous_recap_status_badge_marks_zero_failed_run_as_failure():
     )
 
     assert badge == {"icon": "✖", "label": "echec", "tone": "crash"}
+
+
+def test_get_autonomous_session_best_return_snapshot_prefers_max_return_iteration_over_best_score_iteration():
+    session = SimpleNamespace(
+        iterations=[
+            SimpleNamespace(
+                iteration=1,
+                backtest_result=SimpleNamespace(
+                    metrics={
+                        "total_return_pct": -18.0,
+                        "max_drawdown_pct": -12.0,
+                        "profit_factor": 0.8,
+                        "total_trades": 14,
+                        "sharpe_ratio": -0.6,
+                    }
+                ),
+            ),
+            SimpleNamespace(
+                iteration=4,
+                backtest_result=SimpleNamespace(
+                    metrics={
+                        "total_return_pct": 2673.7760798420386,
+                        "max_drawdown_pct": -91.5,
+                        "profit_factor": 1.7,
+                        "total_trades": 203,
+                        "sharpe_ratio": 0.21,
+                    }
+                ),
+            ),
+        ],
+        best_iteration=SimpleNamespace(
+            iteration=1,
+            backtest_result=SimpleNamespace(
+                metrics={
+                    "total_return_pct": -18.0,
+                    "max_drawdown_pct": -12.0,
+                    "profit_factor": 0.8,
+                    "total_trades": 14,
+                    "sharpe_ratio": -0.6,
+                }
+            ),
+        ),
+    )
+
+    snapshot = builder_view_module._get_autonomous_session_best_return_snapshot(session)
+
+    assert snapshot["best_return"] == 2673.7760798420386
+    assert snapshot["best_return_iteration"] == 4
+    assert snapshot["best_max_dd"] == -91.5
+    assert snapshot["best_trades"] == 203
+
+
+def test_get_autonomous_session_best_return_snapshot_falls_back_to_best_iteration_metrics_when_no_iteration_metrics_exist():
+    session = SimpleNamespace(
+        iterations=[SimpleNamespace(iteration=1, backtest_result=None)],
+        best_iteration=SimpleNamespace(
+            iteration=7,
+            backtest_result=SimpleNamespace(
+                metrics={
+                    "total_return_pct": 14.2,
+                    "max_drawdown_pct": -6.5,
+                    "profit_factor": 1.3,
+                    "total_trades": 28,
+                    "sharpe_ratio": 1.8,
+                }
+            ),
+        ),
+    )
+
+    snapshot = builder_view_module._get_autonomous_session_best_return_snapshot(session)
+
+    assert snapshot == {
+        "best_return": 14.2,
+        "best_return_iteration": 7,
+        "best_max_dd": -6.5,
+        "best_pf": 1.3,
+        "best_trades": 28,
+        "best_return_sharpe": 1.8,
+        "best_total_pnl": None,
+    }
+
+
+def test_recover_autonomous_history_entry_from_disk_restores_metrics_from_session_summary(tmp_path, monkeypatch):
+    sandbox_root = tmp_path / "sandbox_strategies"
+    session_dir = sandbox_root / "20260317_225241_strat_gie_sur_zkpusdc_30m_je_suis_d_sol"
+    session_dir.mkdir(parents=True)
+    (session_dir / "session_summary.json").write_text(
+        json.dumps(
+            {
+                "session_id": session_dir.name,
+                "objective": "Strategie sur ZKPUSDC 30m. Exemple objectif.",
+                "status": "running",
+                "best_sharpe": 0.0,
+                "best_score": -26.0,
+                "timeframe": "30m",
+                "n_bars": 48,
+                "date_range_start": "2026-03-16 22:52:41",
+                "date_range_end": "2026-03-17 22:52:41",
+                "initial_capital": 10000.0,
+                "last_runtime_error": "ValueError: recovered runtime",
+                "last_runtime_error_iteration": 1,
+                "last_runtime_traceback_tail": "Traceback recovered",
+                "total_iterations": 1,
+                "iterations": [
+                    {
+                        "iteration": 1,
+                        "total_pnl": 0.0,
+                        "return_pct": 0.0,
+                        "max_drawdown_pct": 0.0,
+                        "profit_factor": 1.0,
+                        "trades": 0,
+                        "sharpe": 0.0,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(builder_view_module, "SANDBOX_ROOT", sandbox_root)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_autonomous_runtime_state",
+        lambda: {"last_session_id": session_dir.name},
+    )
+
+    entry = {
+        "session_num": 907,
+        "objective": "Strategie sur ZKPUSDC 30m. Exemple objectif.",
+        "status": "error",
+        "source_label": "LLM",
+        "best_sharpe": None,
+        "best_score": None,
+        "best_return": None,
+        "best_max_dd": None,
+        "best_pf": None,
+        "best_trades": None,
+        "n_iterations": 0,
+        "session_id": "",
+    }
+
+    recovered = builder_view_module._recover_autonomous_history_entry_from_disk(entry)
+
+    assert recovered["session_id"] == session_dir.name
+    assert recovered["n_iterations"] == 1
+    assert recovered["best_return"] == 0.0
+    assert recovered["final_return"] == 0.0
+    assert recovered["final_iteration"] == 1
+    assert recovered["final_total_pnl"] == 0.0
+    assert recovered["initial_capital"] == 10000.0
+    assert recovered["n_bars"] == 48
+    assert recovered["best_score"] == -26.0
+    assert recovered["last_runtime_error"] == "ValueError: recovered runtime"
+    assert recovered["last_runtime_error_iteration"] == 1
+    assert recovered["last_runtime_traceback_tail"] == "Traceback recovered"
+    assert recovered["recovered_from_summary"] is True
+
+
+def test_render_autonomous_recap_recovers_empty_entry_from_disk(tmp_path, monkeypatch):
+    st.session_state.clear()
+    sandbox_root = tmp_path / "sandbox_strategies"
+    session_dir = sandbox_root / "20260317_225241_strat_gie_sur_zkpusdc_30m_je_suis_d_sol"
+    session_dir.mkdir(parents=True)
+    (session_dir / "session_summary.json").write_text(
+        json.dumps(
+            {
+                "session_id": session_dir.name,
+                "objective": "Strategie sur ZKPUSDC 30m. Exemple objectif.",
+                "status": "running",
+                "best_sharpe": 0.0,
+                "best_score": -26.0,
+                "timeframe": "30m",
+                "n_bars": 48,
+                "date_range_start": "2026-03-16 22:52:41",
+                "date_range_end": "2026-03-17 22:52:41",
+                "initial_capital": 10000.0,
+                "total_iterations": 1,
+                "iterations": [
+                    {
+                        "iteration": 1,
+                        "total_pnl": 0.0,
+                        "return_pct": 0.0,
+                        "max_drawdown_pct": 0.0,
+                        "profit_factor": 1.0,
+                        "trades": 0,
+                        "sharpe": 0.0,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(builder_view_module, "SANDBOX_ROOT", sandbox_root)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_autonomous_runtime_state",
+        lambda: {"last_session_id": session_dir.name},
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_save_autonomous_supervisor_state",
+        lambda *args, **kwargs: None,
+    )
+
+    rendered_html = []
+    download_payloads = []
+
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda text, **kwargs: rendered_html.append(str(text)))
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "download_button",
+        lambda *args, **kwargs: download_payloads.append(kwargs.get("data")),
+    )
+
+    class _DummyColumn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(builder_view_module.st, "columns", lambda *args, **kwargs: (_DummyColumn(), _DummyColumn()))
+    monkeypatch.setattr(builder_view_module.st, "button", lambda *args, **kwargs: False)
+
+    history = [
+        {
+            "session_num": 907,
+            "objective": "Strategie sur ZKPUSDC 30m. Exemple objectif.",
+            "source_label": "LLM",
+            "status": "error",
+            "best_score": None,
+            "best_sharpe": None,
+            "best_return": None,
+            "best_max_dd": None,
+            "best_trades": None,
+            "duration": 8.0,
+            "symbol": "ZKPUSDC",
+            "timeframe": "30m",
+            "session_id": "",
+            "n_iterations": 0,
+        }
+    ]
+
+    builder_view_module._render_autonomous_recap(history, {})
+
+    assert any("+0.00%" in html or "0.00%" in html for html in rendered_html)
+    assert any("22:52:41" in html for html in rendered_html)
+    assert download_payloads
+    assert session_dir.name in str(download_payloads[0])
+
+
+def test_recover_autonomous_history_from_disk_reports_changed_when_entry_rehydrated(tmp_path, monkeypatch):
+    sandbox_root = tmp_path / "sandbox_strategies"
+    session_dir = sandbox_root / "20260317_225241_strat_gie_sur_zkpusdc_30m_je_suis_d_sol"
+    session_dir.mkdir(parents=True)
+    (session_dir / "session_summary.json").write_text(
+        json.dumps(
+            {
+                "session_id": session_dir.name,
+                "objective": "Strategie sur ZKPUSDC 30m. Exemple objectif.",
+                "status": "running",
+                "best_sharpe": 0.0,
+                "best_score": -26.0,
+                "timeframe": "30m",
+                "n_bars": 48,
+                "date_range_start": "2026-03-16 22:52:41",
+                "date_range_end": "2026-03-17 22:52:41",
+                "initial_capital": 10000.0,
+                "total_iterations": 1,
+                "iterations": [
+                    {
+                        "iteration": 1,
+                        "total_pnl": 0.0,
+                        "return_pct": 0.0,
+                        "max_drawdown_pct": 0.0,
+                        "profit_factor": 1.0,
+                        "trades": 0,
+                        "sharpe": 0.0,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(builder_view_module, "SANDBOX_ROOT", sandbox_root)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_autonomous_runtime_state",
+        lambda: {"last_session_id": session_dir.name},
+    )
+
+    history = [
+        {
+            "session_num": 907,
+            "objective": "Strategie sur ZKPUSDC 30m. Exemple objectif.",
+            "status": "error",
+            "source_label": "LLM",
+            "best_sharpe": None,
+            "best_score": None,
+            "best_return": None,
+            "best_max_dd": None,
+            "best_pf": None,
+            "best_trades": None,
+            "n_iterations": 0,
+            "session_id": "",
+        }
+    ]
+
+    recovered_history, changed = builder_view_module._recover_autonomous_history_from_disk(history)
+
+    assert changed is True
+    assert recovered_history[0]["session_id"] == session_dir.name
+    assert recovered_history[0]["best_return"] == 0.0
+    assert recovered_history[0]["final_return"] == 0.0
+
+
+def test_render_autonomous_recap_persists_recovered_history_to_supervisor_state(tmp_path, monkeypatch):
+    st.session_state.clear()
+    sandbox_root = tmp_path / "sandbox_strategies"
+    session_dir = sandbox_root / "20260317_225241_strat_gie_sur_zkpusdc_30m_je_suis_d_sol"
+    session_dir.mkdir(parents=True)
+    (session_dir / "session_summary.json").write_text(
+        json.dumps(
+            {
+                "session_id": session_dir.name,
+                "objective": "Strategie sur ZKPUSDC 30m. Exemple objectif.",
+                "status": "running",
+                "best_sharpe": 0.0,
+                "best_score": -26.0,
+                "timeframe": "30m",
+                "n_bars": 48,
+                "date_range_start": "2026-03-16 22:52:41",
+                "date_range_end": "2026-03-17 22:52:41",
+                "initial_capital": 10000.0,
+                "total_iterations": 1,
+                "iterations": [
+                    {
+                        "iteration": 1,
+                        "total_pnl": 0.0,
+                        "return_pct": 0.0,
+                        "max_drawdown_pct": 0.0,
+                        "profit_factor": 1.0,
+                        "trades": 0,
+                        "sharpe": 0.0,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(builder_view_module, "SANDBOX_ROOT", sandbox_root)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_autonomous_runtime_state",
+        lambda: {"last_session_id": session_dir.name},
+    )
+
+    captured_save = {}
+    monkeypatch.setattr(
+        builder_view_module,
+        "_save_autonomous_supervisor_state",
+        lambda history, supervisor: captured_save.update({"history": list(history), "supervisor": dict(supervisor)}),
+    )
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "download_button", lambda *args, **kwargs: None)
+
+    class _DummyColumn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(builder_view_module.st, "columns", lambda *args, **kwargs: (_DummyColumn(), _DummyColumn()))
+    monkeypatch.setattr(builder_view_module.st, "button", lambda *args, **kwargs: False)
+
+    history = [
+        {
+            "session_num": 907,
+            "objective": "Strategie sur ZKPUSDC 30m. Exemple objectif.",
+            "source_label": "LLM",
+            "status": "error",
+            "best_score": None,
+            "best_sharpe": None,
+            "best_return": None,
+            "best_max_dd": None,
+            "best_trades": None,
+            "duration": 8.0,
+            "symbol": "ZKPUSDC",
+            "timeframe": "30m",
+            "session_id": "",
+            "n_iterations": 0,
+        }
+    ]
+
+    builder_view_module._render_autonomous_recap(history, {"consecutive_errors": 0})
+
+    assert captured_save["history"][0]["session_id"] == session_dir.name
+    assert captured_save["history"][0]["best_return"] == 0.0
+    assert captured_save["history"][0]["final_return"] == 0.0
+
+
+def test_render_autonomous_recap_uses_unique_export_key_after_history_cap(monkeypatch):
+    st.session_state.clear()
+    captured = {"captions": [], "keys": []}
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_save_autonomous_supervisor_state",
+        lambda *args, **kwargs: None,
+    )
+
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "caption",
+        lambda text: captured["captions"].append(str(text)),
+    )
+    monkeypatch.setattr(builder_view_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "download_button",
+        lambda *args, **kwargs: captured["keys"].append(kwargs.get("key")),
+    )
+    history = [
+        {
+            "session_num": session_num,
+            "objective": f"Objectif {session_num}",
+            "source_label": "LLM",
+            "status": "success",
+            "best_score": 42.0,
+            "best_sharpe": 1.25,
+            "best_return": 12.5,
+            "best_max_dd": -9.5,
+            "best_trades": 32,
+            "duration": 18.0,
+            "symbol": "BTCUSDC",
+            "timeframe": "1h",
+        }
+        for session_num in range(568, 1568)
+    ]
+
+    builder_view_module._render_autonomous_recap(history, {})
+    builder_view_module._render_autonomous_recap(history, {})
+
+    assert captured["keys"][0] != captured["keys"][1]
+    assert any(
+        "1000 sessions affichées sur 1567 exécutées" in caption
+        for caption in captured["captions"]
+    )
+
+
+def test_render_autonomous_recap_uses_unique_reset_button_key_on_multiple_renders(monkeypatch):
+    st.session_state.clear()
+    captured_keys = []
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_save_autonomous_supervisor_state",
+        lambda *args, **kwargs: None,
+    )
+
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "download_button", lambda *args, **kwargs: None)
+
+    class _DummyColumn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(builder_view_module.st, "columns", lambda *args, **kwargs: (_DummyColumn(), _DummyColumn()))
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "button",
+        lambda *args, **kwargs: captured_keys.append(kwargs.get("key")) or False,
+    )
+
+    history = [
+        {
+            "session_num": 1,
+            "objective": "Objectif 1",
+            "source_label": "LLM",
+            "status": "success",
+            "best_score": 10.0,
+            "best_sharpe": 1.0,
+            "best_return": 5.0,
+            "best_max_dd": -3.0,
+            "best_trades": 12,
+            "duration": 8.0,
+            "symbol": "EURUSDC",
+            "timeframe": "4h",
+        }
+    ]
+
+    builder_view_module._render_autonomous_recap(history, {})
+    builder_view_module._render_autonomous_recap(history, {})
+
+    assert len(captured_keys) == 2
+    assert captured_keys[0] != captured_keys[1]
+
+
+def test_render_autonomous_recap_exposes_full_objective_and_generation_legend(monkeypatch):
+    st.session_state.clear()
+    rendered_html = []
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_save_autonomous_supervisor_state",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda text, **kwargs: rendered_html.append(str(text)))
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "download_button", lambda *args, **kwargs: None)
+
+    class _DummyColumn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(builder_view_module.st, "columns", lambda *args, **kwargs: (_DummyColumn(), _DummyColumn()))
+    monkeypatch.setattr(builder_view_module.st, "button", lambda *args, **kwargs: False)
+
+    long_objective = (
+        "Objectif de strategie sur ETHUSDC 1h. Utiliser ATR, EMA et RSI pour capter "
+        "les reprises de tendance apres respiration, avec confirmation de momentum, "
+        "filtre de volatilite et gestion explicite des sorties progressives."
+    )
+    history = [
+        {
+            "session_num": 1,
+            "objective": long_objective,
+            "source_label": "Fallback simple",
+            "status": "success",
+            "best_score": 12.5,
+            "best_sharpe": 1.02,
+            "best_return": 8.0,
+            "best_max_dd": -4.0,
+            "best_trades": 16,
+            "duration": 12.0,
+            "symbol": "ETHUSDC",
+            "timeframe": "1h",
+        }
+    ]
+
+    builder_view_module._render_autonomous_recap(history, {})
+
+    joined_html = "\n".join(rendered_html)
+    assert "📜 Voir les objectifs complets" in joined_html
+    assert "Objectif complet" in joined_html
+    assert "filtre de volatilite et gestion explicite des sorties progressives." in joined_html
+    assert "builder-autonomous-recap-objective-trigger" in joined_html
+    assert "builder-autonomous-recap-objective-full" in joined_html
+    assert "Fallback simple</strong> = objectif de secours produit par le runtime" in joined_html
+
+
+def test_render_autonomous_recap_displays_persisted_session_num_instead_of_row_index(monkeypatch):
+    st.session_state.clear()
+    rendered_html = []
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_save_autonomous_supervisor_state",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda text, **kwargs: rendered_html.append(str(text)))
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "download_button", lambda *args, **kwargs: None)
+
+    class _DummyColumn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(builder_view_module.st, "columns", lambda *args, **kwargs: (_DummyColumn(), _DummyColumn()))
+    monkeypatch.setattr(builder_view_module.st, "button", lambda *args, **kwargs: False)
+
+    history = [
+        {
+            "session_num": 672,
+            "objective": "Objectif 672",
+            "source_label": "LLM",
+            "status": "failed",
+            "best_score": -26.0,
+            "best_sharpe": 0.0,
+            "best_return": 0.0,
+            "best_max_dd": 0.0,
+            "best_trades": 0,
+            "duration": 1.0,
+            "symbol": "BTCUSDC",
+            "timeframe": "1h",
+        },
+        {
+            "session_num": 700,
+            "objective": "Objectif 700",
+            "source_label": "Fallback simple",
+            "status": "max_iterations",
+            "best_score": 100.0,
+            "best_sharpe": 0.829,
+            "best_return": 12.0,
+            "best_max_dd": -8.0,
+            "best_trades": 14,
+            "duration": 5.0,
+            "symbol": "ETHUSDC",
+            "timeframe": "4h",
+        },
+    ]
+
+    builder_view_module._render_autonomous_recap(history, {})
+
+    joined_html = "\n".join(rendered_html)
+    assert "<th>Session</th>" in joined_html
+    assert "Objectif 672" in joined_html
+    assert "Objectif 700" in joined_html
+    assert ">672</td>" in joined_html
+    assert ">700</td>" in joined_html
+    assert ">1</td>" not in joined_html
+    assert ">2</td>" not in joined_html
+
+
+def test_render_autonomous_recap_prefers_final_metrics_and_session_status_over_best_return(monkeypatch):
+    st.session_state.clear()
+    rendered_html = []
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_save_autonomous_supervisor_state",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda text, **kwargs: rendered_html.append(str(text)))
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "download_button", lambda *args, **kwargs: None)
+
+    class _DummyColumn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(builder_view_module.st, "columns", lambda *args, **kwargs: (_DummyColumn(), _DummyColumn()))
+    monkeypatch.setattr(builder_view_module.st, "button", lambda *args, **kwargs: False)
+
+    history = [
+        {
+            "session_num": 1716,
+            "session_id": "20260322_175658_strat_gie_de_breakout_sur_egldusdc_5m_in",
+            "objective": "Objectif 1716",
+            "source_label": "Fallback simple",
+            "status": "failed",
+            "best_score": -26.0,
+            "best_sharpe": 0.0,
+            "best_return": 0.0,
+            "best_max_dd": 0.0,
+            "best_trades": 0,
+            "final_sharpe": -20.0,
+            "final_return": -2808.48,
+            "final_max_dd": -100.0,
+            "final_trades": 8214,
+            "duration": 7112.0,
+            "symbol": "EGLDUSDC",
+            "timeframe": "5m",
+        }
+    ]
+
+    builder_view_module._render_autonomous_recap(history, {})
+
+    joined_html = "\n".join(rendered_html)
+    assert "<th>Date/heure</th>" in joined_html
+    assert "<th>Sharpe fin.</th>" in joined_html
+    assert "<th>Return fin.</th>" in joined_html
+    assert "22/03/2026 17:56:58" in joined_html
+    assert "-2808.48%" in joined_html
+    assert "-100.00%" in joined_html
+    assert ">8214</td>" in joined_html
+    assert "− negatif" in joined_html
+
+
+def test_render_autonomous_recap_displays_gain_total_days_and_gain_per_day_for_positive_completed_runs(monkeypatch):
+    st.session_state.clear()
+    rendered_html = []
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_save_autonomous_supervisor_state",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda text, **kwargs: rendered_html.append(str(text)))
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "download_button", lambda *args, **kwargs: None)
+
+    class _DummyColumn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(builder_view_module.st, "columns", lambda *args, **kwargs: (_DummyColumn(), _DummyColumn()))
+    monkeypatch.setattr(builder_view_module.st, "button", lambda *args, **kwargs: False)
+
+    history = [
+        {
+            "session_num": 1622,
+            "session_id": "20260322_120000_strategie_positive_paxgusdc",
+            "objective": "Objectif 1622",
+            "source_label": "Fallback simple",
+            "status": "success",
+            "best_score": 100.0,
+            "best_sharpe": 1.309,
+            "best_return": 152.81,
+            "best_max_dd": -14.08,
+            "best_trades": 3,
+            "final_sharpe": 1.309,
+            "final_return": 152.81,
+            "final_total_pnl": 15281.0,
+            "final_max_dd": -14.08,
+            "final_trades": 3,
+            "initial_capital": 10000.0,
+            "n_bars": 24,
+            "date_range_start": "2026-03-01 00:00:00",
+            "date_range_end": "2026-03-13 00:00:00",
+            "duration": 903.0,
+            "symbol": "PAXGUSDC",
+            "timeframe": "1h",
+        }
+    ]
+
+    builder_view_module._render_autonomous_recap(history, {})
+
+    joined_html = "\n".join(rendered_html)
+    assert "<th>Gain total EUR</th>" in joined_html
+    assert "<th>Jours testes</th>" in joined_html
+    assert "<th>EUR/j</th>" in joined_html
+    assert "+15 281.00" in joined_html
+    assert ">12.0</td>" in joined_html
+    assert "+1 273.42" in joined_html
+
+
+def test_trim_autonomous_history_keeps_last_1000_runs():
+    trimmed = builder_view_module._trim_autonomous_history(
+        [{"session_num": session_num} for session_num in range(1, 1002)]
+    )
+
+    assert len(trimmed) == 1000
+    assert trimmed[0]["session_num"] == 2
+    assert trimmed[-1]["session_num"] == 1001
+
+
+def test_resolve_autonomous_session_counter_seed_prefers_latest_runtime_value():
+    seed = builder_view_module._resolve_autonomous_session_counter_seed(
+        [{"session_num": 567}],
+        {"last_session_num": 572},
+    )
+
+    assert seed == 572
+
+
+def test_get_builder_code_provenance_badge_detects_runtime_fix_fallback():
+    badge = _get_builder_code_provenance_badge(
+        {
+            "code": {"source": "llm"},
+            "backtest": {"runtime_fix_fallback_deterministic_used": True},
+        }
+    )
+
+    assert badge["kind"] == "runtime_fix_fallback"
+    assert "fallback" in badge["badge"].lower()
+
+
+def test_get_builder_code_provenance_badge_detects_retry_code_origin():
+    badge = _get_builder_code_provenance_badge(
+        {
+            "code": {
+                "source": "retry_code",
+                "realign_attempts": 1,
+            }
+        }
+    )
+
+    assert badge["kind"] == "retry"
+    assert "corrig" in badge["detail"].lower()
+
+
+def test_render_iteration_card_surfaces_provenance_badge(monkeypatch):
+    captured_badges = []
+
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "info", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "error", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "metric", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "write", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "code", lambda *args, **kwargs: None)
+
+    class _DummyColumn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "columns",
+        lambda count, *args, **kwargs: tuple(_DummyColumn() for _ in range(int(count))),
+    )
+    monkeypatch.setattr(builder_view_module.st, "expander", lambda *args, **kwargs: nullcontext())
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_builder_badge_row",
+        lambda labels: captured_badges.append(list(labels)),
+    )
+
+    iteration = SimpleNamespace(
+        iteration=3,
+        decision="continue",
+        error=None,
+        diagnostic_detail={},
+        phase_feedback={
+            "code": {"source": "retry_code"},
+            "backtest": {},
+        },
+        backtest_result=SimpleNamespace(
+            metrics={
+                "sharpe_ratio": 1.2,
+                "total_return_pct": 8.5,
+                "max_drawdown_pct": -4.0,
+                "total_trades": 17,
+                "win_rate_pct": 52.0,
+                "profit_factor": 1.3,
+                "sortino_ratio": 1.6,
+                "expectancy": 0.12,
+            }
+        ),
+        diagnostic_category="",
+        change_type="",
+        hypothesis="",
+        analysis="",
+        code="",
+    )
+
+    builder_view_module.render_iteration_card(iteration)
+
+    assert any(
+        any("LLM corrigé" in label for label in labels)
+        for labels in captured_badges
+    )
+
+
+def test_render_session_summary_surfaces_best_result_provenance_badge(monkeypatch):
+    captured_badges = []
+
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "info", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "metric", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "code", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "expander", lambda *args, **kwargs: nullcontext())
+
+    class _DummyColumn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "columns",
+        lambda count, *args, **kwargs: tuple(_DummyColumn() for _ in range(int(count))),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_builder_badge_row",
+        lambda labels: captured_badges.append(list(labels)),
+    )
+
+    best_iteration = SimpleNamespace(
+        backtest_result=SimpleNamespace(
+            metrics={
+                "sharpe_ratio": 1.8,
+                "total_return_pct": 14.2,
+                "max_drawdown_pct": -6.5,
+                "win_rate_pct": 48.0,
+            }
+        ),
+        hypothesis="",
+        code="",
+        phase_feedback={
+            "code": {"source": "llm"},
+            "backtest": {"runtime_fix_applied": True},
+        },
+    )
+    session = SimpleNamespace(
+        status="success",
+        best_sharpe=1.8,
+        best_score=57.0,
+        iterations=[],
+        best_iteration=best_iteration,
+        auto_reset_count=0,
+        session_dir=None,
+    )
+
+    builder_view_module.render_session_summary(session)
+
+    assert any(
+        any("Runtime-fix" in label for label in labels)
+        for labels in captured_badges
+    )
+
+
+def test_save_autonomous_supervisor_state_serializes_timestamps(monkeypatch, tmp_path):
+    state_file = tmp_path / "autonomous_supervisor_state.json"
+    monkeypatch.setattr(
+        builder_view_module,
+        "_AUTONOMOUS_SUPERVISOR_STATE_FILE",
+        state_file,
+    )
+
+    builder_view_module._save_autonomous_supervisor_state(
+        history=[
+            {
+                "session_num": 1,
+                "objective": "Test",
+                "started_at": pd.Timestamp("2026-03-14T20:29:00Z"),
+            }
+        ],
+        supervisor={
+            "last_error": pd.Timestamp("2026-03-14T20:29:00Z"),
+        },
+    )
+
+    assert state_file.exists()
+    assert "2026-03-14 20:29:00+00:00" in state_file.read_text(encoding="utf-8")
 
 
 def test_classify_autonomous_failure_origin_detects_llm_runtime():
@@ -785,7 +2270,7 @@ def test_plan_autonomous_recovery_hardens_instead_of_stopping_when_budget_exhaus
 
     assert plan["recover"] is True
     assert plan["hardened_recovery"] is True
-    assert plan["force_source_mode"] == "catalog"
+    assert plan["force_source_mode"] == "fallback"
     assert plan["disable_auto_market_pick_once"] is True
 
 
@@ -844,6 +2329,93 @@ def test_render_main_auto_resumes_builder_autonomous_when_runtime_active(monkeyp
     assert captured["autonomous"] is True
 
 
+def test_render_main_auto_resume_rehydrates_lost_builder_autonomous_flag(monkeypatch):
+    st.session_state.clear()
+    st.session_state["ohlcv_df"] = None
+    st.session_state["ohlcv_status_msg"] = ""
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_autonomous=False,
+        builder_objective="Relancer en autonomie",
+    )
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "should_auto_resume_builder_autonomous",
+        lambda current_state: (
+            True,
+            {"active": True, "manual_stop": False},
+        ),
+    )
+    def _mock_restore_builder_autonomous_ui_state_from_runtime():
+        st.session_state["builder_autonomous"] = True
+        st.session_state["_builder_autonomous_toggle_sync"] = True
+        return True, {"active": True, "manual_stop": False}
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "restore_builder_autonomous_ui_state_from_runtime",
+        _mock_restore_builder_autonomous_ui_state_from_runtime,
+    )
+    monkeypatch.setattr(main_module, "validate_all_params", lambda params: (True, []))
+    monkeypatch.setattr(main_module, "show_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        builder_view_module,
+        "render_builder_view",
+        lambda state, df, status_container: captured.update(
+            {"mode": state.optimization_mode, "autonomous": state.builder_autonomous}
+        ),
+    )
+
+    render_main(state, False, nullcontext())
+
+    assert captured["mode"] == "🏗️ Strategy Builder"
+    assert captured["autonomous"] is True
+
+
+def test_render_main_auto_resume_ignores_same_process_runtime_when_already_running(monkeypatch):
+    st.session_state.clear()
+    st.session_state["is_running"] = True
+    st.session_state["ohlcv_df"] = None
+    st.session_state["ohlcv_status_msg"] = ""
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_autonomous=True,
+        builder_objective="Ne pas relancer",
+    )
+    called = {"rendered": False, "restored": False}
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "should_auto_resume_builder_autonomous",
+        lambda current_state: (
+            True,
+            {"active": True, "manual_stop": False, "pid": os.getpid()},
+        ),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "restore_builder_autonomous_ui_state_from_runtime",
+        lambda: called.update({"restored": True}) or (True, {"active": True}),
+    )
+    monkeypatch.setattr(main_module, "validate_all_params", lambda params: (True, []))
+    monkeypatch.setattr(main_module, "show_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        builder_view_module,
+        "render_builder_view",
+        lambda state, df, status_container: called.update({"rendered": True}),
+    )
+
+    render_main(state, False, nullcontext())
+
+    assert called["restored"] is False
+    assert called["rendered"] is True
+    assert "_builder_autonomous_toggle_sync" not in st.session_state
+
+
 def test_restore_builder_autonomous_ui_state_from_runtime_rehydrates_builder_mode(
     monkeypatch,
 ):
@@ -887,7 +2459,7 @@ def test_restore_builder_autonomous_ui_state_from_runtime_rehydrates_builder_mod
     assert st.session_state["optimization_mode"] == "🏗️ Strategy Builder"
     assert st.session_state["exec_mode_selector"] == "🏗️ Strategy Builder"
     assert st.session_state["builder_autonomous"] is True
-    assert st.session_state["builder_autonomous_toggle"] is True
+    assert st.session_state["_builder_autonomous_toggle_sync"] is True
     assert (
         st.session_state["builder_execution_mode"]
         == BUILDER_EXECUTION_MODE_DUAL_LANE
@@ -906,6 +2478,50 @@ def test_restore_builder_autonomous_ui_state_from_runtime_rehydrates_builder_mod
         st.session_state["builder_dual_lane_critic_model_select"]
         == "deepseek-r1:14b"
     )
+
+
+def test_save_autonomous_runtime_state_retries_transient_windows_lock(
+    monkeypatch,
+    tmp_path,
+):
+    runtime_file = tmp_path / "_autonomous_runtime_state.json"
+    sleep_calls: list[float] = []
+    replace_calls = {"count": 0}
+    real_replace = builder_view_module.os.replace
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_AUTONOMOUS_RUNTIME_STATE_FILE",
+        runtime_file,
+    )
+    monkeypatch.setattr(
+        builder_view_module.time,
+        "sleep",
+        lambda delay: sleep_calls.append(float(delay)),
+    )
+
+    def _fake_replace(src, dst):
+        replace_calls["count"] += 1
+        if replace_calls["count"] == 1:
+            raise PermissionError(32, "used by another process")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(builder_view_module.os, "replace", _fake_replace)
+
+    builder_view_module._save_autonomous_runtime_state(
+        {
+            "active": True,
+            "manual_stop": False,
+            "last_event": "test_runtime_save",
+        }
+    )
+
+    assert runtime_file.exists()
+    payload = json.loads(runtime_file.read_text(encoding="utf-8"))
+    assert payload["runtime"]["active"] is True
+    assert payload["runtime"]["last_event"] == "test_runtime_save"
+    assert replace_calls["count"] == 2
+    assert sleep_calls == [builder_view_module._AUTONOMOUS_STATE_SAVE_RETRY_DELAY_SEC]
 
 
 def test_render_main_skips_generic_param_validation_for_builder(monkeypatch):
@@ -992,6 +2608,11 @@ def test_find_first_valid_builder_market_skips_rejected_pairs(monkeypatch):
         "_load_builder_market_data",
         _mock_load_builder_market_data,
     )
+    monkeypatch.setattr(
+        builder_view_module,
+        "validate_builder_dataset_exploitability",
+        lambda data, *, symbol, timeframe: (True, ""),
+    )
 
     symbol, timeframe, df, meta = _find_first_valid_builder_market(
         state=state,
@@ -1052,6 +2673,11 @@ def test_pick_market_for_objective_falls_back_to_valid_market(monkeypatch):
         "_load_builder_market_data",
         _mock_load_builder_market_data,
     )
+    monkeypatch.setattr(
+        builder_view_module,
+        "validate_builder_dataset_exploitability",
+        lambda data, *, symbol, timeframe: (True, ""),
+    )
 
     symbol, timeframe, df, pick = _pick_market_for_objective(
         state=state,
@@ -1065,6 +2691,147 @@ def test_pick_market_for_objective_falls_back_to_valid_market(monkeypatch):
     assert (symbol, timeframe) == ("BTCUSDC", "1h")
     assert _has_builder_market_df(df)
     assert pick["load_error"] == "📊 Erreur de données: Dataset rejeté"
+    assert pick["fallback_symbol"] == "BTCUSDC"
+    assert pick["fallback_timeframe"] == "1h"
+
+
+def test_pick_market_for_objective_rejects_loaded_dataset_below_builder_min_bars(monkeypatch):
+    st.session_state.clear()
+    sample_df = _sample_ohlcv()
+    too_short_df = _sample_ohlcv(120)
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        available_tokens=["EGLDUSDC", "BTCUSDC"],
+        available_timeframes=["4h", "1h"],
+    )
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_builder_market_candidates",
+        lambda current_state, current_symbol, current_timeframe: (
+            ["EGLDUSDC", "BTCUSDC"],
+            ["4h", "1h"],
+        ),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "recommend_market_context",
+        lambda *args, **kwargs: {
+            "symbol": "EGLDUSDC",
+            "timeframe": "4h",
+            "confidence": 0.88,
+            "reason": "Pair momentum",
+            "source": "llm",
+        },
+    )
+
+    def _mock_load_builder_market_data(*, state, symbol, timeframe, fallback_df, allow_current_fallback=True):
+        if (symbol, timeframe) == ("EGLDUSDC", "4h"):
+            return too_short_df, None, "loaded"
+        if (symbol, timeframe) == ("BTCUSDC", "1h"):
+            return sample_df, None, "loaded"
+        return None, "📁 Fichier non trouvé", "load_error"
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_builder_market_data",
+        _mock_load_builder_market_data,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "validate_builder_dataset_exploitability",
+        lambda data, *, symbol, timeframe: (
+            len(data) >= builder_view_module.MIN_BUILDER_BARS,
+            ""
+            if len(data) >= builder_view_module.MIN_BUILDER_BARS
+            else (
+                f"Dataset insuffisant pour Builder: {len(data)} barres "
+                f"(< {int(builder_view_module.MIN_BUILDER_BARS)}) sur {symbol}/{timeframe}."
+            ),
+        ),
+    )
+
+    symbol, timeframe, df, pick = _pick_market_for_objective(
+        state=state,
+        objective="Builder autonome multi-market",
+        llm_client=object(),
+        default_symbol="EGLDUSDC",
+        default_timeframe="4h",
+        fallback_df=None,
+    )
+
+    assert (symbol, timeframe) == ("BTCUSDC", "1h")
+    assert _has_builder_market_df(df)
+    assert "Dataset insuffisant pour Builder" in str(pick["load_error"])
+    assert pick["fallback_symbol"] == "BTCUSDC"
+    assert pick["fallback_timeframe"] == "1h"
+
+
+def test_pick_market_for_objective_rejects_loaded_dataset_with_major_gaps(monkeypatch):
+    st.session_state.clear()
+    sample_df = _sample_ohlcv()
+    gapped_df = pd.concat([sample_df.iloc[:160], sample_df.iloc[-160:]])
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        available_tokens=["EGLDUSDC", "BTCUSDC"],
+        available_timeframes=["4h", "1h"],
+    )
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_builder_market_candidates",
+        lambda current_state, current_symbol, current_timeframe: (
+            ["EGLDUSDC", "BTCUSDC"],
+            ["4h", "1h"],
+        ),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "recommend_market_context",
+        lambda *args, **kwargs: {
+            "symbol": "EGLDUSDC",
+            "timeframe": "4h",
+            "confidence": 0.83,
+            "reason": "Pair momentum",
+            "source": "llm",
+        },
+    )
+
+    def _mock_load_builder_market_data(*, state, symbol, timeframe, fallback_df, allow_current_fallback=True):
+        if (symbol, timeframe) == ("EGLDUSDC", "4h"):
+            return gapped_df, None, "loaded"
+        if (symbol, timeframe) == ("BTCUSDC", "1h"):
+            return sample_df, None, "loaded"
+        return None, "📁 Fichier non trouvé", "load_error"
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_builder_market_data",
+        _mock_load_builder_market_data,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "validate_builder_dataset_exploitability",
+        lambda data, *, symbol, timeframe: (
+            False,
+            f"Aucun segment continu exploitable détecté: segment max=160 barres (< {int(builder_view_module.MIN_BUILDER_BARS)}) sur {symbol}/{timeframe}.",
+        )
+        if len(data) == len(gapped_df)
+        else (True, ""),
+    )
+
+    symbol, timeframe, df, pick = _pick_market_for_objective(
+        state=state,
+        objective="Builder autonome multi-market",
+        llm_client=object(),
+        default_symbol="EGLDUSDC",
+        default_timeframe="4h",
+        fallback_df=None,
+    )
+
+    assert (symbol, timeframe) == ("BTCUSDC", "1h")
+    assert _has_builder_market_df(df)
+    assert "segment continu exploitable" in str(pick["load_error"]).lower()
     assert pick["fallback_symbol"] == "BTCUSDC"
     assert pick["fallback_timeframe"] == "1h"
 
@@ -1411,12 +3178,18 @@ def test_apply_catalog_replay_request_to_state_sets_sidebar_inputs():
 
 def test_app_exec_modes_render_without_activation_buttons():
     at = AppTest.from_file("ui/app.py")
+    at.session_state["optimization_mode"] = "Backtest Simple"
 
     at.run(timeout=60)
 
     button_labels = [button.label for button in at.button]
     assert all(not label.startswith("→ Activer") for label in button_labels)
-    assert any(radio.label == "Mode d'exécution" for radio in at.radio)
+    assert all(radio.label != "Mode d'exécution" for radio in at.radio)
+    assert "📊 Backtest Simple" in button_labels
+    assert "🔢 Grille de Paramètres" in button_labels
+    assert "🧠 Optimisation LLM" in button_labels
+    assert "🔧 Strategy Builder" in button_labels
+    assert "⬇️ Charger marché & aperçu" in button_labels
 
 
 def test_app_builder_mode_is_directly_rendered_from_mode_selection():
@@ -1431,10 +3204,8 @@ def test_app_builder_mode_is_directly_rendered_from_mode_selection():
         text_area.label == "🎯 Objectif de la stratégie"
         for text_area in at.text_area
     )
-    assert any(
-        radio.label == "Mode d'exécution" and radio.value == "🏗️ Strategy Builder"
-        for radio in at.radio
-    )
+    assert all(radio.label != "Mode d'exécution" for radio in at.radio)
+    assert at.session_state["optimization_mode"] == "🏗️ Strategy Builder"
 
 
 def test_app_builder_expert_mode_shows_only_expert_controls():
@@ -1453,14 +3224,99 @@ def test_app_builder_expert_mode_shows_only_expert_controls():
     )
     if exec_tabs_module._MULTI_LLM_AVAILABLE:
         assert any(
-            expander.label == "🧩 Configuration Expert Multi-Role"
-            for expander in at.expander
+            selectbox.label == "Profil multi-LLM"
+            for selectbox in at.selectbox
+        )
+        assert any(
+            multiselect.label == "builder_llm"
+            for multiselect in at.multiselect
         )
     assert all(selectbox.label != "Modele LLM" for selectbox in at.selectbox)
     assert all(
         selectbox.label != "Modele lane principale"
         for selectbox in at.selectbox
     )
+
+
+def test_app_builder_expert_mode_exposes_profile_save_toggle():
+    at = AppTest.from_file("ui/app.py")
+    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
+    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_EXPERT
+
+    at.run(timeout=60)
+
+    assert at.exception == []
+    if exec_tabs_module._MULTI_LLM_AVAILABLE:
+        assert any(
+            toggle.label == "💾 Enregistrer cette présélection"
+            for toggle in at.toggle
+        )
+
+
+def test_app_builder_expert_mode_applies_deferred_profile_sync_before_widget():
+    at = AppTest.from_file("ui/app.py")
+    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
+    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_EXPERT
+    at.session_state["builder_multi_llm_profile"] = "24GB_balanced"
+    at.session_state["_builder_multi_llm_profile_sync"] = "24GB_light_test"
+    at.session_state["_builder_multi_llm_profile_saved_notice"] = (
+        "Présélection `24GB_light_test` ajoutée aux profils multi-LLM."
+    )
+
+    at.run(timeout=60)
+
+    assert at.exception == []
+    assert at.session_state["builder_multi_llm_profile"] == "24GB_light_test"
+    assert at.session_state["builder_multi_llm_profile_select"] == "24GB_light_test"
+    assert "_builder_multi_llm_profile_sync" not in at.session_state
+    assert "_builder_multi_llm_profile_saved_notice" not in at.session_state
+
+
+def test_app_builder_expert_mode_loads_saved_custom_profile_into_role_multiselects():
+    at = AppTest.from_file("ui/app.py")
+    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
+    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_EXPERT
+
+    at.run(timeout=60)
+
+    profile_select = next(
+        selectbox for selectbox in at.selectbox if selectbox.label == "Profil multi-LLM"
+    )
+    profile_select.set_value("24GB_custom")
+    at.run(timeout=60)
+
+    assert at.exception == []
+    assert at.session_state["builder_multi_llm_profile_select"] == "24GB_custom"
+    assert next(m for m in at.multiselect if m.label == "idea_llm").value == [
+        "alia-40b-local",
+        "llama3.3:70b-instruct-q4_K_M",
+        "qwen3-48b-savant",
+        "gpt-oss:20b",
+        "nemotron-3-nano:30b",
+        "glm-4.7-flash-23b-local",
+    ]
+    assert next(m for m in at.multiselect if m.label == "builder_llm").value == [
+        "gpt-oss:20b",
+        "nemotron-orchestrator-8b",
+        "qwen3-vl:32b",
+    ]
+
+
+def test_app_builder_expert_mode_manual_role_multiselect_persists_selection():
+    at = AppTest.from_file("ui/app.py")
+    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
+    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_EXPERT
+
+    at.run(timeout=60)
+
+    at.session_state["builder_multi_llm_role_override_select_builder_llm"] = [
+        "gpt-oss:20b",
+        "devstral-small-2:24b",
+    ]
+    at.run(timeout=60)
+
+    assert at.exception == []
+    assert any(multiselect.label == "builder_llm" for multiselect in at.multiselect)
 
 
 def test_app_builder_mono_mode_shows_only_single_model_selector():
@@ -1566,20 +3422,18 @@ def test_summarize_topology_runtime_status_collapses_shared_endpoint():
     assert summary["control_gpu"] == "GPU-1"
 
 
-def test_app_exec_mode_radio_click_persists_mode_change():
-    at = AppTest.from_file("ui/app.py")
+def test_request_execution_mode_change_updates_session_state():
+    st.session_state.clear()
+    st.session_state["optimization_mode"] = "Grille de Paramètres"
 
-    at.run(timeout=60)
+    changed = sidebar_module.request_execution_mode_change("Backtest Simple")
 
-    mode_radio = next(radio for radio in at.radio if radio.label == "Mode d'exécution")
-    assert mode_radio.value == "Grille de Paramètres"
-
-    mode_radio.set_value("Backtest Simple")
-    at.run(timeout=60)
-
-    mode_radio = next(radio for radio in at.radio if radio.label == "Mode d'exécution")
-    assert mode_radio.value == "Backtest Simple"
-    assert at.session_state["optimization_mode"] == "Backtest Simple"
+    assert changed is True
+    assert st.session_state["optimization_mode"] == "Backtest Simple"
+    assert (
+        sidebar_module.request_execution_mode_change("Backtest Simple")
+        is False
+    )
 
 
 def test_llm_tab_renders_without_widget_session_state_exception():
@@ -1589,10 +3443,8 @@ def test_llm_tab_renders_without_widget_session_state_exception():
     at.run(timeout=60)
 
     assert at.exception == []
-    assert any(
-        radio.label == "Mode d'exécution" and radio.value == "🤖 Optimisation LLM"
-        for radio in at.radio
-    )
+    assert all(radio.label != "Mode d'exécution" for radio in at.radio)
+    assert at.session_state["optimization_mode"] == "🤖 Optimisation LLM"
 
 
 def test_topology_session_state_is_scoped_between_builder_and_llm_modes():
@@ -1664,6 +3516,92 @@ def test_sidebar_resolves_builder_topology_from_live_session_fields():
     )
     assert topology.endpoints["builder_primary"].gpu_target == "GPU-1"
     assert topology.endpoints["control"].gpu_target == "GPU-0"
+
+
+def test_execute_clean_stop_resets_runtime_and_marks_manual_stop(monkeypatch):
+    st.session_state.clear()
+    st.session_state["is_running"] = True
+    st.session_state["stop_requested"] = False
+    st.session_state["run_backtest_requested"] = True
+    st.session_state["load_ohlcv_requested"] = True
+    st.session_state["builder_autonomous"] = True
+    st.session_state["builder_session"] = {"session_id": "demo"}
+    st.session_state["builder_runtime_diagnostic"] = {"status": "running"}
+    st.session_state["builder_autonomous_history"] = [{"session_num": 1}]
+    st.session_state["builder_autonomous_supervisor"] = {"active": True}
+    st.session_state["exec_llm_ollama_host"] = "http://127.0.0.1:22434"
+
+    cleanup_calls: list[str] = []
+    hard_stop_calls: list[str] = []
+    marked_stop: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        emergency_stop_module,
+        "execute_emergency_stop",
+        lambda session_state=None: {"components_cleaned": ["session_state"], "errors": []},
+    )
+    monkeypatch.setattr(
+        ollama_manager_module,
+        "cleanup_all_models",
+        lambda ollama_host=None: cleanup_calls.append(str(ollama_host or "")) or 1,
+    )
+    monkeypatch.setattr(
+        ollama_manager_module,
+        "stop_local_ollama_server",
+        lambda ollama_host=None, force=True, timeout_s=3.0: hard_stop_calls.append(
+            str(ollama_host or "")
+        ) or 1,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "mark_builder_autonomous_runtime_stopped",
+        lambda **kwargs: marked_stop.update(kwargs),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "clear_data_cache",
+        lambda: cleanup_calls.append("data_cache"),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "safe_copy_cleanup",
+        lambda logger=None: cleanup_calls.append("copy_cleanup"),
+    )
+    monkeypatch.setattr(
+        main_module.st.cache_data,
+        "clear",
+        lambda: cleanup_calls.append("st_cache_data"),
+    )
+    monkeypatch.setattr(
+        main_module.st.cache_resource,
+        "clear",
+        lambda: cleanup_calls.append("st_cache_resource"),
+    )
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_autonomous=True,
+        builder_ollama_host="http://127.0.0.1:11434",
+    )
+
+    main_module._execute_clean_stop(state)
+
+    assert st.session_state["is_running"] is False
+    assert st.session_state["stop_requested"] is True
+    assert st.session_state["run_backtest_requested"] is False
+    assert st.session_state["load_ohlcv_requested"] is False
+    assert "builder_session" not in st.session_state
+    assert "builder_runtime_diagnostic" not in st.session_state
+    assert "builder_autonomous_history" not in st.session_state
+    assert "builder_autonomous_supervisor" not in st.session_state
+    assert marked_stop == {"reason": "manual_stop", "manual_stop": True}
+    assert "http://127.0.0.1:11434" in cleanup_calls
+    assert "http://127.0.0.1:22434" in cleanup_calls
+    assert "http://127.0.0.1:11434" in hard_stop_calls
+    assert "http://127.0.0.1:22434" in hard_stop_calls
+    assert "data_cache" in cleanup_calls
+    assert "copy_cleanup" in cleanup_calls
+    assert st.session_state["main_action_feedback"]["tone"] == "success"
 
 
 def test_resolve_builder_runtime_preferences_reads_sidebar_state_without_reset():
@@ -1810,6 +3748,71 @@ def test_resolve_builder_multi_llm_preferences_maps_dual_lane_to_four_roles():
             "risk_llm": ["deepseek-r1:14b"],
         },
     }
+
+
+def test_resolve_builder_multi_llm_preferences_uses_profile_role_pools_after_profile_switch():
+    resolved = resolve_builder_multi_llm_preferences(
+        {
+            "builder_execution_mode": BUILDER_EXECUTION_MODE_EXPERT,
+            "builder_multi_llm_profile_select": "24GB_diverse_roles",
+            "_builder_multi_llm_applied_profile": "24GB_balanced",
+            "builder_multi_llm_role_overrides": {
+                "builder_llm": ["gemma3:12b"],
+            },
+            "builder_multi_llm_role_override_select_builder_llm": [
+                "gemma3:12b",
+            ],
+        }
+    )
+
+    assert resolved["builder_multi_llm_enabled"] is True
+    assert resolved["builder_multi_llm_profile"] == "24GB_diverse_roles"
+    assert resolved["builder_multi_llm_role_overrides"]["idea_llm"][:3] == [
+        "qwen3.5:35b",
+        "gemma3:27b",
+        "mistral:22b",
+    ]
+    assert resolved["builder_multi_llm_role_overrides"]["builder_llm"] == [
+        "gpt-oss:20b",
+        "devstral-small-2:24b",
+        "qwen3-coder:30b",
+        "qwen3-30b-a3b:q4_k_m",
+    ]
+
+
+def test_sync_builder_multi_llm_profile_role_pools_hydrates_and_clears_session_state():
+    st.session_state.clear()
+
+    seeded = exec_tabs_module._sync_builder_multi_llm_profile_role_pools(
+        "24GB_diverse_roles"
+    )
+
+    assert seeded["builder_llm"] == [
+        "gpt-oss:20b",
+        "devstral-small-2:24b",
+        "qwen3-coder:30b",
+        "qwen3-30b-a3b:q4_k_m",
+    ]
+    assert st.session_state["builder_multi_llm_role_overrides"]["critic_llm"][0] == (
+        "qwen3.5:35b"
+    )
+    assert st.session_state[
+        "builder_multi_llm_role_override_select_risk_llm"
+    ] == [
+        "fin-llama-33b:33b",
+        "qwen3.5:35b",
+        "deepseek-r1:32b",
+        "deepseek-r1-distill:14b",
+        "qwq:32b",
+    ]
+
+    cleared = exec_tabs_module._sync_builder_multi_llm_profile_role_pools(
+        "24GB_balanced"
+    )
+
+    assert cleared == {}
+    assert st.session_state["builder_multi_llm_role_overrides"] == {}
+    assert st.session_state["builder_multi_llm_role_override_select_builder_llm"] == []
 
 
 def test_pick_builder_session_role_overrides_selects_one_model_per_role(monkeypatch):

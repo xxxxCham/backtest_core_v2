@@ -111,8 +111,14 @@ class SystemMonitor:
         self._gpu_available = self._check_gpu()
 
     def _check_gpu(self) -> bool:
-        """Monitoring GPU désactivé (CPU-only)."""
-        return False
+        """Retourne True si NVML détecte au moins un GPU accessible."""
+        try:
+            import pynvml
+
+            pynvml.nvmlInit()
+            return pynvml.nvmlDeviceGetCount() > 0
+        except Exception:
+            return False
 
     def get_current_reading(self) -> ResourceReading:
         """

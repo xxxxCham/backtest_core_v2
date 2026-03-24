@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from backtest.result_store import get_saved_runs_dir
 from utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -118,7 +119,7 @@ class RunTracker:
         Args:
             cache_file: Fichier JSON pour persister les runs (défaut: runs/.run_cache.json)
         """
-        self.cache_file = cache_file or Path("runs") / ".run_cache.json"
+        self.cache_file = cache_file or (get_saved_runs_dir() / ".run_cache.json")
         self.runs: List[RunSignature] = []
 
         # Charger le cache existant

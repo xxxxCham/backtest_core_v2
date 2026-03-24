@@ -7,6 +7,7 @@ import pstats
 from pstats import SortKey
 
 from backtest.engine import BacktestEngine
+from backtest.result_store import get_profiling_results_dir
 from data.loader import load_ohlcv
 
 
@@ -137,9 +138,12 @@ def profile_sweep():
     print(f"Débit: {len(param_combos)/total_time:.1f} backtests/sec")
 
     # Sauvegarder le profiling complet
-    profiler.dump_stats("profiling_results/sweep_profile.prof")
-    print("\n✓ Profiling complet sauvegardé: profiling_results/sweep_profile.prof")
-    print("  Analysez avec: python -m pstats profiling_results/sweep_profile.prof")
+    profiling_dir = get_profiling_results_dir()
+    profiling_dir.mkdir(parents=True, exist_ok=True)
+    profile_path = profiling_dir / "sweep_profile.prof"
+    profiler.dump_stats(str(profile_path))
+    print(f"\n✓ Profiling complet sauvegardé: {profile_path}")
+    print(f"  Analysez avec: python -m pstats {profile_path}")
 
 
 if __name__ == "__main__":

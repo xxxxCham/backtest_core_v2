@@ -8,6 +8,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
+from agents.llm_config import (
+    apply_llm_inference_settings,
+    normalize_llm_inference_settings,
+    normalize_llm_model_inference_profiles,
+)
 from agents.llm_client import LLMConfig, LLMMessage, LLMProvider, create_llm_client
 from agents.llm_router import (
     LLMTopologyConfig,
@@ -156,6 +161,86 @@ def _compact_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
 
 def _json_clone(payload: Dict[str, Any]) -> Dict[str, Any]:
     return json.loads(json.dumps(payload, ensure_ascii=False, default=str))
+
+
+def _dedupe_texts(values: Iterable[Any], *, limit: int = 6) -> List[str]:
+    items: List[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        normalized = sanitize_objective_text(raw)
+        if not normalized:
+            continue
+        key = normalized.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append(normalized)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def _compact_history_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    shared_memory = entry.get("multi_llm_shared_memory", {}) or {}
+    critic_context = shared_memory.get("critic_context", {}) or {}
+    risk_context = shared_memory.get("risk_context", {}) or {}
+    router_context = shared_memory.get("router_context", {}) or {}
+    router_decision = entry.get("multi_llm_router_decision", {}) or {}
+    return {
+        "session_num": int(entry.get("session_num", 0) or 0),
+        "objective": sanitize_objective_text(entry.get("objective")),
+        "symbol": str(entry.get("symbol", "") or "").strip(),
+        "timeframe": str(entry.get("timeframe", "") or "").strip(),
+        "status": str(entry.get("status", "") or "").strip(),
+        "best_sharpe": entry.get("best_sharpe"),
+        "best_return": entry.get("best_return"),
+        "best_pf": entry.get("best_pf"),
+        "best_trades": entry.get("best_trades"),
+        "source_label": str(entry.get("source_label", "") or "").strip(),
+        "builder_model": str(entry.get("multi_llm_builder_model", "") or "").strip(),
+        "critic_verdict": str(critic_context.get("verdict", "") or "").strip(),
+        "next_focus": _normalize_text_list(critic_context.get("next_focus")),
+        "risk_level": str(risk_context.get("risk_level", "") or "").strip(),
+        "key_risks": _normalize_text_list(risk_context.get("key_risks")),
+        "router_action": str(
+            router_context.get("action")
+            or router_decision.get("action")
+            or ""
+        ).strip(),
+        "router_reason": sanitize_objective_text(
+            router_context.get("reason")
+            or router_decision.get("reason")
+        ),
+    }
+
+
+def _build_continuity_context(history_tail: List[Dict[str, Any]]) -> Dict[str, Any]:
+    recent_entries = [
+        _compact_history_entry(item)
+        for item in list(history_tail or [])[-4:]
+        if isinstance(item, dict)
+    ]
+    best_recent = max(
+        recent_entries,
+        key=lambda item: float(item.get("best_sharpe") or float("-inf")),
+        default={},
+    )
+    carry_over_focus = _dedupe_texts(
+        focus
+        for entry in recent_entries
+        for focus in (entry.get("next_focus") or [])
+    )
+    recurring_risks = _dedupe_texts(
+        risk
+        for entry in recent_entries
+        for risk in (entry.get("key_risks") or [])
+    )
+    return {
+        "recent_sessions": recent_entries,
+        "best_recent_session": dict(best_recent) if best_recent else {},
+        "carry_over_focus": carry_over_focus,
+        "recurring_risks": recurring_risks,
+    }
 
 
 @dataclass
@@ -345,10 +430,18 @@ class MultiLLMSessionManager:
         config_path: Optional[str] = None,
         role_overrides: Optional[Dict[str, str]] = None,
         llm_topology_config: Optional[LLMTopologyConfig | Dict[str, Any]] = None,
+        inference_global_settings: Optional[Dict[str, Any]] = None,
+        inference_model_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
         require_live_ollama: bool = True,
         client_factory: Callable[[LLMConfig], Any] = create_llm_client,
     ) -> None:
         self.base_llm_config = base_llm_config or LLMConfig()
+        self.inference_global_settings = normalize_llm_inference_settings(
+            inference_global_settings
+        )
+        self.inference_model_profiles = normalize_llm_model_inference_profiles(
+            inference_model_profiles
+        )
         if isinstance(llm_topology_config, dict):
             llm_topology_config = LLMTopologyConfig.from_dict(llm_topology_config)
         self.llm_topology_config = llm_topology_config or build_single_host_topology(
@@ -388,6 +481,12 @@ class MultiLLMSessionManager:
 
     def _new_shared_memory(self) -> Dict[str, Any]:
         return {
+            "continuity_context": {
+                "recent_sessions": [],
+                "best_recent_session": {},
+                "carry_over_focus": [],
+                "recurring_risks": [],
+            },
             "objective_context": {
                 "objective": "",
                 "rationale": "",
@@ -436,6 +535,15 @@ class MultiLLMSessionManager:
             "symbol": str(symbol or "").strip(),
             "timeframe": str(timeframe or "").strip(),
         }
+
+    def _seed_shared_memory_from_history(
+        self,
+        *,
+        history_tail: List[Dict[str, Any]],
+    ) -> None:
+        self._shared_memory["continuity_context"] = _build_continuity_context(
+            history_tail
+        )
 
     def _seed_shared_memory_from_idea(
         self,
@@ -907,6 +1015,12 @@ class MultiLLMSessionManager:
             max_retries=self.base_llm_config.max_retries,
             retry_delay_seconds=self.base_llm_config.retry_delay_seconds,
         )
+        config = apply_llm_inference_settings(
+            config,
+            model_name=assignment.resolved_model,
+            global_settings=self.inference_global_settings,
+            model_profiles=self.inference_model_profiles,
+        )
         return self.client_factory(config)
 
     def _call_role(
@@ -1025,6 +1139,8 @@ class MultiLLMSessionManager:
         timeframes_list = list(timeframes)
         available_indicators_list = list(available_indicators)
         self.reset_shared_memory()
+        self._seed_shared_memory_from_history(history_tail=history_tail)
+        continuity_context = self.shared_memory_snapshot().get("continuity_context", {})
         fallback = sanitize_objective_text(
             fallback_objective
             or generate_random_objective(
@@ -1041,6 +1157,7 @@ class MultiLLMSessionManager:
                 timeframes=timeframes_list,
                 available_indicators=available_indicators_list,
                 history_tail=history_tail,
+                continuity_context=continuity_context,
             ),
         )
         content = role_output.content.strip()
@@ -1085,6 +1202,7 @@ class MultiLLMSessionManager:
                 objective=objective,
                 session_summary=summary,
                 shared_memory=shared_memory,
+                continuity_context=shared_memory.get("continuity_context", {}),
             ),
         )
         risk_output = self._call_role(
@@ -1094,6 +1212,7 @@ class MultiLLMSessionManager:
                 objective=objective,
                 session_summary=summary,
                 shared_memory=shared_memory,
+                continuity_context=shared_memory.get("continuity_context", {}),
             ),
         )
         critic_payload = _normalize_review_payload(critic_output)

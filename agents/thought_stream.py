@@ -7,7 +7,7 @@ Purpose: Flux de réflexion en temps réel du Strategy Builder.
 Role in pipeline: observabilité
 
 Usage (terminal PowerShell) :
-    Get-Content sandbox_strategies\\_live_thoughts.md -Wait -Tail 50
+    Get-Content "$env:BACKTEST_ARTIFACTS_DIR\\_builder_sessions\\_live_thoughts.md" -Wait -Tail 50
 
 Skip-if: Vous n'utilisez pas le Strategy Builder.
 """
@@ -18,8 +18,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from backtest.result_store import get_builder_sessions_dir
+
 # Fichier fixe — toujours le même pour la session courante
-STREAM_FILE = Path(__file__).resolve().parent.parent / "sandbox_strategies" / "_live_thoughts.md"
+STREAM_FILE = get_builder_sessions_dir() / "_live_thoughts.md"
 
 
 class ThoughtStream:
@@ -255,8 +257,12 @@ class ThoughtStream:
             f.write(text)
             f.flush()
 
-    def _append(self, text: str) -> None:
+    def append(self, text: str) -> None:
         """Ajoute un bloc de texte au flux existant."""
+        self._append(text)
+
+    def _append(self, text: str) -> None:
+        """Internal — use append() instead."""
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(text)
             f.flush()

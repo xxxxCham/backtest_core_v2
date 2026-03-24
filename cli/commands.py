@@ -2060,9 +2060,9 @@ def _cmd_optuna_single(args, strategy_name: str) -> int:
                     print(f"  {Colors.BOLD}Top {min(args.top, len(top_df))} configurations:{Colors.RESET}")
                     # Récupérer les noms des paramètres (excluant 'trial' et 'value')
                     param_cols = [c for c in top_df.columns if c not in ['trial', 'value']]
-                    for idx, (_, row) in enumerate(top_df.head(args.top).iterrows()):
-                        params = {col: row[col] for col in param_cols if col in row}
-                        val = row.get('value', float('nan'))
+                    for idx, row_dict in enumerate(top_df.head(args.top).to_dict(orient="records")):
+                        params = {col: row_dict[col] for col in param_cols if col in row_dict}
+                        val = row_dict.get('value', float('nan'))
                         val_str = f"{val:.4f}" if np.isfinite(val) else "N/A"
                         print(f"    #{idx+1}: {params} → {val_str}")
 
@@ -3480,16 +3480,16 @@ def _parse_analyze_input(path: Path) -> list[dict]:
     param_cols = [c for c in df.columns if c.startswith("param_")]
     metric_cols = [c for c in df.columns if c not in reserved and c not in param_cols]
 
-    for idx, row in df.iterrows():
-        params = {c.replace("param_", "", 1): _to_py(row[c]) for c in param_cols if pd.notna(row[c])}
-        metrics = {c: _to_py(row[c]) for c in metric_cols if pd.notna(row[c])}
-        if "score" in df.columns and pd.notna(row.get("score")):
-            metrics["score"] = _to_py(row["score"])
+    for idx, row_dict in enumerate(df.to_dict(orient="records")):
+        params = {c.replace("param_", "", 1): _to_py(row_dict[c]) for c in param_cols if pd.notna(row_dict[c])}
+        metrics = {c: _to_py(row_dict[c]) for c in metric_cols if pd.notna(row_dict[c])}
+        if "score" in df.columns and pd.notna(row_dict.get("score")):
+            metrics["score"] = _to_py(row_dict["score"])
 
         records.append(
             {
                 "run_id": f"{path.stem}#{idx+1}",
-                "strategy": _to_py(row["strategy"]) if "strategy" in df.columns else "N/A",
+                "strategy": _to_py(row_dict["strategy"]) if "strategy" in df.columns else "N/A",
                 "symbol": "N/A",
                 "timeframe": "N/A",
                 "period_start": "N/A",
@@ -3544,32 +3544,32 @@ def cmd_analyze(args) -> int:
         records = []
         if index_parquet.exists():
             idx_df = pd.read_parquet(index_parquet)
-            for _, row in idx_df.iterrows():
+            for row_dict in idx_df.to_dict(orient="records"):
                 records.append(
                     {
-                        "run_id": str(row.get("run_id", "N/A")),
-                        "strategy": str(row.get("strategy", "N/A")),
-                        "symbol": str(row.get("symbol", "N/A")),
-                        "timeframe": str(row.get("timeframe", "N/A")),
+                        "run_id": str(row_dict.get("run_id", "N/A")),
+                        "strategy": str(row_dict.get("strategy", "N/A")),
+                        "symbol": str(row_dict.get("symbol", "N/A")),
+                        "timeframe": str(row_dict.get("timeframe", "N/A")),
                         "period_start": "N/A",
                         "period_end": "N/A",
                         "params": {},
-                        "metrics": _metrics_from_index_row(row),
+                        "metrics": _metrics_from_index_row(row_dict),
                     }
                 )
         elif index_csv.exists():
             idx_df = pd.read_csv(index_csv)
-            for _, row in idx_df.iterrows():
+            for row_dict in idx_df.to_dict(orient="records"):
                 records.append(
                     {
-                        "run_id": str(row.get("run_id", "N/A")),
-                        "strategy": str(row.get("strategy", "N/A")),
-                        "symbol": str(row.get("symbol", "N/A")),
-                        "timeframe": str(row.get("timeframe", "N/A")),
+                        "run_id": str(row_dict.get("run_id", "N/A")),
+                        "strategy": str(row_dict.get("strategy", "N/A")),
+                        "symbol": str(row_dict.get("symbol", "N/A")),
+                        "timeframe": str(row_dict.get("timeframe", "N/A")),
                         "period_start": "N/A",
                         "period_end": "N/A",
                         "params": {},
-                        "metrics": _metrics_from_index_row(row),
+                        "metrics": _metrics_from_index_row(row_dict),
                     }
                 )
         elif index_json.exists():

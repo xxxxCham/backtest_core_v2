@@ -11,12 +11,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Tuple
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from backtest.result_store import get_builder_sessions_dir
 
 try:
     import psutil
@@ -184,6 +191,73 @@ def _terminate_process(proc: subprocess.Popen[Any], *, timeout_sec: float = 15.0
         pass
 
 
+def _port_is_available(port: int, *, host: str = "127.0.0.1") -> bool:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((host, int(port)))
+            return True
+    except OSError:
+        return False
+
+
+def _port_owner_info(port: int) -> Dict[str, Any]:
+    if not _HAS_PSUTIL:
+        return {}
+    try:
+        for conn in psutil.net_connections(kind="inet"):
+            laddr = getattr(conn, "laddr", None)
+            if not laddr or getattr(laddr, "port", None) != int(port):
+                continue
+            pid = int(getattr(conn, "pid", 0) or 0)
+            if pid <= 0:
+                return {}
+            proc = psutil.Process(pid)
+            return {
+                "pid": pid,
+                "name": str(proc.name() or ""),
+                "cmdline": list(proc.cmdline() or []),
+            }
+    except Exception:
+        return {}
+    return {}
+
+
+def _is_same_streamlit_app_owner(owner: Dict[str, Any], root: Path) -> bool:
+    if not owner:
+        return False
+    cmdline = " ".join(str(part or "") for part in owner.get("cmdline", []))
+    lowered = cmdline.lower()
+    if "streamlit" not in lowered:
+        return False
+    if "ui/app.py" in lowered or "ui\\app.py" in lowered:
+        return True
+    root_text = str(root).replace("\\", "/").lower()
+    return root_text in lowered
+
+
+def _resolve_launch_plan(
+    root: Path,
+    requested_port: int,
+    *,
+    max_port_tries: int = 20,
+) -> Tuple[str, int, str]:
+    if _port_is_available(requested_port):
+        return "launch", requested_port, ""
+
+    owner = _port_owner_info(requested_port)
+    if _is_same_streamlit_app_owner(owner, root):
+        pid = int(owner.get("pid", 0) or 0)
+        return "reuse", requested_port, f"already_running(pid={pid})"
+
+    for candidate in range(int(requested_port) + 1, int(requested_port) + max_port_tries + 1):
+        if _port_is_available(candidate):
+            owner_pid = int(owner.get("pid", 0) or 0)
+            reason = f"port_in_use({requested_port},pid={owner_pid or 'unknown'})"
+            return "launch", candidate, reason
+
+    return "error", requested_port, f"no_free_port_from_{requested_port}_to_{requested_port + max_port_tries}"
+
+
 def _launch_streamlit(root: Path, port: int) -> subprocess.Popen[Any]:
     cmd = [
         sys.executable,
@@ -218,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--runtime-state",
         type=Path,
-        default=Path("sandbox_strategies") / "_autonomous_runtime_state.json",
+        default=get_builder_sessions_dir() / "_autonomous_runtime_state.json",
     )
     args = parser.parse_args(argv)
 
@@ -245,7 +319,28 @@ def main(argv: list[str] | None = None) -> int:
                 now=datetime.now(timezone.utc),
             )
 
-        proc = _launch_streamlit(root, args.port)
+        launch_action, effective_port, launch_reason = _resolve_launch_plan(
+            root,
+            int(args.port),
+        )
+        if launch_action == "reuse":
+            print(
+                f"[watchdog] app already running on http://localhost:{effective_port} "
+                f"({launch_reason})",
+                flush=True,
+            )
+            return 0
+        if launch_action == "error":
+            print(f"[watchdog] stop: {launch_reason}", flush=True)
+            return 1
+        if launch_reason:
+            print(
+                f"[watchdog] requested port {args.port} busy, switching to {effective_port} "
+                f"({launch_reason})",
+                flush=True,
+            )
+
+        proc = _launch_streamlit(root, effective_port)
         restart_reason = ""
 
         while True:

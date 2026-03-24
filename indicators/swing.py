@@ -24,6 +24,8 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 
+from .registry import register_indicator
+
 
 def calculate_swing_high(df: pd.DataFrame, **params) -> np.ndarray:
     """
@@ -88,6 +90,15 @@ def swing(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
         'swing_high': calculate_swing_high(df, **params),
         'swing_low': calculate_swing_low(df, **params)
     }
+
+
+register_indicator(
+    name='swing',
+    function=swing,
+    settings_class=None,
+    required_columns=('high', 'low'),
+    description='Swing highs/lows - local fractal structure detection',
+)
 
 
 __all__ = ['calculate_swing_high', 'calculate_swing_low', 'swing']

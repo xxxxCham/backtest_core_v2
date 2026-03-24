@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import streamlit as st
 
+from backtest.result_store import get_builder_sessions_dir
 from catalog.strategy_catalog import CATEGORY_ORDER, STATUS_VALUES, list_entries, move_entries
 
 
@@ -78,13 +79,101 @@ def _first_present(mapping: Dict[str, Any], *keys: str) -> Any:
     return None
 
 
+def _as_listish(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, tuple):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, set):
+        return sorted(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        return [part.strip() for part in text.split(",") if part.strip()]
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def _meta_postfilter_value(meta: Dict[str, Any], *keys: str) -> Any:
+    if not isinstance(meta, dict):
+        return None
+    for key in keys:
+        if key not in meta:
+            continue
+        value = meta.get(key)
+        if value is None or value == "" or value == [] or value == {}:
+            continue
+        return value
+    return None
+
+
+def _catalog_postfilter_fields(entry: Dict[str, Any]) -> Dict[str, Any]:
+    meta = entry.get("meta") or {}
+    metrics = entry.get("last_metrics_snapshot") or {}
+    if not isinstance(meta, dict):
+        meta = {}
+    if not isinstance(metrics, dict):
+        metrics = {}
+
+    benchmark_consensus = _meta_postfilter_value(
+        meta,
+        "benchmark_consensus",
+        "positive_pipeline_benchmark_consensus",
+    )
+    required_benchmark_name = ""
+    contradiction_state = ""
+    benchmark_summary = ""
+    if isinstance(benchmark_consensus, dict):
+        required_benchmark_name = str(benchmark_consensus.get("required_benchmark_name") or "").strip()
+        passed_names = _as_listish(benchmark_consensus.get("benchmarks_passed", []))
+        benchmarks_total = int(benchmark_consensus.get("benchmarks_total") or 0)
+        benchmark_summary = f"{len(passed_names)}/{benchmarks_total}" if benchmarks_total > 0 else ""
+        if bool(benchmark_consensus.get("consensus_passed")):
+            contradiction_state = "passed"
+        elif bool(benchmark_consensus.get("contradicted")):
+            contradiction_state = "contradicted"
+        elif benchmarks_total > 0:
+            contradiction_state = "failed"
+
+    coverage_pct = _to_float(
+        _meta_postfilter_value(meta, "coverage_pct", "positive_pipeline_coverage_pct")
+    )
+    passed_context_count = _to_int(
+        _meta_postfilter_value(meta, "passed_context_count", "positive_pipeline_passed_count")
+    )
+    total_context_count = _to_int(
+        _meta_postfilter_value(meta, "total_context_count", "positive_pipeline_total_contexts")
+    )
+    if passed_context_count is None:
+        passed_context_count = _to_int(metrics.get("multi_context_passed"))
+    if total_context_count is None:
+        total_context_count = _to_int(metrics.get("multi_context_total"))
+    context_summary = (
+        f"{passed_context_count}/{total_context_count}"
+        if passed_context_count is not None and total_context_count is not None and total_context_count > 0
+        else ""
+    )
+
+    return {
+        "phase": str(_meta_postfilter_value(meta, "phase", "positive_pipeline_phase") or "").strip(),
+        "decision": str(_meta_postfilter_value(meta, "decision", "positive_pipeline_decision") or "").strip(),
+        "benchmark_summary": benchmark_summary,
+        "context_summary": context_summary,
+        "coverage_pct": coverage_pct,
+        "required_benchmark": required_benchmark_name,
+        "contradiction_state": contradiction_state,
+    }
+
+
 @lru_cache(maxsize=512)
 def _load_builder_session_summary(session_id: str) -> Dict[str, Any]:
     session_id = str(session_id or "").strip()
     if not session_id:
         return {}
 
-    summary_path = Path("sandbox_strategies") / session_id / "session_summary.json"
+    summary_path = get_builder_sessions_dir() / session_id / "session_summary.json"
     if not summary_path.exists():
         return {}
 
@@ -225,6 +314,24 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
     all_tags: List[str] = sorted({t for e in entries_all for t in (e.get("tags") or [])})
     all_symbols = sorted({e.get("symbol") for e in entries_all if e.get("symbol")})
     all_timeframes = sorted({e.get("timeframe") for e in entries_all if e.get("timeframe")})
+    postfilter_by_id = {
+        str(entry.get("id") or ""): _catalog_postfilter_fields(entry)
+        for entry in entries_all
+    }
+    all_phases = sorted(
+        {
+            fields.get("phase")
+            for fields in postfilter_by_id.values()
+            if str(fields.get("phase") or "").strip()
+        }
+    )
+    all_decisions = sorted(
+        {
+            fields.get("decision")
+            for fields in postfilter_by_id.values()
+            if str(fields.get("decision") or "").strip()
+        }
+    )
 
     # Filtres principaux (catégorie + statut)
     col_a, col_b = st.columns(2)
@@ -274,10 +381,30 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
             help="Optionnel : filtrer par tags"
         )
 
+        col_e, col_f = st.columns(2)
+        with col_e:
+            phases = st.multiselect(
+                "🧭 Phase canonique",
+                all_phases,
+                default=st.session_state.get("catalog_filter_phases", []),
+                key="catalog_filter_phases",
+                help="Optionnel : filtrer par phase P2-P6"
+            )
+        with col_f:
+            decisions = st.multiselect(
+                "🧾 Décision",
+                all_decisions,
+                default=st.session_state.get("catalog_filter_decisions", []),
+                key="catalog_filter_decisions",
+                help="Optionnel : filtrer par verdict métier canonique"
+            )
+
     # Récupérer les valeurs des filtres depuis session_state (car définies dans l'expander)
     symbols_filter = st.session_state.get("catalog_filter_symbols", [])
     timeframes_filter = st.session_state.get("catalog_filter_timeframes", [])
     tags_filter = st.session_state.get("catalog_filter_tags", [])
+    phases_filter = st.session_state.get("catalog_filter_phases", [])
+    decisions_filter = st.session_state.get("catalog_filter_decisions", [])
 
     # Appliquer les filtres
     entries = list_entries(
@@ -289,6 +416,16 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
         entries = [e for e in entries if e.get("symbol") in symbols_filter]
     if timeframes_filter:
         entries = [e for e in entries if e.get("timeframe") in timeframes_filter]
+    if phases_filter:
+        entries = [
+            e for e in entries
+            if postfilter_by_id.get(str(e.get("id") or ""), {}).get("phase") in phases_filter
+        ]
+    if decisions_filter:
+        entries = [
+            e for e in entries
+            if postfilter_by_id.get(str(e.get("id") or ""), {}).get("decision") in decisions_filter
+        ]
 
     if not entries:
         st.info("Aucune entree dans le catalog avec ces filtres.")
@@ -301,6 +438,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
     selected_ids = set(st.session_state.get("catalog_selected_ids", []))
     for entry in entries:
         metrics = _metrics_for_entry(entry)
+        postfilter = postfilter_by_id.get(str(entry.get("id") or ""), {})
         resolved_strategy_key = _resolve_strategy_key(entry, available_strategy_keys)
         strategy_display = resolved_strategy_key or str(entry.get("strategy_name") or "")
         rows.append(
@@ -314,6 +452,13 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
                 "status": entry.get("status"),
                 "builder_state": entry.get("builder_state"),
                 "tags": ", ".join(entry.get("tags") or []),
+                "phase": postfilter.get("phase"),
+                "decision": postfilter.get("decision"),
+                "benchmark_summary": postfilter.get("benchmark_summary"),
+                "context_summary": postfilter.get("context_summary"),
+                "coverage_pct": postfilter.get("coverage_pct"),
+                "required_benchmark": postfilter.get("required_benchmark"),
+                "contradiction_state": postfilter.get("contradiction_state"),
                 "sharpe": metrics.get("sharpe"),
                 "return_pct": metrics.get("return_pct"),
                 "pnl": metrics.get("pnl"),
@@ -323,12 +468,45 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
         )
 
     df = pd.DataFrame(rows)
+    display_cols = [
+        "select",
+        "id",
+        "strategy",
+        "symbol",
+        "timeframe",
+        "category",
+        "phase",
+        "decision",
+        "benchmark_summary",
+        "context_summary",
+        "coverage_pct",
+        "required_benchmark",
+        "contradiction_state",
+        "sharpe",
+        "return_pct",
+        "pnl",
+        "trades",
+        "status",
+        "builder_state",
+        "tags",
+        "runnable",
+    ]
+    df = df[[column for column in display_cols if column in df.columns]].sort_values(
+        ["category", "phase", "strategy", "symbol", "timeframe"],
+        ascending=[True, True, True, True, True],
+        na_position="last",
+    )
     edited = st.data_editor(
         df,
         use_container_width=True,
         hide_index=True,
         column_config={
             "select": st.column_config.CheckboxColumn("Select"),
+            "benchmark_summary": st.column_config.TextColumn("Bench"),
+            "context_summary": st.column_config.TextColumn("Ctx"),
+            "coverage_pct": st.column_config.NumberColumn("Couverture (%)", format="%.1f%%"),
+            "required_benchmark": st.column_config.TextColumn("Bench requis"),
+            "contradiction_state": st.column_config.TextColumn("Consensus"),
             "sharpe": st.column_config.NumberColumn("Sharpe", format="%.3f"),
             "return_pct": st.column_config.NumberColumn("Return (%)", format="%.2f%%"),
             "pnl": st.column_config.NumberColumn("PnL ($)", format="$%.2f"),
@@ -340,6 +518,13 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
             "symbol",
             "timeframe",
             "category",
+            "phase",
+            "decision",
+            "benchmark_summary",
+            "context_summary",
+            "coverage_pct",
+            "required_benchmark",
+            "contradiction_state",
             "status",
             "builder_state",
             "tags",

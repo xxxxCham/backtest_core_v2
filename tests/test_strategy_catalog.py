@@ -44,9 +44,9 @@ def test_upsert_and_filters(tmp_path):
     assert len(entries) == 1
     assert entries[0]["id"] == entry_id
 
-    moved = move_entries([entry_id], "p3_watchlist", path=path)
+    moved = move_entries([entry_id], "p3_benchmark_consensus", path=path)
     assert moved == 1
-    entries = list_entries(path=path, categories=["p3_watchlist"])
+    entries = list_entries(path=path, categories=["p3_benchmark_consensus"])
     assert len(entries) == 1
 
 
@@ -79,7 +79,7 @@ def test_upsert_from_saved_run_promotes_to_catalog(tmp_path):
 
     entry = upsert_from_saved_run(saved_run, path=path)
 
-    assert entry["category"] == "p3_watchlist"
+    assert entry["category"] == "p3_benchmark_consensus"
     assert entry["status"] == "active"
     assert entry["params_hash"] != "none"
     assert "promoted_run" in entry["tags"]
@@ -119,12 +119,12 @@ def test_upsert_from_saved_run_preserves_higher_existing_category(tmp_path):
         "params": {"fast_period": 10, "slow_period": 30},
     }
 
-    entry = upsert_from_saved_run(saved_run, target_category="p3_watchlist", path=path)
-    moved = move_entries([entry["id"]], "p4_paper_candidate", path=path)
+    entry = upsert_from_saved_run(saved_run, target_category="p3_benchmark_consensus", path=path)
+    moved = move_entries([entry["id"]], "p6_paper_candidate", path=path)
     assert moved == 1
 
-    updated = upsert_from_saved_run(saved_run, target_category="p3_watchlist", path=path)
-    assert updated["category"] == "p4_paper_candidate"
+    updated = upsert_from_saved_run(saved_run, target_category="p3_benchmark_consensus", path=path)
+    assert updated["category"] == "p6_paper_candidate"
 
 
 def test_upsert_from_builder_session_falls_back_to_session_hash(tmp_path):

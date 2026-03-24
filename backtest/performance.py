@@ -36,6 +36,8 @@ class PerformanceMetrics:
     total_pnl: float
     total_return_pct: float
     annualized_return: float
+    benchmark_return_pct: float
+    alpha_simple_pct: float
 
     # Risque
     sharpe_ratio: float
@@ -68,6 +70,8 @@ class PerformanceMetrics:
             "total_pnl": self.total_pnl,
             "total_return_pct": self.total_return_pct,
             "annualized_return": self.annualized_return,
+            "benchmark_return_pct": self.benchmark_return_pct,
+            "alpha_simple_pct": self.alpha_simple_pct,
             "sharpe_ratio": self.sharpe_ratio,
             "sortino_ratio": self.sortino_ratio,
             "max_drawdown": self.max_drawdown,
@@ -400,6 +404,23 @@ def profit_factor(trades_df: pd.DataFrame) -> float:
     return gross_profits / gross_losses
 
 
+def benchmark_buy_hold_return_pct(close_prices: pd.Series) -> float:
+    """Calcule le rendement buy-and-hold simple sur la période testée."""
+    if close_prices is None:
+        return 0.0
+
+    prices = pd.Series(close_prices, dtype=np.float64).replace([np.inf, -np.inf], np.nan).dropna()
+    if prices.empty or len(prices) < 2:
+        return 0.0
+
+    start_price = float(prices.iloc[0])
+    end_price = float(prices.iloc[-1])
+    if not np.isfinite(start_price) or not np.isfinite(end_price) or start_price <= 0.0:
+        return 0.0
+
+    return ((end_price / start_price) - 1.0) * 100.0
+
+
 def calculate_metrics(
     equity: pd.Series,
     returns: pd.Series,
@@ -407,7 +428,8 @@ def calculate_metrics(
     initial_capital: float = 10000.0,
     periods_per_year: int = 252,  # Jours de trading par défaut
     include_tier_s: bool = False,
-    sharpe_method: str = "daily_resample"  # "standard", "trading_days" ou "daily_resample"
+    sharpe_method: str = "daily_resample",  # "standard", "trading_days" ou "daily_resample"
+    benchmark_prices: Optional[pd.Series] = None,
 ) -> Dict[str, Any]:
     """
     Calcule toutes les métriques de performance.
@@ -461,6 +483,8 @@ def calculate_metrics(
     metrics["total_pnl"] = total_pnl
     metrics["total_return_pct"] = total_return_pct
     metrics["annualized_return"] = annualized_return
+    metrics["benchmark_return_pct"] = benchmark_buy_hold_return_pct(benchmark_prices) if benchmark_prices is not None else 0.0
+    metrics["alpha_simple_pct"] = metrics["total_return_pct"] - metrics["benchmark_return_pct"]
 
     # === Métriques de risque ===
     metrics["sharpe_ratio"] = sharpe_ratio(

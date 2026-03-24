@@ -1249,6 +1249,7 @@ def render_equity_and_drawdown(
     initial_capital: float = 10000.0,
     key: str = "equity_dd",
     height: int = 550,
+    summary_metrics: Optional[Dict[str, Any]] = None,
 ) -> None:
     """
     Affiche la courbe d'équité et le drawdown dans un graphique à 2 panneaux.
@@ -1258,6 +1259,7 @@ def render_equity_and_drawdown(
         initial_capital: Capital initial
         key: Clé unique Streamlit
         height: Hauteur du graphique
+        summary_metrics: Métriques résumées à afficher dans le titre/annotation
     """
     if equity is None or equity.empty:
         st.warning("⚠️ Aucune donnée d'équité à afficher")
@@ -1276,6 +1278,17 @@ def render_equity_and_drawdown(
         row_heights=[0.7, 0.3],
         subplot_titles=("💰 Équité ($)", "📉 Drawdown (%)"),
     )
+
+    alpha_text = ""
+    if summary_metrics:
+        alpha = float(summary_metrics.get("alpha_simple_pct", 0.0) or 0.0)
+        benchmark = float(summary_metrics.get("benchmark_return_pct", 0.0) or 0.0)
+        strategy_ret = float(summary_metrics.get("total_return_pct", 0.0) or 0.0)
+        alpha_text = (
+            f"Return stratégie: {strategy_ret:.1f}% | "
+            f"Buy & Hold: {benchmark:.1f}% | "
+            f"Alpha simple: {alpha:+.1f}%"
+        )
 
     # Graphique d'équité
     fig.add_trace(
@@ -1322,6 +1335,7 @@ def render_equity_and_drawdown(
     fig.update_layout(
         height=height,
         showlegend=True,
+        title=(alpha_text if alpha_text else None),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(l=50, r=50, t=40, b=30),
         template=DEFAULT_LAYOUT_CONFIG["template"],

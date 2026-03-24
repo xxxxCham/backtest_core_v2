@@ -28,9 +28,9 @@ Skip-if: Vous utilisez uniquement les stratégies existantes ou l'AutonomousStra
 from __future__ import annotations
 
 import ast
+import builtins
 import concurrent.futures
 import csv
-import hashlib
 import importlib.util
 import json
 import math
@@ -39,6 +39,7 @@ import pprint
 import random
 import re
 import sys
+import threading
 import textwrap
 import time
 import traceback
@@ -52,8 +53,15 @@ import pandas as pd
 import numpy as np
 from agents.llm_client import LLMClient, LLMConfig, LLMMessage, create_llm_client
 from agents.llm_router import LLMTopologyConfig, build_phase1_topology
+from agents.indicator_context import (
+    build_indicator_selection_guide,
+    get_indicator_builder_access_example,
+    get_indicator_builder_stable_alias_map,
+    rank_indicator_selection,
+)
 from backtest.engine import BacktestEngine
-from indicators.registry import calculate_indicator, list_indicators
+from backtest.result_store import get_builder_sessions_dir
+from indicators.registry import list_indicators
 from metrics_types import normalize_metrics
 from utils.observability import generate_run_id, get_obs_logger
 from utils.template import render_prompt
@@ -63,7 +71,7 @@ from agents.thought_stream import ThoughtStream
 logger = get_obs_logger(__name__)
 
 # Dossier racine des sandbox
-SANDBOX_ROOT = Path(__file__).resolve().parent.parent / "sandbox_strategies"
+SANDBOX_ROOT = get_builder_sessions_dir()
 
 # Nom de classe standardisé attendu dans le code généré
 GENERATED_CLASS_NAME = "BuilderGeneratedStrategy"
@@ -111,18 +119,60 @@ _LLM_PHASE_TIMEOUT_PROPOSAL = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_PROPOSAL",
 _LLM_PHASE_TIMEOUT_CODE = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_CODE", "180"))
 _LLM_PHASE_TIMEOUT_ANALYSIS = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_ANALYSIS", "90"))
 _LLM_PHASE_TIMEOUT_DEFAULT = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_DEFAULT", "120"))
-
 _LLM_PHASE_TIMEOUTS: Dict[str, int] = {
     "proposal": _LLM_PHASE_TIMEOUT_PROPOSAL,
     "code": _LLM_PHASE_TIMEOUT_CODE,
     "analysis": _LLM_PHASE_TIMEOUT_ANALYSIS,
-    "pre": _LLM_PHASE_TIMEOUT_ANALYSIS,  # pre_reflection — same budget as analysis
+    "pre": _LLM_PHASE_TIMEOUT_ANALYSIS,
 }
 
-# Mode safe-path JSON+DSL (off|prefer|strict)
+
+def _is_interpreter_shutdown_runtime_error(exc: BaseException) -> bool:
+    """Détecte le RuntimeError typique émis pendant l'arrêt de l'interpréteur."""
+    if not isinstance(exc, RuntimeError):
+        return False
+    message = str(exc).lower()
+    return (
+        "interpreter shutdown" in message
+        or "cannot schedule new futures after interpreter shutdown" in message
+    )
+
+
+def _get_streamlit_script_run_ctx() -> Any:
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        return get_script_run_ctx()
+    except (ImportError, AttributeError):
+        return None
+
+
+def _attach_streamlit_ctx_to_current_thread(st_ctx: Any) -> None:
+    """Attache le ScriptRunContext au thread worker courant."""
+    if st_ctx is None:
+        return
+    try:
+        from streamlit.runtime.scriptrunner import add_script_run_ctx
+
+        add_script_run_ctx(threading.current_thread(), st_ctx)
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
+        pass
+
+
+def _new_streamlit_aware_thread_pool(max_workers: int = 1) -> concurrent.futures.ThreadPoolExecutor:
+    """Crée un pool compatible Streamlit pour éviter le spam ScriptRunContext."""
+    st_ctx = _get_streamlit_script_run_ctx()
+    if st_ctx is None:
+        return concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+    return concurrent.futures.ThreadPoolExecutor(
+        max_workers=max_workers,
+        initializer=_attach_streamlit_ctx_to_current_thread,
+        initargs=(st_ctx,),
+    )
+
+
 SAFE_PATH_MODE_ENV = "BACKTEST_BUILDER_SAFE_PATH"
 
-# Codes d'erreur stables
 ERR_CLASS = "CLASS001"
 ERR_AST = "AST001"
 ERR_IND = "IND001"
@@ -138,6 +188,7 @@ _DICT_INDICATOR_NAMES = {
     "macd",
     "stochastic",
     "adx",
+    "amplitude_hunter",
     "supertrend",
     "ichimoku",
     "psar",
@@ -149,6 +200,11 @@ _DICT_INDICATOR_NAMES = {
     "pivot_points",
     "fibonacci",
     "fibonacci_levels",
+    "fvg",
+    "swing",
+    "smart_legs",
+    "directional_bias",
+    "markov_switching",
 }
 
 _DICT_INDICATOR_ALLOWED_KEYS: Dict[str, set[str]] = {
@@ -156,6 +212,7 @@ _DICT_INDICATOR_ALLOWED_KEYS: Dict[str, set[str]] = {
     "macd": {"macd", "signal", "histogram"},
     "stochastic": {"stoch_k", "stoch_d"},
     "adx": {"adx", "plus_di", "minus_di"},
+    "amplitude_hunter": {"range_pct", "score"},
     "supertrend": {"supertrend", "direction"},
     "ichimoku": {"tenkan", "kijun", "senkou_a", "senkou_b", "chikou", "cloud_position"},
     "psar": {"sar", "trend", "signal"},
@@ -165,66 +222,66 @@ _DICT_INDICATOR_ALLOWED_KEYS: Dict[str, set[str]] = {
     "donchian": {"upper", "middle", "lower"},
     "keltner": {"middle", "upper", "lower"},
     "pivot_points": {"pivot", "r1", "s1", "r2", "s2", "r3", "s3"},
-    # fibonacci_levels expose aussi des clés dynamiques de type level_XXX.
     "fibonacci_levels": {"high", "low"},
+    "fvg": {"fvg_bullish", "fvg_bearish"},
+    "swing": {"swing_high", "swing_low"},
+    "smart_legs": {"smart_leg_bullish", "smart_leg_bearish"},
+    "directional_bias": {"bull_score", "bear_score", "net_bias"},
+    "markov_switching": {"regime", "prob_regime_0", "prob_regime_1", "prob_regime_2", "prob_regime_3"},
 }
 
 _INDICATOR_ALIAS_HINTS = {
-    # Bollinger
     "bollinger_upper": "indicators['bollinger']['upper']",
     "bollinger_middle": "indicators['bollinger']['middle']",
     "bollinger_lower": "indicators['bollinger']['lower']",
+    "upper_bollinger": "indicators['bollinger']['upper']",
+    "middle_bollinger": "indicators['bollinger']['middle']",
+    "mid_bollinger": "indicators['bollinger']['middle']",
+    "lower_bollinger": "indicators['bollinger']['lower']",
+    "higher_bollinger": "indicators['bollinger']['upper']",
+    "midline_bollinger": "indicators['bollinger']['middle']",
     "bb_upper": "indicators['bollinger']['upper']",
     "bb_middle": "indicators['bollinger']['middle']",
     "bb_lower": "indicators['bollinger']['lower']",
     "bb_mid": "indicators['bollinger']['middle']",
     "bb_std": "indicators['bollinger']['upper']",
-    # MACD
     "macd_line": "indicators['macd']['macd']",
     "macd_signal": "indicators['macd']['signal']",
     "macd_histogram": "indicators['macd']['histogram']",
-    # Keltner
     "keltner_upper": "indicators['keltner']['upper']",
     "keltner_middle": "indicators['keltner']['middle']",
     "keltner_lower": "indicators['keltner']['lower']",
     "kelt_upper": "indicators['keltner']['upper']",
     "kelt_middle": "indicators['keltner']['middle']",
     "kelt_lower": "indicators['keltner']['lower']",
-    # Donchian
     "donchian_upper": "indicators['donchian']['upper']",
     "donchian_middle": "indicators['donchian']['middle']",
     "donchian_lower": "indicators['donchian']['lower']",
     "dc_upper": "indicators['donchian']['upper']",
     "dc_middle": "indicators['donchian']['middle']",
     "dc_lower": "indicators['donchian']['lower']",
-    # CCI (plain array — common wrong patterns)
     "cci_value": "indicators['cci']",
     "cci_values": "indicators['cci']",
-    # Ichimoku
     "ichimoku_tenkan": "indicators['ichimoku']['tenkan']",
     "ichimoku_kijun": "indicators['ichimoku']['kijun']",
     "ichimoku_senkou_a": "indicators['ichimoku']['senkou_a']",
     "ichimoku_senkou_b": "indicators['ichimoku']['senkou_b']",
     "ichimoku_chikou": "indicators['ichimoku']['chikou']",
     "ichimoku_cloud": "indicators['ichimoku']['cloud_position']",
-    # PSAR
     "psar_sar": "indicators['psar']['sar']",
     "psar_trend": "indicators['psar']['trend']",
     "psar_signal": "indicators['psar']['signal']",
     "parabolic_sar": "indicators['psar']['sar']",
-    # Vortex
     "vortex_vi_plus": "indicators['vortex']['vi_plus']",
     "vortex_vi_minus": "indicators['vortex']['vi_minus']",
     "vortex_signal": "indicators['vortex']['signal']",
     "vortex_oscillator": "indicators['vortex']['oscillator']",
     "vi_plus": "indicators['vortex']['vi_plus']",
     "vi_minus": "indicators['vortex']['vi_minus']",
-    # Aroon
     "aroon_up": "indicators['aroon']['aroon_up']",
     "aroon_down": "indicators['aroon']['aroon_down']",
     "aroon_upper": "indicators['aroon']['aroon_up']",
     "aroon_lower": "indicators['aroon']['aroon_down']",
-    # Pivot Points
     "pivot_points_pivot": "indicators['pivot_points']['pivot']",
     "pivot_points_r1": "indicators['pivot_points']['r1']",
     "pivot_points_s1": "indicators['pivot_points']['s1']",
@@ -232,25 +289,92 @@ _INDICATOR_ALIAS_HINTS = {
     "pivot_points_s2": "indicators['pivot_points']['s2']",
     "pivot_points_r3": "indicators['pivot_points']['r3']",
     "pivot_points_s3": "indicators['pivot_points']['s3']",
-    # ADX
     "adx_value": "indicators['adx']['adx']",
     "plus_di": "indicators['adx']['plus_di']",
     "minus_di": "indicators['adx']['minus_di']",
-    # Supertrend
     "supertrend_value": "indicators['supertrend']['supertrend']",
     "supertrend_direction": "indicators['supertrend']['direction']",
-    # Stochastic
     "stoch_k": "indicators['stochastic']['stoch_k']",
     "stoch_d": "indicators['stochastic']['stoch_d']",
-    # Stoch RSI
     "stoch_rsi_k": "indicators['stoch_rsi']['k']",
     "stoch_rsi_d": "indicators['stoch_rsi']['d']",
     "stoch_rsi_signal": "indicators['stoch_rsi']['signal']",
     "srsi_k": "indicators['stoch_rsi']['k']",
     "srsi_d": "indicators['stoch_rsi']['d']",
-    # Fibonacci levels
     "fibonacci_levels_high": "indicators['fibonacci_levels']['high']",
     "fibonacci_levels_low": "indicators['fibonacci_levels']['low']",
+}
+
+_SEMANTIC_INDICATOR_ALIAS_HINTS = {
+    "upper_bollinger": "indicators['bollinger']['upper']",
+    "middle_bollinger": "indicators['bollinger']['middle']",
+    "mid_bollinger": "indicators['bollinger']['middle']",
+    "lower_bollinger": "indicators['bollinger']['lower']",
+    "higher_bollinger": "indicators['bollinger']['upper']",
+    "midline_bollinger": "indicators['bollinger']['middle']",
+}
+
+_INDICATOR_ACCESS_REWRITE_HINTS = {
+    "adx_d": "indicators['adx']",
+    "bear_score": "indicators['directional_bias']['bear_score']",
+    "bb": "indicators['bollinger']",
+    "bull_score": "indicators['directional_bias']['bull_score']",
+    "donchian_band": "indicators['donchian']",
+    "directional_bias_net": "indicators['directional_bias']['net_bias']",
+    "fib_levels": "indicators['fibonacci_levels']",
+    "fibonacci": "indicators['fibonacci_levels']",
+    "klt": "indicators['keltner']",
+    "net_bias": "indicators['directional_bias']['net_bias']",
+    "obvi": "indicators['obv']",
+    "plus_di": "indicators['adx']['plus_di']",
+    "minus_di": "indicators['adx']['minus_di']",
+    "aroon_up": "indicators['aroon']['aroon_up']",
+    "aroon_down": "indicators['aroon']['aroon_down']",
+    "pivot": "indicators['pivot_points']['pivot']",
+    "st_direction": "indicators['supertrend']['direction']",
+    "direction": "indicators['supertrend']['direction']",
+    "rsi_arr": "indicators['rsi']",
+    "rsi_data": "indicators['rsi']",
+    "atr_14": "indicators['atr']",
+    "volume_osc": "indicators['volume_oscillator']",
+}
+
+_PARAM_ACCESS_REWRITE_HINTS = {
+    "warmup": "params.get('warmup', 50)",
+    "leverage": "params.get('leverage', 1)",
+    "atr_period": "params.get('atr_period', 14)",
+    "stop_atr_mult": "params.get('stop_atr_mult', 1.5)",
+    "tp_atr_mult": "params.get('tp_atr_mult', 3.0)",
+    "sl_factor": "params.get('stop_atr_mult', 1.5)",
+    "tp_factor": "params.get('tp_atr_mult', 3.0)",
+}
+
+_INDICATOR_CANONICAL_ALIASES = {
+    "adx_value": "adx",
+    "bear_score": "directional_bias",
+    "bbands": "bollinger",
+    "bull_score": "directional_bias",
+    "directional_bias_net": "directional_bias",
+    "fib_level": "fibonacci_levels",
+    "fib_levels": "fibonacci_levels",
+    "fibonacci": "fibonacci_levels",
+    "fibonacci_level": "fibonacci_levels",
+    "keltner_channel": "keltner",
+    "klt": "keltner",
+    "net_bias": "directional_bias",
+    "obvi": "obv",
+    "pivot": "pivot_points",
+    "pivot_point": "pivot_points",
+    "pivotpoints": "pivot_points",
+    "pivots": "pivot_points",
+    "rsci": "rsi",
+    "stochrsi": "stoch_rsi",
+    "super_trend": "supertrend",
+    "vol_oscillator": "volume_oscillator",
+    "volume_osc": "volume_oscillator",
+    "volumeoscillator": "volume_oscillator",
+    "williams": "williams_r",
+    "williamsr": "williams_r",
 }
 
 _PROPOSAL_PLACEHOLDER_VALUES = {
@@ -294,6 +418,24 @@ _PIPE_LOG_PREFIX_RE = re.compile(
 )
 _TRACEBACK_LINE_RE = re.compile(r'^\s*File\s+"[^"]+",\s*line\s+\d+', re.IGNORECASE)
 _WINDOWS_PATH_LINE_RE = re.compile(r"^\s*[A-Za-z]:\\")
+_PYTHONISH_LINE_RE = re.compile(
+    r"^\s*(from\s+|import\s+|class\s+|def\s+|@|if\s+|elif\s+|else\s*:|for\s+|while\s+|try\s*:|except\b|finally\s*:|return\b|signals\b|[A-Za-z_][A-Za-z0-9_]*\s*=)",
+    re.IGNORECASE,
+)
+_NATURAL_LANGUAGE_LINE_RE = re.compile(
+    r"^\s*(voici|here(?: is)?|sure|corrected code|explication|explanation|note|remarque|analyse|analysis|résumé|resume|stratégie|strategy)\b",
+    re.IGNORECASE,
+)
+
+_AST_PARSE_RECOVERABLE_EXCEPTIONS = (
+    SyntaxError,
+    ValueError,
+    KeyError,
+    RuntimeError,
+    AttributeError,
+    TypeError,
+    IndexError,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -467,6 +609,7 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
 
     - Interdit les boucles indexées qui écrivent `signals.iloc[i]`
     - Interdit warmup destructif (`signals.iloc[x:] = 0`, `signals[:] = 0`)
+    - Interdit l'indexation 2D sur `signals` (Series 1D uniquement)
     """
     for fn in _iter_generate_signals_functions(tree):
         for node in ast.walk(fn):
@@ -509,19 +652,32 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
                     is_signals_sub = (
                         isinstance(tgt.value, ast.Name) and tgt.value.id == "signals"
                     )
+                    is_signals_loc_sub = (
+                        isinstance(tgt.value, ast.Attribute)
+                        and tgt.value.attr == "loc"
+                        and isinstance(tgt.value.value, ast.Name)
+                        and tgt.value.value.id == "signals"
+                    )
                     is_signals_iloc_sub = (
                         isinstance(tgt.value, ast.Attribute)
                         and tgt.value.attr == "iloc"
                         and isinstance(tgt.value.value, ast.Name)
                         and tgt.value.value.id == "signals"
                     )
-                    if not (is_signals_sub or is_signals_iloc_sub):
+                    if not (is_signals_sub or is_signals_loc_sub or is_signals_iloc_sub):
                         continue
 
                     sl = tgt.slice
+                    if isinstance(sl, ast.Tuple):
+                        return False, _err(
+                            ERR_SIG,
+                            "Indexation 2D interdite sur `signals`: cette variable doit "
+                            "rester une `pd.Series` 1D. Ne jamais écrire "
+                            "`signals.loc[mask, 'long'/'short']`; utiliser "
+                            "`signals[long_mask] = 1.0` et `signals[short_mask] = -1.0`.",
+                        )
                     if isinstance(sl, ast.Slice):
                         lower = _const_value(sl.lower) if sl.lower is not None else None
-                        upper = _const_value(sl.upper) if sl.upper is not None else None
                         # Autorisé: [:N] = 0 (warmup préfixe), N constant ou variable
                         if lower is None and sl.upper is not None:
                             continue
@@ -635,6 +791,7 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
 
     # 3b. Signature minimale (évite TypeError runtime)
     fn = generate_fns[0]
+
     if len(fn.args.args) < 4 and fn.args.vararg is None:
         return (
             False,
@@ -686,9 +843,9 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
             arg_names = {a.arg for a in item.args.args}
             arg_names.update(a.arg for a in item.args.kwonlyargs)
             load_names, store_names = _collect_name_load_store_sets(item)
-            core_names = ("df", "indicators", "params")
+            core_names: tuple[str, ...] = ("df", "indicators", "params")
             if item.name == "generate_signals":
-                core_names = ("df", "indicators", "params", "warmup")
+                core_names: tuple[str, ...] = ("df", "indicators", "params", "warmup")
             for core in core_names:
                 if core in load_names and core not in arg_names and core not in store_names:
                     return (
@@ -699,6 +856,86 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
                             "mais non défini (paramètre manquant ou variable non assignée).",
                         ),
                     )
+        break
+
+    # 3e. NameError probable: indicateur enregistré utilisé comme variable nue
+    #     sans alias local explicite depuis indicators['...'].
+    known_indicator_names = _get_known_indicator_names()
+    if known_indicator_names:
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
+                continue
+            for item in node.body:
+                if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if item.name != "generate_signals":
+                    continue
+                arg_names = {a.arg for a in item.args.args}
+                arg_names.update(a.arg for a in item.args.kwonlyargs)
+                load_names, _store_names = _collect_name_load_store_sets(item)
+                bound_names = _collect_bound_names(item)
+                missing_indicators = sorted(
+                    {
+                        name
+                        for name in load_names
+                        if name in known_indicator_names
+                        and name not in arg_names
+                        and name not in bound_names
+                    }
+                )
+                if missing_indicators:
+                    indicator_name = missing_indicators[0]
+                    return (
+                        False,
+                        _err(
+                            ERR_IND,
+                            "NameError probable: indicateur "
+                            f"`{indicator_name}` utilisé comme variable nue dans "
+                            "`generate_signals` sans alias local. "
+                            f"{_indicator_access_hint(indicator_name)}",
+                        ),
+                    )
+            break
+
+    # 3e-bis. Variables libres / placeholders explicites dans les méthodes.
+    module_bound_names = _collect_module_level_bound_names(tree)
+    builtin_names = set(dir(builtins))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
+            continue
+        for item in node.body:
+            if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for sub in ast.walk(item):
+                if isinstance(sub, ast.Constant) and sub.value is Ellipsis:
+                    return (
+                        False,
+                        _err(
+                            ERR_AST,
+                            f"Placeholder `...` interdit dans `{item.name}`. "
+                            "Fournir une logique complète.",
+                        ),
+                    )
+            load_names, _store_names = _collect_name_load_store_sets(item)
+            bound_names = _collect_bound_names(item)
+            allowed_names = bound_names | module_bound_names | builtin_names
+            missing_names = sorted(
+                {
+                    name
+                    for name in load_names
+                    if name not in allowed_names and not name.startswith("__")
+                }
+            )
+            if missing_names:
+                missing_name = missing_names[0]
+                return (
+                    False,
+                    _err(
+                        ERR_CLASS,
+                        f"NameError probable: `{missing_name}` utilisé dans "
+                        f"`{item.name}` sans définition locale.",
+                    ),
+                )
         break
 
     # 3f. Verrouillage required_indicators: lecture seule (pas d'assignation)
@@ -802,7 +1039,7 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
     # 5. Accès invalide aux indicateurs via df[...] au lieu de indicators[...]
     try:
         known_indicators = {ind.lower() for ind in list_indicators()}
-    except Exception:
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
         known_indicators = set()
 
     # 5b. Indicateurs inconnus via indicators[...] / indicators.get(...)
@@ -914,6 +1151,7 @@ def sanitize_objective_text(objective: Any) -> str:
         return ""
 
     # Nettoyage résidus modèles de raisonnement
+    text = re.sub(r"</?think>", "", text, flags=re.IGNORECASE).strip()
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
     text = re.sub(r"<think>.*", "", text, flags=re.DOTALL).strip()
 
@@ -982,10 +1220,92 @@ def sanitize_objective_text(objective: Any) -> str:
 
     cleaned = "\n".join(cleaned_lines).strip()
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    cleaned = _strip_objective_prompt_leakage(cleaned)
     cleaned = cleaned.strip("`'\" \n\t")
     if len(cleaned) > 4000:
         cleaned = cleaned[:4000].rstrip()
     return cleaned
+
+
+_OBJECTIVE_PROMPT_SENTENCE_RE = re.compile(
+    r"^\s*(?:"
+    r"e?vite|"
+    r"tu dois|"
+    r"le style doit|"
+    r"format attendu|"
+    r"exemple de format(?: acceptable| correct| rejet[ée])?|"
+    r"en tant qu['’]assistant|"
+    r"okay, let'?s dive|"
+    r"first, i need|"
+    r"i need to figure out|"
+    r"r[ée]ponse(?: style)?"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_OBJECTIVE_START_PATTERNS = (
+    re.compile(r"(Strat[ée]gie(?:\s+de\s+[^.:\n]+)?\s+sur\b.*)", re.IGNORECASE | re.DOTALL),
+    re.compile(r"(Objectif(?:\s+de)?\s+Strat[ée]g(?:ique)?(?:\s+de\s+Trading)?\b.*)", re.IGNORECASE | re.DOTALL),
+    re.compile(r"(\[[^\]]+\]\s+sur\b.*)", re.IGNORECASE | re.DOTALL),
+    re.compile(r"(Objectif\s+sur\b.*)", re.IGNORECASE | re.DOTALL),
+)
+
+
+def _strip_objective_prompt_leakage(text: str) -> str:
+    """Retire les restes de méta-consignes quand le LLM recopie le prompt."""
+    if not text:
+        return ""
+
+    normalized = re.sub(r"[*`#]+", "", str(text or "")).strip()
+    if not normalized:
+        return ""
+
+    anchored = normalized
+    anchor_found = False
+    best_start: Optional[int] = None
+    best_value = normalized
+    for pattern in _OBJECTIVE_START_PATTERNS:
+        match = pattern.search(normalized)
+        if not match:
+            continue
+        start = match.start(1)
+        if best_start is None or start < best_start:
+            best_start = start
+            best_value = match.group(1).strip()
+            anchor_found = True
+    anchored = best_value
+
+    kept_sentences: List[str] = []
+    for sentence in re.split(r"(?<=[.!?])\s+", anchored):
+        line = str(sentence or "").strip()
+        if not line:
+            continue
+        if _OBJECTIVE_PROMPT_SENTENCE_RE.match(line):
+            continue
+        kept_sentences.append(line)
+
+    cleaned = " ".join(kept_sentences).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    if cleaned:
+        return cleaned
+    if anchor_found:
+        return re.sub(r"\s+", " ", anchored).strip()
+    return ""
+
+
+def _looks_like_prompt_instruction_leakage(text: str) -> bool:
+    """Détecte si un objectif ressemble encore à une réponse de prompt contaminée."""
+    normalized = str(text or "").strip()
+    if not normalized:
+        return False
+    lower = normalized.lower()
+    if "okay, let's dive" in lower or "first, i need" in lower:
+        return True
+    if "en tant qu'assistant" in lower or "en tant qu’assistant" in lower:
+        return True
+    if _OBJECTIVE_PROMPT_SENTENCE_RE.match(normalized):
+        return True
+    return False
 
 
 def _normalize_llm_text(value: Any, *, fallback: str = "", max_len: int = 1200) -> str:
@@ -996,7 +1316,7 @@ def _normalize_llm_text(value: Any, *, fallback: str = "", max_len: int = 1200) 
     elif isinstance(value, (dict, list, tuple, set)):
         try:
             text = json.dumps(value, ensure_ascii=False, indent=2)
-        except Exception:
+        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
             text = str(value)
     elif value is None:
         text = ""
@@ -1042,7 +1362,7 @@ def _safe_format_exception(exc: BaseException) -> str:
     """
     try:
         tb = exc.__traceback__
-    except Exception:
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
         tb = None
 
     lines: List[str] = []
@@ -1055,7 +1375,7 @@ def _safe_format_exception(exc: BaseException) -> str:
                 )
                 if code_line:
                     lines.append(f"    {code_line}")
-        except Exception:
+        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
             lines = []
 
     header = f"{type(exc).__name__}: {exc}"
@@ -1075,7 +1395,7 @@ def _metric_float(metrics: Dict[str, Any], key: str, default: float = 0.0) -> fl
         return float(default)
     try:
         return float(value)
-    except Exception:
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
         return float(default)
 
 
@@ -1387,6 +1707,79 @@ def _is_numeric_nonbool_constant(node: ast.AST) -> bool:
     return isinstance(node.value, (int, float)) and not isinstance(node.value, bool)
 
 
+def _canonicalize_indicator_name(
+    name: Any,
+    *,
+    known: Optional[set[str]] = None,
+) -> Optional[str]:
+    """Ramène les alias fréquents Builder vers un nom d'indicateur du registre."""
+    raw = str(name or "").strip().lower()
+    if not raw:
+        return None
+
+    normalized = raw.replace("-", "_").replace(" ", "_")
+    normalized = re.sub(r"_+", "_", normalized).strip("_")
+    candidate = _INDICATOR_CANONICAL_ALIASES.get(normalized, normalized)
+
+    if known is None:
+        return candidate
+    if candidate in known:
+        return candidate
+    if normalized in known:
+        return normalized
+    return None
+
+
+def _binding_info_for_expr(
+    node: ast.AST,
+    bindings: Dict[str, Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Retourne le binding connu pour une expression simple d'indicateur."""
+    if isinstance(node, ast.Name):
+        return bindings.get(node.id)
+
+    indicator_name = _indicator_name_from_subscript(node)
+    if indicator_name is None:
+        indicator_name = _indicator_name_from_get_call(node)
+    if indicator_name is not None:
+        return {
+            "kind": "dict" if indicator_name.lower() in _DICT_INDICATOR_NAMES else "array",
+            "indicator": indicator_name,
+        }
+
+    if _is_np_nan_to_num_call(node) and getattr(node, "args", None):
+        parent = _binding_info_for_expr(node.args[0], bindings)
+        if parent is None:
+            return None
+        if parent["kind"] == "dict":
+            return {
+                "kind": "dict",
+                "indicator": parent.get("indicator"),
+            }
+        return {
+            "kind": "array",
+            "indicator": parent.get("indicator"),
+        }
+
+    return None
+
+
+def _binding_expr_label(node: ast.AST, binding: Optional[Dict[str, Any]] = None) -> str:
+    """Construit un libellé court pour les messages d'erreur AST."""
+    if isinstance(node, ast.Name):
+        return node.id
+
+    indicator_name = ""
+    if binding is not None:
+        indicator_name = str(binding.get("indicator") or "")
+    if not indicator_name:
+        indicator_name = _indicator_name_from_subscript(node) or _indicator_name_from_get_call(node) or ""
+    if indicator_name:
+        return f"indicators['{indicator_name}']"
+
+    return "indicator expression"
+
+
 def _iter_generate_signals_functions(tree: ast.AST) -> List[ast.FunctionDef]:
     """Extrait les méthodes generate_signals de BuilderGeneratedStrategy."""
     out: List[ast.FunctionDef] = []
@@ -1491,7 +1884,7 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
     """Validation AST des usages indicateurs pour éviter erreurs runtime récurrentes."""
     try:
         tree = ast.parse(code)
-    except Exception:
+    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
         return True, ""
 
     # var_name -> {"kind": "array|dict|values", "indicator": Optional[str]}
@@ -1562,15 +1955,18 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
             # ndarray.shift(...) / ndarray.rolling(...)
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                 attr = node.func.attr
-                if isinstance(node.func.value, ast.Name):
-                    var = node.func.value.id
-                    b = bindings.get(var)
-                    if b and b["kind"] == "dict" and attr not in {"get"}:
+                value_binding = _binding_info_for_expr(node.func.value, bindings)
+                if value_binding and value_binding["kind"] == "dict" and attr not in {"get"}:
+                    label = _binding_expr_label(node.func.value, value_binding)
+                    hint_key = _dict_indicator_allowed_keys_hint(
+                        str(value_binding.get("indicator") or label)
+                    ).split(",")[0].strip()
+                    if hint_key:
                         return (
                             False,
-                            f"Usage invalide: `{var}.{attr}(...)` alors que `{var}` est "
+                            f"Usage invalide: `{label}.{attr}(...)` alors que `{label}` est "
                             "un indicator dict. Extraire une sous-clé puis travailler "
-                            "sur le ndarray correspondant.",
+                            f"sur le ndarray correspondant (ex: {label}['{hint_key}']).",
                         )
                 if (
                     attr in {"shift", "rolling", "ewm"}
@@ -1711,38 +2107,48 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
             if isinstance(node, ast.Compare):
                 operands = [node.left, *node.comparators]
                 for operand in operands:
-                    if isinstance(operand, ast.Name):
-                        var = operand.id
-                        b = bindings.get(var)
-                        if b and b["kind"] == "dict":
-                            hint_key = _dict_indicator_allowed_keys_hint(
-                                str(b.get("indicator") or var)
-                            ).split(",")[0].strip()
-                            return (
-                                False,
-                                f"Usage invalide: comparaison `{var} ...` alors que "
-                                f"`{var}` est un indicator dict. Utiliser une sous-clé "
-                                f"(ex: {var}['{hint_key}']).",
-                            )
+                    binding = _binding_info_for_expr(operand, bindings)
+                    if binding and binding["kind"] == "dict":
+                        label = _binding_expr_label(operand, binding)
+                        hint_key = _dict_indicator_allowed_keys_hint(
+                            str(binding.get("indicator") or label)
+                        ).split(",")[0].strip()
+                        return (
+                            False,
+                            f"Usage invalide: comparaison `{label} ...` alors que "
+                            f"`{label}` est un indicator dict. Utiliser une sous-clé "
+                            f"(ex: {label}['{hint_key}']).",
+                        )
 
             if isinstance(node, ast.BinOp):
                 for operand in (node.left, node.right):
-                    if isinstance(operand, ast.Name):
-                        var = operand.id
-                        b = bindings.get(var)
-                        if b and b["kind"] == "dict":
-                            hint_key = _dict_indicator_allowed_keys_hint(
-                                str(b.get("indicator") or var)
-                            ).split(",")[0].strip()
-                            return (
-                                False,
-                                f"Usage invalide: opération arithmétique sur `{var}` "
-                                "qui est un indicator dict. Utiliser une sous-clé "
-                                f"(ex: {var}['{hint_key}']).",
-                            )
+                    binding = _binding_info_for_expr(operand, bindings)
+                    if binding and binding["kind"] == "dict":
+                        label = _binding_expr_label(operand, binding)
+                        hint_key = _dict_indicator_allowed_keys_hint(
+                            str(binding.get("indicator") or label)
+                        ).split(",")[0].strip()
+                        return (
+                            False,
+                            f"Usage invalide: opération arithmétique sur `{label}` "
+                            "qui est un indicator dict. Utiliser une sous-clé "
+                            f"(ex: {label}['{hint_key}']).",
+                        )
 
                 if isinstance(node.op, (ast.BitAnd, ast.BitOr, ast.BitXor)):
                     for operand in (node.left, node.right):
+                        binding = _binding_info_for_expr(operand, bindings)
+                        if binding and binding["kind"] == "dict":
+                            label = _binding_expr_label(operand, binding)
+                            hint_key = _dict_indicator_allowed_keys_hint(
+                                str(binding.get("indicator") or label)
+                            ).split(",")[0].strip()
+                            return (
+                                False,
+                                f"Usage invalide: opérateur logique bitwise appliqué à `{label}` "
+                                "qui est un indicator dict. Comparer d'abord une sous-clé "
+                                f"(ex: {label}['{hint_key}'] > seuil) puis combiner les masques.",
+                            )
                         if isinstance(operand, ast.Name):
                             b = bindings.get(operand.id)
                             if b and b["kind"] == "scalar":
@@ -1761,31 +2167,30 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
 
             if isinstance(node, ast.BoolOp):
                 for operand in node.values:
-                    if isinstance(operand, ast.Name):
-                        var = operand.id
-                        b = bindings.get(var)
-                        if b and b["kind"] == "dict":
-                            hint_key = _dict_indicator_allowed_keys_hint(
-                                str(b.get("indicator") or var)
-                            ).split(",")[0].strip()
-                            return (
-                                False,
-                                f"Usage invalide: test booléen direct sur `{var}` "
-                                "qui est un indicator dict. Utiliser une sous-clé "
-                                f"(ex: {var}['{hint_key}']).",
-                            )
+                    binding = _binding_info_for_expr(operand, bindings)
+                    if binding and binding["kind"] == "dict":
+                        label = _binding_expr_label(operand, binding)
+                        hint_key = _dict_indicator_allowed_keys_hint(
+                            str(binding.get("indicator") or label)
+                        ).split(",")[0].strip()
+                        return (
+                            False,
+                            f"Usage invalide: test booléen direct sur `{label}` "
+                            "qui est un indicator dict. Utiliser une sous-clé "
+                            f"(ex: {label}['{hint_key}']).",
+                        )
 
-            if isinstance(node, (ast.If, ast.While)) and isinstance(node.test, ast.Name):
-                var = node.test.id
-                b = bindings.get(var)
-                if b and b["kind"] == "dict":
+            if isinstance(node, (ast.If, ast.While)):
+                binding = _binding_info_for_expr(node.test, bindings)
+                if binding and binding["kind"] == "dict":
+                    label = _binding_expr_label(node.test, binding)
                     hint_key = _dict_indicator_allowed_keys_hint(
-                        str(b.get("indicator") or var)
+                        str(binding.get("indicator") or label)
                     ).split(",")[0].strip()
                     return (
                         False,
-                        f"Usage invalide: condition `{var}` alors que `{var}` est un "
-                        f"indicator dict. Utiliser une sous-clé (ex: {var}['{hint_key}']).",
+                        f"Usage invalide: condition `{label}` alors que `{label}` est un "
+                        f"indicator dict. Utiliser une sous-clé (ex: {label}['{hint_key}']).",
                     )
 
     return True, ""
@@ -1843,9 +2248,178 @@ def _extract_python_from_response(text: str) -> str:
     text = text.strip()
     match = re.search(r"```(?:python)?\s*\n(.*?)\n```", text, re.DOTALL)
     if match:
-        return match.group(1).strip()
+        return _strip_non_python_noise(match.group(1)).strip()
     # Fallback : le texte entier
-    return text.strip()
+    return _strip_non_python_noise(text).strip()
+
+
+def _strip_non_python_noise(text: str) -> str:
+    """Retire le bruit fréquent des réponses LLM autour du code Python."""
+    raw_lines = str(text or "").splitlines()
+    cleaned_lines: List[str] = []
+    seen_code = False
+
+    for line in raw_lines:
+        stripped = line.strip()
+
+        if not stripped:
+            if seen_code:
+                cleaned_lines.append("")
+            continue
+
+        if stripped.startswith("```"):
+            continue
+        if stripped.lower() == "python":
+            continue
+        if _LOG_PREFIX_RE.match(line) or _PIPE_LOG_PREFIX_RE.match(line):
+            continue
+        if _TRACEBACK_LINE_RE.match(line) or _WINDOWS_PATH_LINE_RE.match(line):
+            continue
+
+        candidate = _strip_leading_list_marker(line)
+        candidate_stripped = candidate.strip()
+
+        if not seen_code:
+            if _NATURAL_LANGUAGE_LINE_RE.match(candidate_stripped):
+                continue
+            if _PYTHONISH_LINE_RE.match(candidate_stripped) or candidate_stripped.startswith("#"):
+                seen_code = True
+                cleaned_lines.append(candidate)
+            continue
+
+        if _NATURAL_LANGUAGE_LINE_RE.match(candidate_stripped) and not _PYTHONISH_LINE_RE.match(candidate_stripped):
+            continue
+        cleaned_lines.append(candidate)
+
+    if cleaned_lines:
+        while cleaned_lines and not cleaned_lines[-1].strip():
+            cleaned_lines.pop()
+        if cleaned_lines:
+            return "\n".join(cleaned_lines)
+    return ""
+
+
+def _sanitize_python_list_markers(code: str) -> str:
+    """Supprime les marqueurs de liste LLM devant des lignes Python valides."""
+    fixed_lines: List[str] = []
+    for line in str(code or "").splitlines():
+        candidate = _strip_leading_list_marker(line)
+        if candidate != line and (
+            _PYTHONISH_LINE_RE.match(candidate.lstrip()) or candidate.lstrip().startswith("#")
+        ):
+            fixed_lines.append(candidate)
+        else:
+            fixed_lines.append(line)
+    return "\n".join(fixed_lines)
+
+
+def _strip_leading_list_marker(line: str) -> str:
+    """Retire `1.`/`-` au début d'une ligne en conservant l'indentation utile."""
+    match = re.match(r"^(\s*)(?:[-*]|\d+[\.)])(.*)$", line)
+    if not match:
+        return line
+    leading_ws, remainder = match.groups()
+    if remainder.startswith((" ", "\t")):
+        remainder = remainder[1:]
+    return leading_ws + remainder
+
+
+def _drop_obvious_non_python_lines(code: str) -> str:
+    """Supprime les lignes manifestement non Python après extraction."""
+    kept_lines: List[str] = []
+    for line in str(code or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            kept_lines.append(line)
+            continue
+        if stripped.startswith("```") or stripped.lower() == "python":
+            continue
+        if _NATURAL_LANGUAGE_LINE_RE.match(stripped) and not _PYTHONISH_LINE_RE.match(stripped):
+            continue
+        kept_lines.append(line)
+    return "\n".join(kept_lines)
+
+
+def _balance_brackets_outside_strings(code: str) -> str:
+    """Rééquilibre prudemment les parenthèses/crochets/accolades hors chaînes."""
+    open_to_close = {"(": ")", "[": "]", "{": "}"}
+    closing_to_open = {")": "(", "]": "[", "}": "{"}
+    stack: List[str] = []
+    output: List[str] = []
+    in_single = False
+    in_double = False
+    escape = False
+
+    for ch in str(code or ""):
+        if escape:
+            output.append(ch)
+            escape = False
+            continue
+        if ch == "\\":
+            output.append(ch)
+            escape = True
+            continue
+        if ch == "'" and not in_double:
+            in_single = not in_single
+            output.append(ch)
+            continue
+        if ch == '"' and not in_single:
+            in_double = not in_double
+            output.append(ch)
+            continue
+        if in_single or in_double:
+            output.append(ch)
+            continue
+        if ch in open_to_close:
+            stack.append(ch)
+            output.append(ch)
+            continue
+        if ch in closing_to_open:
+            expected_open = closing_to_open[ch]
+            if stack and stack[-1] == expected_open:
+                stack.pop()
+                output.append(ch)
+            else:
+                continue
+            continue
+        output.append(ch)
+
+    while stack:
+        output.append(open_to_close[stack.pop()])
+
+    return "".join(output)
+
+
+def _salvage_complex_ast_syntax(code: str) -> str:
+    """Tente des réparations syntaxiques conservatrices avant fallback.
+
+    Objectif: corriger le bruit de sortie LLM et les déséquilibres simples qui
+    empêchent `ast.parse` de construire l'arbre, sans réécrire la logique métier.
+    """
+    candidate = _strip_non_python_noise(code)
+    candidate = _drop_obvious_non_python_lines(candidate)
+    candidate = _sanitize_python_list_markers(candidate)
+
+    attempts = [
+        candidate,
+        textwrap.dedent(candidate),
+        _balance_brackets_outside_strings(candidate),
+        _balance_brackets_outside_strings(textwrap.dedent(candidate)),
+    ]
+
+    seen: set[str] = set()
+    for attempt in attempts:
+        attempt = attempt.strip("\n")
+        if not attempt or attempt in seen:
+            continue
+        seen.add(attempt)
+        try:
+            ast.parse(attempt)
+            return attempt
+        except SyntaxError:
+            continue
+
+    return candidate
 
 
 def _timeframe_to_timedelta(timeframe: str) -> Optional[pd.Timedelta]:
@@ -1920,7 +2494,15 @@ def _validate_builder_dataset_exploitability(
                         f"par data.config pour {symbol}/{timeframe}."
                     ),
                 )
-        except Exception as exc:
+        except (
+            ValueError,
+            KeyError,
+            RuntimeError,
+            AttributeError,
+            TypeError,
+            IndexError,
+            NameError,
+        ) as exc:
             logger.warning(
                 "builder_dataset_quality_check_fallback symbol=%s timeframe=%s error=%s",
                 symbol,
@@ -1939,6 +2521,20 @@ def _validate_builder_dataset_exploitability(
         )
 
     return True, ""
+
+
+def validate_builder_dataset_exploitability(
+    data: pd.DataFrame,
+    *,
+    symbol: str,
+    timeframe: str,
+) -> tuple[bool, str]:
+    """API partagée UI/Builder pour valider un dataset exploitable."""
+    return _validate_builder_dataset_exploitability(
+        data,
+        symbol=symbol,
+        timeframe=timeframe,
+    )
 
 
 def _fix_class_name(code: str) -> str:
@@ -1964,6 +2560,383 @@ def _fix_class_name(code: str) -> str:
     return code
 
 
+def _get_known_indicator_names() -> set[str]:
+    """Retourne les noms d'indicateurs du registre, en minuscules."""
+    try:
+        return {
+            str(ind or "").strip().lower()
+            for ind in list_indicators()
+            if str(ind or "").strip()
+        }
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
+        return set(_DICT_INDICATOR_NAMES)
+
+
+def _indicator_access_hint(indicator_name: str) -> str:
+    """Retourne le hint d'accès recommandé pour un indicateur donné."""
+    name = str(indicator_name or "").strip().lower()
+    alias_hint = _INDICATOR_ALIAS_HINTS.get(name)
+    if alias_hint:
+        return alias_hint
+    if name in _DICT_INDICATOR_NAMES:
+        keys = sorted(_DICT_INDICATOR_ALLOWED_KEYS.get(name, set()))
+        if keys:
+            return f"indicators['{name}']['{keys[0]}']"
+        return f"indicators['{name}']"
+    return f"np.nan_to_num(indicators['{name}'])"
+
+
+def _indicator_name_from_hint_expression(expr: str) -> Optional[str]:
+    match = re.search(r"indicators\[['\"]([A-Za-z0-9_]+)['\"]\]", str(expr or ""))
+    if not match:
+        return None
+    return str(match.group(1)).strip().lower() or None
+
+
+def _infer_required_indicator_names_from_code(
+    code: str,
+    required_indicators: Optional[List[str]] = None,
+) -> List[str]:
+    """Infère les indicateurs réellement nécessaires à partir du code et des alias connus."""
+    known = _get_known_indicator_names()
+    inferred = _normalize_required_indicator_names(required_indicators)
+    inferred_set = set(inferred)
+
+    try:
+        tree = ast.parse(code)
+    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
+        tree = None
+
+    if tree is not None:
+        for name in _collect_indicator_names(tree) | _collect_indicator_names_in_class(tree):
+            normalized_name = str(name or "").strip().lower()
+            if normalized_name in known and normalized_name not in inferred_set:
+                inferred.append(normalized_name)
+                inferred_set.add(normalized_name)
+
+    search_space = [
+        *_INDICATOR_ALIAS_HINTS.items(),
+        *_INDICATOR_ACCESS_REWRITE_HINTS.items(),
+    ]
+    for alias, hint in search_space:
+        if not re.search(rf"\b{re.escape(alias)}\b", code, flags=re.IGNORECASE):
+            continue
+        indicator_name = _indicator_name_from_hint_expression(hint)
+        if indicator_name and indicator_name in known and indicator_name not in inferred_set:
+            inferred.append(indicator_name)
+            inferred_set.add(indicator_name)
+
+    for indicator_name in sorted(known):
+        if re.search(
+            rf"\b{re.escape(indicator_name)}_(?:arr|array|data|values?)\b",
+            code,
+            flags=re.IGNORECASE,
+        ) and indicator_name not in inferred_set:
+            inferred.append(indicator_name)
+            inferred_set.add(indicator_name)
+
+    return inferred
+
+
+def _rewrite_invalid_indicator_accesses(text: str) -> str:
+    fixed = text
+    for alias, replacement in _INDICATOR_ACCESS_REWRITE_HINTS.items():
+        fixed = re.sub(
+            rf"indicators\s*\[\s*['\"]{re.escape(alias)}['\"]\s*\]",
+            replacement,
+            fixed,
+            flags=re.IGNORECASE,
+        )
+        fixed = re.sub(
+            rf"indicators\.get\(\s*['\"]{re.escape(alias)}['\"]\s*(?:,\s*[^)]*)?\)",
+            replacement,
+            fixed,
+            flags=re.IGNORECASE,
+        )
+    for name, replacement in _PARAM_ACCESS_REWRITE_HINTS.items():
+        fixed = re.sub(
+            rf"indicators\s*\[\s*['\"]{re.escape(name)}['\"]\s*\]",
+            replacement,
+            fixed,
+            flags=re.IGNORECASE,
+        )
+        fixed = re.sub(
+            rf"indicators\.get\(\s*['\"]{re.escape(name)}['\"]\s*(?:,\s*[^)]*)?\)",
+            replacement,
+            fixed,
+            flags=re.IGNORECASE,
+        )
+    return fixed
+
+
+def _collect_bound_names(fn: ast.AST) -> set[str]:
+    """Collecte les noms localement définis dans une fonction/méthode."""
+    bound: set[str] = set()
+
+    args = getattr(getattr(fn, "args", None), "args", []) or []
+    bound.update(arg.arg for arg in args if getattr(arg, "arg", None))
+    kwonlyargs = getattr(getattr(fn, "args", None), "kwonlyargs", []) or []
+    bound.update(arg.arg for arg in kwonlyargs if getattr(arg, "arg", None))
+
+    _load_names, store_names = _collect_name_load_store_sets(fn)
+    bound.update(store_names)
+
+    for node in ast.walk(fn):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bound.add(node.name)
+        elif isinstance(node, ast.ExceptHandler) and isinstance(node.name, str):
+            bound.add(node.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                bound.add(alias.asname or alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                bound.add(alias.asname or alias.name.split(".")[0])
+
+    return bound
+
+
+def _collect_module_level_bound_names(tree: ast.AST) -> set[str]:
+    """Collecte les noms disponibles au scope module pour éviter les faux NameError."""
+    bound: set[str] = set()
+
+    for node in getattr(tree, "body", []) or []:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bound.add(node.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                bound.add(alias.asname or alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                bound.add(alias.asname or alias.name.split(".")[0])
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    bound.add(target.id)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            bound.add(node.target.id)
+
+    return bound
+
+
+def _normalize_required_indicator_names(required_indicators: Optional[List[str]]) -> List[str]:
+    normalized: List[str] = []
+    if not required_indicators:
+        return normalized
+    for item in required_indicators:
+        if not isinstance(item, str):
+            continue
+        indicator_name = item.strip().lower()
+        if indicator_name and indicator_name not in normalized:
+            normalized.append(indicator_name)
+    return normalized
+
+
+def _extract_declared_required_indicators(code: str) -> List[str]:
+    try:
+        tree = ast.parse(code)
+    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
+        return []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.name != "required_indicators":
+            continue
+        for stmt in node.body:
+            if not isinstance(stmt, ast.Return) or not isinstance(stmt.value, ast.List):
+                continue
+            items: List[str] = []
+            for elt in stmt.value.elts:
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                    items.append(str(elt.value))
+            return _normalize_required_indicator_names(items)
+    return []
+
+
+def _build_generate_signals_indicator_binding_lines(required_indicators: Optional[List[str]]) -> List[str]:
+    binding_lines: List[str] = []
+    seen_lines: set[str] = set()
+
+    for indicator_name in _normalize_required_indicator_names(required_indicators):
+        if indicator_name in _DICT_INDICATOR_NAMES:
+            access_example = get_indicator_builder_access_example(indicator_name)
+            raw_lines = re.split(r";\s*|\n+", access_example)
+            candidate_lines = [line.strip() for line in raw_lines if line.strip()]
+        else:
+            candidate_lines = [
+                f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])"
+            ]
+
+        for line in candidate_lines:
+            normalized_line = line
+            if re.match(r"^value\s*=", normalized_line):
+                normalized_line = re.sub(r"^value\b", indicator_name, normalized_line)
+            if normalized_line not in seen_lines:
+                seen_lines.add(normalized_line)
+                binding_lines.append(normalized_line)
+
+        if indicator_name in _DICT_INDICATOR_NAMES:
+            local_names: List[str] = []
+            stable_alias_map = get_indicator_builder_stable_alias_map(indicator_name)
+            for line in candidate_lines:
+                normalized_line = line
+                if re.match(r"^value\s*=", normalized_line):
+                    normalized_line = re.sub(r"^value\b", indicator_name, normalized_line)
+                match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=", normalized_line)
+                if not match:
+                    continue
+                lhs_name = match.group(1)
+                if lhs_name not in local_names:
+                    local_names.append(lhs_name)
+
+            for lhs_name in local_names:
+                if lhs_name == indicator_name:
+                    continue
+                stable_alias_name = stable_alias_map.get(
+                    lhs_name,
+                    f"{indicator_name}_{lhs_name}",
+                )
+                stable_alias_line = f"{stable_alias_name} = {lhs_name}"
+                if stable_alias_line not in seen_lines:
+                    seen_lines.add(stable_alias_line)
+                    binding_lines.append(stable_alias_line)
+        else:
+            for alias_name in (f"{indicator_name}_arr", f"{indicator_name}_data"):
+                alias_line = f"{alias_name} = {indicator_name}"
+                if alias_line not in seen_lines:
+                    seen_lines.add(alias_line)
+                    binding_lines.append(alias_line)
+
+    return binding_lines
+
+
+def _build_generate_signals_indicator_binding_groups(
+    required_indicators: Optional[List[str]],
+) -> List[Tuple[str, List[str], List[str]]]:
+    """Construit les lignes de binding par indicateur en séparant base et alias.
+
+    Les lignes de base extraient l'indicateur depuis `indicators[...]`.
+    Les alias dérivés (`rsi_arr = rsi`, `bollinger_upper = upper`, etc.) ne sont
+    sûrs que si la base est injectée au même endroit ou déjà disponible avant.
+    """
+    groups: List[Tuple[str, List[str], List[str]]] = []
+
+    for indicator_name in _normalize_required_indicator_names(required_indicators):
+        base_lines: List[str] = []
+        alias_lines: List[str] = []
+        seen_local: set[str] = set()
+
+        if indicator_name in _DICT_INDICATOR_NAMES:
+            access_example = get_indicator_builder_access_example(indicator_name)
+            raw_lines = re.split(r";\s*|\n+", access_example)
+            candidate_lines = [line.strip() for line in raw_lines if line.strip()]
+        else:
+            candidate_lines = [
+                f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])"
+            ]
+
+        for line in candidate_lines:
+            normalized_line = line
+            if re.match(r"^value\s*=", normalized_line):
+                normalized_line = re.sub(r"^value\b", indicator_name, normalized_line)
+            base_lines.append(normalized_line)
+            match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=", normalized_line)
+            if match:
+                seen_local.add(match.group(1))
+
+        if indicator_name in _DICT_INDICATOR_NAMES:
+            stable_alias_map = get_indicator_builder_stable_alias_map(indicator_name)
+            for lhs_name in list(seen_local):
+                if lhs_name == indicator_name:
+                    continue
+                stable_alias_name = stable_alias_map.get(lhs_name, f"{indicator_name}_{lhs_name}")
+                alias_lines.append(f"{stable_alias_name} = {lhs_name}")
+        else:
+            alias_lines.extend(
+                [
+                    f"{indicator_name}_arr = {indicator_name}",
+                    f"{indicator_name}_data = {indicator_name}",
+                ]
+            )
+
+        groups.append((indicator_name, base_lines, alias_lines))
+
+    return groups
+
+
+def _inject_generate_signals_indicator_bindings(
+    code: str,
+    required_indicators: Optional[List[str]] = None,
+) -> str:
+    """Injecte un préambule de bindings indicateurs dans generate_signals."""
+    indicator_names = _infer_required_indicator_names_from_code(code, required_indicators)
+    if not indicator_names:
+        return code
+
+    try:
+        tree = ast.parse(code)
+    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
+        return code
+
+    fns = _iter_generate_signals_functions(tree)
+    if not fns:
+        return code
+
+    binding_groups = _build_generate_signals_indicator_binding_groups(indicator_names)
+    if not binding_groups:
+        return code
+
+    lines = code.split("\n")
+    insertions: List[Tuple[int, List[str]]] = []
+
+    for fn in fns:
+        fn_start = max(0, int(fn.lineno) - 1)
+        fn_end = max(fn_start, int(getattr(fn, "end_lineno", fn.lineno)))
+        fn_source = "\n".join(lines[fn_start:fn_end])
+
+        binding_lines: List[str] = []
+        for _indicator_name, base_lines, alias_lines in binding_groups:
+            existing_base = any(line in fn_source for line in base_lines)
+            if existing_base:
+                continue
+            binding_lines.extend(line for line in base_lines if line not in fn_source)
+            binding_lines.extend(line for line in alias_lines if line not in fn_source)
+
+        if not binding_lines:
+            continue
+
+        if fn.body:
+            first_stmt = fn.body[0]
+            if (
+                isinstance(first_stmt, ast.Expr)
+                and isinstance(getattr(first_stmt, "value", None), ast.Constant)
+                and isinstance(first_stmt.value.value, str)
+            ):
+                end = getattr(first_stmt, "end_lineno", None) or first_stmt.lineno
+                insert_lineno = int(end) + 1
+            else:
+                insert_lineno = int(first_stmt.lineno)
+        else:
+            insert_lineno = int((getattr(fn, "end_lineno", None) or fn.lineno) + 1)
+
+        insert_idx = max(0, min(len(lines), insert_lineno - 1))
+        if 0 <= insert_idx < len(lines) and lines:
+            indent = re.match(r"^(\s*)", lines[insert_idx]).group(1)
+        else:
+            def_line_idx = max(0, min(len(lines) - 1, int(fn.lineno) - 1)) if lines else 0
+            def_indent = re.match(r"^(\s*)", lines[def_line_idx]).group(1) if lines else ""
+            indent = def_indent + "    "
+
+        insertions.append((insert_idx, [indent + line for line in binding_lines]))
+
+    if not insertions:
+        return code
+
+    for idx, new_lines in sorted(insertions, key=lambda x: x[0], reverse=True):
+        lines[idx:idx] = new_lines
+
+    return "\n".join(lines)
+
+
 def _inject_generate_signals_core_param_aliases(code: str) -> str:
     """Injecte des alias pour éviter des NameError de variables coeur.
 
@@ -1973,7 +2946,7 @@ def _inject_generate_signals_core_param_aliases(code: str) -> str:
     """
     try:
         tree = ast.parse(code)
-    except Exception:
+    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
         return code
 
     fns = _iter_generate_signals_functions(tree)
@@ -2008,6 +2981,22 @@ def _inject_generate_signals_core_param_aliases(code: str) -> str:
             if params_arg and params_arg in args and params_arg != "params":
                 warmup_source = params_arg
             alias_raw.append(f"warmup = int({warmup_source}.get('warmup', 50))")
+
+        for param_name, replacement in _PARAM_ACCESS_REWRITE_HINTS.items():
+            if param_name == "warmup":
+                continue
+            if param_name in load_names and param_name not in args and param_name not in store_names:
+                alias_raw.append(f"{param_name} = {replacement}")
+
+        for ohlcv_col in ("open", "high", "low", "close", "volume"):
+            if ohlcv_col in load_names and ohlcv_col not in args and ohlcv_col not in store_names:
+                alias_raw.append(
+                    f"{ohlcv_col} = np.nan_to_num(df['{ohlcv_col}'].values.astype(np.float64))"
+                )
+        if "price" in load_names and "price" not in args and "price" not in store_names:
+            if not any(line.startswith("close = ") for line in alias_raw):
+                alias_raw.append("close = np.nan_to_num(df['close'].values.astype(np.float64))")
+            alias_raw.append("price = close")
 
         if not alias_raw:
             continue
@@ -2050,7 +3039,82 @@ def _inject_generate_signals_core_param_aliases(code: str) -> str:
     return "\n".join(lines)
 
 
-def _repair_code(code: str) -> str:
+def _inject_generate_signals_indicator_aliases(code: str) -> str:
+    """Injecte des alias d'indicateurs nus dans generate_signals quand l'intention est claire."""
+    try:
+        tree = ast.parse(code)
+    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
+        return code
+
+    fns = _iter_generate_signals_functions(tree)
+    if not fns:
+        return code
+
+    known_indicators = _get_known_indicator_names()
+    if not known_indicators:
+        return code
+
+    lines = code.split("\n")
+    insertions: List[Tuple[int, List[str]]] = []
+
+    for fn in fns:
+        load_names, _store_names = _collect_name_load_store_sets(fn)
+        bound_names = _collect_bound_names(fn)
+        missing_indicator_names = sorted(
+            {
+                name
+                for name in load_names
+                if name in known_indicators and name not in bound_names
+            }
+        )
+        if not missing_indicator_names:
+            continue
+
+        alias_raw: List[str] = []
+        for indicator_name in missing_indicator_names:
+            if indicator_name in _DICT_INDICATOR_NAMES:
+                alias_raw.append(
+                    f"{indicator_name} = indicators['{indicator_name}']"
+                )
+            else:
+                alias_raw.append(
+                    f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])"
+                )
+
+        if fn.body:
+            first_stmt = fn.body[0]
+            if (
+                isinstance(first_stmt, ast.Expr)
+                and isinstance(getattr(first_stmt, "value", None), ast.Constant)
+                and isinstance(first_stmt.value.value, str)
+            ):
+                end = getattr(first_stmt, "end_lineno", None) or first_stmt.lineno
+                insert_lineno = int(end) + 1
+            else:
+                insert_lineno = int(first_stmt.lineno)
+        else:
+            insert_lineno = int((getattr(fn, "end_lineno", None) or fn.lineno) + 1)
+
+        insert_idx = max(0, min(len(lines), insert_lineno - 1))
+        if 0 <= insert_idx < len(lines) and lines:
+            indent = re.match(r"^(\s*)", lines[insert_idx]).group(1)
+        else:
+            def_line_idx = max(0, min(len(lines) - 1, int(fn.lineno) - 1)) if lines else 0
+            def_indent = re.match(r"^(\s*)", lines[def_line_idx]).group(1) if lines else ""
+            indent = def_indent + "    "
+
+        insertions.append((insert_idx, [indent + line for line in alias_raw]))
+
+    if not insertions:
+        return code
+
+    for idx, new_lines in sorted(insertions, key=lambda x: x[0], reverse=True):
+        lines[idx:idx] = new_lines
+
+    return "\n".join(lines)
+
+
+def _repair_code(code: str, required_indicators: Optional[List[str]] = None) -> str:
     """Auto-repair des erreurs courantes du code genere par LLM.
 
     Corrige:
@@ -2065,6 +3129,7 @@ def _repair_code(code: str) -> str:
     # 1. Retirer les tags <think> des modeles de raisonnement
     code = re.sub(r"<think>.*?</think>\s*", "", code, flags=re.DOTALL)
     code = re.sub(r"<think>.*", "", code, flags=re.DOTALL)
+    code = _salvage_complex_ast_syntax(code)
 
     # 2. Supprimer le preamble non-Python (markdown, texte explicatif)
     #    avant la première ligne de code réelle (from/import/class/def)
@@ -2080,6 +3145,8 @@ def _repair_code(code: str) -> str:
             break
     if first_code_idx > 0:
         code = "\n".join(lines[first_code_idx:])
+    code = _drop_obvious_non_python_lines(code)
+    code = _sanitize_python_list_markers(code)
 
     # 3. Supprimer docstrings si syntax error + tenter un dedent sur erreurs d'indentation
     try:
@@ -2089,9 +3156,19 @@ def _repair_code(code: str) -> str:
         if "unexpected indent" in msg or "unindent" in msg or "indentation" in msg:
             code = textwrap.dedent(code)
         code = _strip_docstrings(code)
+        code = _salvage_complex_ast_syntax(code)
 
     # 3. Fixer le nom de classe
     code = _fix_class_name(code)
+
+    # 3b. Réécrire les faux accès indicators[...] qui désignent des alias ou des params.
+    code = _rewrite_invalid_indicator_accesses(code)
+    for alias, correct in _SEMANTIC_INDICATOR_ALIAS_HINTS.items():
+        code = re.sub(
+            rf"(?<!['\"\[])(?<![A-Za-z0-9_]){re.escape(alias)}(?!['\"])(?![A-Za-z0-9_])",
+            correct,
+            code,
+        )
 
     # 4. np.nan_to_num(indicators["bollinger"]) → indicateur dict accédé directement
     #    Remplacer par extraction des sous-clés
@@ -2199,6 +3276,12 @@ def _repair_code(code: str) -> str:
     # 10. Alias variables coeur dans generate_signals (évite NameError df/indicators/params)
     code = _inject_generate_signals_core_param_aliases(code)
 
+    # 10a. Préambule systématique des indicateurs déclarés/attendus dans generate_signals
+    code = _inject_generate_signals_indicator_bindings(code, required_indicators)
+
+    # 10b. Alias indicateurs nus dans generate_signals (évite NameError coppock_curve, rsi, etc.)
+    code = _inject_generate_signals_indicator_aliases(code)
+
     # 11. Bare indicator variable repair — fix keltner['upper'] → indicators['keltner']['upper']
     #     and keltner_upper → np.nan_to_num(indicators['keltner']['upper'])
     for dict_ind, subkeys in _DICT_INDICATOR_ALLOWED_KEYS.items():
@@ -2218,13 +3301,10 @@ def _repair_code(code: str) -> str:
             alias = f"{dict_ind}_{subkey}"
             # Only replace bare assignments like: keltner_upper = ... (don't touch indicators[...])
             # Replace usages in comparisons: (keltner_upper > X) → (np.nan_to_num(indicators[...]) > X)
-            pattern = r"\b" + re.escape(alias) + r"\b"
+            pattern = r"\b" + re.escape(alias) + r"\b(?!\s*=)"
             replacement = f"np.nan_to_num(indicators['{dict_ind}']['{subkey}'])"
-            # Only if alias is used as a standalone name (not part of a string or indicators[])
-            if re.search(pattern, code) and f"indicators['{dict_ind}']['{subkey}']" not in code:
-                code = re.sub(pattern, replacement, code)
+            code = re.sub(pattern, replacement, code)
 
-    # 12. Normaliser les noms d'indicateurs en lowercase (évite KeyError: 'SMA')
     code = re.sub(
         r"indicators\s*\[\s*['\"]([A-Za-z0-9_]+)['\"]\s*\]",
         lambda m: f"indicators['{m.group(1).lower()}']",
@@ -2236,7 +3316,6 @@ def _repair_code(code: str) -> str:
         code,
     )
 
-    # 13. Notation pointée LLM (donchian.upper, adx.adx, ...) -> dict indicators.
     for dict_ind, subkeys in _DICT_INDICATOR_ALLOWED_KEYS.items():
         for subkey in subkeys:
             code = re.sub(
@@ -2246,7 +3325,6 @@ def _repair_code(code: str) -> str:
                 flags=re.IGNORECASE,
             )
 
-    # 14. Colonnes OHLCV / runtime SL-TP doivent venir de df (pas indicators).
     df_cols = {"open", "high", "low", "close", "volume", *_BUILDER_ALLOWED_WRITE_DF_COLUMNS}
     for col in sorted(df_cols):
         code = re.sub(
@@ -2262,35 +3340,52 @@ def _repair_code(code: str) -> str:
             flags=re.IGNORECASE,
         )
 
+    for alias, correct in _SEMANTIC_INDICATOR_ALIAS_HINTS.items():
+        code = re.sub(
+            rf"(?<!['\"\[])(?<![A-Za-z0-9_]){re.escape(alias)}(?!['\"])(?![A-Za-z0-9_])",
+            correct,
+            code,
+        )
+
     return code
 
 
 def _extract_generate_signals_logic_block(code: str) -> str:
     """Extrait le bloc logique de generate_signals depuis une réponse LLM."""
-    try:
-        tree = ast.parse(code)
-    except Exception:
-        return ""
+    candidates: List[str] = []
+    direct = str(code or "")
+    salvaged = _salvage_complex_ast_syntax(direct)
+    extracted = _extract_python_from_response(direct)
+    for candidate in (direct, salvaged, extracted):
+        candidate = str(candidate or "")
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
 
-    lines = code.splitlines()
-    for fn in _iter_generate_signals_functions(tree):
-        if not fn.body:
+    for candidate in candidates:
+        try:
+            tree = ast.parse(candidate)
+        except (SyntaxError, IndentationError, ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
             continue
-        start = int(fn.body[0].lineno) - 1
-        end = int(getattr(fn.body[-1], "end_lineno", fn.body[-1].lineno))
-        block_lines = lines[start:end]
-        stripped: List[str] = []
-        for line in block_lines:
-            s = line.strip()
-            if not s:
+
+        lines = candidate.splitlines()
+        for fn in _iter_generate_signals_functions(tree):
+            if not fn.body:
+                continue
+            start = int(fn.body[0].lineno) - 1
+            end = int(getattr(fn.body[-1], "end_lineno", fn.body[-1].lineno))
+            block_lines = lines[start:end]
+            stripped: List[str] = []
+            for line in block_lines:
+                s = line.strip()
+                if not s:
+                    stripped.append(line)
+                    continue
+                if re.match(r"^(signals|n|warmup)\s*=", s):
+                    continue
+                if s == "return signals":
+                    continue
                 stripped.append(line)
-                continue
-            if re.match(r"^(signals|n|warmup)\s*=", s):
-                continue
-            if s == "return signals":
-                continue
-            stripped.append(line)
-        return textwrap.dedent("\n".join(stripped)).strip()
+            return textwrap.dedent("\n".join(stripped)).strip()
     return ""
 
 
@@ -2302,25 +3397,133 @@ def _normalize_signal_assignments(logic: str) -> str:
     return logic
 
 
+def _rewrite_cross_helper_calls(logic: str) -> str:
+    """Réécrit quelques pseudo-helpers de croisement en masques numpy explicites."""
+
+    def _cross_replacement(lhs: str, direction: str, rhs: str) -> str:
+        lhs = lhs.strip()
+        rhs = rhs.strip()
+        if direction in {"above", "over"}:
+            return f"(({lhs} > {rhs}) & (np.roll({lhs}, 1) <= np.roll({rhs}, 1)))"
+        return f"(({lhs} < {rhs}) & (np.roll({lhs}, 1) >= np.roll({rhs}, 1)))"
+
+    fixed = logic
+    fixed = re.sub(
+        r"\bcrosses_(above|over|below|under)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)",
+        lambda m: _cross_replacement(m.group(2), m.group(1), m.group(3)),
+        fixed,
+        flags=re.IGNORECASE,
+    )
+    fixed = re.sub(
+        r"\b([A-Za-z_][A-Za-z0-9_]*)\s+cross(?:es)?\s+(above|over|below|under)\s+([A-Za-z_][A-Za-z0-9_]*)\b",
+        lambda m: _cross_replacement(m.group(1), m.group(2).lower(), m.group(3)),
+        fixed,
+        flags=re.IGNORECASE,
+    )
+    return fixed
+
+
+def _normalize_same_slice_vector_comparisons(logic: str) -> str:
+    """Réécrit les comparaisons symétriquement slicées en comparaisons pleine longueur.
+
+    Exemple: `close[warmup:] > ema[warmup:]` devient `close > ema`, ce qui évite
+    les masques plus courts que `df` et les erreurs de broadcast/indexation.
+    """
+
+    slice_token = r"(?:\d+|warmup)"
+    fixed = logic
+    fixed = re.sub(
+        rf"\b([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*({slice_token})\s*:\s*\]\s*(==|!=|>=|<=|>|<)\s*([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*\2\s*:\s*\]",
+        r"\1 \3 \4",
+        fixed,
+    )
+    fixed = re.sub(
+        rf"\b([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*({slice_token})\s*:\s*\]\s*(\&|\|)\s*([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*\2\s*:\s*\]",
+        r"\1 \3 \4",
+        fixed,
+    )
+    return fixed
+
+
+def _normalize_boolean_keyword_mask_ops(logic: str) -> str:
+    """Réécrit certains `and/or` en `&/|` pour des affectations de masques.
+
+    Reste volontairement conservateur: on ne touche qu'aux lignes d'affectation
+    de variables de type masque/entry/exit, et uniquement si l'opérateur est
+    homogène sur la ligne.
+    """
+
+    target_name_re = re.compile(
+        r"^\s*([A-Za-z_][A-Za-z0-9_]*(?:_mask|_entry|_exit|_cond|_signal)|long_mask|short_mask|long_entry|short_entry)\s*=\s*(.+)$"
+    )
+
+    fixed_lines: List[str] = []
+    for line in str(logic or "").splitlines():
+        match = target_name_re.match(line)
+        if not match or (" and " not in line and " or " not in line):
+            fixed_lines.append(line)
+            continue
+
+        lhs, rhs = match.groups()
+        rhs = rhs.strip()
+        if " and " in rhs and " or " in rhs:
+            fixed_lines.append(line)
+            continue
+        if any(token in rhs for token in {"'", '"', "lambda ", " for ", " if "}):
+            fixed_lines.append(line)
+            continue
+
+        if " and " in rhs:
+            parts = [part.strip() for part in rhs.split(" and ") if part.strip()]
+            if len(parts) >= 2:
+                fixed_lines.append(f"{lhs} = ((" + ") & (".join(parts) + "))")
+                continue
+        if " or " in rhs:
+            parts = [part.strip() for part in rhs.split(" or ") if part.strip()]
+            if len(parts) >= 2:
+                fixed_lines.append(f"{lhs} = ((" + ") | (".join(parts) + "))")
+                continue
+
+        fixed_lines.append(line)
+
+    return "\n".join(fixed_lines)
+
+
+def _normalize_truncated_signal_mask_assignments(logic: str) -> str:
+    """Répare `signals[mask[1:]] = ...` quand le masque est tronqué inutilement."""
+    slice_token = r"(?:\d+|warmup)"
+    fixed = logic
+    fixed = re.sub(
+        rf"signals\s*\[\s*([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*{slice_token}\s*:\s*\]\s*\]",
+        r"signals[\1]",
+        fixed,
+    )
+    return fixed
+
+
 def _postprocess_llm_logic_block(logic: str, required_indicators: List[str]) -> str:
     """Corrige automatiquement des fautes mineures de logique LLM."""
     fixed = logic
-    # Fix df['indicator_name'] -> indicators['indicator_name'] (required indicators)
+    fixed = _rewrite_cross_helper_calls(fixed)
+    fixed = _normalize_same_slice_vector_comparisons(fixed)
+    fixed = _normalize_boolean_keyword_mask_ops(fixed)
+    fixed = _normalize_truncated_signal_mask_assignments(fixed)
+    fixed = re.sub(r"signals\s*\.loc\s*\[", "signals[", fixed)
+    fixed = re.sub(r"signals\s*\.notnull\s*\(\s*\)", "(signals != 0.0)", fixed)
+    fixed = re.sub(r"signals\s*\.isnull\s*\(\s*\)", "(signals == 0.0)", fixed)
+    fixed = _rewrite_invalid_indicator_accesses(fixed)
     for ind in required_indicators:
         fixed = re.sub(
             rf"df\s*\[\s*['\"]{re.escape(ind)}['\"]\s*\]",
             f"indicators['{ind}']",
             fixed,
         )
-    # Fix df['signal'] = X -> signals[...] = X (common LLM mistake)
     fixed = re.sub(
         r"df\s*\[\s*['\"]signals?['\"]\s*\]",
         "signals",
         fixed,
     )
-    # Fix flat alias patterns: bollinger_upper -> indicators['bollinger']['upper'] etc.
     for alias, correct in _INDICATOR_ALIAS_HINTS.items():
-        # Only fix bare-name usage (not already inside quotes/brackets)
         fixed = re.sub(
             rf"(?<!['\"\[])\b{re.escape(alias)}\b(?!['\"\]])",
             correct,
@@ -2334,10 +3537,14 @@ def _validate_llm_logic_block(logic: str) -> tuple[bool, str]:
     """Valide le bloc logique LLM avant assemblage final."""
     if not logic.strip():
         return False, _err(ERR_CLASS, "Bloc logique LLM vide.")
-    # Autoriser signals.iloc[:warmup] (slice warmup du template) mais interdire
-    # tout autre .iloc[ (accès indexé non-vectorisé)
     if re.search(r"\.iloc\[(?!\s*:)", logic):
         return False, _err(ERR_SIG, "`.iloc[i]` interdit (accès indexé). Seul `signals.iloc[:warmup]` est autorisé.")
+    if re.search(r"\bsignals\.loc\b|\bsignals\s*\.\s*notnull\s*\(", logic):
+        return False, _err(ERR_SIG, "Usage pandas direct sur `signals` interdit; utiliser des masques numpy/vectorises.")
+    if re.search(r"\[['\"][^'\"]*\|[^'\"]*['\"]\]", logic):
+        return False, _err(ERR_IND, "Sous-cles concatenees avec `|` interdites; acceder a une seule sous-cle a la fois.")
+    if re.search(r"\bcrosses_(?:above|below|over|under)[a-z_]*\b", logic):
+        return False, _err(ERR_SIG, "Pseudo-helper `crosses_*` interdit; exprimer le croisement avec np.roll et comparaisons explicites.")
     if re.search(r"\bfor\s+\w+\s+in\s+range\s*\(", logic):
         return False, _err(ERR_SIG, "`for i in range(...)` interdit dans la logique Builder.")
     if re.search(r"\bwhile\b", logic):
@@ -2410,22 +3617,16 @@ def _build_deterministic_strategy_code(
     strategy_name = strategy_name.replace('"', "").replace("'", "")
 
     used = proposal.get("used_indicators", [])
-    required_indicators: List[str] = []
-    if isinstance(used, list):
-        for item in used:
-            if isinstance(item, str):
-                ind = item.strip().lower()
-                if ind and ind not in required_indicators:
-                    required_indicators.append(ind)
+    required_indicators = _normalize_required_indicator_names(
+        cast(Optional[List[str]], used if isinstance(used, list) else None)
+    )
 
     default_params = proposal.get("default_params", {})
     if not isinstance(default_params, dict):
         default_params = {}
     default_params.setdefault("leverage", 1)
     default_params.setdefault("warmup", 50)
-    direction_constraint = str(
-        proposal.get("direction_constraint", "long_short") or "long_short"
-    ).strip().lower()
+    direction_constraint = str(proposal.get("direction_constraint", "long_short") or "long_short").strip().lower()
 
     default_params_literal = _format_python_dict_literal(default_params)
     default_params_lines = default_params_literal.splitlines() or ["{}"]
@@ -2442,6 +3643,10 @@ def _build_deterministic_strategy_code(
     logic_block = "\n".join(
         f"        {line}" if line.strip() else ""
         for line in logic_lines
+    )
+    indicator_binding_lines = _build_generate_signals_indicator_binding_lines(required_indicators)
+    indicator_binding_block = "".join(
+        f"        {line}\n" for line in indicator_binding_lines
     )
     direction_block = ""
     if direction_constraint == "long_only":
@@ -2479,6 +3684,7 @@ def _build_deterministic_strategy_code(
         "        warmup = int(params.get('warmup', 50))\n"
         "        long_mask = np.zeros(n, dtype=bool)\n"
         "        short_mask = np.zeros(n, dtype=bool)\n"
+        f"{indicator_binding_block}"
         "        # === LOGIQUE LLM INSÉRÉE ICI UNIQUEMENT ===\n"
         f"{logic_block}\n"
         f"{direction_block}"
@@ -2509,15 +3715,9 @@ def _build_deterministic_fallback_code(
     strategy_name = strategy_name.replace('"', "").replace("'", "")
 
     used = proposal.get("used_indicators", [])
-    if not isinstance(used, list):
-        used = []
-    safe_used: List[str] = []
-    for x in used:
-        if isinstance(x, str):
-            sx = x.strip().lower()
-            if sx:
-                if sx not in safe_used:
-                    safe_used.append(sx)
+    safe_used = _normalize_required_indicator_names(
+        cast(Optional[List[str]], used if isinstance(used, list) else None)
+    )
     if len(safe_used) > 20:
         safe_used = safe_used[:20]
 
@@ -2772,6 +3972,10 @@ def _build_deterministic_fallback_code(
             "        # Objective constraint: short-only\n"
             "        signals[signals > 0.0] = 0.0\n"
         )
+    indicator_binding_lines = _build_generate_signals_indicator_binding_lines(safe_used)
+    indicator_binding_block = "".join(
+        f"        {line}\n" for line in indicator_binding_lines
+    )
 
     return (
         "from typing import Any, Dict, List\n\n"
@@ -2795,6 +3999,7 @@ def _build_deterministic_fallback_code(
         "        n = len(df)\n"
         "        signals = pd.Series(0.0, index=df.index, dtype=np.float64)\n"
         "        warmup = int(params.get('warmup', 50))\n"
+        f"{indicator_binding_block}"
         f"{signals_body}"
         f"{direction_block}"
         "        signals.iloc[:warmup] = 0.0\n"
@@ -2966,6 +4171,44 @@ def _flatten_nested_logic(val: Any) -> str:
     return json.dumps(val, ensure_ascii=False)[:200]
 
 
+def _looks_pathological_param_name(name: str) -> bool:
+    """Détecte les noms de paramètres manifestement dégénérés produits par un LLM."""
+    candidate = str(name or "").strip().lower()
+    if not candidate:
+        return True
+    if len(candidate) > 64:
+        return True
+    if re.search(r"([^_]+(?:_[^_]+)*)_(?:\1){1,}$", candidate):
+        return True
+    chunks = [part for part in candidate.split("_") if part]
+    if len(chunks) >= 6:
+        seen = set()
+        duplicate_count = 0
+        for chunk in chunks:
+            if chunk in seen:
+                duplicate_count += 1
+            else:
+                seen.add(chunk)
+        if duplicate_count >= 3:
+            return True
+    return False
+
+
+def _sanitize_param_mapping(raw: Any) -> Dict[str, Any]:
+    """Conserve uniquement les paramètres au nom raisonnable."""
+    if not isinstance(raw, dict):
+        return {}
+    cleaned: Dict[str, Any] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str):
+            continue
+        param_name = key.strip()
+        if not param_name or _looks_pathological_param_name(param_name):
+            continue
+        cleaned[param_name] = value
+    return cleaned
+
+
 def _sanitize_proposal_payload(
     proposal: Dict[str, Any],
     *,
@@ -3021,33 +4264,27 @@ def _sanitize_proposal_payload(
             cleaned["risk_management"] = str(risk_raw or "ATR stop/take-profit")
 
     # Indicateurs: normalisation + filtrage registre
-    known = {x.lower() for x in available_indicators}
+    known = {str(x or "").strip().lower() for x in available_indicators if str(x or "").strip()}
     used = cleaned.get("used_indicators", [])
     normalized_used: List[str] = []
     if isinstance(used, list):
         for item in used:
-            if not isinstance(item, str):
-                continue
-            ind = item.strip().lower()
-            if ind and ind in known and ind not in normalized_used:
+            ind = _canonicalize_indicator_name(item, known=known)
+            if ind and ind not in normalized_used:
                 normalized_used.append(ind)
     if not normalized_used:
         normalized_used = ["atr"] if "atr" in known else sorted(known)[:2]
     cleaned["used_indicators"] = normalized_used
 
     # Params sécurisés (diagnostics ruine/no-trades)
-    default_params = cleaned.get("default_params")
-    if not isinstance(default_params, dict):
-        default_params = {}
+    default_params = _sanitize_param_mapping(cleaned.get("default_params"))
     default_params["leverage"] = min(2, max(1, int(default_params.get("leverage", 1) or 1)))
     default_params.setdefault("stop_atr_mult", 1.5)
     default_params.setdefault("tp_atr_mult", 3.0)
     default_params.setdefault("warmup", 50)
     cleaned["default_params"] = default_params
 
-    specs = cleaned.get("parameter_specs")
-    if not isinstance(specs, dict):
-        specs = {}
+    specs = _sanitize_param_mapping(cleaned.get("parameter_specs"))
     if "leverage" not in specs:
         specs["leverage"] = {"min": 1, "max": 2, "default": default_params["leverage"], "type": "int", "step": 1}
     if "stop_atr_mult" not in specs:
@@ -3223,6 +4460,53 @@ def _policy_change_type_override(
     return None
 
 
+def _previous_iteration_indicators(
+    last_iteration: Optional["BuilderIteration"],
+) -> tuple[str, ...]:
+    """Retourne les indicateurs de l'itération précédente depuis son code validé."""
+    if last_iteration is None or not getattr(last_iteration, "code", ""):
+        return tuple()
+    return _extract_required_indicators_signature(last_iteration.code)
+
+
+def _requires_indicator_exploration(
+    last_iteration: Optional["BuilderIteration"],
+) -> bool:
+    """Indique si la prochaine proposition doit explorer de nouveaux indicateurs."""
+    if last_iteration is None:
+        return False
+
+    stag = (getattr(last_iteration, "phase_feedback", {}) or {}).get("stagnation", {})
+    if bool(stag.get("identical_metrics")):
+        return True
+
+    cat = str(getattr(last_iteration, "diagnostic_category", "") or "").strip().lower()
+    return cat in {
+        "ruined",
+        "no_trades",
+        "overtrading",
+        "wrong_direction",
+        "high_drawdown",
+        "needs_work",
+    }
+
+
+def _proposal_reuses_previous_indicator_set(
+    proposal: Dict[str, Any],
+    previous_indicators: tuple[str, ...],
+) -> bool:
+    """Retourne True si la proposition recycle exactement le même set d'indicateurs."""
+    if not previous_indicators:
+        return False
+    current = {
+        str(ind).strip().lower()
+        for ind in proposal.get("used_indicators", [])
+        if str(ind).strip()
+    }
+    previous = {str(ind).strip().lower() for ind in previous_indicators if str(ind).strip()}
+    return bool(current) and current == previous
+
+
 def _is_placeholder_text(value: Any) -> bool:
     """Détecte un champ placeholder/générique au lieu d'une vraie consigne."""
     text = str(value or "").strip().lower()
@@ -3313,14 +4597,14 @@ def _proposal_issues(proposal: Dict[str, Any]) -> List[str]:
                 max_v = float(spec.get("max"))
                 if min_v > max_v:
                     issues.append("parameter_spec_min_gt_max")
-            except Exception:
+            except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
                 issues.append("parameter_spec_non_numeric_bounds")
             if "step" in spec and spec.get("step") is not None:
                 try:
                     step = float(spec.get("step"))
                     if step <= 0:
                         issues.append("parameter_spec_invalid_step")
-                except Exception:
+                except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
                     issues.append("parameter_spec_invalid_step")
 
     ct = _normalize_change_type(proposal.get("change_type", "logic"))
@@ -3402,7 +4686,7 @@ def _coerce_and_validate_signals_runtime(signals: Any, df: pd.DataFrame) -> pd.S
     # Priorité documentée: la valeur finale de la barre est l'intention exécutable.
     # Toute amplitude non standard est réduite à son signe pour conformité moteur.
     values = series.values
-    coerced = np.where(values > 0, 1.0, np.where(values < 0, -1.0, 0.0))
+    coerced = np.sign(values).astype(np.float64)
     series = pd.Series(coerced, index=df.index, dtype=np.float64)
 
     unique = set(np.unique(series.values).tolist())
@@ -3476,7 +4760,7 @@ def _extract_required_indicators_signature(code: str) -> tuple[str, ...]:
     """Retourne une signature stable des required_indicators depuis le code."""
     try:
         tree = ast.parse(code)
-    except Exception:
+    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
         return tuple()
 
     for node in ast.walk(tree):
@@ -3487,7 +4771,7 @@ def _extract_required_indicators_signature(code: str) -> tuple[str, ...]:
                         if isinstance(stmt, ast.Return):
                             try:
                                 value = ast.literal_eval(stmt.value)
-                            except Exception:
+                            except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
                                 return tuple()
                             if isinstance(value, (list, tuple)):
                                 normalized = [str(v) for v in value]
@@ -3499,7 +4783,7 @@ def _extract_generate_signals_signature(code: str) -> str:
     """Retourne une signature AST du corps de generate_signals."""
     try:
         tree = ast.parse(code)
-    except Exception:
+    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
         return ""
 
     for node in ast.walk(tree):
@@ -3912,7 +5196,7 @@ class StrategyBuilder:
 
         try:
             callback(raw_result)
-        except Exception:
+        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
             logger.exception(
                 "builder_backtest_completed_callback_failed iteration=%s session=%s",
                 iteration_num,
@@ -3927,7 +5211,7 @@ class StrategyBuilder:
         message = {"event": event, **payload}
         try:
             callback(message)
-        except Exception:
+        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
             logger.debug(
                 "builder_progress_callback_failed event=%s",
                 event,
@@ -4007,27 +5291,17 @@ class StrategyBuilder:
                 max_tokens=max_tokens,
             )
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(_do_call)
-            # Quand le Builder est appelé depuis Streamlit, le callback de streaming
-            # peut exécuter des `st.*` depuis ce worker thread. On propage donc le
-            # ScriptRunContext pour éviter le spam "missing ScriptRunContext".
+        with _new_streamlit_aware_thread_pool(max_workers=1) as pool:
             try:
-                from streamlit.runtime.scriptrunner import (
-                    add_script_run_ctx as _st_add_ctx,
-                    get_script_run_ctx as _st_get_ctx,
-                )
-
-                st_ctx = _st_get_ctx()
-                if st_ctx is not None:
-                    for th in list(getattr(pool, "_threads", ())):
-                        try:
-                            _st_add_ctx(th, st_ctx)
-                        except Exception:
-                            pass
-            except Exception:
-                # En mode non-Streamlit (CLI/tests), ignorer silencieusement.
-                pass
+                future = pool.submit(_do_call)
+            except RuntimeError as exc:
+                if _is_interpreter_shutdown_runtime_error(exc):
+                    logger.info(
+                        "builder_llm_submit_aborted phase=%s reason=interpreter_shutdown",
+                        phase,
+                    )
+                    raise KeyboardInterrupt() from exc
+                raise
             try:
                 return future.result(timeout=timeout_sec)
             except concurrent.futures.TimeoutError:
@@ -4064,7 +5338,15 @@ class StrategyBuilder:
         """Checkpoint best-effort pour survivre aux arrêts anormaux."""
         try:
             self._save_session_summary(session)
-        except Exception as exc:
+        except (
+            ValueError,
+            KeyError,
+            RuntimeError,
+            AttributeError,
+            TypeError,
+            IndexError,
+            NameError,
+        ) as exc:
             logger.warning(
                 "builder_session_checkpoint_failed session=%s error=%s",
                 getattr(session, "session_id", "unknown"),
@@ -4135,9 +5417,31 @@ class StrategyBuilder:
         Returns:
             (proposal, feedback)
         """
+        previous_indicators = list(_previous_iteration_indicators(last_iteration))
+        diagnostic_detail = (
+            dict(last_iteration.diagnostic_detail)
+            if last_iteration is not None and last_iteration.diagnostic_detail
+            else {}
+        )
+        prefer_diversity = bool(
+            last_iteration is not None
+            and _requires_indicator_exploration(last_iteration)
+        )
+        ordered_prompt_indicators = rank_indicator_selection(
+            self.available_indicators,
+            objective=session.objective,
+            diagnostic=diagnostic_detail,
+            previous_indicators=previous_indicators,
+            session_seed=f"{session.session_id}:proposal:{len(session.iterations)+1}",
+            prefer_diversity=prefer_diversity,
+        )
+
         context = {
             "objective": session.objective,
-            "available_indicators": self.available_indicators,
+            "available_indicators": ordered_prompt_indicators,
+            "available_indicator_guide": build_indicator_selection_guide(
+                ordered_prompt_indicators
+            ),
             "iteration": len(session.iterations) + 1,
             "max_iterations": session.max_iterations,
             "direction_constraint": session.direction_constraint,
@@ -4172,9 +5476,11 @@ class StrategyBuilder:
             context["last_code"] = last_iteration.code
             context["last_analysis"] = last_iteration.analysis
             context["best_sharpe"] = session.best_sharpe
+            if previous_indicators:
+                context["previous_indicators"] = previous_indicators
             # Diagnostic pré-calculé de la dernière itération
-            if last_iteration.diagnostic_detail:
-                context["diagnostic"] = last_iteration.diagnostic_detail
+            if diagnostic_detail:
+                context["diagnostic"] = diagnostic_detail
             # Stagnation détectée : forcer le LLM à changer radicalement
             stag = (last_iteration.phase_feedback or {}).get("stagnation", {})
             if stag.get("identical_metrics"):
@@ -4185,6 +5491,9 @@ class StrategyBuilder:
                     "or DIFFERENT strategy type (e.g. trend-following instead of "
                     "mean-reversion). Do NOT repeat the same logic with minor tweaks."
                 )
+            context["should_consider_indicator_expansion"] = _requires_indicator_exploration(
+                last_iteration
+            )
 
         if session.iterations:
             context["iteration_history"] = [
@@ -4323,10 +5632,25 @@ class StrategyBuilder:
             diag_actions = diag_detail.get("actions", [])
             diag_donts = diag_detail.get("donts", [])
 
+        ordered_code_indicators = rank_indicator_selection(
+            self.available_indicators,
+            objective=(
+                f"{session.objective} {proposal.get('hypothesis', '')} "
+                f"{' '.join(proposal.get('used_indicators', []) or [])}"
+            ),
+            diagnostic=(last_iteration.diagnostic_detail if last_iteration else {}),
+            previous_indicators=proposal.get("used_indicators", []),
+            session_seed=f"{session.session_id}:code:{len(session.iterations)+1}",
+            prefer_diversity=False,
+        )
+
         context = {
             "objective": session.objective,
             "proposal": proposal,
-            "available_indicators": self.available_indicators,
+            "available_indicators": ordered_code_indicators,
+            "available_indicator_guide": build_indicator_selection_guide(
+                ordered_code_indicators
+            ),
             "class_name": GENERATED_CLASS_NAME,
             "direction_constraint": session.direction_constraint,
             # Contexte de marché
@@ -4533,13 +5857,15 @@ class StrategyBuilder:
             f"SHORT intent: {entry_s}\n\n"
             "IMPORTANT:\n"
             "- indicator values are numpy arrays (or dict of numpy arrays)\n"
-            "- never use .iloc/.loc on indicators; use arr[i] or vectorized masks\n"
+            "- use vectorized masks ONLY; no arr[i], no loops, no row-by-row logic\n"
+            "- if you need previous values, use np.roll(array, 1)\n"
             "- never use for i in range(...) or while\n"
-            "- bollinger must be indicators['bollinger']['upper|middle|lower']\n"
+            "- never use signals.loc[...] or signals.notnull(); write signals[mask] = 1.0/-1.0 only\n"
+            "- bollinger keys are separate: indicators['bollinger']['upper'], ['middle'], ['lower']\n"
             "- donchian breakout should compare close vs previous band: prev_upper = np.roll(donchian_upper, 1)\n\n"
-            "- adx must be indicators['adx']['adx|plus_di|minus_di'] (not indicators['adx'] directly)\n"
-            "- supertrend must be indicators['supertrend']['supertrend|direction'] (no upper/lower)\n"
-            "- stochastic must be indicators['stochastic']['stoch_k|stoch_d'] (no 'signal' key)\n"
+            "- adx keys are separate: indicators['adx']['adx'], ['plus_di'], ['minus_di'] (not indicators['adx'] directly)\n"
+            "- supertrend keys are separate: indicators['supertrend']['supertrend'] and ['direction']\n"
+            "- stochastic keys are separate: indicators['stochastic']['stoch_k'] and ['stoch_d'] (no 'signal' key)\n"
             "- do not compare dict indicators directly (e.g. NEVER `adx > 25`)\n"
             "- for `&` / `|`, ensure both sides are boolean masks (no float/int scalar in bitwise op)\n\n"
             "- ema/rsi/atr are plain arrays: NEVER use indicators['ema']['ema_21'] style\n\n"
@@ -4589,18 +5915,20 @@ class StrategyBuilder:
             "- Indicator values are numpy arrays; never call .iloc/.loc on indicators\n"
             "- Plain arrays (no sub-keys): ema, rsi, atr, cci, obv, mfi\n"
             "- Dict indicators (access sub-keys first):\n"
-            "  bollinger['upper|middle|lower'], keltner['upper|middle|lower'],\n"
-            "  donchian['upper|middle|lower'], macd['macd|signal|histogram'],\n"
+            "  bollinger['upper'/'middle'/'lower'], keltner['upper'/'middle'/'lower'],\n"
+            "  donchian['upper'/'middle'/'lower'], macd['macd'/'signal'/'histogram'],\n"
             "  For Donchian/Bollinger/Keltner breakout rules, compare against previous band values via np.roll(..., 1)\n"
-            "  adx['adx|plus_di|minus_di'], supertrend['supertrend|direction'],\n"
-            "  stochastic['stoch_k|stoch_d'], stoch_rsi['k|d|signal'],\n"
-            "  ichimoku['tenkan|kijun|senkou_a|senkou_b|chikou|cloud_position'],\n"
-            "  psar['sar|trend|signal'], vortex['vi_plus|vi_minus|signal|oscillator'],\n"
-            "  aroon['aroon_up|aroon_down'], pivot_points['pivot|r1|s1|r2|s2|r3|s3']\n"
+            "  adx['adx'/'plus_di'/'minus_di'], supertrend['supertrend'/'direction'],\n"
+            "  stochastic['stoch_k'/'stoch_d'], stoch_rsi['k'/'d'/'signal'],\n"
+            "  ichimoku['tenkan'/'kijun'/'senkou_a'/'senkou_b'/'chikou'/'cloud_position'],\n"
+            "  psar['sar'/'trend'/'signal'], vortex['vi_plus'/'vi_minus'/'signal'/'oscillator'],\n"
+            "  aroon['aroon_up'/'aroon_down'], pivot_points['pivot'/'r1'/'s1'/'r2'/'s2'/'r3'/'s3']\n"
             "- NEVER create bare variables like keltner_upper or donchian_lower\n"
             "- Do NOT compare dict indicators directly (e.g. avoid `adx > threshold`)\n"
             "- For bitwise `&` / `|`, each side must be a boolean mask expression\n"
             "- ALWAYS define long_mask/short_mask before using: long_mask = np.zeros(len(df), dtype=bool)\n"
+            "- `signals` MUST stay a 1D pd.Series: never create `long`/`short` columns, "
+            "never write `signals.loc[mask, 'long']`, use only `signals[mask] = 1.0/-1.0`\n"
             "- Do not use df['rsi']/df['ema']/df['bollinger']\n"
             "- Return only Python code in one ```python block\n\n"
             f"Current proposal context: {proposal}\n\n"
@@ -4626,7 +5954,7 @@ class StrategyBuilder:
                 max_tokens=4096,
             )
             return _extract_python_from_response(response.content)
-        except Exception as llm_exc:
+        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as llm_exc:
             logger.error(
                 "retry_code_runtime_fix LLM call failed: %s\n"
                 "runtime_error=%s\nfailing_code (first 500 chars)=%.500s",
@@ -4848,7 +6176,7 @@ class StrategyBuilder:
                 return f"[Pre-reflection] {reflection}" + (
                     f"\n[Backup plan] {backup}" if backup else ""
                 )
-        except Exception as exc:
+        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as exc:
             logger.debug("pre_reflection_failed: %s", exc)
         return ""
 
@@ -4886,6 +6214,8 @@ SEMANTIC CORRECTNESS:
 - Bollinger/Keltner/Donchian bands ARE price levels — compare close vs band.
 - RSI/Stochastic/MFI are oscillators (0-100) — compare vs thresholds, not price.
 - ADX measures trend strength (0-100) — use as a filter (ADX > 25), not as entry signal.
+- Markov Switching is a regime filter — use regime/probability state to gate trades, not as a fast trigger by itself.
+- Directional Bias is a composite context score — use it to confirm or veto entries, not as a standalone raw trigger.
 - Always ensure comparisons are between values of the same nature (price vs price, oscillator vs threshold).
 
 Focus on signal quality, risk management, and robustness."""
@@ -4915,21 +6245,21 @@ CRITICAL RULES:
 13. Never access indicators via df['rsi']/df['ema']/df['bollinger']; always use indicators['name'].
 14. For dict indicators (bollinger/macd/adx/stochastic/etc), access sub-keys before np.nan_to_num.
 15. Indicator values are numpy arrays (or dict of numpy arrays): NEVER use .iloc/.loc/.shift/.rolling on indicators.
-16. Bollinger must be used as indicators['bollinger']['upper|middle|lower'] (never indicators['bollinger_upper']).
+16. Bollinger must be used via separate sub-keys like indicators['bollinger']['upper'] / ['middle'] / ['lower'] (never indicators['bollinger_upper']).
 17. EMA/RSI/ATR/CCI are plain arrays: NEVER use sub-keys like indicators['ema']['ema_21'].
     CCI is a plain array: use np.nan_to_num(indicators['cci']) directly.
-18. ADX must be used as indicators['adx']['adx|plus_di|minus_di'] (never compare indicators['adx'] directly).
-19. Supertrend must be used as indicators['supertrend']['supertrend|direction'] (no upper/lower keys).
-20. Stochastic must be used as indicators['stochastic']['stoch_k|stoch_d'] (no 'signal' key).
-21. Keltner must be used as indicators['keltner']['upper|middle|lower'] (same pattern as Bollinger).
-22. Donchian must be used as indicators['donchian']['upper|middle|lower'] (same pattern as Bollinger).
+18. ADX must be used via separate sub-keys indicators['adx']['adx'] / ['plus_di'] / ['minus_di'] (never compare indicators['adx'] directly).
+19. Supertrend must be used via indicators['supertrend']['supertrend'] and ['direction'] (no upper/lower keys).
+20. Stochastic must be used via indicators['stochastic']['stoch_k'] and ['stoch_d'] (no 'signal' key).
+21. Keltner must be used via separate sub-keys indicators['keltner']['upper'] / ['middle'] / ['lower'].
+22. Donchian must be used via separate sub-keys indicators['donchian']['upper'] / ['middle'] / ['lower'].
 22b. For breakout on Donchian/Bollinger/Keltner bands, compare close to previous band values via np.roll(band, 1).
-23. Ichimoku must be used as indicators['ichimoku']['tenkan|kijun|senkou_a|senkou_b|chikou|cloud_position'].
-24. PSAR must be used as indicators['psar']['sar|trend|signal'].
-25. Vortex must be used as indicators['vortex']['vi_plus|vi_minus|signal|oscillator'].
-26. Stoch_RSI must be used as indicators['stoch_rsi']['k|d|signal'] (NEVER compare indicators['stoch_rsi'] directly).
-27. Aroon must be used as indicators['aroon']['aroon_up|aroon_down'].
-28. Pivot_points must be used as indicators['pivot_points']['pivot|r1|s1|r2|s2|r3|s3'].
+23. Ichimoku must be used via separate sub-keys like tenkan, kijun, senkou_a, senkou_b, chikou, cloud_position.
+24. PSAR must be used via separate sub-keys sar, trend, signal.
+25. Vortex must be used via separate sub-keys vi_plus, vi_minus, signal, oscillator.
+26. Stoch_RSI must be used via separate sub-keys k, d, signal (NEVER compare indicators['stoch_rsi'] directly).
+27. Aroon must be used via separate sub-keys aroon_up and aroon_down.
+28. Pivot_points must be used via separate sub-keys pivot, r1, s1, r2, s2, r3, s3.
 29. NEVER create bare variables like keltner_upper, donchian_lower, cci_value etc.
     Always extract from the indicators dict: e.g. kelt = indicators['keltner']; upper = np.nan_to_num(kelt['upper']).
 30. For bitwise '&' and '|', both sides must be boolean mask expressions (never float/int scalars).
@@ -4937,6 +6267,7 @@ CRITICAL RULES:
 32. Never assign `required_indicators` anywhere.
 33. Never use `for i in range(...)` or `while` in signal logic.
 34. ALWAYS define long_mask/short_mask before using them. Initialize with: long_mask = np.zeros(len(df), dtype=bool).
+34b. `signals` is always a 1D pd.Series: never index a second dimension, never create `long`/`short` columns, never write `signals.loc[mask, 'long']`.
 35. To implement ATR-based SL/TP, write price levels into the DataFrame columns:
     - df.loc[:, "bb_stop_long"] = entry_price - stop_atr_mult * atr  (NaN where no entry)
     - df.loc[:, "bb_tp_long"]   = entry_price + tp_atr_mult * atr    (NaN where no entry)
@@ -5039,9 +6370,28 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         Returns:
             La classe (éventuellement patchée)
         """
-        # Verrouillé: required_indicators doit rester déterministe via code généré.
-        return strategy_cls
+        declared = _extract_declared_required_indicators(code)
+        inferred = _infer_required_indicator_names_from_code(code, declared)
+        if not inferred:
+            return strategy_cls
 
+        declared_tuple = tuple(_normalize_required_indicator_names(declared))
+        inferred_tuple = tuple(_normalize_required_indicator_names(inferred))
+        if inferred_tuple == declared_tuple:
+            return strategy_cls
+
+        logger.info(
+            "builder_required_indicators_auto_fix before=%s after=%s",
+            declared_tuple,
+            inferred_tuple,
+        )
+
+        patched_required = list(inferred_tuple)
+        setattr(strategy_cls, "_builder_required_indicators_auto_fixed", patched_required)
+        strategy_cls.required_indicators = property(
+            lambda self, _patched=tuple(patched_required): list(_patched)
+        )
+        return strategy_cls
 
     def _precheck_signal_counts(
         self,
@@ -5069,7 +6419,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             merged_params.setdefault("slippage_bps", slippage_bps)
 
             probe_df = data.copy(deep=True)
-            indicators = engine._calculate_indicators(probe_df, strategy_instance, merged_params)
+            indicators = engine.calculate_indicators(probe_df, strategy_instance, merged_params)
             raw_signals = strategy_instance.generate_signals(probe_df, indicators, merged_params)
             signals = _coerce_and_validate_signals_runtime(raw_signals, probe_df)
             signals = _apply_signal_direction_constraint(
@@ -5114,7 +6464,15 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 "repeated_same_signals": repeated_same_count,
                 "repeated_same_ratio": repeated_same_ratio,
             }
-        except Exception as exc:
+        except (
+            ValueError,
+            KeyError,
+            RuntimeError,
+            AttributeError,
+            TypeError,
+            IndexError,
+            NameError,
+        ) as exc:
             return {
                 "ok": False,
                 "error": f"{type(exc).__name__}: {exc}",
@@ -5216,6 +6574,22 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         def _guarded_generate_signals(df_local, indicators_local, params_local):
             try:
                 raw = original_generate_signals(df_local, indicators_local, params_local)
+            except NameError as exc:
+                missing_name = ""
+                match = re.search(r"name '([^']+)' is not defined", str(exc))
+                if match:
+                    missing_name = match.group(1)
+                detail = (
+                    f"`{missing_name}` is not defined"
+                    if missing_name
+                    else str(exc)
+                )
+                raise RuntimeError(
+                    "NameError in generate_signals: "
+                    f"{detail}. FIX: every intermediate variable must be "
+                    "defined before use; remove placeholder names and inline "
+                    "or bind the final boolean expression explicitly."
+                ) from exc
             except IndexError as exc:
                 # Enrichir le message pour que l'auto-fix LLM comprenne la cause
                 raise IndexError(
@@ -5331,7 +6705,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             if hasattr(idx, 'min'):
                 date_range_start = str(idx.min())[:19]
                 date_range_end = str(idx.max())[:19]
-        except Exception:
+        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
             pass
 
         session = BuilderSession(
@@ -5652,7 +7026,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                                 variant=fallback_count,
                             )
                             fallback_count += 1
-                            fallback_code = _repair_code(fallback_code)
+                            fallback_code = _repair_code(fallback_code, req_inds)
                             is_valid_fb, error_msg_fb = validate_generated_code(fallback_code)
                             if is_valid_fb:
                                 code = fallback_code
@@ -5733,7 +7107,14 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                             )
 
                 # ── Phase 3 : Auto-repair + Validation syntaxe + sécurité ──
-                code = _repair_code(code)
+                code = _repair_code(
+                    code,
+                    [
+                        str(x).strip().lower()
+                        for x in proposal.get("used_indicators", [])
+                        if isinstance(x, str) and str(x).strip()
+                    ],
+                )
                 iteration.code = code
                 is_valid, error_msg = validate_generated_code(code)
 
@@ -5761,7 +7142,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                         retry_code = ""
                     else:
                         retry_code = _build_deterministic_strategy_code(proposal, retry_logic)
-                        retry_code = _repair_code(retry_code)
+                        retry_code = _repair_code(retry_code, req_inds)
                         is_valid_r, error_msg_r = validate_generated_code(retry_code)
                     if is_valid_r:
                         code = retry_code
@@ -5776,7 +7157,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                             proposal, variant=fallback_count,
                         )
                         fallback_count += 1
-                        fallback_code = _repair_code(fallback_code)
+                        fallback_code = _repair_code(fallback_code, req_inds)
                         is_valid_fb, error_msg_fb = validate_generated_code(fallback_code)
                         if is_valid_fb:
                             code = fallback_code
@@ -5833,7 +7214,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
 
                 pre_reflection_future = None
                 pre_reflection_text = ""
-                _pre_pool = None
+                pre_reflection_pool: Optional[concurrent.futures.ThreadPoolExecutor] = None
 
                 signal_probe = self._precheck_signal_counts(
                     strategy_cls,
@@ -5918,13 +7299,13 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                     # Launch pre-reflection in parallel with backtest
                     pre_reflection_future = None
                     pre_reflection_text = ""
-                    _pre_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
                     try:
-                        pre_reflection_future = _pre_pool.submit(
+                        pre_reflection_pool = _new_streamlit_aware_thread_pool(max_workers=1)
+                        pre_reflection_future = pre_reflection_pool.submit(
                             self._ask_pre_reflection,
                             session, proposal, code, i,
                         )
-                    except Exception:
+                    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
                         pass
 
                     try:
@@ -5936,7 +7317,15 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                             slippage_bps=session.slippage_bps,
                             direction_constraint=session.direction_constraint,
                         )
-                    except Exception as bt_exc:
+                    except (
+                        ValueError,
+                        KeyError,
+                        RuntimeError,
+                        AttributeError,
+                        TypeError,
+                        IndexError,
+                        NameError,
+                    ) as bt_exc:
                         bt_error = f"{type(bt_exc).__name__}: {bt_exc}"
                         tb = _safe_format_exception(bt_exc)
                         tb_tail = ""
@@ -5968,7 +7357,14 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                             failing_code=code,
                             runtime_error=runtime_error_for_llm,
                         )
-                        retry_code = _repair_code(retry_code)
+                        retry_code = _repair_code(
+                            retry_code,
+                            [
+                                str(x).strip().lower()
+                                for x in proposal.get("used_indicators", [])
+                                if isinstance(x, str) and str(x).strip()
+                            ],
+                        )
                         valid_retry, retry_err = validate_generated_code(retry_code)
                         used_runtime_fallback = False
                         if not valid_retry:
@@ -5979,13 +7375,20 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                                 proposal, variant=fallback_count,
                             )
                             fallback_count += 1
-                            fallback_code = _repair_code(fallback_code)
+                            fallback_code = _repair_code(
+                                fallback_code,
+                                [
+                                    str(x).strip().lower()
+                                    for x in proposal.get("used_indicators", [])
+                                    if isinstance(x, str) and str(x).strip()
+                                ],
+                            )
                             valid_fb, fb_err = validate_generated_code(fallback_code)
                             if not valid_fb:
                                 raise ValueError(
                                     "Runtime-fix invalide et fallback déterministe invalide: "
                                     f"{retry_err} | {fb_err}"
-                                )
+                                ) from bt_exc
                             retry_code = fallback_code
                             used_runtime_fallback = True
                             iteration.phase_feedback.setdefault("backtest", {})[
@@ -6008,7 +7411,15 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                                 slippage_bps=session.slippage_bps,
                                 direction_constraint=session.direction_constraint,
                             )
-                        except Exception as retry_bt_exc:
+                        except (
+                            ValueError,
+                            KeyError,
+                            RuntimeError,
+                            AttributeError,
+                            TypeError,
+                            IndexError,
+                            NameError,
+                        ) as retry_bt_exc:
                             if used_runtime_fallback:
                                 raise
                             iteration.phase_feedback.setdefault("backtest", {})[
@@ -6018,7 +7429,14 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                                 proposal, variant=fallback_count,
                             )
                             fallback_count += 1
-                            fallback_code = _repair_code(fallback_code)
+                            fallback_code = _repair_code(
+                                fallback_code,
+                                [
+                                    str(x).strip().lower()
+                                    for x in proposal.get("used_indicators", [])
+                                    if isinstance(x, str) and str(x).strip()
+                                ],
+                            )
                             valid_fb2, fb_err2 = validate_generated_code(fallback_code)
                             if not valid_fb2:
                                 raise ValueError(
@@ -6078,11 +7496,16 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                             iteration.phase_feedback.setdefault("pre_reflection", {})[
                                 "text"
                             ] = pre_reflection_text
-                            ts._append(f"🧠  PRÉ-RÉFLEXION (pendant backtest)\n    {pre_reflection_text[:300]}\n\n")
-                    except Exception:
+                            ts.append(f"🧠  PRÉ-RÉFLEXION (pendant backtest)\n    {pre_reflection_text[:300]}\n\n")
+                    except concurrent.futures.TimeoutError:
+                        iteration.phase_feedback.setdefault("pre_reflection", {})[
+                            "timeout"
+                        ] = True
+                    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
                         pass
                     finally:
-                        _pre_pool.shutdown(wait=False)
+                        if pre_reflection_pool is not None:
+                            pre_reflection_pool.shutdown(wait=False)
 
                 # Backtest réussi → reset circuit breaker
                 consecutive_failures = 0
@@ -6381,7 +7804,13 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                         )
                     break
 
-            except Exception as e:
+            except KeyboardInterrupt:
+                logger.info(
+                    "builder_iter_%d_interrupted reason=keyboard_interrupt_or_interpreter_shutdown",
+                    i,
+                )
+                raise
+            except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as e:
                 iteration.error = f"{type(e).__name__}: {e}"
                 ts.error(i, str(e))
                 consecutive_failures += 1
@@ -6429,6 +7858,11 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
     def _save_session_summary(self, session: BuilderSession) -> None:
         """Sauvegarde un résumé JSON de la session."""
         iteration_rows: List[Dict[str, Any]] = []
+        last_runtime_feedback = {
+            "last_runtime_error": None,
+            "last_runtime_error_iteration": None,
+            "last_runtime_traceback_tail": None,
+        }
         for it in session.iterations:
             metrics = (
                 it.backtest_result.metrics
@@ -6451,6 +7885,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 "error": it.error,
                 "decision": it.decision,
                 "sharpe": metrics.get("sharpe_ratio") if metrics else None,
+                "total_pnl": metrics.get("total_pnl") if metrics else None,
                 "return_pct": metrics.get("total_return_pct") if metrics else None,
                 "max_drawdown_pct": metrics.get("max_drawdown_pct") if metrics else None,
                 "profit_factor": metrics.get("profit_factor") if metrics else None,
@@ -6473,6 +7908,25 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             }
             iteration_rows.append(row)
 
+            phase_feedback = it.phase_feedback if isinstance(it.phase_feedback, dict) else {}
+            backtest_feedback = (
+                phase_feedback.get("backtest", {})
+                if isinstance(phase_feedback, dict)
+                else {}
+            )
+            if not isinstance(backtest_feedback, dict):
+                backtest_feedback = {}
+            runtime_error = str(backtest_feedback.get("runtime_error") or "").strip()
+            runtime_traceback_tail = str(
+                backtest_feedback.get("runtime_traceback_tail") or ""
+            ).strip()
+            if runtime_error or runtime_traceback_tail:
+                last_runtime_feedback = {
+                    "last_runtime_error": runtime_error or None,
+                    "last_runtime_error_iteration": it.iteration,
+                    "last_runtime_traceback_tail": runtime_traceback_tail or None,
+                }
+
         leaderboard = sorted(
             [row for row in iteration_rows if row.get("continuous_score") is not None],
             key=lambda row: float(row.get("continuous_score") or -100.0),
@@ -6487,10 +7941,22 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             "status": session.status,
             "best_sharpe": session.best_sharpe,
             "best_score": session.best_score,
+            "symbol": session.symbol,
+            "timeframe": session.timeframe,
+            "n_bars": session.n_bars,
+            "date_range_start": session.date_range_start,
+            "date_range_end": session.date_range_end,
+            "initial_capital": session.initial_capital,
+            "fees_bps": session.fees_bps,
+            "slippage_bps": session.slippage_bps,
+            "start_time": session.start_time.isoformat(),
             "auto_reset_count": session.auto_reset_count,
             "recovery_events": session.recovery_events,
             "total_iterations": len(session.iterations),
             "available_indicators": session.available_indicators,
+            "last_runtime_error": last_runtime_feedback.get("last_runtime_error"),
+            "last_runtime_error_iteration": last_runtime_feedback.get("last_runtime_error_iteration"),
+            "last_runtime_traceback_tail": last_runtime_feedback.get("last_runtime_traceback_tail"),
             "iterations": iteration_rows,
             "leaderboard": leaderboard,
         }
@@ -6559,7 +8025,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         try:
             from catalog.strategy_catalog import upsert_from_builder_session
             upsert_from_builder_session(session)
-        except Exception as exc:
+        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as exc:
             logger.warning("builder_catalog_upsert_failed session=%s error=%s", session.session_id, exc)
 
 
@@ -6781,47 +8247,6 @@ def generate_random_objective(
     return objective
 
 
-def _build_positive_objective_bias_instruction(max_items: int = 3) -> str:
-    """Construit une instruction de prompt à partir des objectifs historiquement positifs."""
-    try:
-        tracker = _get_exploration_tracker()
-        summary = tracker.get_positive_bias_summary(limit=max_items)
-    except Exception:
-        return ""
-
-    positive_count = int(summary.get("positive_count", 0) or 0)
-    if positive_count <= 0:
-        return ""
-
-    def _extract_names(items: List[Dict[str, Any]]) -> List[str]:
-        names: List[str] = []
-        for item in items[:max(1, max_items)]:
-            name = str(item.get("name", "")).strip()
-            if name:
-                names.append(name)
-        return names
-
-    family_names = _extract_names(cast(List[Dict[str, Any]], summary.get("top_families", [])))
-    indicator_patterns = _extract_names(cast(List[Dict[str, Any]], summary.get("top_indicator_patterns", [])))
-    novelty_names = _extract_names(cast(List[Dict[str, Any]], summary.get("top_novelty_angles", [])))
-
-    lines = ["Ancrages performants issus des sessions precedentes:"]
-    if family_names:
-        lines.append(f"- Familles robustes detectees: {', '.join(family_names)}.")
-    if indicator_patterns:
-        lines.append(
-            "- Combinaisons indicateurs deja positives: "
-            f"{', '.join(indicator_patterns)}."
-        )
-    if novelty_names:
-        lines.append(f"- Angles de nouveaute deja prometteurs: {', '.join(novelty_names)}.")
-    lines.append(
-        "- Reutilise au moins un ancrage positif, mais MUTER au moins deux dimensions "
-        "(direction, filtre, risk management, ou contexte marche) pour eviter la copie."
-    )
-    return "\n".join(lines) + "\n\n"
-
-
 def _sanitize_objective_indicators_section(
     objective: str,
     available_indicators: List[str],
@@ -6840,13 +8265,6 @@ def _sanitize_objective_indicators_section(
         return text
     allowed_set = set(allowed)
 
-    alias_map = {
-        "fibonacci_levels": "fibonacci",
-        "fibonacci_level": "fibonacci",
-        "williamsr": "williams_r",
-        "williams": "williams_r",
-        "stochrsi": "stoch_rsi",
-    }
     preferred_fallback = [
         name
         for name in ("ema", "rsi", "bollinger", "macd", "stochastic", "adx", "atr")
@@ -6868,8 +8286,8 @@ def _sanitize_objective_indicators_section(
     extracted = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", raw_block)
     selected: List[str] = []
     for token in extracted:
-        normalized = alias_map.get(token.lower(), token.lower())
-        if normalized in allowed_set and normalized not in selected:
+        normalized = _canonicalize_indicator_name(token, known=allowed_set)
+        if normalized and normalized not in selected:
             selected.append(normalized)
 
     if "atr" in allowed_set and "atr" not in selected:
@@ -6888,6 +8306,154 @@ def _sanitize_objective_indicators_section(
     rebuilt = f"{prefix}{' + '.join(ind.upper() for ind in selected[:4])}{suffix}"
     start, end = match.span()
     return f"{text[:start]}{rebuilt}{text[end:]}"
+
+
+def _sanitize_objective_indicator_candidates(
+    raw_indicators: Any,
+    available_indicators: List[str],
+) -> List[str]:
+    """Normalise une liste d'indicateurs issus d'un payload structuré."""
+    allowed = [
+        str(ind or "").strip().lower()
+        for ind in (available_indicators or [])
+        if str(ind or "").strip()
+    ]
+    allowed_set = set(allowed)
+    if not allowed_set:
+        return []
+
+    raw_tokens: List[str] = []
+    if isinstance(raw_indicators, str):
+        raw_tokens = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", raw_indicators)
+    elif isinstance(raw_indicators, (list, tuple, set)):
+        raw_tokens = [str(item or "") for item in raw_indicators]
+
+    selected: List[str] = []
+    for token in raw_tokens:
+        normalized = _canonicalize_indicator_name(token, known=allowed_set)
+        if normalized and normalized not in selected:
+            selected.append(normalized)
+
+    if len(selected) < 2:
+        preferred = [
+            name
+            for name in ("ema", "rsi", "bollinger", "macd", "stochastic", "adx", "atr")
+            if name in allowed_set and name not in selected
+        ]
+        for candidate in preferred:
+            selected.append(candidate)
+            if len(selected) >= 3:
+                break
+
+    return selected[:4]
+
+
+def _request_structured_objective_payload(
+    llm_client: Any,
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    stream_callback: Optional[Callable[[str, str], None]],
+    max_tokens: int,
+) -> tuple[Dict[str, Any], str]:
+    """Demande un handoff JSON pour la génération d'objectif."""
+    messages = [
+        LLMMessage(role="system", content=system_prompt),
+        LLMMessage(role="user", content=user_prompt),
+    ]
+    if stream_callback and hasattr(llm_client, "chat_stream"):
+        raw = llm_client.chat_stream(
+            messages,
+            on_chunk=lambda c: stream_callback("objective_gen", c),
+            max_tokens=max_tokens,
+            json_mode=True,
+        )
+    else:
+        raw = llm_client.chat(messages, max_tokens=max_tokens, json_mode=True)
+
+    raw_text = str(getattr(raw, "content", raw) or "").strip()
+    return _extract_json_from_response(raw_text), raw_text
+
+
+def _resolve_structured_objective_market(
+    payload: Dict[str, Any],
+    *,
+    market_auto_selection: bool,
+    symbols_list: List[str],
+    timeframes_list: List[str],
+) -> tuple[str, str]:
+    if market_auto_selection:
+        return "{symbol}", "{timeframe}"
+
+    symbol_value = str(payload.get("symbol", "") or "").strip().upper()
+    timeframe_value = str(payload.get("timeframe", "") or "").strip()
+
+    if symbols_list:
+        allowed_symbols = {str(item or "").strip().upper() for item in symbols_list}
+        if symbol_value not in allowed_symbols:
+            symbol_value = str(symbols_list[0] or "").strip().upper()
+    if timeframes_list:
+        allowed_timeframes = {str(item or "").strip() for item in timeframes_list}
+        if timeframe_value not in allowed_timeframes:
+            timeframe_value = str(timeframes_list[0] or "").strip()
+
+    return symbol_value, timeframe_value
+
+
+def _structured_objective_to_text(
+    payload: Dict[str, Any],
+    *,
+    available_indicators: List[str],
+    market_auto_selection: bool,
+    symbols_list: List[str],
+    timeframes_list: List[str],
+) -> str:
+    """Reconstruit un objectif lisible depuis un payload JSON."""
+    if not isinstance(payload, dict) or not payload:
+        return ""
+
+    if not any(
+        str(payload.get(key, "") or "").strip()
+        for key in ("objective", "style", "entry_logic", "exit_logic", "risk_management", "hypothesis")
+    ) and not payload.get("used_indicators"):
+        return ""
+
+    objective = _normalize_llm_text(payload.get("objective"), max_len=900)
+    objective = sanitize_objective_text(objective)
+    if objective and not _looks_like_prompt_instruction_leakage(objective):
+        return objective
+
+    symbol_value, timeframe_value = _resolve_structured_objective_market(
+        payload,
+        market_auto_selection=market_auto_selection,
+        symbols_list=symbols_list,
+        timeframes_list=timeframes_list,
+    )
+    style = _normalize_llm_text(payload.get("style"), max_len=80) or "Stratégie"
+    entry_logic = _normalize_llm_text(payload.get("entry_logic"), max_len=260)
+    exit_logic = _normalize_llm_text(payload.get("exit_logic"), max_len=260)
+    risk_management = _normalize_llm_text(payload.get("risk_management"), max_len=220)
+    hypothesis = _normalize_llm_text(payload.get("hypothesis"), max_len=220)
+    indicators = _sanitize_objective_indicator_candidates(
+        payload.get("used_indicators"),
+        available_indicators,
+    )
+
+    parts: List[str] = []
+    market_label = f"{symbol_value} {timeframe_value}".strip()
+    parts.append(f"[{style}] sur {market_label}.")
+    if indicators:
+        parts.append(f"Indicateurs : {' + '.join(ind.upper() for ind in indicators)}.")
+    if hypothesis:
+        parts.append(f"Hypothèse : {hypothesis}.")
+    if entry_logic:
+        parts.append(f"Entrées : {entry_logic}.")
+    if exit_logic:
+        parts.append(f"Sorties : {exit_logic}.")
+    if risk_management:
+        parts.append(f"Risk management : {risk_management}.")
+
+    return " ".join(part.strip() for part in parts if part.strip()).strip()
 
 
 def generate_llm_objective(
@@ -6959,14 +8525,6 @@ def generate_llm_objective(
         else:
             market_instruction = f"Marché : {symbols_list[0]} en {timeframes_list[0]}.\n\n"
 
-    system_msg = LLMMessage(
-        role="system",
-        content=(
-            "Tu es un quant designer spécialisé en stratégies de trading crypto. "
-            "Génère UN objectif de stratégie original et précis. "
-            "Réponds UNIQUEMENT avec l'objectif, sans explication ni formatage markdown."
-        ),
-    )
     novelty_axes = [
         "asymetrie long/short (seuils differents)",
         "adaptation de regime (trend vs range)",
@@ -6988,59 +8546,73 @@ def generate_llm_objective(
     ]
     random.shuffle(random_behaviors)
     selected_behaviors = random_behaviors[:2]
-    positive_bias_instruction = _build_positive_objective_bias_instruction(max_items=3)
-
-    format_hint = (
-        "Format attendu :\n"
-        "[Style] sur {symbol} {timeframe}. "
-        "Indicateurs : [ind1] + [ind2] + [ind3]. "
-        "Entrées : [conditions]. "
-        "Sorties : [conditions]. "
-        "Risk management : [SL/TP]."
-        if market_auto_selection
-        else
-        "Format attendu :\n"
-        "[Style] sur [marché] [timeframe]. "
-        "Indicateurs : [ind1] + [ind2] + [ind3]. "
-        "Entrées : [conditions]. "
-        "Sorties : [conditions]. "
-        "Risk management : [SL/TP]."
+    system_prompt = (
+        "Tu es un quant designer specialise en strategies de trading crypto. "
+        "Tu dois produire un handoff STRUCTURE et exploitable par un Builder. "
+        "Reponds UNIQUEMENT avec un objet JSON valide, sans markdown ni commentaire."
     )
-
-    user_msg = LLMMessage(
-        role="user",
-        content=(
-            f"Génère un objectif de stratégie de trading.\n\n"
-            f"{market_instruction}"
-            f"Indicateurs disponibles : {indicators_list}\n\n"
-            f"{positive_bias_instruction}"
-            "Contraintes de diversification:\n"
-            f"- Intègre au moins un axe 'hors sentiers battus' parmi: {', '.join(selected_axes)}.\n"
-            f"- Comportements aleatoires imposes pour cette generation: {', '.join(selected_behaviors)}.\n"
-            "- Evite les formulations generiques de type 'RSI<30/RSI>70' sans filtre additionnel.\n"
-            "- Propose une hypothese testable et falsifiable.\n\n"
-            f"{format_hint}\n\n"
-            "Sois créatif : explore des combinaisons inhabituelles, "
-            "des filtres originaux, des approches multi-timeframe conceptuelles. "
-            "L'objectif doit faire 2-4 phrases."
-        ),
-    )
-
-    if stream_callback and hasattr(llm_client, "chat_stream"):
-        result = llm_client.chat_stream(
-            [system_msg, user_msg],
-            on_chunk=lambda c: stream_callback("objective_gen", c),
-            max_tokens=300,
+    if market_auto_selection:
+        market_contract = (
+            "- symbol MUST be exactly `{symbol}`.\n"
+            "- timeframe MUST be exactly `{timeframe}`.\n"
         )
     else:
-        result = llm_client.chat([system_msg, user_msg], max_tokens=300)
+        allowed_symbols = ", ".join(symbols_list)
+        allowed_timeframes = ", ".join(timeframes_list)
+        market_contract = (
+            f"- symbol MUST be one of: {allowed_symbols}.\n"
+            f"- timeframe MUST be one of: {allowed_timeframes}.\n"
+        )
 
-    # Extraire .content si LLMResponse, sinon str()
-    objective = str(getattr(result, "content", result) or "").strip()
-    # Nettoyer les tags <think> si présents
-    objective = re.sub(r"<think>.*?</think>", "", objective, flags=re.DOTALL).strip()
-    objective = re.sub(r"<think>.*", "", objective, flags=re.DOTALL).strip()
-    objective = sanitize_objective_text(objective)
+    user_prompt = (
+        "Genere un objectif de strategie de trading sous forme de JSON.\n\n"
+        f"{market_instruction}"
+        f"Indicateurs disponibles : {indicators_list}\n\n"
+        "Contraintes de diversification:\n"
+        f"- Integre au moins un axe 'hors sentiers battus' parmi: {', '.join(selected_axes)}.\n"
+        f"- Comportements aleatoires imposes pour cette generation: {', '.join(selected_behaviors)}.\n"
+        "- Evite les formulations generiques de type 'RSI<30/RSI>70' sans filtre additionnel.\n"
+        "- Propose une hypothese testable et falsifiable.\n"
+        "- Explore des combinaisons inhabituelles, des filtres originaux, des approches multi-timeframe conceptuelles.\n"
+        "- used_indicators doit contenir 2 a 4 indicateurs maximum.\n"
+        "- objective doit etre un texte court de 2 a 4 phrases maximum.\n"
+        f"{market_contract}"
+        "- Tous les indicateurs doivent provenir strictement de la liste disponible.\n\n"
+        "Retourne EXACTEMENT ce schema JSON:\n"
+        "{\n"
+        '  "objective": "texte final lisible par un humain",\n'
+        '  "style": "nom court de la logique",\n'
+        '  "symbol": "marche cible",\n'
+        '  "timeframe": "timeframe cible",\n'
+        '  "used_indicators": ["indicator_1", "indicator_2"],\n'
+        '  "entry_logic": "condition d entree",\n'
+        '  "exit_logic": "condition de sortie",\n'
+        '  "risk_management": "resume du risk management",\n'
+        '  "hypothesis": "pourquoi cette strategie peut fonctionner"\n'
+        "}"
+    )
+
+    payload, raw_text = _request_structured_objective_payload(
+        llm_client,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        stream_callback=stream_callback,
+        max_tokens=420,
+    )
+    objective = _structured_objective_to_text(
+        payload,
+        available_indicators=available_indicators,
+        market_auto_selection=market_auto_selection,
+        symbols_list=symbols_list,
+        timeframes_list=timeframes_list,
+    )
+    if not objective:
+        objective = sanitize_objective_text(raw_text)
+    if _looks_like_prompt_instruction_leakage(objective):
+        logger.warning(
+            "generate_llm_objective: contamination de prompt detectee, fallback template",
+        )
+        objective = ""
 
     # Fallback si le LLM retourne du vide
     if not objective or len(objective) < 20:
@@ -7189,63 +8761,70 @@ def generate_llm_objective_from_seed(
     if clean_tags:
         seed_context.append(f"Tags utiles : {', '.join(clean_tags)}")
 
-    format_hint = (
-        "Format attendu :\n"
-        "[Style] sur {symbol} {timeframe}. "
-        "Indicateurs : [ind1] + [ind2] + [ind3]. "
-        "Entrées : [conditions]. "
-        "Sorties : [conditions]. "
-        "Risk management : [SL/TP]."
-        if market_auto_selection
-        else
-        "Format attendu :\n"
-        "[Style] sur [marché] [timeframe]. "
-        "Indicateurs : [ind1] + [ind2] + [ind3]. "
-        "Entrées : [conditions]. "
-        "Sorties : [conditions]. "
-        "Risk management : [SL/TP]."
-    )
-
-    system_msg = LLMMessage(
-        role="system",
-        content=(
-            "Tu es un quant designer. On te donne une piste issue d'un catalogue brut. "
-            "Ta tâche est de la transformer en UN objectif de recherche plus précis, plus robuste, "
-            "et mieux adapté à la stratégie réellement étudiée. "
-            "Tu peux reformuler, renforcer les filtres, ajuster la logique d'entrée/sortie et le risk management, "
-            "mais tu dois conserver l'intention stratégique générale. "
-            "Réponds UNIQUEMENT avec l'objectif final, sans markdown ni commentaire."
-        ),
-    )
-    user_msg = LLMMessage(
-        role="user",
-        content=(
-            f"{market_instruction}"
-            f"{chr(10).join(seed_context)}\n\n"
-            f"Indicateurs disponibles : {indicators_list}\n\n"
-            "Contraintes :\n"
-            "- Pars de la piste catalogue, mais reformule-la pour en faire une hypothèse testable et falsifiable.\n"
-            "- Choisis les indicateurs les plus cohérents avec cette stratégie.\n"
-            "- N'utilise QUE des indicateurs disponibles.\n"
-            "- Evite les formulations génériques et les signaux trop triviaux.\n"
-            "- L'objectif doit rester en 2-4 phrases.\n\n"
-            f"{format_hint}"
-        ),
-    )
-
-    if stream_callback and hasattr(llm_client, "chat_stream"):
-        result = llm_client.chat_stream(
-            [system_msg, user_msg],
-            on_chunk=lambda c: stream_callback("objective_gen", c),
-            max_tokens=320,
+    if market_auto_selection:
+        market_contract = (
+            "- symbol MUST be exactly `{symbol}`.\n"
+            "- timeframe MUST be exactly `{timeframe}`.\n"
         )
     else:
-        result = llm_client.chat([system_msg, user_msg], max_tokens=320)
+        market_contract = (
+            f"- symbol MUST be one of: {', '.join(symbols_list)}.\n"
+            f"- timeframe MUST be one of: {', '.join(timeframes_list)}.\n"
+        )
 
-    objective = str(getattr(result, "content", result) or "").strip()
-    objective = re.sub(r"<think>.*?</think>", "", objective, flags=re.DOTALL).strip()
-    objective = re.sub(r"<think>.*", "", objective, flags=re.DOTALL).strip()
-    objective = sanitize_objective_text(objective)
+    system_prompt = (
+        "Tu es un quant designer. On te donne une piste catalogue brute. "
+        "Ta tache est de la transformer en un objectif de recherche plus precis, plus robuste "
+        "et mieux adapte au setup etudie, tout en conservant l intention strategique generale. "
+        "Reponds UNIQUEMENT avec un objet JSON valide."
+    )
+    user_prompt = (
+        f"{market_instruction}"
+        f"{chr(10).join(seed_context)}\n\n"
+        f"Indicateurs disponibles : {indicators_list}\n\n"
+        "Contraintes :\n"
+        "- Pars de la piste catalogue, mais reformule-la pour en faire une hypothese testable et falsifiable.\n"
+        "- Choisis les indicateurs les plus coherents avec cette strategie.\n"
+        "- N'utilise QUE des indicateurs disponibles.\n"
+        "- used_indicators doit contenir 2 a 4 indicateurs maximum.\n"
+        "- objective doit rester en 2 a 4 phrases.\n"
+        "- Evite les formulations generiques et les signaux trop triviaux.\n"
+        f"{market_contract}"
+        "Retourne EXACTEMENT ce schema JSON:\n"
+        "{\n"
+        '  "objective": "texte final lisible par un humain",\n'
+        '  "style": "nom court de la logique",\n'
+        '  "symbol": "marche cible",\n'
+        '  "timeframe": "timeframe cible",\n'
+        '  "used_indicators": ["indicator_1", "indicator_2"],\n'
+        '  "entry_logic": "condition d entree",\n'
+        '  "exit_logic": "condition de sortie",\n'
+        '  "risk_management": "resume du risk management",\n'
+        '  "hypothesis": "pourquoi cette strategie peut fonctionner"\n'
+        "}"
+    )
+
+    payload, raw_text = _request_structured_objective_payload(
+        llm_client,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        stream_callback=stream_callback,
+        max_tokens=440,
+    )
+    objective = _structured_objective_to_text(
+        payload,
+        available_indicators=available_indicators,
+        market_auto_selection=market_auto_selection,
+        symbols_list=symbols_list,
+        timeframes_list=timeframes_list,
+    )
+    if not objective:
+        objective = sanitize_objective_text(raw_text)
+    if _looks_like_prompt_instruction_leakage(objective):
+        logger.warning(
+            "generate_llm_objective_from_seed: contamination de prompt detectee, fallback seed",
+        )
+        objective = ""
     if not objective or len(objective) < 20:
         logger.warning("generate_llm_objective_from_seed: résultat LLM vide, fallback seed")
         objective = seed_text
@@ -7284,1439 +8863,6 @@ def generate_llm_objective_from_seed(
         available_indicators,
     )
     return objective
-
-
-# ---------------------------------------------------------------------------
-# Catalogue d'objectifs pré-construits pour exploration systématique
-# ---------------------------------------------------------------------------
-
-@dataclass
-class CatalogObjective:
-    """Un objectif pré-construit du catalogue d'exploration."""
-
-    id: str
-    family: str
-    indicators: List[str]
-    direction: str          # "long_only", "short_only", "long_short"
-    risk_profile: str       # "tight", "balanced", "wide"
-    novelty_angle: str      # "classic", "regime_adaptive", "asymmetric", ...
-    description: str        # Objectif formaté ({symbol} et {timeframe} en placeholders)
-    sl_mult: float
-    tp_mult: float
-    tags: List[str] = field(default_factory=list)
-
-
-_OBJECTIVE_COMPLEXITY_TAG_WEIGHTS: Dict[str, float] = {
-    "stat_arb": 1.4,
-    "zscore": 1.2,
-    "multi_tf_proxy": 1.1,
-    "double_rsi": 1.0,
-    "volatility": 0.9,
-    "volume_surge": 0.9,
-    "momentum_filter": 0.85,
-    "support_resistance": 0.75,
-    "adx_filter": 0.7,
-    "trend_filter": 0.55,
-    "retrace": 0.45,
-    "pullback": 0.45,
-    "confirmation": 0.35,
-    "cross": 0.2,
-}
-
-
-def _objective_complexity_score(obj: CatalogObjective) -> float:
-    """Score simple de complexité exploitable pour piloter l'exploration."""
-    indicators = [str(ind).strip().lower() for ind in obj.indicators if str(ind).strip()]
-    core_indicators = {ind for ind in indicators if ind != "atr"}
-    score = 0.95 * float(len(core_indicators))
-    if "atr" in indicators:
-        score += 0.15
-
-    direction_bonus = {
-        "long_short": 0.7,
-        "long_only": 0.15,
-        "short_only": 0.15,
-    }
-    score += direction_bonus.get(obj.direction, 0.2)
-    score += {
-        "tight": 0.0,
-        "balanced": 0.15,
-        "wide": 0.25,
-        "neutral": 0.1,
-    }.get(obj.risk_profile, 0.1)
-
-    for tag in {str(tag).strip().lower() for tag in obj.tags if str(tag).strip()}:
-        score += _OBJECTIVE_COMPLEXITY_TAG_WEIGHTS.get(tag, 0.0)
-
-    return round(score, 4)
-
-
-_CURATED_RISK_SL_TP = {
-    "tight": (1.0, 2.0),
-    "balanced": (1.5, 3.0),
-    "wide": (2.0, 5.0),
-    "neutral": (1.5, 3.0),
-}
-
-def _co(
-    obj_id: str,
-    family: str,
-    indicators: List[str],
-    direction: str,
-    risk_profile: str,
-    description: str,
-    tags: Optional[List[str]] = None,
-) -> CatalogObjective:
-    """Raccourci pour construire un CatalogObjective curé."""
-    sl, tp = _CURATED_RISK_SL_TP.get(risk_profile, (1.5, 3.0))
-    if "atr" not in [i.lower() for i in indicators]:
-        indicators = list(indicators) + ["atr"]
-    return CatalogObjective(
-        id=obj_id,
-        family=family,
-        indicators=indicators,
-        direction=direction,
-        risk_profile=risk_profile,
-        novelty_angle="curated",
-        description=description,
-        sl_mult=sl,
-        tp_mult=tp,
-        tags=tags or [],
-    )
-
-
-# ---------------------------------------------------------------------------
-# Catalogue curé — 50 fiches d'objectifs réalistes
-# ---------------------------------------------------------------------------
-
-_CURATED_CATALOG_RAW: List[Dict[str, Any]] = [
-    # ── Momentum / Trend-following ──
-    {
-        "id": "momentum_ema_cross_sma_long_tight",
-        "family": "momentum", "indicators": ["ema", "sma"],
-        "direction": "long_only", "risk": "tight",
-        "tags": ["momentum", "trend_following", "cross"],
-        "desc": (
-            "Strategie de Momentum / Trend-following sur {symbol} {timeframe}. "
-            "Indicateurs : EMA(20), SMA(50), ATR. "
-            "Entree long lorsque EMA(20) croise au-dessus de SMA(50), "
-            "sortie sur retournement ou stop serre. "
-            "Stop-loss = 1.0x ATR, take-profit = 2.0x ATR."
-        ),
-    },
-    {
-        "id": "momentum_ema_cross_sma_short_tight",
-        "family": "momentum", "indicators": ["ema", "sma"],
-        "direction": "short_only", "risk": "tight",
-        "tags": ["momentum", "trend_following", "cross"],
-        "desc": (
-            "Strategie de Momentum / Trend-following sur {symbol} {timeframe}. "
-            "Indicateurs : EMA(20), SMA(50), ATR. "
-            "Entree short lorsque EMA(20) croise en dessous de SMA(50), "
-            "sortie sur retournement. "
-            "Stop-loss = 1.0x ATR, take-profit = 2.0x ATR."
-        ),
-    },
-    {
-        "id": "momentum_macd_signal_long_balanced",
-        "family": "momentum", "indicators": ["macd"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["momentum", "trend_following", "macd"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : MACD (macd, signal, histogram), ATR. "
-            "Entree long quand MACD au-dessus de sa ligne de signal "
-            "et momentum positif durable. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "momentum_macd_signal_short_balanced",
-        "family": "momentum", "indicators": ["macd"],
-        "direction": "short_only", "risk": "balanced",
-        "tags": ["momentum", "trend_following", "macd"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : MACD (macd, signal, histogram), ATR. "
-            "Entree short quand MACD en dessous de sa ligne de signal "
-            "et momentum negatif. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "momentum_rsi_filtered_long_balanced",
-        "family": "momentum", "indicators": ["rsi", "ema"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["momentum", "rsi", "trend_filter"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : RSI(14), EMA(20), ATR. "
-            "Entree long quand RSI > 50 et EMA(20) haussiere. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "momentum_rsi_filtered_short_balanced",
-        "family": "momentum", "indicators": ["rsi", "ema"],
-        "direction": "short_only", "risk": "balanced",
-        "tags": ["momentum", "rsi", "trend_filter"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : RSI(14), EMA(20), ATR. "
-            "Entree short quand RSI < 50 et EMA(20) baissiere. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "momentum_double_ema_trend_long_wide",
-        "family": "momentum", "indicators": ["ema", "adx"],
-        "direction": "long_only", "risk": "wide",
-        "tags": ["momentum", "trend_following", "adx_filter"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : EMA(10), EMA(30), ADX, ATR. "
-            "Entree long quand EMA(10) > EMA(30) avec filtre ADX >= 25. "
-            "Stop-loss = 2.0x ATR, take-profit = 5.0x ATR."
-        ),
-    },
-    {
-        "id": "momentum_double_ema_trend_short_wide",
-        "family": "momentum", "indicators": ["ema", "adx"],
-        "direction": "short_only", "risk": "wide",
-        "tags": ["momentum", "trend_following", "adx_filter"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : EMA(10), EMA(30), ADX, ATR. "
-            "Entree short quand EMA(10) < EMA(30), ADX >= 25 confirme la tendance. "
-            "Stop-loss = 2.0x ATR, take-profit = 5.0x ATR."
-        ),
-    },
-    {
-        "id": "momentum_volume_confirmed_long_balanced",
-        "family": "momentum", "indicators": ["ema", "obv"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["momentum", "volume", "trend_following"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : EMA(20), OBV, ATR. "
-            "Entree long sur hausse de volume (OBV croissant) + EMA haussiere. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "momentum_volume_confirmed_short_balanced",
-        "family": "momentum", "indicators": ["ema", "obv"],
-        "direction": "short_only", "risk": "balanced",
-        "tags": ["momentum", "volume", "trend_following"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : EMA(20), OBV, ATR. "
-            "Entree short sur volume croissant + tendance baissiere (EMA). "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    # ── Mean-reversion ──
-    {
-        "id": "meanrev_bb_rsi_long_tight",
-        "family": "mean-reversion", "indicators": ["bollinger", "rsi"],
-        "direction": "long_only", "risk": "tight",
-        "tags": ["mean_reversion", "bollinger", "rsi", "oversold"],
-        "desc": (
-            "Strategie de Mean-reversion sur {symbol} {timeframe}. "
-            "Indicateurs : Bollinger Bands(20,2), RSI(14), ATR. "
-            "Entree long quand prix sous bande inferieure et RSI < 30. "
-            "Stop-loss = 1.0x ATR, take-profit = 2.0x ATR."
-        ),
-    },
-    {
-        "id": "meanrev_bb_rsi_short_tight",
-        "family": "mean-reversion", "indicators": ["bollinger", "rsi"],
-        "direction": "short_only", "risk": "tight",
-        "tags": ["mean_reversion", "bollinger", "rsi", "overbought"],
-        "desc": (
-            "Strategie de Mean-reversion sur {symbol} {timeframe}. "
-            "Indicateurs : Bollinger Bands(20,2), RSI(14), ATR. "
-            "Entree short quand prix dessus bande superieure et RSI > 70. "
-            "Stop-loss = 1.0x ATR, take-profit = 2.0x ATR."
-        ),
-    },
-    {
-        "id": "meanrev_keltner_rsi_long_balanced",
-        "family": "mean-reversion", "indicators": ["keltner", "rsi"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["mean_reversion", "keltner", "rsi"],
-        "desc": (
-            "Strategie de Mean-reversion sur {symbol} {timeframe}. "
-            "Indicateurs : Keltner Channels, RSI(14), ATR. "
-            "Entree long quand prix touche bande inferieure Keltner et RSI bas. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "meanrev_keltner_rsi_short_balanced",
-        "family": "mean-reversion", "indicators": ["keltner", "rsi"],
-        "direction": "short_only", "risk": "balanced",
-        "tags": ["mean_reversion", "keltner", "rsi"],
-        "desc": (
-            "Strategie de Mean-reversion sur {symbol} {timeframe}. "
-            "Indicateurs : Keltner Channels, RSI(14), ATR. "
-            "Entree short quand prix touche bande superieure Keltner et RSI haut. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "meanrev_zscore_pair_spread_neutral",
-        "family": "mean-reversion", "indicators": ["bollinger", "rsi"],
-        "direction": "long_short", "risk": "balanced",
-        "tags": ["mean_reversion", "stat_arb", "zscore"],
-        "desc": (
-            "Strategie de Mean-reversion / StatArb sur {symbol} {timeframe}. "
-            "Indicateurs : Bollinger Bands (pour z-score), RSI(14), ATR. "
-            "Entree long quand z-score (close - BB middle) / BB std < -2, "
-            "entree short quand z-score > +2. Sortie retour a la moyenne. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "meanrev_rsi_oscillator_long_balanced",
-        "family": "mean-reversion", "indicators": ["rsi"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["mean_reversion", "rsi", "double_rsi"],
-        "desc": (
-            "Strategie de Mean-reversion sur {symbol} {timeframe}. "
-            "Indicateurs : RSI(14), ATR. "
-            "Utiliser RSI court terme (params rsi_period=3) extreme bas (< 10) "
-            "comme signal d'entree long, attente retour moyenne. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "meanrev_rsi_oscillator_short_balanced",
-        "family": "mean-reversion", "indicators": ["rsi"],
-        "direction": "short_only", "risk": "balanced",
-        "tags": ["mean_reversion", "rsi", "double_rsi"],
-        "desc": (
-            "Strategie de Mean-reversion sur {symbol} {timeframe}. "
-            "Indicateurs : RSI(14), ATR. "
-            "Utiliser RSI court terme (params rsi_period=3) extreme haut (> 90) "
-            "comme signal d'entree short, repli anticipe. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    # ── Breakout ──
-    {
-        "id": "breakout_pivot_point_long_balanced",
-        "family": "breakout", "indicators": ["pivot_points", "obv"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["breakout", "pivot", "volume"],
-        "desc": (
-            "Strategie de Breakout sur {symbol} {timeframe}. "
-            "Indicateurs : Pivot Points, OBV, ATR. "
-            "Entree long sur cassure du pivot R1 avec hausse de volume (OBV). "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "breakout_pivot_point_short_balanced",
-        "family": "breakout", "indicators": ["pivot_points", "obv"],
-        "direction": "short_only", "risk": "balanced",
-        "tags": ["breakout", "pivot", "volume"],
-        "desc": (
-            "Strategie de Breakout sur {symbol} {timeframe}. "
-            "Indicateurs : Pivot Points, OBV, ATR. "
-            "Entree short sur cassure du support S1 avec volume croissant. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "breakout_atr_volatility_long_wide",
-        "family": "breakout", "indicators": ["ema"],
-        "direction": "long_only", "risk": "wide",
-        "tags": ["breakout", "volatility", "atr_expansion"],
-        "desc": (
-            "Strategie de Breakout / Volatility sur {symbol} {timeframe}. "
-            "Indicateurs : ATR, EMA(20). "
-            "Entree long quand ATR depasse 1.5x sa moyenne (expansion de volatilite) "
-            "et prix au-dessus de EMA(20). Continuation haussiere attendue. "
-            "Stop-loss = 2.0x ATR, take-profit = 5.0x ATR."
-        ),
-    },
-    {
-        "id": "breakout_atr_volatility_short_wide",
-        "family": "breakout", "indicators": ["ema"],
-        "direction": "short_only", "risk": "wide",
-        "tags": ["breakout", "volatility", "atr_expansion"],
-        "desc": (
-            "Strategie de Breakout / Volatility sur {symbol} {timeframe}. "
-            "Indicateurs : ATR, EMA(20). "
-            "Entree short quand ATR en expansion + prix sous EMA(20). "
-            "Tendance baissiere amplifiee par la volatilite. "
-            "Stop-loss = 2.0x ATR, take-profit = 5.0x ATR."
-        ),
-    },
-    {
-        "id": "breakout_adx_threshold_long_balanced",
-        "family": "breakout", "indicators": ["adx", "ema"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["breakout", "adx", "trend_strength"],
-        "desc": (
-            "Strategie de Breakout sur {symbol} {timeframe}. "
-            "Indicateurs : ADX, EMA(20), ATR. "
-            "Entree long quand ADX > 30 (tendance forte) et prix casse "
-            "au-dessus de EMA(20). "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "breakout_adx_threshold_short_balanced",
-        "family": "breakout", "indicators": ["adx", "ema"],
-        "direction": "short_only", "risk": "balanced",
-        "tags": ["breakout", "adx", "trend_strength"],
-        "desc": (
-            "Strategie de Breakout sur {symbol} {timeframe}. "
-            "Indicateurs : ADX, EMA(20), ATR. "
-            "Entree short quand ADX > 30 et prix casse sous EMA(20). "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    # ── Momentum (suite) ──
-    {
-        "id": "momentum_macd_histogram_long_balanced",
-        "family": "momentum", "indicators": ["macd"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["momentum", "macd", "histogram"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : MACD (histogram), ATR. "
-            "Entree long quand MACD histogram croissant et positif (signal fort). "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "momentum_macd_histogram_short_balanced",
-        "family": "momentum", "indicators": ["macd"],
-        "direction": "short_only", "risk": "balanced",
-        "tags": ["momentum", "macd", "histogram"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : MACD (histogram), ATR. "
-            "Entree short quand MACD histogram decroissant et negatif. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    # ── Mean-reversion (suite) ──
-    {
-        "id": "meanrev_stddev_extreme_long_tight",
-        "family": "mean-reversion", "indicators": ["bollinger"],
-        "direction": "long_only", "risk": "tight",
-        "tags": ["mean_reversion", "stddev", "extreme"],
-        "desc": (
-            "Strategie de Mean-reversion sur {symbol} {timeframe}. "
-            "Indicateurs : Bollinger Bands (ecart type), ATR. "
-            "Entree long quand prix tombe sous bande inferieure (ecart type extreme). "
-            "Retour attendu vers la moyenne. "
-            "Stop-loss = 1.0x ATR, take-profit = 2.0x ATR."
-        ),
-    },
-    {
-        "id": "meanrev_stddev_extreme_short_tight",
-        "family": "mean-reversion", "indicators": ["bollinger"],
-        "direction": "short_only", "risk": "tight",
-        "tags": ["mean_reversion", "stddev", "extreme"],
-        "desc": (
-            "Strategie de Mean-reversion sur {symbol} {timeframe}. "
-            "Indicateurs : Bollinger Bands (ecart type), ATR. "
-            "Entree short quand prix depasse bande superieure (exces haussier). "
-            "Repli attendu. "
-            "Stop-loss = 1.0x ATR, take-profit = 2.0x ATR."
-        ),
-    },
-    # ── Momentum (ROC) ──
-    {
-        "id": "momentum_roc_confirmation_long_balanced",
-        "family": "momentum", "indicators": ["ema"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["momentum", "roc", "confirmation"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : EMA(10), EMA(30), ATR. "
-            "Calculer ROC = (close - close[12]) / close[12]. "
-            "Entree long quand ROC > 0 et EMA(10) > EMA(30). "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "momentum_roc_confirmation_short_balanced",
-        "family": "momentum", "indicators": ["ema"],
-        "direction": "short_only", "risk": "balanced",
-        "tags": ["momentum", "roc", "confirmation"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : EMA(10), EMA(30), ATR. "
-            "Calculer ROC = (close - close[12]) / close[12]. "
-            "Entree short quand ROC < 0 et EMA(10) < EMA(30). "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    # ── Breakout (stochastic) ──
-    {
-        "id": "breakout_stoch_exit_long_tight",
-        "family": "breakout", "indicators": ["stochastic", "bollinger"],
-        "direction": "long_only", "risk": "tight",
-        "tags": ["breakout", "stochastic", "confirmation"],
-        "desc": (
-            "Strategie de Breakout sur {symbol} {timeframe}. "
-            "Indicateurs : Stochastic, Bollinger Bands, ATR. "
-            "Entree long apres breakout de la bande superieure Bollinger "
-            "confirme par Stochastique > 80. "
-            "Stop-loss = 1.0x ATR, take-profit = 2.0x ATR."
-        ),
-    },
-    {
-        "id": "breakout_stoch_exit_short_tight",
-        "family": "breakout", "indicators": ["stochastic", "bollinger"],
-        "direction": "short_only", "risk": "tight",
-        "tags": ["breakout", "stochastic", "confirmation"],
-        "desc": (
-            "Strategie de Breakout sur {symbol} {timeframe}. "
-            "Indicateurs : Stochastic, Bollinger Bands, ATR. "
-            "Entree short apres breakout baissier de la bande inferieure "
-            "confirme par Stochastique < 20. "
-            "Stop-loss = 1.0x ATR, take-profit = 2.0x ATR."
-        ),
-    },
-    # ── Momentum (EMA slope) ──
-    {
-        "id": "momentum_ema_slope_trend_long_balanced",
-        "family": "momentum", "indicators": ["ema"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["momentum", "ema_slope", "acceleration"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : EMA(20), ATR. "
-            "Calculer la pente de EMA(20) via np.diff. "
-            "Entree long quand la pente est positive et accelere. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "momentum_ema_slope_trend_short_balanced",
-        "family": "momentum", "indicators": ["ema"],
-        "direction": "short_only", "risk": "balanced",
-        "tags": ["momentum", "ema_slope", "acceleration"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : EMA(20), ATR. "
-            "Calculer la pente de EMA(20) via np.diff. "
-            "Entree short quand la pente est negative et accelere. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    # ── Mean-reversion (Bollinger mid revert) ──
-    {
-        "id": "meanrev_bollinger_mid_revert_long_balanced",
-        "family": "mean-reversion", "indicators": ["bollinger"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["mean_reversion", "bollinger", "mid_revert"],
-        "desc": (
-            "Strategie de Mean-reversion sur {symbol} {timeframe}. "
-            "Indicateurs : Bollinger Bands(20,2), ATR. "
-            "Entree long quand prix rebondit depuis bande inferieure "
-            "vers bande mediane. Sortie a la bande mediane. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "meanrev_bollinger_mid_revert_short_balanced",
-        "family": "mean-reversion", "indicators": ["bollinger"],
-        "direction": "short_only", "risk": "balanced",
-        "tags": ["mean_reversion", "bollinger", "mid_revert"],
-        "desc": (
-            "Strategie de Mean-reversion sur {symbol} {timeframe}. "
-            "Indicateurs : Bollinger Bands(20,2), ATR. "
-            "Entree short quand prix rejete depuis bande superieure "
-            "vers bande mediane. Sortie a la mediane. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    # ── Breakout (pivot retrace) ──
-    {
-        "id": "breakout_vwap_retrace_long_tight",
-        "family": "breakout", "indicators": ["ema", "obv"],
-        "direction": "long_only", "risk": "tight",
-        "tags": ["breakout", "retrace", "pullback"],
-        "desc": (
-            "Strategie de Breakout sur {symbol} {timeframe}. "
-            "Indicateurs : EMA(20), OBV, ATR. "
-            "Entree long apres cassure de EMA(20) suivie d'un pullback "
-            "leger (retracement < 50% du breakout) avec OBV en hausse. "
-            "Stop-loss = 1.0x ATR, take-profit = 2.0x ATR."
-        ),
-    },
-    {
-        "id": "breakout_vwap_retrace_short_tight",
-        "family": "breakout", "indicators": ["ema", "obv"],
-        "direction": "short_only", "risk": "tight",
-        "tags": ["breakout", "retrace", "pullback"],
-        "desc": (
-            "Strategie de Breakout sur {symbol} {timeframe}. "
-            "Indicateurs : EMA(20), OBV, ATR. "
-            "Entree short apres cassure sous EMA(20) + pullback leger "
-            "avec OBV en baisse. "
-            "Stop-loss = 1.0x ATR, take-profit = 2.0x ATR."
-        ),
-    },
-    # ── Momentum (double RSI) ──
-    {
-        "id": "momentum_double_rsi_long_balanced",
-        "family": "momentum", "indicators": ["rsi"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["momentum", "double_rsi", "cross"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : RSI(14), ATR. "
-            "Calculer RSI rapide (period=5) et RSI lent (period=14). "
-            "Entree long quand RSI(5) croise au-dessus de RSI(14). "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "momentum_double_rsi_short_balanced",
-        "family": "momentum", "indicators": ["rsi"],
-        "direction": "short_only", "risk": "balanced",
-        "tags": ["momentum", "double_rsi", "cross"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : RSI(14), ATR. "
-            "Calculer RSI rapide (period=5) et RSI lent (period=14). "
-            "Entree short quand RSI(5) croise en dessous de RSI(14). "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    # ── Mean-reversion (ADX range) ──
-    {
-        "id": "meanrev_adx_range_long_tight",
-        "family": "mean-reversion", "indicators": ["adx", "rsi"],
-        "direction": "long_only", "risk": "tight",
-        "tags": ["mean_reversion", "adx_range", "low_trend"],
-        "desc": (
-            "Strategie de Mean-reversion sur {symbol} {timeframe}. "
-            "Indicateurs : ADX, RSI(14), ATR. "
-            "Entree long quand ADX < 20 (marche lateral) et RSI < 30. "
-            "Reversion en marche sans tendance. "
-            "Stop-loss = 1.0x ATR, take-profit = 2.0x ATR."
-        ),
-    },
-    {
-        "id": "meanrev_adx_range_short_tight",
-        "family": "mean-reversion", "indicators": ["adx", "rsi"],
-        "direction": "short_only", "risk": "tight",
-        "tags": ["mean_reversion", "adx_range", "low_trend"],
-        "desc": (
-            "Strategie de Mean-reversion sur {symbol} {timeframe}. "
-            "Indicateurs : ADX, RSI(14), ATR. "
-            "Entree short quand ADX < 20 (range) et RSI > 70. "
-            "Retournement en marche lateral. "
-            "Stop-loss = 1.0x ATR, take-profit = 2.0x ATR."
-        ),
-    },
-    # ── Momentum (volume surge) ──
-    {
-        "id": "momentum_breakout_vol_surge_long_wide",
-        "family": "momentum", "indicators": ["obv", "ema"],
-        "direction": "long_only", "risk": "wide",
-        "tags": ["momentum", "volatility", "volume_surge"],
-        "desc": (
-            "Strategie de Momentum / Volatility sur {symbol} {timeframe}. "
-            "Indicateurs : OBV, EMA(20), ATR. "
-            "Entree long sur fort sursaut de volume (OBV acceleration) "
-            "avec ATR en expansion et prix au-dessus de EMA(20). "
-            "Stop-loss = 2.0x ATR, take-profit = 5.0x ATR."
-        ),
-    },
-    {
-        "id": "momentum_breakout_vol_surge_short_wide",
-        "family": "momentum", "indicators": ["obv", "ema"],
-        "direction": "short_only", "risk": "wide",
-        "tags": ["momentum", "volatility", "volume_surge"],
-        "desc": (
-            "Strategie de Momentum / Volatility sur {symbol} {timeframe}. "
-            "Indicateurs : OBV, EMA(20), ATR. "
-            "Entree short quand baisse accompagnee de volume (OBV chute) "
-            "et prix sous EMA(20). "
-            "Stop-loss = 2.0x ATR, take-profit = 5.0x ATR."
-        ),
-    },
-    # ── Breakout (multi-timeframe proxy) ──
-    {
-        "id": "breakout_multiple_timeframe_long_balanced",
-        "family": "breakout", "indicators": ["donchian", "adx"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["breakout", "multi_tf_proxy", "donchian"],
-        "desc": (
-            "Strategie de Breakout sur {symbol} {timeframe}. "
-            "Indicateurs : Donchian Channels, ADX, ATR. "
-            "Entree long sur cassure du Donchian upper (proxy multi-echelle) "
-            "confirmee par ADX > 25. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "breakout_multiple_timeframe_short_balanced",
-        "family": "breakout", "indicators": ["donchian", "adx"],
-        "direction": "short_only", "risk": "balanced",
-        "tags": ["breakout", "multi_tf_proxy", "donchian"],
-        "desc": (
-            "Strategie de Breakout sur {symbol} {timeframe}. "
-            "Indicateurs : Donchian Channels, ADX, ATR. "
-            "Entree short sur cassure du Donchian lower confirmee par ADX > 25. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    # ── Mean-reversion (momentum filter) ──
-    {
-        "id": "meanrev_momentum_filter_long_balanced",
-        "family": "mean-reversion", "indicators": ["rsi", "ema"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["mean_reversion", "momentum_filter", "trend_neutral"],
-        "desc": (
-            "Strategie de Mean-reversion sur {symbol} {timeframe}. "
-            "Indicateurs : RSI(14), EMA(20), ATR. "
-            "Entree long quand RSI extreme bas (< 25) "
-            "ET tendance neutre (prix proche de EMA, pas de forte pente). "
-            "Reversion hors forte tendance. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    {
-        "id": "meanrev_momentum_filter_short_balanced",
-        "family": "mean-reversion", "indicators": ["rsi", "ema"],
-        "direction": "short_only", "risk": "balanced",
-        "tags": ["mean_reversion", "momentum_filter", "trend_neutral"],
-        "desc": (
-            "Strategie de Mean-reversion sur {symbol} {timeframe}. "
-            "Indicateurs : RSI(14), EMA(20), ATR. "
-            "Entree short quand RSI extreme haut (> 75) "
-            "ET tendance neutre. Reversion short hors tendance forte. "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-    # ── Breakout (support/resistance) ──
-    {
-        "id": "breakout_sup_res_long_tight",
-        "family": "breakout", "indicators": ["pivot_points"],
-        "direction": "long_only", "risk": "tight",
-        "tags": ["breakout", "support_resistance", "pivot"],
-        "desc": (
-            "Strategie de Breakout sur {symbol} {timeframe}. "
-            "Indicateurs : Pivot Points, ATR. "
-            "Entree long quand prix monte au-dessus du pivot R1 (resistance cle). "
-            "Stop-loss = 1.0x ATR, take-profit = 2.0x ATR."
-        ),
-    },
-    {
-        "id": "breakout_sup_res_short_tight",
-        "family": "breakout", "indicators": ["pivot_points"],
-        "direction": "short_only", "risk": "tight",
-        "tags": ["breakout", "support_resistance", "pivot"],
-        "desc": (
-            "Strategie de Breakout sur {symbol} {timeframe}. "
-            "Indicateurs : Pivot Points, ATR. "
-            "Entree short quand prix casse sous le support S1. "
-            "Stop-loss = 1.0x ATR, take-profit = 2.0x ATR."
-        ),
-    },
-    # ── Momentum (MACD zero cross) ──
-    {
-        "id": "momentum_macd_zero_cross_long_balanced",
-        "family": "momentum", "indicators": ["macd"],
-        "direction": "long_only", "risk": "balanced",
-        "tags": ["momentum", "macd", "zero_cross"],
-        "desc": (
-            "Strategie de Momentum sur {symbol} {timeframe}. "
-            "Indicateurs : MACD, ATR. "
-            "Entree long quand MACD passe de negatif a positif (zero cross). "
-            "Stop-loss = 1.5x ATR, take-profit = 3.0x ATR."
-        ),
-    },
-]
-
-
-def _build_objective_catalog() -> List[CatalogObjective]:
-    """Construit le catalogue cure de 50 objectifs pre-definis."""
-    catalog = [
-        _co(
-            obj_id=entry["id"],
-            family=entry["family"],
-            indicators=list(entry["indicators"]),
-            direction=entry["direction"],
-            risk_profile=entry["risk"],
-            description=entry["desc"],
-            tags=entry.get("tags"),
-        )
-        for entry in _CURATED_CATALOG_RAW
-    ]
-
-    family_counts: Dict[str, int] = {}
-    for obj in catalog:
-        family_counts[obj.family] = family_counts.get(obj.family, 0) + 1
-
-    logger.info(
-        "objective_catalog_built count=%d families=%s",
-        len(catalog),
-        family_counts,
-    )
-    return catalog
-
-
-# Singleton catalogue (lazy init)
-_OBJECTIVE_CATALOG: Optional[List[CatalogObjective]] = None
-
-
-def get_objective_catalog() -> List[CatalogObjective]:
-    """Retourne le catalogue d'objectifs (lazy init)."""
-    global _OBJECTIVE_CATALOG
-    if _OBJECTIVE_CATALOG is None:
-        _OBJECTIVE_CATALOG = _build_objective_catalog()
-    return _OBJECTIVE_CATALOG
-
-
-# ---------------------------------------------------------------------------
-# Exploration Tracker — persistance et suivi de couverture
-# ---------------------------------------------------------------------------
-
-class ExplorationTracker:
-    """Gère l'exploration systématique du catalogue d'objectifs.
-
-    Persiste l'état dans un fichier JSON pour survivre aux redémarrages.
-    """
-
-    STATE_FILE = SANDBOX_ROOT / "_exploration_state.json"
-    _SELECTION_MODES = ("diversify", "hybrid", "exploit", "wildcard")
-
-    def __init__(self, catalog: List[CatalogObjective]):
-        self.catalog = catalog
-        self.catalog_by_id: Dict[str, CatalogObjective] = {
-            obj.id: obj for obj in catalog
-        }
-        self._catalog_hash = self._compute_catalog_hash()
-        self.state = self._load_or_create_state()
-
-    # -- persistence --
-
-    def _compute_catalog_hash(self) -> str:
-        ids = "|".join(obj.id for obj in self.catalog)
-        return hashlib.md5(ids.encode()).hexdigest()[:16]
-
-    def _load_or_create_state(self) -> Dict[str, Any]:
-        if self.STATE_FILE.exists():
-            try:
-                with open(self.STATE_FILE, "r", encoding="utf-8") as f:
-                    state = json.load(f)
-                if state.get("catalog_hash") == self._catalog_hash:
-                    return self._migrate_state(state)
-                logger.info("exploration_tracker_catalog_changed — reset")
-            except Exception:
-                pass
-        return self._fresh_state()
-
-    def _fresh_state(self) -> Dict[str, Any]:
-        order = [obj.id for obj in self.catalog]
-        random.shuffle(order)
-        selection_mode_counts = {mode: 0 for mode in self._SELECTION_MODES}
-        return {
-            "version": "2.0",
-            "catalog_hash": self._catalog_hash,
-            "exploration_order": order,
-            "current_index": 0,
-            "explored": {},
-            "selection_mode_counts": selection_mode_counts,
-            "last_selection_mode": "diversify",
-        }
-
-    def _migrate_state(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        if not isinstance(state, dict):
-            return self._fresh_state()
-
-        if not isinstance(state.get("exploration_order"), list):
-            state["exploration_order"] = [obj.id for obj in self.catalog]
-        if not isinstance(state.get("explored"), dict):
-            state["explored"] = {}
-        if not isinstance(state.get("current_index"), int):
-            state["current_index"] = 0
-
-        mode_counts = state.get("selection_mode_counts")
-        if not isinstance(mode_counts, dict):
-            mode_counts = {}
-        for mode in self._SELECTION_MODES:
-            mode_counts[mode] = int(mode_counts.get(mode, 0) or 0)
-        state["selection_mode_counts"] = mode_counts
-
-        last_mode = str(state.get("last_selection_mode", "")).strip()
-        if last_mode not in self._SELECTION_MODES:
-            state["last_selection_mode"] = "diversify"
-
-        state["version"] = "2.0"
-        return state
-
-    def _save(self) -> None:
-        self.STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.STATE_FILE.with_suffix(".tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(self.state, f, indent=2, ensure_ascii=False)
-        tmp.replace(self.STATE_FILE)
-
-    @staticmethod
-    def _normalized_entropy(counts: Dict[str, int]) -> float:
-        total = sum(int(v) for v in counts.values())
-        if total <= 0:
-            return 0.0
-        values = [int(v) for v in counts.values() if int(v) > 0]
-        if len(values) <= 1:
-            return 0.0
-        entropy = 0.0
-        for count in values:
-            p = count / total
-            entropy -= p * math.log(p)
-        return round(entropy / math.log(len(values)), 4)
-
-    @staticmethod
-    def _safe_float(value: Any, default: float = 0.0) -> float:
-        try:
-            out = float(value)
-        except Exception:
-            return default
-        if not math.isfinite(out):
-            return default
-        return out
-
-    def _payload_positive_weight(self, payload: Dict[str, Any]) -> float:
-        status = str(payload.get("status", "")).strip().lower()
-        sharpe = self._safe_float(payload.get("best_sharpe", 0.0), default=0.0)
-        ret_pct = self._safe_float(payload.get("best_return_pct", 0.0), default=0.0)
-
-        baseline = 0.0
-        if status == "success":
-            baseline += 1.2
-        if ret_pct > 0:
-            baseline += min(ret_pct, 80.0) / 25.0
-        if sharpe > 0:
-            baseline += min(sharpe, 3.0) * 0.6
-
-        if baseline <= 0.0 and status != "success":
-            return 0.0
-        if ret_pct <= 0 and sharpe < 0.4 and status != "success":
-            return 0.0
-        return round(max(baseline, 0.0), 4)
-
-    def _build_positive_profiles(self) -> Dict[str, Any]:
-        explored = self.state.get("explored", {})
-        family_counts: Dict[str, float] = {}
-        direction_counts: Dict[str, float] = {}
-        risk_counts: Dict[str, float] = {}
-        novelty_counts: Dict[str, float] = {}
-        indicator_counts: Dict[str, float] = {}
-        pattern_counts: Dict[str, float] = {}
-        total_positive = 0
-        weighted_total = 0.0
-
-        for obj_id, payload_raw in explored.items():
-            obj = self.catalog_by_id.get(obj_id)
-            if obj is None:
-                continue
-            payload = cast(Dict[str, Any], payload_raw)
-            weight = self._payload_positive_weight(payload)
-            if weight <= 0:
-                continue
-
-            total_positive += 1
-            weighted_total += weight
-            family_counts[obj.family] = family_counts.get(obj.family, 0.0) + weight
-            direction_counts[obj.direction] = direction_counts.get(obj.direction, 0.0) + weight
-            risk_counts[obj.risk_profile] = risk_counts.get(obj.risk_profile, 0.0) + weight
-            novelty_counts[obj.novelty_angle] = novelty_counts.get(obj.novelty_angle, 0.0) + weight
-
-            clean_inds = [ind.lower() for ind in obj.indicators]
-            for ind in clean_inds:
-                indicator_counts[ind] = indicator_counts.get(ind, 0.0) + weight
-
-            pattern_legs = [ind.upper() for ind in clean_inds if ind != "atr"]
-            if not pattern_legs:
-                pattern_legs = [ind.upper() for ind in clean_inds]
-            if pattern_legs:
-                pattern_name = " + ".join(sorted(pattern_legs[:3]))
-                pattern_counts[pattern_name] = pattern_counts.get(pattern_name, 0.0) + weight
-
-        return {
-            "positive_count": total_positive,
-            "weighted_total": round(weighted_total, 4),
-            "family": family_counts,
-            "direction": direction_counts,
-            "risk": risk_counts,
-            "novelty": novelty_counts,
-            "indicator": indicator_counts,
-            "pattern": pattern_counts,
-        }
-
-    def _choose_selection_mode(self, positive_count: int, explored_count: int) -> str:
-        roll = random.random()
-        if positive_count <= 0:
-            if roll < 0.62:
-                return "diversify"
-            if roll < 0.88:
-                return "hybrid"
-            return "wildcard"
-
-        if explored_count < 12:
-            if roll < 0.55:
-                return "diversify"
-            if roll < 0.90:
-                return "hybrid"
-            return "wildcard"
-
-        if roll < 0.35:
-            return "diversify"
-        if roll < 0.72:
-            return "hybrid"
-        if roll < 0.93:
-            return "exploit"
-        return "wildcard"
-
-    def _recent_explored_ids(self, limit: int = 8) -> List[str]:
-        explored = self.state.get("explored", {})
-        ranked: List[Tuple[str, str]] = []
-        for obj_id, payload in explored.items():
-            if obj_id not in self.catalog_by_id:
-                continue
-            tested_at = str(payload.get("tested_at", ""))
-            ranked.append((tested_at, obj_id))
-        ranked.sort(reverse=True)
-        return [obj_id for _, obj_id in ranked[:max(1, limit)]]
-
-    def _build_explored_distributions(self) -> Dict[str, Dict[str, int]]:
-        explored = self.state.get("explored", {})
-        family_counts: Dict[str, int] = {}
-        direction_counts: Dict[str, int] = {}
-        risk_counts: Dict[str, int] = {}
-        novelty_counts: Dict[str, int] = {}
-        for obj_id in explored.keys():
-            obj = self.catalog_by_id.get(obj_id)
-            if obj is None:
-                continue
-            family_counts[obj.family] = family_counts.get(obj.family, 0) + 1
-            direction_counts[obj.direction] = direction_counts.get(obj.direction, 0) + 1
-            risk_counts[obj.risk_profile] = risk_counts.get(obj.risk_profile, 0) + 1
-            novelty_counts[obj.novelty_angle] = novelty_counts.get(obj.novelty_angle, 0) + 1
-        return {
-            "family": family_counts,
-            "direction": direction_counts,
-            "risk": risk_counts,
-            "novelty": novelty_counts,
-        }
-
-    # -- API --
-
-    def get_next_objective(self) -> Optional[CatalogObjective]:
-        """Retourne un objectif non exploré en combinant diversité et exploitation."""
-        order = self.state.get("exploration_order", [])
-        explored = self.state.get("explored", {})
-        idx = int(self.state.get("current_index", 0))
-        total = len(order)
-        if total == 0:
-            return None
-
-        lookahead = min(max(24, total // 6), total)
-        candidates: List[Tuple[int, str]] = []
-        for pos in range(idx, min(total, idx + lookahead)):
-            obj_id = order[pos]
-            if obj_id not in explored and obj_id in self.catalog_by_id:
-                candidates.append((pos, obj_id))
-
-        if not candidates:
-            for pos, obj_id in enumerate(order):
-                if obj_id not in explored and obj_id in self.catalog_by_id:
-                    candidates.append((pos, obj_id))
-                    if len(candidates) >= lookahead:
-                        break
-        if not candidates:
-            return None
-
-        dists = self._build_explored_distributions()
-        family_counts = dists["family"]
-        direction_counts = dists["direction"]
-        risk_counts = dists["risk"]
-        novelty_counts = dists["novelty"]
-
-        recent_ids = self._recent_explored_ids(limit=8)
-        recent_objs = [self.catalog_by_id[obj_id] for obj_id in recent_ids if obj_id in self.catalog_by_id]
-        latest_obj = recent_objs[0] if recent_objs else None
-        recent_indicator_sets = [set(obj.indicators) for obj in recent_objs[:3]]
-        positive_profiles = self._build_positive_profiles()
-        positive_count = int(positive_profiles.get("positive_count", 0) or 0)
-
-        selection_mode = self._choose_selection_mode(
-            positive_count=positive_count,
-            explored_count=len(explored),
-        )
-        mode_cfg = {
-            "diversify": {"diversity_w": 1.35, "positive_w": 0.40, "random_w": 0.14, "top_k": 14},
-            "hybrid": {"diversity_w": 1.00, "positive_w": 0.95, "random_w": 0.10, "top_k": 10},
-            "exploit": {"diversity_w": 0.72, "positive_w": 1.70, "random_w": 0.06, "top_k": 6},
-            "wildcard": {"diversity_w": 0.70, "positive_w": 0.65, "random_w": 0.36, "top_k": 18},
-        }
-        cfg = mode_cfg.get(selection_mode, mode_cfg["hybrid"])
-
-        complexity_bias = 0.0
-        if positive_count <= 0 and len(explored) < 6:
-            complexity_bias = -0.18
-        elif positive_count >= 2:
-            complexity_bias = 0.55
-        elif positive_count >= 1:
-            complexity_bias = 0.32
-        elif selection_mode == "wildcard":
-            complexity_bias = 0.12
-
-        pos_family = cast(Dict[str, float], positive_profiles.get("family", {}))
-        pos_direction = cast(Dict[str, float], positive_profiles.get("direction", {}))
-        pos_risk = cast(Dict[str, float], positive_profiles.get("risk", {}))
-        pos_novelty = cast(Dict[str, float], positive_profiles.get("novelty", {}))
-        pos_indicator = cast(Dict[str, float], positive_profiles.get("indicator", {}))
-        pos_pattern = cast(Dict[str, float], positive_profiles.get("pattern", {}))
-
-        max_family = max(pos_family.values(), default=0.0)
-        max_direction = max(pos_direction.values(), default=0.0)
-        max_risk = max(pos_risk.values(), default=0.0)
-        max_novelty = max(pos_novelty.values(), default=0.0)
-        max_indicator = max(pos_indicator.values(), default=0.0)
-        max_pattern = max(pos_pattern.values(), default=0.0)
-
-        def _norm(value: float, max_value: float) -> float:
-            if max_value <= 0:
-                return 0.0
-            return float(value) / max_value
-
-        scored_candidates: List[Tuple[int, str, float]] = []
-        for pos, obj_id in candidates:
-            obj = self.catalog_by_id[obj_id]
-            complexity_score = _objective_complexity_score(obj)
-
-            diversity_score = 0.0
-            diversity_score += 2.8 / (1.0 + family_counts.get(obj.family, 0))
-            diversity_score += 1.6 / (1.0 + direction_counts.get(obj.direction, 0))
-            diversity_score += 1.1 / (1.0 + risk_counts.get(obj.risk_profile, 0))
-            diversity_score += 1.3 / (1.0 + novelty_counts.get(obj.novelty_angle, 0))
-
-            if latest_obj is not None:
-                if obj.family == latest_obj.family:
-                    diversity_score -= 1.8
-                if obj.direction == latest_obj.direction:
-                    diversity_score -= 0.6
-                if obj.risk_profile == latest_obj.risk_profile:
-                    diversity_score -= 0.4
-                if obj.novelty_angle == latest_obj.novelty_angle:
-                    diversity_score -= 0.5
-
-            if recent_indicator_sets:
-                overlap = max(len(set(obj.indicators) & inds) for inds in recent_indicator_sets)
-                diversity_score -= 0.35 * float(overlap)
-
-            indicators_key = [ind.lower() for ind in obj.indicators]
-            pattern_legs = [ind.upper() for ind in indicators_key if ind != "atr"]
-            if not pattern_legs:
-                pattern_legs = [ind.upper() for ind in indicators_key]
-            pattern_name = " + ".join(sorted(pattern_legs[:3])) if pattern_legs else ""
-            indicator_scores = [
-                _norm(pos_indicator.get(ind, 0.0), max_indicator)
-                for ind in set(indicators_key)
-            ]
-            indicator_hit = (
-                sum(indicator_scores) / len(indicator_scores)
-                if indicator_scores else 0.0
-            )
-
-            positive_score = 0.0
-            positive_score += 1.5 * _norm(pos_family.get(obj.family, 0.0), max_family)
-            positive_score += 1.1 * _norm(pos_direction.get(obj.direction, 0.0), max_direction)
-            positive_score += 0.9 * _norm(pos_risk.get(obj.risk_profile, 0.0), max_risk)
-            positive_score += 1.1 * _norm(pos_novelty.get(obj.novelty_angle, 0.0), max_novelty)
-            positive_score += 1.7 * indicator_hit
-            positive_score += 0.9 * _norm(pos_pattern.get(pattern_name, 0.0), max_pattern)
-
-            score = cfg["diversity_w"] * diversity_score
-            score += cfg["positive_w"] * positive_score
-            score += complexity_bias * complexity_score
-            score -= 0.002 * max(pos - idx, 0)
-
-            if positive_count <= 0 and complexity_score >= 3.8:
-                score -= 0.25
-
-            if selection_mode == "wildcard" and obj.novelty_angle != "classic":
-                score += 0.15 + random.random() * 0.25
-            if selection_mode == "exploit" and positive_count > 0 and obj.family in pos_family:
-                score += 0.2
-            score += random.random() * float(cfg["random_w"])
-
-            scored_candidates.append((pos, obj_id, score))
-
-        ranked = sorted(scored_candidates, key=lambda item: item[2], reverse=True)
-        top_k = max(1, min(int(cfg["top_k"]), len(ranked)))
-        sample_pool = ranked[:top_k]
-        floor = min(score for _, _, score in sample_pool)
-        weights = [max((score - floor) + 0.05, 0.01) for _, _, score in sample_pool]
-        best_pos, best_id, best_score = random.choices(sample_pool, weights=weights, k=1)[0]
-
-        self.state["current_index"] = best_pos
-        mode_counts = self.state.get("selection_mode_counts", {})
-        if not isinstance(mode_counts, dict):
-            mode_counts = {}
-        mode_counts[selection_mode] = int(mode_counts.get(selection_mode, 0) or 0) + 1
-        self.state["selection_mode_counts"] = mode_counts
-        self.state["last_selection_mode"] = selection_mode
-
-        logger.info(
-            "exploration_tracker_pick mode=%s candidates=%d positive=%d pick=%s score=%.3f",
-            selection_mode,
-            len(candidates),
-            positive_count,
-            best_id,
-            best_score,
-        )
-        return self.catalog_by_id[best_id]
-
-    def _advance_index(self) -> None:
-        order = self.state.get("exploration_order", [])
-        explored = self.state.get("explored", {})
-        idx = int(self.state.get("current_index", 0)) + 1
-        while idx < len(order) and order[idx] in explored:
-            idx += 1
-        self.state["current_index"] = idx
-
-    def mark_explored(
-        self,
-        obj_id: str,
-        *,
-        status: str,
-        best_sharpe: float,
-        best_return_pct: float,
-        session_id: str,
-        symbol: str,
-        timeframe: str,
-    ) -> None:
-        selection_mode = str(self.state.get("last_selection_mode", "diversify"))
-        self.state["explored"][obj_id] = {
-            "tested_at": datetime.now().isoformat(),
-            "status": status,
-            "best_sharpe": best_sharpe,
-            "best_return_pct": best_return_pct,
-            "session_id": session_id,
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "selection_mode": selection_mode,
-        }
-        self._advance_index()
-        self._save()
-
-    @staticmethod
-    def _top_weighted_entries(counts: Dict[str, float], limit: int = 3) -> List[Dict[str, Any]]:
-        ranked = sorted(counts.items(), key=lambda item: item[1], reverse=True)
-        top = ranked[:max(1, limit)]
-        return [
-            {"name": name, "weight": round(float(weight), 4)}
-            for name, weight in top
-        ]
-
-    def get_positive_bias_summary(self, limit: int = 3) -> Dict[str, Any]:
-        profiles = self._build_positive_profiles()
-        positive_count = int(profiles.get("positive_count", 0) or 0)
-        if positive_count <= 0:
-            return {
-                "positive_count": 0,
-                "weighted_total": 0.0,
-                "top_families": [],
-                "top_indicator_patterns": [],
-                "top_novelty_angles": [],
-            }
-
-        return {
-            "positive_count": positive_count,
-            "weighted_total": float(profiles.get("weighted_total", 0.0) or 0.0),
-            "top_families": self._top_weighted_entries(
-                cast(Dict[str, float], profiles.get("family", {})),
-                limit=limit,
-            ),
-            "top_indicator_patterns": self._top_weighted_entries(
-                cast(Dict[str, float], profiles.get("pattern", {})),
-                limit=limit,
-            ),
-            "top_novelty_angles": self._top_weighted_entries(
-                cast(Dict[str, float], profiles.get("novelty", {})),
-                limit=limit,
-            ),
-        }
-
-    def get_coverage_stats(self) -> Dict[str, Any]:
-        total = len(self.catalog)
-        explored = self.state["explored"]
-        n_explored = len(explored)
-        n_success = sum(1 for v in explored.values() if v.get("status") == "success")
-        best = max(
-            (v.get("best_sharpe", float("-inf")) for v in explored.values()),
-            default=0.0,
-        )
-        dists = self._build_explored_distributions()
-        family_counts = dists["family"]
-        direction_counts = dists["direction"]
-        risk_counts = dists["risk"]
-        novelty_counts = dists["novelty"]
-        positive_profiles = self._build_positive_profiles()
-        positive_count = int(positive_profiles.get("positive_count", 0) or 0)
-        selection_mode_counts = self.state.get("selection_mode_counts", {})
-        if not isinstance(selection_mode_counts, dict):
-            selection_mode_counts = {}
-        selection_mode_counts = {
-            mode: int(selection_mode_counts.get(mode, 0) or 0)
-            for mode in self._SELECTION_MODES
-        }
-
-        return {
-            "total_objectives": total,
-            "explored_count": n_explored,
-            "success_count": n_success,
-            "coverage_pct": round(100.0 * n_explored / max(total, 1), 1),
-            "best_sharpe_overall": round(best, 3),
-            "selection_modes": selection_mode_counts,
-            "diversity": {
-                "family_entropy": self._normalized_entropy(family_counts),
-                "direction_entropy": self._normalized_entropy(direction_counts),
-                "risk_entropy": self._normalized_entropy(risk_counts),
-                "novelty_entropy": self._normalized_entropy(novelty_counts),
-                "family_distribution": dict(sorted(family_counts.items())),
-                "direction_distribution": dict(sorted(direction_counts.items())),
-                "risk_distribution": dict(sorted(risk_counts.items())),
-                "novelty_distribution": dict(sorted(novelty_counts.items())),
-            },
-            "positive_frontier": {
-                "positive_count": positive_count,
-                "positive_rate_pct": round(100.0 * positive_count / max(n_explored, 1), 1),
-                "weighted_total": round(float(positive_profiles.get("weighted_total", 0.0) or 0.0), 4),
-                "family_distribution": {
-                    k: round(v, 4)
-                    for k, v in sorted(cast(Dict[str, float], positive_profiles.get("family", {})).items())
-                },
-                "indicator_distribution": {
-                    k: round(v, 4)
-                    for k, v in sorted(cast(Dict[str, float], positive_profiles.get("indicator", {})).items())
-                },
-                "novelty_distribution": {
-                    k: round(v, 4)
-                    for k, v in sorted(cast(Dict[str, float], positive_profiles.get("novelty", {})).items())
-                },
-                "top_patterns": self._top_weighted_entries(
-                    cast(Dict[str, float], positive_profiles.get("pattern", {})),
-                    limit=5,
-                ),
-            },
-        }
-
-    def reset(self) -> None:
-        """Reset complet : re-shuffle et repart de zéro."""
-        self.state = self._fresh_state()
-        self._save()
-        logger.info("exploration_tracker_reset")
-
-
-# Singleton tracker (lazy init)
-_EXPLORATION_TRACKER: Optional[ExplorationTracker] = None
-
-
-def _get_exploration_tracker() -> ExplorationTracker:
-    global _EXPLORATION_TRACKER
-    if _EXPLORATION_TRACKER is None:
-        _EXPLORATION_TRACKER = ExplorationTracker(get_objective_catalog())
-    return _EXPLORATION_TRACKER
-
-
-def get_next_catalog_objective(
-    symbol: "str | List[str]" = "BTCUSDC",
-    timeframe: "str | List[str]" = "1h",
-) -> Optional[tuple[str, str]]:
-    """Retourne (description, obj_id) du prochain objectif non exploré.
-
-    Accepte des listes de symboles/timeframes : un couple est choisi
-    aléatoirement. La sélection d'objectif est ensuite pondérée pour
-    combiner diversité (exploration) et motifs historiquement positifs
-    (exploitation), avec comportements aléatoires contrôlés.
-
-    Si symbol=None ou timeframe=None, retire les tokens/TF hardcodés pour
-    permettre sélection LLM intelligente (auto_market_pick).
-
-    Returns:
-        ``(objective_text, obj_id)`` ou ``None`` si le catalogue est épuisé.
-    """
-    # Normaliser listes → valeur unique (choix aléatoire) si fourni
-    if isinstance(symbol, list):
-        symbol = random.choice(symbol) if symbol else None
-    if isinstance(timeframe, list):
-        timeframe = random.choice(timeframe) if timeframe else None
-
-    tracker = _get_exploration_tracker()
-    obj = tracker.get_next_objective()
-    if obj is None:
-        return None
-
-    text = obj.description
-
-    # Remplacer placeholders si valeurs fournies
-    if symbol is not None:
-        text = text.replace("{symbol}", str(symbol))
-    else:
-        # symbol=None → Retirer tokens hardcodés (ex: "0GUSDC") pour sélection LLM
-        text = _remove_hardcoded_tokens(text)
-
-    if timeframe is not None:
-        text = text.replace("{timeframe}", str(timeframe))
-    else:
-        # timeframe=None → Retirer TF hardcodés (ex: "1h") pour sélection LLM
-        text = _remove_hardcoded_timeframes(text)
-
-    return text, obj.id
-
-
-def mark_catalog_objective_explored(
-    obj_id: str,
-    *,
-    status: str,
-    best_sharpe: float,
-    best_return_pct: float = 0.0,
-    session_id: str,
-    symbol: str,
-    timeframe: str,
-) -> None:
-    """Enregistre un objectif du catalogue comme exploré."""
-    tracker = _get_exploration_tracker()
-    tracker.mark_explored(
-        obj_id,
-        status=status,
-        best_sharpe=best_sharpe,
-        best_return_pct=best_return_pct,
-        session_id=session_id,
-        symbol=symbol,
-        timeframe=timeframe,
-    )
-
-
-def get_catalog_coverage() -> Dict[str, Any]:
-    """Retourne les statistiques de couverture du catalogue."""
-    tracker = _get_exploration_tracker()
-    return tracker.get_coverage_stats()
-
-
-def reset_catalog_exploration() -> None:
-    """Reset l'exploration du catalogue (re-shuffle)."""
-    global _EXPLORATION_TRACKER
-    tracker = _get_exploration_tracker()
-    tracker.reset()
-    _EXPLORATION_TRACKER = None  # force lazy re-init
 
 
 def recommend_market_context(
@@ -8958,7 +9104,7 @@ def recommend_market_context(
                 fallback_timeframe = (
                     shuffled_timeframes[0] if shuffled_timeframes else _initial_fallback_timeframe
                 )
-        except Exception:
+        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
             fallback_timeframe = (
                 shuffled_timeframes[0] if shuffled_timeframes else _initial_fallback_timeframe
             )
@@ -9014,12 +9160,11 @@ def recommend_market_context(
     hint_lines: List[str] = []
 
     # Détection conflit hints vs diversité
-    hints_conflict = False
     if hinted_symbol and hinted_timeframe and recent_markets:
         hinted_combo = (hinted_symbol, hinted_timeframe)
         recent_window = recent_markets[-6:]
         if hinted_combo in recent_window:
-            hints_conflict = True
+            # Conflict detection done in strategy recommendation logic
             logger.warning(
                 "Market selection: CONFLICT hints vs diversity, hinted=%s %s (already in recent_markets), "
                 "priority=diversity → hints IGNORED",
@@ -9080,7 +9225,7 @@ def recommend_market_context(
                 "  → IMPORTANT: Ne choisis PAS automatiquement le premier token de la liste.\n"
                 "    Évalue l'adéquation avec l'objectif + la diversité récente.\n"
             )
-    except Exception:
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
         pass  # Si détection échoue, continuer sans hints
 
     user_msg = LLMMessage(
@@ -9112,7 +9257,7 @@ def recommend_market_context(
             raw = llm_client.chat([system_msg, user_msg], max_tokens=180)
         # Extraire .content si LLMResponse, sinon str()
         raw_text = str(getattr(raw, "content", raw) or "").strip()
-    except Exception as exc:
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as exc:
         logger.warning("recommend_market_context: fallback exception=%s", exc)
         return {
             "symbol": fallback_symbol,
@@ -9128,7 +9273,7 @@ def recommend_market_context(
 
     try:
         confidence = float(payload.get("confidence", 0.5))
-    except Exception:
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
         confidence = 0.5
     confidence = max(0.0, min(1.0, confidence))
 
@@ -9248,100 +9393,6 @@ def compile_proposal_to_code(proposal: Dict[str, Any], variant: int = 0) -> str:
     return _build_deterministic_fallback_code(proposal, variant=variant)
 
 
-# ---------------------------------------------------------------------------
-# Parametric catalog — bridge avec le module catalog/
-# ---------------------------------------------------------------------------
-
-_PARAMETRIC_VARIANTS: Optional[List[Dict[str, Any]]] = None
-_PARAMETRIC_INDEX: int = 0
-_PARAMETRIC_SEED_USED: Optional[int] = None
-_PARAMETRIC_DSL_OPERAND = r"[A-Za-z0-9_.]+"
-_PARAMETRIC_FORBIDDEN_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
-    ("crosses", re.compile(r"\bcrosses\b", re.IGNORECASE)),
-    (".iloc[", re.compile(r"\.iloc\s*\[", re.IGNORECASE)),
-    ("df[", re.compile(r"\bdf\s*\[", re.IGNORECASE)),
-    ("shift(", re.compile(r"\bshift\s*\(", re.IGNORECASE)),
-    ("future", re.compile(r"\bfuture\b", re.IGNORECASE)),
-    ("repaint", re.compile(r"\brepaint\w*\b", re.IGNORECASE)),
-)
-
-
-def _resolve_parametric_seed(seed: Optional[int]) -> int:
-    """Résout un seed stable: explicite si fourni, sinon aléatoire par session."""
-    if seed is None:
-        return random.SystemRandom().randrange(1, 2**31 - 1)
-    return int(seed)
-
-
-def _shuffle_parametric_variants(variants: List[Dict[str, Any]], seed: int) -> None:
-    """Mélange les variants de façon reproductible pour un seed donné."""
-    if len(variants) < 2:
-        return
-    rng = random.Random(seed)
-    rng.shuffle(variants)
-
-
-def _normalize_cross_syntax(text: str) -> str:
-    """Normalise les tokens "crosses" en helpers DSL non ambigus."""
-    if not text:
-        return ""
-
-    normalized = str(text)
-
-    # Legacy aliases -> contrat unique.
-    normalized = re.sub(r"\bcross_above\s*\(", "cross_up(", normalized, flags=re.IGNORECASE)
-    normalized = re.sub(r"\bcross_below\s*\(", "cross_down(", normalized, flags=re.IGNORECASE)
-
-    # "x crosses above y" / "x crosses below y"
-    normalized = re.sub(
-        rf"\b({_PARAMETRIC_DSL_OPERAND})\s+crosses\s+above\s+({_PARAMETRIC_DSL_OPERAND})\b",
-        r"cross_up(\1, \2)",
-        normalized,
-        flags=re.IGNORECASE,
-    )
-    normalized = re.sub(
-        rf"\b({_PARAMETRIC_DSL_OPERAND})\s+crosses\s+below\s+({_PARAMETRIC_DSL_OPERAND})\b",
-        r"cross_down(\1, \2)",
-        normalized,
-        flags=re.IGNORECASE,
-    )
-
-    # "x crosses_above y" / "x crosses_below y"
-    normalized = re.sub(
-        rf"\b({_PARAMETRIC_DSL_OPERAND})\s+crosses_above\s+({_PARAMETRIC_DSL_OPERAND})\b",
-        r"cross_up(\1, \2)",
-        normalized,
-        flags=re.IGNORECASE,
-    )
-    normalized = re.sub(
-        rf"\b({_PARAMETRIC_DSL_OPERAND})\s+crosses_below\s+({_PARAMETRIC_DSL_OPERAND})\b",
-        r"cross_down(\1, \2)",
-        normalized,
-        flags=re.IGNORECASE,
-    )
-
-    # "x crosses y" -> cross_any(x, y)
-    normalized = re.sub(
-        rf"\b({_PARAMETRIC_DSL_OPERAND})\s+crosses\s+({_PARAMETRIC_DSL_OPERAND})\b",
-        r"cross_any(\1, \2)",
-        normalized,
-        flags=re.IGNORECASE,
-    )
-
-    return normalized
-
-
-def _scan_forbidden_parametric_tokens(text: str) -> List[str]:
-    """Retourne les tokens interdits détectés dans un texte de variant."""
-    if not text:
-        return []
-    found: List[str] = []
-    for token, pattern in _PARAMETRIC_FORBIDDEN_PATTERNS:
-        if pattern.search(text):
-            found.append(token)
-    return found
-
-
 def _remove_hardcoded_tokens(text: str) -> str:
     """
     Retire les tokens crypto hardcodés d'un objectif (ex: "0GUSDC", "BTCUSDC").
@@ -9428,243 +9479,3 @@ def _remove_hardcoded_timeframes(text: str) -> str:
 
     return text
 
-
-def normalize_variant_for_builder(
-    variant: Any,
-    *,
-    symbol: Optional[str] = None,
-    timeframe: Optional[str] = None,
-    run_id: str = "",
-) -> Optional[Dict[str, Any]]:
-    """Normalise et valide un variant paramétrique pour injection Builder."""
-    raw: Dict[str, Any]
-    if isinstance(variant, dict):
-        raw = dict(variant)
-    elif hasattr(variant, "to_dict") and callable(getattr(variant, "to_dict")):
-        raw = cast(Dict[str, Any], variant.to_dict())
-    else:
-        raw = {
-            "variant_id": str(getattr(variant, "variant_id", "") or ""),
-            "archetype_id": str(getattr(variant, "archetype_id", "") or ""),
-            "param_pack_id": str(getattr(variant, "param_pack_id", "") or ""),
-            "params": getattr(variant, "params", {}) or {},
-            "proposal": getattr(variant, "proposal", {}) or {},
-            "builder_text": str(getattr(variant, "builder_text", "") or ""),
-            "fingerprint": str(getattr(variant, "fingerprint", "") or ""),
-            "provenance": getattr(variant, "provenance", {}) or {},
-        }
-
-    proposal = raw.get("proposal", {})
-    if not isinstance(proposal, dict):
-        proposal = {}
-    proposal = dict(proposal)
-    for field_name in ("entry_long_logic", "entry_short_logic", "exit_logic"):
-        val = proposal.get(field_name, "")
-        if isinstance(val, str) and val.strip():
-            proposal[field_name] = _normalize_cross_syntax(val)
-
-    builder_text = str(raw.get("builder_text", "") or "")
-    if not builder_text and proposal:
-        try:
-            from catalog.builder_export import to_text_v1
-            builder_text = to_text_v1(proposal)
-        except Exception:
-            builder_text = ""
-    builder_text = _normalize_cross_syntax(builder_text)
-
-    if symbol is not None:
-        builder_text = builder_text.replace("{symbol}", str(symbol))
-    else:
-        # symbol=None → Retirer les tokens hardcodés pour permettre sélection LLM intelligente
-        builder_text = _remove_hardcoded_tokens(builder_text)
-
-    if timeframe is not None:
-        builder_text = builder_text.replace("{timeframe}", str(timeframe))
-    else:
-        # timeframe=None → Retirer les TF hardcodés pour permettre sélection LLM intelligente
-        builder_text = _remove_hardcoded_timeframes(builder_text)
-
-    objective_text = sanitize_objective_text(builder_text)
-    if not objective_text:
-        objective_text = builder_text.strip()
-
-    issues: List[str] = []
-    for field_name in ("entry_long_logic", "entry_short_logic", "exit_logic"):
-        issues.extend(
-            f"{field_name}:{token}"
-            for token in _scan_forbidden_parametric_tokens(str(proposal.get(field_name, "") or ""))
-        )
-    issues.extend(f"builder_text:{token}" for token in _scan_forbidden_parametric_tokens(builder_text))
-    issues.extend(f"objective_text:{token}" for token in _scan_forbidden_parametric_tokens(objective_text))
-    if not objective_text.strip():
-        issues.append("objective_text:empty")
-
-    if issues:
-        logger.warning(
-            "parametric_variant_rejected variant_id=%s issues=%s",
-            raw.get("variant_id", ""),
-            ",".join(issues),
-        )
-        return None
-
-    provenance = raw.get("provenance", {})
-    if not isinstance(provenance, dict):
-        provenance = {}
-    resolved_run_id = (
-        str(run_id or "").strip()
-        or str(raw.get("run_id", "") or "").strip()
-        or str(provenance.get("run_id", "") or "").strip()
-    )
-
-    return {
-        "run_id": resolved_run_id,
-        "variant_id": str(raw.get("variant_id", "") or ""),
-        "archetype_id": str(raw.get("archetype_id", "") or ""),
-        "param_pack_id": str(raw.get("param_pack_id", "") or ""),
-        "params": raw.get("params", {}) if isinstance(raw.get("params", {}), dict) else {},
-        "proposal": proposal,
-        "builder_text": builder_text,
-        "fingerprint": str(raw.get("fingerprint", "") or ""),
-        "objective_text": objective_text,
-    }
-
-
-def generate_parametric_catalog(
-    config_path: Optional[str] = None,
-    n_variants: int = 200,
-    seed: Optional[int] = None,
-) -> int:
-    """Génère le catalogue paramétrique et le stocke en mémoire.
-
-    Args:
-        config_path: Chemin vers un CatalogConfig JSON. Si None, utilise
-            les archetypes/param_packs par défaut du module catalog.
-        n_variants: Nombre de variants cible (ignoré si config_path fourni).
-        seed: Seed explicite pour reproductibilité. Si None, seed aléatoire
-            (pour diversifier les sessions autonomes au redémarrage).
-
-    Returns:
-        Nombre de variants générés et valides.
-    """
-    global _PARAMETRIC_VARIANTS, _PARAMETRIC_INDEX, _PARAMETRIC_SEED_USED
-
-    from catalog.chainer import generate_catalog
-    from catalog.models import CatalogConfig
-
-    if config_path:
-        from pathlib import Path
-        config = CatalogConfig.load(Path(config_path))
-        resolved_seed = int(getattr(config, "seed", 42) or 42)
-    else:
-        resolved_seed = _resolve_parametric_seed(seed)
-        config = CatalogConfig(
-            seed=resolved_seed,
-            n_variants_target=n_variants,
-            batch_size=50,
-            archetypes_dir="catalog/archetypes",
-            param_packs_dir="catalog/param_packs",
-        )
-    if not str(getattr(config, "run_id", "") or "").strip():
-        config.run_id = f"parametric_{generate_run_id()}"
-
-    result = generate_catalog(config)
-
-    normalized_variants: List[Dict[str, Any]] = []
-    bridge_rejected = 0
-    for variant in result.variants:
-        normalized = normalize_variant_for_builder(
-            variant,
-            run_id=str(result.run_id or "").strip(),
-        )
-        if normalized is None:
-            bridge_rejected += 1
-            continue
-        normalized_variants.append(normalized)
-
-    _shuffle_parametric_variants(normalized_variants, seed=resolved_seed)
-    _PARAMETRIC_VARIANTS = normalized_variants
-    _PARAMETRIC_INDEX = 0
-    _PARAMETRIC_SEED_USED = resolved_seed
-
-    logger.info(
-        "parametric_catalog_generated total=%d after_sanity=%d after_bridge=%d bridge_rejected=%d seed=%d",
-        result.total_generated,
-        len(result.variants),
-        len(normalized_variants),
-        bridge_rejected,
-        resolved_seed,
-    )
-    return len(normalized_variants)
-
-
-def get_next_parametric_objective(
-    symbol: "str | List[str]" = "BTCUSDC",
-    timeframe: "str | List[str]" = "1h",
-) -> Optional[Dict[str, Any]]:
-    """Retourne un objectif paramétrique structuré pour le prochain variant.
-
-    Si le catalogue n'est pas encore généré, le génère automatiquement.
-    Quand tous les variants ont été consommés, recommence (cycle).
-
-    Returns:
-        Dict structuré (incluant objective_text + métadonnées variant) ou None.
-    """
-    global _PARAMETRIC_VARIANTS, _PARAMETRIC_INDEX
-
-    if _PARAMETRIC_VARIANTS is None:
-        count = generate_parametric_catalog()
-        if count == 0:
-            return None
-
-    if not _PARAMETRIC_VARIANTS:
-        return None
-
-    # Résoudre symbol/timeframe
-    if isinstance(symbol, list):
-        sym = random.choice(symbol) if symbol else "BTCUSDC"
-    else:
-        sym = symbol
-    if isinstance(timeframe, list):
-        tf = random.choice(timeframe) if timeframe else "1h"
-    else:
-        tf = timeframe
-
-    # Sélection du variant courant (cycle) + sanity d'injection.
-    attempts = len(_PARAMETRIC_VARIANTS)
-    while attempts > 0:
-        raw_variant = _PARAMETRIC_VARIANTS[_PARAMETRIC_INDEX % len(_PARAMETRIC_VARIANTS)]
-        _PARAMETRIC_INDEX += 1
-        attempts -= 1
-
-        normalized = normalize_variant_for_builder(
-            raw_variant,
-            symbol=str(sym),
-            timeframe=str(tf),
-        )
-        if normalized is not None:
-            return normalized
-
-    logger.warning("parametric_catalog_empty_after_injection_sanity")
-    return None
-
-
-def get_parametric_catalog_stats() -> Dict[str, Any]:
-    """Retourne les statistiques du catalogue paramétrique."""
-    if _PARAMETRIC_VARIANTS is None:
-        return {"generated": False, "total": 0, "index": 0, "seed": _PARAMETRIC_SEED_USED}
-    return {
-        "generated": True,
-        "total": len(_PARAMETRIC_VARIANTS),
-        "index": _PARAMETRIC_INDEX,
-        "coverage_pct": min(100.0, (_PARAMETRIC_INDEX / max(1, len(_PARAMETRIC_VARIANTS))) * 100),
-        "seed": _PARAMETRIC_SEED_USED,
-    }
-
-
-def reset_parametric_catalog() -> None:
-    """Reset le catalogue paramétrique (force re-génération au prochain appel)."""
-    global _PARAMETRIC_VARIANTS, _PARAMETRIC_INDEX, _PARAMETRIC_SEED_USED
-    _PARAMETRIC_VARIANTS = None
-    _PARAMETRIC_INDEX = 0
-    _PARAMETRIC_SEED_USED = None
-    logger.info("parametric_catalog_reset")

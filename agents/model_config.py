@@ -31,7 +31,11 @@ from typing import Any, Dict, List, Optional, Set
 
 import httpx
 
-from utils.model_loader import get_all_ollama_models, normalize_model_name
+from utils.model_loader import (
+    get_all_ollama_models,
+    get_ollama_runtime_model_names,
+    normalize_model_name,
+)
 from utils.observability import get_obs_logger
 
 logger = get_obs_logger(__name__)
@@ -51,8 +55,20 @@ def _fetch_ollama_tags_with_retries(
     max_attempts: int = 5,
     timeout_s: float = 3.0,
     base_backoff_s: float = 1.0,
+    warn_on_failure: bool = True,
+    fast_fail_on_connection_refused: bool = False,
 ) -> Optional[dict]:
     """Récupère /api/tags avec retries/backoff (Ollama peut démarrer lentement)."""
+    def _is_connection_refused(exc: BaseException) -> bool:
+        text = str(exc or "").lower()
+        if "10061" in text:
+            return True
+        if "connection refused" in text:
+            return True
+        if "aucune connexion" in text and "refus" in text:
+            return True
+        return False
+
     url = f"{_ollama_base_url()}/api/tags"
     last_exc: Optional[BaseException] = None
     for attempt in range(max_attempts):
@@ -63,12 +79,14 @@ def _fetch_ollama_tags_with_retries(
             last_exc = RuntimeError(f"HTTP {resp.status_code}")
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
+            if fast_fail_on_connection_refused and _is_connection_refused(exc):
+                break
 
         if attempt < max_attempts - 1:
             sleep_s = float(base_backoff_s * (2 ** attempt))
             time.sleep(sleep_s)
 
-    if last_exc is not None:
+    if warn_on_failure and last_exc is not None:
         logger.warning("Impossible de lister les modeles Ollama apres retries: %s", last_exc)
     return None
 
@@ -222,13 +240,21 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         avg_response_time_s=90.0,
         params_billions=22.0,
     ),
-    "qwen3-coder-next:q4_k_m": ModelInfo(
-        name="qwen3-coder-next:q4_k_m",
+    "devstral-small-2:24b": ModelInfo(
+        name="devstral-small-2:24b",
         category=ModelCategory.MEDIUM,
-        description="Qwen3 Coder Next 24.6B Q4_K_M - code, contexte 262k, runtime C:\\AI",
+        description="Devstral Small 2 24B Q4_K_M - agent code local, contexte 393k",
         recommended_for=["strategist", "critic"],
-        avg_response_time_s=70.0,
-        params_billions=24.6,
+        avg_response_time_s=65.0,
+        params_billions=24.0,
+    ),
+    "lfm2:24b": ModelInfo(
+        name="lfm2:24b",
+        category=ModelCategory.MEDIUM,
+        description="LFM2 24B Q4_K_M - generaliste efficace pour usage local 24GB",
+        recommended_for=["strategist", "critic"],
+        avg_response_time_s=55.0,
+        params_billions=23.8,
     ),
     "gemma3:27b": ModelInfo(
         name="gemma3:27b",
@@ -242,10 +268,10 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
     "glm-4.7-flash-23b-local": ModelInfo(
         name="glm-4.7-flash-23b-local",
         category=ModelCategory.MEDIUM,
-        description="GLM 4.7 Flash 23B (3B actifs) - MoE rapide polyvalent, Q5_K_M",
+        description="GLM 4.7 Flash local - MoE rapide polyvalent, Q3_K_M",
         recommended_for=["analyst", "strategist", "critic"],
         avg_response_time_s=25.0,
-        params_billions=23.0,
+        params_billions=29.9,
     ),
     "qwen3-30b-a3b:q4_k_m": ModelInfo(
         name="qwen3-30b-a3b:q4_k_m",
@@ -281,13 +307,13 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         avg_response_time_s=150.0,
         params_billions=32.0,
     ),
-    "qwen3-vl:30b": ModelInfo(
-        name="qwen3-vl:30b",
+    "qwen3-vl:32b": ModelInfo(
+        name="qwen3-vl:32b",
         category=ModelCategory.HEAVY,
-        description="Qwen 3 VL 30B - Vision + Langage",
+        description="Qwen 3 VL 32B - Vision + langage, outils, thinking",
         recommended_for=["analyst"],  # Pour analyse de charts
         avg_response_time_s=180.0,
-        params_billions=30.0,
+        params_billions=33.4,
     ),
     "deepseek-coder-33b-local": ModelInfo(
         name="deepseek-coder-33b-local",
@@ -300,10 +326,18 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
     "qwen3-coder:30b": ModelInfo(
         name="qwen3-coder:30b",
         category=ModelCategory.HEAVY,
-        description="Qwen3 Coder 30B runtime (backup GGUF qwen3-coder-next-40b-Q3_K_XL)",
+        description="Qwen3 Coder 30B - modele code principal local actuellement chargeable",
         recommended_for=["strategist", "critic"],
         avg_response_time_s=60.0,
-        params_billions=41.0,
+        params_billions=30.0,
+    ),
+    "qwen3.5:35b": ModelInfo(
+        name="qwen3.5:35b",
+        category=ModelCategory.HEAVY,
+        description="Qwen 3.5 35B - generaliste multimodal recent, haut de gamme local",
+        recommended_for=["analyst", "critic", "validator"],
+        avg_response_time_s=170.0,
+        params_billions=36.0,
     ),
     "deepseek-r1:70b": ModelInfo(
         name="deepseek-r1:70b",
@@ -415,27 +449,29 @@ class RoleModelConfig:
     analyst: RoleModelAssignment = field(default_factory=lambda: RoleModelAssignment(
         role="analyst",
         models=["deepseek-r1:8b", "mistral:7b-instruct", "martain7r/finance-llama-8b:q4_k_m", "gemma3:12b",
-                "deepseek-moe-16b-local", "glm-4.7-flash-23b-local"],
+                "deepseek-moe-16b-local", "glm-4.7-flash-23b-local", "lfm2:24b", "qwen3-vl:32b",
+                "qwen3.5:35b"],
         allow_heavy_after_iteration=5,
     ))
 
     strategist: RoleModelAssignment = field(default_factory=lambda: RoleModelAssignment(
         role="strategist",
         models=["deepseek-r1:8b", "gemma3:12b", "deepseek-r1-distill:14b", "mistral:22b",
-                "glm-4.7-flash-23b-local", "deepseek-coder-33b-local", "qwen3-coder:30b"],
+                "glm-4.7-flash-23b-local", "deepseek-coder-33b-local", "qwen3-coder:30b",
+                "devstral-small-2:24b", "lfm2:24b", "qwen3.5:35b"],
         allow_heavy_after_iteration=3,
     ))
 
     critic: RoleModelAssignment = field(default_factory=lambda: RoleModelAssignment(
         role="critic",
         models=["deepseek-r1-distill:14b", "mistral:22b", "gemma3:27b", "deepseek-r1:32b", "qwq:32b",
-                "deepseek-coder-33b-local"],
+                "deepseek-coder-33b-local", "devstral-small-2:24b", "lfm2:24b", "qwen3.5:35b"],
         allow_heavy_after_iteration=2,
     ))
 
     validator: RoleModelAssignment = field(default_factory=lambda: RoleModelAssignment(
         role="validator",
-        models=["deepseek-r1-distill:14b", "gemma3:27b", "deepseek-r1:32b", "qwq:32b"],
+        models=["deepseek-r1-distill:14b", "gemma3:27b", "deepseek-r1:32b", "qwq:32b", "qwen3.5:35b"],
         allow_heavy_after_iteration=3,
     ))
 
@@ -449,9 +485,22 @@ class RoleModelConfig:
     def _refresh_installed_models(self) -> Set[str]:
         """Rafraîchit la liste des modèles Ollama installés."""
         names: Set[str] = set()
+        catalog_names = list(get_ollama_runtime_model_names())
+
+        for name in catalog_names:
+            norm = _normalize_model_name(name)
+            if norm:
+                names.add(name)
+                names.add(norm)
 
         # 1) Source principale: API /api/tags (Ollama en cours d'exécution)
-        data = _fetch_ollama_tags_with_retries()
+        data = _fetch_ollama_tags_with_retries(
+            max_attempts=1 if names else 5,
+            timeout_s=1.0 if names else 3.0,
+            base_backoff_s=0.25 if names else 1.0,
+            warn_on_failure=not names,
+            fast_fail_on_connection_refused=bool(names),
+        )
         if data:
             for m in data.get("models", []):
                 raw = m.get("name", "")
@@ -462,8 +511,7 @@ class RoleModelConfig:
 
         # 2) Fallback: models.json (permet d'afficher quelque chose si l'API est indisponible)
         if not names:
-            for entry in get_all_ollama_models():
-                name = _ollama_name_from_library_entry(entry)
+            for name in catalog_names:
                 norm = _normalize_model_name(name)
                 if norm:
                     names.add(name)
@@ -609,6 +657,20 @@ def list_available_models() -> List[ModelInfo]:
         info = _model_info_from_library_entry(entry)
         if info:
             result_by_name[info.name] = info
+
+    for runtime_name in get_ollama_runtime_model_names():
+        normalized_name = _normalize_model_name(runtime_name)
+        if not normalized_name or normalized_name in result_by_name:
+            continue
+        if normalized_name in KNOWN_MODELS:
+            result_by_name[normalized_name] = KNOWN_MODELS[normalized_name]
+            continue
+        result_by_name[normalized_name] = ModelInfo(
+            name=normalized_name,
+            category=ModelCategory.MEDIUM,
+            description=f"Modele {normalized_name} (runtime Ollama detecte localement)",
+            recommended_for=["analyst", "strategist"],
+        )
 
     data = _fetch_ollama_tags_with_retries()
     if data:

@@ -93,6 +93,23 @@ def get_potential_tokens() -> List[str]:
     return list(get_market_config()["potential_tokens"])
 
 
+def get_postfilter_benchmark_config() -> Dict[str, Any]:
+    """Retourne la configuration des benchmarks canoniques de post-filtrage."""
+    payload = get_market_config().get("postfilter_benchmarks", {})
+    if not isinstance(payload, dict):
+        return {}
+    return payload
+
+
+def get_postfilter_benchmark_names() -> List[str]:
+    """Retourne la liste ordonnée des benchmarks canoniques à utiliser."""
+    payload = get_postfilter_benchmark_config()
+    names = payload.get("default_benchmark_names", [])
+    if not isinstance(names, list):
+        return []
+    return [str(name).strip() for name in names if str(name).strip()]
+
+
 def get_diversity_window() -> int:
     """Retourne la taille de la fenêtre de diversité (recent_markets)."""
     return int(get_market_config()["diversity"]["window_size"])

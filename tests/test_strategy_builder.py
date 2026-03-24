@@ -9,6 +9,7 @@ Couvre :
 """
 
 import json
+import concurrent.futures
 import shutil
 import textwrap
 from uuid import uuid4
@@ -20,31 +21,38 @@ import pandas as pd
 import pytest
 
 import agents.strategy_builder as strategy_builder_module
+from agents.indicator_context import build_indicator_selection_guide
+from agents.indicator_context import INDICATOR_SELECTION_REFERENCE
+from agents.indicator_context import get_indicator_builder_access_example
+from agents.indicator_context import get_indicator_builder_stable_alias_map
+from agents.indicator_context import rank_indicator_selection
 from agents.llm_client import LLMConfig, LLMMessage, LLMProvider
+from strategies.base import StrategyBase
 from agents.strategy_builder import (
-    CatalogObjective,
     GENERATED_CLASS_NAME,
     SANDBOX_ROOT,
     BuilderIteration,
     BuilderSession,
     StrategyBuilder,
     _apply_signal_direction_constraint,
+    _build_deterministic_strategy_code,
     _build_deterministic_fallback_code,
     _infer_direction_constraint_from_objective,
+    _is_interpreter_shutdown_runtime_error,
+    _postprocess_llm_logic_block,
     _sanitize_proposal_payload,
     _validate_llm_logic_block,
     _repair_code,
     compute_continuous_builder_score,
     _is_accept_candidate,
     _policy_change_type_override,
-    _objective_complexity_score,
     _ranking_sharpe,
     _select_session_recovery_anchor,
     _extract_json_from_response,
+    _extract_generate_signals_logic_block,
     _extract_python_from_response,
     generate_llm_objective,
     generate_llm_objective_from_seed,
-    normalize_variant_for_builder,
     recommend_market_context,
     sanitize_objective_text,
     validate_generated_code,
@@ -136,6 +144,41 @@ def test_emit_completed_backtest_forwards_raw_result_to_callback():
     assert raw_result.meta["builder_session_id"] == "sess-1"
     assert raw_result.meta["builder_iteration"] == 3
     assert raw_result.meta["builder_objective"] == "test objective"
+
+
+def test_precheck_signal_counts_handles_nameerror(sample_ohlcv):
+    class _BrokenStrategy(StrategyBase):
+        def __init__(self):
+            super().__init__(name="broken_precheck")
+
+        @property
+        def required_indicators(self):
+            return ["rsi"]
+
+        @property
+        def default_params(self):
+            return {}
+
+        @property
+        def parameter_specs(self):
+            return {}
+
+        def generate_signals(self, df, indicators, params):
+            signals = pd.Series(0.0, index=df.index, dtype=np.float64)
+            signals[missing_filter] = 1.0
+            return signals
+
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+
+    probe = builder._precheck_signal_counts(
+        _BrokenStrategy,
+        sample_ohlcv,
+        params={},
+    )
+
+    assert probe["ok"] is False
+    assert "NameError" in probe["error"]
+    assert "missing_filter" in probe["error"]
 
 
 def test_chat_llm_uses_phase_specific_client_for_analysis():
@@ -375,6 +418,105 @@ def test_builder_run_fallback_accept_tracks_best_sharpe(
     assert session.best_iteration.is_fallback is True
 
 
+def test_builder_run_ignores_pre_reflection_timeout(
+    monkeypatch,
+    tmp_path,
+    sample_ohlcv,
+    valid_strategy_code,
+):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.available_indicators = ["rsi", "atr"]
+
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "create_session_id",
+        staticmethod(lambda objective: "builder_pre_reflection_timeout_test"),
+    )
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "get_session_dir",
+        staticmethod(lambda session_id: tmp_path / session_id),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_validate_builder_dataset_exploitability",
+        lambda *args, **kwargs: (True, ""),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_build_deterministic_strategy_code",
+        lambda proposal, logic_block: valid_strategy_code,
+    )
+
+    class _TimeoutFuture:
+        def result(self, timeout=None):
+            raise concurrent.futures.TimeoutError()
+
+    class _TimeoutPool:
+        def submit(self, fn, *args, **kwargs):
+            return _TimeoutFuture()
+
+        def shutdown(self, wait=False):
+            return None
+
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_new_streamlit_aware_thread_pool",
+        lambda max_workers=1: _TimeoutPool(),
+    )
+
+    builder._save_session_summary = lambda session: None
+    builder._safe_save_session_summary = lambda session: None
+    builder._ask_proposal = lambda session, last_iteration: (
+        {
+            "hypothesis": "RSI reversal simple",
+            "used_indicators": ["rsi", "atr"],
+            "change_type": "logic",
+            "default_params": {"rsi_period": 14, "atr_period": 14},
+        },
+        {"phase": "proposal", "final_valid": True},
+    )
+    builder._ask_code = lambda session, proposal, last_iteration: (
+        "signals[:] = 0.0",
+        {"phase": "code", "final_valid": True},
+    )
+    builder._save_and_load = lambda session, code, iteration_num: object
+    builder._auto_fix_required_indicators = lambda strategy_cls, code: strategy_cls
+    builder._precheck_signal_counts = lambda *args, **kwargs: {
+        "ok": True,
+        "total_signals": 2,
+        "long_signals": 1,
+        "short_signals": 1,
+    }
+    builder._run_backtest = lambda *args, **kwargs: SimpleNamespace(
+        metrics={
+            "total_return_pct": 12.5,
+            "sharpe_ratio": 1.42,
+            "sortino_ratio": 1.8,
+            "calmar_ratio": 1.1,
+            "max_drawdown_pct": -8.0,
+            "total_trades": 28,
+            "win_rate_pct": 41.0,
+            "profit_factor": 1.35,
+            "expectancy": 0.12,
+        },
+        meta={},
+    )
+    builder._ask_analysis = lambda *args, **kwargs: ("Analyse stable", "accept")
+
+    session = builder.run(
+        objective="Tester le timeout pre-reflection",
+        data=sample_ohlcv,
+        max_iterations=1,
+        target_sharpe=1.0,
+        symbol="BTCUSDC",
+        timeframe="1h",
+    )
+
+    assert session.status == "success"
+    assert session.iterations[0].phase_feedback.get("pre_reflection", {}).get("timeout") is True
+
+
 def test_infer_direction_constraint_from_objective_detects_buy_only():
     objective = (
         "Generate buy signals on BTCUSDC 4h timeframe. "
@@ -408,6 +550,69 @@ def test_sanitize_proposal_payload_clears_short_logic_for_long_only():
     assert cleaned["direction_constraint"] == "long_only"
     assert cleaned["entry_long_logic"] == "rsi crosses above 30"
     assert cleaned["entry_short_logic"] == ""
+
+
+def test_sanitize_proposal_payload_drops_pathological_param_names():
+    proposal = {
+        "strategy_name": "pathological_params",
+        "hypothesis": "Test sanitation",
+        "change_type": "params",
+        "used_indicators": ["rsi", "atr"],
+        "entry_long_logic": "rsi < 30",
+        "entry_short_logic": "rsi > 70",
+        "default_params": {
+            "rsi_period": 14,
+            "distance_to_force_index_weight_volume_weight_volume_weight_volume_weight": 1.0,
+        },
+        "parameter_specs": {
+            "rsi_period": {"min": 5, "max": 30, "default": 14, "type": "int"},
+            "distance_to_force_index_weight_volume_weight_volume_weight_volume_weight": {
+                "min": 0.1,
+                "max": 3.0,
+                "default": 1.0,
+                "type": "float",
+            },
+        },
+    }
+
+    cleaned = _sanitize_proposal_payload(
+        proposal,
+        available_indicators=["rsi", "atr"],
+        objective="Test params",
+    )
+
+    assert "rsi_period" in cleaned["default_params"]
+    assert "distance_to_force_index_weight_volume_weight_volume_weight_volume_weight" not in cleaned["default_params"]
+    assert "distance_to_force_index_weight_volume_weight_volume_weight_volume_weight" not in cleaned["parameter_specs"]
+
+
+def test_sanitize_proposal_payload_canonicalizes_common_indicator_aliases():
+    proposal = {
+        "strategy_name": "alias_cleanup",
+        "hypothesis": "Nettoyer les alias Builder",
+        "change_type": "logic",
+        "used_indicators": ["bull_score", "pivot", "klt", "rsci", "atr"],
+        "entry_long_logic": "bull_score > 0.6",
+        "entry_short_logic": "",
+        "exit_logic": "pivot break",
+        "risk_management": "ATR stop/take-profit",
+        "default_params": {"atr_period": 14},
+        "parameter_specs": {},
+    }
+
+    cleaned = _sanitize_proposal_payload(
+        proposal,
+        available_indicators=["directional_bias", "pivot_points", "keltner", "rsi", "atr"],
+        objective="Breakout avec filtres directionnels",
+    )
+
+    assert cleaned["used_indicators"] == [
+        "directional_bias",
+        "pivot_points",
+        "keltner",
+        "rsi",
+        "atr",
+    ]
 
 
 def test_apply_signal_direction_constraint_removes_forbidden_side():
@@ -597,6 +802,34 @@ class TestValidateCode:
         assert "nameerror" in msg.lower()
         assert "warmup" in msg.lower()
 
+    def test_reject_two_dimensional_signal_indexing(self):
+        code = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["rsi"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{"leverage": 1, "warmup": 5}}
+
+                def generate_signals(self, df, indicators, params):
+                    rsi = np.nan_to_num(indicators["rsi"])
+                    long_mask = rsi < 30
+                    signals = pd.Series(0.0, index=df.index, dtype=np.float64)
+                    signals.loc[long_mask, "long"] = 1.0
+                    return signals
+        """)
+        is_valid, msg = validate_generated_code(code)
+        assert not is_valid
+        assert "signals" in msg.lower()
+        assert "series" in msg.lower() or "1d" in msg.lower()
+
     def test_dangerous_os_system(self):
         code = textwrap.dedent(f"""\
             import os
@@ -737,6 +970,58 @@ class TestValidateCode:
         assert not is_valid
         assert "dict" in msg.lower() and "adx" in msg.lower()
 
+    def test_reject_direct_indicator_subscript_comparison(self):
+        code = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["adx"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    adx_filter = indicators["adx"] > 25
+                    signals[adx_filter] = 1.0
+                    return signals
+        """)
+        is_valid, msg = validate_generated_code(code)
+        assert not is_valid
+        assert "dict" in msg.lower() and "adx" in msg.lower()
+
+    def test_reject_direct_indicator_subscript_method_call(self):
+        code = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["adx"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    if indicators["adx"].upper():
+                        signals[df["close"].values > 0] = 1.0
+                    return signals
+        """)
+        is_valid, msg = validate_generated_code(code)
+        assert not is_valid
+        assert "indicator dict" in msg.lower() or "dict" in msg.lower()
+
     def test_reject_unknown_supertrend_subkey(self):
         code = textwrap.dedent(f"""\
             from typing import Any, Dict, List
@@ -816,6 +1101,88 @@ class TestValidateCode:
         assert not is_valid
         assert "alias réservé `np`".lower() in msg.lower()
 
+    def test_reject_bare_registered_indicator_name_without_alias(self):
+        code = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["coppock_curve"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    signals[coppock_curve > 0] = 1.0
+                    return signals
+        """)
+        is_valid, msg = validate_generated_code(code)
+        assert not is_valid
+        assert "coppock_curve" in msg
+        assert "variable nue" in msg.lower()
+
+    def test_reject_undefined_local_variable_in_generate_signals(self):
+        code = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["bollinger"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    bb = indicators["bollinger"]
+                    lower = np.nan_to_num(bb["lower"])
+                    close = df["close"].values
+                    long_entry = (close <= lower) & bb_upper_trend_up
+                    signals[long_entry] = 1.0
+                    return signals
+        """)
+        is_valid, msg = validate_generated_code(code)
+        assert not is_valid
+        assert "nameerror" in msg.lower()
+        assert "bb_upper_trend_up" in msg
+
+    def test_reject_ellipsis_placeholder_in_generate_signals(self):
+        code = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["rsi"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    ...
+                    return signals
+        """)
+        is_valid, msg = validate_generated_code(code)
+        assert not is_valid
+        assert "placeholder" in msg.lower()
+        assert "..." in msg
+
 
 # ─── Tests extraction LLM ─────────────────────────────────────────────────
 
@@ -853,6 +1220,64 @@ class TestExtractResponse:
         result = _extract_python_from_response(text)
         assert "import pandas" in result
 
+    def test_extract_python_strips_prose_and_numbered_markers(self):
+        text = textwrap.dedent("""\
+            Here is the corrected code:
+            1. import numpy as np
+            2. from strategies.base import StrategyBase
+
+            Note: keep only this code.
+        """)
+
+        result = _extract_python_from_response(text)
+
+        assert result.startswith("import numpy as np")
+        assert "from strategies.base import StrategyBase" in result
+        assert "Here is the corrected code" not in result
+        assert "Note:" not in result
+
+    def test_extract_python_returns_empty_for_traceback_only_response(self):
+        text = textwrap.dedent("""\
+            Traceback (most recent call last):
+              File "<unknown>", line 7
+                TypeError: unsupported operand type(s) for -: 'dict' and 'dict'
+            TypeError: unsupported operand type(s) for -: 'dict' and 'dict'
+        """)
+
+        result = _extract_python_from_response(text)
+
+        assert result == ""
+
+    def test_extract_generate_signals_logic_block_returns_empty_on_indented_logic_snippet(self):
+        raw = textwrap.dedent("""\
+            Here is the logic:
+
+                n = len(df)
+                signals[close > ema_fast] = 1.0
+                return signals
+        """)
+
+        result = _extract_generate_signals_logic_block(raw)
+
+        assert result == ""
+
+    def test_extract_generate_signals_logic_block_recovers_from_noisy_indented_class_code(self):
+        raw = textwrap.dedent(f"""\
+            Here is the corrected code:
+
+                class {GENERATED_CLASS_NAME}(StrategyBase):
+                    def generate_signals(self, df, indicators, params):
+                        n = len(df)
+                        signals = pd.Series(0.0, index=df.index, dtype=np.float64)
+                        signals[close > ema_fast] = 1.0
+                        return signals
+        """)
+
+        result = _extract_generate_signals_logic_block(raw)
+
+        assert "signals[close > ema_fast] = 1.0" in result
+        assert "return signals" not in result
+
 
 class TestLogicBlockValidation:
     def test_llm_logic_allows_boolean_constants_outside_signals(self):
@@ -871,8 +1296,93 @@ class TestLogicBlockValidation:
         assert not ok
         assert "true/false" in err.lower()
 
+    def test_llm_logic_rejects_signals_loc_assignments(self):
+        logic = "signals.loc[long_mask] = 1.0"
+        ok, err = _validate_llm_logic_block(logic)
+        assert not ok
+        assert "signals" in err.lower()
+
+    def test_llm_logic_rejects_pipe_joined_indicator_subkeys(self):
+        logic = "upper = np.nan_to_num(indicators['bollinger']['upper|middle|lower'])"
+        ok, err = _validate_llm_logic_block(logic)
+        assert not ok
+        assert "sous-cles" in err.lower() or "sous-cl" in err.lower()
+
+    def test_llm_logic_rejects_crosses_helper_names(self):
+        logic = "long_entry = crosses_above_price(close, ema_fast)"
+        ok, err = _validate_llm_logic_block(logic)
+        assert not ok
+        assert "crosses_" in err.lower()
+
+    def test_postprocess_llm_logic_rewrites_signals_loc_and_indicator_alias_access(self):
+        logic = textwrap.dedent("""\
+            signals.loc[long_mask] = 1
+            has_position = signals.notnull()
+            plus = indicators['plus_di']
+            stop_mult = indicators['stop_atr_mult']
+        """)
+
+        fixed = _postprocess_llm_logic_block(logic, ["adx", "atr"])
+
+        assert "signals[long_mask] = 1.0" in fixed
+        assert "(signals != 0.0)" in fixed
+        assert "indicators['adx']['plus_di']" in fixed
+        assert "params.get('stop_atr_mult', 1.5)" in fixed
+
+    def test_postprocess_llm_logic_rewrites_cross_helper_calls(self):
+        logic = "long_mask = crosses_above(close, ema_fast)"
+
+        fixed = _postprocess_llm_logic_block(logic, ["ema"])
+
+        assert "crosses_above" not in fixed
+        assert "(close > ema_fast)" in fixed
+        assert "np.roll(close, 1) <= np.roll(ema_fast, 1)" in fixed
+
+    def test_postprocess_llm_logic_rewrites_same_slice_vector_comparison(self):
+        logic = "long_mask = close[warmup:] > ema_fast[warmup:]"
+
+        fixed = _postprocess_llm_logic_block(logic, ["ema"])
+
+        assert "close[warmup:]" not in fixed
+        assert "ema_fast[warmup:]" not in fixed
+        assert "long_mask = close > ema_fast" in fixed
+
+    def test_postprocess_llm_logic_rewrites_and_keyword_on_mask_assignment(self):
+        logic = "long_mask = (close > ema_fast) and (adx_val > 20)"
+
+        fixed = _postprocess_llm_logic_block(logic, ["ema", "adx"])
+
+        assert " and " not in fixed
+        assert "long_mask = (((close > ema_fast)) & ((adx_val > 20)))" in fixed
+
+    def test_postprocess_llm_logic_rewrites_truncated_signal_mask_assignment(self):
+        logic = "signals[long_mask[1:]] = 1"
+
+        fixed = _postprocess_llm_logic_block(logic, ["ema"])
+
+        assert "signals[long_mask[1:]]" not in fixed
+        assert "signals[long_mask] = 1.0" in fixed
+
 
 class TestCodeRepair:
+    def test_deterministic_builder_injects_indicator_binding_block(self):
+        proposal = {
+            "strategy_name": "BindingTest",
+            "used_indicators": ["rsi", "bollinger"],
+            "default_params": {},
+        }
+
+        code = _build_deterministic_strategy_code(
+            proposal,
+            "signals[(rsi < 30) & (lower > 0)] = 1.0",
+        )
+
+        assert "rsi = np.nan_to_num(indicators['rsi'])" in code
+        assert 'bb = indicators["bollinger"]' in code
+        assert 'lower = np.nan_to_num(bb["lower"])' in code
+        assert "bollinger_data = bb" in code
+        assert "bollinger_lower = lower" in code
+
     def test_repair_normalizes_indicator_key_case(self):
         raw = "x = indicators['SMA']\ny = indicators.get('ADX', None)\n"
         repaired = _repair_code(raw)
@@ -891,12 +1401,340 @@ class TestCodeRepair:
         assert "df['close']" in repaired
         assert "df['bb_stop_long']" in repaired
 
+    def test_repair_injects_bare_indicator_alias_in_generate_signals(self):
+        raw = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["coppock_curve"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    signals[coppock_curve > 0] = 1.0
+                    return signals
+        """)
+        repaired = _repair_code(raw)
+        assert "coppock_curve = np.nan_to_num(indicators['coppock_curve'])" in repaired
+
+    def test_repair_injects_binding_block_from_required_indicators(self):
+        raw = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["rsi", "bollinger"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    signals[(rsi < 30) & (lower > 0)] = 1.0
+                    return signals
+        """)
+        repaired = _repair_code(raw, ["rsi", "bollinger"])
+        assert "rsi = np.nan_to_num(indicators['rsi'])" in repaired
+        assert "bb = indicators['bollinger']" in repaired
+        assert 'lower = np.nan_to_num(bb["lower"])' in repaired
+        assert "bollinger_data = bb" in repaired
+        assert "bollinger_lower = lower" in repaired
+
+    def test_repair_injects_directional_bias_subkeys(self):
+        raw = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["directional_bias"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    signals[bull_score > bear_score] = 1.0
+                    return signals
+        """)
+
+        repaired = _repair_code(raw, ["directional_bias"])
+
+        assert 'bias = indicators["directional_bias"]' in repaired or "bias = indicators['directional_bias']" in repaired
+        assert 'bull_score = np.nan_to_num(bias["bull_score"])' in repaired
+        assert 'bear_score = np.nan_to_num(bias["bear_score"])' in repaired
+
+    def test_repair_does_not_inject_aliases_before_existing_indicator_extraction(self):
+        raw = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["rsi", "bollinger", "atr"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    rsi = np.nan_to_num(indicators['rsi'])
+                    bb = indicators['bollinger']
+                    upper = np.nan_to_num(bb["upper"])
+                    middle = np.nan_to_num(bb["middle"])
+                    lower = np.nan_to_num(bb["lower"])
+                    atr = np.nan_to_num(indicators['atr'])
+                    signals[(rsi < 30) & (lower > 0)] = 1.0
+                    return signals
+        """)
+
+        repaired = _repair_code(raw, ["rsi", "bollinger", "atr"])
+
+        assert "rsi_arr = rsi" not in repaired
+        assert "rsi_data = rsi" not in repaired
+        assert "bollinger_upper = upper" not in repaired
+        assert repaired.count("rsi = np.nan_to_num(indicators['rsi'])") == 1
+
+    def test_repair_injects_price_and_array_aliases_for_common_nameerrors(self):
+        raw = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["rsi"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    signals[(price > 0) & (rsi_arr > 50)] = 1.0
+                    return signals
+        """)
+
+        repaired = _repair_code(raw, ["rsi"])
+
+        assert "close = np.nan_to_num(df['close'].values.astype(np.float64))" in repaired
+        assert "price = close" in repaired
+        assert "rsi_arr = rsi" in repaired
+
+    def test_repair_rewrites_invalid_indicator_and_param_access_aliases(self):
+        raw = (
+            "x = indicators['plus_di']\n"
+            "y = indicators.get('aroon_down')\n"
+            "z = indicators['stop_atr_mult']\n"
+        )
+
+        repaired = _repair_code(raw)
+
+        assert "indicators['adx']['plus_di']" in repaired
+        assert "indicators['aroon']['aroon_down']" in repaired
+        assert "params.get('stop_atr_mult', 1.5)" in repaired
+
+    def test_repair_rewrites_semantic_bollinger_aliases(self):
+        raw = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["momentum", "bollinger"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    momentum = np.nan_to_num(indicators['momentum'])
+                    signals[momentum > higher_bollinger] = 1.0
+                    return signals
+        """)
+
+        repaired = _repair_code(raw, ["momentum", "bollinger"])
+
+        assert "higher_bollinger" not in repaired
+        assert "indicators['bollinger']['upper']" in repaired
+
+    def test_repair_injects_bare_param_aliases_used_in_generate_signals(self):
+        raw = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["atr", "aroon", "bollinger"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    atr = np.nan_to_num(indicators['atr'])
+                    close = np.nan_to_num(df['close'].values.astype(np.float64))
+                    signals[
+                        (indicators['aroon']['aroon_up'] > 75)
+                        & (indicators['aroon']['aroon_down'] < 25)
+                        & (close > indicators['bollinger']['upper'])
+                        & (atr > 1.5 * atr_period)
+                    ] = 1.0
+                    return signals
+        """)
+
+        repaired = _repair_code(raw, ["atr", "aroon", "bollinger"])
+
+        assert "atr_period = params.get('atr_period', 14)" in repaired
+
+    def test_repair_salvages_complex_ast_noise_and_unmatched_parenthesis(self):
+        raw = textwrap.dedent(f"""\
+            Here is the corrected code:
+            ```python
+            1. from typing import Any, Dict, List
+            2. import numpy as np
+            3. import pandas as pd
+            4. from strategies.base import StrategyBase
+
+            5. class {GENERATED_CLASS_NAME}(StrategyBase):
+            6.     @property
+            7.     def required_indicators(self) -> List[str]:
+            8.         return ["rsi"]
+
+            9.     @property
+            10.     def default_params(self) -> Dict[str, Any]:
+            11.         return {{}}
+
+            12.     def generate_signals(self, df, indicators, params):
+            13.         signals = pd.Series(0.0, index=df.index)
+            14.         signals[rsi_arr > 50] = 1.0))
+            15.         return signals
+            ```
+            Explanation: removed for runtime.
+        """)
+
+        repaired = _repair_code(raw, ["rsi"])
+        is_valid, msg = validate_generated_code(repaired)
+
+        assert is_valid, msg
+        assert "from typing import Any, Dict, List" in repaired
+        assert "Explanation:" not in repaired
+        assert "rsi_arr = rsi" in repaired
+
+    def test_repair_code_does_not_crash_on_runtime_traceback_text(self):
+        raw = "TypeError: unsupported operand type(s) for -: 'dict' and 'dict'"
+
+        repaired = _repair_code(raw, ["amplitude_hunter"])
+        is_valid, msg = validate_generated_code(repaired)
+
+        assert isinstance(repaired, str)
+        assert not is_valid
+        assert "Classe" in msg or "syntaxe" in msg.lower()
+
+    def test_validate_generated_code_rejects_direct_nan_to_num_on_amplitude_hunter_dict(self):
+        raw = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["amplitude_hunter"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    amp = np.nan_to_num(indicators["amplitude_hunter"])
+                    signals[amp > 0] = 1.0
+                    return signals
+        """)
+
+        is_valid, msg = validate_generated_code(raw)
+
+        assert not is_valid
+        assert "amplitude_hunter" in msg
+
+    def test_auto_fix_required_indicators_recovers_missing_runtime_dependencies(self):
+        builder = StrategyBuilder(llm_client=SimpleNamespace())
+
+        class _Strategy:
+            @property
+            def required_indicators(self):
+                return ["rsi"]
+
+        code = textwrap.dedent(f"""\
+            class {GENERATED_CLASS_NAME}:
+                @property
+                def required_indicators(self):
+                    return ["rsi"]
+
+                def generate_signals(self, df, indicators, params):
+                    adx_d = indicators['adx']
+                    dc = indicators['donchian']
+                    return indicators['rsi']
+        """)
+
+        patched = builder._auto_fix_required_indicators(_Strategy, code)
+        required = patched().required_indicators
+
+        assert "rsi" in required
+        assert "adx" in required
+        assert "donchian" in required
+
+    def test_indicator_stable_alias_map_exposes_preferred_names(self):
+        alias_map = get_indicator_builder_stable_alias_map("bollinger")
+        assert alias_map["bb"] == "bollinger_data"
+        assert alias_map["lower"] == "bollinger_lower"
+
+    def test_indicator_selection_guide_mentions_preferred_stable_aliases(self):
+        guide = build_indicator_selection_guide(["bollinger"])
+        joined = "\n".join(guide)
+        assert "Preferred stable aliases:" in joined
+        assert "bb->bollinger_data" in joined
+        assert "lower->bollinger_lower" in joined
+
 
 class _DummyLLMClient:
     def __init__(self, response: str):
         self._response = response
 
-    def chat(self, messages, max_tokens=0):  # noqa: ANN001
+    def chat(self, messages, max_tokens=0, json_mode=False):  # noqa: ANN001
         return self._response
 
 
@@ -990,6 +1828,39 @@ class TestObjectiveGenerationIndicatorSanitization:
         assert "{timeframe}" in objective
         assert "fear_greed" not in lower
 
+    def test_generate_llm_objective_accepts_structured_json_payload(self):
+        llm = _DummyLLMClient(
+            json.dumps(
+                {
+                    "objective": (
+                        "[Compression breakout] sur BTCUSDC 1h. "
+                        "Indicateurs : EMA + ADX + ATR. "
+                        "Entrées : cassure valide après compression. "
+                        "Sorties : retour dans le range. "
+                        "Risk management : stop ATR."
+                    ),
+                    "style": "Compression breakout",
+                    "symbol": "BTCUSDC",
+                    "timeframe": "1h",
+                    "used_indicators": ["ema", "adx", "atr"],
+                    "entry_logic": "cassure valide après compression",
+                    "exit_logic": "retour dans le range",
+                    "risk_management": "stop ATR",
+                    "hypothesis": "la compression précède souvent une impulsion",
+                }
+            )
+        )
+        objective = generate_llm_objective(
+            llm,
+            symbol=["BTCUSDC"],
+            timeframe=["1h"],
+            available_indicators=["ema", "adx", "atr", "rsi"],
+        )
+        assert objective.startswith("[Compression breakout]")
+        assert "EMA" in objective
+        assert "ADX" in objective
+        assert "ATR" in objective
+
     def test_generate_llm_objective_from_seed_keeps_placeholders_and_sanitizes(self):
         llm = _DummyLLMClient(
             (
@@ -1015,7 +1886,63 @@ class TestObjectiveGenerationIndicatorSanitization:
         assert "{symbol}" in objective
         assert "{timeframe}" in objective
         assert "fear_greed" not in lower
-        assert "donchian" in lower
+
+    def test_generate_llm_objective_from_seed_accepts_structured_json_payload(self):
+        llm = _DummyLLMClient(
+            json.dumps(
+                {
+                    "objective": (
+                        "[Retournement filtre] sur {symbol} {timeframe}. "
+                        "Indicateurs : RSI + EMA + ATR. "
+                        "Entrées : excès suivi d'un retour sur EMA. "
+                        "Sorties : invalidation du rebond. "
+                        "Risk management : stop ATR."
+                    ),
+                    "style": "Retournement filtre",
+                    "symbol": "{symbol}",
+                    "timeframe": "{timeframe}",
+                    "used_indicators": ["rsi", "ema", "atr"],
+                    "entry_logic": "excès puis retour sur EMA",
+                    "exit_logic": "invalidation du rebond",
+                    "risk_management": "stop ATR",
+                    "hypothesis": "les excès se résorbent mieux avec filtre directionnel",
+                }
+            )
+        )
+        objective = generate_llm_objective_from_seed(
+            llm,
+            seed_objective=(
+                "Strategie de Mean Reversion sur {symbol} {timeframe}. "
+                "Indicateurs : RSI + EMA + ATR."
+            ),
+            symbol=None,
+            timeframe=None,
+            available_indicators=["ema", "rsi", "atr"],
+        )
+        assert objective.startswith("[Retournement filtre]")
+        assert "{symbol}" in objective
+        assert "{timeframe}" in objective
+
+    def test_generate_llm_objective_canonicalizes_indicator_aliases(self):
+        llm = _DummyLLMClient(
+            (
+                "Breakout sur BTCUSDC 1h. "
+                "Indicateurs : PIVOT + KLT + BULL_SCORE + ATR. "
+                "Entrées : cassure confirmée. Sorties : invalidation."
+            )
+        )
+        objective = generate_llm_objective(
+            llm,
+            symbol=["BTCUSDC"],
+            timeframe=["1h"],
+            available_indicators=["pivot_points", "keltner", "directional_bias", "atr", "rsi"],
+        )
+        lower = objective.lower()
+        assert "pivot_points" in lower
+        assert "keltner" in lower
+        assert "directional_bias" in lower
+        assert " bull_score " not in f" {lower} "
+        assert " klt " not in f" {lower} "
 
 
 # ─── Tests session ─────────────────────────────────────────────────────────
@@ -1062,6 +1989,39 @@ class TestObjectiveSanitizer:
             "Entrées pullback EMA21. Sorties ATR."
         )
         assert sanitize_objective_text(objective) == objective
+
+    def test_strip_orphan_think_tags(self):
+        raw = "</think> Breakout propre sur BTCUSDC 1h. <think>"
+        cleaned = sanitize_objective_text(raw)
+        assert cleaned == "Breakout propre sur BTCUSDC 1h."
+
+    def test_strip_prompt_instruction_leakage_and_keep_objective_core(self):
+        raw = (
+            "Évite la redondance et la formulation trop technique. "
+            "Exemple de format correct : [Style] sur EOSUSDC 15m. "
+            "Indicateurs : AMPLITUDE_HUNTER + CHAIKIN_OSCILLATOR + DIRECTIONAL_BIAS + ATR. "
+            "Entrées : amplitude_hunter > 0.5. Sorties : invalidation. "
+            "Risk management : stop ATR."
+        )
+        cleaned = sanitize_objective_text(raw)
+        assert cleaned.startswith("[Style] sur EOSUSDC 15m.")
+        assert "Évite la redondance" not in cleaned
+        assert "Exemple de format correct" not in cleaned
+
+    def test_generate_llm_objective_falls_back_when_prompt_leakage_is_pure_meta(self):
+        llm = _DummyLLMClient(
+            "Tu dois inclure au least 3 indicateurs et au moins 1 filtre de regime. "
+            "Okay, let's dive into this. First, I need to figure out the trading strategy objective."
+        )
+        objective = generate_llm_objective(
+            llm,
+            symbol=["BTCUSDC"],
+            timeframe=["1h"],
+            available_indicators=["ema", "rsi", "atr"],
+        )
+        assert objective.startswith("Stratégie de ")
+        assert "Okay, let's dive" not in objective
+        assert "Tu dois inclure" not in objective
 
     def test_extract_objective_from_contaminated_logs(self):
         raw = textwrap.dedent("""\
@@ -1267,64 +2227,37 @@ class TestDeterministicFallbackCode:
         assert "adx_threshold" in code
 
 
-# ─── Tests bridge paramétrique ───────────────────────────────────────────
+class TestGracefulInterpreterShutdown:
+    def test_interpreter_shutdown_runtime_error_is_detected(self):
+        exc = RuntimeError("cannot schedule new futures after interpreter shutdown")
+        assert _is_interpreter_shutdown_runtime_error(exc) is True
 
-class TestParametricVariantNormalization:
-    """Vérifie la normalisation/gating des variants paramétriques."""
-
-    def test_normalize_variant_rewrites_crosses_and_exposes_metadata(self):
-        variant = {
-            "run_id": "cat_test_001",
-            "variant_id": "variant_a",
-            "archetype_id": "arch_a",
-            "param_pack_id": "pack_a",
-            "params": {"bb_period": 20},
-            "proposal": {
-                "entry_long_logic": "close > bollinger.upper",
-                "entry_short_logic": "close < bollinger.lower",
-                "exit_logic": "close crosses bollinger.middle",
-            },
-            "builder_text": (
-                "FICHE_STRATEGIE v1\n"
-                "exit:\n"
-                "  - condition: close crosses bollinger.middle\n"
-                "market: {symbol} {timeframe}\n"
-            ),
-            "fingerprint": "fp_1",
-        }
-
-        normalized = normalize_variant_for_builder(
-            variant,
-            symbol="BTCUSDC",
-            timeframe="1h",
+    def test_chat_llm_requalifies_interpreter_shutdown_as_keyboard_interrupt(self, monkeypatch):
+        builder = StrategyBuilder.__new__(StrategyBuilder)
+        builder.stream_callback = None
+        builder.phase_llm_clients = {}
+        builder.llm = SimpleNamespace(config=SimpleNamespace(ollama_host=None))
+        builder.llm_topology_config = SimpleNamespace(
+            resolve_builder_phase_route=lambda phase, fallback_host=None: SimpleNamespace(ollama_host=None)
         )
-        assert normalized is not None
-        assert normalized["run_id"] == "cat_test_001"
-        assert normalized["variant_id"] == "variant_a"
-        assert normalized["archetype_id"] == "arch_a"
-        assert normalized["param_pack_id"] == "pack_a"
-        assert normalized["params"] == {"bb_period": 20}
-        assert "cross_any(close, bollinger.middle)" in normalized["proposal"]["exit_logic"]
-        assert "cross_any(close, bollinger.middle)" in normalized["builder_text"]
-        assert "crosses" not in normalized["objective_text"].lower()
-        assert "BTCUSDC" in normalized["objective_text"]
-        assert "1h" in normalized["objective_text"]
 
-    def test_normalize_variant_rejects_forbidden_tokens(self):
-        variant = {
-            "variant_id": "variant_bad",
-            "archetype_id": "arch_bad",
-            "param_pack_id": "pack_bad",
-            "params": {},
-            "proposal": {
-                "entry_long_logic": "df['close'] > bollinger.upper",
-                "entry_short_logic": "close < bollinger.lower",
-                "exit_logic": "close > bollinger.middle",
-            },
-            "builder_text": "FICHE_STRATEGIE v1\nentry:\n  - long: df['close'] > bollinger.upper\n",
-            "fingerprint": "fp_bad",
-        }
-        assert normalize_variant_for_builder(variant) is None
+        class _BrokenPool:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def submit(self, fn):
+                raise RuntimeError("cannot schedule new futures after interpreter shutdown")
+
+        monkeypatch.setattr(strategy_builder_module, "_new_streamlit_aware_thread_pool", lambda max_workers=1: _BrokenPool())
+
+        with pytest.raises(KeyboardInterrupt):
+            builder._chat_llm(
+                messages=[LLMMessage(role="user", content="ping")],
+                phase="code",
+            )
 
 
 # ─── Tests chargement dynamique ──────────────────────────────────────────
@@ -1389,6 +2322,58 @@ class TestIndicators:
         from indicators.registry import list_indicators
         assert "macd" in list_indicators()
         assert "supertrend" in list_indicators()
+        assert "fva" in list_indicators()
+        assert "fvg" in list_indicators()
+        assert "swing" in list_indicators()
+        assert "smart_legs" in list_indicators()
+        assert "directional_bias" in list_indicators()
+        assert "markov_switching" in list_indicators()
+
+    @pytest.mark.parametrize(
+        ("name", "params", "result_type"),
+        [
+            ("wma", {"period": 14}, "array"),
+            ("hma", {"period": 20}, "array"),
+            ("tma", {"period": 20}, "array"),
+            ("cmo", {"period": 14}, "array"),
+            ("tsi", {"long_period": 25, "short_period": 13}, "array"),
+            ("kst", {}, "array"),
+            ("ultimate_oscillator", {}, "array"),
+            ("fisher_transform", {"period": 10}, "dict"),
+            ("kvo", {}, "dict"),
+            ("cmf", {"period": 20}, "array"),
+            ("chaikin_oscillator", {}, "array"),
+            ("eom", {"period": 14}, "array"),
+            ("elder_ray", {"period": 13}, "dict"),
+            ("force_index", {"period": 13}, "array"),
+            ("dpo", {"period": 20}, "array"),
+            ("coppock_curve", {}, "array"),
+            ("mass_index", {}, "array"),
+            ("fva", {}, "array"),
+            ("fvg", {}, "dict"),
+            ("swing", {}, "dict"),
+            ("smart_legs", {}, "dict"),
+            ("directional_bias", {}, "dict"),
+            ("amplitude_hunter", {"period": 20}, "dict"),
+            ("markov_switching", {}, "dict"),
+        ],
+    )
+    def test_new_registry_indicators_calculate(self, sample_ohlcv, name, params, result_type):
+        from indicators.registry import calculate_indicator, list_indicators
+
+        assert name in list_indicators()
+
+        result = calculate_indicator(name, sample_ohlcv, params)
+
+        if result_type == "dict":
+            assert isinstance(result, dict)
+            assert result
+            for values in result.values():
+                assert len(np.asarray(values)) == len(sample_ohlcv)
+            return
+
+        assert isinstance(result, np.ndarray)
+        assert len(result) == len(sample_ohlcv)
 
 
 # ─── Tests templates ──────────────────────────────────────────────────────
@@ -1396,11 +2381,104 @@ class TestIndicators:
 class TestTemplates:
     """Vérifie que les templates Jinja2 sont accessibles et rendables."""
 
+    def test_rank_indicator_selection_is_deterministic_for_session(self):
+        ordered_a = rank_indicator_selection(
+            ["rsi", "donchian", "adx", "bollinger", "atr"],
+            objective="Breakout trend following on BTC",
+            diagnostic={"category": "poor_performance", "summary": "Breakout logic still weak"},
+            previous_indicators=["rsi", "atr"],
+            session_seed="session-123",
+            prefer_diversity=True,
+        )
+        ordered_b = rank_indicator_selection(
+            ["rsi", "donchian", "adx", "bollinger", "atr"],
+            objective="Breakout trend following on BTC",
+            diagnostic={"category": "poor_performance", "summary": "Breakout logic still weak"},
+            previous_indicators=["rsi", "atr"],
+            session_seed="session-123",
+            prefer_diversity=True,
+        )
+
+        assert ordered_a == ordered_b
+
+    def test_rank_indicator_selection_prefers_relevant_indicators(self):
+        ordered = rank_indicator_selection(
+            ["rsi", "donchian", "adx", "bollinger", "atr"],
+            objective="Build a breakout trend-following strategy with volatility filter",
+            diagnostic={"category": "no_trades", "summary": "Breakout setup needs clearer trend confirmation"},
+            previous_indicators=["rsi", "atr"],
+            session_seed="session-breakout",
+            prefer_diversity=True,
+        )
+
+        assert ordered.index("donchian") < ordered.index("rsi")
+        assert ordered.index("adx") < ordered.index("rsi")
+
+    def test_rank_indicator_selection_keeps_all_indicators(self):
+        available = ["rsi", "donchian", "adx", "bollinger", "atr", "markov_switching"]
+        ordered = rank_indicator_selection(
+            available,
+            objective="Range reversion with volatility filter",
+            diagnostic={"category": "poor_performance", "summary": "Previous mix was noisy"},
+            previous_indicators=["rsi", "atr"],
+            session_seed="session-all-indicators",
+            prefer_diversity=True,
+        )
+
+        assert set(ordered) == set(available)
+        assert len(ordered) == len(available)
+
+    def test_rank_indicator_selection_does_not_bury_relevant_previous_indicator(self):
+        ordered = rank_indicator_selection(
+            ["rsi", "donchian", "adx", "bollinger", "atr"],
+            objective="Build a breakout trend-following strategy with volatility filter",
+            diagnostic={"category": "poor_performance", "summary": "Need stronger breakout confirmation"},
+            previous_indicators=["donchian", "atr"],
+            session_seed="session-relevant-previous",
+            prefer_diversity=True,
+        )
+
+        assert ordered.index("donchian") < ordered.index("rsi")
+
+    def test_indicator_selection_guide_expands_abbreviations(self):
+        guide = build_indicator_selection_guide(["rsi", "macd", "markov_switching"])
+
+        assert any("Relative Strength Index" in line for line in guide)
+        assert any("Moving Average Convergence Divergence" in line for line in guide)
+        assert any("probabilistic regime detector" in line.lower() for line in guide)
+        assert any('indicators["rsi"]' in line for line in guide)
+        assert any('indicators["macd"]' in line for line in guide)
+
+    def test_indicator_builder_access_example_handles_dict_indicator(self):
+        example = get_indicator_builder_access_example("bollinger")
+
+        assert 'indicators["bollinger"]' in example
+        assert 'np.nan_to_num' in example
+        assert 'upper' in example
+
+    def test_indicator_builder_access_example_handles_amplitude_hunter_dict(self):
+        example = get_indicator_builder_access_example("amplitude_hunter")
+        alias_map = get_indicator_builder_stable_alias_map("amplitude_hunter")
+
+        assert 'indicators["amplitude_hunter"]' in example
+        assert 'range_pct' in example
+        assert 'score' in example
+        assert alias_map["score"] == "amplitude_hunter_score"
+
+    def test_indicator_reference_stores_builder_access_examples(self):
+        assert 'builder_access' in INDICATOR_SELECTION_REFERENCE["rsi"]
+        assert 'builder_access' in INDICATOR_SELECTION_REFERENCE["bollinger"]
+        assert 'indicators["rsi"]' in INDICATOR_SELECTION_REFERENCE["rsi"]["builder_access"]
+        assert 'indicators["bollinger"]' in INDICATOR_SELECTION_REFERENCE["bollinger"]["builder_access"]
+
     def test_proposal_template_renders(self):
         from utils.template import render_prompt
         context = {
             "objective": "Trend following BTC",
-            "available_indicators": ["rsi", "bollinger", "atr"],
+            "available_indicators": ["rsi", "bollinger", "atr", "markov_switching", "directional_bias"],
+            "available_indicator_guide": build_indicator_selection_guide(
+                ["rsi", "bollinger", "atr", "markov_switching", "directional_bias"]
+            ),
             "iteration": 1,
             "max_iterations": 5,
         }
@@ -1408,6 +2486,13 @@ class TestTemplates:
         assert "Trend following BTC" in result
         assert "rsi" in result
         assert "ITERATION 1" in result
+        assert "INDICATOR QUICK GUIDE" in result
+        assert "session-stable and lightly re-ranked" in result
+        assert "Relative Strength Index" in result
+        assert 'indicators["rsi"]' in result
+        assert "REGIME FILTER GUIDANCE" in result
+        assert "markov_switching" in result
+        assert "directional_bias" in result
 
     def test_code_template_renders(self):
         from utils.template import render_prompt
@@ -1423,12 +2508,19 @@ class TestTemplates:
                 "default_params": {"rsi_period": 14},
             },
             "available_indicators": ["rsi", "bollinger", "atr"],
+            "available_indicator_guide": build_indicator_selection_guide(
+                ["rsi", "bollinger", "atr"]
+            ),
             "class_name": GENERATED_CLASS_NAME,
         }
         result = render_prompt("strategy_builder_code.jinja2", context)
         assert GENERATED_CLASS_NAME in result
         assert "Mean reversion ETH" in result
         assert "rsi, bollinger" in result
+        assert "INDICATOR QUICK GUIDE" in result
+        assert "session-stable and lightly re-ranked" in result
+        assert "Average True Range" in result
+        assert 'indicators["bollinger"]' in result
 
 
 class TestMarketRecommendationDiversity:
@@ -1518,12 +2610,19 @@ class TestBuilderSummaryLeaderboard:
             objective="Test leaderboard export",
             session_dir=session_dir,
             target_sharpe=1.0,
+            symbol="ETHUSDC",
+            timeframe="4h",
+            n_bars=240,
+            date_range_start="2026-01-01 00:00:00",
+            date_range_end="2026-02-10 00:00:00",
+            initial_capital=25000.0,
         )
         session.session_dir.mkdir(parents=True, exist_ok=True)
 
         bt_good = SimpleNamespace(
             metrics={
                 "sharpe_ratio": 1.4,
+                "total_pnl": 3750.0,
                 "total_return_pct": 15.0,
                 "max_drawdown_pct": 30.0,
                 "profit_factor": 1.2,
@@ -1535,6 +2634,7 @@ class TestBuilderSummaryLeaderboard:
         bt_mid = SimpleNamespace(
             metrics={
                 "sharpe_ratio": 0.9,
+                "total_pnl": 1250.0,
                 "total_return_pct": 5.0,
                 "max_drawdown_pct": 26.0,
                 "profit_factor": 1.08,
@@ -1544,7 +2644,17 @@ class TestBuilderSummaryLeaderboard:
             meta={"params": {"x": 2}},
         )
 
-        it1 = BuilderIteration(iteration=1, backtest_result=bt_mid, decision="continue")
+        it1 = BuilderIteration(
+            iteration=1,
+            backtest_result=bt_mid,
+            decision="continue",
+            phase_feedback={
+                "backtest": {
+                    "runtime_error": "ValueError: test runtime",
+                    "runtime_traceback_tail": "Traceback line 1\nTraceback line 2",
+                }
+            },
+        )
         it2 = BuilderIteration(iteration=2, backtest_result=bt_good, decision="accept")
         session.iterations = [it1, it2]
         session.best_iteration = it2
@@ -1578,122 +2688,20 @@ class TestBuilderSummaryLeaderboard:
             assert "leaderboard" in payload
             assert len(payload["leaderboard"]) == 2
             assert payload["leaderboard"][0]["iteration"] == 2
+            assert payload["leaderboard"][0]["total_pnl"] == 3750.0
             assert payload["auto_reset_count"] == 1
             assert payload["recovery_events"][0]["trigger"] == "consecutive_failures"
+            assert payload["symbol"] == "ETHUSDC"
+            assert payload["timeframe"] == "4h"
+            assert payload["n_bars"] == 240
+            assert payload["date_range_start"] == "2026-01-01 00:00:00"
+            assert payload["date_range_end"] == "2026-02-10 00:00:00"
+            assert payload["initial_capital"] == 25000.0
+            assert payload["last_runtime_error"] == "ValueError: test runtime"
+            assert payload["last_runtime_error_iteration"] == 1
+            assert payload["last_runtime_traceback_tail"] == "Traceback line 1\nTraceback line 2"
         finally:
             shutil.rmtree(session_dir, ignore_errors=True)
-
-
-class TestObjectiveComplexity:
-    def test_objective_complexity_score_prefers_richer_setups(self):
-        simple = CatalogObjective(
-            id="simple",
-            family="momentum",
-            indicators=["ema", "atr"],
-            direction="long_only",
-            risk_profile="tight",
-            novelty_angle="curated",
-            description="simple",
-            sl_mult=1.0,
-            tp_mult=2.0,
-            tags=["cross"],
-        )
-        complex_obj = CatalogObjective(
-            id="complex",
-            family="breakout",
-            indicators=["donchian", "adx", "obv", "atr"],
-            direction="long_short",
-            risk_profile="wide",
-            novelty_angle="curated",
-            description="complex",
-            sl_mult=2.0,
-            tp_mult=5.0,
-            tags=["multi_tf_proxy", "volatility", "confirmation"],
-        )
-
-        assert _objective_complexity_score(complex_obj) > _objective_complexity_score(simple)
-
-
-class TestParametricCatalogRandomization:
-    def test_generate_parametric_catalog_seed_none_uses_system_random(self, monkeypatch):
-        captured: dict[str, int] = {}
-
-        class _FakeSystemRandom:
-            def randrange(self, start, stop):
-                assert start == 1
-                assert stop == 2**31 - 1
-                return 987654321
-
-        def fake_generate_catalog(config):
-            captured["seed"] = int(config.seed)
-            return SimpleNamespace(
-                run_id="run_test",
-                variants=[],
-                total_generated=0,
-            )
-
-        monkeypatch.setattr(strategy_builder_module.random, "SystemRandom", lambda: _FakeSystemRandom())
-        monkeypatch.setattr("catalog.chainer.generate_catalog", fake_generate_catalog)
-
-        strategy_builder_module.reset_parametric_catalog()
-        count = strategy_builder_module.generate_parametric_catalog(n_variants=5, seed=None)
-
-        assert count == 0
-        assert captured["seed"] == 987654321
-        stats = strategy_builder_module.get_parametric_catalog_stats()
-        assert stats["seed"] == 987654321
-
-    def test_generate_parametric_catalog_order_is_seed_reproducible(self, monkeypatch):
-        base_variants = [
-            {"variant_id": "v1"},
-            {"variant_id": "v2"},
-            {"variant_id": "v3"},
-        ]
-
-        def fake_generate_catalog(_config):
-            return SimpleNamespace(
-                run_id="run_test",
-                variants=list(base_variants),
-                total_generated=len(base_variants),
-            )
-
-        def fake_normalize_variant_for_builder(variant, **kwargs):
-            return {
-                "run_id": str(kwargs.get("run_id", "run_test")),
-                "variant_id": str(variant.get("variant_id", "")),
-                "archetype_id": "arch",
-                "param_pack_id": "pack",
-                "params": {},
-                "proposal": {},
-                "builder_text": "",
-                "fingerprint": str(variant.get("variant_id", "")),
-                "objective_text": "objective",
-            }
-
-        monkeypatch.setattr("catalog.chainer.generate_catalog", fake_generate_catalog)
-        monkeypatch.setattr(
-            strategy_builder_module,
-            "normalize_variant_for_builder",
-            fake_normalize_variant_for_builder,
-        )
-
-        strategy_builder_module.reset_parametric_catalog()
-        strategy_builder_module.generate_parametric_catalog(n_variants=3, seed=123)
-        order_1 = [
-            variant["variant_id"]
-            for variant in (strategy_builder_module._PARAMETRIC_VARIANTS or [])
-        ]
-
-        strategy_builder_module.reset_parametric_catalog()
-        strategy_builder_module.generate_parametric_catalog(n_variants=3, seed=123)
-        order_2 = [
-            variant["variant_id"]
-            for variant in (strategy_builder_module._PARAMETRIC_VARIANTS or [])
-        ]
-
-        assert order_1 == order_2
-        assert order_1 != ["v1", "v2", "v3"]
-
 
 # ─── Tests refactor scoring souple ──────────────────────────────────────────
 

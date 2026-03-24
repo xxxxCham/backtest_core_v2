@@ -27,13 +27,24 @@ DEFAULT_CATALOG_PATH = Path("config/strategy_catalog.json")
 
 CATEGORY_ORDER = [
     "p1_builder_inbox",
-    "p2_auto_shortlist",
-    "p3_watchlist",
-    "p4_paper_candidate",
-    "p5_live_active",
-    "p6_live_validated",
-    "p7_archived_rejected",
+    "p2_positive_observed",
+    "p3_benchmark_consensus",
+    "p4_param_robust",
+    "p5_wfa_candidate",
+    "p6_paper_candidate",
+    "p7_live_active",
+    "p8_live_validated",
+    "p9_archived_rejected",
 ]
+
+CATEGORY_ALIASES = {
+    "p2_auto_shortlist": "p2_positive_observed",
+    "p3_watchlist": "p3_benchmark_consensus",
+    "p4_paper_candidate": "p6_paper_candidate",
+    "p5_live_active": "p7_live_active",
+    "p6_live_validated": "p8_live_validated",
+    "p7_archived_rejected": "p9_archived_rejected",
+}
 
 STATUS_VALUES = ["active", "archived"]
 BUILDER_STATES = ["completed", "in_progress", "stopped"]
@@ -238,6 +249,7 @@ def _normalize_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     timeframe = str(entry.get("timeframe", "") or "").strip()
     params_hash = str(entry.get("params_hash", "") or "none").strip() or "none"
     category = str(entry.get("category", "p1_builder_inbox") or "p1_builder_inbox")
+    category = CATEGORY_ALIASES.get(category, category)
     if category not in CATEGORY_ORDER:
         category = "p1_builder_inbox"
     status = str(entry.get("status", "active") or "active")
@@ -465,7 +477,7 @@ def _float(value: Any, default: float) -> float:
 def build_entry_from_saved_run(
     saved_run: Mapping[str, Any],
     *,
-    category: str = "p3_watchlist",
+    category: str = "p3_benchmark_consensus",
 ) -> Dict[str, Any]:
     """Normalise un run sauvegardé/artefact en entrée du strategy catalog."""
     if category not in CATEGORY_ORDER:
@@ -560,7 +572,7 @@ def build_entry_from_saved_run(
 def upsert_from_saved_run(
     saved_run: Mapping[str, Any],
     *,
-    target_category: str = "p3_watchlist",
+    target_category: str = "p3_benchmark_consensus",
     path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Promeut un run sauvegardé vers le strategy catalog existant."""
@@ -615,13 +627,13 @@ def upsert_from_builder_session(session: Any, *, path: Optional[Path] = None) ->
 
     category = "p1_builder_inbox"
     if _auto_shortlist_ok(best_metrics, getattr(session, "target_sharpe", None)):
-        category = "p2_auto_shortlist"
+        category = "p2_positive_observed"
 
     existing = get_entry(entry_id, path=path)
     if existing:
         existing_category = existing.get("category")
         if existing_category in CATEGORY_ORDER:
-            if CATEGORY_ORDER.index(existing_category) >= CATEGORY_ORDER.index("p3_watchlist"):
+            if CATEGORY_ORDER.index(existing_category) >= CATEGORY_ORDER.index("p3_benchmark_consensus"):
                 category = existing_category
 
     entry = {

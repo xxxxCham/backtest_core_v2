@@ -9,10 +9,16 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import shutil
 from typing import Any, Dict, Iterable, List
 
 import pandas as pd
 
+from backtest.result_store import (
+    get_results_analysis_dir,
+    get_results_root_dir,
+    get_workspace_results_analysis_dir,
+)
 from tools.generate_html_report import generate_html_report
 
 SYSTEM_PARAM_KEYS = {
@@ -20,6 +26,11 @@ SYSTEM_PARAM_KEYS = {
     "fees_bps",
     "slippage_bps",
 }
+ANALYSIS_ARTIFACT_FILENAMES = (
+    "analysis_report.html",
+    "analysis_report_filtered.html",
+    "analysis_top_configs.csv",
+)
 
 
 def _as_float(value: Any, default: float = 0.0) -> float:
@@ -45,7 +56,15 @@ def _clean_params(params: Dict[str, Any]) -> Dict[str, Any]:
     return cleaned
 
 
-def extract_all_results(results_dir: Path = Path("backtest_results")) -> List[Dict[str, Any]]:
+def _stable_param_value(value: Any) -> str:
+    try:
+        return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
+    except TypeError:
+        return json.dumps(str(value), ensure_ascii=False)
+
+
+def extract_all_results(results_dir: Path | None = None) -> List[Dict[str, Any]]:
+    results_dir = get_results_root_dir(results_dir)
     results: List[Dict[str, Any]] = []
     seen_run_ids: set[str] = set()
 
@@ -135,7 +154,12 @@ def filter_current_results(
 def deduplicate_results(results: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     grouped: Dict[tuple[Any, ...], List[Dict[str, Any]]] = {}
     for result in results:
-        params_items = tuple(sorted((result.get("params") or {}).items()))
+        params_items = tuple(
+            sorted(
+                (str(key), _stable_param_value(value))
+                for key, value in (result.get("params") or {}).items()
+            )
+        )
         key = (
             result.get("strategy"),
             result.get("symbol"),
@@ -157,10 +181,16 @@ def deduplicate_results(results: Iterable[Dict[str, Any]]) -> List[Dict[str, Any
 
 def export_top_configs(
     results: Iterable[Dict[str, Any]],
-    output_path: Path = Path("analysis_top_configs.csv"),
+    output_path: Path | None = None,
     *,
     top_n: int = 100,
 ) -> Path:
+    if output_path is None:
+        output_path = get_results_analysis_dir() / "analysis_top_configs.csv"
+    else:
+        output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
     rows: List[Dict[str, Any]] = []
     for rank, result in enumerate(sort_results(results)[:top_n], 1):
         row = {
@@ -194,19 +224,45 @@ def export_top_configs(
     return output_path
 
 
+def _mirror_analysis_artifacts(source_dir: Path, mirror_dir: Path) -> List[str]:
+    source_dir = Path(source_dir)
+    mirror_dir = Path(mirror_dir)
+    if source_dir.resolve() == mirror_dir.resolve():
+        return []
+
+    mirror_dir.mkdir(parents=True, exist_ok=True)
+    mirrored_paths: List[str] = []
+    for filename in ANALYSIS_ARTIFACT_FILENAMES:
+        source_path = source_dir / filename
+        if not source_path.exists():
+            continue
+        target_path = mirror_dir / filename
+        shutil.copy2(source_path, target_path)
+        mirrored_paths.append(str(target_path))
+    return mirrored_paths
+
+
 def refresh_analysis_artifacts(
-    results_dir: Path = Path("backtest_results"),
+    results_dir: Path | None = None,
     *,
     top_n: int = 100,
+    output_dir: Path | None = None,
+    workspace_output_dir: Path | None = None,
 ) -> Dict[str, Any]:
+    results_dir = get_results_root_dir(results_dir)
+    output_dir = Path(output_dir) if output_dir is not None else get_results_analysis_dir()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     raw_results = extract_all_results(results_dir)
     all_results = deduplicate_results(raw_results)
     filtered_results = deduplicate_results(filter_current_results(raw_results))
 
-    csv_path = export_top_configs(filtered_results, top_n=top_n)
+    csv_path = export_top_configs(filtered_results, output_dir / "analysis_top_configs.csv", top_n=top_n)
+    html_path = output_dir / "analysis_report.html"
+    filtered_html_path = output_dir / "analysis_report_filtered.html"
     generate_html_report(
         all_results,
-        Path("analysis_report.html"),
+        html_path,
         title="Backtest Analysis Report",
         top_n=top_n,
         filters_description="All available backtest runs",
@@ -214,12 +270,18 @@ def refresh_analysis_artifacts(
     )
     generate_html_report(
         filtered_results,
-        Path("analysis_report_filtered.html"),
+        filtered_html_path,
         title="Backtest Analysis Report - Filtered",
         top_n=top_n,
         filters_description="return_pct > 0, account_ruined = False, trades >= 1",
         csv_path=csv_path,
     )
+    workspace_output_dir = (
+        Path(workspace_output_dir)
+        if workspace_output_dir is not None
+        else get_workspace_results_analysis_dir()
+    )
+    mirrored_files = _mirror_analysis_artifacts(output_dir, workspace_output_dir)
 
     return {
         "total_results": len(all_results),
@@ -227,18 +289,23 @@ def refresh_analysis_artifacts(
         "filtered_results": len(filtered_results),
         "top_n": top_n,
         "csv_path": str(csv_path),
-        "html_path": str(Path("analysis_report.html")),
-        "filtered_html_path": str(Path("analysis_report_filtered.html")),
+        "html_path": str(html_path),
+        "filtered_html_path": str(filtered_html_path),
+        "workspace_output_dir": str(workspace_output_dir),
+        "mirrored_files": mirrored_files,
     }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Refresh analysis artifacts from backtest_results")
-    parser.add_argument("--results-dir", default="backtest_results", help="Path to backtest results root")
+    parser = argparse.ArgumentParser(description="Refresh analysis artifacts from the configured backtest results store")
+    parser.add_argument("--results-dir", default="", help="Path to backtest results root (default: BACKTEST_RESULTS_DIR or backtest_results)")
+    parser.add_argument("--output-dir", default="", help="Path for generated analysis artifacts (default: configured artifacts root/_analysis)")
     parser.add_argument("--top", type=int, default=100, help="Number of ranked configs to export/render")
     args = parser.parse_args()
 
-    stats = refresh_analysis_artifacts(Path(args.results_dir), top_n=args.top)
+    results_dir = get_results_root_dir(args.results_dir or None)
+    output_dir = Path(args.output_dir).expanduser() if args.output_dir else None
+    stats = refresh_analysis_artifacts(results_dir, top_n=args.top, output_dir=output_dir)
     print(
         "Analysis refreshed: "
         f"total={stats['total_results']} "
@@ -248,6 +315,8 @@ def main() -> int:
     print(f"CSV: {stats['csv_path']}")
     print(f"HTML: {stats['html_path']}")
     print(f"Filtered HTML: {stats['filtered_html_path']}")
+    if stats.get("mirrored_files"):
+        print(f"Workspace mirror: {stats['workspace_output_dir']}")
     return 0
 
 

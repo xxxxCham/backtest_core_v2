@@ -26,6 +26,12 @@ from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+try:
+    from core.llm_multi import get_profile_role_pools
+    from core.llm_multi.roles import SIMPLE_MULTI_LLM_ACTIVE_ROLES
+except ImportError:
+    get_profile_role_pools = None
+
 BUILDER_PRELOAD_MODEL_DEFAULT = True
 BUILDER_KEEP_ALIVE_MINUTES_DEFAULT = 20
 BUILDER_UNLOAD_AFTER_RUN_DEFAULT = True
@@ -254,28 +260,57 @@ def resolve_builder_multi_llm_preferences(source: Any) -> Dict[str, Any]:
     profile_name = str(
         _read("builder_multi_llm_profile", "24GB_balanced") or "24GB_balanced"
     ).strip() or "24GB_balanced"
+    applied_profile = ""
+    if isinstance(source, dict):
+        applied_profile = str(
+            source.get("_builder_multi_llm_applied_profile", "") or ""
+        ).strip()
 
     overrides: Dict[str, List[str]] = {}
     if execution_mode == BUILDER_EXECUTION_MODE_EXPERT:
-        raw_overrides = (
-            source.get("builder_multi_llm_role_overrides", {})
-            if isinstance(source, dict)
-            else getattr(source, "builder_multi_llm_role_overrides", {})
-        )
-        overrides.update(
-            normalize_builder_multi_llm_role_pool_overrides(raw_overrides)
-        )
+        # Vérifier si le profil a changé
+        profile_changed = bool(applied_profile) and applied_profile != profile_name
 
-        if isinstance(source, dict):
-            for role in BUILDER_MULTI_LLM_ACTIVE_ROLE_NAMES:
+        if profile_changed:
+            # Changement de profil -> charger les pools du nouveau profil, ignorer les anciens overrides
+            if callable(get_profile_role_pools):
+                try:
+                    profile_pools = get_profile_role_pools(profile_name)
+                    overrides.update(normalize_builder_multi_llm_role_pool_overrides(profile_pools))
+                except Exception:
+                    pass
+        else:
+            # Même profil -> lire les sélections manuelles actuelles des widgets
+            manual_overrides: Dict[str, List[str]] = {}
+            for role in SIMPLE_MULTI_LLM_ACTIVE_ROLES:
                 widget_key = f"builder_multi_llm_role_override_select_{role}"
-                if widget_key not in source:
-                    continue
-                widget_values = _normalize_model_pool(source.get(widget_key))
-                if widget_values:
-                    overrides[role] = widget_values
-                else:
-                    overrides.pop(role, None)
+                if isinstance(source, dict) and widget_key in source:
+                    widget_value = source.get(widget_key, [])
+                    if widget_value and (isinstance(widget_value, list) and len(widget_value) > 0):
+                        manual_overrides[role] = widget_value
+
+            # Si sélections manuelles existent, les utiliser
+            if manual_overrides:
+                overrides.update(normalize_builder_multi_llm_role_pool_overrides(manual_overrides))
+            else:
+                # Sinon, utiliser builder_multi_llm_role_overrides (source de vérité par défaut)
+                raw_overrides = (
+                    source.get("builder_multi_llm_role_overrides", {})
+                    if isinstance(source, dict)
+                    else getattr(source, "builder_multi_llm_role_overrides", {})
+                )
+                overrides.update(normalize_builder_multi_llm_role_pool_overrides(raw_overrides))
+
+        # Si toujours vide, initialiser avec les pools du profil.
+        if not overrides and callable(get_profile_role_pools):
+            try:
+                overrides.update(
+                    normalize_builder_multi_llm_role_pool_overrides(
+                        get_profile_role_pools(profile_name)
+                    )
+                )
+            except Exception:
+                pass
     elif execution_mode == BUILDER_EXECUTION_MODE_DUAL_LANE:
         dual_lane_preferences = resolve_builder_dual_lane_preferences(source)
         primary_model = str(
@@ -369,6 +404,9 @@ class SidebarState:
     llm_compare_max_runs: int
     llm_compare_use_preset: bool
     llm_compare_generate_report: bool
+    llm_inference_mode: str
+    llm_inference_global_settings: Dict[str, Any]
+    llm_inference_model_profiles: Dict[str, Dict[str, Any]]
     initial_capital: float
     leverage: float
     leverage_enabled: bool  # Si False, leverage=1 forcé
@@ -393,15 +431,14 @@ class SidebarState:
     # Mode autonome 24/24 (11/02/2026)
     builder_autonomous: bool
     builder_auto_pause: int       # Pause en secondes entre runs (0-120)
-    builder_auto_use_llm: bool    # True = LLM génère l'objectif, False = templates
+    builder_auto_use_llm: bool    # Compat: conserve l'état LLM-first côté reprise UI
     builder_execution_mode: str
     builder_dual_lane_primary_model: str
     builder_dual_lane_critic_model: str
     builder_multi_llm_enabled: bool
     builder_multi_llm_profile: str
     builder_multi_llm_role_overrides: Dict[str, List[str]]
-    # Catalogue paramétrique (19/02/2026)
-    builder_use_parametric_catalog: bool  # True = utiliser les fiches paramétriques générées
+    builder_use_parametric_catalog: bool  # Compat legacy, forcé à False dans l'UI Builder
 
     def __post_init__(self) -> None:
         if self.use_date_filter:

@@ -24,6 +24,8 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 
+from .registry import register_indicator
+
 try:
     from statsmodels.tsa.regime_switching.markov_regression import MarkovRegression
     STATSMODELS_AVAILABLE = True
@@ -174,3 +176,69 @@ def calculate_markov_switching(
         markov[key] = series.reindex(df.index, method="ffill")
 
     return markov
+
+
+def _empty_markov_numeric_result(length: int, max_regimes: int = 4) -> Dict[str, np.ndarray]:
+    """Retourne un résultat numérique vide mais compatible Builder."""
+    empty = np.full(length, np.nan, dtype=float)
+    result: Dict[str, np.ndarray] = {"regime": empty.copy()}
+    for regime_idx in range(max_regimes):
+        result[f"prob_regime_{regime_idx}"] = empty.copy()
+    return result
+
+
+def calculate_markov_indicator(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
+    """Wrapper registre/Builder pour Markov Switching.
+
+    Retourne uniquement des tableaux numériques utilisables par le Builder.
+    Si l'environnement ou les données ne permettent pas un calcul stable,
+    retourne des tableaux NaN au lieu d'échouer brutalement.
+    """
+    n = len(df)
+    result = _empty_markov_numeric_result(n)
+
+    if n == 0:
+        return result
+
+    if not isinstance(df.index, pd.DatetimeIndex):
+        logger.warning("Markov registry wrapper: DatetimeIndex requis, fallback NaN")
+        return result
+
+    resample_to = params.get("resample_to", params.get("resample", "1h"))
+    k_regimes = int(params.get("k_regimes", params.get("markov_regimes", 3)))
+    min_periods = int(params.get("min_periods", 252))
+
+    try:
+        raw = calculate_markov_switching(
+            df,
+            resample_to=resample_to,
+            price_column=str(params.get("price_column", "close") or "close"),
+            k_regimes=k_regimes,
+            min_periods=min_periods,
+            df_reference=params.get("df_reference"),
+        )
+    except Exception as exc:
+        logger.warning("Markov registry wrapper fallback: %s", exc)
+        return result
+
+    regime_series = raw.get("regime")
+    if regime_series is not None:
+        result["regime"] = pd.to_numeric(regime_series, errors="coerce").to_numpy(dtype=float)
+
+    for regime_idx in range(4):
+        key = f"prob_regime_{regime_idx}"
+        series = raw.get(key)
+        if series is None:
+            continue
+        result[key] = pd.to_numeric(series, errors="coerce").to_numpy(dtype=float)
+
+    return result
+
+
+register_indicator(
+    name="markov_switching",
+    function=calculate_markov_indicator,
+    settings_class=None,
+    required_columns=("open", "high", "low", "close", "volume"),
+    description="Markov Switching regime detector exposed as numeric regime/probability arrays for Builder",
+)

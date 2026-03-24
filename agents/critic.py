@@ -201,16 +201,23 @@ Respond ONLY in valid JSON format with this exact structure:
                 raw_llm_response=response,
             )
 
-        # Validation Pydantic (best-effort)
+        # Validation Pydantic stricte: ne pas propager un JSON LLM invalide.
         try:
             validated = CriticResponse.model_validate(critique)
+            critique = validated.model_dump()
             logger.debug(
                 "critic_response_validated evals=%d approved=%d",
                 len(validated.proposal_evaluations),
                 len(validated.approved_proposals),
             )
         except ValidationError as exc:
-            logger.warning("critic_pydantic_partial errors=%d", len(exc.errors()))
+            logger.warning("critic_pydantic_invalid errors=%d", len(exc.errors()))
+            return AgentResult.failure_result(
+                self.role,
+                f"Structure critique invalide: {exc.errors()[0]['msg']}",
+                execution_time_ms=execution_time,
+                raw_llm_response=response,
+            )
 
         # Extraire les informations clés
         approved = critique.get("approved_proposals", [])

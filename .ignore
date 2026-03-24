@@ -1,0 +1,10 @@
+backtest_results/
+backtest_results_organized/
+output/
+sandbox_strategies/
+sweep_diagnostics/
+profiling_results/
+.coverage
+analysis_report.html
+analysis_report_filtered.html
+analysis_top_configs.csv

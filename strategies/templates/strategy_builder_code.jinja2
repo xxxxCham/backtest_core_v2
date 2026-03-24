@@ -56,9 +56,19 @@ BOTH MODE:
 {% endif %}
 
 ## AVAILABLE INDICATORS (ONLY THESE)
+- Order is session-stable and lightly re-ranked for relevance; all listed indicators remain allowed.
 {% for ind in available_indicators %}
 - {{ ind }}
 {% endfor %}
+
+{% if available_indicator_guide %}
+## INDICATOR QUICK GUIDE
+- Keep the proposal consistent with actual indicator mechanics.
+- When a stable alias is shown, prefer reusing that stable alias in the final code instead of inventing a new short name.
+{% for line in available_indicator_guide %}
+{{ line }}
+{% endfor %}
+{% endif %}
 
 ## ENGINE USAGE RULES
 - Indicators are already computed and provided in `indicators` dict.
@@ -70,6 +80,7 @@ BOTH MODE:
 - Dict indicators must be accessed by sub-key first, then wrapped with `np.nan_to_num()`.
   NEVER create bare variables like `keltner_upper`, `donchian_lower`, `cci_value`.
   ALWAYS extract from the indicators dict.
+- If the Builder preamble already exposes stable aliases like `bollinger_lower`, `macd_signal`, `markov_regime`, or `supertrend_direction`, prefer those names in your conditions.
 
 ### INDICATOR ACCESS CONTRACT (complete reference)
 **Plain array indicators** → `np.ndarray` of float64, length = len(df). Direct access, NO sub-keys:
@@ -79,6 +90,7 @@ BOTH MODE:
 - CCI: `np.nan_to_num(indicators["cci"])` — oscillator (unbounded, typically -200..+200)
 - OBV: `np.nan_to_num(indicators["obv"])` — cumulative volume
 - MFI: `np.nan_to_num(indicators["mfi"])` — oscillator 0-100
+- Coppock Curve: `np.nan_to_num(indicators["coppock_curve"])` — momentum array. Never write bare `coppock_curve` unless you first bind `coppock_curve = np.nan_to_num(indicators["coppock_curve"])`.
 
 **Dict indicators** → `dict[str, np.ndarray]`. MUST access sub-keys first, then `np.nan_to_num()`:
 - Bollinger: keys `upper`, `middle`, `lower` — price-level arrays
@@ -107,6 +119,17 @@ BOTH MODE:
   Example: `ar = indicators["aroon"]; up = np.nan_to_num(ar["aroon_up"])`
 - Pivot Points: keys `pivot`, `r1`, `s1`, `r2`, `s2`, `r3`, `s3` — price levels
   Example: `pp = indicators["pivot_points"]; r1 = np.nan_to_num(pp["r1"])`
+- FVG: keys `fvg_bullish`, `fvg_bearish` — boolean imbalance arrays
+  Example: `fvg = indicators["fvg"]; bull_gap = np.nan_to_num(fvg["fvg_bullish"]).astype(bool)`
+- Swing: keys `swing_high`, `swing_low` — boolean fractal arrays
+  Example: `sw = indicators["swing"]; swing_low = np.nan_to_num(sw["swing_low"]).astype(bool)`
+- Smart Legs: keys `smart_leg_bullish`, `smart_leg_bearish` — boolean structure arrays
+  Example: `legs = indicators["smart_legs"]; bull_leg = np.nan_to_num(legs["smart_leg_bullish"]).astype(bool)`
+- Directional Bias: keys `bull_score`, `bear_score`, `net_bias` — score arrays
+  Example: `bias = indicators["directional_bias"]; net_bias = np.nan_to_num(bias["net_bias"])`
+- Markov Switching: keys `regime`, `prob_regime_0`, `prob_regime_1`, `prob_regime_2`, `prob_regime_3` — numeric regime/probability arrays
+  Example: `mk = indicators["markov_switching"]; regime = np.nan_to_num(mk["regime"]); bull_prob = np.nan_to_num(mk["prob_regime_0"])`
+  Use it as a regime filter, not as a fast trigger. Prefer higher timeframes (`1h`, `4h`, `1d`) and probability thresholds.
 
 - Never request/use fake indicator names like `bollinger_upper`, `keltner_lower`, `donchian_middle`.
 - Never do `np.nan_to_num(indicators["bollinger"])` directly on a dict indicator.

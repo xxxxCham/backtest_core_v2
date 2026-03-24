@@ -174,6 +174,8 @@ class UIMetrics:
     total_pnl: float = 0.0
     total_return_pct: float = 0.0
     annualized_return: float = 0.0
+    benchmark_return_pct: float = 0.0
+    alpha_simple_pct: float = 0.0
 
     # Risque
     sharpe_ratio: float = 0.0
@@ -200,6 +202,8 @@ class UIMetrics:
             total_pnl=m.get("total_pnl", 0.0),
             total_return_pct=m.get("total_return_pct", 0.0),
             annualized_return=m.get("annualized_return", 0.0),
+            benchmark_return_pct=m.get("benchmark_return_pct", 0.0),
+            alpha_simple_pct=m.get("alpha_simple_pct", 0.0),
             sharpe_ratio=m.get("sharpe_ratio", 0.0),
             sortino_ratio=m.get("sortino_ratio", 0.0),
             calmar_ratio=m.get("calmar_ratio", 0.0),
@@ -219,6 +223,8 @@ class UIMetrics:
             "total_pnl": self.total_pnl,
             "total_return_pct": self.total_return_pct,
             "annualized_return": self.annualized_return,
+            "benchmark_return_pct": self.benchmark_return_pct,
+            "alpha_simple_pct": self.alpha_simple_pct,
             "sharpe_ratio": self.sharpe_ratio,
             "sortino_ratio": self.sortino_ratio,
             "calmar_ratio": self.calmar_ratio,

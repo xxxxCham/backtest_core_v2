@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
+from backtest.result_store import get_sweep_diagnostics_dir
+
 
 class SweepDiagnostics:
     """Logger de diagnostic pour sweeps avec journalisation fichier détaillée."""
@@ -14,8 +16,8 @@ class SweepDiagnostics:
     def __init__(self, run_id: str):
         self.run_id = run_id
         self.start_time = time.perf_counter()
-        self.log_dir = Path("sweep_diagnostics")
-        self.log_dir.mkdir(exist_ok=True)
+        self.log_dir = get_sweep_diagnostics_dir()
+        self.log_dir.mkdir(parents=True, exist_ok=True)
 
         # Fichier de log unique pour ce run
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

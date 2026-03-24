@@ -21,6 +21,12 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 
+from .fva import calculate_fva
+from .fvg import calculate_fvg_bearish, calculate_fvg_bullish
+from .registry import register_indicator
+from .smart_legs import calculate_smart_legs_bearish, calculate_smart_legs_bullish
+from .swing import calculate_swing_high, calculate_swing_low
+
 
 def calculate_bull_score(df: pd.DataFrame, **params) -> np.ndarray:
     """
@@ -45,15 +51,23 @@ def calculate_bull_score(df: pd.DataFrame, **params) -> np.ndarray:
     # Composantes optionnelles
     if 'swing_low' in df.columns:
         score += df['swing_low'].values.astype(float)
+    else:
+        score += calculate_swing_low(df, **params).astype(float)
 
     if 'fvg_bullish' in df.columns:
         score += df['fvg_bullish'].values.astype(float)
+    else:
+        score += calculate_fvg_bullish(df, **params).astype(float)
 
     if 'smart_leg_bullish' in df.columns:
         score += df['smart_leg_bullish'].values.astype(float)
+    else:
+        score += calculate_smart_legs_bullish(df, **params).astype(float)
 
     if 'fva' in df.columns:
         score += df['fva'].values.astype(float) * 0.5  # Poids reduit
+    else:
+        score += calculate_fva(df, **params).astype(float) * 0.5
 
     # Normaliser par max possible (3.5)
     max_score = 3.5
@@ -85,15 +99,23 @@ def calculate_bear_score(df: pd.DataFrame, **params) -> np.ndarray:
     # Composantes optionnelles
     if 'swing_high' in df.columns:
         score += df['swing_high'].values.astype(float)
+    else:
+        score += calculate_swing_high(df, **params).astype(float)
 
     if 'fvg_bearish' in df.columns:
         score += df['fvg_bearish'].values.astype(float)
+    else:
+        score += calculate_fvg_bearish(df, **params).astype(float)
 
     if 'smart_leg_bearish' in df.columns:
         score += df['smart_leg_bearish'].values.astype(float)
+    else:
+        score += calculate_smart_legs_bearish(df, **params).astype(float)
 
     if 'fva' in df.columns:
         score += df['fva'].values.astype(float) * 0.5  # Poids reduit
+    else:
+        score += calculate_fva(df, **params).astype(float) * 0.5
 
     # Normaliser par max possible (3.5)
     max_score = 3.5
@@ -120,6 +142,15 @@ def directional_bias(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
         'bear_score': bear,
         'net_bias': bull - bear
     }
+
+
+register_indicator(
+    name='directional_bias',
+    function=directional_bias,
+    settings_class=None,
+    required_columns=('high', 'low'),
+    description='Directional bias - bull/bear composite score derived from FVG, FVA, swings and smart legs',
+)
 
 
 __all__ = ['calculate_bull_score', 'calculate_bear_score', 'directional_bias']

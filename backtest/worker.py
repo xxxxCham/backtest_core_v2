@@ -286,7 +286,9 @@ def _init_worker_with_dataframe_impl(
                 timeframe,
             )
             _worker_sweep_ready = True
-    except Exception:
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Sweep pre-init failed: %s", exc, exc_info=True)
         _worker_sweep_ready = False
         _worker_engine = None
 

@@ -373,14 +373,15 @@ class SweepMonitor:
 
 def _create_progress_chart(stats: SweepStats) -> go.Figure:
     """Crée un graphique de progression."""
-    evaluated = stats.evaluated
+    completed = max(0, stats.evaluated - stats.pruned - stats.errors)
     pruned = stats.pruned
-    remaining = stats.total_combinations - evaluated - pruned
+    errors = stats.errors
+    remaining = max(0, stats.total_combinations - stats.evaluated)
 
     fig = go.Figure(data=[go.Pie(
-        values=[evaluated, pruned, remaining],
-        labels=['Évalués', 'Prunés', 'Restants'],
-        marker_colors=['#2ca02c', '#ff7f0e', '#d3d3d3'],
+        values=[completed, pruned, errors, remaining],
+        labels=['Terminés', 'Prunés', 'Erreurs', 'Restants'],
+        marker_colors=['#2ca02c', '#ff7f0e', '#d62728', '#d3d3d3'],
         hole=0.6,
         textinfo='percent',
         textposition='outside',

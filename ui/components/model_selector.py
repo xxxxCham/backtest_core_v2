@@ -20,7 +20,8 @@ from __future__ import annotations
 import os
 import subprocess
 import time
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from urllib.parse import urlparse
 
 try:
     from agents.ollama_manager import is_ollama_available, list_ollama_models
@@ -34,7 +35,7 @@ from utils.log import get_logger
 from utils.model_loader import (
     get_model_by_id,
     get_model_info_for_ui,
-    get_ollama_model_names,
+    get_ollama_runtime_model_names,
     load_models_json,
     normalize_model_name as normalize_catalog_model_name,
 )
@@ -46,6 +47,11 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 FALLBACK_LLM_MODELS: List[str] = [
+    "qwen3.5:35b",
+    "qwen3-vl:32b",
+    "lfm2:24b",
+    "devstral-small-2:24b",
+    "qwen3-coder:30b",
     "deepseek-r1:70b",
     "deepseek-r1:32b",
     "qwq:32b",
@@ -56,27 +62,26 @@ FALLBACK_LLM_MODELS: List[str] = [
     "gemma3:12b",
     "deepseek-r1:8b",
     "mistral:7b-instruct",
-    "qwen3-coder:30b",
     "nemotron-3-nano:30b",
 ]
 
-RECOMMENDED_FOR_ANALYSIS = ["deepseek-r1:32b", "qwq:32b", "qwen2.5:32b"]
-RECOMMENDED_FOR_STRATEGY = ["deepseek-r1:70b", "deepseek-r1:32b", "qwq:32b"]
-RECOMMENDED_FOR_CRITICISM = ["mistral:22b", "gemma3:27b", "qwen2.5:32b"]
-RECOMMENDED_FOR_FAST = ["deepseek-r1:8b", "mistral:7b-instruct", "gemma3:12b"]
+RECOMMENDED_FOR_ANALYSIS = ["qwen3-vl:32b", "qwen3.5:35b", "deepseek-r1:32b"]
+RECOMMENDED_FOR_STRATEGY = ["qwen3.5:35b", "qwen2.5:32b", "lfm2:24b"]
+RECOMMENDED_FOR_CRITICISM = ["qwen3.5:35b", "mistral:22b", "gemma3:27b"]
+RECOMMENDED_FOR_FAST = ["lfm2:24b", "gemma3:12b", "mistral:7b-instruct"]
 
 OPTIMAL_CONFIG_BY_ROLE = {
-    "analyst": ["qwen2.5:32b"],
-    "strategist": ["gemma3:27b"],
-    "critic": ["llama3.3:70b-instruct-q4_K_M"],
-    "validator": ["llama3.3:70b-instruct-q4_K_M"],
+    "analyst": ["qwen3-vl:32b", "qwen3.5:35b"],
+    "strategist": ["qwen3-coder:30b", "devstral-small-2:24b"],
+    "critic": ["qwen3.5:35b", "deepseek-r1:32b"],
+    "validator": ["qwen3.5:35b", "deepseek-r1:32b"],
 }
 
 OPTIMAL_CONFIG_FALLBACK = {
-    "analyst": ["deepseek-r1:8b", "gemma3:12b"],
-    "strategist": ["gemma3:27b", "mistral:22b"],
-    "critic": ["deepseek-r1:32b", "qwq:32b"],
-    "validator": ["deepseek-r1:32b", "qwq:32b"],
+    "analyst": ["lfm2:24b", "gemma3:12b"],
+    "strategist": ["lfm2:24b", "qwen3-30b-a3b:q4_k_m"],
+    "critic": ["gemma3:27b", "qwq:32b"],
+    "validator": ["gemma3:27b", "qwq:32b"],
 }
 
 # Mapping categorie affichee -> use_case dans models.json
@@ -135,11 +140,18 @@ def _get_total_vram_gb() -> float:
 
 
 # ---------------------------------------------------------------------------
-# Cache Ollama model details
+# Cache inventaire Ollama
 # ---------------------------------------------------------------------------
 
-_ollama_details_cache: Optional[Dict[Tuple[str, str], Dict]] = None
-_ollama_details_ts: float = 0.0
+_ollama_inventory_cache: Dict[str, Dict[str, Any]] = {}
+
+
+def _get_ollama_inventory_ttl_sec() -> float:
+    raw_value = str(os.environ.get("BACKTEST_UI_OLLAMA_CACHE_TTL_SEC", "300") or "300").strip()
+    try:
+        return max(5.0, float(raw_value))
+    except Exception:
+        return 300.0
 
 
 def _normalize_host(ollama_host: Optional[str] = None) -> str:
@@ -151,6 +163,16 @@ def _normalize_host(ollama_host: Optional[str] = None) -> str:
     if not host.startswith(("http://", "https://")):
         host = f"http://{host}"
     return host.rstrip("/")
+
+
+def _is_local_ollama_host(ollama_host: Optional[str] = None) -> bool:
+    """Indique si l'endpoint Ollama cible est local à cette machine."""
+    host = _normalize_host(ollama_host)
+    try:
+        parsed = urlparse(host)
+    except Exception:
+        return False
+    return (parsed.hostname or "").lower() in {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
 
 
 def _resolve_selector_current_value(
@@ -203,23 +225,35 @@ def _resolve_selectbox_value(
     return str(models[0]) if models else ""
 
 
-def _fetch_ollama_details(ollama_host: Optional[str] = None) -> Dict[str, Dict]:
-    """Charge les details de tous les modeles Ollama (cache 30s)."""
-    global _ollama_details_cache, _ollama_details_ts
+def _fetch_ollama_inventory(ollama_host: Optional[str] = None) -> Dict[str, Any]:
+    """Charge une vue unifiée des modèles Ollama installés et de leurs détails."""
     host = _normalize_host(ollama_host)
-    if _ollama_details_cache is not None and (time.time() - _ollama_details_ts) < 30:
-        cached = _ollama_details_cache.get((host, "details"))
-        if cached is not None:
-            return cached
+    ttl_sec = _get_ollama_inventory_ttl_sec()
+    cached = _ollama_inventory_cache.get(host)
+    now = time.time()
+    if cached is not None and (now - float(cached.get("ts", 0.0))) < ttl_sec:
+        return cached
+
+    inventory: Dict[str, Any] = {
+        "names": [],
+        "details": {},
+        "service_available": False,
+        "ts": now,
+    }
     try:
         import httpx
+
         resp = httpx.get(f"{host}/api/tags", timeout=3)
-        data = resp.json()
-        result = {}
+        if resp.status_code == 200:
+            inventory["service_available"] = True
+        data = resp.json() if resp.status_code == 200 else {}
+        names: List[str] = []
+        details_map: Dict[str, Dict[str, Any]] = {}
         for m in data.get("models", []):
             name = normalize_catalog_model_name(m["name"])
+            names.append(name)
             details = m.get("details", {})
-            result[name] = {
+            details_map[name] = {
                 "size_bytes": m.get("size", 0),
                 "size_gb": round(m.get("size", 0) / (1024**3), 1),
                 "parameters": details.get("parameter_size", "?"),
@@ -227,17 +261,27 @@ def _fetch_ollama_details(ollama_host: Optional[str] = None) -> Dict[str, Dict]:
                 "family": details.get("family", "?"),
                 "format": details.get("format", "?"),
             }
-        if _ollama_details_cache is None:
-            _ollama_details_cache = {}
-        _ollama_details_cache[(host, "details")] = result
-        _ollama_details_ts = time.time()
-        return result
+        inventory["names"] = names
+        inventory["details"] = details_map
     except Exception:
-        if _ollama_details_cache is None:
-            _ollama_details_cache = {}
-        _ollama_details_cache[(host, "details")] = {}
-        _ollama_details_ts = time.time()
-        return {}
+        pass
+
+    inventory["ts"] = time.time()
+    _ollama_inventory_cache[host] = inventory
+    return inventory
+
+
+def _get_installed_ollama_models(ollama_host: Optional[str] = None) -> List[str]:
+    """Retourne les noms de modèles installés à partir d'un inventaire cache unique."""
+    inventory = _fetch_ollama_inventory(ollama_host)
+    names = inventory.get("names", []) or []
+    return [str(name) for name in names if str(name).strip()]
+
+
+def _fetch_ollama_details(ollama_host: Optional[str] = None) -> Dict[str, Dict]:
+    """Charge les détails des modèles Ollama depuis l'inventaire cache unique."""
+    inventory = _fetch_ollama_inventory(ollama_host)
+    return dict(inventory.get("details", {}) or {})
 
 
 def _estimate_vram_gb(size_gb: float) -> float:
@@ -271,7 +315,7 @@ def get_model_details(model_name: str, ollama_host: Optional[str] = None) -> Dic
 
     size_gb = ollama_data.get("size_gb") or json_data.get("size_gb") or "?"
     vram_gb = _estimate_vram_gb(size_gb) if isinstance(size_gb, (int, float)) else "?"
-    total_vram = _get_total_vram_gb()
+    total_vram = _get_total_vram_gb() if _is_local_ollama_host(ollama_host) else 0.0
 
     if isinstance(vram_gb, (int, float)) and total_vram > 0:
         fits_gpu = vram_gb <= total_vram
@@ -280,6 +324,7 @@ def get_model_details(model_name: str, ollama_host: Optional[str] = None) -> Dic
 
     return {
         "name": normalized_model_name or model_name,
+        "display_name": json_data.get("name") or normalized_model_name or model_name,
         "size_gb": size_gb,
         "vram_gb": vram_gb,
         "parameters": ollama_data.get("parameters") or json_data.get("parameters", "?"),
@@ -289,6 +334,7 @@ def get_model_details(model_name: str, ollama_host: Optional[str] = None) -> Dic
         "description": json_data.get("description", ""),
         "backup_path": json_data.get("backup_path", ""),
         "context_length": json_data.get("context_length", 0),
+        "aliases": list(json_data.get("aliases", []) or []),
         "fits_gpu": fits_gpu,
     }
 
@@ -313,9 +359,9 @@ def _sort_with_preferred(
 
 def _get_library_models() -> List[str]:
     try:
-        return get_ollama_model_names()
+        return get_ollama_runtime_model_names()
     except Exception as exc:  # noqa: BLE001
-        logger.debug("Erreur lecture models.json pour la liste UI: %s", exc)
+        logger.debug("Erreur lecture catalogue/manifests pour la liste UI: %s", exc)
         return []
 
 
@@ -332,7 +378,7 @@ def get_available_models_for_ui(
 ) -> List[str]:
     """Retourne la liste dedupliquee des modeles LLM pour l'UI."""
     installed = [
-        _normalize_model_name(n) for n in list_ollama_models(ollama_host) if n
+        _normalize_model_name(n) for n in _get_installed_ollama_models(ollama_host) if n
     ]
     library_models = _get_library_models() if include_library_models else []
     available = sorted(set(installed) | set(library_models))
@@ -399,11 +445,13 @@ def _vram_badge(fits_gpu: Optional[bool]) -> str:
 
 def _format_model_option(name: str, details: Dict) -> str:
     """Formate le nom affiche dans le selectbox avec taille et badge GPU."""
+    display_name = str(details.get("display_name") or name or "").strip() or name
     size = details.get("size_gb", "?")
     params = details.get("parameters", "?")
     badge = _vram_badge(details.get("fits_gpu"))
     size_str = f"{size}G" if isinstance(size, (int, float)) else "?"
-    return f"{badge} {name}  [{params} / {size_str}]"
+    label = display_name if display_name == name else f"{display_name} | {name}"
+    return f"{badge} {label}  [{params} / {size_str}]"
 
 
 def render_model_selector(
@@ -442,7 +490,7 @@ def render_model_selector(
     )
     installed_models = {
         _normalize_model_name(str(name or "").strip())
-        for name in list_ollama_models(ollama_host)
+        for name in _get_installed_ollama_models(ollama_host)
         if str(name or "").strip()
     }
     models = get_available_models_for_ui(
@@ -523,7 +571,7 @@ def render_model_selector(
     # Fiche detaillee
     if selected and show_details:
         d = details_map.get(selected) or get_model_details(selected, ollama_host=ollama_host)
-        _render_model_card(d, compact=compact)
+        _render_model_card(d, compact=compact, ollama_host=ollama_host)
         if include_library_models and selected not in installed_models:
             st.caption(
                 "ℹ️ Modèle issu du catalogue local, non vérifié sur l'instance Ollama courante. "
@@ -533,11 +581,16 @@ def render_model_selector(
     return selected
 
 
-def _render_model_card(d: Dict, compact: bool = False) -> None:
+def _render_model_card(
+    d: Dict,
+    compact: bool = False,
+    ollama_host: Optional[str] = None,
+) -> None:
     """Affiche la fiche d'un modele sous le selecteur."""
     import streamlit as st
 
     name = d["name"]
+    display_name = str(d.get("display_name") or name or "").strip() or name
     size_gb = d["size_gb"]
     vram_gb = d["vram_gb"]
     params = d["parameters"]
@@ -545,22 +598,33 @@ def _render_model_card(d: Dict, compact: bool = False) -> None:
     family = d["family"]
     desc = d["description"]
     backup = d.get("backup_path", "")
+    aliases = list(d.get("aliases", []) or [])
     ctx = d.get("context_length", 0)
     fits = d.get("fits_gpu")
 
     # GPU info
-    gpus = _get_gpu_info()
-    total_vram = _get_total_vram_gb()
+    is_local_host = _is_local_ollama_host(ollama_host)
+    gpus = _get_gpu_info() if is_local_host else []
+    total_vram = _get_total_vram_gb() if is_local_host else 0.0
 
     if compact:
         # Mode sidebar : une ligne markdown
         badge = _vram_badge(fits)
         size_str = f"{size_gb}G" if isinstance(size_gb, (int, float)) else "?"
         vram_str = f"{vram_gb}G" if isinstance(vram_gb, (int, float)) else "?"
+        if display_name != name:
+            st.caption(f"**{display_name}**")
+            st.caption(f"`{name}`")
         st.caption(f"{badge} **{params}** {quant} | Disque {size_str} | VRAM ~{vram_str}")
         if desc:
             st.caption(f"_{desc}_")
         return
+
+    if display_name != name:
+        st.markdown(f"**{display_name}**")
+        st.caption(f"Identifiant runtime: `{name}`")
+    if aliases:
+        st.caption("Alias connus : " + ", ".join(f"`{alias}`" for alias in aliases[:2]))
 
     # Mode complet : tableau structuree
     col1, col2 = st.columns([1, 1])
@@ -586,6 +650,8 @@ def _render_model_card(d: Dict, compact: bool = False) -> None:
             gpu_status = f"{badge} Tient en VRAM ({total_vram:.0f} GB dispo)"
         elif fits is False:
             gpu_status = f"{badge} Depasse la VRAM ({total_vram:.0f} GB dispo)"
+        elif not is_local_host:
+            gpu_status = f"{badge} VRAM de l'hote distant inconnue"
         else:
             gpu_status = f"{badge} GPU non detecte"
 

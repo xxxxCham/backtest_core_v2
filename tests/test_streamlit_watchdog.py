@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import tools.streamlit_watchdog as watchdog_module
 from tools.streamlit_watchdog import (
@@ -92,3 +95,67 @@ def test_exit_no_restart_on_manual_stop():
 
     assert should_restart is False
     assert reason == "manual_stop"
+
+
+def test_resolve_launch_plan_reuses_existing_streamlit_app(monkeypatch):
+    monkeypatch.setattr(watchdog_module, "_port_is_available", lambda port: False)
+    monkeypatch.setattr(
+        watchdog_module,
+        "_port_owner_info",
+        lambda port: {
+            "pid": 4242,
+            "name": "python.exe",
+            "cmdline": ["python", "-m", "streamlit", "run", "ui/app.py", "--server.port", "8502"],
+        },
+    )
+
+    action, port, reason = watchdog_module._resolve_launch_plan(
+        Path("D:/backtest_core_v2"),
+        8502,
+    )
+
+    assert action == "reuse"
+    assert port == 8502
+    assert reason == "already_running(pid=4242)"
+
+
+def test_resolve_launch_plan_switches_to_next_free_port(monkeypatch):
+    monkeypatch.setattr(
+        watchdog_module,
+        "_port_is_available",
+        lambda port: port == 8503,
+    )
+    monkeypatch.setattr(
+        watchdog_module,
+        "_port_owner_info",
+        lambda port: {
+            "pid": 9999,
+            "name": "other.exe",
+            "cmdline": ["other.exe"],
+        },
+    )
+
+    action, port, reason = watchdog_module._resolve_launch_plan(
+        Path("D:/backtest_core_v2"),
+        8502,
+    )
+
+    assert action == "launch"
+    assert port == 8503
+    assert reason == "port_in_use(8502,pid=9999)"
+
+
+def test_watchdog_script_runs_directly_from_tools_path():
+    repo_root = Path(__file__).resolve().parent.parent
+    script_path = repo_root / "tools" / "streamlit_watchdog.py"
+
+    result = subprocess.run(
+        [sys.executable, str(script_path), "--help"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "Watchdog Streamlit autonome" in result.stdout

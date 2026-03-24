@@ -24,8 +24,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import tomli
-import tomli_w
+try:
+    import tomllib as tomli
+except ImportError:
+    import tomli
+try:
+    import tomli_w
+except ImportError:
+    tomli_w = None
+    import toml
 
 from utils.parameters import ParameterSpec
 
@@ -187,8 +194,12 @@ class RangeManager:
                 if range_cfg.param_type:
                     data[key]["type"] = range_cfg.param_type
 
-        with open(self.config_path, "wb") as f:
-            tomli_w.dump(data, f)
+        if tomli_w is not None:
+            with open(self.config_path, "wb") as f:
+                tomli_w.dump(data, f)
+        else:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                toml.dump(data, f)
 
     def apply_to_parameter_spec(self, spec: ParameterSpec,
                                 category: str, param: str) -> ParameterSpec:

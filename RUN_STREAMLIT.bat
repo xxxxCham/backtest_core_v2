@@ -101,6 +101,9 @@ set "MODELS_JSON_PATH=C:\AI\models\catalog\models.json"
 set "OLLAMA_MODELS=C:\AI\ollama\models"
 set "MODEL_LIBRARY_ROOTS=K:\models;L:\models;C:\AI\models\library"
 set "HUGGINGFACE_ARCHIVE_ROOT=L:\models"
+if not defined BACKTEST_OLLAMA_GPU_TARGET set "BACKTEST_OLLAMA_GPU_TARGET=auto"
+if not defined BACKTEST_OLLAMA_PIN_LOCALHOST set "BACKTEST_OLLAMA_PIN_LOCALHOST=0"
+if not defined BACKTEST_OLLAMA_RESTART_LOCAL_DAEMON set "BACKTEST_OLLAMA_RESTART_LOCAL_DAEMON=0"
 set "CUDA_VISIBLE_DEVICES="
 set "GPU_DEVICE_ORDINAL="
 set "HIP_VISIBLE_DEVICES="
@@ -121,7 +124,10 @@ echo       [OK] MKL_NUM_THREADS=32
 echo       [OK] OPENBLAS_NUM_THREADS=32
 echo       [OK] NUMEXPR_MAX_THREADS=32
 echo       [OK] Threading: OpenMP
-echo       [OK] GPU desactive
+echo       [OK] GPU backtest desactive (Ollama GPU gere separement)
+echo       [OK] OLLAMA GPU cible=%BACKTEST_OLLAMA_GPU_TARGET%
+echo       [OK] OLLAMA pin localhost=%BACKTEST_OLLAMA_PIN_LOCALHOST%
+echo       [OK] OLLAMA restart local daemon=%BACKTEST_OLLAMA_RESTART_LOCAL_DAEMON%
 echo       [OK] MODELS_JSON_PATH=%MODELS_JSON_PATH%
 echo       [OK] OLLAMA_MODELS=%OLLAMA_MODELS%
 if defined BACKTEST_DATA_DIR (
@@ -140,7 +146,8 @@ echo.
 echo ========================================================================
 echo                         PRET AU LANCEMENT
 echo ========================================================================
-echo   URL: http://localhost:%BACKTEST_STREAMLIT_PORT%
+echo   URL cible: http://localhost:%BACKTEST_STREAMLIT_PORT%
+echo   Si ce port est occupe, le watchdog annoncera un port libre ou signalera qu'une instance existe deja.
 echo   Performance: ~6,600 bt/s (sweep Numba optimise)
 echo   Temps 1.7M combos: ~4-5 minutes
 echo   Appuyez sur Ctrl+C pour arreter

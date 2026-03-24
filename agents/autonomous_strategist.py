@@ -365,14 +365,24 @@ Actions:
         manager = self._ensure_gpu_manager()
 
         # Décharger le LLM → GPU libre pour calculs
-        state = manager.unload(self._conversation_context)
+        try:
+            state = manager.unload(self._conversation_context)
+        except Exception as exc:
+            logger.warning(
+                "GPU unload failed, fallback to direct backtest execution: %s",
+                exc,
+            )
+            return executor.run(request)
 
         try:
             # Calculs GPU intensifs (NumPy)
             result = executor.run(request)
         finally:
             # Recharger le LLM (toujours, même en cas d'erreur)
-            manager.reload(state)
+            try:
+                manager.reload(state)
+            except Exception as exc:
+                logger.warning("GPU reload failed after backtest: %s", exc)
 
         # Stats pour debug
         if self.verbose:
@@ -395,6 +405,7 @@ Actions:
         min_sharpe: float = 0.5,
         max_drawdown: float = 0.30,
         check_pause_callback: Optional[callable] = None,
+        max_time_seconds: Optional[float] = None,
     ) -> OptimizationSession:
         """
         Lance une session d'optimisation autonome.
@@ -419,6 +430,8 @@ Actions:
             max_iterations=max_iterations,
             comparison_context=self.comparison_context,
         )
+        if max_time_seconds is not None:
+            session.max_time_seconds = float(max_time_seconds)
 
         # Tracker de ranges pour éviter boucles infinies
         from utils.session_ranges_tracker import SessionRangesTracker
@@ -537,6 +550,18 @@ Actions:
             iteration_iter = range(1, max_iterations + 1)
 
         for iteration in iteration_iter:
+            # PREMIÈRE VÉRIFICATION : Budget temps (AVANT création de contexte/appel LLM)
+            if session.max_time_seconds > 0:
+                elapsed_seconds = (datetime.now() - session.start_time).total_seconds()
+                if elapsed_seconds >= session.max_time_seconds:
+                    session.final_status = "timeout"
+                    session.final_reasoning = (
+                        f"Time budget exceeded after {elapsed_seconds:.1f}s "
+                        f"(limit: {session.max_time_seconds:.1f}s)"
+                    )
+                    logger.warning("⏱️ Timeout optimisation atteint: %.1fs", elapsed_seconds)
+                    break
+
             session.current_iteration = iteration
 
             # Vérifier le budget de combinaisons testées
@@ -590,18 +615,24 @@ Actions:
 
             # VALIDATION STRICTE : Forcer STOP si next_parameters vide pour continue/change_direction
             if decision.action in ("continue", "change_direction"):
-                if not decision.next_parameters or len(decision.next_parameters) == 0:
+                required_params = list(param_bounds.keys())
+                missing_params = [
+                    param for param in required_params
+                    if param not in decision.next_parameters
+                ]
+                if not decision.next_parameters or missing_params:
                     optim_id = f"{session.strategy_name}_{session.start_time.strftime('%Y%m%d_%H%M%S')}"
                     logger.error(
                         f"LLM_INVALID_DECISION optim_id={optim_id} iteration={session.current_iteration} "
                         f"action_original={decision.action} action_forced=stop "
-                        f"reason=next_parameters_empty_or_missing"
+                        f"reason=next_parameters_incomplete missing={missing_params}"
                     )
                     # Forcer STOP au lieu d'utiliser defaults silencieusement
                     original_action = decision.action
                     decision.action = "stop"
                     decision.reasoning = (
                         f"LLM chose '{original_action}' but provided no parameters. "
+                        f"Missing parameters: {missing_params}. "
                         f"Stopping to avoid using defaults silently. "
                         f"Original reasoning: {decision.reasoning}"
                     )
@@ -1179,7 +1210,7 @@ Actions:
 
         # Protection contre les valeurs None du LLM
         next_params = data.get("next_parameters", {})
-        if next_params is None:
+        if next_params is None or not isinstance(next_params, dict):
             next_params = {}
 
         insights = data.get("insights", [])
@@ -1188,6 +1219,8 @@ Actions:
 
         # Extraction champs spécifiques au sweep
         ranges = data.get("ranges", None)
+        if ranges is not None and not isinstance(ranges, dict):
+            ranges = None
         rationale = data.get("rationale", "") or ""
         optimize_for = data.get("optimize_for", "sharpe_ratio")
         max_combinations = data.get("max_combinations", 100)

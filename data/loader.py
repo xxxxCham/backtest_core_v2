@@ -25,7 +25,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -408,6 +408,49 @@ def discover_available_data() -> Tuple[List[str], List[str]]:
     return sorted(tokens), sorted(timeframes, key=tf_sort_key)
 
 
+def discover_data_inventory() -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """
+    Retourne un inventaire détaillé des données disponibles par token/timeframe.
+
+    Structure:
+        {
+            "BTCUSDC": {
+                "1h": {
+                    "path": "...",
+                    "n_bars": 4326,
+                    "start": "2024-08-01T00:00:00+00:00",
+                    "end": "2025-01-31T23:00:00+00:00",
+                }
+            }
+        }
+    """
+    inventory: Dict[str, Dict[str, Dict[str, Any]]] = {}
+
+    for file_path in _scan_data_files():
+        parsed = _extract_symbol_timeframe_from_stem(file_path.stem)
+        if parsed is None:
+            continue
+        symbol, tf = parsed
+        record: Dict[str, Any] = {
+            "path": str(file_path),
+            "n_bars": None,
+            "start": None,
+            "end": None,
+        }
+        try:
+            df = _normalize_ohlcv(_read_file(file_path))
+            if not df.empty:
+                record["n_bars"] = int(len(df))
+                record["start"] = df.index[0].isoformat()
+                record["end"] = df.index[-1].isoformat()
+        except Exception as exc:
+            record["error"] = str(exc)
+
+        inventory.setdefault(symbol, {})[tf] = record
+
+    return inventory
+
+
 def is_valid_timeframe(tf: str) -> bool:
     """
     Valide qu'un timeframe est dans un format correct.
@@ -736,4 +779,10 @@ def get_data_date_range(
         return None
 
 
-__all__ = ["load_ohlcv", "discover_available_data", "get_available_timeframes", "get_data_date_range"]
+__all__ = [
+    "load_ohlcv",
+    "discover_available_data",
+    "discover_data_inventory",
+    "get_available_timeframes",
+    "get_data_date_range",
+]

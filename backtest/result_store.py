@@ -7,13 +7,154 @@ Lightweight v2 result store used by CLI shadow/v2 persistence mode.
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+import logging
 from typing import Any, Iterable
 
+logger = logging.getLogger(__name__)
+
 import pandas as pd
+
+
+ARTIFACTS_DIR_ENV_VAR = "BACKTEST_ARTIFACTS_DIR"
+RESULTS_DIR_ENV_VAR = "BACKTEST_RESULTS_DIR"
+DEFAULT_RESULTS_DIR_NAME = "backtest_results"
+PROJECT_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+_DOTENV_LOADED = False
+
+
+def _apply_env_file_fallback(env_path: Path, *, override: bool = False) -> bool:
+    if not env_path.exists():
+        return False
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        logger.debug("Cannot read env file %s: %s", env_path, exc)
+        return False
+
+    loaded = False
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].strip()
+        if "=" not in line:
+            logger.debug("Skipping invalid env line in %s: %r", env_path, raw_line)
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        if override or key not in os.environ:
+            os.environ[key] = value
+        loaded = True
+    return loaded
+
+
+def load_project_env(env_path: str | Path | None = None, *, override: bool = False) -> bool:
+    global _DOTENV_LOADED
+    if env_path is None and _DOTENV_LOADED and not override:
+        return False
+
+    resolved_env_path = Path(env_path).expanduser() if env_path is not None else PROJECT_ENV_PATH
+    if env_path is None:
+        _DOTENV_LOADED = True
+    if not resolved_env_path.exists():
+        return False
+
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return _apply_env_file_fallback(resolved_env_path, override=override)
+    return bool(load_dotenv(resolved_env_path, override=override))
+
+
+def _resolve_path(
+    explicit_path: str | Path | None,
+    *,
+    env_var: str | None = None,
+    default_path: str | Path | None = None,
+) -> Path:
+    if explicit_path is not None and str(explicit_path).strip():
+        return Path(explicit_path).expanduser()
+    load_project_env()
+    if env_var:
+        env_value = str(os.environ.get(env_var, "")).strip()
+        if env_value:
+            return Path(env_value).expanduser()
+    if default_path is None:
+        raise ValueError("default_path is required when no explicit path or env value is provided")
+    return Path(default_path).expanduser()
+
+
+def get_results_root_dir(root_dir: str | Path | None = None) -> Path:
+    return _resolve_path(
+        root_dir,
+        env_var=RESULTS_DIR_ENV_VAR,
+        default_path=DEFAULT_RESULTS_DIR_NAME,
+    )
+
+
+def get_workspace_root_dir(base_dir: str | Path | None = None) -> Path:
+    if base_dir is not None and str(base_dir).strip():
+        return Path(base_dir).expanduser()
+    return PROJECT_ENV_PATH.parent
+
+
+def get_workspace_results_root_dir(base_dir: str | Path | None = None) -> Path:
+    return get_workspace_root_dir(base_dir) / DEFAULT_RESULTS_DIR_NAME
+
+
+def get_workspace_results_analysis_dir(base_dir: str | Path | None = None) -> Path:
+    return get_workspace_results_root_dir(base_dir) / "_analysis"
+
+
+def get_artifacts_root_dir(base_dir: str | Path | None = None) -> Path:
+    return _resolve_path(
+        base_dir,
+        env_var=ARTIFACTS_DIR_ENV_VAR,
+        default_path=get_results_root_dir(),
+    )
+
+
+def get_results_analysis_dir(base_dir: str | Path | None = None) -> Path:
+    return get_artifacts_root_dir(base_dir) / "_analysis"
+
+
+def get_results_organized_dir(base_dir: str | Path | None = None) -> Path:
+    return get_artifacts_root_dir(base_dir) / "_organized_results"
+
+
+def get_results_archive_dir(base_dir: str | Path | None = None) -> Path:
+    return get_artifacts_root_dir(base_dir) / "_archive_results"
+
+
+def get_saved_runs_dir(base_dir: str | Path | None = None) -> Path:
+    return get_artifacts_root_dir(base_dir) / "_saved_runs"
+
+
+def get_builder_sessions_dir(base_dir: str | Path | None = None) -> Path:
+    return get_artifacts_root_dir(base_dir) / "_builder_sessions"
+
+
+def get_sweep_diagnostics_dir(base_dir: str | Path | None = None) -> Path:
+    return get_artifacts_root_dir(base_dir) / "_diagnostics" / "sweeps"
+
+
+def get_profiling_results_dir(base_dir: str | Path | None = None) -> Path:
+    return get_artifacts_root_dir(base_dir) / "_profiling"
+
+
+def get_output_root_dir(base_dir: str | Path | None = None) -> Path:
+    return get_artifacts_root_dir(base_dir) / "_output"
 
 
 def _now_utc_iso() -> str:
@@ -32,7 +173,8 @@ def _coerce_created_at(value: Any) -> datetime:
     elif value:
         try:
             dt = datetime.fromisoformat(str(value))
-        except Exception:
+        except Exception as exc:
+            logger.debug("Cannot parse created_at %r: %s", value, exc)
             dt = datetime.now(timezone.utc)
     else:
         dt = datetime.now(timezone.utc)
@@ -61,8 +203,8 @@ def _as_jsonable(value: Any) -> Any:
     if hasattr(value, "item"):
         try:
             return value.item()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("item() conversion failed for %r: %s", type(value).__name__, exc)
     return str(value)
 
 
@@ -108,8 +250,8 @@ class ResultStore:
         "parent_run_id",
     ]
 
-    def __init__(self, root_dir: str | Path = "backtest_results") -> None:
-        self.root_dir = Path(root_dir)
+    def __init__(self, root_dir: str | Path | None = None) -> None:
+        self.root_dir = get_results_root_dir(root_dir)
         self.runs_dir = self.root_dir / "runs"
         self.index_path = self.root_dir / "index.csv"
         self.golden_path = self.root_dir / "golden_runs.csv"
@@ -126,7 +268,8 @@ class ResultStore:
             return pd.DataFrame(columns=self._INDEX_COLUMNS)
         try:
             return pd.read_csv(self.index_path)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to load index %s: %s", self.index_path, exc)
             return pd.DataFrame(columns=self._INDEX_COLUMNS)
 
     def _append_index(self, row: dict[str, Any]) -> None:
@@ -231,11 +374,12 @@ class ResultStore:
         if hasattr(value, "to_dict"):
             try:
                 return dict(value.to_dict())
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("to_dict() failed for %r: %s", type(value).__name__, exc)
         try:
             return dict(value)
-        except Exception:
+        except Exception as exc:
+            logger.debug("dict() coercion failed for %r: %s", type(value).__name__, exc)
             return {}
 
     def save_backtest_result(
@@ -500,7 +644,8 @@ class ResultStore:
         if self.golden_path.exists():
             try:
                 df = pd.read_csv(self.golden_path)
-            except Exception:
+            except Exception as exc:
+                logger.warning("Failed to read golden runs %s: %s", self.golden_path, exc)
                 df = pd.DataFrame(columns=columns)
         else:
             df = pd.DataFrame(columns=columns)

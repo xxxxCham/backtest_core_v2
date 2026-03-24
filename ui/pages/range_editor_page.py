@@ -20,6 +20,116 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from ui.range_editor import render_range_editor
 
 
+def _render_page_navigation() -> None:
+    st.sidebar.markdown(
+        """
+<style>
+header[data-testid="stHeader"] {
+    background: transparent !important;
+}
+[data-testid="stSidebar"] > div:first-child {
+    width: 22rem !important;
+}
+[data-testid="collapsedControl"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: fixed !important;
+    top: 0.7rem;
+    left: 0.7rem;
+    z-index: 100000 !important;
+    border-radius: 12px !important;
+    background: rgba(15, 23, 42, 0.92) !important;
+    border: 1px solid rgba(96, 165, 250, 0.35) !important;
+    box-shadow: 0 10px 24px rgba(2, 8, 23, 0.30) !important;
+}
+[data-testid="collapsedControl"] svg {
+    fill: #dbeafe !important;
+}
+@media (min-width: 1100px) {
+    [data-testid="stSidebar"][aria-expanded="false"] {
+        min-width: 22rem !important;
+        max-width: 22rem !important;
+        transform: translateX(0) !important;
+        margin-left: 0 !important;
+        box-shadow: 8px 0 30px rgba(2, 8, 23, 0.22) !important;
+    }
+    [data-testid="stSidebar"][aria-expanded="false"] > div:first-child,
+    [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"] {
+        width: 22rem !important;
+        min-width: 22rem !important;
+        visibility: visible !important;
+        display: block !important;
+    }
+    [data-testid="collapsedControl"] {
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }
+}
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"],
+#MainMenu,
+footer {
+    display: none !important;
+}
+[data-testid="stSidebarNav"] {
+    display: none !important;
+}
+.bc-sidebar-nav-block {
+    margin: 0.35rem 0 1rem 0;
+    padding: 0.85rem 0.8rem 0.9rem 0.8rem;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(20, 33, 56, 0.96));
+}
+.bc-sidebar-nav-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #93c5fd;
+    margin-bottom: 0.65rem;
+}
+.bc-sidebar-nav-links {
+    display: grid;
+    gap: 0.5rem;
+}
+.bc-nav-link {
+    display: block;
+    text-decoration: none;
+    border-radius: 12px;
+    padding: 0.7rem 0.85rem;
+    font-weight: 600;
+    color: #dbeafe !important;
+    background: rgba(30, 41, 59, 0.92);
+    border: 1px solid rgba(71, 85, 105, 0.75);
+}
+.bc-nav-link:hover {
+    border-color: rgba(96, 165, 250, 0.9);
+    background: rgba(30, 64, 175, 0.18);
+}
+.bc-nav-link.active {
+    background: linear-gradient(135deg, rgba(29, 78, 216, 0.88), rgba(59, 130, 246, 0.88));
+    border-color: rgba(96, 165, 250, 0.95);
+    color: #ffffff !important;
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.28);
+}
+</style>
+<div class="bc-sidebar-nav-block">
+  <div class="bc-sidebar-nav-title">Navigation</div>
+  <div class="bc-sidebar-nav-links">
+    <a class="bc-nav-link" href="/" target="_self">🏠 Application</a>
+    <a class="bc-nav-link active" href="/range_editor_page" target="_self">⚙️ Éditeur de plages</a>
+    <a class="bc-nav-link" href="/model_stats_page" target="_self">📊 Statistiques des modèles</a>
+    <a class="bc-nav-link" href="/results_store_page" target="_self">📚 Hub résultats</a>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
 def main():
     """Point d'entrée principal de la page."""
     st.set_page_config(
@@ -28,6 +138,7 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded"
     )
+    _render_page_navigation()
 
     # CSS personnalisé
     st.markdown("""
@@ -53,6 +164,8 @@ def main():
     """, unsafe_allow_html=True)
 
     # Avertissement en en-tête
+    st.title("⚙️ Éditeur de plages")
+    st.caption("Ajustez les bornes, steps et valeurs par défaut sans quitter l'interface principale.")
     st.warning(
         "⚠️ **Attention**: Les modifications des plages affectent toutes les stratégies utilisant ces paramètres. "
         "Une sauvegarde automatique (.bak) est créée avant chaque modification."
@@ -61,13 +174,11 @@ def main():
     # Rendu de l'éditeur
     render_range_editor()
 
-    # Footer
     st.markdown("---")
     st.caption(
-        "💡 **Astuce**: Utilisez la recherche pour filtrer rapidement les paramètres. "
-        "Les modifications sont appliquées immédiatement aux nouveaux backtests."
+        "💡 Astuce: utilisez la recherche pour filtrer rapidement les paramètres. "
+        "Les modifications s'appliqueront aux nouveaux backtests."
     )
-
 
 if __name__ == "__main__":
     main()

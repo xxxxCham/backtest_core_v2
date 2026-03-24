@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
@@ -74,11 +75,13 @@ DEFAULT_HUGGINGFACE_ARCHIVE_ROOTS = (
 # Mapping des anciens noms vers les noms runtime actuels.
 MODEL_NAME_ALIASES = {
     "alia-40b-local:latest": "alia-40b-local",
+    "devstral-small-2": "devstral-small-2:24b",
     "deepseek-coder-33b-local:latest": "deepseek-coder-33b-local",
     "deepseek-moe-16b-local:latest": "deepseek-moe-16b-local",
     "deepseek-r1-14b-local:latest": "deepseek-r1-14b-local",
     "deepseek-r1-14b-local": "deepseek-r1-distill:14b",
     "glm-4.7-flash-23b-local:latest": "glm-4.7-flash-23b-local",
+    "lfm2": "lfm2:24b",
     "llama3.3-70b-2gpu": "llama3.3:70b-instruct-q4_K_M",
     "llama3.3-70b-optimized": "llama3.3:70b-instruct-q4_K_M",
     "llama3.3:70b": "llama3.3:70b-instruct-q4_K_M",
@@ -86,15 +89,20 @@ MODEL_NAME_ALIASES = {
     "nemotron-cascade-14b-local:latest": "nemotron-cascade-14b-local",
     "nemotron-cascade-14b-thinking-claude-4.5-opus-distill.q8_0": "nemotron-cascade-14b-local",
     "nemotron-orchestrator-8b:latest": "nemotron-orchestrator-8b",
+    "qwen3.5": "qwen3.5:35b",
     "qwen3-coder-40b-local": "qwen3-coder:30b",
     "qwen3-coder-next-40b-q3_k_xl": "qwen3-coder:30b",
     "qwen3-coder-next-40b-q3_k_xl:latest": "qwen3-coder:30b",
-    "qwen3-coder-next": "qwen3-coder-next:q4_k_m",
-    "qwen3-coder-next-q4_k_m": "qwen3-coder-next:q4_k_m",
+    "qwen3-coder-next": "qwen3-coder:30b",
+    "qwen3-coder-next:q4_k_m": "qwen3-coder:30b",
+    "qwen3-coder-next-q4_k_m": "qwen3-coder:30b",
     "qwen3-coder:30b-a3b-instruct": "qwen3-coder:30b",
     "qwen3-30b-a3b": "qwen3-30b-a3b:q4_k_m",
     "qwen3-30b-a3b-q4_k_m": "qwen3-30b-a3b:q4_k_m",
     "qwen3-48b-savant:latest": "qwen3-48b-savant",
+    "qwen3-vl": "qwen3-vl:32b",
+    "qwen3-vl-30b": "qwen3-vl:32b",
+    "qwen3-vl:30b": "qwen3-vl:32b",
 }
 
 # Cache en memoire
@@ -132,6 +140,44 @@ def _split_env_paths(value: str) -> List[Path]:
     if not value:
         return []
     return [Path(chunk.strip()) for chunk in value.split(";") if chunk.strip()]
+
+
+def _get_ollama_desktop_db_candidates() -> List[Path]:
+    """Retourne les emplacements probables de la base SQLite Ollama Desktop."""
+    candidates: List[Path] = []
+    local_appdata = str(os.environ.get("LOCALAPPDATA", "") or "").strip()
+    if local_appdata:
+        candidates.append(Path(local_appdata) / "Ollama" / "db.sqlite")
+
+    home = Path.home()
+    candidates.append(home / "AppData" / "Local" / "Ollama" / "db.sqlite")
+    return list(_iter_unique_paths(candidates))
+
+
+def get_ollama_desktop_models_root() -> Optional[Path]:
+    """Lit le store modèles configuré dans l'application Ollama Desktop."""
+    for db_path in _get_ollama_desktop_db_candidates():
+        if not db_path.exists():
+            continue
+        connection: sqlite3.Connection | None = None
+        try:
+            connection = sqlite3.connect(str(db_path), timeout=1.0)
+            row = connection.execute(
+                "SELECT models FROM settings ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        except sqlite3.Error as exc:
+            logger.debug("Lecture config Ollama impossible depuis %s: %s", db_path, exc)
+            continue
+        finally:
+            if connection is not None:
+                connection.close()
+
+        if not row:
+            continue
+        configured = str(row[0] or "").strip()
+        if configured:
+            return Path(configured)
+    return None
 
 
 def _prefer_current_target(
@@ -254,6 +300,7 @@ def get_ollama_models_root() -> Path:
     """
     env_value = os.environ.get("OLLAMA_MODELS", "").strip()
     configured = _split_env_paths(env_value) if env_value else []
+    desktop_configured = get_ollama_desktop_models_root()
     configured = _prefer_current_target(
         configured,
         CURRENT_OLLAMA_MODELS_ROOT,
@@ -262,6 +309,7 @@ def get_ollama_models_root() -> Path:
     ordered = list(
         _iter_unique_paths(
             [
+                *( [desktop_configured] if desktop_configured else [] ),
                 *configured,
                 *DEFAULT_OLLAMA_MODELS_CANDIDATES,
                 *LEGACY_OLLAMA_MODELS_CANDIDATES,
@@ -486,6 +534,60 @@ def get_ollama_model_names() -> List[str]:
     return names
 
 
+def get_ollama_manifest_model_names() -> List[str]:
+    """
+    Retourne les noms de modèles présents dans les manifests Ollama locaux.
+
+    Cette source complète ``models.json`` et reflète directement le store
+    configuré dans l'application Ollama Desktop, même si le catalogue n'a pas
+    encore été régénéré.
+    """
+    names: List[str] = []
+    desktop_root = get_ollama_desktop_models_root()
+    candidate_roots = list(
+        _iter_unique_paths(
+            [
+                *([desktop_root] if desktop_root else []),
+                get_ollama_models_root(),
+                *DEFAULT_OLLAMA_MODELS_CANDIDATES,
+                *LEGACY_OLLAMA_MODELS_CANDIDATES,
+            ]
+        )
+    )
+
+    for root in candidate_roots:
+        manifest_root = root / "manifests"
+        if not manifest_root.exists():
+            continue
+        for manifest in manifest_root.rglob("*"):
+            if not manifest.is_file():
+                continue
+            try:
+                relative_parts = manifest.relative_to(manifest_root).parts
+            except ValueError:
+                continue
+            if len(relative_parts) < 4:
+                continue
+            registry, namespace, model_name, tag = relative_parts[:4]
+            if registry != "registry.ollama.ai":
+                continue
+            raw_name = f"{model_name}:{tag}" if namespace == "library" else f"{namespace}/{model_name}:{tag}"
+            canonical_name = normalize_model_name(raw_name)
+            if canonical_name and canonical_name not in names:
+                names.append(canonical_name)
+    return names
+
+
+def get_ollama_runtime_model_names() -> List[str]:
+    """Retourne l'union catalogue + manifests du runtime Ollama local."""
+    names: List[str] = []
+    for candidate in [*get_ollama_model_names(), *get_ollama_manifest_model_names()]:
+        canonical_name = normalize_model_name(candidate)
+        if canonical_name and canonical_name not in names:
+            names.append(canonical_name)
+    return names
+
+
 def get_model_info_for_ui(model_id: str) -> Dict:
     """Retourne les infos formatees pour l'UI."""
     model = get_model_by_id(model_id)
@@ -527,7 +629,10 @@ __all__ = [
     "get_models_by_use_case",
     "get_models_json_path",
     "get_ollama_model_names",
+    "get_ollama_manifest_model_names",
     "get_ollama_models_root",
+    "get_ollama_runtime_model_names",
+    "get_ollama_desktop_models_root",
     "get_recommended_model_for_task",
     "load_models_json",
     "normalize_model_name",

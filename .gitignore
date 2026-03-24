@@ -49,6 +49,9 @@ coverage.xml
 *.py.cover
 .hypothesis/
 .pytest_cache/
+.pytest_tmp/
+sandbox_strategies/_model_stats_state.json
+sandbox_strategies/_model_stats_archives/
 cover/
 
 # Translations
@@ -217,6 +220,7 @@ nul
 data/presets/
 orchestration_logs_*.json
 t_core
+sandbox_strategies/
 .claude/
 
 
@@ -280,8 +284,13 @@ Desktop.ini
 # Large generated data — do not push
 backtest_results/
 backtest_results_organized/
+output/
 sweep_diagnostics/
 profiling_results/
+.coverage
+analysis_report.html
+analysis_report_filtered.html
+analysis_top_configs.csv
 
 # Codex local state
 .codex/

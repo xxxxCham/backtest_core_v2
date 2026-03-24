@@ -46,6 +46,23 @@ _OLLAMA_GPU_VISIBILITY_ENV_KEYS = (
     "ROCR_VISIBLE_DEVICES",
 )
 
+_OLLAMA_GPU_TARGET_ENV_KEYS = (
+    "BACKTEST_OLLAMA_GPU_TARGET",
+    "OLLAMA_GPU_TARGET",
+)
+
+_OLLAMA_LOCAL_PINNING_ENV_KEYS = (
+    "BACKTEST_OLLAMA_PIN_LOCALHOST",
+    "OLLAMA_PIN_LOCALHOST",
+)
+
+_OLLAMA_LOCAL_RESTART_ENV_KEYS = (
+    "BACKTEST_OLLAMA_RESTART_LOCAL_DAEMON",
+    "OLLAMA_RESTART_LOCAL_DAEMON",
+)
+
+_OLLAMA_PINNING_RESTARTED_HOSTS: set[str] = set()
+
 
 def _get_ollama_host(override: Optional[str] = None) -> str:
     """Retourne l'hôte Ollama effectif (override > env > défaut)."""
@@ -75,10 +92,75 @@ def _gpu_target_to_visible_devices(gpu_target: Optional[str] = None) -> Optional
     value = str(gpu_target or "").strip().upper()
     if not value or value == "AUTO":
         return None
-    if value.startswith("GPU-"):
-        index = value[4:]
-        return index if index.isdigit() else None
-    return value if value.isdigit() else None
+    normalized_parts: list[str] = []
+    for raw_part in value.split(","):
+        part = raw_part.strip()
+        if not part:
+            continue
+        if part.startswith("GPU-"):
+            part = part[4:]
+        if not part.isdigit():
+            return None
+        normalized_parts.append(part)
+
+    if not normalized_parts:
+        return None
+    return ",".join(normalized_parts)
+
+
+def _get_effective_gpu_target(gpu_target: Optional[str] = None) -> Optional[str]:
+    explicit = str(gpu_target or "").strip()
+    if explicit:
+        return explicit
+
+    for key in _OLLAMA_GPU_TARGET_ENV_KEYS:
+        value = str(os.environ.get(key, "") or "").strip()
+        if value:
+            return value
+    return None
+
+
+def _local_gpu_pinning_enabled() -> bool:
+    for key in _OLLAMA_LOCAL_PINNING_ENV_KEYS:
+        value = str(os.environ.get(key, "") or "").strip().lower()
+        if value in {"1", "true", "yes", "on"}:
+            return True
+        if value in {"0", "false", "no", "off"}:
+            return False
+    return False
+
+
+def _local_ollama_restart_enabled() -> bool:
+    for key in _OLLAMA_LOCAL_RESTART_ENV_KEYS:
+        value = str(os.environ.get(key, "") or "").strip().lower()
+        if value in {"1", "true", "yes", "on"}:
+            return True
+        if value in {"0", "false", "no", "off"}:
+            return False
+    return False
+
+
+def _stop_local_ollama_processes() -> None:
+    try:
+        if platform.system() == "Windows":
+            subprocess.run(
+                ["taskkill", "/F", "/IM", "ollama.exe"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        else:
+            subprocess.run(
+                ["pkill", "-f", "ollama"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "⚠️ Impossible d'arrêter Ollama local pour reappliquer le pinning GPU: %s",
+            exc,
+        )
 
 
 def _resolve_visible_devices_for_host(
@@ -91,14 +173,15 @@ def _resolve_visible_devices_for_host(
     voir l'ensemble des GPUs pour pouvoir répartir correctement les gros
     modèles. Le pinning explicite reste utilisé pour des hosts/ports dédiés.
     """
-    visible_devices = _gpu_target_to_visible_devices(gpu_target)
+    effective_gpu_target = _get_effective_gpu_target(gpu_target)
+    visible_devices = _gpu_target_to_visible_devices(effective_gpu_target)
     if visible_devices is None:
         return None
 
     host = _get_ollama_host(ollama_host)
     parsed = urlparse(host)
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    if _is_local_ollama_host(host) and port == 11434:
+    if _is_local_ollama_host(host) and port == 11434 and not _local_gpu_pinning_enabled():
         return None
     return visible_devices
 
@@ -417,6 +500,24 @@ def ensure_ollama_running(
         timeout_s=2.0,
         max_attempts=1,
     )
+    normalized_host = _get_ollama_host(ollama_host)
+    if payload is not None:
+        should_restart_for_pinning = (
+            _is_local_ollama_host(normalized_host)
+            and _local_gpu_pinning_enabled()
+            and _local_ollama_restart_enabled()
+            and normalized_host not in _OLLAMA_PINNING_RESTARTED_HOSTS
+        )
+        if should_restart_for_pinning:
+            logger.info(
+                "♻️ Redémarrage Ollama local pour appliquer le pinning GPU (%s)",
+                _get_effective_gpu_target(gpu_target) or "auto",
+            )
+            _stop_local_ollama_processes()
+            _OLLAMA_PINNING_RESTARTED_HOSTS.add(normalized_host)
+            time.sleep(1.5)
+            payload = None
+
     if payload is not None:
         model_count = len(payload.get("models", []) or [])
         if model_count > 0:
@@ -564,6 +665,87 @@ def cleanup_all_models(ollama_host: Optional[str] = None) -> int:
     except Exception as e:
         logger.warning(f"⚠️ Erreur cleanup_all_models: {e}")
         return 0
+
+
+def stop_local_ollama_server(
+    ollama_host: Optional[str] = None,
+    *,
+    force: bool = True,
+    timeout_s: float = 3.0,
+) -> int:
+    """Arrête brutalement le daemon Ollama local écoutant sur l'hôte donné.
+
+    Retourne le nombre de processus effectivement stoppés. Les hôtes distants
+    sont ignorés volontairement.
+    """
+    if not _is_local_ollama_host(ollama_host):
+        return 0
+
+    try:
+        import psutil
+    except ImportError:
+        logger.warning("⚠️ psutil indisponible, arrêt dur Ollama impossible")
+        return 0
+
+    parsed = urlparse(_get_ollama_host(ollama_host))
+    target_port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    candidate_processes = []
+    seen_pids: set[int] = set()
+
+    try:
+        for conn in psutil.net_connections(kind="tcp"):
+            if conn.pid is None or conn.pid in seen_pids or conn.laddr is None:
+                continue
+            if getattr(conn.laddr, "port", None) != target_port:
+                continue
+            try:
+                proc = psutil.Process(conn.pid)
+                name = str(proc.name() or "").lower()
+                cmdline = " ".join(proc.cmdline()).lower()
+            except (psutil.Error, OSError):
+                continue
+            if "ollama" not in name and "ollama" not in cmdline:
+                continue
+            seen_pids.add(conn.pid)
+            candidate_processes.append(proc)
+    except (psutil.Error, OSError) as exc:
+        logger.warning("⚠️ Impossible d'inspecter les connexions Ollama: %s", exc)
+        return 0
+
+    if not candidate_processes:
+        return 0
+
+    stopped = 0
+    for proc in candidate_processes:
+        try:
+            for child in proc.children(recursive=True):
+                try:
+                    child.terminate()
+                except (psutil.Error, OSError):
+                    continue
+            proc.terminate()
+            stopped += 1
+        except (psutil.Error, OSError) as exc:
+            logger.warning("⚠️ Impossible de terminer Ollama pid=%s: %s", proc.pid, exc)
+
+    gone, alive = psutil.wait_procs(candidate_processes, timeout=max(timeout_s, 0.5))
+    if force:
+        for proc in alive:
+            try:
+                proc.kill()
+            except (psutil.Error, OSError):
+                continue
+        if alive:
+            gone_after_kill, _ = psutil.wait_procs(alive, timeout=1.5)
+            stopped += len(gone_after_kill)
+
+    logger.warning(
+        "🪓 Arrêt dur Ollama local sur %s (port %s): %d process arrêté(s)",
+        _get_ollama_host(ollama_host),
+        target_port,
+        stopped,
+    )
+    return stopped
 
 
 def list_ollama_models(ollama_host: Optional[str] = None) -> List[str]:

@@ -24,6 +24,8 @@ import argparse
 import os
 from typing import Optional
 
+from backtest.result_store import get_results_root_dir
+
 from .commands import (
     cmd_analyze,
     cmd_backtest,
@@ -48,6 +50,7 @@ from .commands import (
 
 def create_parser() -> argparse.ArgumentParser:
     """Crée le parser principal avec toutes les sous-commandes."""
+    default_results_dir = str(get_results_root_dir())
 
     parser = argparse.ArgumentParser(
         prog="backtest-core-v2",
@@ -827,7 +830,7 @@ Exemples:
         "analyze",
         parents=[common_parser],
         help="Analyser les résultats de backtests",
-        description="Analyse les résultats de backtests stockés dans backtest_results/"
+        description=f"Analyse les résultats de backtests stockés dans {default_results_dir}"
     )
     analyze_parser.add_argument(
         "-i", "--input",
@@ -837,8 +840,8 @@ Exemples:
     analyze_parser.add_argument(
         "--results-dir",
         type=str,
-        default="backtest_results",
-        help="Répertoire des résultats (défaut: backtest_results)"
+        default=default_results_dir,
+        help=f"Répertoire des résultats (défaut: {default_results_dir})"
     )
     analyze_parser.add_argument(
         "--profitable-only",
@@ -1272,12 +1275,9 @@ Exemples:
 
 def main(args: Optional[list] = None) -> int:
     """Point d'entrée principal du CLI."""
-    # Charger .env (BACKTEST_DATA_DIR, etc.) si python-dotenv disponible
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-    except ImportError:
-        pass
+    # Charger .env (BACKTEST_DATA_DIR, etc.) même sans python-dotenv.
+    from backtest.result_store import load_project_env
+    load_project_env()
 
     parser = create_parser()
     parsed = parser.parse_args(args)

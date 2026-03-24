@@ -43,6 +43,70 @@
     "LTCUSDC",
     "TRXUSDC"
   ],
+  "postfilter_benchmarks": {
+    "_comment": "Benchmarks fixes pour le post-filtrage canonique. token_count prend toujours le préfixe ordonné de chaque liste.",
+    "default_benchmark_names": [
+      "crypto_liquid_benchmark_v1_core",
+      "crypto_liquid_benchmark_v2_breadth",
+      "crypto_liquid_benchmark_v3_balanced"
+    ],
+    "default_token_count": 5,
+    "max_token_count": 10,
+    "timeframes_default": [
+      "1h",
+      "4h"
+    ],
+    "required_benchmark_name": "crypto_liquid_benchmark_v1_core",
+    "min_benchmarks_pass": 2,
+    "no_silent_replacement": true,
+    "benchmarks": {
+      "crypto_liquid_benchmark_v1_core": {
+        "label": "Crypto Liquid Benchmark V1 Core",
+        "tokens": [
+          "BTCUSDC",
+          "ETHUSDC",
+          "BNBUSDC",
+          "SOLUSDC",
+          "XRPUSDC",
+          "LTCUSDC",
+          "AVAXUSDC",
+          "LINKUSDC",
+          "ADAUSDC",
+          "DOTUSDC"
+        ]
+      },
+      "crypto_liquid_benchmark_v2_breadth": {
+        "label": "Crypto Liquid Benchmark V2 Breadth",
+        "tokens": [
+          "ATOMUSDC",
+          "MATICUSDC",
+          "NEARUSDC",
+          "FILUSDC",
+          "APTUSDC",
+          "ARBUSDC",
+          "OPUSDC",
+          "INJUSDC",
+          "SUIUSDC",
+          "TRXUSDC"
+        ]
+      },
+      "crypto_liquid_benchmark_v3_balanced": {
+        "label": "Crypto Liquid Benchmark V3 Balanced",
+        "tokens": [
+          "BTCUSDC",
+          "ETHUSDC",
+          "SOLUSDC",
+          "XRPUSDC",
+          "LINKUSDC",
+          "ATOMUSDC",
+          "NEARUSDC",
+          "ARBUSDC",
+          "LTCUSDC",
+          "TRXUSDC"
+        ]
+      }
+    }
+  },
   "token_profiles": {
     "_comment": "Métadonnées pour chaque token : volatilité (low/medium/high), liquidité (low/medium/high), et stratégies recommandées",
     "BTCUSDC": {

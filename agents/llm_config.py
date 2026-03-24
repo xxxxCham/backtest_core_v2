@@ -60,10 +60,11 @@ except ImportError as e:
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 
 RECOMMENDED_FOR_STRATEGY = [
-    "deepseek-r1:8b",
+    "qwen3.5:35b",
+    "lfm2:24b",
+    "devstral-small-2:24b",
     "qwen2.5:32b",
-    "gemma3:27b",
-    "llama3.3:70b-instruct-q4_K_M",
+    "qwen3-coder:30b",
 ]
 
 OPENAI_MODELS = [
@@ -75,6 +76,20 @@ OPENAI_MODELS = [
 
 # Modèles à exclure par défaut des sélections aléatoires
 EXCLUDED_HEAVY_MODELS: Set[str] = {"deepseek-r1:70b"}
+
+DEFAULT_LLM_INFERENCE_MODE = "global"
+DEFAULT_LLM_INFERENCE_SETTINGS: Dict[str, Any] = {
+    "temperature": 0.7,
+    "max_tokens": 2000,
+    "num_ctx": None,
+}
+BUILTIN_LLM_INFERENCE_PROFILES: Dict[str, Dict[str, Any]] = {
+    "deepseek-coder-33b-local:latest": {
+        "temperature": 0.15,
+        "max_tokens": 4096,
+        "num_ctx": 16384,
+    },
+}
 
 
 # ============================================================================
@@ -101,6 +116,117 @@ class ModelSizeFilter:
     limit_small: bool = False  # < 20B
     limit_large: bool = False  # >= 20B
     excluded_models: Set[str] = field(default_factory=lambda: EXCLUDED_HEAVY_MODELS.copy())
+
+
+def _coerce_temperature(value: Any, default: float) -> float:
+    try:
+        resolved = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(0.0, min(resolved, 2.0))
+
+
+def _coerce_max_tokens(value: Any, default: int) -> int:
+    try:
+        resolved = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(1, resolved)
+
+
+def _coerce_num_ctx(value: Any) -> Optional[int]:
+    if value in (None, "", 0, "0"):
+        return None
+    try:
+        resolved = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(1, resolved)
+
+
+def normalize_llm_inference_settings(
+    raw_settings: Optional[Dict[str, Any]] = None,
+    *,
+    defaults: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    base = dict(DEFAULT_LLM_INFERENCE_SETTINGS)
+    if isinstance(defaults, dict):
+        base.update(defaults)
+    raw = raw_settings if isinstance(raw_settings, dict) else {}
+    return {
+        "temperature": _coerce_temperature(raw.get("temperature"), float(base["temperature"])),
+        "max_tokens": _coerce_max_tokens(raw.get("max_tokens"), int(base["max_tokens"])),
+        "num_ctx": _coerce_num_ctx(raw.get("num_ctx", base.get("num_ctx"))),
+    }
+
+
+def normalize_llm_model_inference_profiles(
+    raw_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Dict[str, Dict[str, Any]]:
+    normalized: Dict[str, Dict[str, Any]] = {}
+
+    for raw_name, raw_settings in BUILTIN_LLM_INFERENCE_PROFILES.items():
+        model_name = normalize_model_name(str(raw_name or "").strip())
+        if not model_name:
+            continue
+        normalized[model_name] = normalize_llm_inference_settings(raw_settings)
+
+    if not isinstance(raw_profiles, dict):
+        return normalized
+
+    for raw_name, raw_settings in raw_profiles.items():
+        model_name = normalize_model_name(str(raw_name or "").strip())
+        if not model_name:
+            continue
+        defaults = normalized.get(model_name, DEFAULT_LLM_INFERENCE_SETTINGS)
+        normalized[model_name] = normalize_llm_inference_settings(
+            raw_settings,
+            defaults=defaults,
+        )
+    return normalized
+
+
+def resolve_llm_inference_settings(
+    model_name: Optional[str],
+    *,
+    global_settings: Optional[Dict[str, Any]] = None,
+    model_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    resolved_global = normalize_llm_inference_settings(global_settings)
+    resolved_profiles = normalize_llm_model_inference_profiles(model_profiles)
+    normalized_model_name = normalize_model_name(str(model_name or "").strip())
+    if not normalized_model_name:
+        return resolved_global
+    model_override = resolved_profiles.get(normalized_model_name)
+    if not model_override:
+        return resolved_global
+    resolved = dict(resolved_global)
+    resolved.update(model_override)
+    return normalize_llm_inference_settings(resolved)
+
+
+def apply_llm_inference_settings(
+    config: Any,
+    *,
+    model_name: Optional[str] = None,
+    global_settings: Optional[Dict[str, Any]] = None,
+    model_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Any:
+    if config is None:
+        return None
+    provider = getattr(config, "provider", None)
+    if provider != LLMProvider.OLLAMA:
+        return config
+
+    resolved = resolve_llm_inference_settings(
+        model_name or getattr(config, "model", None),
+        global_settings=global_settings,
+        model_profiles=model_profiles,
+    )
+    config.temperature = resolved["temperature"]
+    config.max_tokens = resolved["max_tokens"]
+    config.num_ctx = resolved["num_ctx"]
+    return config
 
 
 # ============================================================================
@@ -350,7 +476,7 @@ def validate_llm_config(config: Any) -> tuple[bool, Optional[str]]:
             return False, "Ollama non connecté"
 
     if config.provider == LLMProvider.OPENAI:
-        if not hasattr(config, 'api_key') or not config.api_key:
+        if not hasattr(config, 'openai_api_key') or not config.openai_api_key:
             return False, "Clé API OpenAI manquante"
 
     return True, None
@@ -360,7 +486,10 @@ def create_llm_config(
     provider: str,
     model: str,
     ollama_host: str = DEFAULT_OLLAMA_HOST,
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    num_ctx: Optional[int] = None,
 ) -> Optional[Any]:
     """
     Crée une configuration LLM.
@@ -382,6 +511,17 @@ def create_llm_config(
             provider=LLMProvider.OLLAMA,
             model=model,
             ollama_host=ollama_host,
+            temperature=(
+                normalize_llm_inference_settings({"temperature": temperature})["temperature"]
+                if temperature is not None
+                else DEFAULT_LLM_INFERENCE_SETTINGS["temperature"]
+            ),
+            max_tokens=(
+                normalize_llm_inference_settings({"max_tokens": max_tokens})["max_tokens"]
+                if max_tokens is not None
+                else DEFAULT_LLM_INFERENCE_SETTINGS["max_tokens"]
+            ),
+            num_ctx=_coerce_num_ctx(num_ctx),
         )
     else:
         if not api_key:
@@ -389,7 +529,7 @@ def create_llm_config(
         return LLMConfig(
             provider=LLMProvider.OPENAI,
             model=model,
-            api_key=api_key,
+            openai_api_key=api_key,
         )
 
 

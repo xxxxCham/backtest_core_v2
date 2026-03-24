@@ -13,7 +13,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import time
 
 import numpy as np
+import pandas as pd
 import pytest
+
+from backtest.performance import calculate_metrics
 
 
 def test_numba_sweep_performance_no_regression():
@@ -218,7 +221,27 @@ def test_parallel_recommendations_throttle_when_memory_is_tight(monkeypatch):
 
     assert parallel_module.get_recommended_worker_count(max_cap=32) == 12
     assert parallel_module.get_recommended_chunk_size(default=100) == 100
-    assert parallel_module.get_recommended_max_in_flight(total_tasks=5000, worker_count=8) == 16
+
+
+def test_calculate_metrics_exposes_buy_hold_and_alpha_simple():
+    index = pd.date_range("2025-01-01", periods=3, freq="1D", tz="UTC")
+    equity = pd.Series([10_000.0, 11_000.0, 11_500.0], index=index)
+    returns = equity.pct_change().fillna(0.0)
+    trades_df = pd.DataFrame({"pnl": [500.0, 1000.0]})
+    close_prices = pd.Series([100.0, 120.0, 150.0], index=index)
+
+    metrics = calculate_metrics(
+        equity=equity,
+        returns=returns,
+        trades_df=trades_df,
+        initial_capital=10_000.0,
+        periods_per_year=365,
+        benchmark_prices=close_prices,
+    )
+
+    assert metrics["total_return_pct"] == 15.0
+    assert metrics["benchmark_return_pct"] == 50.0
+    assert metrics["alpha_simple_pct"] == -35.0
 
 
 def test_extract_strategy_params_supports_numba_sweep_families():

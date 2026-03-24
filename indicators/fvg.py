@@ -22,6 +22,8 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 
+from .registry import register_indicator
+
 
 def calculate_fvg_bullish(df: pd.DataFrame, **params) -> np.ndarray:
     """
@@ -92,6 +94,15 @@ def fvg(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
         'fvg_bullish': calculate_fvg_bullish(df, **params),
         'fvg_bearish': calculate_fvg_bearish(df, **params)
     }
+
+
+register_indicator(
+    name='fvg',
+    function=fvg,
+    settings_class=None,
+    required_columns=('high', 'low'),
+    description='Fair Value Gap - bullish/bearish imbalance patterns',
+)
 
 
 __all__ = ['calculate_fvg_bullish', 'calculate_fvg_bearish', 'fvg']

@@ -83,6 +83,178 @@
         }
       }
     },
+    "24GB_curated_2026": {
+      "description": "Curated recent local Ollama profile for the current 24GB-class setup, favoring recent useful models over niche small variants.",
+      "roles": {
+        "idea_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "qwen3.5:35b",
+            "lfm2:24b",
+            "qwen2.5:32b"
+          ],
+          "fallback_models": [
+            "gemma3:12b",
+            "deepseek-moe-16b-local"
+          ],
+          "required": true,
+          "description": "Recent generalist ideation stack for diverse but testable objectives."
+        },
+        "builder_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "devstral-small-2:24b",
+            "qwen3-coder:30b",
+            "qwen3-30b-a3b:q4_k_m"
+          ],
+          "fallback_models": [
+            "deepseek-coder-33b-local",
+            "gpt-oss:20b"
+          ],
+          "required": true,
+          "description": "Recent local coding stack for Builder code generation and refactors."
+        },
+        "critic_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "qwen3.5:35b",
+            "deepseek-r1-distill:14b"
+          ],
+          "fallback_models": [
+            "deepseek-r1:32b",
+            "qwq:32b"
+          ],
+          "required": true,
+          "description": "Combines recent general reasoning with proven critique fallbacks."
+        },
+        "risk_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "fin-llama-33b:33b",
+            "martain7r/finance-llama-8b:q4_k_m"
+          ],
+          "fallback_models": [
+            "deepseek-r1-distill:14b"
+          ],
+          "required": true,
+          "description": "Keeps the risk role finance-aware while staying fully local."
+        },
+        "execution_router_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "nemotron-orchestrator-8b",
+            "mistral:7b-instruct"
+          ],
+          "fallback_models": [
+            "deepseek-moe-16b-local"
+          ],
+          "required": false,
+          "description": "Legacy LLM router kept for audit only; the simple multi-LLM mode now uses a deterministic local router."
+        }
+      }
+    },
+    "24GB_diverse_roles": {
+      "description": "Diverse local Builder profile that emphasizes source diversity for ideation, keeps the Builder on lighter code writers, and rotates strong heavyweight thinkers between ideation and critique across sessions.",
+      "roles": {
+        "idea_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "qwen3.5:35b",
+            "gemma3:27b",
+            "mistral:22b"
+          ],
+          "random_pool_models": [
+            "qwen3.5:35b",
+            "gemma3:27b",
+            "mistral:22b",
+            "deepseek-r1:32b",
+            "qwen2.5:32b",
+            "lfm2:24b",
+            "deepseek-moe-16b-local:latest"
+          ],
+          "fallback_models": [
+            "gemma3:12b",
+            "mistral:7b-instruct"
+          ],
+          "required": true,
+          "description": "Role ideation pool prioritizing source diversity across Qwen, Google Gemma, Mistral, DeepSeek and Liquid styles."
+        },
+        "builder_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "gpt-oss:20b",
+            "devstral-small-2:24b",
+            "qwen3-coder:30b"
+          ],
+          "random_pool_models": [
+            "gpt-oss:20b",
+            "devstral-small-2:24b",
+            "qwen3-coder:30b",
+            "qwen3-30b-a3b:q4_k_m"
+          ],
+          "fallback_models": [
+            "deepseek-coder-33b-local:latest",
+            "gpt-oss:20b"
+          ],
+          "required": true,
+          "description": "Role builder pool biased toward lighter local code writers that stay efficient during long Builder runs."
+        },
+        "critic_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "qwen3.5:35b",
+            "deepseek-r1:32b",
+            "gemma3:27b"
+          ],
+          "random_pool_models": [
+            "qwen3.5:35b",
+            "deepseek-r1:32b",
+            "gemma3:27b",
+            "mistral:22b",
+            "qwq:32b",
+            "olmo-3.1:32b-think"
+          ],
+          "fallback_models": [
+            "deepseek-r1-distill:14b",
+            "olmo-3:32b-think"
+          ],
+          "required": true,
+          "description": "Role critique pool reuses heavyweight thinkers from ideation, but orders them for stronger review and disagreement."
+        },
+        "risk_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "fin-llama-33b:33b",
+            "qwen3.5:35b",
+            "deepseek-r1:32b"
+          ],
+          "random_pool_models": [
+            "fin-llama-33b:33b",
+            "qwen3.5:35b",
+            "deepseek-r1:32b",
+            "deepseek-r1-distill:14b",
+            "qwq:32b"
+          ],
+          "fallback_models": [
+            "martain7r/finance-llama-8b:q4_k_m"
+          ],
+          "required": true,
+          "description": "Role risk pool keeping a finance-aware anchor while varying between broader reasoning models for fragility checks."
+        },
+        "execution_router_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "nemotron-orchestrator-8b",
+            "mistral:7b-instruct"
+          ],
+          "fallback_models": [
+            "deepseek-moe-16b-local"
+          ],
+          "required": false,
+          "description": "Legacy LLM router kept for audit only; the simple multi-LLM mode now uses a deterministic local router."
+        }
+      }
+    },
     "24GB_light_test": {
       "description": "Lightweight local smoke-test profile for Builder multi-role validation with smaller models and faster reloads.",
       "roles": {

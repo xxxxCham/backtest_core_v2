@@ -170,6 +170,15 @@ def generate_random_objective(
         "volatility": "scalping",
     }
 
+    if available_indicators is None:
+        available_indicators = list_indicators()
+
+    avail_lower = {ind.lower() for ind in available_indicators}
+
+    # Choisir une famille avant toute recommandation dépendante de l'archetype.
+    family_key = random.choice(list(_INDICATOR_FAMILIES.keys()))
+    family = _INDICATOR_FAMILIES[family_key]
+
     # Normaliser listes → valeur unique avec recommandations
     if isinstance(symbol, list):
         if use_recommendations and family_key in archetype_map:
@@ -195,15 +204,6 @@ def generate_random_objective(
             timeframe = random.choice(valid_tfs) if valid_tfs else get_preferred_timeframe(archetype)
         else:
             timeframe = random.choice(timeframe) if timeframe else "1h"
-
-    if available_indicators is None:
-        available_indicators = list_indicators()
-
-    avail_lower = {ind.lower() for ind in available_indicators}
-
-    # Choisir une famille
-    family_key = random.choice(list(_INDICATOR_FAMILIES.keys()))
-    family = _INDICATOR_FAMILIES[family_key]
 
     # Filtrer les indicateurs disponibles dans cette famille
     valid_primary = [ind for ind in family["primary"] if ind.lower() in avail_lower]
@@ -246,49 +246,6 @@ def generate_random_objective(
     )
 
     return objective
-
-
-def _build_positive_objective_bias_instruction(max_items: int = 3) -> str:
-    """Construit une instruction de prompt à partir des objectifs historiquement positifs."""
-    try:
-        from agents.strategy_builder import _get_exploration_tracker
-
-        tracker = _get_exploration_tracker()
-        summary = tracker.get_positive_bias_summary(limit=max_items)
-    except Exception:
-        return ""
-
-    positive_count = int(summary.get("positive_count", 0) or 0)
-    if positive_count <= 0:
-        return ""
-
-    def _extract_names(items: List[Dict[str, Any]]) -> List[str]:
-        names: List[str] = []
-        for item in items[:max(1, max_items)]:
-            name = str(item.get("name", "")).strip()
-            if name:
-                names.append(name)
-        return names
-
-    family_names = _extract_names(cast(List[Dict[str, Any]], summary.get("top_families", [])))
-    indicator_patterns = _extract_names(cast(List[Dict[str, Any]], summary.get("top_indicator_patterns", [])))
-    novelty_names = _extract_names(cast(List[Dict[str, Any]], summary.get("top_novelty_angles", [])))
-
-    lines = ["Ancrages performants issus des sessions precedentes:"]
-    if family_names:
-        lines.append(f"- Familles robustes detectees: {', '.join(family_names)}.")
-    if indicator_patterns:
-        lines.append(
-            "- Combinaisons indicateurs deja positives: "
-            f"{', '.join(indicator_patterns)}."
-        )
-    if novelty_names:
-        lines.append(f"- Angles de nouveaute deja prometteurs: {', '.join(novelty_names)}.")
-    lines.append(
-        "- Reutilise au moins un ancrage positif, mais MUTER au moins deux dimensions "
-        "(direction, filtre, risk management, ou contexte marche) pour eviter la copie."
-    )
-    return "\n".join(lines) + "\n\n"
 
 
 def generate_llm_objective(
@@ -391,15 +348,12 @@ def generate_llm_objective(
     ]
     random.shuffle(random_behaviors)
     selected_behaviors = random_behaviors[:2]
-    positive_bias_instruction = _build_positive_objective_bias_instruction(max_items=3)
-
     user_msg = LLMMessage(
         role="user",
         content=(
             f"Génère un objectif de stratégie de trading.\n\n"
             f"{market_instruction}"
             f"Indicateurs disponibles : {indicators_list}\n\n"
-            f"{positive_bias_instruction}"
             "Contraintes de diversification:\n"
             f"- Intègre au moins un axe 'hors sentiers battus' parmi: {', '.join(selected_axes)}.\n"
             f"- Comportements aleatoires imposes pour cette generation: {', '.join(selected_behaviors)}.\n"

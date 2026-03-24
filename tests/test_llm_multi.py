@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sqlite3
 from types import SimpleNamespace
 
+from agents.llm_config import (
+    normalize_llm_model_inference_profiles,
+    resolve_llm_inference_settings,
+)
 from agents.llm_client import LLMConfig, LLMProvider
 from agents.llm_router import build_phase1_topology
 from core.llm_multi.download_manager import plan_missing_downloads
@@ -11,7 +16,13 @@ from core.llm_multi.model_discovery import (
     ModelInventory,
     discover_local_models,
 )
-from core.llm_multi.registry import resolve_profile_assignments
+from core.llm_multi.registry import (
+    get_profile_role_pools,
+    list_profile_names,
+    load_multi_llm_config,
+    resolve_profile_assignments,
+    save_multi_llm_profile,
+)
 from core.llm_multi.session_manager import MultiLLMSessionManager
 import core.llm_multi.model_discovery as model_discovery_module
 import core.llm_multi.download_manager as download_manager_module
@@ -119,6 +130,108 @@ def test_resolve_profile_assignments_prefers_verified_local_models():
     assert assignments["critic_llm"].resolved_model == "deepseek-r1-distill:14b"
 
 
+def test_resolve_profile_assignments_curated_profile_prefers_recent_local_models():
+    inventory = _inventory(
+        [
+            ("qwen3.5:35b", "ollama", True),
+            ("lfm2:24b", "ollama", True),
+            ("devstral-small-2:24b", "ollama", True),
+            ("qwen3-coder:30b", "ollama", True),
+            ("deepseek-r1-distill:14b", "ollama", True),
+            ("fin-llama-33b:33b", "ollama", True),
+            ("nemotron-orchestrator-8b:latest", "ollama", True),
+        ],
+        live_ollama_reachable=True,
+    )
+
+    resolved = resolve_profile_assignments(
+        "24GB_curated_2026",
+        inventory,
+        require_live_ollama=True,
+    )
+    assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
+
+    assert resolved["missing_roles"] == []
+    assert assignments["idea_llm"].resolved_model == "qwen3.5:35b"
+    assert assignments["builder_llm"].resolved_model == "devstral-small-2:24b"
+    assert assignments["critic_llm"].resolved_model == "qwen3.5:35b"
+
+
+def test_get_profile_role_pools_returns_builtin_diverse_role_pools():
+    role_pools = get_profile_role_pools("24GB_diverse_roles")
+
+    assert role_pools["idea_llm"][:3] == [
+        "qwen3.5:35b",
+        "gemma3:27b",
+        "mistral:22b",
+    ]
+    assert role_pools["builder_llm"] == [
+        "gpt-oss:20b",
+        "devstral-small-2:24b",
+        "qwen3-coder:30b",
+        "qwen3-30b-a3b:q4_k_m",
+    ]
+    assert role_pools["critic_llm"][:3] == [
+        "qwen3.5:35b",
+        "deepseek-r1:32b",
+        "gemma3:27b",
+    ]
+    assert role_pools["risk_llm"][0] == "fin-llama-33b:33b"
+
+
+def test_resolve_llm_inference_settings_merges_builtin_model_profile():
+    settings = resolve_llm_inference_settings(
+        "deepseek-coder-33b-local:latest",
+        global_settings={"temperature": 0.7, "max_tokens": 2000, "num_ctx": None},
+        model_profiles={},
+    )
+
+    assert settings["temperature"] == 0.15
+    assert settings["max_tokens"] == 4096
+    assert settings["num_ctx"] == 16384
+
+
+def test_multi_llm_manager_applies_model_specific_inference_profile_to_role_client():
+    inventory = _inventory(
+        [
+            ("qwen3.5:35b", "ollama", True),
+            ("deepseek-coder-33b-local:latest", "ollama", True),
+            ("deepseek-r1-distill:14b", "ollama", True),
+            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
+            ("nemotron-orchestrator-8b:latest", "ollama", True),
+        ],
+        live_ollama_reachable=True,
+    )
+    captured: list[LLMConfig] = []
+
+    class DummyClient:
+        def __init__(self, config: LLMConfig):
+            self.config = config
+
+    def _factory(config: LLMConfig):
+        captured.append(config)
+        return DummyClient(config)
+
+    manager = MultiLLMSessionManager(
+        profile_name="24GB_balanced",
+        base_llm_config=LLMConfig(model="qwen3-coder:30b", temperature=0.6, max_tokens=1024),
+        inventory=inventory,
+        role_overrides={"builder_llm": "deepseek-coder-33b-local:latest"},
+        inference_global_settings={"temperature": 0.6, "max_tokens": 1024, "num_ctx": 4096},
+        inference_model_profiles=normalize_llm_model_inference_profiles({}),
+        require_live_ollama=True,
+        client_factory=_factory,
+    )
+
+    client = manager.build_role_client("builder_llm")
+
+    assert client is not None
+    assert captured[-1].model == "deepseek-coder-33b-local:latest"
+    assert captured[-1].temperature == 0.15
+    assert captured[-1].max_tokens == 4096
+    assert captured[-1].num_ctx == 16384
+
+
 def test_resolve_profile_assignments_light_profile_prefers_small_models():
     inventory = _inventory(
         [
@@ -210,6 +323,146 @@ def test_resolve_profile_assignments_applies_role_override():
     assert assignments["risk_llm"].requested_model == "mistral:7b-instruct"
     assert assignments["risk_llm"].resolved_model == "mistral:7b-instruct"
     assert assignments["risk_llm"].available is True
+
+
+def test_save_multi_llm_profile_adds_user_profile_to_registry(tmp_path: Path):
+    user_profiles_dir = tmp_path / "profiles"
+
+    saved_path = save_multi_llm_profile(
+        "Mon preset Builder",
+        base_profile_name="24GB_balanced",
+        role_overrides={
+            "builder_llm": ["qwen3-coder:30b", "gpt-oss:20b"],
+            "critic_llm": ["deepseek-r1-distill:14b"],
+        },
+        user_profiles_dir=user_profiles_dir,
+    )
+
+    names = list_profile_names(user_profiles_dir=user_profiles_dir)
+    payload = load_multi_llm_config(user_profiles_dir=user_profiles_dir)
+
+    assert saved_path.exists()
+    assert "Mon preset Builder" in names
+    assert (
+        payload["profiles"]["Mon preset Builder"]["roles"]["builder_llm"]["preferred_models"]
+        == ["qwen3-coder:30b", "gpt-oss:20b"]
+    )
+    assert (
+        payload["profiles"]["Mon preset Builder"]["roles"]["builder_llm"]["random_pool_models"]
+        == ["qwen3-coder:30b", "gpt-oss:20b"]
+    )
+    assert (
+        payload["profiles"]["Mon preset Builder"]["roles"]["risk_llm"]["preferred_models"]
+        == ["martain7r/finance-llama-8b:q4_k_m", "fin-llama-33b:33b"]
+    )
+    assert get_profile_role_pools(
+        "Mon preset Builder",
+        user_profiles_dir=user_profiles_dir,
+    )["builder_llm"] == ["qwen3-coder:30b", "gpt-oss:20b"]
+
+
+def test_resolve_profile_assignments_supports_saved_user_profile(tmp_path: Path):
+    user_profiles_dir = tmp_path / "profiles"
+    save_multi_llm_profile(
+        "Profil Critique Perso",
+        base_profile_name="24GB_balanced",
+        role_overrides={
+            "builder_llm": ["qwen3-30b-a3b:q4_k_m"],
+            "critic_llm": ["deepseek-r1:32b"],
+        },
+        user_profiles_dir=user_profiles_dir,
+    )
+    inventory = _inventory(
+        [
+            ("qwen2.5:32b", "ollama", True),
+            ("qwen3-30b-a3b:q4_k_m", "ollama", True),
+            ("deepseek-r1:32b", "ollama", True),
+            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
+            ("nemotron-orchestrator-8b:latest", "ollama", True),
+        ],
+        live_ollama_reachable=True,
+    )
+
+    resolved = resolve_profile_assignments(
+        "Profil Critique Perso",
+        inventory,
+        require_live_ollama=True,
+        user_profiles_dir=user_profiles_dir,
+    )
+    assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
+
+    assert assignments["builder_llm"].requested_model == "qwen3-30b-a3b:q4_k_m"
+    assert assignments["builder_llm"].resolved_model == "qwen3-30b-a3b:q4_k_m"
+    assert assignments["critic_llm"].requested_model == "deepseek-r1:32b"
+    assert assignments["critic_llm"].resolved_model == "deepseek-r1:32b"
+
+
+def test_get_profile_role_pools_falls_back_to_user_preferred_models(tmp_path: Path):
+    user_profiles_dir = tmp_path / "profiles"
+    user_profiles_dir.mkdir(parents=True, exist_ok=True)
+    (user_profiles_dir / "profil_historique.json").write_text(
+        """
+{
+  "name": "Profil Historique",
+  "description": "Ancien profil utilisateur sans random_pool_models.",
+  "derived_from": "24GB_balanced",
+  "roles": {
+    "builder_llm": {
+      "backend": "ollama",
+      "preferred_models": ["qwen3-coder:30b", "devstral-small-2:24b"],
+      "fallback_models": ["gpt-oss:20b"],
+      "required": true
+    }
+  }
+}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    role_pools = get_profile_role_pools(
+        "Profil Historique",
+        user_profiles_dir=user_profiles_dir,
+    )
+
+    assert role_pools == {
+        "builder_llm": ["qwen3-coder:30b", "devstral-small-2:24b"]
+    }
+
+
+def test_get_profile_role_pools_normalizes_historical_aliases_in_user_profiles(
+    tmp_path: Path,
+):
+    user_profiles_dir = tmp_path / "profiles"
+    user_profiles_dir.mkdir(parents=True, exist_ok=True)
+    (user_profiles_dir / "profil_aliases.json").write_text(
+        """
+{
+  "name": "Profil Aliases",
+  "description": "Profil utilisateur avec anciens alias.",
+  "derived_from": "24GB_balanced",
+  "roles": {
+    "builder_llm": {
+      "backend": "ollama",
+      "preferred_models": ["qwen3-vl:30b", "qwen3-coder-next:q4_k_m"],
+      "fallback_models": ["gpt-oss:20b"],
+      "required": true
+    }
+  }
+}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    role_pools = get_profile_role_pools(
+        "Profil Aliases",
+        user_profiles_dir=user_profiles_dir,
+    )
+
+    assert role_pools == {
+        "builder_llm": ["qwen3-vl:32b", "qwen3-coder:30b"]
+    }
 
 
 def test_resolve_profile_assignments_accepts_role_override_candidate_pool():
@@ -885,10 +1138,175 @@ def test_multi_llm_session_manager_consume_shared_memory_tracks_market_and_reset
     assert snapshot["market_context"] == {"symbol": "ETHUSDT", "timeframe": "4h"}
     assert snapshot["critic_context"]["next_focus"] == ["tighten exits"]
     assert snapshot["risk_context"]["risk_level"] == "low"
+    assert snapshot["continuity_context"] == {
+        "recent_sessions": [],
+        "best_recent_session": {},
+        "carry_over_focus": [],
+        "recurring_risks": [],
+    }
     assert manager.shared_memory_snapshot()["market_context"] == {
         "symbol": "",
         "timeframe": "",
     }
+
+
+def test_multi_llm_session_manager_builds_compact_continuity_context_from_history():
+    inventory = _inventory(
+        [
+            ("deepseek-moe-16b-local:latest", "ollama"),
+            ("qwen3-coder:30b", "ollama"),
+            ("deepseek-r1-distill:14b", "ollama"),
+            ("martain7r/finance-llama-8b:q4_k_m", "ollama"),
+        ]
+    )
+
+    class _IdeaClient:
+        def __init__(self, config: LLMConfig):
+            self.config = config
+
+        def chat(self, messages):
+            return SimpleNamespace(
+                content='{"objective":"Test breakout on BTCUSDT 1h.","rationale":"Momentum after compression.","constraints":["Need enough trades"],"strategy_family":"breakout"}',
+                provider=LLMProvider.OLLAMA,
+                latency_ms=5.0,
+                prompt_tokens=8,
+                completion_tokens=10,
+            )
+
+    manager = MultiLLMSessionManager(
+        profile_name="fast_local",
+        base_llm_config=LLMConfig(model="qwen3-coder:30b"),
+        inventory=inventory,
+        client_factory=_IdeaClient,
+    )
+    bundle = manager.generate_objective(
+        symbols=["BTCUSDT"],
+        timeframes=["1h"],
+        available_indicators=["ema", "atr", "rsi"],
+        history_tail=[
+            {
+                "session_num": 11,
+                "objective": "Trend follow ETHUSDT 4h",
+                "symbol": "ETHUSDT",
+                "timeframe": "4h",
+                "status": "success",
+                "best_sharpe": 1.34,
+                "best_return": 12.5,
+                "best_pf": 1.4,
+                "best_trades": 28,
+                "source_label": "LLM multi-role",
+                "multi_llm_builder_model": "qwen3-coder:30b",
+                "multi_llm_shared_memory": {
+                    "critic_context": {
+                        "verdict": "promising",
+                        "critique": "good baseline",
+                        "next_focus": ["tighten exits", "reduce lag"],
+                    },
+                    "risk_context": {
+                        "risk_level": "medium",
+                        "key_risks": ["drawdown spike"],
+                        "mitigations": ["reduce leverage"],
+                    },
+                    "router_context": {
+                        "action": "iterate",
+                        "reason": "promising but unstable",
+                        "confidence": 0.72,
+                    },
+                },
+            }
+        ],
+        fallback_objective="Fallback objective",
+    )
+
+    continuity = bundle["role_output"].metadata["shared_memory"]["continuity_context"]
+    assert continuity["recent_sessions"][0]["session_num"] == 11
+    assert continuity["best_recent_session"]["symbol"] == "ETHUSDT"
+    assert continuity["carry_over_focus"] == ["tighten exits", "reduce lag"]
+    assert continuity["recurring_risks"] == ["drawdown spike"]
+
+
+def test_multi_llm_session_manager_passes_continuity_context_to_role_prompts():
+    inventory = _inventory(
+        [
+            ("deepseek-moe-16b-local:latest", "ollama"),
+            ("qwen3-coder:30b", "ollama"),
+            ("deepseek-r1-distill:14b", "ollama"),
+            ("martain7r/finance-llama-8b:q4_k_m", "ollama"),
+        ]
+    )
+    captured: dict[str, str] = {}
+
+    class _CapturingClient:
+        def __init__(self, config: LLMConfig):
+            self.config = config
+
+        def chat(self, messages):
+            captured[self.config.model] = messages[-1].content
+            if "deepseek-moe-16b-local" in self.config.model:
+                content = '{"objective":"Build breakout BTCUSDT 1h.","rationale":"compression","constraints":["Need 20 trades"],"strategy_family":"breakout"}'
+            elif "finance-llama" in self.config.model:
+                content = '{"risk_level":"medium","key_risks":["drawdown"],"mitigations":["reduce leverage"]}'
+            else:
+                content = '{"verdict":"promising","critique":"ok","next_focus":["tighten exits"]}'
+            return SimpleNamespace(
+                content=content,
+                provider=LLMProvider.OLLAMA,
+                latency_ms=5.0,
+                prompt_tokens=8,
+                completion_tokens=10,
+            )
+
+    manager = MultiLLMSessionManager(
+        profile_name="fast_local",
+        base_llm_config=LLMConfig(model="qwen3-coder:30b"),
+        inventory=inventory,
+        client_factory=_CapturingClient,
+    )
+    objective_bundle = manager.generate_objective(
+        symbols=["BTCUSDT"],
+        timeframes=["1h"],
+        available_indicators=["ema", "atr", "rsi"],
+        history_tail=[
+            {
+                "session_num": 7,
+                "objective": "Prior objective",
+                "symbol": "ETHUSDT",
+                "timeframe": "4h",
+                "multi_llm_shared_memory": {
+                    "critic_context": {"next_focus": ["tighten exits"]},
+                    "risk_context": {"key_risks": ["drawdown"]},
+                },
+            }
+        ],
+        fallback_objective="Fallback objective",
+    )
+    manager.review_builder_session(
+        objective=objective_bundle["objective"],
+        builder_session=SimpleNamespace(
+            session_id="sess-4",
+            status="success",
+            best_sharpe=1.02,
+            best_score=1.15,
+            iterations=[1],
+            best_iteration=SimpleNamespace(
+                backtest_result=SimpleNamespace(
+                    metrics={
+                        "sharpe_ratio": 1.02,
+                        "total_return_pct": 7.0,
+                        "max_drawdown_pct": -5.5,
+                        "profit_factor": 1.15,
+                        "total_trades": 19,
+                    }
+                )
+            ),
+        ),
+        target_sharpe=1.0,
+    )
+
+    assert '"continuity_context"' in captured["deepseek-moe-16b-local:latest"]
+    assert '"carry_over_focus": [' in captured["deepseek-moe-16b-local:latest"]
+    assert '"continuity_context"' in captured["deepseek-r1-distill:14b"]
+    assert '"continuity_context"' in captured["martain7r/finance-llama-8b:q4_k_m"]
 
 
 def test_multi_llm_session_manager_extracts_objective_field_from_json():
@@ -1035,8 +1453,44 @@ def test_model_loader_prefers_c_runtime_root_over_legacy_d_env_when_present(tmp_
     monkeypatch.setattr(model_loader_module, "CURRENT_OLLAMA_MODELS_ROOT", current_ollama_root)
     monkeypatch.setattr(model_loader_module, "DEFAULT_OLLAMA_MODELS_CANDIDATES", (current_ollama_root,))
     monkeypatch.setattr(model_loader_module, "LEGACY_OLLAMA_MODELS_CANDIDATES", (legacy_ollama_root,))
+    monkeypatch.setattr(model_loader_module, "get_ollama_desktop_models_root", lambda: None)
 
     assert model_loader_module.get_ollama_models_root() == current_ollama_root
+
+
+def test_model_loader_prefers_ollama_desktop_settings_root_over_env(tmp_path: Path, monkeypatch):
+    desktop_runtime_root = tmp_path / "desktop" / "ollama" / "models"
+    desktop_runtime_root.mkdir(parents=True, exist_ok=True)
+    legacy_ollama_root = tmp_path / "legacy" / "ollama"
+    legacy_ollama_root.mkdir(parents=True, exist_ok=True)
+
+    local_appdata = tmp_path / "LocalAppData" / "Ollama"
+    local_appdata.mkdir(parents=True, exist_ok=True)
+    db_path = local_appdata / "db.sqlite"
+    connection = sqlite3.connect(str(db_path))
+    connection.execute("CREATE TABLE settings (id INTEGER PRIMARY KEY, models TEXT NOT NULL)")
+    connection.execute(
+        "INSERT INTO settings (id, models) VALUES (?, ?)",
+        (1, str(desktop_runtime_root)),
+    )
+    connection.commit()
+    connection.close()
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "LocalAppData"))
+    monkeypatch.setenv("OLLAMA_MODELS", str(legacy_ollama_root))
+    monkeypatch.setattr(
+        model_loader_module,
+        "DEFAULT_OLLAMA_MODELS_CANDIDATES",
+        (tmp_path / "fallback" / "ollama",),
+    )
+    monkeypatch.setattr(
+        model_loader_module,
+        "LEGACY_OLLAMA_MODELS_CANDIDATES",
+        (legacy_ollama_root,),
+    )
+
+    assert model_loader_module.get_ollama_desktop_models_root() == desktop_runtime_root
+    assert model_loader_module.get_ollama_models_root() == desktop_runtime_root
 
 
 def test_model_loader_resolves_historical_aliases(monkeypatch):
@@ -1048,6 +1502,12 @@ def test_model_loader_resolves_historical_aliases(monkeypatch):
                 "ollama_name": "qwen3-coder:30b",
                 "backup_path": r"K:\models\qwen\qwen3-coder-next-40b-Q3_K_XL\model.gguf",
                 "size_gb": 18.0,
+            },
+            {
+                "id": "qwen3-vl-32b",
+                "name": "Qwen3 VL 32B",
+                "ollama_name": "qwen3-vl:32b",
+                "size_gb": 20.0,
             }
         ],
         "huggingface_models": [],
@@ -1056,10 +1516,43 @@ def test_model_loader_resolves_historical_aliases(monkeypatch):
     monkeypatch.setattr(model_loader_module, "load_models_json", lambda force_reload=False: payload)
 
     resolved = model_loader_module.get_model_by_id("qwen3-coder-40b-local")
+    resolved_coder_next = model_loader_module.get_model_by_id("qwen3-coder-next:q4_k_m")
+    resolved_vl = model_loader_module.get_model_by_id("qwen3-vl:30b")
 
     assert resolved is not None
     assert resolved["ollama_name"] == "qwen3-coder:30b"
-    assert model_loader_module.get_ollama_model_names() == ["qwen3-coder:30b"]
+    assert resolved_coder_next is not None
+    assert resolved_coder_next["ollama_name"] == "qwen3-coder:30b"
+    assert resolved_vl is not None
+    assert resolved_vl["ollama_name"] == "qwen3-vl:32b"
+    assert model_loader_module.get_ollama_model_names() == ["qwen3-coder:30b", "qwen3-vl:32b"]
+
+
+def test_model_loader_runtime_names_include_manifest_only_models(tmp_path: Path, monkeypatch):
+    runtime_root = tmp_path / "runtime" / "ollama" / "models"
+    manifest_path = (
+        runtime_root
+        / "manifests"
+        / "registry.ollama.ai"
+        / "library"
+        / "qwen3-48b-savant"
+        / "latest"
+    )
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(model_loader_module, "get_ollama_desktop_models_root", lambda: runtime_root)
+    monkeypatch.setattr(model_loader_module, "get_ollama_models_root", lambda: runtime_root)
+    monkeypatch.setattr(model_loader_module, "DEFAULT_OLLAMA_MODELS_CANDIDATES", (runtime_root,))
+    monkeypatch.setattr(model_loader_module, "LEGACY_OLLAMA_MODELS_CANDIDATES", ())
+    monkeypatch.setattr(
+        model_loader_module,
+        "load_models_json",
+        lambda force_reload=False: {"ollama_models": [], "huggingface_models": [], "diffusion_models": []},
+    )
+
+    assert model_loader_module.get_ollama_manifest_model_names() == ["qwen3-48b-savant"]
+    assert model_loader_module.get_ollama_runtime_model_names() == ["qwen3-48b-savant"]
 
 
 def test_plan_missing_downloads_uses_current_runtime_roots(monkeypatch, tmp_path: Path):

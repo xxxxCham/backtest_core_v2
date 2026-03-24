@@ -34,6 +34,7 @@ from agents.orchestration_logger import (
     OrchestrationLogger,
     OrchestrationStatus,
 )
+from backtest.result_store import get_saved_runs_dir
 
 # ============================================================================
 # UTILITAIRES
@@ -923,9 +924,9 @@ def render_session_selector() -> Optional[OrchestrationLogger]:
     st.sidebar.markdown("### 📂 Chargement de Session")
 
     # Découvrir les sessions disponibles dans runs/
-    runs_dir = Path("runs")
+    runs_dir = get_saved_runs_dir()
     if not runs_dir.exists():
-        st.sidebar.info("Aucune session disponible (répertoire runs/ inexistant)")
+        st.sidebar.info(f"Aucune session disponible ({runs_dir} inexistant)")
         return None
 
     # Lister les sessions (dossiers avec trace.jsonl)

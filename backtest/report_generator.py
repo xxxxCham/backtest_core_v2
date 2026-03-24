@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from backtest.result_store import get_results_root_dir
 from utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -349,9 +350,10 @@ def generate_comparison_table(
 
 if __name__ == "__main__":
     print("=== Générateur de Rapports de Backtest ===\n")
+    results_dir = get_results_root_dir()
 
     # Charger l'index des résultats
-    index_path = Path("backtest_results") / "index.json"
+    index_path = results_dir / "index.json"
     if not index_path.exists():
         print(f"❌ Fichier index introuvable: {index_path}")
         exit(1)
@@ -363,7 +365,7 @@ if __name__ == "__main__":
     print(f"📊 {len(results)} résultats chargés depuis {index_path}\n")
 
     # Générer rapport récapitulatif
-    output_path = Path("backtest_results") / "SUMMARY_REPORT.md"
+    output_path = results_dir / "SUMMARY_REPORT.md"
     report = generate_summary_report(results, output_path=output_path)
 
     print(f"✅ Rapport généré: {output_path}")

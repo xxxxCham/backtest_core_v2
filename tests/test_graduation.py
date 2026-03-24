@@ -339,6 +339,52 @@ def test_save_graduation_report_normalizes_json_payload(tmp_path: Path) -> None:
     assert payload["candidates"][0]["multi_ctx_results"]["contexts"]["BTCUSDC_1h"]["profit_factor"] is None
 
 
+def test_candidate_to_dict_exposes_context_lists_counts_and_benchmark_summaries(tmp_path: Path) -> None:
+    candidate = GraduationCandidate(
+        session_id="candidate",
+        session_dir=tmp_path,
+        strategy_name="ema_cross",
+        configured_contexts=["BTCUSDC_1h", "ETHUSDC_1h", "BTCUSDC_4h"],
+        loaded_contexts=["BTCUSDC_1h", "ETHUSDC_1h"],
+        missing_contexts=["BTCUSDC_4h"],
+        tested_timeframes=["1h", "4h"],
+        multi_ctx_results={
+            "contexts": {
+                "BTCUSDC_1h": {"passed": True},
+                "ETHUSDC_1h": {"passed": True},
+                "BTCUSDC_4h": {"passed": False},
+            },
+            "passed_count": 2,
+            "total_contexts": 3,
+        },
+        benchmark_results={
+            "crypto_liquid_benchmark_v1_core": {"tokens": ["BTCUSDC", "ETHUSDC"]},
+            "crypto_liquid_benchmark_v3_balanced": {"tokens": ["BTCUSDC", "LINKUSDC"]},
+        },
+        benchmark_consensus={
+            "benchmarks_passed": ["crypto_liquid_benchmark_v1_core"],
+            "benchmarks_total": 2,
+        },
+    )
+
+    payload = candidate.to_dict()
+
+    assert payload["configured_contexts"] == ["BTCUSDC_1h", "ETHUSDC_1h", "BTCUSDC_4h"]
+    assert payload["loaded_contexts"] == ["BTCUSDC_1h", "ETHUSDC_1h"]
+    assert payload["missing_contexts"] == ["BTCUSDC_4h"]
+    assert payload["configured_context_count"] == 3
+    assert payload["loaded_context_count"] == 2
+    assert payload["missing_context_count"] == 1
+    assert payload["context_pass_summary"] == "2/3"
+    assert payload["tested_tokens"] == "BTCUSDC,ETHUSDC,LINKUSDC"
+    assert payload["tested_benchmark_names"] == (
+        "crypto_liquid_benchmark_v1_core,crypto_liquid_benchmark_v3_balanced"
+    )
+    assert payload["benchmark_pass_summary"] == "1/2"
+    assert payload["tested_timeframes"] == ["1h", "4h"]
+    assert payload["timeframes_tested"] == "1h,4h"
+
+
 def test_sync_graduation_to_catalog_maps_progression_levels(
     tmp_path: Path,
     monkeypatch,
@@ -358,6 +404,7 @@ def test_sync_graduation_to_catalog_maps_progression_levels(
             strategy_file="p1/strategy_v1.py",
             decision="REJECTED",
             phase="P2",
+            p2_verdict="REJECTED",
             multi_ctx_results={"passed_count": 1, "total_contexts": 6},
         ),
         GraduationCandidate(
@@ -366,7 +413,12 @@ def test_sync_graduation_to_catalog_maps_progression_levels(
             best_iteration=1,
             strategy_file="p3/strategy_v1.py",
             decision="REJECTED",
-            phase="P4",
+            phase="P5",
+            p2_verdict="PASSED",
+            p3_verdict="PASSED",
+            p4_verdict="PASSED",
+            p5_verdict="REJECTED",
+            benchmark_consensus={"consensus_passed": True},
             multi_ctx_results={"passed_count": 3, "total_contexts": 6},
             sweep_robustness_pct=44.0,
             rejection_reason="WFA instable 0.21<0.5",
@@ -377,7 +429,13 @@ def test_sync_graduation_to_catalog_maps_progression_levels(
             best_iteration=1,
             strategy_file=str(tmp_path / "strategies" / "graduated" / "cand_p5.py"),
             decision="PROMOTED",
-            phase="P5",
+            phase="P6",
+            p2_verdict="PASSED",
+            p3_verdict="PASSED",
+            p4_verdict="PASSED",
+            p5_verdict="PASSED",
+            p6_verdict="PROMOTED",
+            benchmark_consensus={"consensus_passed": True},
             multi_ctx_results={"passed_count": 4, "total_contexts": 6},
             sweep_robustness_pct=66.0,
             wfa_stability=0.81,
@@ -406,8 +464,8 @@ def test_sync_graduation_to_catalog_maps_progression_levels(
     assert len(catalog["entries"]) == 3
     assert [candidate.catalog_category for candidate in candidates] == [
         "p1_builder_inbox",
-        "p3_watchlist",
-        "p4_paper_candidate",
+        "p4_param_robust",
+        "p6_paper_candidate",
     ]
     assert all(candidate.catalog_entry_id for candidate in candidates)
 
@@ -448,7 +506,7 @@ def test_import_positive_artifacts_imports_overview_rows_and_copies_builder_sess
     assert (config.sandbox_dir / "sess-positive" / "session_summary.json").exists()
     assert len(catalog["entries"]) == 1
     entry = catalog["entries"][0]
-    assert entry["category"] == "p1_builder_inbox"
+    assert entry["category"] == "p2_positive_observed"
     assert "positive_import" in entry["tags"]
     assert "positive_return" in entry["tags"]
     assert entry["meta"]["builder_session_id"] == "sess-positive"
@@ -539,7 +597,7 @@ def test_scan_positive_import_candidates_reads_catalog_entry_and_builder_file(tm
             "symbol": "BTCUSDC",
             "timeframe": "1h",
             "params_hash": "hash123",
-            "category": "p1_builder_inbox",
+            "category": "p2_positive_observed",
             "status": "active",
             "source": "saved_run",
             "tags": ["positive_import", "positive_return"],
@@ -585,7 +643,7 @@ def test_run_positive_import_graduation_updates_existing_catalog_entries(tmp_pat
             "symbol": "BTCUSDC",
             "timeframe": "1h",
             "params_hash": "hash123",
-            "category": "p1_builder_inbox",
+            "category": "p2_positive_observed",
             "status": "active",
             "source": "saved_run",
             "tags": ["positive_import", "positive_return"],
@@ -609,7 +667,7 @@ def test_run_positive_import_graduation_updates_existing_catalog_entries(tmp_pat
     def _fake_p2(candidates, config=None, progress_callback=None):
         if progress_callback:
             progress_callback(
-                phase="P2",
+                phase="P3",
                 event="phase_start",
                 candidate=None,
                 index=0,
@@ -618,12 +676,14 @@ def test_run_positive_import_graduation_updates_existing_catalog_entries(tmp_pat
                 extra={},
             )
         candidate = candidates[0]
-        candidate.phase = "P2"
+        candidate.phase = "P3"
         candidate.decision = "WATCHLIST"
+        candidate.p3_verdict = "PASSED"
+        candidate.benchmark_consensus = {"consensus_passed": True}
         candidate.multi_ctx_results = {"passed_count": 2, "total_contexts": 6, "contexts": {}}
         if progress_callback:
             progress_callback(
-                phase="P2",
+                phase="P3",
                 event="candidate_start",
                 candidate=candidate,
                 index=1,
@@ -632,7 +692,7 @@ def test_run_positive_import_graduation_updates_existing_catalog_entries(tmp_pat
                 extra={},
             )
             progress_callback(
-                phase="P2",
+                phase="P3",
                 event="candidate_done",
                 candidate=candidate,
                 index=1,
@@ -641,7 +701,7 @@ def test_run_positive_import_graduation_updates_existing_catalog_entries(tmp_pat
                 extra={},
             )
             progress_callback(
-                phase="P2",
+                phase="P3",
                 event="phase_end",
                 candidate=None,
                 index=len(candidates),
@@ -653,10 +713,20 @@ def test_run_positive_import_graduation_updates_existing_catalog_entries(tmp_pat
 
     monkeypatch.setattr("catalog.graduation.run_multi_context_validation", _fake_p2)
 
+    def _fake_positive_observed(candidates, source_mode):
+        candidate = candidates[0]
+        candidate.phase = "P2"
+        candidate.decision = "WATCHLIST"
+        candidate.p2_verdict = "PASSED"
+        candidate.source_mode = source_mode
+        return [candidate]
+
+    monkeypatch.setattr("catalog.graduation.run_positive_observed_filter", _fake_positive_observed)
+
     def _fake_p3(candidates, config=None, progress_callback=None):
         if progress_callback:
             progress_callback(
-                phase="P3",
+                phase="P4",
                 event="phase_start",
                 candidate=None,
                 index=0,
@@ -666,11 +736,12 @@ def test_run_positive_import_graduation_updates_existing_catalog_entries(tmp_pat
             )
         candidate = candidates[0]
         candidate.sweep_robustness_pct = 44.0
-        candidate.phase = "P3"
+        candidate.phase = "P4"
         candidate.decision = "WATCHLIST"
+        candidate.p4_verdict = "PASSED"
         if progress_callback:
             progress_callback(
-                phase="P3",
+                phase="P4",
                 event="candidate_start",
                 candidate=candidate,
                 index=1,
@@ -679,7 +750,7 @@ def test_run_positive_import_graduation_updates_existing_catalog_entries(tmp_pat
                 extra={},
             )
             progress_callback(
-                phase="P3",
+                phase="P4",
                 event="candidate_done",
                 candidate=candidate,
                 index=1,
@@ -688,7 +759,7 @@ def test_run_positive_import_graduation_updates_existing_catalog_entries(tmp_pat
                 extra={},
             )
             progress_callback(
-                phase="P3",
+                phase="P4",
                 event="phase_end",
                 candidate=None,
                 index=len(candidates),
@@ -703,7 +774,7 @@ def test_run_positive_import_graduation_updates_existing_catalog_entries(tmp_pat
     def _fake_wfa(candidates, config=None, progress_callback=None):
         if progress_callback:
             progress_callback(
-                phase="P4",
+                phase="P5",
                 event="phase_start",
                 candidate=None,
                 index=0,
@@ -714,11 +785,12 @@ def test_run_positive_import_graduation_updates_existing_catalog_entries(tmp_pat
         candidate = candidates[0]
         candidate.wfa_stability = 0.71
         candidate.wfa_avg_test_return_pct = 5.6
-        candidate.phase = "P4"
+        candidate.phase = "P5"
         candidate.decision = "WATCHLIST"
+        candidate.p5_verdict = "PASSED"
         if progress_callback:
             progress_callback(
-                phase="P4",
+                phase="P5",
                 event="candidate_start",
                 candidate=candidate,
                 index=1,
@@ -727,7 +799,7 @@ def test_run_positive_import_graduation_updates_existing_catalog_entries(tmp_pat
                 extra={},
             )
             progress_callback(
-                phase="P4",
+                phase="P5",
                 event="candidate_done",
                 candidate=candidate,
                 index=1,
@@ -736,7 +808,7 @@ def test_run_positive_import_graduation_updates_existing_catalog_entries(tmp_pat
                 extra={},
             )
             progress_callback(
-                phase="P4",
+                phase="P5",
                 event="phase_end",
                 candidate=None,
                 index=len(candidates),
@@ -760,12 +832,13 @@ def test_run_positive_import_graduation_updates_existing_catalog_entries(tmp_pat
     assert result["stats"]["p2_survivors"] == 1
     assert result["stats"]["p3_survivors"] == 1
     assert result["stats"]["p4_survivors"] == 1
+    assert result["stats"]["p5_survivors"] == 1
     assert result["stats"]["catalog_synced"] == 1
     assert (config.output_dir / "positive_imports_graduation.json").exists()
     progress_payload = json.loads((config.output_dir / config.positive_progress_filename).read_text(encoding="utf-8"))
     assert progress_payload["status"] == "completed"
-    assert progress_payload["current_phase"] == "P4"
-    assert progress_payload["stats"]["p4_survivors"] == 1
-    assert catalog["entries"][0]["category"] == "p4_paper_candidate"
+    assert progress_payload["current_phase"] == "P5"
+    assert progress_payload["stats"]["p5_survivors"] == 1
+    assert catalog["entries"][0]["category"] == "p5_wfa_candidate"
     assert "positive_processed" in catalog["entries"][0]["tags"]
-    assert catalog["entries"][0]["meta"]["positive_pipeline_phase"] == "P4"
+    assert catalog["entries"][0]["meta"]["positive_pipeline_phase"] == "P5"

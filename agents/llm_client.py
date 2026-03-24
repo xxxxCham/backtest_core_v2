@@ -61,6 +61,7 @@ class LLMConfig:
     # Paramètres de génération
     temperature: float = 0.7
     max_tokens: int = 2000
+    num_ctx: Optional[int] = None
     top_p: float = 0.9
 
     # Retry/timeout
@@ -84,6 +85,11 @@ class LLMConfig:
             openai_base_url=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
             temperature=float(os.environ.get("BACKTEST_LLM_TEMPERATURE", "0.7")),
             max_tokens=int(os.environ.get("BACKTEST_LLM_MAX_TOKENS", "2000")),
+            num_ctx=(
+                int(os.environ["BACKTEST_LLM_NUM_CTX"])
+                if os.environ.get("BACKTEST_LLM_NUM_CTX")
+                else None
+            ),
         )
 
 
@@ -309,11 +315,10 @@ class OllamaClient(LLMClient):
             "model": self.config.model,
             "prompt": prompt,
             "stream": False,
-            "options": {
-                "temperature": temperature or self.config.temperature,
-                "num_predict": max_tokens or self.config.max_tokens,
-                "top_p": self.config.top_p,
-            },
+            "options": self._build_ollama_options(
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ),
         }
 
         if json_mode:
@@ -376,6 +381,21 @@ class OllamaClient(LLMClient):
             logger.error(f"Erreur liste modèles Ollama: {e}")
         return []
 
+    def _build_ollama_options(
+        self,
+        *,
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+    ) -> Dict[str, Any]:
+        options: Dict[str, Any] = {
+            "temperature": self.config.temperature if temperature is None else temperature,
+            "num_predict": self.config.max_tokens if max_tokens is None else max_tokens,
+            "top_p": self.config.top_p,
+        }
+        if self.config.num_ctx is not None:
+            options["num_ctx"] = self.config.num_ctx
+        return options
+
     def chat(
         self,
         messages: List[LLMMessage],
@@ -392,11 +412,10 @@ class OllamaClient(LLMClient):
             "model": self.config.model,
             "messages": [m.to_dict() for m in messages],
             "stream": False,
-            "options": {
-                "temperature": temperature or self.config.temperature,
-                "num_predict": max_tokens or self.config.max_tokens,
-                "top_p": self.config.top_p,
-            },
+            "options": self._build_ollama_options(
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ),
         }
 
         if json_mode:
@@ -510,11 +529,10 @@ class OllamaClient(LLMClient):
             "model": self.config.model,
             "messages": [m.to_dict() for m in messages],
             "stream": True,
-            "options": {
-                "temperature": temperature or self.config.temperature,
-                "num_predict": max_tokens or self.config.max_tokens,
-                "top_p": self.config.top_p,
-            },
+            "options": self._build_ollama_options(
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ),
         }
         if json_mode:
             payload["format"] = "json"

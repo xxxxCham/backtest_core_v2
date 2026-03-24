@@ -20,6 +20,8 @@ Conventions: FVA[i] = True si high[i] < high[i-1] ET low[i] > low[i-1]
 import numpy as np
 import pandas as pd
 
+from .registry import register_indicator
+
 
 def calculate_fva(df: pd.DataFrame, **params) -> np.ndarray:
     """
@@ -48,6 +50,15 @@ def calculate_fva(df: pd.DataFrame, **params) -> np.ndarray:
             fva[i] = True
 
     return fva
+
+
+register_indicator(
+    name='fva',
+    function=calculate_fva,
+    settings_class=None,
+    required_columns=('high', 'low'),
+    description='Fair Value Area - inside bar consolidation pattern',
+)
 
 
 __all__ = ['calculate_fva']

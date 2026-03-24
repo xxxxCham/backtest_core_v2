@@ -1324,85 +1324,85 @@ def render_saved_runs_panel(
     symbol: str,
     timeframe: str,
 ) -> None:
-    st.sidebar.subheader("Saved runs")
-    if not BACKEND_AVAILABLE:
-        st.sidebar.info("Saved runs unavailable (backend not available).")
-        return
-    try:
-        storage = get_storage()
-    except Exception as exc:
-        st.sidebar.error(f"Storage error: {exc}")
-        return
+    with st.sidebar.expander("🗂️ Runs sauvegardés", expanded=False):
+        if not BACKEND_AVAILABLE:
+            st.info("Runs sauvegardés indisponibles (backend non disponible).")
+            return
+        try:
+            storage = get_storage()
+        except Exception as exc:
+            st.error(f"Erreur stockage: {exc}")
+            return
 
-    status_msg = st.session_state.pop("saved_runs_status", None)
-    if status_msg:
-        st.sidebar.info(status_msg)
+        status_msg = st.session_state.pop("saved_runs_status", None)
+        if status_msg:
+            st.info(status_msg)
 
-    if "auto_save_final_run" not in st.session_state:
-        st.session_state["auto_save_final_run"] = True
+        if "auto_save_final_run" not in st.session_state:
+            st.session_state["auto_save_final_run"] = True
 
-    st.sidebar.checkbox(
-        "Auto-save final run",
-        key="auto_save_final_run",
-    )
-
-    if result is not None:
-        if st.sidebar.button("Save current run", key="save_current_run"):
-            saved, msg = _save_result_to_storage(storage, result)
-            if saved:
-                st.sidebar.success(msg)
-            else:
-                st.sidebar.warning(msg)
-
-    filter_current = st.sidebar.checkbox(
-        "Filter to current selection",
-        value=True,
-        key="saved_runs_filter_current",
-    )
-    filter_text = st.sidebar.text_input(
-        "Filter text",
-        value="",
-        key="saved_runs_filter_text",
-    )
-
-    runs = storage.list_results()
-    if filter_current:
-        runs = [
-            r
-            for r in runs
-            if r.strategy == strategy_key
-            and r.symbol == symbol
-            and r.timeframe == timeframe
-        ]
-    if filter_text:
-        filter_l = filter_text.lower()
-        runs = [
-            r
-            for r in runs
-            if filter_l in _build_saved_run_label(r).lower()
-            or filter_l in r.run_id.lower()
-        ]
-
-    if not runs:
-        st.sidebar.caption("No saved runs.")
-        return
-
-    run_ids = [r.run_id for r in runs]
-    label_map = {r.run_id: _build_saved_run_label(r) for r in runs}
-    if st.session_state.get("saved_runs_selected") not in run_ids:
-        st.session_state["saved_runs_selected"] = run_ids[0]
-    selected_run_id = st.sidebar.selectbox(
-        "Select run",
-        options=run_ids,
-        format_func=lambda rid: label_map.get(rid, rid),
-        key="saved_runs_selected",
-    )
-    selected_meta = next((r for r in runs if r.run_id == selected_run_id), None)
-    if selected_meta is not None:
-        period_label = _format_run_period(
-            selected_meta.period_start,
-            selected_meta.period_end,
+        st.checkbox(
+            "Sauvegarder automatiquement le run final",
+            key="auto_save_final_run",
         )
+
+        if result is not None:
+            if st.button("Sauvegarder le run courant", key="save_current_run"):
+                saved, msg = _save_result_to_storage(storage, result)
+                if saved:
+                    st.success(msg)
+                else:
+                    st.warning(msg)
+
+        filter_current = st.checkbox(
+            "Limiter à la sélection courante",
+            value=True,
+            key="saved_runs_filter_current",
+        )
+        filter_text = st.text_input(
+            "Filtre texte",
+            value="",
+            key="saved_runs_filter_text",
+        )
+
+        runs = storage.list_results()
+        if filter_current:
+            runs = [
+                r
+                for r in runs
+                if r.strategy == strategy_key
+                and r.symbol == symbol
+                and r.timeframe == timeframe
+            ]
+        if filter_text:
+            filter_l = filter_text.lower()
+            runs = [
+                r
+                for r in runs
+                if filter_l in _build_saved_run_label(r).lower()
+                or filter_l in r.run_id.lower()
+            ]
+
+        if not runs:
+            st.caption("Aucun run sauvegardé.")
+            return
+
+        run_ids = [r.run_id for r in runs]
+        label_map = {r.run_id: _build_saved_run_label(r) for r in runs}
+        if st.session_state.get("saved_runs_selected") not in run_ids:
+            st.session_state["saved_runs_selected"] = run_ids[0]
+        selected_run_id = st.selectbox(
+            "Run",
+            options=run_ids,
+            format_func=lambda rid: label_map.get(rid, rid),
+            key="saved_runs_selected",
+        )
+        selected_meta = next((r for r in runs if r.run_id == selected_run_id), None)
+        if selected_meta is not None:
+            period_label = _format_run_period(
+                selected_meta.period_start,
+                selected_meta.period_end,
+            )
         st.sidebar.caption(f"Period: {period_label}")
         st.sidebar.caption(
             f"Trades: {selected_meta.n_trades} | Bars: {selected_meta.n_bars}"

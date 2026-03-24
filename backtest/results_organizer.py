@@ -32,6 +32,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from backtest.report_generator import classify_result
+from backtest.result_store import (
+    get_results_archive_dir,
+    get_results_organized_dir,
+    get_results_root_dir,
+)
 from utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -59,7 +64,7 @@ ARCHIVE_AFTER_DAYS = 90  # Archiver résultats > 90 jours
 # =============================================================================
 
 def organize_results(
-    results_dir: Path = Path("backtest_results"),
+    results_dir: Optional[Path] = None,
     organized_dir: Optional[Path] = None,
     dry_run: bool = False,
 ) -> Dict[str, int]:
@@ -91,8 +96,9 @@ def organize_results(
         >>> print(stats)
         {"excellent": 5, "good": 12, ...}
     """
+    results_dir = get_results_root_dir(results_dir)
     if organized_dir is None:
-        organized_dir = results_dir.parent / "backtest_results_organized"
+        organized_dir = get_results_organized_dir(results_dir)
 
     # Charger l'index
     index_path = results_dir / "index.json"
@@ -217,7 +223,7 @@ def create_category_readmes(organized_dir: Path, stats: Dict[str, int]):
 
 
 def archive_old_results(
-    results_dir: Path = Path("backtest_results"),
+    results_dir: Optional[Path] = None,
     archive_dir: Optional[Path] = None,
     days_threshold: int = ARCHIVE_AFTER_DAYS,
     dry_run: bool = False,
@@ -238,8 +244,9 @@ def archive_old_results(
         >>> count = archive_old_results(days_threshold=90, dry_run=True)
         >>> print(f"{count} résultats à archiver")
     """
+    results_dir = get_results_root_dir(results_dir)
     if archive_dir is None:
-        archive_dir = results_dir.parent / "backtest_results_archive"
+        archive_dir = get_results_archive_dir(results_dir)
 
     # Charger index
     index_path = results_dir / "index.json"

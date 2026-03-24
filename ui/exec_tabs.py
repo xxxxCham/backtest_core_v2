@@ -6,15 +6,28 @@ render_setup_previews() et avant render_main().
 """
 from __future__ import annotations
 
+import html
 import json
 import os
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List
 
+import logging
 import re
 
 import streamlit as st
+
+logger = logging.getLogger(__name__)
+
+from backtest.result_store import get_builder_sessions_dir
+from agents.llm_config import (
+    DEFAULT_LLM_INFERENCE_MODE,
+    apply_llm_inference_settings,
+    normalize_llm_inference_settings,
+    normalize_llm_model_inference_profiles,
+    resolve_llm_inference_settings,
+)
 
 from agents.llm_router import (
     LLMTopologyConfig,
@@ -58,15 +71,19 @@ try:
     from core.llm_multi import (
         DEFAULT_MULTI_LLM_PROFILE,
         discover_local_models,
+        get_profile_role_pools,
         install_missing_models,
         list_profile_names,
         plan_missing_downloads,
         resolve_profile_assignments,
+        save_multi_llm_profile,
     )
 
     _MULTI_LLM_AVAILABLE = True
 except ImportError:
     DEFAULT_MULTI_LLM_PROFILE = "24GB_balanced"
+    get_profile_role_pools = None
+    save_multi_llm_profile = None
     _MULTI_LLM_AVAILABLE = False
 
 try:
@@ -91,27 +108,13 @@ except ImportError:
     )
     MULTI_LLM_ROLE_DETAILS: Dict[str, Dict[str, str]] = {}
 
-try:
-    from agents.strategy_builder import (
-        generate_parametric_catalog,
-        generate_random_objective,
-        get_catalog_coverage,
-        get_next_catalog_objective,
-        get_parametric_catalog_stats,
-        reset_catalog_exploration,
-        reset_parametric_catalog,
-    )
-    _CATALOG_AVAILABLE = True
-except ImportError:
-    _CATALOG_AVAILABLE = False
-
-
 def _ollama_is_available(ollama_host: str | None = None) -> bool:
     """Retourne l'etat Ollama de maniere defensive si helper optionnel absent."""
     if callable(is_ollama_available):
         try:
             return bool(is_ollama_available(ollama_host=ollama_host))
-        except Exception:
+        except Exception as exc:
+            logger.debug("Ollama availability check failed: %s", exc)
             return False
     return False
 
@@ -142,21 +145,247 @@ def _prime_multiselect_state(
     options: list[str],
 ) -> None:
     valid_desired = [item for item in desired if item in options]
+    if key not in st.session_state:
+        if valid_desired:
+            st.session_state[key] = valid_desired
+        return
+
     current_raw = st.session_state.get(key)
     current = current_raw if isinstance(current_raw, list) else []
     valid_current = [item for item in current if item in options]
 
-    if valid_current:
-        if valid_current != current:
-            st.session_state[key] = valid_current
-        return
-
-    if st.session_state.get(key) != valid_desired:
-        st.session_state[key] = valid_desired
+    if valid_current != current:
+        st.session_state[key] = valid_current
 
 
 def _normalize_builder_multi_llm_role_overrides(raw_value: Any) -> Dict[str, List[str]]:
     return normalize_builder_multi_llm_role_pool_overrides(raw_value)
+
+
+def _collect_inference_model_candidates(*groups: Any) -> List[str]:
+    ordered: List[str] = []
+    seen: set[str] = set()
+
+    def _push(raw_value: Any) -> None:
+        if isinstance(raw_value, str):
+            value = raw_value.strip()
+            if value and value not in seen:
+                seen.add(value)
+                ordered.append(value)
+            return
+        if isinstance(raw_value, dict):
+            for nested in raw_value.values():
+                _push(nested)
+            return
+        if isinstance(raw_value, (list, tuple, set)):
+            for nested in raw_value:
+                _push(nested)
+
+    if callable(list_available_models):
+        try:
+            for model in list_available_models() or []:
+                _push(getattr(model, "name", ""))
+        except Exception as exc:
+            logger.debug("Failed to list runtime models for inference editor: %s", exc)
+
+    for group in groups:
+        _push(group)
+    return ordered
+
+
+def _format_inference_settings_caption(settings: Dict[str, Any]) -> str:
+    num_ctx = settings.get("num_ctx")
+    ctx_label = str(num_ctx) if num_ctx is not None else "auto"
+    return (
+        f"temp={settings['temperature']:.2f} | "
+        f"ctx={ctx_label} | max_tokens={int(settings['max_tokens'])}"
+    )
+
+
+def _render_llm_inference_settings_editor(
+    *,
+    active_models: List[str],
+    section_label: str,
+) -> tuple[Dict[str, Any], Dict[str, Dict[str, Any]]]:
+    st.markdown(f"##### {section_label}")
+    st.caption(
+        "Réglages Ollama partagés: température, num_ctx et max tokens. "
+        "Les overrides par modèle prennent la priorité sur le global."
+    )
+
+    inference_mode = str(
+        st.radio(
+            "Portée des réglages",
+            options=["global", "per_model"],
+            index=0
+            if str(
+                st.session_state.get("llm_inference_mode", DEFAULT_LLM_INFERENCE_MODE)
+                or DEFAULT_LLM_INFERENCE_MODE
+            )
+            == "global"
+            else 1,
+            format_func=lambda value: (
+                "Global uniquement"
+                if value == "global"
+                else "Global + override par modèle"
+            ),
+            horizontal=True,
+        )
+        or DEFAULT_LLM_INFERENCE_MODE
+    ).strip() or DEFAULT_LLM_INFERENCE_MODE
+    st.session_state["llm_inference_mode"] = inference_mode
+
+    current_global = normalize_llm_inference_settings(
+        st.session_state.get("llm_inference_global_settings")
+    )
+    global_col1, global_col2, global_col3 = st.columns(3)
+    with global_col1:
+        global_temperature = st.slider(
+            "Température globale",
+            min_value=0.0,
+            max_value=2.0,
+            value=float(current_global["temperature"]),
+            step=0.05,
+            help="Valeur par défaut pour les requêtes Ollama si aucun profil modèle ne la remplace.",
+        )
+    with global_col2:
+        global_num_ctx = int(
+            st.number_input(
+                "Contexte global (0 = auto)",
+                min_value=0,
+                max_value=262144,
+                value=int(current_global["num_ctx"] or 0),
+                step=1024,
+                help="0 laisse Ollama utiliser le contexte par défaut du modèle.",
+            )
+        )
+    with global_col3:
+        global_max_tokens = int(
+            st.number_input(
+                "Max tokens global",
+                min_value=64,
+                max_value=32768,
+                value=int(current_global["max_tokens"]),
+                step=128,
+                help="Cap par défaut des tokens générés si aucun appel ne le surcharge explicitement.",
+            )
+        )
+
+    global_settings = normalize_llm_inference_settings(
+        {
+            "temperature": global_temperature,
+            "num_ctx": global_num_ctx,
+            "max_tokens": global_max_tokens,
+        }
+    )
+    st.session_state["llm_inference_global_settings"] = dict(global_settings)
+
+    model_profiles = normalize_llm_model_inference_profiles(
+        st.session_state.get("llm_inference_model_profiles")
+    )
+    model_options = _collect_inference_model_candidates(active_models, model_profiles)
+
+    if inference_mode == "per_model":
+        if not model_options:
+            st.info("Aucun modèle disponible pour éditer un override spécifique.")
+        else:
+            selected_profile_model = str(
+                st.selectbox(
+                    "Modèle à surcharger",
+                    options=model_options,
+                    index=(
+                        model_options.index(active_models[0])
+                        if active_models and active_models[0] in model_options
+                        else 0
+                    ),
+                    help="L'override de ce modèle prime sur les réglages globaux.",
+                )
+                or model_options[0]
+            ).strip()
+            profile_defaults = resolve_llm_inference_settings(
+                selected_profile_model,
+                global_settings=global_settings,
+                model_profiles=model_profiles,
+            )
+            has_override = selected_profile_model in model_profiles
+            with st.form("llm_inference_model_profile_form"):
+                profile_col1, profile_col2, profile_col3 = st.columns(3)
+                with profile_col1:
+                    profile_temperature = st.slider(
+                        "Température modèle",
+                        min_value=0.0,
+                        max_value=2.0,
+                        value=float(profile_defaults["temperature"]),
+                        step=0.05,
+                    )
+                with profile_col2:
+                    profile_num_ctx = int(
+                        st.number_input(
+                            "Contexte modèle (0 = auto)",
+                            min_value=0,
+                            max_value=262144,
+                            value=int(profile_defaults["num_ctx"] or 0),
+                            step=1024,
+                        )
+                    )
+                with profile_col3:
+                    profile_max_tokens = int(
+                        st.number_input(
+                            "Max tokens modèle",
+                            min_value=64,
+                            max_value=32768,
+                            value=int(profile_defaults["max_tokens"]),
+                            step=128,
+                        )
+                    )
+                save_col, reset_col = st.columns(2)
+                with save_col:
+                    save_override = st.form_submit_button(
+                        "Enregistrer l'override",
+                        use_container_width=True,
+                    )
+                with reset_col:
+                    remove_override = st.form_submit_button(
+                        "Supprimer l'override",
+                        type="secondary",
+                        use_container_width=True,
+                        disabled=not has_override,
+                    )
+
+            if save_override:
+                model_profiles[selected_profile_model] = normalize_llm_inference_settings(
+                    {
+                        "temperature": profile_temperature,
+                        "num_ctx": profile_num_ctx,
+                        "max_tokens": profile_max_tokens,
+                    },
+                    defaults=global_settings,
+                )
+                st.session_state["llm_inference_model_profiles"] = dict(model_profiles)
+                st.success(f"Override enregistré pour {selected_profile_model}.")
+            elif remove_override and selected_profile_model in model_profiles:
+                model_profiles.pop(selected_profile_model, None)
+                st.session_state["llm_inference_model_profiles"] = dict(model_profiles)
+                st.info(f"Override supprimé pour {selected_profile_model}.")
+
+    model_profiles = normalize_llm_model_inference_profiles(
+        st.session_state.get("llm_inference_model_profiles")
+    )
+    st.session_state["llm_inference_model_profiles"] = dict(model_profiles)
+
+    if active_models:
+        st.caption("Réglages effectifs des modèles actifs:")
+        for model_name in active_models[:6]:
+            effective = resolve_llm_inference_settings(
+                model_name,
+                global_settings=global_settings,
+                model_profiles=model_profiles,
+            )
+            st.caption(
+                f"• {model_name}: {_format_inference_settings_caption(effective)}"
+            )
+
+    return global_settings, model_profiles
 
 
 def _available_runtime_role_models(inventory: Any, role: str) -> List[str]:
@@ -188,6 +417,360 @@ def _available_runtime_role_models(inventory: Any, role: str) -> List[str]:
         seen.add(name)
         ordered.append(name)
     return ordered
+
+
+def _sync_builder_multi_llm_profile_role_pools(
+    selected_profile: str,
+) -> Dict[str, List[str]]:
+    """Synchronise les pools du profil avec les overrides actuels.
+
+    Règles:
+    - Premier chargement (profil jamais appliqué) → charge intégralement les pools du profil.
+    - Changement de profil → recharge intégralement les pools du nouveau profil.
+    - Même profil → conserve les sélections manuelles actuelles; remplit uniquement
+      les rôles dont le widget n'a JAMAIS été rendu (jamais dans session_state).
+    """
+    applied_profile = str(
+        st.session_state.get("_builder_multi_llm_applied_profile", "") or ""
+    ).strip()
+
+    profile_role_pools: Dict[str, List[str]] = {}
+    if callable(get_profile_role_pools):
+        try:
+            profile_role_pools = _normalize_builder_multi_llm_role_overrides(
+                get_profile_role_pools(selected_profile)
+            )
+        except Exception as exc:
+            logger.warning("Failed to load profile role pools for %r: %s", selected_profile, exc)
+            profile_role_pools = {}
+
+    first_load = not applied_profile
+    profile_changed = bool(applied_profile) and applied_profile != selected_profile
+
+    if first_load or profile_changed:
+        # Chargement intégral : remplace tout par les pools du profil.
+        current_role_overrides = dict(profile_role_pools)
+        if current_role_overrides:
+            st.session_state["builder_multi_llm_role_overrides"] = dict(
+                current_role_overrides
+            )
+            for role in SIMPLE_MULTI_LLM_ACTIVE_ROLES:
+                st.session_state[
+                    f"builder_multi_llm_role_override_select_{role}"
+                ] = list(current_role_overrides.get(role, []))
+        else:
+            # Profil sans pools -> vider les overrides
+            st.session_state["builder_multi_llm_role_overrides"] = {}
+            for role in SIMPLE_MULTI_LLM_ACTIVE_ROLES:
+                st.session_state[
+                    f"builder_multi_llm_role_override_select_{role}"
+                ] = []
+    else:
+        # Même profil : respecter les sélections manuelles actuelles.
+        current_role_overrides = _normalize_builder_multi_llm_role_overrides(
+            st.session_state.get("builder_multi_llm_role_overrides", {})
+        )
+        # Remplir UNIQUEMENT les rôles dont le widget n'a jamais été rendu.
+        for role in SIMPLE_MULTI_LLM_ACTIVE_ROLES:
+            widget_key = f"builder_multi_llm_role_override_select_{role}"
+            if widget_key not in st.session_state and role in profile_role_pools:
+                current_role_overrides[role] = list(profile_role_pools[role])
+                st.session_state[widget_key] = list(profile_role_pools[role])
+
+    st.session_state["_builder_multi_llm_applied_profile"] = selected_profile
+    return current_role_overrides
+
+
+def _render_builder_expert_multi_role_section(
+    *,
+    builder_ollama_host: str,
+    builder_topology: LLMTopologyConfig,
+    builder_multi_llm_profile: str,
+) -> tuple[str, Dict[str, List[str]]]:
+    pending_profile_sync = str(
+        st.session_state.pop("_builder_multi_llm_profile_sync", "") or ""
+    ).strip()
+    if pending_profile_sync:
+        st.session_state["builder_multi_llm_profile"] = pending_profile_sync
+        st.session_state["builder_multi_llm_profile_select"] = pending_profile_sync
+
+    saved_notice = str(
+        st.session_state.pop("_builder_multi_llm_profile_saved_notice", "") or ""
+    ).strip()
+    if saved_notice:
+        st.success(saved_notice)
+
+    profile_options = list_profile_names() if callable(list_profile_names) else []
+    if not profile_options:
+        profile_options = [DEFAULT_MULTI_LLM_PROFILE]
+
+    default_profile = str(
+        builder_multi_llm_profile or DEFAULT_MULTI_LLM_PROFILE
+    ).strip() or DEFAULT_MULTI_LLM_PROFILE
+    if default_profile not in profile_options:
+        default_profile = profile_options[0]
+
+    selected_profile = st.selectbox(
+        "Profil multi-LLM",
+        options=profile_options,
+        index=profile_options.index(default_profile),
+        key="builder_multi_llm_profile_select",
+        help=(
+            "Profil de référence du Builder Expert. "
+            "Les présélections sauvegardées depuis cette section réapparaissent ici."
+        ),
+    )
+    st.session_state["builder_multi_llm_profile"] = selected_profile
+    current_role_overrides = _sync_builder_multi_llm_profile_role_pools(
+        selected_profile
+    )
+    if current_role_overrides:
+        st.caption(
+            "Présélection chargée: "
+            + ", ".join(
+                f"{role}={len(models)}"
+                for role, models in current_role_overrides.items()
+            )
+        )
+
+    inventory = discover_local_models(
+        ollama_host=builder_ollama_host,
+        include_live_ollama=True,
+    )
+    distinct_runtime_hosts = {
+        str(getattr(endpoint, "ollama_host", "") or "").strip()
+        for endpoint in builder_topology.endpoints.values()
+        if bool(getattr(endpoint, "enabled", True))
+    }
+    require_live_ollama = bool(
+        inventory.live_ollama_reachable and len(distinct_runtime_hosts) <= 1
+    )
+    default_resolution = resolve_profile_assignments(
+        selected_profile,
+        inventory,
+        require_live_ollama=require_live_ollama,
+    )
+    default_assignments = {
+        assignment.role: assignment
+        for assignment in default_resolution["assignments"]
+    }
+    summary = inventory.summary()
+    st.caption(
+        f"Inventaire local: {summary['verified_models']} verifies / "
+        f"{summary['total_models']} references | "
+        f"backends: {summary['by_backend']}"
+    )
+    if not require_live_ollama:
+        st.warning(
+            "Validation runtime distante indisponible: affichage basé sur l'inventaire local."
+        )
+    st.markdown("##### Rôles actifs")
+    selected_role_overrides: Dict[str, List[str]] = {}
+    for role in SIMPLE_MULTI_LLM_ACTIVE_ROLES:
+        role_detail = MULTI_LLM_ROLE_DETAILS.get(role, {})
+        role_models = _available_runtime_role_models(inventory, role)
+        current_override_pool = list(current_role_overrides.get(role, []) or [])
+        for selected_model in current_override_pool:
+            if selected_model not in role_models:
+                role_models = [selected_model, *role_models]
+        role_models = list(dict.fromkeys(role_models))
+        widget_key = f"builder_multi_llm_role_override_select_{role}"
+        _prime_multiselect_state(
+            widget_key,
+            desired=current_override_pool,
+            options=role_models,
+        )
+        default_requested = str(
+            getattr(default_assignments.get(role), "requested_model", "") or ""
+        )
+        selected_models = st.multiselect(
+            role,
+            options=role_models,
+            key=widget_key,
+            help=str(role_detail.get("purpose", "") or ""),
+        )
+        default_requested = str(
+            getattr(default_assignments.get(role), "requested_model", "") or ""
+        )
+        summary_parts: List[str] = []
+        # Toujours enregistrer, même si vide ([] préserve le rôle dans le dict
+        # et permet à _prime_multiselect_state de le retrouver au prochain rerun).
+        selected_role_overrides[role] = list(selected_models)
+        if selected_models:
+            summary_parts.append(
+                "Sélection: " + ", ".join(selected_models)
+            )
+        else:
+            summary_parts.append("Sélection: profil par défaut")
+        stage = str(role_detail.get("stage", "") or "").strip()
+        purpose = str(role_detail.get("purpose", "") or "").strip()
+        if stage or purpose:
+            summary_parts.append(" | ".join(part for part in (stage, purpose) if part))
+        if default_requested:
+            summary_parts.append(f"Profil: {default_requested}")
+        st.caption(" • ".join(summary_parts))
+
+    if st.session_state.pop("_builder_multi_llm_close_save_toggle", False):
+        st.session_state.pop("builder_multi_llm_save_profile_toggle", None)
+    with st.expander("Présélections personnalisées", expanded=False):
+        save_toggle = st.toggle(
+            "💾 Enregistrer cette présélection",
+            value=bool(st.session_state.get("builder_multi_llm_save_profile_toggle", False)),
+            key="builder_multi_llm_save_profile_toggle",
+            help=(
+                "Sauvegarde les choix manuels de cette section comme un profil réutilisable "
+                "dans la liste des présélections."
+            ),
+        )
+        if save_toggle:
+            suggested_name = str(
+                st.session_state.get("builder_multi_llm_save_profile_name", "")
+                or f"{selected_profile}_custom"
+            ).strip()
+            save_profile_name = st.text_input(
+                "Nom de la présélection",
+                value=suggested_name,
+                key="builder_multi_llm_save_profile_name",
+                placeholder="Ex: Qwen builder + DeepSeek critique",
+            ).strip()
+            if st.button(
+                "Ajouter aux présélections",
+                key="builder_multi_llm_save_profile_button",
+                disabled=not (save_profile_name and selected_role_overrides),
+            ):
+                if not callable(save_multi_llm_profile):
+                    st.error("Sauvegarde des profils indisponible dans ce workspace.")
+                else:
+                    try:
+                        save_multi_llm_profile(
+                            save_profile_name,
+                            base_profile_name=selected_profile,
+                            role_overrides=selected_role_overrides,
+                            description=(
+                                f"Preset utilisateur derive de {selected_profile} "
+                                "via la configuration Expert Multi-Role."
+                            ),
+                        )
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"Impossible d'enregistrer la présélection: {exc}")
+                    else:
+                        st.session_state["_builder_multi_llm_profile_sync"] = (
+                            save_profile_name
+                        )
+                        st.session_state["_builder_multi_llm_profile_saved_notice"] = (
+                            f"Présélection `{save_profile_name}` ajoutée aux profils multi-LLM."
+                        )
+                        st.session_state["_builder_multi_llm_close_save_toggle"] = True
+                        st.rerun()
+
+    st.session_state["builder_multi_llm_role_overrides"] = selected_role_overrides
+    resolution = resolve_profile_assignments(
+        selected_profile,
+        inventory,
+        role_overrides=selected_role_overrides or None,
+        require_live_ollama=require_live_ollama,
+    )
+
+    def _resolve_builder_runtime_route(role: str) -> Any:
+        if role == "idea_llm":
+            return builder_topology.resolve_builder_phase_route(
+                "objective_gen",
+                fallback_host=builder_ollama_host,
+            )
+        if role == "builder_llm":
+            return builder_topology.resolve_builder_phase_route(
+                "code",
+                fallback_host=builder_ollama_host,
+            )
+        if role == "risk_llm":
+            return builder_topology.resolve_builder_phase_route(
+                "pre_reflection",
+                fallback_host=builder_ollama_host,
+            )
+        return builder_topology.resolve_builder_phase_route(
+            "analysis",
+            fallback_host=builder_ollama_host,
+        )
+
+    role_rows = [
+        {
+            "role": assignment.role,
+            "etape": MULTI_LLM_ROLE_DETAILS.get(assignment.role, {}).get("stage", "-"),
+            "fonction": MULTI_LLM_ROLE_DETAILS.get(assignment.role, {}).get("purpose", "-"),
+            "host_runtime": _resolve_builder_runtime_route(assignment.role).ollama_host,
+            "gpu_cible": _resolve_builder_runtime_route(assignment.role).gpu_target,
+            "pool_override": ", ".join(selected_role_overrides.get(assignment.role, [])) or "-",
+            "demande": assignment.requested_model,
+            "resolu": assignment.resolved_model or "-",
+            "pret_runtime": assignment.available,
+            "visible_hote": assignment.live if assignment.backend == "ollama" else "-",
+            "source": assignment.source or "-",
+            "raison": assignment.reason or "-",
+        }
+        for assignment in resolution["assignments"]
+        if assignment.role in SIMPLE_MULTI_LLM_ACTIVE_ROLES
+    ]
+    unavailable_roles = [
+        assignment
+        for assignment in resolution["assignments"]
+        if assignment.role in SIMPLE_MULTI_LLM_ACTIVE_ROLES
+        and not assignment.available
+    ]
+    missing_requests = plan_missing_downloads(
+        selected_profile,
+        inventory,
+        role_overrides=selected_role_overrides or None,
+        require_live_ollama=require_live_ollama,
+    )
+    host_only_unavailable = [
+        assignment.role
+        for assignment in unavailable_roles
+        if not assignment.install_required
+    ]
+    if host_only_unavailable:
+        st.warning(
+            "Roles détectés localement mais non exposés par l'hôte Ollama actif: "
+            + ", ".join(host_only_unavailable)
+        )
+    with st.expander("Diagnostic de résolution", expanded=False):
+        st.dataframe(role_rows, width="stretch")
+        if missing_requests:
+            st.warning(
+                "Roles manquants: "
+                + ", ".join(request.role for request in missing_requests)
+            )
+            if st.button(
+                "⬇️ Installer les modeles manquants",
+                key="builder_multi_llm_install_missing",
+                help="Tente un ollama pull pour les roles manquants.",
+            ):
+                results = install_missing_models(
+                    missing_requests,
+                    ollama_host=builder_ollama_host,
+                )
+                st.session_state["builder_multi_llm_install_results"] = [
+                    result.to_dict() for result in results
+                ]
+                if all(result.success for result in results):
+                    st.success("Installation terminee.")
+                else:
+                    st.warning("Installation partielle ou echec sur certains roles.")
+        elif not unavailable_roles:
+            st.success("Tous les roles du profil sont résolus localement.")
+
+        last_install_results = st.session_state.get(
+            "builder_multi_llm_install_results",
+            [],
+        )
+        if last_install_results:
+            st.dataframe(last_install_results, width="stretch", hide_index=True)
+        _render_builder_runtime_diagnostic_panel()
+        with st.expander("Inventaire brut", expanded=False):
+            st.json(inventory.to_dict())
+
+    return selected_profile, dict(selected_role_overrides)
 
 
 def _render_builder_runtime_diagnostic_panel() -> None:
@@ -487,9 +1070,8 @@ def _discover_gpu_inventory() -> List[Dict[str, Any]]:
                             "memory_bytes": memory_bytes,
                         }
                     )
-        except Exception:
-            inventory = []
-
+        except Exception as exc:
+            logger.debug("pynvml GPU inventory failed: %s", exc)
     if inventory:
         return inventory
 
@@ -521,7 +1103,8 @@ def _discover_gpu_inventory() -> List[Dict[str, Any]]:
                     "memory_bytes": memory_bytes,
                 }
             )
-    except Exception:
+    except Exception as exc:
+        logger.debug("nvidia-smi GPU inventory failed: %s", exc)
         return []
 
     return inventory
@@ -836,6 +1419,114 @@ BUILDER_EXECUTION_MODE_HELP = {
 }
 
 
+BUILDER_CONFIG_CSS = """
+<style>
+.bc-builder-config-strip {
+    margin: 0.15rem 0 0.9rem 0;
+    padding: 0.55rem 0 0.75rem 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+.bc-builder-config-strip-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #e8eef7;
+    margin-bottom: 0.25rem;
+}
+.bc-builder-config-strip-subtitle {
+    color: #9fb2c8;
+    font-size: 0.93rem;
+    line-height: 1.45;
+}
+.bc-inline-field-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.38rem;
+    margin: 0 0 0.4rem 0;
+    color: #dbe7f6;
+    font-size: 0.94rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+.bc-inline-help-trigger {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    background: rgba(15, 23, 42, 0.92);
+    color: #cfe0f8;
+    font-size: 0.68rem;
+    font-weight: 700;
+    cursor: help;
+    user-select: none;
+}
+.bc-inline-help-tooltip {
+    position: absolute;
+    top: calc(100% + 0.3rem);
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(18rem, 38vw);
+    padding: 0.34rem 0.5rem;
+    border-radius: 8px;
+    background: rgba(8, 15, 29, 0.97);
+    border: 1px solid rgba(96, 165, 250, 0.24);
+    box-shadow: 0 10px 24px rgba(2, 8, 23, 0.28);
+    color: #c7d6eb;
+    font-size: 0.68rem;
+    font-weight: 500;
+    line-height: 1.35;
+    letter-spacing: 0.01em;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    z-index: 30;
+    transition: opacity 120ms ease, visibility 120ms ease;
+}
+.bc-inline-help-trigger:hover .bc-inline-help-tooltip,
+.bc-inline-help-trigger:focus-visible .bc-inline-help-tooltip {
+    opacity: 1;
+    visibility: visible;
+}
+</style>
+"""
+
+
+def _inject_builder_config_styles() -> None:
+    st.markdown(BUILDER_CONFIG_CSS, unsafe_allow_html=True)
+
+
+def _render_builder_config_hero() -> None:
+    st.markdown(
+        """
+<div class="bc-builder-config-strip">
+    <div class="bc-builder-config-strip-title">Builder Workspace</div>
+    <div class="bc-builder-config-strip-subtitle">Architecture, mission, modèles, puis paramètres. Les diagnostics avancés restent disponibles mais ne structurent plus l'écran.</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_inline_help_label(label: str, help_text: str) -> None:
+    safe_label = html.escape(label)
+    safe_help_text = html.escape(help_text)
+    st.markdown(
+        f"""
+<div class="bc-inline-field-label">
+    <span>{safe_label}</span>
+    <span class="bc-inline-help-trigger" tabindex="0" aria-label="Aide: {safe_label}">
+        ?
+        <span class="bc-inline-help-tooltip">{safe_help_text}</span>
+    </span>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
 def _init_exec_tabs_state() -> None:
     """Initialisation idempotente — sûre à appeler à chaque rerun."""
     defaults: dict = {
@@ -879,7 +1570,7 @@ def _render_backtest_tab(state: SidebarState) -> None:
         st.info("Sélectionnez une stratégie dans la sidebar pour commencer.")
 
     st.markdown("---")
-    st.caption("Lancement centralisé via la sidebar, section `Actions`.")
+    st.caption("Lancez ce mode depuis la barre d'actions principale juste en dessous.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -957,7 +1648,7 @@ def _render_grid_tab(state: SidebarState) -> None:
         st.caption(f"Total théorique : ~{n_workers * worker_threads} threads")
 
     st.markdown("---")
-    st.caption("Lancement centralisé via la sidebar, section `Actions`.")
+    st.caption("Lancez ce mode depuis la barre d'actions principale juste en dessous.")
 
 
 def _render_builder_tab(state: SidebarState) -> None:
@@ -965,8 +1656,22 @@ def _render_builder_tab(state: SidebarState) -> None:
 
     Reprise stricte du bloc Builder historiquement en sidebar.
     """
+    _inject_builder_config_styles()
+
+    pending_autonomous_toggle_sync = st.session_state.pop(
+        "_builder_autonomous_toggle_sync", None
+    )
+    if pending_autonomous_toggle_sync is not None:
+        synchronized_value = bool(pending_autonomous_toggle_sync)
+        st.session_state["builder_autonomous"] = synchronized_value
+        st.session_state["builder_autonomous_toggle"] = synchronized_value
+    elif "builder_autonomous_toggle" not in st.session_state:
+        st.session_state["builder_autonomous_toggle"] = bool(
+            st.session_state.get("builder_autonomous", False)
+        )
+
     st.markdown("#### 🏗️ Strategy Builder")
-    st.caption("Le lancement du Builder se fait via la sidebar, section `Actions`.")
+    _render_builder_config_hero()
 
     execution_preferences = resolve_builder_execution_preferences(st.session_state)
     default_execution_mode = str(execution_preferences["builder_execution_mode"])
@@ -979,20 +1684,33 @@ def _render_builder_tab(state: SidebarState) -> None:
     ):
         st.session_state["builder_execution_mode_select"] = default_execution_mode
 
-    builder_execution_mode = st.radio(
-        "Architecture Builder",
-        options=list(BUILDER_EXECUTION_MODE_LABELS.keys()),
-        index=list(BUILDER_EXECUTION_MODE_LABELS.keys()).index(
-            st.session_state["builder_execution_mode_select"]
-        ),
-        format_func=lambda mode: BUILDER_EXECUTION_MODE_LABELS.get(mode, mode),
-        key="builder_execution_mode_select",
-        horizontal=True,
-        help=(
-            "Mono = 1 modele. Expert = 4 roles configurables. "
-            "Dual Lane = 2 modeles et 2 endpoints/GPU distincts."
-        ),
-    )
+    _builder_mode_col, _builder_auto_col = st.columns([3, 2])
+    with _builder_mode_col:
+        _render_inline_help_label(
+            "Architecture Builder",
+            "Mono utilise un seul modèle. Expert distribue le travail entre les rôles idée, builder, critic et risk. Dual Lane sépare les lanes productives et critiques sur deux endpoints ou GPU.",
+        )
+        builder_execution_mode = st.radio(
+            "Architecture Builder",
+            options=list(BUILDER_EXECUTION_MODE_LABELS.keys()),
+            index=list(BUILDER_EXECUTION_MODE_LABELS.keys()).index(
+                st.session_state["builder_execution_mode_select"]
+            ),
+            format_func=lambda mode: BUILDER_EXECUTION_MODE_LABELS.get(mode, mode),
+            key="builder_execution_mode_select",
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+    with _builder_auto_col:
+        _render_inline_help_label(
+            "Mode autonome 24/24",
+            "Quand ce mode est activé, le Builder génère des objectifs variés et enchaîne les sessions automatiquement jusqu'à arrêt manuel.",
+        )
+        builder_autonomous = st.toggle(
+            "🔄 Mode autonome 24/24",
+            key="builder_autonomous_toggle",
+            label_visibility="collapsed",
+        )
     st.session_state["builder_execution_mode"] = builder_execution_mode
     st.session_state["builder_llm_routing_mode"] = (
         LLM_ROUTING_MODE_COOPERATIVE
@@ -1002,21 +1720,14 @@ def _render_builder_tab(state: SidebarState) -> None:
     st.session_state["builder_multi_llm_enabled"] = (
         builder_execution_mode != BUILDER_EXECUTION_MODE_MONO
     )
-    st.caption(
-        BUILDER_EXECUTION_MODE_HELP.get(builder_execution_mode, "")
-    )
+    mode_help = BUILDER_EXECUTION_MODE_HELP.get(builder_execution_mode, "")
     if builder_execution_mode == BUILDER_EXECUTION_MODE_DUAL_LANE:
-        st.caption(
-            "Dual Lane: la lane principale couvre `idea_llm` + `builder_llm`; "
-            "la lane critique couvre `critic_llm` + `risk_llm`."
-        )
-
-    builder_autonomous = st.toggle(
-        "🔄 Mode autonome 24/24",
-        value=st.session_state.get("builder_autonomous", False),
-        help="Génère automatiquement des objectifs variés et lance le builder en boucle continue.",
-        key="builder_autonomous_toggle",
-    )
+        mode_help = (
+            mode_help
+            + " Lane principale = idea + builder ; lane critique = critic + risk."
+        ).strip()
+    if mode_help:
+        st.caption(mode_help)
     st.session_state["builder_autonomous"] = builder_autonomous
 
     builder_auto_pause = 10
@@ -1045,6 +1756,11 @@ def _render_builder_tab(state: SidebarState) -> None:
         st.session_state.get("builder_model_single_llm", "") or ""
     ).strip():
         st.session_state["builder_model_single_llm"] = legacy_builder_model
+    builder_model_single_llm = str(
+        st.session_state.get("builder_model_select")
+        or st.session_state.get("builder_model_single_llm")
+        or "deepseek-r1:32b"
+    ).strip() or "deepseek-r1:32b"
     if builder_multi_llm_enabled:
         st.session_state.pop("builder_model_select", None)
 
@@ -1063,120 +1779,34 @@ def _render_builder_tab(state: SidebarState) -> None:
         )
         if default_profile not in profile_options and profile_options:
             default_profile = profile_options[0]
-        if (
-            builder_execution_mode == BUILDER_EXECUTION_MODE_EXPERT
-            and profile_options
-        ):
-            builder_multi_llm_profile = st.selectbox(
-                "Profil multi-LLM",
-                options=profile_options,
-                index=profile_options.index(default_profile),
-                key="builder_multi_llm_profile_select",
-                help="Profil de roles applique au Builder.",
-            )
-        else:
-            builder_multi_llm_profile = default_profile
+        builder_multi_llm_profile = default_profile
         st.session_state["builder_multi_llm_profile"] = builder_multi_llm_profile
-        if builder_execution_mode == BUILDER_EXECUTION_MODE_EXPERT:
-            selected_label = str(builder_multi_llm_profile or "").strip().lower()
-            if "light" in selected_label or "test" in selected_label:
-                st.caption(
-                    "Profil leger actif: privilegie des modeles plus petits pour "
-                    "les tests de role-switch et de warmup."
-                )
 
-    if builder_execution_mode == BUILDER_EXECUTION_MODE_EXPERT:
-        st.caption(
-            "Mode Expert actif: `idea_llm`, `builder_llm`, `critic_llm`, "
-            "`risk_llm` restent configurables individuellement."
-        )
-    elif builder_execution_mode == BUILDER_EXECUTION_MODE_DUAL_LANE:
-        st.caption(
-            "Mode Dual Lane actif: 2 modeles seulement, repartis entre lane "
-            "principale et lane critique pour couvrir les 4 roles logiques."
-        )
+    mission_tab, models_tab, params_tab = st.tabs(
+        ["Mission", "Modèles & runtime", "Paramètres"]
+    )
 
-    if builder_autonomous:
-        st.caption("*Objectifs générés automatiquement*")
-        builder_auto_pause = st.slider(
-            "⏱️ Pause entre runs (s)",
-            min_value=0,
-            max_value=120,
-            value=st.session_state.get("builder_auto_pause", 10),
-            key="builder_auto_pause_slider",
-            help="Délai en secondes entre chaque session autonome.",
-        )
-        st.session_state["builder_auto_pause"] = builder_auto_pause
+    with mission_tab:
+        if builder_autonomous:
+            st.markdown("##### Mission autonome")
+            builder_auto_pause = st.slider(
+                "⏱️ Pause entre runs (s)",
+                min_value=0,
+                max_value=120,
+                value=st.session_state.get("builder_auto_pause", 10),
+                key="builder_auto_pause_slider",
+                help="Délai en secondes entre chaque session autonome.",
+            )
+            st.session_state["builder_auto_pause"] = builder_auto_pause
 
-        builder_auto_use_llm = st.toggle(
-            "🧠 Objectifs par LLM",
-            value=st.session_state.get("builder_auto_use_llm", True),
-            key="builder_auto_use_llm_toggle",
-            help="Si activé, le LLM génère des objectifs créatifs. Sinon, templates aléatoires (plus rapide).",
-        )
-        st.session_state["builder_auto_use_llm"] = builder_auto_use_llm
-
-        builder_use_parametric_catalog = st.toggle(
-            "📐 Catalogue paramétrique",
-            value=st.session_state.get("builder_use_parametric_catalog", False),
-            key="builder_use_parametric_catalog_toggle",
-            help=(
-                "Génère automatiquement des fiches de stratégies paramétriques "
-                "(archetypes × param_packs) et les injecte comme objectifs. "
-                "Prioritaire sur les templates et le LLM."
-            ),
-        )
-        st.session_state["builder_use_parametric_catalog"] = builder_use_parametric_catalog
-
-        if builder_use_parametric_catalog and _CATALOG_AVAILABLE:
-            try:
-                pstats = get_parametric_catalog_stats()
-                if pstats.get("generated"):
-                    p_total = pstats.get("total", 0)
-                    p_idx = pstats.get("index", 0)
-                    p_pct = pstats.get("coverage_pct", 0.0)
-                    st.caption(f"Fiches param.: {p_idx}/{p_total} ({p_pct:.0f}%)")
-                    st.progress(min(p_pct / 100.0, 1.0))
-                else:
-                    st.caption("Fiches param.: non encore générées")
-                if st.button(
-                    "Reset fiches param.",
-                    key="builder_reset_parametric",
-                    help="Régénère immédiatement le catalogue paramétrique avec de nouvelles fiches aléatoires.",
-                ):
-                    reset_parametric_catalog()
-                    import time
-                    new_seed = int(time.time() * 1000) % 2**31
-                    generate_parametric_catalog(seed=new_seed)
-                    st.rerun()
-            except Exception:
-                pass
-
-        if _CATALOG_AVAILABLE and not builder_use_parametric_catalog:
-            try:
-                cov = get_catalog_coverage()
-                total = cov.get("total_objectives", 0)
-                explored = cov.get("explored_count", 0)
-                pct = cov.get("coverage_pct", 0.0)
-                success_count = cov.get("success_count", 0)
-                if total > 0:
-                    cycles = explored // total if total else 0
-                    pos_in_cycle = explored % total
-                    if cycles > 0:
-                        cycle_label = f"cycle {cycles + 1}, {pos_in_cycle}/{total}"
-                    else:
-                        cycle_label = f"{explored}/{total} ({pct:.0f}%)"
-                    st.caption(f"Catalogue templates: {cycle_label} — {success_count} positifs")
-                    st.progress(min((explored % total) / total, 1.0) if total else 0.0)
-                    if st.button(
-                        "Reset exploration",
-                        key="builder_reset_catalog",
-                        help="Re-shuffle et remet la couverture a zero.",
-                    ):
-                        reset_catalog_exploration()
-                        st.rerun()
-            except Exception:
-                pass
+            builder_auto_use_llm = True
+            builder_use_parametric_catalog = False
+            st.session_state["builder_auto_use_llm"] = True
+            st.session_state["builder_use_parametric_catalog"] = False
+            st.caption(
+                "Les objectifs de session sont maintenant générés prioritairement par le LLM. "
+                "En cas d'incident, le Builder bascule sur un fallback simple non affiché dans l'interface."
+            )
 
     pending_objective_sync = st.session_state.pop(
         "_builder_objective_input_sync", None
@@ -1184,33 +1814,10 @@ def _render_builder_tab(state: SidebarState) -> None:
     if isinstance(pending_objective_sync, str):
         st.session_state["builder_objective_input"] = pending_objective_sync
 
-    if not builder_autonomous and _CATALOG_AVAILABLE:
-        if st.button(
-            "🎲 Objectif aléatoire",
-            key="builder_random_objective_btn",
-            help="Pré-remplit avec un objectif du catalogue. Vous pouvez le modifier avant de lancer.",
-        ):
-            _sym = (
-                st.session_state.get("selected_symbol")
-                or "BTCUSDC"
-            )
-            _tf = (
-                st.session_state.get("selected_timeframe")
-                or "1h"
-            )
-            _cat = get_next_catalog_objective(symbol=_sym, timeframe=_tf)
-            if _cat is not None:
-                _rand_obj, _ = _cat
-            else:
-                _rand_obj = generate_random_objective(symbol=_sym, timeframe=_tf)
-            st.session_state["builder_objective"] = _rand_obj
-            st.session_state["builder_objective_input"] = _rand_obj
-            st.rerun()
-
     builder_objective = st.text_area(
         "🎯 Objectif de la stratégie",
         value=st.session_state.get("builder_objective", ""),
-        height=100,
+        height=120,
         placeholder=(
             "Ex: Trend-following BTC 1h avec EMA + RSI.\n"
             "Mean reversion sur Bollinger bands + ATR filter.\n"
@@ -1229,14 +1836,12 @@ def _render_builder_tab(state: SidebarState) -> None:
         key="builder_auto_market_pick_toggle",
         help=(
             "Avant chaque session Builder, le LLM sélectionne automatiquement "
-            "le symbole et le timeframe les plus adaptés à l'objectif, puis "
-            "charge les données correspondantes. "
-            "Activé par défaut en mode autonome 24/24."
+            "le symbole et le timeframe les plus adaptés à l'objectif."
         ),
     )
     st.session_state["builder_auto_market_pick"] = builder_auto_market_pick
 
-    with st.expander("💡 Exemple de format", expanded=False):
+    with st.expander("Aide de rédaction", expanded=False):
         st.markdown(
             "**Structure recommandée :**\n"
             "```\n"
@@ -1245,516 +1850,291 @@ def _render_builder_tab(state: SidebarState) -> None:
             "Entrées : [conditions d'entrée].\n"
             "Sorties : [conditions de sortie].\n"
             "Risk management : [SL/TP/sizing].\n"
-            "```\n\n"
-            "**Exemple concret :**\n"
-            "> Trend-following sur BTCUSDC 30m.\n"
-            "> Utiliser EMA(20/50) + MACD + ATR.\n"
-            "> Entrée long quand EMA rapide croise\n"
-            "> au-dessus de la lente ET MACD > signal.\n"
-            "> Stop-loss = 1.5x ATR, take-profit = 3x ATR."
+            "```"
         )
 
-    builder_ollama_host = st.text_input(
-        (
-            "URL Ollama lane principale"
-            if builder_execution_mode == BUILDER_EXECUTION_MODE_DUAL_LANE
-            else "URL Ollama (Builder)"
-        ),
-        value=str(
-            st.session_state.get(
-                "builder_ollama_host",
-                os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434"),
-            )
-        ),
-        key="builder_ollama_host",
-        help=(
-            "Endpoint Ollama principal du Builder."
-            if builder_execution_mode == BUILDER_EXECUTION_MODE_DUAL_LANE
-            else "Endpoint Ollama utilisé par le mode Strategy Builder."
-        ),
-    ).strip()
-
-    if builder_execution_mode == BUILDER_EXECUTION_MODE_DUAL_LANE:
-        builder_topology = _render_phase1_topology_editor(
-            primary_host=builder_ollama_host,
-            primary_label="Endpoint principal Builder",
-            session_prefix="builder",
-            config_state_key="builder_llm_topology_config",
-            routing_mode_key="builder_llm_routing_mode",
-        )
-        primary_endpoint = builder_topology.endpoints.get(
-            "builder_primary",
-            builder_topology.endpoints.get("default"),
-        )
-        control_endpoint = builder_topology.endpoints.get(
-            "control",
-            builder_topology.endpoints.get("default"),
-        )
-        control_host = normalize_ollama_host(
-            getattr(control_endpoint, "ollama_host", builder_ollama_host)
-        )
-        primary_gpu = str(getattr(primary_endpoint, "gpu_target", "") or "GPU-0")
-        control_gpu = str(getattr(control_endpoint, "gpu_target", "") or primary_gpu)
-        st.markdown("**Lanes actives**")
-        col_lane_a, col_lane_b = st.columns(2)
-        with col_lane_a:
-            builder_dual_lane_primary_model = render_model_selector(
-                label="Modele lane principale",
-                key="builder_dual_lane_primary_model_select",
-                help_text=(
-                    "Modele charge sur l'endpoint principal. "
-                    "Il couvre `idea_llm` et `builder_llm`."
-                ),
-                show_details=True,
-                compact=True,
-                ollama_host=builder_ollama_host,
-                include_library_models=True,
-                current_value=builder_dual_lane_primary_model,
-            )
-        with col_lane_b:
-            builder_dual_lane_critic_model = render_model_selector(
-                label="Modele lane critique",
-                key="builder_dual_lane_critic_model_select",
-                help_text=(
-                    "Modele charge sur l'endpoint critique. "
-                    "Il couvre `critic_llm` et `risk_llm`."
-                ),
-                show_details=True,
-                compact=True,
-                ollama_host=control_host,
-                include_library_models=True,
-                current_value=builder_dual_lane_critic_model,
-            )
-        st.session_state["builder_dual_lane_primary_model"] = (
-            builder_dual_lane_primary_model
-        )
-        st.session_state["builder_dual_lane_critic_model"] = (
-            builder_dual_lane_critic_model
-        )
-        builder_multi_llm_role_overrides = {
-            "idea_llm": [builder_dual_lane_primary_model],
-            "builder_llm": [builder_dual_lane_primary_model],
-            "critic_llm": [builder_dual_lane_critic_model],
-            "risk_llm": [builder_dual_lane_critic_model],
-        }
-        st.session_state["builder_multi_llm_role_overrides"] = dict(
-            builder_multi_llm_role_overrides
-        )
-        lane_rows = [
-            {
-                "lane": "principale",
-                "roles_couverts": "idea_llm, builder_llm",
-                "endpoint": builder_ollama_host,
-                "gpu_cible": primary_gpu,
-                "modele": builder_dual_lane_primary_model,
-            },
-            {
-                "lane": "critique",
-                "roles_couverts": "critic_llm, risk_llm",
-                "endpoint": control_host,
-                "gpu_cible": control_gpu,
-                "modele": builder_dual_lane_critic_model,
-            },
-        ]
-        st.dataframe(lane_rows, width="stretch", hide_index=True)
-        st.info(
-            "Dual Lane active un vrai split fonctionnel seulement si les deux "
-            "endpoints Ollama sont distincts, typiquement un port par GPU."
-        )
-        _render_builder_runtime_diagnostic_panel()
-    else:
-        builder_topology = _get_phase1_topology_from_session(
-            builder_ollama_host,
-            session_prefix="builder",
-            config_state_key="builder_llm_topology_config",
-            routing_mode_key="builder_llm_routing_mode",
-        )
-        st.session_state["builder_llm_topology_config"] = builder_topology.to_dict()
-        current_builder_model = str(
-            st.session_state.get("builder_model_select")
-            or st.session_state.get("builder_model_single_llm")
-            or "deepseek-r1:32b"
+    with models_tab:
+        builder_ollama_host = st.text_input(
+            (
+                "URL Ollama lane principale"
+                if builder_execution_mode == BUILDER_EXECUTION_MODE_DUAL_LANE
+                else "URL Ollama (Builder)"
+            ),
+            value=str(
+                st.session_state.get(
+                    "builder_ollama_host",
+                    os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434"),
+                )
+            ),
+            key="builder_ollama_host",
+            help=(
+                "Endpoint Ollama principal du Builder."
+                if builder_execution_mode == BUILDER_EXECUTION_MODE_DUAL_LANE
+                else "Endpoint Ollama utilisé par le mode Strategy Builder."
+            ),
         ).strip()
-        builder_model_single_llm = current_builder_model or "deepseek-r1:32b"
-        if builder_execution_mode == BUILDER_EXECUTION_MODE_MONO:
-            builder_model_single_llm = render_model_selector(
-                label="Modele LLM",
-                key="builder_model_select",
-                help_text=(
-                    "Modèles installés sur Ollama en priorité, puis catalogue local "
-                    "connu si l'inventaire serveur est incomplet."
-                ),
-                show_details=True,
-                compact=True,
-                ollama_host=builder_ollama_host,
-                include_library_models=True,
-                current_value=current_builder_model,
+
+        control_host = builder_ollama_host
+        primary_gpu = "GPU-0"
+        control_gpu = primary_gpu
+        if builder_execution_mode == BUILDER_EXECUTION_MODE_DUAL_LANE:
+            builder_topology = _render_phase1_topology_editor(
+                primary_host=builder_ollama_host,
+                primary_label="Endpoint principal Builder",
+                session_prefix="builder",
+                config_state_key="builder_llm_topology_config",
+                routing_mode_key="builder_llm_routing_mode",
             )
-            st.session_state["builder_multi_llm_role_overrides"] = {}
-            st.info(
-                "Mode Mono: un seul modele pilote toutes les etapes du Builder "
-                "sur cet endpoint unique."
+            primary_endpoint = builder_topology.endpoints.get(
+                "builder_primary",
+                builder_topology.endpoints.get("default"),
             )
+            control_endpoint = builder_topology.endpoints.get(
+                "control",
+                builder_topology.endpoints.get("default"),
+            )
+            control_host = normalize_ollama_host(
+                getattr(control_endpoint, "ollama_host", builder_ollama_host)
+            )
+            primary_gpu = str(getattr(primary_endpoint, "gpu_target", "") or "GPU-0")
+            control_gpu = str(getattr(control_endpoint, "gpu_target", "") or primary_gpu)
         else:
-            st.info(
-                "Mode Expert: les 4 roles logiques partagent cet endpoint unique, "
-                "avec un modele configurable par role."
-            )
-        st.session_state["builder_model_single_llm"] = builder_model_single_llm
-
-        if (
-            builder_execution_mode == BUILDER_EXECUTION_MODE_EXPERT
-            and _MULTI_LLM_AVAILABLE
-        ):
-            with st.expander("🧩 Configuration Expert Multi-Role", expanded=True):
-                inventory = discover_local_models(
-                    ollama_host=builder_ollama_host,
-                    include_live_ollama=True,
-                )
-                distinct_runtime_hosts = {
-                    str(getattr(endpoint, "ollama_host", "") or "").strip()
-                    for endpoint in builder_topology.endpoints.values()
-                    if bool(getattr(endpoint, "enabled", True))
-                }
-                require_live_ollama = bool(
-                    inventory.live_ollama_reachable and len(distinct_runtime_hosts) <= 1
-                )
-                default_resolution = resolve_profile_assignments(
-                    builder_multi_llm_profile,
-                    inventory,
-                    require_live_ollama=require_live_ollama,
-                )
-                default_assignments = {
-                    assignment.role: assignment
-                    for assignment in default_resolution["assignments"]
-                }
-                current_role_overrides = _normalize_builder_multi_llm_role_overrides(
-                    st.session_state.get("builder_multi_llm_role_overrides", {})
-                )
-                summary = inventory.summary()
-                st.caption(
-                    f"Inventaire local: {summary['verified_models']} verifies / "
-                    f"{summary['total_models']} references | "
-                    f"backends: {summary['by_backend']}"
-                )
-                if require_live_ollama:
-                    st.caption(
-                        f"Validation runtime active sur `{summary['live_ollama_host']}`."
-                    )
-                else:
-                    st.warning(
-                        "Validation runtime Ollama impossible pour le moment: "
-                        "affichage basé sur l'inventaire local, pas sur l'hôte actif."
-                    )
-                role_description_rows = [
-                    {
-                        "role": role,
-                        "etape": MULTI_LLM_ROLE_DETAILS.get(role, {}).get("stage", "-"),
-                        "resume": MULTI_LLM_ROLE_DETAILS.get(role, {}).get("summary", "-"),
-                    }
-                    for role in SIMPLE_MULTI_LLM_ACTIVE_ROLES
-                ]
-                st.markdown("**Roles actifs du mode Expert**")
-                st.dataframe(role_description_rows, width="stretch", hide_index=True)
-                st.caption(
-                    "Decision de boucle: routeur deterministe local. "
-                    "Aucun cinquieme LLM n'est charge pour arbitrer `accept/iterate/recover`."
-                )
-                st.markdown("**Attribution runtime par role**")
-                selected_role_overrides: Dict[str, List[str]] = {}
-                for role in SIMPLE_MULTI_LLM_ACTIVE_ROLES:
-                    role_detail = MULTI_LLM_ROLE_DETAILS.get(role, {})
-                    role_models = _available_runtime_role_models(inventory, role)
-                    current_override_pool = list(current_role_overrides.get(role, []) or [])
-                    for selected_model in current_override_pool:
-                        if selected_model not in role_models:
-                            role_models = [selected_model, *role_models]
-                    role_models = list(dict.fromkeys(role_models))
-                    widget_key = f"builder_multi_llm_role_override_select_{role}"
-                    _prime_multiselect_state(
-                        widget_key,
-                        desired=current_override_pool,
-                        options=role_models,
-                    )
-                    default_requested = str(
-                        getattr(default_assignments.get(role), "requested_model", "") or ""
-                    )
-                    selected_models = st.multiselect(
-                        role,
-                        options=role_models,
-                        key=widget_key,
-                        help=str(role_detail.get("purpose", "") or ""),
-                    )
-                    if selected_models:
-                        selected_role_overrides[role] = list(selected_models)
-                    stage = str(role_detail.get("stage", "") or "").strip()
-                    purpose = str(role_detail.get("purpose", "") or "").strip()
-                    if stage or purpose:
-                        st.caption(" | ".join(part for part in (stage, purpose) if part))
-                    if default_requested:
-                        st.caption(
-                            f"Profil par defaut: `{default_requested}` | "
-                            "Selection vide = profil | 1+ modeles = tirage aleatoire au debut de chaque session."
-                        )
-                    else:
-                        st.caption(
-                            "Selection vide = profil | 1+ modeles = tirage aleatoire au debut de chaque session."
-                        )
-                st.session_state["builder_multi_llm_role_overrides"] = (
-                    selected_role_overrides
-                )
-                builder_multi_llm_role_overrides = dict(selected_role_overrides)
-                resolution = resolve_profile_assignments(
-                    builder_multi_llm_profile,
-                    inventory,
-                    role_overrides=selected_role_overrides or None,
-                    require_live_ollama=require_live_ollama,
-                )
-                profile_description = str(resolution.get("description", "") or "").strip()
-                if profile_description:
-                    st.caption(f"Profil: {profile_description}")
-
-                def _resolve_builder_runtime_route(role: str) -> Any:
-                    if role == "idea_llm":
-                        return builder_topology.resolve_builder_phase_route(
-                            "objective_gen",
-                            fallback_host=builder_ollama_host,
-                        )
-                    if role == "builder_llm":
-                        return builder_topology.resolve_builder_phase_route(
-                            "code",
-                            fallback_host=builder_ollama_host,
-                        )
-                    if role == "risk_llm":
-                        return builder_topology.resolve_builder_phase_route(
-                            "pre_reflection",
-                            fallback_host=builder_ollama_host,
-                        )
-                    return builder_topology.resolve_builder_phase_route(
-                        "analysis",
-                        fallback_host=builder_ollama_host,
-                    )
-
-                role_rows = [
-                    {
-                        "role": assignment.role,
-                        "etape": MULTI_LLM_ROLE_DETAILS.get(assignment.role, {}).get("stage", "-"),
-                        "fonction": MULTI_LLM_ROLE_DETAILS.get(assignment.role, {}).get("purpose", "-"),
-                        "host_runtime": _resolve_builder_runtime_route(assignment.role).ollama_host,
-                        "gpu_cible": _resolve_builder_runtime_route(assignment.role).gpu_target,
-                        "pool_override": ", ".join(selected_role_overrides.get(assignment.role, [])) or "-",
-                        "demande": assignment.requested_model,
-                        "resolu": assignment.resolved_model or "-",
-                        "pret_runtime": assignment.available,
-                        "visible_hote": assignment.live if assignment.backend == "ollama" else "-",
-                        "source": assignment.source or "-",
-                        "raison": assignment.reason or "-",
-                    }
-                    for assignment in resolution["assignments"]
-                    if assignment.role in SIMPLE_MULTI_LLM_ACTIVE_ROLES
-                ]
-                st.dataframe(role_rows, width="stretch")
-                if selected_role_overrides:
-                    st.caption(
-                        "Overrides actifs: "
-                        + ", ".join(
-                            f"{role}=[{' | '.join(models)}]"
-                            for role, models in selected_role_overrides.items()
-                        )
-                    )
-                st.info(
-                    "Le mode Expert Multi-Role conserve 4 roles actifs "
-                    "(`idea_llm`, `builder_llm`, `critic_llm`, `risk_llm`)."
-                )
-                st.caption(
-                    "`idea_llm` sert a l'ideation et aux etapes preparatoires LLM "
-                    "quand elles sont actives; la structure des roles reste la meme "
-                    "en manuel comme en autonome."
-                )
-                unavailable_roles = [
-                    assignment
-                    for assignment in resolution["assignments"]
-                    if assignment.role in SIMPLE_MULTI_LLM_ACTIVE_ROLES
-                    and not assignment.available
-                ]
-                missing_requests = plan_missing_downloads(
-                    builder_multi_llm_profile,
-                    inventory,
-                    role_overrides=selected_role_overrides or None,
-                    require_live_ollama=require_live_ollama,
-                )
-                host_only_unavailable = [
-                    assignment.role
-                    for assignment in unavailable_roles
-                    if not assignment.install_required
-                ]
-                if host_only_unavailable:
-                    st.warning(
-                        "Roles détectés localement mais non exposés par l'hôte Ollama actif: "
-                        + ", ".join(host_only_unavailable)
-                    )
-                if missing_requests:
-                    st.warning(
-                        "Roles manquants: "
-                        + ", ".join(request.role for request in missing_requests)
-                    )
-                    if st.button(
-                        "⬇️ Installer les modeles manquants",
-                        key="builder_multi_llm_install_missing",
-                        help="Tente un ollama pull pour les roles manquants.",
-                    ):
-                        results = install_missing_models(
-                            missing_requests,
-                            ollama_host=builder_ollama_host,
-                        )
-                        st.session_state["builder_multi_llm_install_results"] = [
-                            result.to_dict() for result in results
-                        ]
-                        if all(result.success for result in results):
-                            st.success("Installation terminee.")
-                        else:
-                            st.warning("Installation partielle ou echec sur certains roles.")
-                elif not unavailable_roles:
-                    st.success("Tous les roles du profil sont resolus localement.")
-
-                last_install_results = st.session_state.get(
-                    "builder_multi_llm_install_results",
-                    [],
-                )
-                if last_install_results:
-                    with st.expander("Derniers resultats d'installation", expanded=False):
-                        st.json(last_install_results)
-                with st.expander("Inventaire brut", expanded=False):
-                    st.json(inventory.to_dict())
-                _render_builder_runtime_diagnostic_panel()
-
-    st.caption("**🔌 Chargement du modèle**")
-    runtime_preferences = resolve_builder_runtime_preferences(st.session_state)
-    builder_auto_start_state = bool(
-        runtime_preferences["builder_auto_start_ollama"]
-    )
-    builder_preload_model = bool(runtime_preferences["builder_preload_model"])
-    builder_keep_alive_minutes = int(
-        runtime_preferences["builder_keep_alive_minutes"]
-    )
-    builder_unload_after_run = bool(
-        runtime_preferences["builder_unload_after_run"]
-    )
-    with st.expander("⚙️ Runtime Builder", expanded=False):
-        builder_auto_start_state = st.toggle(
-            "Auto-demarrer Ollama local si necessaire",
-            value=builder_auto_start_state,
-            key="builder_auto_start_ollama_toggle",
-            help="Tente de demarrer l'endpoint local si le Builder ne le trouve pas.",
-        )
-        builder_preload_model = st.toggle(
-            "Precharger le modele avant la session",
-            value=builder_preload_model,
-            key="builder_preload_model_toggle",
-            help="Fait un warmup explicite avant le premier appel Builder.",
-        )
-        builder_keep_alive_minutes = int(
-            st.number_input(
-                "Keep-alive Ollama (minutes)",
-                min_value=0,
-                max_value=240,
-                value=builder_keep_alive_minutes,
-                step=5,
-                key="builder_keep_alive_minutes_input",
-                help="Temps de retention du modele entre deux appels runtime.",
-            )
-        )
-        builder_unload_after_run = st.toggle(
-            "Decharger les modeles en fin de session",
-            value=builder_unload_after_run,
-            key="builder_unload_after_run_toggle",
-            help="Libere la RAM/VRAM du Builder a la fin du run ou du cleanup multi-role.",
-        )
-    st.session_state["builder_auto_start_ollama"] = builder_auto_start_state
-    st.session_state["builder_preload_model"] = builder_preload_model
-    st.session_state["builder_keep_alive_minutes"] = builder_keep_alive_minutes
-    st.session_state["builder_unload_after_run"] = builder_unload_after_run
-    builder_ollama_available = _ollama_is_available(builder_ollama_host)
-    if builder_ollama_available:
-        st.caption(f"🟢 Ollama connecté sur `{builder_ollama_host}`")
-    else:
-        st.warning(f"⚠️ Ollama non détecté sur `{builder_ollama_host}`")
-    builder_ollama_action_label = (
-        "🧪 Tester Ollama" if builder_ollama_available else "🚀 Démarrer Ollama"
-    )
-    if st.button(builder_ollama_action_label, key="builder_start_ollama"):
-        with st.spinner("Vérification / démarrage d'Ollama..."):
-            success, msg = _ollama_start_if_needed(
+            builder_topology = _get_phase1_topology_from_session(
                 builder_ollama_host,
-                gpu_target=str(
-                    getattr(
-                        builder_topology.endpoints.get(
-                            "builder_primary",
-                            builder_topology.endpoints.get("default"),
-                        ),
-                        "gpu_target",
-                        "",
-                    )
-                    or ""
-                ),
+                session_prefix="builder",
+                config_state_key="builder_llm_topology_config",
+                routing_mode_key="builder_llm_routing_mode",
             )
-            if success:
-                st.success(msg)
-                st.rerun()
-            else:
-                st.error(msg)
-    st.caption(
-        "Ces reglages pilotent le runtime Builder reel. "
-        "En multi-LLM, le warmup et le dechargement suivent le role actif et le host route."
-    )
+            st.session_state["builder_llm_topology_config"] = builder_topology.to_dict()
 
-    st.caption("**⚙️ Paramètres de construction**")
-    builder_max_iterations = st.slider(
-        "Itérations max",
-        min_value=1,
-        max_value=30,
-        value=st.session_state.get("builder_max_iterations", 10),
-        key="builder_max_iters_slider",
-        help="Nombre maximum de tentatives pour améliorer la stratégie.",
-    )
-    builder_target_sharpe = st.number_input(
-        "Sharpe cible",
-        min_value=0.0,
-        max_value=5.0,
-        value=st.session_state.get("builder_target_sharpe", 1.0),
-        step=0.1,
-        key="builder_target_sharpe_input",
-        help="Sharpe ratio minimum pour accepter automatiquement la stratégie.",
-    )
-    builder_capital = st.number_input(
-        "Capital initial ($)",
-        min_value=100.0,
-        max_value=1_000_000.0,
-        value=st.session_state.get("builder_capital", 10000.0),
-        step=1000.0,
-        key="builder_capital_input",
-        format="%.0f",
-    )
-
-    try:
-        from indicators.registry import list_indicators
-        indicators = list_indicators()
-        st.caption(f"📐 {len(indicators)} indicateurs disponibles")
-        with st.expander("Voir la liste", expanded=False):
-            st.write(", ".join(sorted(indicators)))
-    except Exception:
-        pass
-
-    sandbox_root = Path(__file__).resolve().parent.parent / "sandbox_strategies"
-    if sandbox_root.exists():
-        sessions = sorted(
-            [d.name for d in sandbox_root.iterdir() if d.is_dir() and d.name != ".gitkeep"],
-            reverse=True,
+        runtime_preferences = resolve_builder_runtime_preferences(st.session_state)
+        builder_auto_start_state = bool(
+            runtime_preferences["builder_auto_start_ollama"]
         )
-        if sessions:
-            with st.expander(f"📁 Sessions précédentes ({len(sessions)})", expanded=False):
-                for s in sessions[:10]:
-                    st.caption(f"• {s}")
+        builder_preload_model = bool(runtime_preferences["builder_preload_model"])
+        builder_keep_alive_minutes = int(
+            runtime_preferences["builder_keep_alive_minutes"]
+        )
+        builder_unload_after_run = bool(
+            runtime_preferences["builder_unload_after_run"]
+        )
+        builder_ollama_available = _ollama_is_available(builder_ollama_host)
+        _rt_status_col, _rt_action_col = st.columns([4, 1])
+        with _rt_status_col:
+            st.markdown("##### Runtime & connexion")
+            st.caption(
+                f"{'🟢 Connecté' if builder_ollama_available else '⚠️ Hors ligne'} sur {builder_ollama_host}"
+            )
+        with _rt_action_col:
+            builder_ollama_action_label = (
+                "🧪 Tester" if builder_ollama_available else "🚀 Démarrer"
+            )
+            if st.button(builder_ollama_action_label, key="builder_start_ollama"):
+                with st.spinner("Vérification / démarrage d'Ollama..."):
+                    success, msg = _ollama_start_if_needed(
+                        builder_ollama_host,
+                        gpu_target=str(
+                            getattr(
+                                builder_topology.endpoints.get(
+                                    "builder_primary",
+                                    builder_topology.endpoints.get("default"),
+                                ),
+                                "gpu_target",
+                                "",
+                            )
+                            or ""
+                        ),
+                    )
+                    if success:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
+        with st.expander("Réglages runtime avancés", expanded=False):
+            builder_auto_start_state = st.toggle(
+                "Auto-demarrer Ollama local si necessaire",
+                value=builder_auto_start_state,
+                key="builder_auto_start_ollama_toggle",
+                help="Tente de demarrer l'endpoint local si le Builder ne le trouve pas.",
+            )
+            builder_preload_model = st.toggle(
+                "Precharger le modele avant la session",
+                value=builder_preload_model,
+                key="builder_preload_model_toggle",
+                help="Fait un warmup explicite avant le premier appel Builder.",
+            )
+            builder_keep_alive_minutes = int(
+                st.number_input(
+                    "Keep-alive Ollama (minutes)",
+                    min_value=0,
+                    max_value=240,
+                    value=builder_keep_alive_minutes,
+                    step=5,
+                    key="builder_keep_alive_minutes_input",
+                    help="Temps de retention du modele entre deux appels runtime.",
+                )
+            )
+            builder_unload_after_run = st.toggle(
+                "Decharger les modeles en fin de session",
+                value=builder_unload_after_run,
+                key="builder_unload_after_run_toggle",
+                help="Libere la RAM/VRAM du Builder a la fin du run ou du cleanup multi-role.",
+            )
+
+        st.session_state["builder_auto_start_ollama"] = builder_auto_start_state
+        st.session_state["builder_preload_model"] = builder_preload_model
+        st.session_state["builder_keep_alive_minutes"] = builder_keep_alive_minutes
+        st.session_state["builder_unload_after_run"] = builder_unload_after_run
+
+        if builder_execution_mode == BUILDER_EXECUTION_MODE_DUAL_LANE:
+            st.markdown("##### Lanes actives")
+            col_lane_a, col_lane_b = st.columns(2)
+            with col_lane_a:
+                builder_dual_lane_primary_model = render_model_selector(
+                    label="Modele lane principale",
+                    key="builder_dual_lane_primary_model_select",
+                    help_text="Couvre idea_llm et builder_llm.",
+                    show_details=True,
+                    compact=True,
+                    ollama_host=builder_ollama_host,
+                    include_library_models=True,
+                    current_value=builder_dual_lane_primary_model,
+                )
+            with col_lane_b:
+                builder_dual_lane_critic_model = render_model_selector(
+                    label="Modele lane critique",
+                    key="builder_dual_lane_critic_model_select",
+                    help_text="Couvre critic_llm et risk_llm.",
+                    show_details=True,
+                    compact=True,
+                    ollama_host=control_host,
+                    include_library_models=True,
+                    current_value=builder_dual_lane_critic_model,
+                )
+            st.session_state["builder_dual_lane_primary_model"] = (
+                builder_dual_lane_primary_model
+            )
+            st.session_state["builder_dual_lane_critic_model"] = (
+                builder_dual_lane_critic_model
+            )
+            builder_multi_llm_role_overrides = {
+                "idea_llm": [builder_dual_lane_primary_model],
+                "builder_llm": [builder_dual_lane_primary_model],
+                "critic_llm": [builder_dual_lane_critic_model],
+                "risk_llm": [builder_dual_lane_critic_model],
+            }
+            st.session_state["builder_multi_llm_role_overrides"] = dict(
+                builder_multi_llm_role_overrides
+            )
+            with st.expander("Résumé lanes", expanded=False):
+                lane_rows = [
+                    {
+                        "lane": "principale",
+                        "roles_couverts": "idea_llm, builder_llm",
+                        "endpoint": builder_ollama_host,
+                        "gpu_cible": primary_gpu,
+                        "modele": builder_dual_lane_primary_model,
+                    },
+                    {
+                        "lane": "critique",
+                        "roles_couverts": "critic_llm, risk_llm",
+                        "endpoint": control_host,
+                        "gpu_cible": control_gpu,
+                        "modele": builder_dual_lane_critic_model,
+                    },
+                ]
+                st.dataframe(lane_rows, width="stretch", hide_index=True)
+                _render_builder_runtime_diagnostic_panel()
+        else:
+            current_builder_model = builder_model_single_llm
+            builder_model_single_llm = current_builder_model or "deepseek-r1:32b"
+            if builder_execution_mode == BUILDER_EXECUTION_MODE_MONO:
+                builder_model_single_llm = render_model_selector(
+                    label="Modele LLM",
+                    key="builder_model_select",
+                    help_text="Modèles installés sur Ollama en priorité, puis catalogue local connu si l'inventaire serveur est incomplet.",
+                    show_details=True,
+                    compact=True,
+                    ollama_host=builder_ollama_host,
+                    include_library_models=True,
+                    current_value=current_builder_model,
+                )
+                st.session_state["builder_multi_llm_role_overrides"] = {}
+            st.session_state["builder_model_single_llm"] = builder_model_single_llm
+
+            if (
+                builder_execution_mode == BUILDER_EXECUTION_MODE_EXPERT
+                and _MULTI_LLM_AVAILABLE
+            ):
+                builder_multi_llm_profile, builder_multi_llm_role_overrides = (
+                    _render_builder_expert_multi_role_section(
+                        builder_ollama_host=builder_ollama_host,
+                        builder_topology=builder_topology,
+                        builder_multi_llm_profile=builder_multi_llm_profile,
+                    )
+                )
+
+        active_builder_models = _collect_inference_model_candidates(
+            [builder_model_single_llm],
+            [builder_dual_lane_primary_model, builder_dual_lane_critic_model],
+            builder_multi_llm_role_overrides,
+        )
+        _render_llm_inference_settings_editor(
+            active_models=active_builder_models,
+            section_label="Inférence Ollama du Builder",
+        )
+
+    with params_tab:
+        st.markdown("##### Paramètres de construction")
+        builder_max_iterations = st.slider(
+            "Itérations max",
+            min_value=1,
+            max_value=30,
+            value=st.session_state.get("builder_max_iterations", 10),
+            key="builder_max_iters_slider",
+            help="Nombre maximum de tentatives pour améliorer la stratégie.",
+        )
+        _param_col1, _param_col2 = st.columns(2)
+        with _param_col1:
+            builder_target_sharpe = st.number_input(
+                "Sharpe cible",
+                min_value=0.0,
+                max_value=5.0,
+                value=st.session_state.get("builder_target_sharpe", 1.0),
+                step=0.1,
+                key="builder_target_sharpe_input",
+                help="Sharpe ratio minimum pour accepter automatiquement la stratégie.",
+            )
+        with _param_col2:
+            builder_capital = st.number_input(
+                "Capital initial ($)",
+                min_value=100.0,
+                max_value=1_000_000.0,
+                value=st.session_state.get("builder_capital", 10000.0),
+                step=1000.0,
+                key="builder_capital_input",
+                format="%.0f",
+            )
+
+        try:
+            from indicators.registry import list_indicators
+            indicators = list_indicators()
+            with st.expander(f"Références ({len(indicators)} indicateurs)", expanded=False):
+                st.write(", ".join(sorted(indicators)))
+        except Exception as exc:
+            logger.warning("Failed to list indicators: %s", exc)
+
+        sandbox_root = get_builder_sessions_dir()
+        if sandbox_root.exists():
+            sessions = sorted(
+                [d.name for d in sandbox_root.iterdir() if d.is_dir() and d.name != ".gitkeep"],
+                reverse=True,
+            )
+            if sessions:
+                with st.expander(f"Sessions précédentes ({len(sessions)})", expanded=False):
+                    for s in sessions[:10]:
+                        st.caption(f"• {s}")
 
     # Garder des variables locales synchronisées pour debug lisible
     _ = (
@@ -1809,6 +2189,12 @@ def _render_llm_tab(state: SidebarState) -> None:
     llm_compare_max_runs = 25
     llm_compare_use_preset = True
     llm_compare_generate_report = True
+    llm_inference_global_settings = normalize_llm_inference_settings(
+        st.session_state.get("llm_inference_global_settings")
+    )
+    llm_inference_model_profiles = normalize_llm_model_inference_profiles(
+        st.session_state.get("llm_inference_model_profiles")
+    )
 
     available_strategies = list_strategies() if callable(list_strategies) else []
     strategy_options = build_strategy_options(available_strategies)
@@ -2089,11 +2475,22 @@ def _render_llm_tab(state: SidebarState) -> None:
                     include_library_models=True,
                     current_value=current_exec_llm_model,
                 )
+            llm_inference_global_settings, llm_inference_model_profiles = (
+                _render_llm_inference_settings_editor(
+                    active_models=[llm_model] if llm_model else [],
+                    section_label="Inférence Ollama",
+                )
+            )
             if llm_model and callable(LLMConfig):
-                llm_config = LLMConfig(
-                    provider=LLMProvider.OLLAMA,
-                    model=llm_model,
-                    ollama_host=ollama_host,
+                llm_config = apply_llm_inference_settings(
+                    LLMConfig(
+                        provider=LLMProvider.OLLAMA,
+                        model=llm_model,
+                        ollama_host=ollama_host,
+                    ),
+                    model_name=llm_model,
+                    global_settings=llm_inference_global_settings,
+                    model_profiles=llm_inference_model_profiles,
                 )
             st.session_state["exec_llm_topology_config"] = llm_topology.to_dict()
         else:
@@ -2113,7 +2510,7 @@ def _render_llm_tab(state: SidebarState) -> None:
                 llm_config = LLMConfig(
                     provider=LLMProvider.OPENAI,
                     model=llm_model,
-                    api_key=openai_key,
+                    openai_api_key=openai_key,
                 )
             else:
                 st.warning("⚠️ Clé API requise")
@@ -2305,9 +2702,16 @@ def _render_mode_selector(current_mode: str) -> str:
 
 
 def render_exec_tabs(state: SidebarState) -> None:
-    """Affiche le sélecteur de mode d'exécution dans la page principale."""
+    """Affiche uniquement le contenu du mode d'exécution actif."""
     _init_exec_tabs_state()
-    active_mode = _render_mode_selector(state.optimization_mode)
+    mode_names = [mode_name for mode_name, _icon, _desc in MODE_OPTIONS]
+    active_mode = str(
+        st.session_state.get("optimization_mode", state.optimization_mode)
+        or state.optimization_mode
+    ).strip()
+    if active_mode not in mode_names:
+        active_mode = mode_names[0]
+        st.session_state["optimization_mode"] = active_mode
     st.markdown("---")
     description = next(
         (desc for mode_name, _icon, desc in MODE_OPTIONS if mode_name == active_mode),

@@ -27,7 +27,10 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+import logging
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 import streamlit as st
@@ -38,23 +41,226 @@ try:
 except ImportError:
     PLOTLY_AVAILABLE = False
 
+from backtest.result_store import get_results_root_dir, get_saved_runs_dir
 from backtest.storage import ResultStorage
 from catalog.strategy_catalog import CATEGORY_ORDER, list_entries, upsert_from_saved_run
 from ui.helpers import coerce_metric_float, compute_period_days, format_pnl_with_daily
 from utils.run_tracker import RunTracker
 
-RESULTS_DIR = Path("backtest_results")
-RUNS_DIR = Path("runs")
+RESULTS_DIR = get_results_root_dir()
+RUNS_DIR = get_saved_runs_dir()
 GRADUATION_RESULTS_DIR = Path("catalog/graduation_results")
 
 
-def _safe_read_csv(path: Path) -> pd.DataFrame:
+_CATALOG_CSV_DTYPE: Dict[str, str] = {
+    "run_id": "str",
+    "strategy": "str",
+    "symbol": "str",
+    "timeframe": "str",
+    "status": "str",
+    "category": "str",
+    "n_bars": "str",
+    "n_trades": "str",
+    "source_run_id": "str",
+}
+
+
+def _safe_read_csv(path: Path, dtype: Optional[Dict[str, str]] = None) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
     try:
-        return pd.read_csv(path)
-    except Exception:
+        return pd.read_csv(path, low_memory=False, dtype=dtype or _CATALOG_CSV_DTYPE)
+    except Exception as exc:
+        logger.warning("Failed to read CSV %s: %s", path, exc)
         return pd.DataFrame()
+
+
+def _to_float(value: Any) -> Optional[float]:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
+def _to_int(value: Any) -> Optional[int]:
+    try:
+        if value is None or value == "":
+            return None
+        return int(float(value))
+    except Exception:
+        return None
+
+
+def _as_listish(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, tuple):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, set):
+        return sorted(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                parsed = json.loads(text)
+            except Exception:
+                parsed = None
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+        return [part.strip() for part in text.split(",") if part.strip()]
+    try:
+        if pd.isna(value):
+            return []
+    except Exception:
+        pass
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    df = df.copy()
+
+    context_col_map = {
+        "configured_contexts": "configured_context_count",
+        "loaded_contexts": "loaded_context_count",
+        "missing_contexts": "missing_context_count",
+    }
+    for source_col, count_col in context_col_map.items():
+        if source_col not in df.columns:
+            continue
+        if count_col in df.columns:
+            numeric_counts = pd.to_numeric(df[count_col], errors="coerce")
+            missing_mask = numeric_counts.isna()
+            if missing_mask.any():
+                df.loc[missing_mask, count_col] = df.loc[missing_mask, source_col].apply(lambda value: len(_as_listish(value)))
+        else:
+            df[count_col] = df[source_col].apply(lambda value: len(_as_listish(value)))
+
+    if "tested_timeframes" in df.columns and "timeframes_tested" not in df.columns:
+        df["timeframes_tested"] = df["tested_timeframes"].apply(
+            lambda value: ",".join(sorted(_as_listish(value)))
+        )
+
+    if "benchmark_results" in df.columns:
+        def _benchmark_names(value: Any) -> list[str]:
+            if isinstance(value, dict):
+                return sorted(str(name).strip() for name in value.keys() if str(name).strip())
+            return []
+
+        def _benchmark_tokens(value: Any) -> list[str]:
+            tokens: list[str] = []
+            if not isinstance(value, dict):
+                return tokens
+            for payload in value.values():
+                if not isinstance(payload, dict):
+                    continue
+                for token in payload.get("tokens", []) or []:
+                    token_str = str(token).strip()
+                    if token_str and token_str not in tokens:
+                        tokens.append(token_str)
+            return sorted(tokens)
+
+        benchmark_names = df["benchmark_results"].apply(_benchmark_names)
+        if "tested_benchmark_names" not in df.columns:
+            df["tested_benchmark_names"] = benchmark_names.apply(lambda names: ",".join(names))
+        if "configured_benchmark_count" not in df.columns:
+            df["configured_benchmark_count"] = benchmark_names.apply(len)
+        if "tested_tokens" not in df.columns:
+            df["tested_tokens"] = df["benchmark_results"].apply(lambda value: ",".join(_benchmark_tokens(value)))
+
+    if "benchmark_consensus" in df.columns:
+        def _consensus_value(value: Any, key: str, default: Any = None) -> Any:
+            if isinstance(value, dict):
+                return value.get(key, default)
+            return default
+
+        if "required_benchmark_name" not in df.columns:
+            df["required_benchmark_name"] = df["benchmark_consensus"].apply(
+                lambda value: str(_consensus_value(value, "required_benchmark_name", "") or "").strip()
+            )
+        if "required_benchmark_passed" not in df.columns:
+            df["required_benchmark_passed"] = df["benchmark_consensus"].apply(
+                lambda value: bool(_consensus_value(value, "required_passed", False))
+            )
+        if "passed_benchmark_names" not in df.columns:
+            df["passed_benchmark_names"] = df["benchmark_consensus"].apply(
+                lambda value: ",".join(sorted(_as_listish(_consensus_value(value, "benchmarks_passed", []))))
+            )
+        if "benchmark_pass_summary" not in df.columns:
+            df["benchmark_pass_summary"] = df["benchmark_consensus"].apply(
+                lambda value: (
+                    f"{len(_as_listish(_consensus_value(value, 'benchmarks_passed', [])))}/"
+                    f"{int(_consensus_value(value, 'benchmarks_total', 0) or 0)}"
+                    if int(_consensus_value(value, "benchmarks_total", 0) or 0) > 0
+                    else ""
+                )
+            )
+        if "contradiction_state" not in df.columns:
+            def _state(value: Any) -> str:
+                if not isinstance(value, dict):
+                    return ""
+                if bool(value.get("consensus_passed")):
+                    return "passed"
+                if bool(value.get("contradicted")):
+                    return "contradicted"
+                return "failed"
+            df["contradiction_state"] = df["benchmark_consensus"].apply(_state)
+
+    if "multi_ctx_results" in df.columns:
+        def _ctx_metric(value: Any, key: str) -> int:
+            if isinstance(value, dict):
+                try:
+                    return int(value.get(key) or 0)
+                except Exception:
+                    return 0
+            return 0
+
+        if "passed_context_count" not in df.columns:
+            df["passed_context_count"] = df["multi_ctx_results"].apply(lambda value: _ctx_metric(value, "passed_count"))
+        if "total_context_count" not in df.columns:
+            df["total_context_count"] = df["multi_ctx_results"].apply(lambda value: _ctx_metric(value, "total_contexts"))
+        if "context_pass_summary" not in df.columns:
+            df["context_pass_summary"] = df.apply(
+                lambda row: (
+                    f"{int(pd.to_numeric(row.get('passed_context_count'), errors='coerce') or 0)}/"
+                    f"{int(pd.to_numeric(row.get('total_context_count'), errors='coerce') or 0)}"
+                    if int(pd.to_numeric(row.get("total_context_count"), errors="coerce") or 0) > 0
+                    else ""
+                ),
+                axis=1,
+            )
+
+    numeric_cols = [
+        "best_return_pct",
+        "best_profit_factor",
+        "best_score",
+        "best_sharpe",
+        "best_trades",
+        "best_max_drawdown_pct",
+        "best_win_rate_pct",
+        "configured_context_count",
+        "loaded_context_count",
+        "missing_context_count",
+        "configured_benchmark_count",
+        "passed_context_count",
+        "total_context_count",
+        "coverage_pct",
+        "sweep_robustness_pct",
+        "wfa_stability",
+        "wfa_avg_test_return_pct",
+        "wfa_avg_test_sharpe",
+        "wfa_overfitting_ratio",
+    ]
+    df = _coerce_numeric(df, numeric_cols)
+    return df
 
 
 def _load_candidate_report(*filenames: str) -> tuple[dict[str, Any], pd.DataFrame]:
@@ -69,19 +275,7 @@ def _load_candidate_report(*filenames: str) -> tuple[dict[str, Any], pd.DataFram
         candidates = payload.get("candidates") or []
         df = pd.DataFrame(candidates)
         if not df.empty:
-            numeric_cols = [
-                "best_return_pct",
-                "best_profit_factor",
-                "best_score",
-                "best_sharpe",
-                "best_trades",
-                "best_max_drawdown_pct",
-                "best_win_rate_pct",
-                "sweep_robustness_pct",
-                "wfa_stability",
-                "wfa_avg_test_return_pct",
-            ]
-            df = _coerce_numeric(df, numeric_cols)
+            df = _normalize_graduation_candidate_df(df)
         payload["_report_path"] = str(path)
         return payload, df
     return {}, pd.DataFrame()
@@ -143,13 +337,14 @@ def _render_progress_section(*, title: str, payload: dict[str, Any], log_filenam
     if age_seconds is not None:
         age_label = f"{int(age_seconds)}s"
 
-    cols = st.columns(6)
+    cols = st.columns(7)
     cols[0].metric("Statut", str(payload.get("status") or "?"))
     cols[1].metric("Phase", str(payload.get("current_phase") or "?"))
     cols[2].metric("Avancement", f"{payload.get('current_index', 0)}/{payload.get('current_total', 0)}")
     cols[3].metric("P2", int(stats.get("p2_survivors", 0)))
     cols[4].metric("P3", int(stats.get("p3_survivors", 0)))
     cols[5].metric("P4", int(stats.get("p4_survivors", 0)))
+    cols[6].metric("P5", int(stats.get("p5_survivors", 0)))
 
     strategy_label = str(candidate.get("strategy_name") or candidate.get("session_id") or "").strip()
     if strategy_label:
@@ -214,13 +409,15 @@ def _render_candidate_report_section(
         return
 
     stats = payload.get("stats") or {}
-    metric_cols = st.columns(6)
+    metric_cols = st.columns(8)
     metric_cols[0].metric("Rapport", payload.get("phase", "?"))
     metric_cols[1].metric("Candidats", int(payload.get("total_candidates", 0)))
     metric_cols[2].metric("P2", int(stats.get("p2_survivors", 0)))
     metric_cols[3].metric("P3", int(stats.get("p3_survivors", 0)))
     metric_cols[4].metric("P4", int(stats.get("p4_survivors", 0)))
-    metric_cols[5].metric("Sync", int(stats.get("catalog_synced", 0)))
+    metric_cols[5].metric("P5", int(stats.get("p5_survivors", 0)))
+    metric_cols[6].metric("P6", int(stats.get("p6_promoted", 0)))
+    metric_cols[7].metric("Sync", int(stats.get("catalog_synced", 0)))
     st.caption(f"Source: {payload.get('_report_path', '')}")
 
     if df.empty:
@@ -261,11 +458,22 @@ def _render_candidate_report_section(
         "best_profit_factor",
         "best_sharpe",
         "best_trades",
-        "multi_ctx_pass",
-        "tokens_tested",
+        "benchmark_pass_summary",
+        "required_benchmark_name",
+        "required_benchmark_passed",
+        "contradiction_state",
+        "context_pass_summary",
+        "configured_context_count",
+        "loaded_context_count",
+        "missing_context_count",
+        "tested_benchmark_names",
+        "tested_tokens",
+        "timeframes_tested",
         "sweep_robustness_pct",
         "wfa_stability",
         "wfa_avg_test_return_pct",
+        "wfa_avg_test_sharpe",
+        "wfa_overfitting_ratio",
         "rejection_reason",
         "catalog_category",
         "catalog_entry_id",
@@ -332,7 +540,7 @@ def _render_graduation_tab() -> None:
         )
         st.rerun()
 
-    if control_col_b.button("Lancer P1→P5", key="graduation_run_full", type="primary", use_container_width=True):
+    if control_col_b.button("Lancer P1→P6", key="graduation_run_full", type="primary", use_container_width=True):
         from catalog.graduation import GraduationConfig, run_full_graduation
 
         with st.spinner("Pipeline de graduation en cours..."):
@@ -341,7 +549,8 @@ def _render_graduation_tab() -> None:
         st.session_state["graduation_status_msg"] = (
             f"Pipeline terminé: P1={stats.get('p1_candidates', 0)}, "
             f"P2={stats.get('p2_survivors', 0)}, P3={stats.get('p3_survivors', 0)}, "
-            f"P4={stats.get('p4_survivors', 0)}, P5={stats.get('p5_promoted', 0)}"
+            f"P4={stats.get('p4_survivors', 0)}, P5={stats.get('p5_survivors', 0)}, "
+            f"P6={stats.get('p6_promoted', 0)}"
             + (f", sync={stats.get('catalog_synced', 0)}" if sync_catalog else "")
         )
         st.rerun()
@@ -435,6 +644,8 @@ _BACKTEST_OVERVIEW_METRIC_ALIASES = {
     "total_pnl": "metrics_total_pnl",
     "total_return_pct": "metrics_total_return_pct",
     "annualized_return": "metrics_annualized_return",
+    "benchmark_return_pct": "metrics_benchmark_return_pct",
+    "alpha_simple_pct": "metrics_alpha_simple_pct",
     "sharpe_ratio": "metrics_sharpe_ratio",
     "sortino_ratio": "metrics_sortino_ratio",
     "max_drawdown_pct": "metrics_max_drawdown_pct",
@@ -476,6 +687,8 @@ def _normalize_backtest_overview_df(df: pd.DataFrame) -> pd.DataFrame:
         "total_pnl",
         "total_return_pct",
         "annualized_return",
+        "benchmark_return_pct",
+        "alpha_simple_pct",
         "sharpe_ratio",
         "sortino_ratio",
         "max_drawdown_pct",
@@ -643,6 +856,140 @@ def _metric_from_snapshot(snapshot: Dict[str, Any], *keys: str) -> Any:
     return None
 
 
+def _meta_first_present(meta: Dict[str, Any], *keys: str) -> Any:
+    if not isinstance(meta, dict):
+        return None
+    for key in keys:
+        if key not in meta:
+            continue
+        value = meta.get(key)
+        if value is None or value == "" or value == [] or value == {}:
+            continue
+        return value
+    return None
+
+
+def _extract_catalog_postfilter_fields(entry: Dict[str, Any]) -> Dict[str, Any]:
+    metrics = entry.get("last_metrics_snapshot") or {}
+    meta = entry.get("meta") or {}
+    if not isinstance(meta, dict):
+        meta = {}
+
+    benchmark_consensus = _meta_first_present(
+        meta,
+        "benchmark_consensus",
+        "positive_pipeline_benchmark_consensus",
+    )
+    benchmark_results = _meta_first_present(
+        meta,
+        "benchmark_results",
+        "positive_pipeline_benchmark_results",
+    )
+    configured_contexts = _meta_first_present(
+        meta,
+        "configured_contexts",
+        "positive_pipeline_configured_contexts",
+    )
+    loaded_contexts = _meta_first_present(
+        meta,
+        "loaded_contexts",
+        "positive_pipeline_loaded_contexts",
+    )
+    missing_contexts = _meta_first_present(
+        meta,
+        "missing_contexts",
+        "positive_pipeline_missing_contexts",
+    )
+    tested_timeframes = _meta_first_present(
+        meta,
+        "tested_timeframes",
+        "positive_pipeline_tested_timeframes",
+    )
+
+    configured_context_list = _as_listish(configured_contexts)
+    loaded_context_list = _as_listish(loaded_contexts)
+    missing_context_list = _as_listish(missing_contexts)
+    tested_timeframe_list = sorted(_as_listish(tested_timeframes))
+
+    tested_benchmark_names: list[str] = []
+    tested_tokens: list[str] = []
+    if isinstance(benchmark_results, dict):
+        tested_benchmark_names = sorted(str(name).strip() for name in benchmark_results.keys() if str(name).strip())
+        for payload in benchmark_results.values():
+            if not isinstance(payload, dict):
+                continue
+            for token in payload.get("tokens", []) or []:
+                token_str = str(token).strip()
+                if token_str and token_str not in tested_tokens:
+                    tested_tokens.append(token_str)
+    tested_tokens = sorted(tested_tokens)
+
+    if not tested_tokens:
+        source_symbol = str(_meta_first_present(meta, "source_symbol", "positive_pipeline_source_symbol") or "").strip()
+        if source_symbol:
+            tested_tokens = [source_symbol]
+
+    required_benchmark_name = ""
+    required_benchmark_passed = False
+    benchmark_pass_summary = ""
+    contradiction_state = ""
+    passed_benchmark_names: list[str] = []
+    if isinstance(benchmark_consensus, dict):
+        required_benchmark_name = str(benchmark_consensus.get("required_benchmark_name") or "").strip()
+        required_benchmark_passed = bool(benchmark_consensus.get("required_passed", False))
+        passed_benchmark_names = sorted(_as_listish(benchmark_consensus.get("benchmarks_passed", [])))
+        benchmarks_total = int(benchmark_consensus.get("benchmarks_total") or 0)
+        benchmark_pass_summary = (
+            f"{len(passed_benchmark_names)}/{benchmarks_total}"
+            if benchmarks_total > 0
+            else ""
+        )
+        if bool(benchmark_consensus.get("consensus_passed")):
+            contradiction_state = "passed"
+        elif bool(benchmark_consensus.get("contradicted")):
+            contradiction_state = "contradicted"
+        elif benchmarks_total > 0:
+            contradiction_state = "failed"
+
+    passed_context_count = _to_int(
+        _meta_first_present(meta, "positive_pipeline_passed_count")
+    )
+    total_context_count = _to_int(
+        _meta_first_present(meta, "positive_pipeline_total_contexts")
+    )
+    if passed_context_count is None:
+        passed_context_count = _to_int(_metric_from_snapshot(metrics, "multi_context_passed"))
+    if total_context_count is None:
+        total_context_count = _to_int(_metric_from_snapshot(metrics, "multi_context_total"))
+    context_pass_summary = (
+        f"{passed_context_count}/{total_context_count}"
+        if total_context_count is not None and total_context_count > 0 and passed_context_count is not None
+        else ""
+    )
+
+    return {
+        "phase": str(_meta_first_present(meta, "phase", "positive_pipeline_phase") or "").strip(),
+        "decision": str(_meta_first_present(meta, "decision", "positive_pipeline_decision") or "").strip(),
+        "p2_verdict": str(_meta_first_present(meta, "p2_verdict", "positive_pipeline_p2_verdict") or "").strip(),
+        "p3_verdict": str(_meta_first_present(meta, "p3_verdict", "positive_pipeline_p3_verdict") or "").strip(),
+        "p4_verdict": str(_meta_first_present(meta, "p4_verdict", "positive_pipeline_p4_verdict") or "").strip(),
+        "p5_verdict": str(_meta_first_present(meta, "p5_verdict", "positive_pipeline_p5_verdict") or "").strip(),
+        "p6_verdict": str(_meta_first_present(meta, "p6_verdict", "positive_pipeline_p6_verdict") or "").strip(),
+        "coverage_pct": _to_float(_meta_first_present(meta, "coverage_pct", "positive_pipeline_coverage_pct")),
+        "configured_context_count": len(configured_context_list),
+        "loaded_context_count": len(loaded_context_list),
+        "missing_context_count": len(missing_context_list),
+        "context_pass_summary": context_pass_summary,
+        "required_benchmark_name": required_benchmark_name,
+        "required_benchmark_passed": required_benchmark_passed,
+        "benchmark_pass_summary": benchmark_pass_summary,
+        "contradiction_state": contradiction_state,
+        "tested_benchmark_names": ",".join(tested_benchmark_names),
+        "tested_tokens": ",".join(tested_tokens),
+        "timeframes_tested": ",".join(tested_timeframe_list),
+    }
+
+
 def _load_strategy_catalog_df() -> pd.DataFrame:
     rows: List[Dict[str, Any]] = []
     for entry in list_entries(status=None):
@@ -665,12 +1012,25 @@ def _load_strategy_catalog_df() -> pd.DataFrame:
                 "return_pct": _metric_from_snapshot(metrics, "total_return_pct", "total_return"),
                 "pnl": _metric_from_snapshot(metrics, "total_pnl", "pnl"),
                 "trades": _metric_from_snapshot(metrics, "total_trades", "trades"),
+                **_extract_catalog_postfilter_fields(entry),
             }
         )
     if not rows:
         return pd.DataFrame()
     df = pd.DataFrame(rows)
-    return _coerce_numeric(df, ["sharpe", "return_pct", "pnl", "trades"])
+    return _coerce_numeric(
+        df,
+        [
+            "sharpe",
+            "return_pct",
+            "pnl",
+            "trades",
+            "coverage_pct",
+            "configured_context_count",
+            "loaded_context_count",
+            "missing_context_count",
+        ],
+    )
 
 
 def _decorate_unified_with_catalog(
@@ -687,20 +1047,27 @@ def _decorate_unified_with_catalog(
         return df
 
     catalog_map = {}
-    for _, row in strategy_catalog_df.iterrows():
-        run_id = str(row.get("source_run_id") or "").strip()
+    for row_dict in strategy_catalog_df.to_dict(orient="records"):
+        run_id = str(row_dict.get("source_run_id") or "").strip()
         if not run_id:
             continue
-        catalog_map[run_id] = row
+        catalog_map[run_id] = row_dict
 
-    for idx, run_id in df.get("run_id", pd.Series(dtype=str)).items():
-        key = str(run_id or "").strip()
-        if not key or key not in catalog_map:
-            continue
-        catalog_row = catalog_map[key]
-        df.at[idx, "catalog_entry_id"] = catalog_row.get("entry_id", "")
-        df.at[idx, "catalog_category"] = catalog_row.get("category", "")
-        df.at[idx, "catalog_status"] = catalog_row.get("status", "")
+    keys = df.get("run_id", pd.Series(dtype=str)).astype(str).str.strip()
+    entry_map = {k: v.get("entry_id", "") for k, v in catalog_map.items()}
+    category_map = {k: v.get("category", "") for k, v in catalog_map.items()}
+    status_map = {k: v.get("status", "") for k, v in catalog_map.items()}
+    phase_map = {k: v.get("phase", "") for k, v in catalog_map.items()}
+    decision_map = {k: v.get("decision", "") for k, v in catalog_map.items()}
+    benchmark_map = {k: v.get("benchmark_pass_summary", "") for k, v in catalog_map.items()}
+    coverage_map = {k: v.get("coverage_pct", None) for k, v in catalog_map.items()}
+    df["catalog_entry_id"] = keys.map(entry_map).fillna("")
+    df["catalog_category"] = keys.map(category_map).fillna("")
+    df["catalog_status"] = keys.map(status_map).fillna("")
+    df["catalog_phase"] = keys.map(phase_map).fillna("")
+    df["catalog_decision"] = keys.map(decision_map).fillna("")
+    df["catalog_benchmark_pass_summary"] = keys.map(benchmark_map).fillna("")
+    df["catalog_coverage_pct"] = pd.to_numeric(keys.map(coverage_map), errors="coerce")
     return df
 
 
@@ -927,7 +1294,7 @@ def _render_latest_run(backtest_overview: pd.DataFrame, runs_overview: pd.DataFr
             f"{latest.get('timestamp', '')}"
         )
     else:
-        st.write("ℹ️ Dernier run LLM (runs/)")
+        st.write(f"ℹ️ Dernier run LLM ({RUNS_DIR})")
         metrics = latest.get("metrics", {})
         st.caption(
             f"Mode: {latest.get('kind', '')} | Session: {latest.get('id', '')} | "
@@ -1005,10 +1372,13 @@ def _get_numeric_column_config() -> Dict[str, Any]:
         "pnl_per_day": st.column_config.NumberColumn("PnL/jour ($)", format="$%.2f"),
         "pnl_per_day_covered": st.column_config.NumberColumn("PnL/jour (données)", format="$%.2f"),
         "total_return_pct": st.column_config.NumberColumn("Return (%)", format="%.2f%%"),
+        "benchmark_return_pct": st.column_config.NumberColumn("Buy & Hold (%)", format="%.2f%%"),
+        "alpha_simple_pct": st.column_config.NumberColumn("Alpha simple (%)", format="%.2f%%"),
         "sharpe_ratio": st.column_config.NumberColumn("Sharpe", format="%.2f"),
         "max_drawdown_pct": st.column_config.NumberColumn("Max DD (%)", format="%.1f%%"),
         "win_rate_pct": st.column_config.NumberColumn("Win Rate (%)", format="%.1f%%"),
         "data_coverage_pct": st.column_config.NumberColumn("Couverture données (%)", format="%.1f%%"),
+        "catalog_coverage_pct": st.column_config.NumberColumn("Couverture bench (%)", format="%.1f%%"),
         "profit_factor": st.column_config.NumberColumn("PF", format="%.2f"),
         "total_trades": st.column_config.NumberColumn("Trades", format="%d"),
         "n_bars": st.column_config.NumberColumn("Bars", format="%d"),
@@ -1027,6 +1397,8 @@ def _get_numeric_column_config() -> Dict[str, Any]:
         "total_llm_calls": st.column_config.NumberColumn("Appels LLM", format="%d"),
         "metrics_total_pnl": st.column_config.NumberColumn("PnL ($)", format="$%.2f"),
         "metrics_total_return_pct": st.column_config.NumberColumn("Return (%)", format="%.2f%%"),
+        "metrics_benchmark_return_pct": st.column_config.NumberColumn("Buy & Hold (%)", format="%.2f%%"),
+        "metrics_alpha_simple_pct": st.column_config.NumberColumn("Alpha simple (%)", format="%.2f%%"),
         "metrics_sharpe_ratio": st.column_config.NumberColumn("Sharpe", format="%.2f"),
         "metrics_max_drawdown_pct": st.column_config.NumberColumn("Max DD (%)", format="%.1f%%"),
         "metrics_profit_factor": st.column_config.NumberColumn("PF", format="%.2f"),
@@ -1035,6 +1407,10 @@ def _get_numeric_column_config() -> Dict[str, Any]:
         "sharpe": st.column_config.NumberColumn("Sharpe", format="%.2f"),
         "pnl": st.column_config.NumberColumn("PnL ($)", format="$%.2f"),
         "trades": st.column_config.NumberColumn("Trades", format="%d"),
+        "coverage_pct": st.column_config.NumberColumn("Couverture bench (%)", format="%.1f%%"),
+        "configured_context_count": st.column_config.NumberColumn("Ctx cfg", format="%d"),
+        "loaded_context_count": st.column_config.NumberColumn("Ctx chargés", format="%d"),
+        "missing_context_count": st.column_config.NumberColumn("Ctx manquants", format="%d"),
     }
 
 
@@ -1049,7 +1425,7 @@ def render_results_hub(*, embedded: bool = False) -> None:
         refresh = st.button("🔄 Rafraîchir catalogues")
     with col_right:
         st.caption(
-            "Catalogues CSV non-destructifs basés sur backtest_results/, runs/ et strategy_catalog.json."
+            f"Catalogues CSV non-destructifs basés sur `{RESULTS_DIR}`, `{RUNS_DIR}` et `strategy_catalog.json`."
         )
 
     backtest_overview, unified_overview, runs_overview = _load_catalogs(refresh=refresh)
@@ -1281,6 +1657,9 @@ def render_results_hub(*, embedded: bool = False) -> None:
                     "mode",
                     "status",
                     "catalog_category",
+                    "catalog_phase",
+                    "catalog_benchmark_pass_summary",
+                    "catalog_coverage_pct",
                     "metrics_total_return_pct",
                     "metrics_sharpe_ratio",
                     "metrics_total_trades",
@@ -1309,8 +1688,8 @@ def render_results_hub(*, embedded: bool = False) -> None:
                 target_category = st.selectbox(
                     "Cible catalogue",
                     CATEGORY_ORDER,
-                    index=CATEGORY_ORDER.index("p3_watchlist"),
-                    help="`p3_watchlist` est la file naturelle de rejouage/revue. Les paliers supérieurs restent une décision manuelle.",
+                    index=CATEGORY_ORDER.index("p3_benchmark_consensus"),
+                    help="`p3_benchmark_consensus` est la file naturelle de rejouage/revue après import d’un run. Les paliers supérieurs restent une décision manuelle.",
                 )
                 promo_col_a, promo_col_b = st.columns(2)
                 if promo_col_a.button(
@@ -1369,13 +1748,38 @@ def render_results_hub(*, embedded: bool = False) -> None:
             st.write("ℹ️ Le strategy catalog est vide.")
         else:
             strategy_catalog_df = strategy_catalog_df.sort_values(
-                ["category", "strategy", "symbol", "timeframe"],
-                ascending=[True, True, True, True],
+                ["category", "phase", "strategy", "symbol", "timeframe"],
+                ascending=[True, True, True, True, True],
                 na_position="last",
             )
             catalog_select_df = strategy_catalog_df.copy()
             catalog_select_df.insert(0, "select", False)
             catalog_select_df["replayable"] = catalog_select_df["source_run_id"].fillna("").astype(str) != ""
+            catalog_display_cols = [
+                "select",
+                "entry_id",
+                "strategy",
+                "symbol",
+                "timeframe",
+                "category",
+                "phase",
+                "decision",
+                "benchmark_pass_summary",
+                "context_pass_summary",
+                "coverage_pct",
+                "required_benchmark_name",
+                "contradiction_state",
+                "return_pct",
+                "sharpe",
+                "trades",
+                "source_run_id",
+                "replayable",
+                "status",
+                "builder_state",
+                "tags",
+            ]
+            catalog_display_cols = [col for col in catalog_display_cols if col in catalog_select_df.columns]
+            catalog_select_df = catalog_select_df[catalog_display_cols]
             edited_catalog = st.data_editor(
                 catalog_select_df,
                 width="stretch",

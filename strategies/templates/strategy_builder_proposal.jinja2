@@ -30,9 +30,31 @@ Do NOT output markdown outside the requested JSON.
 - Capital: {{ initial_capital|default(10000) }}
 
 ## AVAILABLE INDICATORS (ONLY THESE)
+- Order is session-stable and lightly re-ranked for this objective/diagnostic to reduce fixed-position bias.
 {% for ind in available_indicators %}
 - {{ ind }}
 {% endfor %}
+
+{% if available_indicator_guide %}
+## INDICATOR QUICK GUIDE
+- Expand abbreviations before choosing indicators. Use the mechanics below instead of guessing from names only.
+- Prefer indicators whose behavior directly addresses the current failure mode.
+- If a guide line exposes preferred stable aliases, keep them in mind: the code phase will expose the same names in the generated preamble.
+{% for line in available_indicator_guide %}
+{{ line }}
+{% endfor %}
+{% endif %}
+
+{% if 'markov_switching' in available_indicators or 'directional_bias' in available_indicators %}
+## REGIME FILTER GUIDANCE
+{% if 'markov_switching' in available_indicators %}
+- `markov_switching` should be used as a macro regime gate or probability filter, not as a fast standalone trigger.
+- Prefer hypotheses like "take breakout trades only when Markov bull regime probability is high" over "enter because Markov changed state".
+{% endif %}
+{% if 'directional_bias' in available_indicators %}
+- `directional_bias` is a context score. Use it to confirm or veto another setup, not as the only entry condition.
+{% endif %}
+{% endif %}
 
 {% if last_metrics %}
 ## LAST BACKTEST SNAPSHOT
@@ -62,6 +84,19 @@ Required behavior:
 {% elif diagnostic.change_type == "both" %}
 - Change both logic and parameters.
 {% endif %}
+{% endif %}
+
+{% if previous_indicators %}
+## PREVIOUS INDICATORS
+- Last iteration used: {{ previous_indicators|join(", ") }}
+{% endif %}
+
+{% if should_consider_indicator_expansion %}
+## INDICATOR EXPLORATION GUIDANCE
+- The previous result suggests a structural issue or a real stagnation.
+- You MAY keep the same indicators if you have a concrete structural redesign in mind.
+- But first ask yourself whether adding, replacing, or removing at least one indicator would better address the failure mode.
+- Reusing the exact same indicator set is acceptable only if the new hypothesis is materially different, not just threshold tuning.
 {% endif %}
 
 {% if stagnation_warning %}

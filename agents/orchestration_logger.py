@@ -30,6 +30,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from backtest.result_store import get_saved_runs_dir
 from utils.log import get_logger
 
 logger = get_logger(__name__)
@@ -213,7 +214,7 @@ class OrchestrationLogger:
         self.current_iteration = 0
         self._lock = threading.Lock()
         self._auto_save = auto_save
-        self._save_path = save_path or Path("runs") / self.session_id / "trace.jsonl"
+        self._save_path = save_path or (get_saved_runs_dir() / self.session_id / "trace.jsonl")
         self._save_counter = 0
         self._save_interval = 10  # Sauvegarder tous les 10 événements
         self._on_event_callback = on_event  # Callback pour mise à jour live

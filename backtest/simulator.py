@@ -541,36 +541,53 @@ def calculate_equity_curve(
         elif exit_ts_series.dt.tz != df.index.tz:
             exit_ts_series = exit_ts_series.dt.tz_convert(df.index.tz)
 
-    # Capital réalisé
-    realized_capital = initial_capital
+    # --- Vectorized equity computation ---
+    close_prices = df['close'].values.astype(np.float64)
+    bar_times = df.index.values  # numpy datetime64 array
 
-    # Parcourir chaque barre pour calculer equity avec mark-to-market
-    for bar_idx, bar_time in enumerate(df.index):
-        current_price = df['close'].iloc[bar_idx]
+    # Extract trade arrays once
+    entry_times = entry_ts_series.values
+    exit_times = exit_ts_series.values
+    trade_pnl = trades_df['pnl'].values.astype(np.float64)
+    trade_entry_prices = trades_df['price_entry'].values.astype(np.float64)
+    trade_sizes = trades_df['size'].values.astype(np.float64)
+    side_mult = np.where(
+        trades_df.get('side', pd.Series('LONG', index=trades_df.index)).values == 'SHORT',
+        -1.0, 1.0,
+    )
 
-        # Trades fermés à cette barre
-        closed_trades = trades_df[exit_ts_series <= bar_time]
-        if not closed_trades.empty:
-            realized_capital = initial_capital + closed_trades['pnl'].sum()
+    n_bars = len(bar_times)
+    n_trades = len(trade_pnl)
 
-        # Positions ouvertes
-        open_trades = trades_df[
-            (entry_ts_series <= bar_time) & (exit_ts_series > bar_time)
-        ]
+    # Realized PnL: cumulative sum of closed trades' pnl per bar
+    # Sort trades by exit_time, use searchsorted to find how many have closed by each bar
+    sort_idx = np.argsort(exit_times)
+    sorted_exit = exit_times[sort_idx]
+    sorted_pnl = trade_pnl[sort_idx]
+    cum_pnl = np.cumsum(sorted_pnl)
 
-        unrealized_pnl = 0.0
-        if not open_trades.empty:
-            for _, trade in open_trades.iterrows():
-                entry_price = trade['price_entry']
-                size = trade['size']
-                side = trade.get('side', 'LONG')
+    # Number of trades closed at or before each bar (exit_ts <= bar_time)
+    closed_counts = np.searchsorted(sorted_exit, bar_times, side='right')
+    realized_pnl = np.where(closed_counts > 0, cum_pnl[closed_counts - 1], 0.0)
 
-                if side == 'LONG':
-                    unrealized_pnl += (current_price - entry_price) * size
-                else:  # SHORT
-                    unrealized_pnl += (entry_price - current_price) * size
+    # Unrealized PnL: vectorized with broadcasting for reasonable trade counts
+    if n_trades <= 5000:
+        # Full broadcasting: (n_bars, n_trades)
+        open_mask = (entry_times[np.newaxis, :] <= bar_times[:, np.newaxis]) & \
+                    (exit_times[np.newaxis, :] > bar_times[:, np.newaxis])
+        price_diff = (close_prices[:, np.newaxis] - trade_entry_prices[np.newaxis, :]) \
+                     * trade_sizes[np.newaxis, :] * side_mult[np.newaxis, :]
+        unrealized_pnl = np.sum(price_diff * open_mask, axis=1)
+    else:
+        # Fallback for very large trade counts: iterate trades, vectorize bars
+        unrealized_pnl = np.zeros(n_bars, dtype=np.float64)
+        for t in range(n_trades):
+            mask = (bar_times >= entry_times[t]) & (bar_times < exit_times[t])
+            unrealized_pnl[mask] += (close_prices[mask] - trade_entry_prices[t]) \
+                                    * trade_sizes[t] * side_mult[t]
 
-        equity.iloc[bar_idx] = realized_capital + unrealized_pnl
+    equity_values = initial_capital + realized_pnl + unrealized_pnl
+    equity = pd.Series(equity_values, index=df.index, dtype=np.float64)
 
     # Logs détaillés avant return
     if run_id:

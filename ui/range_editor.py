@@ -46,6 +46,23 @@ class RangeEditorState:
             st.session_state.range_editor_search = ""
 
 
+def _coerce_numeric_range_inputs(range_cfg) -> tuple[float, float, float, float, bool]:
+    """Construit des valeurs numériques sûres quand la config contient des bornes absentes."""
+    had_missing_bounds = any(
+        value is None for value in (range_cfg.min, range_cfg.max, range_cfg.step, range_cfg.default)
+    )
+
+    safe_min = float(range_cfg.min) if range_cfg.min is not None else 0.0
+    safe_step = float(range_cfg.step) if range_cfg.step not in (None, 0) else 1.0
+    safe_max = float(range_cfg.max) if range_cfg.max is not None else max(safe_min + safe_step, safe_min + 1.0)
+    if safe_max <= safe_min:
+        safe_max = safe_min + max(safe_step, 1.0)
+    safe_default = float(range_cfg.default) if range_cfg.default is not None else safe_min
+    safe_default = min(max(safe_default, safe_min), safe_max)
+
+    return safe_min, safe_max, safe_step, safe_default, had_missing_bounds
+
+
 def render_range_editor():
     """
     Affiche l'interface d'édition des plages de paramètres.
@@ -228,23 +245,29 @@ Default: {range_cfg.default}
 
                     else:
                         # Valeurs numériques
+                        safe_min, safe_max, safe_step, safe_default, had_missing_bounds = _coerce_numeric_range_inputs(range_cfg)
+                        if had_missing_bounds:
+                            st.caption(
+                                "Certaines bornes sont absentes dans la configuration actuelle. "
+                                "Des valeurs sûres temporaires sont affichées pour permettre l'édition."
+                            )
                         new_min = st.number_input(
                             "Minimum",
-                            value=float(range_cfg.min),
+                            value=safe_min,
                             key=f"min_{selected_category}_{param}",
                             format="%.4f"
                         )
 
                         new_max = st.number_input(
                             "Maximum",
-                            value=float(range_cfg.max),
+                            value=safe_max,
                             key=f"max_{selected_category}_{param}",
                             format="%.4f"
                         )
 
                         new_step = st.number_input(
                             "Pas",
-                            value=float(range_cfg.step),
+                            value=safe_step,
                             min_value=0.0001,
                             key=f"step_{selected_category}_{param}",
                             format="%.4f"
@@ -252,7 +275,7 @@ Default: {range_cfg.default}
 
                         new_default = st.number_input(
                             "Valeur par défaut",
-                            value=float(range_cfg.default),
+                            value=safe_default,
                             min_value=new_min,
                             max_value=new_max,
                             key=f"default_{selected_category}_{param}",
@@ -333,17 +356,21 @@ def render_range_editor_compact():
 
         if selected_param:
             range_cfg = manager.get_range(selected_category, selected_param)
+            safe_min, safe_max, safe_step, safe_default, had_missing_bounds = _coerce_numeric_range_inputs(range_cfg)
+
+            if had_missing_bounds:
+                st.caption("Bornes incomplètes détectées: des valeurs sûres temporaires sont affichées.")
 
             col1, col2, col3, col4 = st.columns(4)
 
             with col1:
-                new_min = st.number_input("Min", value=float(range_cfg.min), key="compact_min")
+                new_min = st.number_input("Min", value=safe_min, key="compact_min")
             with col2:
-                new_max = st.number_input("Max", value=float(range_cfg.max), key="compact_max")
+                new_max = st.number_input("Max", value=safe_max, key="compact_max")
             with col3:
-                new_step = st.number_input("Step", value=float(range_cfg.step), key="compact_step")
+                new_step = st.number_input("Step", value=safe_step, key="compact_step")
             with col4:
-                new_default = st.number_input("Default", value=float(range_cfg.default), key="compact_default")
+                new_default = st.number_input("Default", value=safe_default, key="compact_default")
 
             if st.button("✅ Appliquer", key="compact_apply"):
                 manager.update_range(

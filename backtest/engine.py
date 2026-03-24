@@ -311,7 +311,8 @@ class BacktestEngine:
                     returns=returns,
                     trades_df=trades_df,
                     initial_capital=self.initial_capital,
-                    periods_per_year=periods_per_year
+                    periods_per_year=periods_per_year,
+                    benchmark_prices=df["close"],
                 )
             else:
                 # Métriques complètes pour analyse détaillée
@@ -320,7 +321,8 @@ class BacktestEngine:
                     returns=returns,
                     trades_df=trades_df,
                     initial_capital=self.initial_capital,
-                    periods_per_year=periods_per_year
+                    periods_per_year=periods_per_year,
+                    benchmark_prices=df["close"],
                 )
 
             # BUGFIX CRITIQUE: Invalider métriques si compte ruiné
@@ -448,9 +450,18 @@ class BacktestEngine:
         try:
             strategy_class = get_strategy(name_lower)
             return strategy_class()
-        except ValueError:
+        except ValueError as exc:
             available = ", ".join(list_strategies())
-            raise ValueError(f"Stratégie inconnue: '{name}'. Disponibles: {available}")
+            raise ValueError(f"Stratégie inconnue: '{name}'. Disponibles: {available}") from exc
+
+    def calculate_indicators(
+        self,
+        df: pd.DataFrame,
+        strategy: StrategyBase,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Calcule les indicateurs requis par la stratégie."""
+        return self._calculate_indicators(df, strategy, params)
 
     def _calculate_indicators(
         self,
@@ -458,7 +469,7 @@ class BacktestEngine:
         strategy: StrategyBase,
         params: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Calcule les indicateurs requis par la stratégie."""
+        """Internal — use calculate_indicators() instead."""
         indicators = {}
         gpu_queues = None
 
@@ -538,7 +549,8 @@ class BacktestEngine:
         returns: pd.Series,
         trades_df: pd.DataFrame,
         initial_capital: float,
-        periods_per_year: int
+        periods_per_year: int,
+        benchmark_prices: Optional[pd.Series] = None,
     ) -> Dict[str, Any]:
         """
         Calcule UNIQUEMENT les métriques essentielles pour sweeps rapides.
@@ -575,6 +587,16 @@ class BacktestEngine:
 
         metrics["total_pnl"] = total_pnl
         metrics["total_return_pct"] = total_return_pct
+        if benchmark_prices is not None and len(benchmark_prices) > 1:
+            benchmark_start = float(pd.Series(benchmark_prices).iloc[0])
+            benchmark_end = float(pd.Series(benchmark_prices).iloc[-1])
+            if np.isfinite(benchmark_start) and np.isfinite(benchmark_end) and benchmark_start > 0.0:
+                metrics["benchmark_return_pct"] = ((benchmark_end / benchmark_start) - 1.0) * 100.0
+            else:
+                metrics["benchmark_return_pct"] = 0.0
+        else:
+            metrics["benchmark_return_pct"] = 0.0
+        metrics["alpha_simple_pct"] = metrics["total_return_pct"] - metrics["benchmark_return_pct"]
 
         # Sharpe simple (sans resample)
         if not returns.empty and len(returns) > 1:

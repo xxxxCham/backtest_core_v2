@@ -163,6 +163,19 @@ class MetricsSnapshot:
             "params": self.params,
         }
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "MetricsSnapshot":
+        """Crée depuis un dictionnaire."""
+        return cls(
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            iteration=int(data.get("iteration", 0)),
+            sharpe_ratio=float(data.get("sharpe_ratio", 0.0)),
+            total_return=float(data.get("total_return", 0.0)),
+            max_drawdown=float(data.get("max_drawdown", 0.0)),
+            win_rate=float(data.get("win_rate", 0.0)),
+            params=data.get("params", {}) or {},
+        )
+
 
 @dataclass
 class AgentDecision:
@@ -190,6 +203,18 @@ class AgentDecision:
             "confidence": self.confidence,
             "iteration": self.iteration,
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "AgentDecision":
+        """Crée depuis un dictionnaire."""
+        return cls(
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            agent=AgentType(data["agent"]),
+            decision=DecisionType(data["decision"]),
+            reasoning=data.get("reasoning", ""),
+            confidence=float(data.get("confidence", 0.0)),
+            iteration=int(data.get("iteration", 0)),
+        )
 
 
 class AgentActivityTimeline:
@@ -410,11 +435,16 @@ class AgentActivityTimeline:
         """Charge depuis un dictionnaire."""
         timeline = cls(session_name=data["session_name"])
         timeline.start_time = datetime.fromisoformat(data["start_time"])
-        timeline._current_iteration = data["current_iteration"]
+        timeline._current_iteration = int(data.get("current_iteration", 0))
         timeline._activities = [
-            AgentActivity.from_dict(a) for a in data["activities"]
+            AgentActivity.from_dict(a) for a in data.get("activities", [])
         ]
-        # Note: metrics_history et decisions ont des formats simples
+        timeline._metrics_history = [
+            MetricsSnapshot.from_dict(m) for m in data.get("metrics_history", [])
+        ]
+        timeline._decisions = [
+            AgentDecision.from_dict(d) for d in data.get("decisions", [])
+        ]
         return timeline
 
 

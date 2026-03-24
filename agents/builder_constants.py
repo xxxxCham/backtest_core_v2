@@ -15,8 +15,10 @@ import re
 from pathlib import Path
 from typing import Dict
 
+from backtest.result_store import get_builder_sessions_dir
+
 # Dossier racine des sandbox
-SANDBOX_ROOT = Path(__file__).resolve().parent.parent / "sandbox_strategies"
+SANDBOX_ROOT = get_builder_sessions_dir()
 
 # Nom de classe standardisé attendu dans le code généré
 GENERATED_CLASS_NAME = "BuilderGeneratedStrategy"

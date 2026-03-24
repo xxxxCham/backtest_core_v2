@@ -182,6 +182,9 @@ class ValidationReport:
     @property
     def overall_status(self) -> ValidationStatus:
         """Statut global de la validation."""
+        if not self.windows:
+            return ValidationStatus.FAILED
+
         metrics = self.aggregate_metrics
 
         # Échec si trop de fenêtres overfitting

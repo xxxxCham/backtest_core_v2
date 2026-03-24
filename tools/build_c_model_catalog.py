@@ -10,20 +10,9 @@ from typing import Any, Iterable
 
 HF_ARCHIVE_SPECS: list[dict[str, Any]] = [
     {
-        "id": "deepseek-coder-v2-lite-hf",
-        "name": "DeepSeek Coder V2 Lite Instruct (HuggingFace)",
-        "relative_archive": Path(r"deepseek\deepseek-coder-v2-lite-instruct"),
-        "format": "safetensors",
-        "use_case": "coding_transformers",
-        "parameters": "16B",
-        "quantization": "fp16",
-        "context_length": 128000,
-        "description": "DeepSeek Coder V2 Lite au format HuggingFace.",
-    },
-    {
         "id": "llama2-13b-fp16-hf",
         "name": "Llama 2 13B FP16 (HuggingFace)",
-        "relative_archive": Path(r"meta\llama-2-13b-fp16"),
+        "relative_archive": Path(r"llama2-13b-fp16"),
         "format": "safetensors",
         "use_case": "general_transformers",
         "parameters": "13B",
@@ -34,7 +23,7 @@ HF_ARCHIVE_SPECS: list[dict[str, Any]] = [
     {
         "id": "llama-3.1-8b-instruct-hf",
         "name": "Llama 3.1 8B Instruct (HuggingFace)",
-        "relative_archive": Path(r"meta\llama-3.1-8b-instruct"),
+        "relative_archive": Path(r"llama-3.1-8b-instruct"),
         "format": "safetensors",
         "use_case": "instruction_transformers",
         "parameters": "8B",
@@ -45,7 +34,7 @@ HF_ARCHIVE_SPECS: list[dict[str, Any]] = [
     {
         "id": "fin-llama-33b-hf",
         "name": "Fin Llama 33B (HuggingFace)",
-        "relative_archive": Path(r"finance\fin-llama-33b"),
+        "relative_archive": Path(r"fin-llama-33b"),
         "format": "safetensors",
         "use_case": "reasoning_finance",
         "parameters": "33B",
@@ -56,7 +45,7 @@ HF_ARCHIVE_SPECS: list[dict[str, Any]] = [
     {
         "id": "nemotron-3-nano-30b-hf",
         "name": "Nemotron 3 Nano 30B (HuggingFace)",
-        "relative_archive": Path(r"nvidia\nemotron-3-nano-30b"),
+        "relative_archive": Path(r"nemotron-3-nano-30b"),
         "format": "safetensors",
         "use_case": "reasoning_transformers",
         "parameters": "30B",
@@ -67,13 +56,38 @@ HF_ARCHIVE_SPECS: list[dict[str, Any]] = [
 ]
 
 CANONICAL_OLLAMA_NAMES = {
+    "devstral-small-2": "devstral-small-2:24b",
     "deepseek-r1-14b-local:latest": "deepseek-r1-distill:14b",
     "deepseek-r1-14b-local": "deepseek-r1-distill:14b",
+    "lfm2": "lfm2:24b",
     "nemotron-cascade-14b-thinking-claude-4.5-opus-distill.q8_0:latest": "nemotron-cascade-14b-local:latest",
     "nemotron-cascade-14b-thinking-claude-4.5-opus-distill.q8_0": "nemotron-cascade-14b-local:latest",
+    "qwen3.5": "qwen3.5:35b",
+    "qwen3-coder-next": "qwen3-coder:30b",
+    "qwen3-coder-next:q4_k_m": "qwen3-coder:30b",
+    "qwen3-vl": "qwen3-vl:32b",
+    "qwen3-vl:30b": "qwen3-vl:32b",
 }
 
 DISCOVERED_OLLAMA_METADATA_OVERRIDES: dict[str, dict[str, Any]] = {
+    "devstral-small-2:24b": {
+        "id": "devstral-small-2-24b",
+        "name": "Devstral Small 2 24B",
+        "use_case": "coding",
+        "parameters": "24.0B",
+        "quantization": "Q4_K_M",
+        "context_length": 393216,
+        "description": "Devstral Small 2 24B - agent de code local pour exploration et edition multi-fichiers.",
+    },
+    "lfm2:24b": {
+        "id": "lfm2-24b",
+        "name": "LFM2 24B",
+        "use_case": "general",
+        "parameters": "23.8B",
+        "quantization": "Q4_K_M",
+        "context_length": 32768,
+        "description": "LFM2 24B - modele generaliste efficace pour une machine locale 24GB-class.",
+    },
     "qwen3-30b-a3b:q4_k_m": {
         "id": "qwen3-30b-a3b-q4_k_m",
         "name": "Qwen3 30B A3B Q4_K_M",
@@ -83,14 +97,23 @@ DISCOVERED_OLLAMA_METADATA_OVERRIDES: dict[str, dict[str, Any]] = {
         "context_length": 40960,
         "description": "Qwen3 30B A3B Q4_K_M importe depuis la bibliotheque GGUF canonique.",
     },
-    "qwen3-coder-next:q4_k_m": {
-        "id": "qwen3-coder-next-q4_k_m",
-        "name": "Qwen3 Coder Next Q4_K_M",
-        "use_case": "coding",
-        "parameters": "24.6B",
+    "qwen3-vl:32b": {
+        "id": "qwen3-vl-32b",
+        "name": "Qwen3 VL 32B",
+        "use_case": "multimodal",
+        "parameters": "33.4B",
         "quantization": "Q4_K_M",
         "context_length": 262144,
-        "description": "Qwen3 Coder Next Q4_K_M importe depuis la bibliotheque GGUF canonique.",
+        "description": "Qwen3 Vision-Language 32B - vision, outils et raisonnement sur endpoint Ollama local.",
+    },
+    "qwen3.5:35b": {
+        "id": "qwen3.5-35b",
+        "name": "Qwen 3.5 35B",
+        "use_case": "multimodal",
+        "parameters": "36.0B",
+        "quantization": "Q4_K_M",
+        "context_length": 262144,
+        "description": "Qwen 3.5 35B - modele multimodal generaliste recent, haut de gamme local.",
     },
 }
 

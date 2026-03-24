@@ -33,7 +33,7 @@ class MaStrategieStrategy(StrategyBase):     # (B) Classe PascalCase + "Strategy
     @property
     def required_indicators(self) -> List[str]:
         return ["bollinger", "atr"]
-        # Valeurs valides: "bollinger", "atr", "ema", "rsi", "macd", "stochastic"
+        # 54 indicateurs disponibles — voir Section 4 pour la liste complète et les types (dict/array)
 
     # --- (D) Paramètres par défaut ---
     @property
@@ -45,6 +45,7 @@ class MaStrategieStrategy(StrategyBase):     # (B) Classe PascalCase + "Strategy
             "leverage": 1,
             "initial_capital": 10000,
         }
+
 
     # --- (E) Spécifications pour grid search ---
     @property
@@ -130,6 +131,26 @@ diff = np.diff(signals_arr, prepend=0.0)
 signals_arr[diff == 0] = 0.0
 ```
 
+### Patterns INTERDITS — erreurs SIG001 (Builder et moteur)
+
+Ces constructions provoquent des erreurs runtime dans le moteur et dans le Strategy Builder LLM.
+Elles sont détectées et rejetées automatiquement.
+
+| Pattern interdit | Alternative correcte |
+|-----------------|---------------------|
+| `signals.loc[mask, 'signal'] = 1` | `signals[mask] = 1.0` |
+| `signals.notnull()` / `signals.isnull()` | `signals != 0` |
+| `for i in range(len(df)): signals[i] = ...` | `signals[long_mask] = 1.0` |
+| `mask = close[50:] > ema[50:]` (slice tronqué) | `mask = close > ema` (même longueur) |
+| `long_mask = (a > b) and (c > d)` (scalaire) | `long_mask = (a > b) & (c > d)` |
+| `signals[long_mask[1:]] = 1` (masque décalé) | `signals[long_mask] = 1.0` |
+| `indicators['bollinger_upper']` | `indicators['bollinger']['upper']` |
+| `adx_d = indicators['adx']` (nu) | `adx_d = np.nan_to_num(indicators['adx']['adx'])` |
+| `crosses_above(x, y)` (pseudo-helper) | Voir section 11 — implémentation numpy |
+| `diff = np.diff(close)` (longueur n-1) | `diff = np.insert(np.diff(close), 0, 0.0)` |
+
+> **Règle d'or** : `generate_signals` doit être **100 % vectorisé** et travailler sur des tableaux de longueur `len(df)` du début à la fin.
+
 ---
 
 ## 3. ParameterSpec : les pièges
@@ -150,6 +171,15 @@ ParameterSpec(
 ```
 
 Le Strategy Builder (sandbox) génère `ParameterSpec(min=..., max=...)` qui provoquera une **TypeError** à l'exécution. Toujours convertir en `min_val`/`max_val`.
+
+### Noms de paramètres dégénérés (à éviter)
+
+Le Builder LLM peut parfois produire des clés de paramètres très longues ou répétitives du type :
+```
+distance_to_force_index_weight_volume_weight_volume_...
+```
+Ces noms sont **filtrés et supprimés** automatiquement par le pipeline Builder avant validation.
+Lors d'une écriture manuelle, limitez les clés à une forme courte et descriptive (`atr_period`, `rsi_threshold`, `sl_factor`).
 
 ### Combinatoire du grid
 
@@ -188,18 +218,105 @@ La classe de base mappe automatiquement les paramètres par préfixe :
 
 **Recommandation** : toujours surcharger `get_indicator_params()` explicitement.
 
-### Format des indicateurs reçus
+### Liste complète des 54 indicateurs disponibles
+
+#### Type ARRAY (accès direct)
+Ces indicateurs retournent un `np.ndarray` de longueur `n`.
+Accès : `np.nan_to_num(indicators['nom'])`
+
+| Indicateur | Description |
+|-----------|-------------|
+| `atr` | Average True Range (volatilité) |
+| `cci` | Commodity Channel Index |
+| `cmo` | Chande Momentum Oscillator |
+| `coppock_curve` | Coppock Curve (momentum long terme) |
+| `dpo` | Detrended Price Oscillator |
+| `ema` | Exponential Moving Average |
+| `eom` | Ease of Movement |
+| `fear_greed` | Indice Fear & Greed (sentiment) |
+| `fisher_transform` | Fisher Transform |
+| `force_index` | Force Index (volume × variation) |
+| `hma` | Hull Moving Average |
+| `kst` | Know Sure Thing oscillator |
+| `kvo` | Klinger Volume Oscillator |
+| `mass_index` | Mass Index (retournement de tendance) |
+| `mfi` | Money Flow Index |
+| `momentum` | Momentum brut (n-périodes) |
+| `obv` | On-Balance Volume |
+| `onchain_smoothing` | Lissage on-chain (crypto) |
+| `pi_cycle` | Pi Cycle Top Indicator |
+| `roc` | Rate of Change (%) |
+| `rsi` | Relative Strength Index |
+| `sma` | Simple Moving Average |
+| `standard_deviation` | Écart-type glissant |
+| `tma` | Triangular Moving Average |
+| `tsi` | True Strength Index |
+| `ultimate_oscillator` | Ultimate Oscillator |
+| `volume_oscillator` | Oscillateur de volume |
+| `vwap` | Volume Weighted Average Price |
+| `williams_r` | Williams %R |
+| `wma` | Weighted Moving Average |
+| `amplitude_hunter` | Détecteur d'amplitude de swing |
+| `chaikin_oscillator` | Chaikin Money Flow Oscillator |
+| `cmf` | Chaikin Money Flow |
+| `elder_ray` | Elder Ray Index |
+
+#### Type DICT (accès par sous-clé)
+Ces indicateurs retournent un `dict`. **Ne jamais passer le dict brut à `np.nan_to_num()`**.
+Syntaxe : `val = np.nan_to_num(indicators['nom']['sous_cle'])`
+
+| Indicateur | Sous-clés disponibles |
+|-----------|----------------------|
+| `bollinger` | `upper`, `middle`, `lower` |
+| `macd` | `macd`, `signal`, `histogram` |
+| `stochastic` | `stoch_k`, `stoch_d` |
+| `adx` | `adx`, `plus_di`, `minus_di` |
+| `supertrend` | `supertrend`, `direction` |
+| `ichimoku` | `tenkan`, `kijun`, `senkou_a`, `senkou_b`, `chikou`, `cloud_position` |
+| `psar` | `sar`, `trend`, `signal` |
+| `vortex` | `vi_plus`, `vi_minus`, `signal`, `oscillator` |
+| `stoch_rsi` | `k`, `d`, `signal` |
+| `aroon` | `aroon_up`, `aroon_down` |
+| `donchian` | `upper`, `middle`, `lower` |
+| `keltner` | `upper`, `middle`, `lower` |
+| `pivot_points` | `pivot`, `r1`, `s1`, `r2`, `s2`, `r3`, `s3` |
+| `fibonacci_levels` | `high`, `low` |
+| `fvg` | `fvg_bullish`, `fvg_bearish` |
+| `swing` | `swing_high`, `swing_low` |
+| `smart_legs` | `smart_leg_bullish`, `smart_leg_bearish` |
+| `directional_bias` | `bull_score`, `bear_score`, `net_bias` |
+| `markov_switching` | `regime`, `prob_regime_0`, `prob_regime_1`, `prob_regime_2`, `prob_regime_3` |
+
+### Exemples d'accès correct
 
 ```python
-indicators["bollinger"]  # dict: {"upper": arr, "middle": arr, "lower": arr}
-                          # OU tuple: (upper, middle, lower)
-indicators["atr"]        # np.ndarray ou pd.Series
-indicators["ema"]        # np.ndarray ou pd.Series
-indicators["rsi"]        # np.ndarray ou pd.Series
-indicators["macd"]       # dict ou tuple selon version
+# Indicateurs array
+rsi       = np.nan_to_num(indicators['rsi'])
+atr       = np.nan_to_num(indicators['atr'])
+ema       = np.nan_to_num(indicators['ema'])
+cci       = np.nan_to_num(indicators['cci'])
+
+# Indicateurs dict ─ TOUJOURS extraire la sous-clé d'abord
+bb        = indicators['bollinger']
+upper     = np.nan_to_num(bb['upper'])
+middle    = np.nan_to_num(bb['middle'])
+lower     = np.nan_to_num(bb['lower'])
+
+adx_data  = indicators['adx']
+adx_val   = np.nan_to_num(adx_data['adx'])
+plus_di   = np.nan_to_num(adx_data['plus_di'])
+minus_di  = np.nan_to_num(adx_data['minus_di'])
+
+macd_data = indicators['macd']
+macd_line = np.nan_to_num(macd_data['macd'])
+sig_line  = np.nan_to_num(macd_data['signal'])
+
+st        = indicators['supertrend']
+st_val    = np.nan_to_num(st['supertrend'])
+st_dir    = np.nan_to_num(st['direction'])   # +1 = uptrend, -1 = downtrend
 ```
 
-Toujours utiliser `np.nan_to_num()` et vérifier le type (Series vs array).
+Toujours utiliser `np.nan_to_num()` sur chaque sous-clé **individuellement**, jamais sur le dict entier.
 
 ---
 
@@ -321,3 +438,198 @@ print('Grid params:', list(s.param_ranges.keys()))
 ```
 
 Si le registre ne contient pas votre stratégie, vérifiez que l'import dans `__init__.py` ne lève pas d'erreur silencieuse (exécutez-le isolément).
+
+```bash
+# Vérifier le registre d'indicateurs complet (54 entrées attendues)
+python -c "
+from indicators.registry import list_indicators, _INDICATOR_REGISTRY
+names = list_indicators()
+print('Indicateurs:', len(names))
+"
+```
+
+---
+
+## 10. Indicateurs spécialisés — Filtres et Patterns
+
+Ces indicateurs sont disponibles dans le registre mais leur usage est plus spécifique.
+Ils sont conçus pour **filtrer** ou **confirmer**, rarement comme déclencheurs principaux.
+
+### FVG — Fair Value Gaps
+
+```python
+fvg      = indicators['fvg']
+bullish  = np.nan_to_num(fvg['fvg_bullish']).astype(bool)  # True quand gap haussier détecté
+bearish  = np.nan_to_num(fvg['fvg_bearish']).astype(bool)  # True quand gap baissier détecté
+```
+
+Usage : confirmer une entrée dans la direction du gap, éviter les entrées contre le gap.
+
+### Swing — Points pivots de swing
+
+```python
+sw         = indicators['swing']
+swing_hi   = np.nan_to_num(sw['swing_high'])   # prix du dernier swing high
+swing_lo   = np.nan_to_num(sw['swing_low'])    # prix du dernier swing low
+```
+
+Usage : support/résistance dynamique, confluences de structure de marché.
+
+### Smart Legs — Impulsions intelligentes
+
+```python
+sl_data   = indicators['smart_legs']
+sl_bull   = np.nan_to_num(sl_data['smart_leg_bullish']).astype(bool)
+sl_bear   = np.nan_to_num(sl_data['smart_leg_bearish']).astype(bool)
+```
+
+Usage : détecter les impulsions qualitatives, filtrer les signaux en consolidation.
+
+### Directional Bias — Score directionnel
+
+```python
+db        = indicators['directional_bias']
+bull_sc   = np.nan_to_num(db['bull_score'])  # 0-100 : force haussière
+bear_sc   = np.nan_to_num(db['bear_score'])  # 0-100 : force baissière
+net_bias  = np.nan_to_num(db['net_bias'])    # bull_score - bear_score
+```
+
+Usage : **filtre de contexte**, autoriser les longs seulement si `net_bias > 10`, par exemple.
+Pas un signal d'entrée rapide — se comporte comme une confirmation de contexte.
+
+### Markov Switching — Régime de marché
+
+```python
+mk        = indicators['markov_switching']
+regime    = np.nan_to_num(mk['regime'])            # 0, 1, 2 ou 3 — régime actuel
+prob_0    = np.nan_to_num(mk['prob_regime_0'])     # probabilité d'être en régime 0
+prob_1    = np.nan_to_num(mk['prob_regime_1'])     # probabilité d'être en régime 1
+```
+
+Usage : **gating macro-régime** — ne prendre des positions qu'en régime 0 (trending).
+**Ne pas utiliser** comme trigger d'entrée rapide (coûteux, résolution lente).
+**Exemple de filtre :**
+
+```python
+# Ouvrir longs seulement en régime trending (0 ou 1) avec probabilité élevée
+trending_filter = (regime == 0) | ((regime == 1) & (prob_1 > 0.6))
+long_mask = long_mask & trending_filter
+```
+
+---
+
+## 11. Compatibilité avec le Strategy Builder LLM
+
+Le **Strategy Builder** est le moteur LLM autonome du projet : il génère, teste et itère automatiquement des stratégies en sandbox.
+Toute stratégie écrite manuellement doit respecter le même contrat pour être compatible.
+
+### Ce que le Builder génère automatiquement
+
+1. **Une classe `BuilderGeneratedStrategy`** héritant de `StrategyBase`
+2. **`required_indicators`** : liste des indicateurs utilisés dans `generate_signals`
+3. **`default_params`** et **`parameter_specs`** : paramètres avec bornes pour optimisation
+4. **`generate_signals`** : logique vectorisée complète
+5. Le fichier est sauvegardé dans `sandbox_strategies/<session_id>/strategy.py`
+
+### Préambule de bindings injecté automatiquement
+
+Le Builder injecte en tête de `generate_signals` un bloc de bindings qui assure que les alias attendus par la logique sont définis :
+
+```python
+def generate_signals(self, df, indicators, params):
+    # -- Bindings injectés par le Builder --
+    close  = np.nan_to_num(df['close'].values)
+    high   = np.nan_to_num(df['high'].values)
+    low    = np.nan_to_num(df['low'].values)
+    volume = np.nan_to_num(df['volume'].values)
+    rsi    = np.nan_to_num(indicators['rsi'])
+    bb     = indicators['bollinger']
+    upper  = np.nan_to_num(bb['upper'])       # alias stable bollinger_upper
+    lower  = np.nan_to_num(bb['lower'])       # alias stable bollinger_lower
+    # ... puis logique LLM ...
+```
+
+### Aliases préférés (alias stables Builder)
+
+Pour maintenir la cohérence entre prompts LLM et codes générés, ces alias sont standardisés :
+
+| Indicateur | Alias court (prompt) | Alias stable (code) |
+|-----------|---------------------|--------------------|
+| `bollinger` | `upper`, `middle`, `lower` | `bollinger_upper`, `bollinger_lower` |
+| `macd` | `macd_line`, `sig_line` | `macd_signal` |
+| `supertrend` | `st_val`, `st_dir` | `supertrend_direction` |
+| `markov_switching` | `regime`, `prob_0` | `markov_regime` |
+| `directional_bias` | `net_bias` | — |
+
+### Implémentation des croisements (cross_up / cross_down)
+
+Le Builder réécrit automatiquement ces pseudo-fonctions en numpy.
+Dans du code manuel, utilisez directement :
+
+```python
+# Cross up : x passe au-dessus de y
+prev_x    = np.roll(x, 1);  prev_x[0]  = np.nan
+prev_y    = np.roll(y, 1);  prev_y[0]  = np.nan
+cross_up  = (x > y) & (prev_x <= prev_y)
+cross_dn  = (x < y) & (prev_x >= prev_y)
+```
+
+### Règle de levier
+
+Toujours définir `"leverage": 1` dans `default_params`.
+Le moteur utilise `leverage=3` par défaut (aggressif) si le param est absent — cela amplifie les pertes.
+
+### Stops ATR écrits dans le DataFrame
+
+Le simulateur lit automatiquement ces colonnes si elles sont présentes :
+
+```python
+# Écrire les niveaux de SL/TP sur les barres d'entrée uniquement
+entry_bars = long_mask.nonzero()[0]
+for i in entry_bars:
+    df.loc[df.index[i], "bb_stop_long"] = df['close'].iloc[i] - stop_mult * atr[i]
+    df.loc[df.index[i], "bb_tp_long"]   = df['close'].iloc[i] + tp_mult   * atr[i]
+
+# Version vectorisée (plus rapide)
+df.loc[:, "bb_stop_long"] = np.where(long_mask,  close - stop_mult * atr, np.nan)
+df.loc[:, "bb_tp_long"]   = np.where(long_mask,  close + tp_mult   * atr, np.nan)
+df.loc[:, "bb_stop_short"]= np.where(short_mask, close + stop_mult * atr, np.nan)
+df.loc[:, "bb_tp_short"]  = np.where(short_mask, close - tp_mult   * atr, np.nan)
+```
+
+### Comment utiliser une stratégie Builder en dehors du sandbox
+
+```python
+from strategies.base import register_strategy, StrategyBase
+
+# Copier le fichier sandbox vers strategies/
+# Renommer la classe et la clé de registre
+# Ajouter l'entrée dans strategies/__init__.py et indicators_mapping.py
+```
+
+---
+
+## 12. Nouvelles métriques — Alpha simple
+
+Depuis mars 2026, le moteur calcule un **alpha simple** automatiquement pour chaque backtest.
+
+| Métrique | Formule | Interprétation |
+|---------|---------|----------------|
+| `benchmark_return_pct` | Return buy & hold sur même période | Référence du marché |
+| `alpha_simple_pct` | `total_return - benchmark_return` | Surperformance vs buy & hold |
+
+> Un `+150%` de return avec un `alpha_simple` de `-50%` signifie que le buy & hold aurait fait `+200%` — la stratégie sous-performe le marché même en étant profitable.
+
+Accès en Python :
+
+```python
+result = engine.run(df=data, params=params)
+print(result.metrics['total_return_pct'])     # return stratégie
+print(result.metrics['benchmark_return_pct']) # buy & hold
+print(result.metrics['alpha_simple_pct'])     # alpha = sur/sous-performance
+```
+
+Ces métriques sont disponibles dans :
+- L'UI Streamlit (carte et graphique equity)
+- Les résultats de sweep/grid
+- Le hub de résultats (colonnes `metrics_benchmark_return_pct`, `metrics_alpha_simple_pct`)

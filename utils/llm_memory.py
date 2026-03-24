@@ -29,7 +29,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-DEFAULT_BASE_DIR = Path("runs") / "llm_memory"
+from backtest.result_store import get_saved_runs_dir
+
+DEFAULT_BASE_DIR = get_saved_runs_dir() / "llm_memory"
 SESSION_DIRNAME = "session"
 HISTORY_DIRNAME = "history"
 DEFAULT_MAX_ENTRIES = 3

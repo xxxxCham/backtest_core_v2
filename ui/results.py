@@ -60,7 +60,7 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
         if partial_notice:
             st.warning(partial_notice)
 
-        col1, col2, col3, col4, col5 = st.columns(5)
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
 
         if result is not None:
             with col1:
@@ -90,6 +90,11 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
                 st.metric("Trades", f"{trades}", delta=f"{win_rate:.0f}% wins")
 
             with col5:
+                alpha_simple = result.metrics.get("alpha_simple_pct", 0)
+                benchmark_return = result.metrics.get("benchmark_return_pct", 0)
+                st.metric("Alpha simple", f"{alpha_simple:+.1f}%", delta=f"BH {benchmark_return:.1f}%")
+
+            with col6:
                 if best_pnl_tracker is None:
                     st.metric("Backtest PnL (best run)", "n/a")
                 else:
@@ -212,6 +217,7 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
                 initial_capital=initial_capital,
                 key="equity_drawdown_main",
                 height=550,
+                summary_metrics=result.metrics,
             )
         elif result is not None:
             st.write("ℹ️ Courbe d'équité non disponible pour cette stratégie")
@@ -267,6 +273,8 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
                 st.markdown("**💰 Rendement**")
                 st.text(f"P&L Total: ${result.metrics.get('total_pnl', 0):,.2f}")
                 st.text(f"Rendement: {result.metrics.get('total_return_pct', 0):.2f}%")
+                st.text(f"Buy & Hold: {result.metrics.get('benchmark_return_pct', 0):.2f}%")
+                st.text(f"Alpha simple: {result.metrics.get('alpha_simple_pct', 0):+.2f}%")
                 st.text(f"Ann. Return: {result.metrics.get('annualized_return', 0):.2f}%")
                 st.text(f"Volatilité: {result.metrics.get('volatility_annual', 0):.2f}%")
 

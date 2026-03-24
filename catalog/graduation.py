@@ -1,13 +1,15 @@
 """
 Module-ID: catalog.graduation
 
-Purpose: Pipeline de graduation des stratégies sandbox → strategies/ natives.
+Purpose: Pipeline canonique de post-filtrage des stratégies sandbox / imports positifs.
 
-Phase 1 — Repêchage : scan des session_summary.json, critères larges (OR).
-Phase 2 — Validation multi-contexte : backtest sur N tokens × M timeframes.
-Phase 3 — Sensibilité paramétrique : mini-sweep autour des meilleurs params.
-Phase 4 — Walk-Forward : validation temporelle (expanding window).
-Phase 5 — Promotion : export en .py propre dans strategies/.
+P0 — Inventaire unifié : fusion sandbox + imports positifs.
+P1 — Normalisation : rattachement stratégie, params, run source, métriques.
+P2 — Positif observé : au moins une itération ou un run > 0%.
+P3 — Benchmark suite : validation multi-token / multi-timeframe sur benchmarks fixes.
+P4 — Sensibilité paramétrique : mini-sweep autour des meilleurs params.
+P5 — Walk-Forward : validation temporelle multi-contexte.
+P6 — Promotion finale : synchronisation catalog + export optionnel.
 
 Usage:
     from catalog.graduation import scan_sandbox, GraduationConfig
@@ -30,13 +32,43 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
+from backtest.result_store import (
+    get_artifacts_root_dir,
+    get_builder_sessions_dir,
+    get_results_root_dir,
+    get_saved_runs_dir,
+)
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-SANDBOX_DIR = Path("sandbox_strategies")
+SANDBOX_DIR = get_builder_sessions_dir()
+
+
+def _default_postfilter_benchmark_names() -> List[str]:
+    try:
+        from config.market_selection import get_postfilter_benchmark_names
+
+        names = get_postfilter_benchmark_names()
+        if names:
+            return names
+    except Exception:
+        pass
+    return [
+        "crypto_liquid_benchmark_v1_core",
+        "crypto_liquid_benchmark_v2_breadth",
+        "crypto_liquid_benchmark_v3_balanced",
+    ]
+
+
+def _default_promotion_dir() -> Path:
+    raw = os.environ.get("BACKTEST_STRATEGY_PROMOTION_DIR", "").strip()
+    if raw:
+        return Path(raw)
+    return Path("strategies/graduated")
 
 
 @dataclass
@@ -52,33 +84,46 @@ class RepechageThresholds:
 
 @dataclass
 class GraduationConfig:
-    """Configuration complète du pipeline de graduation."""
+    """Configuration complète du pipeline canonique de post-filtrage."""
 
     sandbox_dir: Path = field(default_factory=lambda: SANDBOX_DIR)
     repechage: RepechageThresholds = field(default_factory=RepechageThresholds)
+    postfilter_schema_version: int = 2
+    benchmark_names: List[str] = field(default_factory=_default_postfilter_benchmark_names)
+    token_count: int = 5
+    required_benchmark_name: str = "crypto_liquid_benchmark_v1_core"
+    min_benchmarks_pass: int = 2
+    no_silent_replacement: bool = True
 
-    # Phase 2 — Multi-contexte
+    # Phase 3 — Benchmark suite
     validation_tokens: List[str] = field(default_factory=lambda: [
         "BTCUSDC",   # majeur / trend
         "SOLUSDC",   # mid-cap / momentum volatile
         "AVAXUSDC",  # small-cap / stress test
     ])
     validation_timeframes: List[str] = field(default_factory=lambda: ["1h", "4h"])
-    min_contexts_pass: int = 2          # sur 6 contextes (3 tokens × 2 TF), ~33%
-    max_drawdown_abs: float = 50.0      # drawdown max absolu (%)
+    min_contexts_pass: int = 2
+    min_context_coverage_pct: float = 70.0
+    max_drawdown_abs: float = 50.0
+    min_trades_per_context: int = 20
+    min_profit_factor_per_context: float = 1.0
+    min_sharpe_per_context: float = 0.0
 
-    # Phase 3 — Sweep sensibilité
+    # Phase 4 — Sweep sensibilité
     sweep_neighborhood: float = 0.10    # ±10% autour des params
-    sweep_min_profitable_pct: float = 20.0  # % voisinage rentable minimum
-    sweep_max_combinations: int = 81    # garde-fou contre l'explosion combinatoire
+    sweep_min_profitable_pct: float = 20.0
+    sweep_max_combinations: int = 81
+    sweep_max_drawdown_drift_pct: float = 15.0
 
-    # Phase 4 — WFA
+    # Phase 5 — WFA
     wfa_folds: int = 5
     wfa_min_stability: float = 0.5
+    wfa_min_test_sharpe: float = 0.1
+    wfa_max_overfitting_ratio: float = 2.5
 
     # Output
     output_dir: Path = field(default_factory=lambda: Path("catalog/graduation_results"))
-    promotion_dir: Path = field(default_factory=lambda: Path("strategies/graduated"))
+    promotion_dir: Path = field(default_factory=_default_promotion_dir)
     catalog_path: Path = field(default_factory=lambda: Path("config/strategy_catalog.json"))
     sync_catalog: bool = False
     positive_progress_filename: str = "positive_imports_progress.json"
@@ -90,15 +135,17 @@ class GraduationConfig:
 
 @dataclass
 class GraduationCandidate:
-    """Un candidat à la graduation, extrait d'une session sandbox."""
+    """Un candidat au post-filtrage canonique."""
 
     session_id: str
     session_dir: Path
+    candidate_id: str = ""
     strategy_name: str = ""
     strategy_params: Dict[str, Any] = field(default_factory=dict)
     objective: str = ""
     origin_status: str = ""             # success / failed / max_iterations / running
     source_kind: str = "sandbox"
+    source_mode: str = "sandbox"
     source_run_id: str = ""
     source_symbol: str = ""
     source_timeframe: str = ""
@@ -113,16 +160,31 @@ class GraduationCandidate:
     best_max_drawdown_pct: float = 0.0
     best_win_rate_pct: float = 0.0
 
-    # Raisons d'inclusion Phase 1
+    # Raisons d'inclusion / admission
     inclusion_reasons: List[str] = field(default_factory=list)
 
     # Phases suivantes (rempli progressivement)
-    phase: str = "P1"                   # P1, P2, P3, P4, P5
+    phase: str = "P0"
     decision: str = "PENDING"           # PENDING, PROMOTED, WATCHLIST, REJECTED
+    p2_verdict: str = "PENDING"
+    p3_verdict: str = "PENDING"
+    p4_verdict: str = "PENDING"
+    p5_verdict: str = "PENDING"
+    p6_verdict: str = "PENDING"
     multi_ctx_results: Dict[str, Any] = field(default_factory=dict)
+    benchmark_results: Dict[str, Any] = field(default_factory=dict)
+    benchmark_consensus: Dict[str, Any] = field(default_factory=dict)
+    configured_contexts: List[str] = field(default_factory=list)
+    loaded_contexts: List[str] = field(default_factory=list)
+    missing_contexts: List[str] = field(default_factory=list)
+    tested_timeframes: List[str] = field(default_factory=list)
+    coverage_pct: Optional[float] = None
     sweep_robustness_pct: Optional[float] = None
     wfa_stability: Optional[float] = None
     wfa_avg_test_return_pct: Optional[float] = None
+    wfa_avg_test_sharpe: Optional[float] = None
+    wfa_overfitting_ratio: Optional[float] = None
+    wfa_is_robust: Optional[bool] = None
     rejection_reason: str = ""
     catalog_category: Optional[str] = None
     catalog_entry_id: Optional[str] = None
@@ -133,13 +195,34 @@ class GraduationCandidate:
     def to_dict(self) -> Dict[str, Any]:
         multi_ctx = self.multi_ctx_results or {}
         contexts = multi_ctx.get("contexts") or {}
-        tested_tokens = sorted({str(key).split("_", 1)[0] for key in contexts.keys() if "_" in str(key)})
+        tested_tokens = {str(key).split("_", 1)[0] for key in contexts.keys() if "_" in str(key)}
+        for payload in (self.benchmark_results or {}).values():
+            if not isinstance(payload, dict):
+                continue
+            for token in payload.get("tokens", []) or []:
+                token_str = str(token).strip()
+                if token_str:
+                    tested_tokens.add(token_str)
+        tested_tokens_sorted = sorted(tested_tokens)
         total_contexts = int(multi_ctx.get("total_contexts") or 0)
         passed_contexts = int(multi_ctx.get("passed_count") or 0)
+        configured_context_keys = [str(key) for key in self.configured_contexts if str(key).strip()]
+        loaded_context_keys = [str(key) for key in self.loaded_contexts if str(key).strip()]
+        missing_context_keys = [str(key) for key in self.missing_contexts if str(key).strip()]
+        benchmark_names = sorted(str(name) for name in (self.benchmark_results or {}).keys())
+        benchmarks_passed = sorted(str(name) for name in (self.benchmark_consensus or {}).get("benchmarks_passed", []))
+        benchmark_pass_summary = (
+            f"{len(benchmarks_passed)}/{len(benchmark_names)}"
+            if benchmark_names
+            else ""
+        )
+        context_pass_summary = f"{passed_contexts}/{total_contexts}" if total_contexts else ""
         return {
+            "candidate_id": self.candidate_id or self.session_id,
             "session_id": self.session_id,
             "strategy_name": self.strategy_name,
             "source_kind": self.source_kind,
+            "source_mode": self.source_mode,
             "source_run_id": self.source_run_id,
             "source_symbol": self.source_symbol,
             "source_timeframe": self.source_timeframe,
@@ -156,13 +239,39 @@ class GraduationCandidate:
             "inclusion_reasons": self.inclusion_reasons,
             "phase": self.phase,
             "decision": self.decision,
+            "p2_verdict": self.p2_verdict,
+            "p3_verdict": self.p3_verdict,
+            "p4_verdict": self.p4_verdict,
+            "p5_verdict": self.p5_verdict,
+            "p6_verdict": self.p6_verdict,
             "strategy_file": self.strategy_file,
             "multi_ctx_results": _json_safe(self.multi_ctx_results),
-            "multi_ctx_pass": f"{passed_contexts}/{total_contexts}" if total_contexts else "",
-            "tokens_tested": ",".join(tested_tokens),
+            "benchmark_results": _json_safe(self.benchmark_results),
+            "benchmark_consensus": _json_safe(self.benchmark_consensus),
+            "multi_ctx_pass": context_pass_summary,
+            "context_pass_summary": context_pass_summary,
+            "passed_context_count": passed_contexts,
+            "total_context_count": total_contexts,
+            "tokens_tested": ",".join(tested_tokens_sorted),
+            "tested_tokens": ",".join(tested_tokens_sorted),
+            "tested_benchmark_names": ",".join(benchmark_names),
+            "passed_benchmark_names": ",".join(benchmarks_passed),
+            "benchmark_pass_summary": benchmark_pass_summary,
+            "configured_contexts": configured_context_keys,
+            "loaded_contexts": loaded_context_keys,
+            "missing_contexts": missing_context_keys,
+            "configured_context_count": len(configured_context_keys),
+            "loaded_context_count": len(loaded_context_keys),
+            "missing_context_count": len(missing_context_keys),
+            "timeframes_tested": ",".join(sorted({str(tf) for tf in self.tested_timeframes if str(tf).strip()})),
+            "tested_timeframes": list(sorted({str(tf) for tf in self.tested_timeframes if str(tf).strip()})),
+            "coverage_pct": self.coverage_pct,
             "sweep_robustness_pct": self.sweep_robustness_pct,
             "wfa_stability": self.wfa_stability,
             "wfa_avg_test_return_pct": self.wfa_avg_test_return_pct,
+            "wfa_avg_test_sharpe": self.wfa_avg_test_sharpe,
+            "wfa_overfitting_ratio": self.wfa_overfitting_ratio,
+            "wfa_is_robust": self.wfa_is_robust,
             "rejection_reason": self.rejection_reason,
             "catalog_category": self.catalog_category,
             "catalog_entry_id": self.catalog_entry_id,
@@ -208,18 +317,124 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _benchmark_label(name: str, payload: Dict[str, Any]) -> str:
+    label = str((payload or {}).get("label") or "").strip()
+    return label or name
+
+
+def _split_context_key(key: str) -> tuple[str, str]:
+    token, _, timeframe = str(key).partition("_")
+    return token, timeframe
+
+
+def _build_candidate_id(candidate: GraduationCandidate) -> str:
+    if candidate.candidate_id:
+        return candidate.candidate_id
+    base = str(candidate.source_run_id or candidate.session_id or candidate.catalog_entry_id or "").strip()
+    if base:
+        return base
+    return f"{candidate.strategy_name or 'candidate'}|{candidate.source_symbol or 'MULTI'}|{candidate.source_timeframe or 'MULTI'}"
+
+
+def _load_postfilter_benchmark_config() -> Dict[str, Any]:
+    try:
+        from config.market_selection import get_postfilter_benchmark_config
+
+        payload = get_postfilter_benchmark_config()
+        if isinstance(payload, dict):
+            return payload
+    except Exception as exc:
+        logger.debug("Unable to load postfilter benchmark config: %s", exc)
+    return {}
+
+
+def _resolve_postfilter_benchmarks(config: GraduationConfig) -> Dict[str, Dict[str, Any]]:
+    payload = _load_postfilter_benchmark_config()
+    benchmark_map = payload.get("benchmarks", {}) if isinstance(payload, dict) else {}
+    if not isinstance(benchmark_map, dict):
+        benchmark_map = {}
+
+    resolved: Dict[str, Dict[str, Any]] = {}
+    for name in config.benchmark_names:
+        benchmark = benchmark_map.get(name)
+        if not isinstance(benchmark, dict):
+            continue
+        tokens = [str(token).strip().upper() for token in benchmark.get("tokens", []) if str(token).strip()]
+        token_count = max(1, min(int(config.token_count), len(tokens) or int(config.token_count)))
+        resolved[name] = {
+            "name": name,
+            "label": _benchmark_label(name, benchmark),
+            "tokens": tokens[:token_count],
+        }
+    if resolved:
+        return resolved
+
+    fallback_tokens = [str(token).strip().upper() for token in config.validation_tokens if str(token).strip()]
+    resolved["fallback_validation_tokens"] = {
+        "name": "fallback_validation_tokens",
+        "label": "Fallback Validation Tokens",
+        "tokens": fallback_tokens[: max(1, min(int(config.token_count), len(fallback_tokens) or int(config.token_count)))],
+    }
+    return resolved
+
+
+def _resolve_validation_contexts(config: GraduationConfig) -> Dict[str, Any]:
+    from data import discover_data_inventory
+
+    inventory = discover_data_inventory()
+    timeframes = [str(tf).strip() for tf in config.validation_timeframes if str(tf).strip()]
+    benchmarks = _resolve_postfilter_benchmarks(config)
+
+    configured_contexts: List[str] = []
+    loaded_contexts: Dict[str, Any] = {}
+    missing_contexts: List[str] = []
+    benchmark_contexts: Dict[str, List[str]] = {}
+
+    for benchmark_name, benchmark in benchmarks.items():
+        keys: List[str] = []
+        for token in benchmark.get("tokens", []):
+            token_inventory = inventory.get(token, {})
+            for tf in timeframes:
+                key = f"{token}_{tf}"
+                configured_contexts.append(key)
+                keys.append(key)
+                tf_payload = token_inventory.get(tf)
+                if isinstance(tf_payload, dict) and tf_payload.get("n_bars"):
+                    loaded_contexts[key] = tf_payload
+                else:
+                    missing_contexts.append(key)
+        benchmark_contexts[benchmark_name] = keys
+
+    coverage_pct = 0.0
+    if configured_contexts:
+        coverage_pct = round(len(loaded_contexts) / len(configured_contexts) * 100.0, 1)
+
+    return {
+        "timeframes": timeframes,
+        "benchmarks": benchmarks,
+        "configured_contexts": configured_contexts,
+        "loaded_contexts": loaded_contexts,
+        "missing_contexts": missing_contexts,
+        "benchmark_contexts": benchmark_contexts,
+        "coverage_pct": coverage_pct,
+    }
+
+
 def _candidate_progress_payload(candidate: Optional[GraduationCandidate]) -> Dict[str, Any]:
     if candidate is None:
         return {}
     return {
+        "candidate_id": candidate.candidate_id or candidate.session_id,
         "session_id": candidate.session_id,
         "strategy_name": candidate.strategy_name,
+        "source_mode": candidate.source_mode,
         "source_run_id": candidate.source_run_id,
         "source_symbol": candidate.source_symbol,
         "source_timeframe": candidate.source_timeframe,
         "phase": candidate.phase,
         "decision": candidate.decision,
         "best_return_pct": _safe_round(candidate.best_return_pct, 2),
+        "benchmark_consensus": _json_safe(candidate.benchmark_consensus),
         "catalog_entry_id": candidate.catalog_entry_id,
     }
 
@@ -567,6 +782,40 @@ def scan_positive_import_candidates(
     return candidates
 
 
+def run_positive_observed_filter(
+    candidates: List[GraduationCandidate],
+    *,
+    source_mode: str,
+) -> List[GraduationCandidate]:
+    """
+    P2 — Admission par positif observé.
+
+    Un candidat est admis s'il a déjà démontré au moins un return positif
+    sur une itération sandbox ou un run importé.
+    """
+    survivors: List[GraduationCandidate] = []
+    for candidate in candidates:
+        candidate.candidate_id = _build_candidate_id(candidate)
+        candidate.source_mode = source_mode
+        candidate.phase = "P2"
+
+        reasons = list(candidate.inclusion_reasons or [])
+        if candidate.best_return_pct > 0:
+            if not any(str(reason).startswith("positive_observed") for reason in reasons):
+                reasons.append(f"positive_observed return={candidate.best_return_pct:.1f}%>0")
+            candidate.inclusion_reasons = reasons
+            candidate.p2_verdict = "PASSED"
+            candidate.decision = "WATCHLIST"
+            survivors.append(candidate)
+        else:
+            candidate.p2_verdict = "REJECTED"
+            candidate.decision = "REJECTED"
+            candidate.rejection_reason = candidate.rejection_reason or "P2 positive_observed missing"
+
+    logger.info("Phase 2 positive_observed: %d/%d survived", len(survivors), len(candidates))
+    return survivors
+
+
 # ---------------------------------------------------------------------------
 # Rapport Phase 1
 # ---------------------------------------------------------------------------
@@ -624,15 +873,36 @@ def _workspace_root() -> Path:
 
 
 def _default_positive_artifact_roots() -> List[Path]:
-    roots: List[Path] = [_workspace_root()]
-    legacy_root = Path("D:/backtest_core")
-    if legacy_root.exists():
+    def _resolve_root(path: Path) -> Path:
         try:
-            legacy_resolved = legacy_root.resolve()
+            return path.resolve()
         except OSError:
-            legacy_resolved = legacy_root
-        if all(existing.resolve() != legacy_resolved for existing in roots):
-            roots.append(legacy_resolved)
+            return path
+
+    def _append_unique(root_list: List[Path], candidate: Path) -> None:
+        if not candidate.exists():
+            return
+        resolved = _resolve_root(candidate)
+        if all(_resolve_root(existing) != resolved for existing in root_list):
+            root_list.append(resolved)
+
+    roots: List[Path] = []
+    _append_unique(roots, _workspace_root())
+    _append_unique(roots, get_artifacts_root_dir())
+
+    extra_roots = str(os.environ.get("BACKTEST_EXTRA_ARTIFACT_ROOTS", "")).strip()
+    if extra_roots:
+        for raw_root in re.split(r"[;\n]+", extra_roots):
+            value = str(raw_root or "").strip()
+            if value:
+                _append_unique(roots, Path(value).expanduser())
+
+    for candidate in (
+        Path(r"C:\Users\o3-Pro\Documents\backtest_results"),
+        Path(r"C:\Users\o3-Pro\Documents\run_resultats saucvegarde"),
+        Path("D:/backtest_core"),
+    ):
+        _append_unique(roots, candidate)
     return roots
 
 
@@ -794,7 +1064,9 @@ def _copy_builder_session_dir(
     if not session_id:
         return "missing"
 
-    source_dir = source_root / "sandbox_strategies" / session_id
+    source_dir = get_builder_sessions_dir(source_root) / session_id
+    if not source_dir.exists():
+        source_dir = source_root / "sandbox_strategies" / session_id
     target_dir = sandbox_target_dir / session_id
 
     if not source_dir.exists():
@@ -814,6 +1086,13 @@ def _copy_builder_session_dir(
     return "copied"
 
 
+def _looks_like_results_root(path: Path) -> bool:
+    return any(
+        (path / marker).exists()
+        for marker in ("_catalog", "index.csv", "index.json", "golden_runs.csv", "runs")
+    )
+
+
 def import_positive_artifacts_to_catalog(
     config: Optional[GraduationConfig] = None,
     *,
@@ -824,7 +1103,7 @@ def import_positive_artifacts_to_catalog(
 ) -> Dict[str, Any]:
     """
     Importe tous les artefacts à return positif (runs/backtests/sweeps/metadata builder)
-    dans le strategy catalog, en les rangeant au minimum en `p1_builder_inbox`.
+    dans le strategy catalog, en les rangeant au minimum en `p2_positive_observed`.
 
     Les sessions builder legacy liées à ces artefacts sont copiées vers le sandbox courant
     lorsque `builder_session_id` est disponible.
@@ -879,7 +1158,7 @@ def import_positive_artifacts_to_catalog(
         try:
             saved = upsert_from_saved_run(
                 payload,
-                target_category="p1_builder_inbox",
+                target_category="p2_positive_observed",
                 path=config.catalog_path,
             )
             entry = dict(saved)
@@ -969,8 +1248,28 @@ def import_positive_artifacts_to_catalog(
             )
             continue
 
-        overview_path = root / "backtest_results" / "_catalog" / "unified_overview.csv"
-        if overview_path.exists():
+        candidate_results_dirs: List[Path] = []
+        for candidate in (get_results_root_dir(root), root / "backtest_results"):
+            if (
+                candidate.exists()
+                and _looks_like_results_root(candidate)
+                and candidate not in candidate_results_dirs
+            ):
+                candidate_results_dirs.append(candidate)
+
+        candidate_saved_runs_dirs: List[Path] = []
+        for candidate in (get_saved_runs_dir(root), root / "runs"):
+            if candidate.exists() and candidate not in candidate_saved_runs_dirs:
+                candidate_saved_runs_dirs.append(candidate)
+
+        overview_path: Optional[Path] = None
+        for candidate_results_dir in candidate_results_dirs:
+            candidate_overview_path = candidate_results_dir / "_catalog" / "unified_overview.csv"
+            if candidate_overview_path.exists():
+                overview_path = candidate_overview_path
+                break
+
+        if overview_path is not None:
             report["stats"]["overview_files_found"] += 1
             try:
                 with overview_path.open("r", encoding="utf-8", newline="") as handle:
@@ -993,7 +1292,7 @@ def import_positive_artifacts_to_catalog(
                     }
                 )
 
-        for base_dir in (root / "backtest_results", root / "runs"):
+        for base_dir in [*candidate_results_dirs, *candidate_saved_runs_dirs]:
             if not base_dir.exists():
                 continue
             for metadata_path in base_dir.rglob("metadata.json"):
@@ -1062,12 +1361,12 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Graduation Phase 1 — Scan sandbox",
+        description="Post-filter canonique des stratégies sandbox / imports positifs",
         prog="catalog.graduation",
     )
     parser.add_argument(
         "--sandbox-dir", "-d",
-        default="sandbox_strategies",
+        default=str(SANDBOX_DIR),
         help="Chemin vers le répertoire sandbox",
     )
     parser.add_argument(
@@ -1084,7 +1383,7 @@ def main() -> None:
     parser.add_argument(
         "--full",
         action="store_true",
-        help="Exécute le pipeline complet P1→P5",
+        help="Exécute le pipeline complet canonique P1→P6",
     )
     parser.add_argument(
         "--sync-catalog",
@@ -1110,7 +1409,7 @@ def main() -> None:
     parser.add_argument(
         "--positive-import-full",
         action="store_true",
-        help="Exécute P2→P4 sur les entrées `positive_import` déjà importées dans le strategy catalog",
+        help="Exécute le pipeline canonique P2→P5 sur les entrées `positive_import` déjà importées dans le strategy catalog",
     )
     args = parser.parse_args()
 
@@ -1159,10 +1458,11 @@ def main() -> None:
         print(f"\n{'='*70}")
         print("  GRADUATION ARTEFACTS POSITIFS")
         print(f"{'='*70}")
-        print(f"  Candidats importés:  {stats.get('import_candidates', 0)}")
-        print(f"  P2 Multi-contexte:   {stats.get('p2_survivors', 0)}")
-        print(f"  P3 Sensibilité:      {stats.get('p3_survivors', 0)}")
-        print(f"  P4 Walk-Forward:     {stats.get('p4_survivors', 0)}")
+        print(f"  Candidats importés:   {stats.get('import_candidates', 0)}")
+        print(f"  P2 Positifs:          {stats.get('p2_survivors', 0)}")
+        print(f"  P3 Benchmarks:        {stats.get('p3_survivors', 0)}")
+        print(f"  P4 Sensibilité:       {stats.get('p4_survivors', 0)}")
+        print(f"  P5 Walk-Forward:      {stats.get('p5_survivors', 0)}")
         print(f"  Sync catalogue:      {stats.get('catalog_synced', 0)}")
         print(f"{'='*70}\n")
         print(f"  Rapport sauvegardé: {config.output_dir / 'positive_imports_graduation.json'}")
@@ -1174,12 +1474,13 @@ def main() -> None:
         print(f"\n{'='*70}")
         print("  GRADUATION Pipeline Complet")
         print(f"{'='*70}")
-        print(f"  P1 Repêchage:      {stats['p1_candidates']}")
-        print(f"  P2 Multi-contexte: {stats['p2_survivors']}")
-        print(f"  P3 Sensibilité:    {stats['p3_survivors']}")
-        print(f"  P4 Walk-Forward:   {stats['p4_survivors']}")
-        print(f"  P5 Promotion:      {stats['p5_promoted']}")
-        print(f"  Sync catalogue:    {stats.get('catalog_synced', 0)}")
+        print(f"  P1 Inventaire:       {stats['p1_candidates']}")
+        print(f"  P2 Positifs:         {stats['p2_survivors']}")
+        print(f"  P3 Benchmarks:       {stats['p3_survivors']}")
+        print(f"  P4 Sensibilité:      {stats['p4_survivors']}")
+        print(f"  P5 Walk-Forward:     {stats['p5_survivors']}")
+        print(f"  P6 Promotion:        {stats['p6_promoted']}")
+        print(f"  Sync catalogue:      {stats.get('catalog_synced', 0)}")
         print(f"{'='*70}\n")
         print(f"  Rapport sauvegardé: {config.output_dir / 'graduation_full.json'}")
         return
@@ -1287,19 +1588,7 @@ def run_multi_context_validation(
     *,
     progress_callback: Optional[Callable[..., None]] = None,
 ) -> List[GraduationCandidate]:
-    """
-    Phase 2 — Validation multi-contexte.
-
-    Pour chaque candidat, lance un backtest sur N tokens × M timeframes.
-    Retient ceux qui sont rentables sur au moins `min_contexts_pass` contextes.
-
-    Nécessite:
-        - data.loader.load_ohlcv() fonctionnel
-        - backtest.engine.BacktestEngine disponible
-
-    Returns:
-        Liste filtrée de candidats ayant passé la Phase 2 (phase="P2").
-    """
+    """Phase 3 — Validation benchmark multi-token / multi-timeframe."""
     if config is None:
         config = GraduationConfig()
 
@@ -1310,162 +1599,307 @@ def run_multi_context_validation(
     from data.loader import load_ohlcv
 
     engine = BacktestEngine(initial_capital=10000.0)
-    tokens = config.validation_tokens
-    timeframes = config.validation_timeframes
-    total_contexts = len(tokens) * len(timeframes)
+    context_plan = _resolve_validation_contexts(config)
+    timeframes = context_plan["timeframes"]
+    benchmarks = context_plan["benchmarks"]
+    benchmark_contexts = context_plan["benchmark_contexts"]
+    configured_contexts = list(context_plan["configured_contexts"])
+    missing_contexts = list(context_plan["missing_contexts"])
+    total_contexts = len(configured_contexts)
     survivors: List[GraduationCandidate] = []
 
     logger.info(
-        "Phase 2: validating %d candidates on %d contexts (%s × %s)",
-        len(candidates), total_contexts, tokens, timeframes,
+        "Phase 3: validating %d candidates on %d configured contexts across benchmarks=%s timeframes=%s",
+        len(candidates), total_contexts, list(benchmarks.keys()), timeframes,
     )
 
     # Précharger les DataFrames
     dataframes: Dict[str, Any] = {}
-    for token in tokens:
-        for tf in timeframes:
-            key = f"{token}_{tf}"
-            try:
-                df = load_ohlcv(token, tf)
-                if df is not None and len(df) > 100:
-                    dataframes[key] = df
-                    logger.debug("Loaded %s: %d bars", key, len(df))
-                else:
-                    logger.warning("Skipping %s: insufficient data (%d bars)", key, len(df) if df is not None else 0)
-            except Exception as e:
-                logger.warning("Cannot load %s: %s", key, e)
+    for key in configured_contexts:
+        token, tf = key.split("_", 1)
+        try:
+            df = load_ohlcv(token, tf)
+            if df is not None and len(df) > 100:
+                dataframes[key] = df
+                logger.debug("Loaded %s: %d bars", key, len(df))
+            else:
+                logger.warning("Skipping %s: insufficient data (%d bars)", key, len(df) if df is not None else 0)
+        except Exception as e:
+            logger.warning("Cannot load %s: %s", key, e)
 
     if not dataframes:
-        logger.error("No data loaded — Phase 2 aborted")
+        logger.error("No data loaded — Phase 3 aborted")
         return candidates  # Retourner tels quels
 
     if progress_callback:
         progress_callback(
-            phase="P2",
+            phase="P3",
             event="phase_start",
             candidate=None,
             index=0,
             total=len(candidates),
             survivors=0,
-            extra={"loaded_contexts": len(dataframes), "configured_contexts": total_contexts},
+            extra={
+                "loaded_contexts": len(dataframes),
+                "configured_contexts": total_contexts,
+                "benchmarks": list(benchmarks.keys()),
+            },
         )
 
     for index, candidate in enumerate(candidates, 1):
+        candidate.candidate_id = _build_candidate_id(candidate)
+        candidate.phase = "P3"
+        candidate.configured_contexts = list(configured_contexts)
+        candidate.loaded_contexts = sorted(dataframes.keys())
+        candidate.missing_contexts = list(missing_contexts)
+        candidate.tested_timeframes = list(timeframes)
+        candidate.coverage_pct = context_plan["coverage_pct"]
+
         if progress_callback:
             progress_callback(
-                phase="P2",
+                phase="P3",
                 event="candidate_start",
                 candidate=candidate,
                 index=index,
                 total=len(candidates),
                 survivors=len(survivors),
-                extra={"loaded_contexts": len(dataframes), "configured_contexts": total_contexts},
+                extra={
+                    "loaded_contexts": len(dataframes),
+                    "configured_contexts": total_contexts,
+                    "benchmarks": list(benchmarks.keys()),
+                },
             )
         try:
             strategy, params = _load_strategy_for_candidate(candidate)
         except Exception as e:
             candidate.decision = "REJECTED"
             candidate.rejection_reason = f"load error: {e}"
-            candidate.phase = "P2"
+            candidate.p3_verdict = "REJECTED"
             logger.debug("Cannot load %s: %s", candidate.session_id, e)
             if progress_callback:
                 progress_callback(
-                    phase="P2",
+                    phase="P3",
                     event="candidate_done",
                     candidate=candidate,
                     index=index,
                     total=len(candidates),
                     survivors=len(survivors),
-                    extra={"loaded_contexts": len(dataframes), "configured_contexts": total_contexts},
+                    extra={
+                        "loaded_contexts": len(dataframes),
+                        "configured_contexts": total_contexts,
+                        "benchmarks": list(benchmarks.keys()),
+                    },
                 )
             continue
 
         # Backtester sur chaque contexte
         ctx_results: Dict[str, Dict[str, Any]] = {}
         passed_count = 0
+        benchmark_results: Dict[str, Dict[str, Any]] = {}
+        benchmarks_passed: List[str] = []
 
-        for key, df in dataframes.items():
-            try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", category=SettingWithCopyWarning)
-                    result = engine.run(
-                        df=df,
-                        strategy=strategy,
-                        params=params,
-                        fast_metrics=True,
-                        silent_mode=True,
+        for benchmark_name, benchmark in benchmarks.items():
+            benchmark_keys = benchmark_contexts.get(benchmark_name, [])
+            benchmark_loaded = [key for key in benchmark_keys if key in dataframes]
+            benchmark_missing = [key for key in benchmark_keys if key not in dataframes]
+            benchmark_passed_count = 0
+            benchmark_context_results: Dict[str, Dict[str, Any]] = {}
+
+            for key in benchmark_loaded:
+                df = dataframes[key]
+                token, tf = _split_context_key(key)
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", category=SettingWithCopyWarning)
+                        result = engine.run(
+                            df=df,
+                            strategy=strategy,
+                            params=params,
+                            fast_metrics=True,
+                            silent_mode=True,
+                        )
+                    m = result.metrics
+                    ret = float(m.get("total_return_pct", 0) or 0)
+                    dd = abs(float(m.get("max_drawdown_pct", 0) or 0))
+                    pf = float(m.get("profit_factor", 0) or 0)
+                    trades = int(m.get("total_trades", 0) or 0)
+                    sharpe = float(m.get("sharpe_ratio", 0) or 0)
+
+                    ctx_passed = bool(
+                        ret > 0
+                        and dd <= config.max_drawdown_abs
+                        and trades >= config.min_trades_per_context
+                        and pf >= config.min_profit_factor_per_context
+                        and sharpe >= config.min_sharpe_per_context
                     )
-                m = result.metrics
-                ret = m.get("total_return_pct", 0)
-                dd = abs(m.get("max_drawdown_pct", 0))
-                pf = m.get("profit_factor", 0)
-                trades = m.get("total_trades", 0)
 
-                # Un contexte "passe" si return > 0 ET drawdown acceptable
-                ctx_passed = bool(ret > 0 and dd <= config.max_drawdown_abs)
+                    context_result = {
+                        "token": token,
+                        "timeframe": tf,
+                        "configured": True,
+                        "loaded": True,
+                        "missing": False,
+                        "return_pct": round(ret, 2),
+                        "max_drawdown_pct": round(dd, 2),
+                        "profit_factor": round(pf, 4),
+                        "sharpe_ratio": round(sharpe, 4),
+                        "trades": trades,
+                        "passed": ctx_passed,
+                        "benchmark": benchmark_name,
+                    }
+                    ctx_results[key] = context_result
+                    benchmark_context_results[key] = dict(context_result)
+                    if ctx_passed:
+                        passed_count += 1
+                        benchmark_passed_count += 1
+                except Exception as e:
+                    error_result = {
+                        "token": token,
+                        "timeframe": tf,
+                        "configured": True,
+                        "loaded": True,
+                        "missing": False,
+                        "error": str(e),
+                        "passed": False,
+                        "benchmark": benchmark_name,
+                    }
+                    ctx_results[key] = error_result
+                    benchmark_context_results[key] = dict(error_result)
+                    logger.debug("Backtest error %s on %s: %s", candidate.session_id, key, e)
 
-                ctx_results[key] = {
-                    "return_pct": round(ret, 2),
-                    "max_drawdown_pct": round(dd, 2),
-                    "profit_factor": round(pf, 4),
-                    "trades": trades,
-                    "passed": ctx_passed,
+            for key in benchmark_missing:
+                token, tf = _split_context_key(key)
+                missing_result = {
+                    "token": token,
+                    "timeframe": tf,
+                    "configured": True,
+                    "loaded": False,
+                    "missing": True,
+                    "error": "missing_data",
+                    "passed": False,
+                    "benchmark": benchmark_name,
                 }
+                ctx_results[key] = missing_result
+                benchmark_context_results[key] = dict(missing_result)
 
-                if ctx_passed:
-                    passed_count += 1
-
-            except Exception as e:
-                ctx_results[key] = {"error": str(e), "passed": False}
-                logger.debug("Backtest error %s on %s: %s", candidate.session_id, key, e)
+            benchmark_coverage_pct = round(
+                len(benchmark_loaded) / max(len(benchmark_keys), 1) * 100.0,
+                1,
+            )
+            benchmark_pass = bool(
+                benchmark_loaded
+                and benchmark_coverage_pct >= config.min_context_coverage_pct
+                and benchmark_passed_count >= config.min_contexts_pass
+            )
+            benchmark_results[benchmark_name] = {
+                "label": benchmark.get("label", benchmark_name),
+                "tokens": list(benchmark.get("tokens", [])),
+                "timeframes": list(timeframes),
+                "configured_contexts": list(benchmark_keys),
+                "configured_context_count": len(benchmark_keys),
+                "loaded_contexts": list(benchmark_loaded),
+                "loaded_context_count": len(benchmark_loaded),
+                "missing_contexts": list(benchmark_missing),
+                "missing_context_count": len(benchmark_missing),
+                "passed_contexts": benchmark_passed_count,
+                "passed_context_count": benchmark_passed_count,
+                "coverage_pct": benchmark_coverage_pct,
+                "pass_rate_pct": round(benchmark_passed_count / max(len(benchmark_loaded), 1) * 100.0, 1)
+                if benchmark_loaded
+                else 0.0,
+                "passed": benchmark_pass,
+                "contexts": benchmark_context_results,
+            }
+            if benchmark_pass:
+                benchmarks_passed.append(benchmark_name)
 
         candidate.multi_ctx_results = {
             "contexts": ctx_results,
             "passed_count": passed_count,
-            "total_contexts": len(dataframes),
-            "pass_rate": round(passed_count / max(len(dataframes), 1) * 100, 1),
+            "total_contexts": len(configured_contexts),
+            "loaded_contexts": len(dataframes),
+            "missing_contexts": len(missing_contexts),
+            "pass_rate": round(passed_count / max(len(configured_contexts), 1) * 100, 1),
         }
-        candidate.phase = "P2"
+        candidate.benchmark_results = benchmark_results
 
-        # Décision Phase 2
-        if passed_count >= config.min_contexts_pass:
+        required_benchmark_name = (
+            config.required_benchmark_name
+            if config.required_benchmark_name in benchmarks
+            else (next(iter(benchmarks.keys()), ""))
+        )
+        required_passed = required_benchmark_name in benchmarks_passed if required_benchmark_name else True
+        consensus_passed = bool(required_passed and len(benchmarks_passed) >= config.min_benchmarks_pass)
+        contradicted = bool(benchmarks_passed and not consensus_passed)
+        candidate.benchmark_consensus = {
+            "required_benchmark_name": required_benchmark_name,
+            "required_passed": required_passed,
+            "configured_benchmark_names": sorted(benchmarks.keys()),
+            "benchmarks_passed": benchmarks_passed,
+            "benchmarks_failed": sorted(name for name in benchmarks.keys() if name not in benchmarks_passed),
+            "benchmarks_total": len(benchmarks),
+            "n_passed": len(benchmarks_passed),
+            "min_benchmarks_pass": config.min_benchmarks_pass,
+            "consensus_passed": consensus_passed,
+            "contradicted": contradicted,
+        }
+
+        if consensus_passed:
+            candidate.p3_verdict = "PASSED"
             candidate.decision = "WATCHLIST"
             survivors.append(candidate)
             logger.debug(
-                "P2 PASS: %s — %d/%d contexts",
-                candidate.session_id, passed_count, len(dataframes),
+                "P3 PASS: %s — benchmarks=%s",
+                candidate.session_id, benchmarks_passed,
             )
         else:
             reasons = []
-            reasons.append(f"contexts={passed_count}/{len(dataframes)}<{config.min_contexts_pass}")
+            if not required_passed and required_benchmark_name:
+                reasons.append(f"required_benchmark_failed={required_benchmark_name}")
+            reasons.append(
+                f"benchmarks={len(benchmarks_passed)}/{len(benchmarks)}<{config.min_benchmarks_pass}"
+            )
+            if candidate.coverage_pct is not None and candidate.coverage_pct < config.min_context_coverage_pct:
+                reasons.append(
+                    f"coverage={candidate.coverage_pct:.1f}%<{config.min_context_coverage_pct}%"
+                )
+            candidate.p3_verdict = "REJECTED"
             candidate.decision = "REJECTED"
             candidate.rejection_reason = "; ".join(reasons)
 
         if progress_callback:
             progress_callback(
-                phase="P2",
+                phase="P3",
                 event="candidate_done",
                 candidate=candidate,
                 index=index,
                 total=len(candidates),
                 survivors=len(survivors),
-                extra={"loaded_contexts": len(dataframes), "configured_contexts": total_contexts},
+                extra={
+                    "loaded_contexts": len(dataframes),
+                    "configured_contexts": total_contexts,
+                    "benchmarks_passed": benchmarks_passed,
+                },
             )
 
     logger.info(
-        "Phase 2 done: %d/%d survived",
+        "Phase 3 done: %d/%d survived",
         len(survivors), len(candidates),
     )
 
     if progress_callback:
         progress_callback(
-            phase="P2",
+            phase="P3",
             event="phase_end",
             candidate=None,
             index=len(candidates),
             total=len(candidates),
             survivors=len(survivors),
-            extra={"loaded_contexts": len(dataframes), "configured_contexts": total_contexts},
+            extra={
+                "loaded_contexts": len(dataframes),
+                "configured_contexts": total_contexts,
+                "benchmarks": list(benchmarks.keys()),
+            },
         )
 
     return survivors
@@ -1593,7 +2027,7 @@ def run_parameter_sensitivity(
     progress_callback: Optional[Callable[..., None]] = None,
 ) -> List[GraduationCandidate]:
     """
-    Phase 3 — Sensibilité paramétrique.
+    Phase 4 — Sensibilité paramétrique.
 
     Pour chaque candidat, génère un voisinage ±10% autour des paramètres,
     backteste chaque combinaison, et mesure le % de combinaisons rentables.
@@ -1622,11 +2056,11 @@ def run_parameter_sensitivity(
 
     survivors: List[GraduationCandidate] = []
 
-    logger.info("Phase 3: sensitivity test on %d candidates", len(candidates))
+    logger.info("Phase 4: sensitivity test on %d candidates", len(candidates))
 
     if progress_callback:
         progress_callback(
-            phase="P3",
+            phase="P4",
             event="phase_start",
             candidate=None,
             index=0,
@@ -1638,7 +2072,7 @@ def run_parameter_sensitivity(
     for index, candidate in enumerate(candidates, 1):
         if progress_callback:
             progress_callback(
-                phase="P3",
+                phase="P4",
                 event="candidate_start",
                 candidate=candidate,
                 index=index,
@@ -1650,11 +2084,12 @@ def run_parameter_sensitivity(
             strategy, candidate_params = _load_strategy_for_candidate(candidate)
         except Exception as e:
             candidate.decision = "REJECTED"
-            candidate.rejection_reason = f"P3 load error: {e}"
-            candidate.phase = "P3"
+            candidate.rejection_reason = f"P4 load error: {e}"
+            candidate.phase = "P4"
+            candidate.p4_verdict = "REJECTED"
             if progress_callback:
                 progress_callback(
-                    phase="P3",
+                    phase="P4",
                     event="candidate_done",
                     candidate=candidate,
                     index=index,
@@ -1670,14 +2105,15 @@ def run_parameter_sensitivity(
                 base_params[name] = float(value)
         if not base_params:
             # Pas de paramètres → on laisse passer (pas de sensibilité à tester)
-            candidate.phase = "P3"
+            candidate.phase = "P4"
             candidate.sweep_robustness_pct = 100.0
             candidate.decision = "WATCHLIST"
+            candidate.p4_verdict = "PASSED"
             survivors.append(candidate)
-            logger.debug("P3 PASS (no params): %s", candidate.session_id)
+            logger.debug("P4 PASS (no params): %s", candidate.session_id)
             if progress_callback:
                 progress_callback(
-                    phase="P3",
+                    phase="P4",
                     event="candidate_done",
                     candidate=candidate,
                     index=index,
@@ -1719,22 +2155,24 @@ def run_parameter_sensitivity(
 
         robustness = (profitable / max(total, 1)) * 100
         candidate.sweep_robustness_pct = round(robustness, 1)
-        candidate.phase = "P3"
+        candidate.phase = "P4"
 
         if robustness >= config.sweep_min_profitable_pct:
             candidate.decision = "WATCHLIST"
+            candidate.p4_verdict = "PASSED"
             survivors.append(candidate)
             logger.debug(
-                "P3 PASS: %s — %d/%d profitable (%.1f%%)",
+                "P4 PASS: %s — %d/%d profitable (%.1f%%)",
                 candidate.session_id, profitable, total, robustness,
             )
         else:
             candidate.decision = "REJECTED"
+            candidate.p4_verdict = "REJECTED"
             candidate.rejection_reason = f"sweep fragile {robustness:.0f}%<{config.sweep_min_profitable_pct}%"
 
         if progress_callback:
             progress_callback(
-                phase="P3",
+                phase="P4",
                 event="candidate_done",
                 candidate=candidate,
                 index=index,
@@ -1743,10 +2181,10 @@ def run_parameter_sensitivity(
                 extra={"token": token, "timeframe": tf},
             )
 
-    logger.info("Phase 3 done: %d/%d survived", len(survivors), len(candidates))
+    logger.info("Phase 4 done: %d/%d survived", len(survivors), len(candidates))
     if progress_callback:
         progress_callback(
-            phase="P3",
+            phase="P4",
             event="phase_end",
             candidate=None,
             index=len(candidates),
@@ -1768,7 +2206,7 @@ def run_wfa_validation(
     progress_callback: Optional[Callable[..., None]] = None,
 ) -> List[GraduationCandidate]:
     """
-    Phase 4 — Walk-Forward Analysis.
+    Phase 5 — Walk-Forward Analysis.
 
     Pour chaque candidat, exécute un WFA (expanding window) sur le token principal.
     Rejette si stability_score < wfa_min_stability.
@@ -1799,11 +2237,11 @@ def run_wfa_validation(
 
     survivors: List[GraduationCandidate] = []
 
-    logger.info("Phase 4: WFA on %d candidates (%d folds)", len(candidates), config.wfa_folds)
+    logger.info("Phase 5: WFA on %d candidates (%d folds)", len(candidates), config.wfa_folds)
 
     if progress_callback:
         progress_callback(
-            phase="P4",
+            phase="P5",
             event="phase_start",
             candidate=None,
             index=0,
@@ -1815,7 +2253,7 @@ def run_wfa_validation(
     for index, candidate in enumerate(candidates, 1):
         if progress_callback:
             progress_callback(
-                phase="P4",
+                phase="P5",
                 event="candidate_start",
                 candidate=candidate,
                 index=index,
@@ -1827,11 +2265,12 @@ def run_wfa_validation(
             strategy, params = _load_strategy_for_candidate(candidate)
         except Exception as e:
             candidate.decision = "REJECTED"
-            candidate.rejection_reason = f"P4 load error: {e}"
-            candidate.phase = "P4"
+            candidate.rejection_reason = f"P5 load error: {e}"
+            candidate.phase = "P5"
+            candidate.p5_verdict = "REJECTED"
             if progress_callback:
                 progress_callback(
-                    phase="P4",
+                    phase="P5",
                     event="candidate_done",
                     candidate=candidate,
                     index=index,
@@ -1864,33 +2303,61 @@ def run_wfa_validation(
             stability = float(summary.confidence_score or 0.0)
             candidate.wfa_stability = round(stability, 3)
             candidate.wfa_avg_test_return_pct = round(avg_test_return_pct, 2)
-            candidate.phase = "P4"
+            candidate.wfa_avg_test_sharpe = _safe_round(getattr(summary, "avg_test_sharpe", None), 3)
+            candidate.wfa_overfitting_ratio = _safe_round(getattr(summary, "avg_overfitting_ratio", None), 3)
+            candidate.wfa_is_robust = bool(getattr(summary, "is_robust", False))
+            candidate.phase = "P5"
 
-            if stability >= config.wfa_min_stability and avg_test_return_pct > 0:
+            if (
+                stability >= config.wfa_min_stability
+                and avg_test_return_pct > 0
+                and (candidate.wfa_avg_test_sharpe is None or candidate.wfa_avg_test_sharpe >= config.wfa_min_test_sharpe)
+                and (
+                    candidate.wfa_overfitting_ratio is None
+                    or candidate.wfa_overfitting_ratio <= config.wfa_max_overfitting_ratio
+                )
+            ):
                 candidate.decision = "WATCHLIST"
+                candidate.p5_verdict = "PASSED"
                 survivors.append(candidate)
                 logger.debug(
-                    "P4 PASS: %s — stability=%.3f avg_test_return=%.2f%% robust=%s",
+                    "P5 PASS: %s — stability=%.3f avg_test_return=%.2f%% robust=%s",
                     candidate.session_id, stability, avg_test_return_pct, summary.is_robust,
                 )
             else:
                 candidate.decision = "REJECTED"
+                candidate.p5_verdict = "REJECTED"
                 reasons = []
                 if stability < config.wfa_min_stability:
                     reasons.append(f"WFA instable {stability:.2f}<{config.wfa_min_stability}")
                 if avg_test_return_pct <= 0:
                     reasons.append(f"WFA avg_test_return={avg_test_return_pct:.2f}%<=0")
+                if (
+                    candidate.wfa_avg_test_sharpe is not None
+                    and candidate.wfa_avg_test_sharpe < config.wfa_min_test_sharpe
+                ):
+                    reasons.append(
+                        f"WFA avg_test_sharpe={candidate.wfa_avg_test_sharpe:.2f}<{config.wfa_min_test_sharpe}"
+                    )
+                if (
+                    candidate.wfa_overfitting_ratio is not None
+                    and candidate.wfa_overfitting_ratio > config.wfa_max_overfitting_ratio
+                ):
+                    reasons.append(
+                        f"WFA overfitting={candidate.wfa_overfitting_ratio:.2f}>{config.wfa_max_overfitting_ratio}"
+                    )
                 candidate.rejection_reason = "; ".join(reasons)
 
         except Exception as e:
             candidate.decision = "REJECTED"
-            candidate.rejection_reason = f"P4 WFA error: {e}"
-            candidate.phase = "P4"
+            candidate.p5_verdict = "REJECTED"
+            candidate.rejection_reason = f"P5 WFA error: {e}"
+            candidate.phase = "P5"
             logger.debug("WFA error %s: %s", candidate.session_id, e)
 
         if progress_callback:
             progress_callback(
-                phase="P4",
+                phase="P5",
                 event="candidate_done",
                 candidate=candidate,
                 index=index,
@@ -1899,10 +2366,10 @@ def run_wfa_validation(
                 extra={"token": token, "timeframe": tf, "folds": config.wfa_folds},
             )
 
-    logger.info("Phase 4 done: %d/%d survived", len(survivors), len(candidates))
+    logger.info("Phase 5 done: %d/%d survived", len(survivors), len(candidates))
     if progress_callback:
         progress_callback(
-            phase="P4",
+            phase="P5",
             event="phase_end",
             candidate=None,
             index=len(candidates),
@@ -1914,7 +2381,7 @@ def run_wfa_validation(
 
 
 # ---------------------------------------------------------------------------
-# Phase 5 — Promotion
+# Phase 6 — Promotion
 # ---------------------------------------------------------------------------
 
 def promote_to_strategies(
@@ -1922,20 +2389,20 @@ def promote_to_strategies(
     output_dir: Optional[Path] = None,
 ) -> List[GraduationCandidate]:
     """
-    Phase 5 — Promotion.
+    Phase 6 — Promotion finale.
 
     Copie les stratégies validées dans strategies/ avec un en-tête de traçabilité.
     """
     import re
 
     if output_dir is None:
-        output_dir = Path("strategies/graduated")
+        output_dir = _default_promotion_dir()
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     promoted: List[GraduationCandidate] = []
 
-    logger.info("Phase 5: promoting %d candidates to %s", len(candidates), output_dir)
+    logger.info("Phase 6: promoting %d candidates to %s", len(candidates), output_dir)
 
     for candidate in candidates:
         strategy_path = candidate.session_dir / f"strategy_v{candidate.best_iteration}.py"
@@ -1944,8 +2411,9 @@ def promote_to_strategies(
 
         if not strategy_path.exists():
             candidate.decision = "REJECTED"
-            candidate.rejection_reason = "P5: no strategy file"
-            candidate.phase = "P5"
+            candidate.p6_verdict = "REJECTED"
+            candidate.rejection_reason = "P6: no strategy file"
+            candidate.phase = "P6"
             continue
 
         # Générer un nom propre
@@ -1973,7 +2441,8 @@ def promote_to_strategies(
             target.write_text(header + code, encoding="utf-8")
 
             candidate.decision = "PROMOTED"
-            candidate.phase = "P5"
+            candidate.p6_verdict = "PROMOTED"
+            candidate.phase = "P6"
             candidate.strategy_file = str(target)
             promoted.append(candidate)
 
@@ -1981,10 +2450,11 @@ def promote_to_strategies(
 
         except Exception as e:
             candidate.decision = "REJECTED"
-            candidate.rejection_reason = f"P5 copy error: {e}"
-            candidate.phase = "P5"
+            candidate.p6_verdict = "REJECTED"
+            candidate.rejection_reason = f"P6 copy error: {e}"
+            candidate.phase = "P6"
 
-    logger.info("Phase 5 done: %d/%d promoted", len(promoted), len(candidates))
+    logger.info("Phase 6 done: %d/%d promoted", len(promoted), len(candidates))
     return promoted
 
 
@@ -2013,26 +2483,21 @@ def _candidate_catalog_category(
     candidate: GraduationCandidate,
     config: GraduationConfig,
 ) -> str:
-    if candidate.decision == "PROMOTED":
-        return "p4_paper_candidate"
+    if candidate.decision == "PROMOTED" or candidate.p6_verdict == "PROMOTED":
+        return "p6_paper_candidate"
 
-    if (
-        candidate.wfa_stability is not None
-        and candidate.wfa_avg_test_return_pct is not None
-        and candidate.wfa_stability >= config.wfa_min_stability
-        and candidate.wfa_avg_test_return_pct > 0
-    ):
-        return "p4_paper_candidate"
+    if candidate.p5_verdict == "PASSED":
+        return "p5_wfa_candidate"
 
-    if (
-        candidate.sweep_robustness_pct is not None
-        and candidate.sweep_robustness_pct >= config.sweep_min_profitable_pct
-    ):
-        return "p3_watchlist"
+    if candidate.p4_verdict == "PASSED":
+        return "p4_param_robust"
 
-    passed_count = int((candidate.multi_ctx_results or {}).get("passed_count") or 0)
-    if passed_count >= config.min_contexts_pass:
-        return "p2_auto_shortlist"
+    consensus_passed = bool((candidate.benchmark_consensus or {}).get("consensus_passed"))
+    if consensus_passed or candidate.p3_verdict == "PASSED":
+        return "p3_benchmark_consensus"
+
+    if candidate.p2_verdict == "PASSED" or candidate.best_return_pct > 0:
+        return "p2_positive_observed"
 
     return "p1_builder_inbox"
 
@@ -2044,11 +2509,12 @@ def sync_graduation_to_catalog(
     """
     Synchronise les candidats de graduation vers strategy_catalog.json.
 
-    Mapping volontairement conservateur:
-      - P1/P2 rejetés -> p1_builder_inbox
-      - P2 passés -> p2_auto_shortlist
-      - P3 passés -> p3_watchlist
-      - P4 passés / P5 promus -> p4_paper_candidate
+    Mapping canonique:
+      - P2 positifs observés -> p2_positive_observed
+      - P3 benchmark consensus -> p3_benchmark_consensus
+      - P4 robustesse paramétrique -> p4_param_robust
+      - P5 walk-forward -> p5_wfa_candidate
+      - P6 promotion finale -> p6_paper_candidate
     """
     if config is None:
         config = GraduationConfig()
@@ -2141,10 +2607,25 @@ def sync_graduation_to_catalog(
                     "best_iteration": candidate.best_iteration,
                     "origin_status": candidate.origin_status,
                     "objective": candidate.objective,
+                    "candidate_id": candidate.candidate_id or candidate.session_id,
+                    "source_mode": candidate.source_mode,
+                    "benchmark_results": candidate.benchmark_results,
+                    "benchmark_names": config.benchmark_names,
+                    "benchmark_consensus": candidate.benchmark_consensus,
+                    "configured_contexts": candidate.configured_contexts,
+                    "loaded_contexts": candidate.loaded_contexts,
+                    "missing_contexts": candidate.missing_contexts,
+                    "tested_timeframes": candidate.tested_timeframes,
+                    "coverage_pct": candidate.coverage_pct,
                     "validation_tokens": config.validation_tokens,
                     "validation_timeframes": config.validation_timeframes,
                     "decision": candidate.decision,
                     "phase": candidate.phase,
+                    "p2_verdict": candidate.p2_verdict,
+                    "p3_verdict": candidate.p3_verdict,
+                    "p4_verdict": candidate.p4_verdict,
+                    "p5_verdict": candidate.p5_verdict,
+                    "p6_verdict": candidate.p6_verdict,
                     "promoted_strategy_path": candidate.strategy_file
                     if candidate.decision == "PROMOTED"
                     else None,
@@ -2180,7 +2661,7 @@ def sync_positive_import_candidates_to_catalog(
     candidates: List[GraduationCandidate],
     config: Optional[GraduationConfig] = None,
 ) -> List[Dict[str, Any]]:
-    """Met à jour les entrées `positive_import` existantes avec l'avancement P2→P4."""
+    """Met à jour les entrées `positive_import` existantes avec l'avancement canonique P2→P6."""
     if config is None:
         config = GraduationConfig()
 
@@ -2239,9 +2720,23 @@ def sync_positive_import_candidates_to_catalog(
                     "positive_pipeline_phase": candidate.phase,
                     "positive_pipeline_decision": candidate.decision,
                     "positive_pipeline_rejection_reason": candidate.rejection_reason or None,
+                    "positive_pipeline_candidate_id": candidate.candidate_id or candidate.session_id,
+                    "positive_pipeline_source_mode": candidate.source_mode,
                     "positive_pipeline_strategy_name": candidate.strategy_name,
                     "positive_pipeline_source_kind": candidate.source_kind,
                     "positive_pipeline_source_run_id": candidate.source_run_id,
+                    "positive_pipeline_benchmark_results": candidate.benchmark_results,
+                    "positive_pipeline_benchmark_consensus": candidate.benchmark_consensus,
+                    "positive_pipeline_configured_contexts": candidate.configured_contexts,
+                    "positive_pipeline_loaded_contexts": candidate.loaded_contexts,
+                    "positive_pipeline_missing_contexts": candidate.missing_contexts,
+                    "positive_pipeline_tested_timeframes": candidate.tested_timeframes,
+                    "positive_pipeline_coverage_pct": candidate.coverage_pct,
+                    "positive_pipeline_p2_verdict": candidate.p2_verdict,
+                    "positive_pipeline_p3_verdict": candidate.p3_verdict,
+                    "positive_pipeline_p4_verdict": candidate.p4_verdict,
+                    "positive_pipeline_p5_verdict": candidate.p5_verdict,
+                    "positive_pipeline_p6_verdict": candidate.p6_verdict,
                     "positive_pipeline_tokens": config.validation_tokens,
                     "positive_pipeline_timeframes": config.validation_timeframes,
                     "positive_pipeline_passed_count": (candidate.multi_ctx_results or {}).get("passed_count"),
@@ -2280,7 +2775,7 @@ def run_positive_import_graduation(
     config: Optional[GraduationConfig] = None,
 ) -> Dict[str, Any]:
     """
-    Exécute P2→P4 sur les entrées `positive_import` du strategy catalog.
+    Exécute le pipeline canonique P2→P5 sur les entrées `positive_import` du strategy catalog.
     """
     if config is None:
         config = GraduationConfig()
@@ -2357,6 +2852,26 @@ def run_positive_import_graduation(
             total=len(candidates),
         )
 
+        survivors = run_positive_observed_filter(candidates, source_mode="positive_import")
+        stats["p2_survivors"] = len(survivors)
+        current_phase = "P2"
+        _write_progress(
+            status="running",
+            event="positive_observed_complete",
+            phase="P2",
+            candidate=None,
+            index=len(survivors),
+            total=len(candidates),
+            extra={"survivors": len(survivors)},
+        )
+        save_graduation_report(
+            all_candidates,
+            config.output_dir,
+            phase="POSITIVE_IMPORTS",
+            filename=report_filename,
+            stats=stats,
+        )
+
         def _progress_callback(
             *,
             phase: str,
@@ -2377,12 +2892,12 @@ def run_positive_import_graduation(
             else:
                 stats.setdefault(processed_key, max(index - 1, 0))
 
-            if phase == "P2":
-                stats["p2_survivors"] = survivors
-            elif phase == "P3":
+            if phase == "P3":
                 stats["p3_survivors"] = survivors
             elif phase == "P4":
                 stats["p4_survivors"] = survivors
+            elif phase == "P5":
+                stats["p5_survivors"] = survivors
 
             _write_progress(
                 status="running",
@@ -2405,26 +2920,26 @@ def run_positive_import_graduation(
 
         with _safe_engine_mode():
             survivors = run_multi_context_validation(
-                candidates,
-                config,
-                progress_callback=_progress_callback,
-            )
-            stats["p2_survivors"] = len(survivors)
-
-            survivors = run_parameter_sensitivity(
                 survivors,
                 config,
                 progress_callback=_progress_callback,
             )
             stats["p3_survivors"] = len(survivors)
 
-            survivors = run_wfa_validation(
+            survivors = run_parameter_sensitivity(
                 survivors,
                 config,
                 progress_callback=_progress_callback,
             )
             stats["p4_survivors"] = len(survivors)
-        stats["p5_promoted"] = 0
+
+            survivors = run_wfa_validation(
+                survivors,
+                config,
+                progress_callback=_progress_callback,
+            )
+            stats["p5_survivors"] = len(survivors)
+        stats["p6_promoted"] = 0
 
         synced = sync_positive_import_candidates_to_catalog(all_candidates, config)
         stats["catalog_synced"] = len(synced)
@@ -2441,7 +2956,7 @@ def run_positive_import_graduation(
             event="completed",
             phase=current_phase,
             candidate=current_candidate,
-            index=stats.get("p4_processed", stats.get("p3_processed", stats.get("p2_processed", 0))),
+            index=stats.get("p5_processed", stats.get("p4_processed", stats.get("p3_processed", 0))),
             total=stats.get("import_candidates", 0),
         )
     except Exception as exc:
@@ -2457,18 +2972,19 @@ def run_positive_import_graduation(
             event="failed",
             phase=current_phase,
             candidate=current_candidate,
-            index=stats.get("p4_processed", stats.get("p3_processed", stats.get("p2_processed", 0))),
+            index=stats.get("p5_processed", stats.get("p4_processed", stats.get("p3_processed", 0))),
             total=stats.get("import_candidates", 0),
             error=str(exc),
         )
         raise
 
     logger.info(
-        "Positive import graduation: P1=%d → P2=%d → P3=%d → P4=%d",
+        "Positive import graduation: P1=%d → P2=%d → P3=%d → P4=%d → P5=%d",
         stats["p1_candidates"],
         stats["p2_survivors"],
         stats["p3_survivors"],
         stats["p4_survivors"],
+        stats["p5_survivors"],
     )
 
     return {
@@ -2487,7 +3003,7 @@ def run_full_graduation(
     config: Optional[GraduationConfig] = None,
 ) -> Dict[str, Any]:
     """
-    Exécute le pipeline complet P1 → P5.
+    Exécute le pipeline complet canonique P1 → P6.
 
     Returns:
         Dict avec stats par phase et liste finale de candidats promus.
@@ -2503,20 +3019,24 @@ def run_full_graduation(
     all_candidates = list(candidates)  # copie pour le rapport
 
     # P2
-    survivors = run_multi_context_validation(candidates, config)
+    survivors = run_positive_observed_filter(candidates, source_mode="sandbox")
     stats["p2_survivors"] = len(survivors)
 
     # P3
-    survivors = run_parameter_sensitivity(survivors, config)
+    survivors = run_multi_context_validation(survivors, config)
     stats["p3_survivors"] = len(survivors)
 
     # P4
-    survivors = run_wfa_validation(survivors, config)
+    survivors = run_parameter_sensitivity(survivors, config)
     stats["p4_survivors"] = len(survivors)
 
     # P5
+    survivors = run_wfa_validation(survivors, config)
+    stats["p5_survivors"] = len(survivors)
+
+    # P6
     promoted = promote_to_strategies(survivors, config.promotion_dir)
-    stats["p5_promoted"] = len(promoted)
+    stats["p6_promoted"] = len(promoted)
 
     synced = []
     if config.sync_catalog:
@@ -2533,9 +3053,9 @@ def run_full_graduation(
     )
 
     logger.info(
-        "Full graduation: P1=%d → P2=%d → P3=%d → P4=%d → P5=%d",
+        "Full graduation: P1=%d → P2=%d → P3=%d → P4=%d → P5=%d → P6=%d",
         stats["p1_candidates"], stats["p2_survivors"],
-        stats["p3_survivors"], stats["p4_survivors"], stats["p5_promoted"],
+        stats["p3_survivors"], stats["p4_survivors"], stats["p5_survivors"], stats["p6_promoted"],
     )
 
     return {

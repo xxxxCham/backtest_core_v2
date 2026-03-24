@@ -37,7 +37,13 @@ from agents.llm_router import (
     build_phase1_topology,
     build_single_host_topology,
 )
+from agents.llm_config import (
+    DEFAULT_LLM_INFERENCE_MODE,
+    normalize_llm_inference_settings,
+    normalize_llm_model_inference_profiles,
+)
 from ui.constants import (
+    MODE_OPTIONS,
     build_strategy_options,
     get_strategy_description,
     get_strategy_ui_indicators,
@@ -100,19 +106,6 @@ from utils.observability import is_debug_enabled, set_log_level
 from utils.parameters import normalize_param_ranges
 from performance.parallel import get_recommended_worker_count
 
-try:
-    from agents.strategy_builder import (
-        generate_random_objective,
-        get_catalog_coverage,
-        get_next_catalog_objective,
-        get_parametric_catalog_stats,
-        reset_catalog_exploration,
-        reset_parametric_catalog,
-    )
-    _CATALOG_AVAILABLE = True
-except ImportError:
-    _CATALOG_AVAILABLE = False
-
 logger = logging.getLogger(__name__)
 
 POTENTIAL_TOKENS = [
@@ -147,9 +140,12 @@ SIDEBAR_STYLE_CSS = """
     --bc-border: #33465f;
     --bc-surface: #0f1726;
     --bc-soft: #172437;
+    min-width: 22rem;
+    max-width: 22rem;
 }
 [data-testid="stSidebar"] > div:first-child {
     background: linear-gradient(180deg, #0a1221 0%, #0d1b31 45%, #13233f 100%);
+    width: 22rem;
 }
 [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
 [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] li,
@@ -190,20 +186,21 @@ SIDEBAR_STYLE_CSS = """
 }
 [data-testid="stSidebar"] .stButton > button {
     border-radius: 10px;
-    border: 1px solid var(--bc-border);
+    border: 1px solid rgba(96, 165, 250, 0.34) !important;
     font-weight: 600;
-    color: #eff6ff;
-    background: #1a2a45;
+    color: #eff6ff !important;
+    background: linear-gradient(180deg, rgba(18, 36, 68, 0.96), rgba(24, 48, 90, 0.94)) !important;
+    box-shadow: 0 10px 22px rgba(2, 8, 23, 0.22);
 }
 [data-testid="stSidebar"] .stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #3b82f6 100%);
-    border: 1px solid #3b82f6;
+    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #60a5fa 100%) !important;
+    border: 1px solid rgba(147, 197, 253, 0.84) !important;
     color: #ffffff !important;
-    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25), 0 10px 24px rgba(30, 64, 175, 0.35);
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25), 0 12px 28px rgba(30, 64, 175, 0.35) !important;
 }
 [data-testid="stSidebar"] .stButton > button[kind="secondary"] {
-    background: #1a2a45;
-    border: 1px solid #314766;
+    background: linear-gradient(180deg, rgba(16, 31, 57, 0.96), rgba(22, 43, 79, 0.94)) !important;
+    border: 1px solid rgba(96, 165, 250, 0.30) !important;
     color: #dce9fb !important;
 }
 [data-testid="stSidebar"] .stSelectbox > div > div,
@@ -248,6 +245,21 @@ SIDEBAR_STYLE_CSS = """
 }
 [data-testid="stSidebar"] hr {
     border-color: #2a3f5b;
+}
+@media (min-width: 1100px) {
+    [data-testid="stSidebar"][aria-expanded="false"] {
+        min-width: 22rem !important;
+        max-width: 22rem !important;
+        transform: translateX(0) !important;
+        margin-left: 0 !important;
+    }
+    [data-testid="stSidebar"][aria-expanded="false"] > div:first-child,
+    [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"] {
+        width: 22rem !important;
+        min-width: 22rem !important;
+        visibility: visible !important;
+        display: block !important;
+    }
 }
 </style>
 """
@@ -416,6 +428,7 @@ def _extract_llm_signature(llm_config: Optional[Any]) -> Optional[Dict[str, Any]
         "openai_key_set": bool(getattr(llm_config, "openai_api_key", None)),
         "temperature": getattr(llm_config, "temperature", None),
         "max_tokens": getattr(llm_config, "max_tokens", None),
+        "num_ctx": getattr(llm_config, "num_ctx", None),
         "top_p": getattr(llm_config, "top_p", None),
         "timeout_seconds": getattr(llm_config, "timeout_seconds", None),
         "max_retries": getattr(llm_config, "max_retries", None),
@@ -523,6 +536,9 @@ def _build_config_signature(state: SidebarState) -> str:
         "llm_compare_max_runs": state.llm_compare_max_runs,
         "llm_compare_use_preset": state.llm_compare_use_preset,
         "llm_compare_generate_report": state.llm_compare_generate_report,
+        "llm_inference_mode": state.llm_inference_mode,
+        "llm_inference_global_settings": state.llm_inference_global_settings,
+        "llm_inference_model_profiles": state.llm_inference_model_profiles,
         "initial_capital": state.initial_capital,
         "leverage": state.leverage,
         "leverage_enabled": state.leverage_enabled,
@@ -677,6 +693,77 @@ def _apply_config_guard(draft_state: SidebarState) -> SidebarState:
     st.session_state["draft_config_signature"] = draft_signature
 
     return applied_state
+
+
+def apply_pending_sidebar_config() -> bool:
+    draft_state = st.session_state.get("draft_sidebar_state")
+    draft_signature = st.session_state.get("draft_config_signature")
+    if draft_state is None or draft_signature is None:
+        return False
+    st.session_state["applied_config_signature"] = draft_signature
+    st.session_state["applied_sidebar_state"] = draft_state
+    st.session_state["config_pending_changes"] = False
+    return True
+
+
+def get_run_label_for_mode(optimization_mode: str) -> str:
+    run_label_map = {
+        "Backtest Simple": "🚀 Lancer le Backtest",
+        "Grille de Paramètres": "🧪 Lancer le Sweep",
+        "🤖 Optimisation LLM": "🧠 Lancer l'itération LLM",
+        "🏗️ Strategy Builder": "🏗️ Lancer le Builder",
+    }
+    return run_label_map.get(optimization_mode, "🚀 Lancer le Backtest")
+
+
+def request_execution_mode_change(mode_name: str) -> bool:
+    valid_modes = {name for name, _icon, _desc in MODE_OPTIONS}
+    selected_mode = str(mode_name or "").strip()
+    if selected_mode not in valid_modes:
+        return False
+    if st.session_state.get("optimization_mode") == selected_mode:
+        return False
+    st.session_state["optimization_mode"] = selected_mode
+    st.session_state.pop("exec_mode_selector", None)
+    return True
+
+
+def _render_sidebar_mode_selector(current_mode: str) -> str:
+    mode_names = [name for name, _icon, _desc in MODE_OPTIONS]
+    selected_mode = str(current_mode or mode_names[0]).strip()
+    if selected_mode not in mode_names:
+        selected_mode = mode_names[0]
+
+    for row_start in range(0, len(MODE_OPTIONS), 2):
+        row_options = MODE_OPTIONS[row_start:row_start + 2]
+        columns = st.sidebar.columns(len(row_options))
+        for col, (mode_name, icon, description) in zip(columns, row_options):
+            clean_name = re.sub(r"^[^\w]+", "", mode_name).strip() or mode_name
+            with col:
+                if st.button(
+                    f"{icon} {clean_name}",
+                    key=f"sidebar_exec_mode_button_{row_start}_{mode_name}",
+                    type="primary" if mode_name == selected_mode else "secondary",
+                    use_container_width=True,
+                    help=description,
+                ):
+                    if request_execution_mode_change(mode_name):
+                        st.rerun()
+
+    description = next(
+        (desc for mode_name, _icon, desc in MODE_OPTIONS if mode_name == selected_mode),
+        "",
+    )
+    st.sidebar.markdown(
+        (
+            "<div class='bc-sidebar-card'>"
+            f"<strong>Mode actif</strong><br/>{selected_mode}"
+            + (f"<br/><span>{description}</span>" if description else "")
+            + "</div>"
+        ),
+        unsafe_allow_html=True,
+    )
+    return selected_mode
 
 
 def get_final_market_selection(
@@ -914,7 +1001,7 @@ def render_sidebar() -> SidebarState:
     strategy_options = build_strategy_options(available_strategies)
 
     keep_current_strategy = st.sidebar.checkbox(
-        "Conserver stratégie (🎲)",
+        "Conserver la stratégie lors du tirage 🎲",
         value=st.session_state.get("keep_strategy_on_random_selection", True),
         key="keep_strategy_on_random_selection",
         help="Si activé, le bouton 🎲 randomise seulement token + timeframe quand une stratégie est déjà sélectionnée.",
@@ -1569,7 +1656,10 @@ def render_sidebar() -> SidebarState:
         os.environ["BACKTEST_WORKER_THREADS"] = "1"
         st.session_state["default_preset_applied"] = True
 
-    optimization_mode = st.session_state.optimization_mode
+    optimization_mode = _render_sidebar_mode_selector(
+        st.session_state.optimization_mode
+    )
+    st.session_state["optimization_mode"] = optimization_mode
 
     # Defaults partagés (doivent être initialisés avant tout usage UI)
     unlimited_max_combos = 1_000_000_000_000
@@ -1583,8 +1673,6 @@ def render_sidebar() -> SidebarState:
 
     max_combos = unlimited_max_combos
     n_workers = default_workers_cpu
-
-    st.sidebar.caption(f"📌 Mode : **{optimization_mode}**")
 
     if optimization_mode in {"Grille de Paramètres", "🤖 Optimisation LLM"}:
         st.sidebar.markdown("---")
@@ -1605,14 +1693,11 @@ def render_sidebar() -> SidebarState:
             "Workers parallèles (CPU)",
             min_value=1,
             max_value=32,
-            value=int(st.session_state["ui_n_workers"]),
             key="ui_n_workers",
             help="Réglage global CPU partagé entre Grille, Optuna et LLM.",
         )
         st.session_state["grid_n_workers"] = n_workers
         st.session_state["llm_n_workers"] = n_workers
-
-    action_slot = st.sidebar.container()
 
     # Bridge session_state ← exec_tabs (Grille de Paramètres / Optuna)
     use_optuna = st.session_state.get("exec_grid_use_optuna", False)
@@ -1636,6 +1721,23 @@ def render_sidebar() -> SidebarState:
     llm_compare_max_runs = 25
     llm_compare_use_preset = True
     llm_compare_generate_report = True
+    llm_inference_mode = str(
+        st.session_state.get("llm_inference_mode", DEFAULT_LLM_INFERENCE_MODE)
+        or DEFAULT_LLM_INFERENCE_MODE
+    ).strip() or DEFAULT_LLM_INFERENCE_MODE
+    llm_inference_global_settings = normalize_llm_inference_settings(
+        st.session_state.get("llm_inference_global_settings")
+    )
+    llm_inference_model_profiles = normalize_llm_model_inference_profiles(
+        st.session_state.get("llm_inference_model_profiles")
+    )
+    st.session_state["llm_inference_mode"] = llm_inference_mode
+    st.session_state["llm_inference_global_settings"] = dict(
+        llm_inference_global_settings
+    )
+    st.session_state["llm_inference_model_profiles"] = dict(
+        llm_inference_model_profiles
+    )
     llm_use_multi_agent = False
     llm_unload_during_backtest = default_llm_unload
     llm_model = None
@@ -2128,112 +2230,111 @@ def render_sidebar() -> SidebarState:
             f"| {'expanding' if wfa_expanding else 'rolling'}"
         )
 
-    _sidebar_section("💾 Versioned Presets")
+    with st.sidebar.expander("💾 Presets versionnés", expanded=False):
+        versioned_presets = list_strategy_versions(strategy_key)
 
-    versioned_presets = list_strategy_versions(strategy_key)
+        if "_sync_preset_version" in st.session_state:
+            st.session_state["versioned_preset_version"] = st.session_state.pop(
+                "_sync_preset_version"
+            )
+        if "_sync_preset_name" in st.session_state:
+            st.session_state["versioned_preset_name"] = st.session_state.pop(
+                "_sync_preset_name"
+            )
 
-    if "_sync_preset_version" in st.session_state:
-        st.session_state["versioned_preset_version"] = st.session_state.pop(
-            "_sync_preset_version"
-        )
-    if "_sync_preset_name" in st.session_state:
-        st.session_state["versioned_preset_name"] = st.session_state.pop(
-            "_sync_preset_name"
-        )
+        last_saved = st.session_state.pop("versioned_preset_last_saved", None)
+        if last_saved:
+            st.success(f"Preset sauvegardé: {last_saved}")
 
-    last_saved = st.session_state.pop("versioned_preset_last_saved", None)
-    if last_saved:
-        st.sidebar.success(f"Preset saved: {last_saved}")
+        if versioned_presets:
+            versions = []
+            for preset in versioned_presets:
+                meta = preset.metadata or {}
+                version = meta.get("version")
+                if version and version not in versions:
+                    versions.append(version)
 
-    if versioned_presets:
-        versions = []
-        for preset in versioned_presets:
-            meta = preset.metadata or {}
-            version = meta.get("version")
-            if version and version not in versions:
-                versions.append(version)
+            default_version = resolve_latest_version(strategy_key)
+            if default_version in versions:
+                default_index = versions.index(default_version)
+            else:
+                default_index = 0
 
-        default_version = resolve_latest_version(strategy_key)
-        if default_version in versions:
-            default_index = versions.index(default_version)
-        else:
-            default_index = 0
+            if (
+                "versioned_preset_version" in st.session_state
+                and st.session_state["versioned_preset_version"] not in versions
+            ):
+                del st.session_state["versioned_preset_version"]
 
-        if (
-            "versioned_preset_version" in st.session_state
-            and st.session_state["versioned_preset_version"] not in versions
-        ):
-            del st.session_state["versioned_preset_version"]
+            selected_version = st.selectbox(
+                "Version",
+                versions,
+                index=default_index,
+                key="versioned_preset_version",
+            )
 
-        selected_version = st.sidebar.selectbox(
-            "Preset version",
-            versions,
-            index=default_index,
-            key="versioned_preset_version",
-        )
-
-        presets_for_version = [
-            p for p in versioned_presets if (p.metadata or {}).get("version") == selected_version
-        ]
-        preset_names = [p.name for p in presets_for_version]
-
-        if (
-            "versioned_preset_name" in st.session_state
-            and st.session_state["versioned_preset_name"] not in preset_names
-        ):
-            del st.session_state["versioned_preset_name"]
-
-        selected_preset_name = st.sidebar.selectbox(
-            "Preset",
-            preset_names,
-            key="versioned_preset_name",
-        )
-
-        selected_preset = next(
-            (p for p in presets_for_version if p.name == selected_preset_name),
-            None,
-        )
-
-        if selected_preset is not None:
-            meta = selected_preset.metadata or {}
-            created_at = meta.get("created_at", "")
-            if created_at:
-                st.sidebar.caption(f"Created: {created_at}")
-
-            indicators = selected_preset.indicators or []
-            if indicators:
-                st.sidebar.caption(f"Indicators: {', '.join(indicators)}")
-
-            params_values = selected_preset.get_default_values()
-            if params_values:
-                st.sidebar.json(params_values)
-
-            metrics = meta.get("metrics") or {}
-            summary_keys = [
-                "sharpe_ratio",
-                "total_return_pct",
-                "max_drawdown",
-                "win_rate",
+            presets_for_version = [
+                p for p in versioned_presets if (p.metadata or {}).get("version") == selected_version
             ]
-            summary = {k: metrics.get(k) for k in summary_keys if k in metrics}
-            if summary:
-                st.sidebar.json(summary)
+            preset_names = [p.name for p in presets_for_version]
 
-        if st.sidebar.button("⬇️ Charger versioned preset", key="load_versioned_preset"):
-            try:
-                loaded_preset = load_strategy_version(
-                    strategy_name=strategy_key,
-                    version=selected_version,
-                    preset_name=selected_preset_name,
-                )
-                apply_versioned_preset(loaded_preset, strategy_key)
-                st.session_state["loaded_versioned_preset"] = loaded_preset.to_dict()
-                st.sidebar.success("Versioned preset loaded")
-                st.rerun()
-            except Exception as exc:
-                st.sidebar.error(f"Failed to load preset: {exc}")
-    else:
-        st.sidebar.caption("No versioned presets found.")
+            if (
+                "versioned_preset_name" in st.session_state
+                and st.session_state["versioned_preset_name"] not in preset_names
+            ):
+                del st.session_state["versioned_preset_name"]
+
+            selected_preset_name = st.selectbox(
+                "Preset",
+                preset_names,
+                key="versioned_preset_name",
+            )
+
+            selected_preset = next(
+                (p for p in presets_for_version if p.name == selected_preset_name),
+                None,
+            )
+
+            if selected_preset is not None:
+                meta = selected_preset.metadata or {}
+                created_at = meta.get("created_at", "")
+                if created_at:
+                    st.caption(f"Créé le: {created_at}")
+
+                indicators = selected_preset.indicators or []
+                if indicators:
+                    st.caption(f"Indicateurs: {', '.join(indicators)}")
+
+                params_values = selected_preset.get_default_values()
+                if params_values:
+                    st.json(params_values)
+
+                metrics = meta.get("metrics") or {}
+                summary_keys = [
+                    "sharpe_ratio",
+                    "total_return_pct",
+                    "max_drawdown",
+                    "win_rate",
+                ]
+                summary = {k: metrics.get(k) for k in summary_keys if k in metrics}
+                if summary:
+                    st.json(summary)
+
+            if st.button("⬇️ Charger ce preset", key="load_versioned_preset"):
+                try:
+                    loaded_preset = load_strategy_version(
+                        strategy_name=strategy_key,
+                        version=selected_version,
+                        preset_name=selected_preset_name,
+                    )
+                    apply_versioned_preset(loaded_preset, strategy_key)
+                    st.session_state["loaded_versioned_preset"] = loaded_preset.to_dict()
+                    st.success("Preset versionné chargé")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Échec du chargement: {exc}")
+        else:
+            st.caption("Aucun preset versionné.")
 
     render_saved_runs_panel(
         st.session_state.get("last_run_result"),
@@ -2446,6 +2547,9 @@ def render_sidebar() -> SidebarState:
         llm_compare_max_runs=llm_compare_max_runs,
         llm_compare_use_preset=llm_compare_use_preset,
         llm_compare_generate_report=llm_compare_generate_report,
+        llm_inference_mode=llm_inference_mode,
+        llm_inference_global_settings=llm_inference_global_settings,
+        llm_inference_model_profiles=llm_inference_model_profiles,
         initial_capital=initial_capital,
         leverage=leverage,
         leverage_enabled=leverage_enabled,
@@ -2481,102 +2585,8 @@ def render_sidebar() -> SidebarState:
         builder_use_parametric_catalog=builder_use_parametric_catalog,
     )
 
+    st.session_state["draft_sidebar_state"] = draft_state
     applied_state = _apply_config_guard(draft_state)
-    pending = st.session_state.get("config_pending_changes", False)
-
-    run_label_map = {
-        "Backtest Simple": "🚀 Lancer le Backtest",
-        "Grille de Paramètres": "🧪 Lancer le Sweep",
-        "🤖 Optimisation LLM": "🧠 Lancer l'itération LLM",
-        "🏗️ Strategy Builder": "🏗️ Lancer le Builder",
-    }
-    run_label = run_label_map.get(
-        st.session_state.optimization_mode,
-        "🚀 Lancer le Backtest",
-    )
-
-    def _apply_pending_config() -> None:
-        st.session_state["applied_config_signature"] = st.session_state.get(
-            "draft_config_signature"
-        )
-        st.session_state["applied_sidebar_state"] = draft_state
-        st.session_state["config_pending_changes"] = False
-
-    with action_slot:
-        st.markdown("---")
-        _sidebar_section("▶ Actions")
-
-        col_load, col_run = st.columns(2)
-        with col_load:
-            if st.button(
-                "⬇️ Charger données",
-                key="load_ohlcv_action",
-                disabled=st.session_state.is_running,
-                width="stretch",
-            ):
-                if pending:
-                    _apply_pending_config()
-                is_builder_autonomous = (
-                    st.session_state.get("optimization_mode") == "🏗️ Strategy Builder"
-                    and bool(st.session_state.get("builder_autonomous", False))
-                )
-                if is_builder_autonomous and (not symbol or not timeframe):
-                    st.session_state["ohlcv_df"] = None
-                    st.session_state["ohlcv_status_msg"] = (
-                        "Mode autonome actif: aucune présélection requise."
-                    )
-                    st.info(
-                        "Mode autonome actif: aucun token/timeframe n'est requis. "
-                        "Le Builder choisira un marché valide au lancement."
-                    )
-                else:
-                    df_loaded, msg = load_selected_data(
-                        symbol, timeframe, start_date, end_date
-                    )
-                    if df_loaded is None:
-                        if is_builder_autonomous:
-                            st.session_state["ohlcv_df"] = None
-                            st.session_state["ohlcv_status_msg"] = (
-                                f"Présélection ignorée: {msg}"
-                            )
-                            st.warning(
-                                f"Présélection {symbol or '—'} {timeframe or '—'} rejetée: {msg}. "
-                                "Le Builder autonome choisira un autre marché valide au lancement."
-                            )
-                        else:
-                            st.error(f"Erreur chargement: {msg}")
-                    else:
-                        st.success(f"Données chargées: {msg}")
-
-        with col_run:
-            if st.button(
-                run_label,
-                key="run_sidebar_action",
-                type="primary",
-                disabled=st.session_state.is_running,
-                width="stretch",
-            ):
-                if pending:
-                    _apply_pending_config()
-                if st.session_state.get("optimization_mode") == "🏗️ Strategy Builder":
-                    # Évite un ancrage persistant du bootstrap marché entre deux lancements Builder.
-                    for key in (
-                        "_builder_auto_bootstrap_symbol",
-                        "_builder_auto_bootstrap_timeframe",
-                        "_builder_startup_symbol",
-                        "_builder_startup_timeframe",
-                        "_builder_tf_usage",
-                    ):
-                        st.session_state.pop(key, None)
-                st.session_state.run_backtest_requested = True
-                st.rerun()
-
-        if pending:
-            st.caption(
-                "⚠️ Modifications non appliquées (application au lancement/chargement)"
-            )
-        else:
-            st.caption("✅ Configuration prête.")
 
     # === PANEL CATALOGUE DE STRATÉGIES ===
     # Afficher uniquement en mode Catalogue et hors mode Builder

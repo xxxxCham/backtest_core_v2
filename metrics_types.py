@@ -12,6 +12,8 @@ class PerformanceMetricsPct(TypedDict, total=False):
     total_pnl: float
     total_return_pct: float
     annualized_return: float
+    benchmark_return_pct: float
+    alpha_simple_pct: float
     cagr: float
     sharpe_ratio: float
     sortino_ratio: float

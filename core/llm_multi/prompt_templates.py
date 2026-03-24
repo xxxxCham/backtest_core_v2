@@ -27,17 +27,20 @@ def build_idea_user_prompt(
     timeframes: Iterable[str],
     available_indicators: Iterable[str],
     history_tail: List[Dict[str, Any]],
+    continuity_context: Dict[str, Any] | None = None,
 ) -> str:
     payload = {
         "symbols": list(symbols),
         "timeframes": list(timeframes),
         "available_indicators": list(available_indicators),
         "recent_history": history_tail[-5:],
+        "continuity_context": continuity_context or {},
         "instructions": [
             "Target realistic strategies that can be implemented from the listed indicators only.",
             "State a clear edge, not just a list of indicators.",
             "Favor robust entry, exit, and risk-management intent.",
             "Avoid repeating the same exact market or timeframe unless justified by recent history.",
+            "Use continuity_context as the common reference for recent progress, recurring risks and carry-over focus.",
         ],
         "required_checks": [
             "name the market and timeframe in the objective",
@@ -68,11 +71,13 @@ def build_critic_user_prompt(
     objective: str,
     session_summary: Dict[str, Any],
     shared_memory: Dict[str, Any] | None = None,
+    continuity_context: Dict[str, Any] | None = None,
 ) -> str:
     return _json_payload(
         {
             "objective": objective,
             "shared_memory": shared_memory or {},
+            "continuity_context": continuity_context or {},
             "session_summary": session_summary,
             "required_checks": [
                 "consistency between objective and actual session outcome",
@@ -103,11 +108,13 @@ def build_risk_user_prompt(
     objective: str,
     session_summary: Dict[str, Any],
     shared_memory: Dict[str, Any] | None = None,
+    continuity_context: Dict[str, Any] | None = None,
 ) -> str:
     return _json_payload(
         {
             "objective": objective,
             "shared_memory": shared_memory or {},
+            "continuity_context": continuity_context or {},
             "session_summary": session_summary,
             "required_checks": [
                 "drawdown severity",

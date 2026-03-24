@@ -35,6 +35,7 @@ from typing import Any, Dict, List, Optional, Union
 import pandas as pd
 
 from backtest.engine import RunResult
+from backtest.result_store import get_results_root_dir
 from backtest.sweep import SweepResults
 from metrics_types import PerformanceMetricsPct, normalize_metrics
 from utils.log import get_logger
@@ -46,7 +47,7 @@ logger = get_logger(__name__)
 # CONFIGURATION
 # =============================================================================
 
-DEFAULT_STORAGE_DIR = Path("backtest_results")
+DEFAULT_STORAGE_DIR = get_results_root_dir()
 MAX_RESULTS_TO_KEEP = 1000  # Nombre maximum de résultats à garder
 _TEMPDIR_READY = False
 _NATIVE_EXTRA_METADATA_KEYS = (
@@ -323,7 +324,7 @@ class ResultStorage:
         """
         _ensure_writable_tempdir()
 
-        self.storage_dir = Path(storage_dir) if storage_dir else DEFAULT_STORAGE_DIR
+        self.storage_dir = get_results_root_dir(storage_dir)
         self.auto_save = auto_save
         self.compress = compress
 

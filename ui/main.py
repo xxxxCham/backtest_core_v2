@@ -68,6 +68,7 @@ from ui.helpers import (
     _maybe_auto_save_run,
 )
 from ui.cache_manager import clear_data_cache
+from ui.sidebar import apply_pending_sidebar_config, get_run_label_for_mode
 from ui.state import SidebarState
 from ui.components.charts import (
     render_comparison_chart,
@@ -86,6 +87,42 @@ from utils.run_tracker import RunSignature, get_global_tracker
 
 # Import du worker isolé pour éviter les problèmes de pickling avec hot-reload Streamlit
 from backtest.worker import run_backtest_worker as _isolated_worker
+
+
+MAIN_ACTION_BAR_CSS = """
+<style>
+div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) {
+    border: 1px solid rgba(59, 130, 246, 0.24);
+    border-radius: 20px;
+    padding: 1.05rem 1.05rem 0.45rem 1.05rem;
+    background:
+        radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 42%),
+        linear-gradient(180deg, rgba(9, 17, 31, 0.98), rgba(14, 26, 45, 0.97));
+    margin: 0.75rem 0 1.2rem 0;
+    box-shadow: 0 18px 36px rgba(2, 8, 23, 0.22);
+}
+div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) [data-testid="stButton"] > button {
+    min-height: 3.35rem;
+    border-radius: 14px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) [data-testid="stButton"] > button[kind="primary"] {
+    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #3b82f6 100%);
+    border: 1px solid #3b82f6;
+    color: #ffffff !important;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25), 0 10px 24px rgba(30, 64, 175, 0.35);
+}
+div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) [data-testid="stButton"] > button[kind="secondary"] {
+    background: linear-gradient(180deg, rgba(16, 31, 57, 0.96), rgba(22, 43, 79, 0.94));
+    border: 1px solid rgba(96, 165, 250, 0.32);
+    color: #dce9fb !important;
+}
+div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) h3 {
+    margin-bottom: 0.35rem;
+}
+</style>
+"""
 
 
 # Fonction _run_backtest_multiprocess SUPPRIMÉE (obsolète)
@@ -570,6 +607,295 @@ def _run_grid_parallel_basic(
     }
 
 
+def _inject_main_action_bar_styles() -> None:
+    st.markdown(MAIN_ACTION_BAR_CSS, unsafe_allow_html=True)
+
+
+def _extract_topology_hosts(topology: Any) -> List[str]:
+    if topology is None:
+        return []
+
+    endpoints = getattr(topology, "endpoints", None)
+    if endpoints is None and isinstance(topology, dict):
+        endpoints = topology.get("endpoints")
+    if not isinstance(endpoints, dict):
+        return []
+
+    hosts: List[str] = []
+    for endpoint in endpoints.values():
+        if isinstance(endpoint, dict):
+            host = str(endpoint.get("ollama_host", "") or "").strip()
+        else:
+            host = str(getattr(endpoint, "ollama_host", "") or "").strip()
+        if host:
+            hosts.append(host.rstrip("/"))
+    return hosts
+
+
+def _collect_runtime_cleanup_hosts(state: SidebarState) -> List[str]:
+    candidates = [
+        str(getattr(state, "builder_ollama_host", "") or "").strip(),
+        str(st.session_state.get("exec_llm_ollama_host", "") or "").strip(),
+    ]
+    llm_config = getattr(state, "llm_config", None)
+    if llm_config is not None:
+        candidates.append(str(getattr(llm_config, "ollama_host", "") or "").strip())
+    candidates.extend(
+        _extract_topology_hosts(getattr(state, "llm_topology_config", None))
+    )
+
+    ordered: List[str] = []
+    seen: set[str] = set()
+    for host in candidates:
+        normalized = host.rstrip("/")
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        ordered.append(normalized)
+    return ordered
+
+
+def _reset_builder_runtime_state() -> None:
+    keys_to_clear = (
+        "builder_session",
+        "builder_runtime_diagnostic",
+        "builder_autonomous_history",
+        "builder_autonomous_supervisor",
+        "_builder_auto_bootstrap_symbol",
+        "_builder_auto_bootstrap_timeframe",
+        "_builder_startup_symbol",
+        "_builder_startup_timeframe",
+        "_builder_tf_usage",
+        "_builder_objective_input_sync",
+        "_builder_multi_llm_profile_sync",
+        "_builder_multi_llm_profile_saved_notice",
+    )
+    for key in keys_to_clear:
+        st.session_state.pop(key, None)
+
+
+def _reset_builder_launch_state() -> None:
+    keys_to_clear = (
+        "_builder_auto_bootstrap_symbol",
+        "_builder_auto_bootstrap_timeframe",
+        "_builder_startup_symbol",
+        "_builder_startup_timeframe",
+        "_builder_tf_usage",
+    )
+    for key in keys_to_clear:
+        st.session_state.pop(key, None)
+
+
+def _execute_clean_stop(state: SidebarState) -> None:
+    from agents.ollama_manager import cleanup_all_models, stop_local_ollama_server
+    from ui.builder_view import mark_builder_autonomous_runtime_stopped
+    from ui.emergency_stop import execute_emergency_stop
+
+    logger = logging.getLogger(__name__)
+    st.session_state["stop_requested"] = True
+    st.session_state["is_running"] = False
+    st.session_state["run_backtest_requested"] = False
+    st.session_state["load_ohlcv_requested"] = False
+
+    cleanup_stats = execute_emergency_stop(st.session_state)
+    clear_data_cache()
+    try:
+        st.cache_data.clear()
+        st.cache_resource.clear()
+    except Exception:
+        pass
+    safe_copy_cleanup(logger)
+
+    unloaded_by_host: List[str] = []
+    hard_stopped_hosts: List[str] = []
+    for host in _collect_runtime_cleanup_hosts(state):
+        try:
+            unloaded = int(cleanup_all_models(ollama_host=host) or 0)
+        except Exception as exc:  # noqa: BLE001
+            cleanup_stats.setdefault("errors", []).append(
+                f"cleanup_all_models[{host}]: {exc}"
+            )
+        else:
+            unloaded_by_host.append(f"{host}: {unloaded}")
+        try:
+            stopped = int(stop_local_ollama_server(ollama_host=host) or 0)
+        except Exception as exc:  # noqa: BLE001
+            cleanup_stats.setdefault("errors", []).append(
+                f"stop_local_ollama_server[{host}]: {exc}"
+            )
+        else:
+            if stopped > 0:
+                hard_stopped_hosts.append(f"{host}: {stopped}")
+
+    if (
+        state.optimization_mode == "🏗️ Strategy Builder"
+        or bool(st.session_state.get("builder_autonomous", False))
+    ):
+        try:
+            mark_builder_autonomous_runtime_stopped(
+                reason="manual_stop",
+                manual_stop=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            cleanup_stats.setdefault("errors", []).append(
+                f"builder_runtime_stop: {exc}"
+            )
+
+    _reset_builder_runtime_state()
+    st.session_state["is_running"] = False
+
+    cleaned_components = len(cleanup_stats.get("components_cleaned", []))
+    error_count = len(cleanup_stats.get("errors", []))
+    host_summary = (
+        " | ".join(unloaded_by_host)
+        if unloaded_by_host
+        else "aucun endpoint Ollama actif détecté"
+    )
+    hard_stop_summary = (
+        " | ".join(hard_stopped_hosts)
+        if hard_stopped_hosts
+        else "aucun daemon Ollama local à couper"
+    )
+    st.session_state["main_action_feedback"] = {
+        "tone": "success" if error_count == 0 else "warning",
+        "message": (
+            "Exécution arrêtée proprement. Runtime, caches et contexte Builder/LLM "
+            "réinitialisés avec coupure locale d'Ollama si nécessaire."
+        ),
+        "details": (
+            f"Nettoyage: {cleaned_components} composant(s) | "
+            f"erreurs: {error_count} | "
+            f"déchargement Ollama: {host_summary} | "
+            f"arrêt dur: {hard_stop_summary}"
+        ),
+    }
+
+
+def _process_load_request(state: SidebarState) -> None:
+    is_builder_autonomous = (
+        state.optimization_mode == "🏗️ Strategy Builder"
+        and bool(state.builder_autonomous)
+    )
+    if is_builder_autonomous and (not state.symbol or not state.timeframe):
+        st.session_state["ohlcv_df"] = None
+        st.session_state["ohlcv_status_msg"] = (
+            "Mode autonome actif: aucune présélection requise."
+        )
+        st.info(
+            "Mode autonome actif: aucun token/timeframe n'est requis. "
+            "Le Builder choisira un marché valide au lancement."
+        )
+        return
+
+    df_loaded, msg = load_selected_data(
+        state.symbol,
+        state.timeframe,
+        state.start_date,
+        state.end_date,
+    )
+    if df_loaded is None:
+        if is_builder_autonomous:
+            st.session_state["ohlcv_df"] = None
+            st.session_state["ohlcv_status_msg"] = f"Présélection ignorée: {msg}"
+            st.warning(
+                f"Présélection {state.symbol or '—'} {state.timeframe or '—'} rejetée: {msg}. "
+                "Le Builder autonome choisira un autre marché valide au lancement."
+            )
+        else:
+            st.error(f"Erreur chargement: {msg}")
+        return
+
+    st.success(f"Données chargées: {msg}")
+
+
+def render_primary_action_bar(state: SidebarState) -> None:
+    _inject_main_action_bar_styles()
+
+    feedback = st.session_state.pop("main_action_feedback", None)
+    if isinstance(feedback, dict):
+        tone = str(feedback.get("tone", "info") or "info").strip().lower()
+        message = str(feedback.get("message", "") or "").strip()
+        details = str(feedback.get("details", "") or "").strip()
+        if tone == "success":
+            st.success(message)
+        elif tone == "warning":
+            st.warning(message)
+        elif tone == "error":
+            st.error(message)
+        elif message:
+            st.info(message)
+        if details:
+            st.caption(details)
+
+    if st.session_state.pop("load_ohlcv_requested", False):
+        _process_load_request(state)
+
+    pending = bool(st.session_state.get("config_pending_changes", False))
+    is_running = bool(st.session_state.get("is_running", False))
+    run_label = get_run_label_for_mode(
+        str(st.session_state.get("optimization_mode", state.optimization_mode))
+    )
+
+    st.markdown('<div class="bc-main-actions-anchor"></div>', unsafe_allow_html=True)
+    st.markdown("### Actions d'exécution")
+    if pending:
+        st.caption(
+            "⚠️ Modifications non appliquées: elles seront appliquées au prochain chargement ou lancement."
+        )
+    else:
+        st.caption("Configuration prête pour chargement, lancement ou arrêt propre.")
+
+    col_load, col_run, col_stop = st.columns([1.05, 1.15, 0.9])
+    with col_load:
+        if st.button(
+            "⬇️ Charger marché & aperçu",
+            key="main_load_ohlcv_action",
+            type="secondary",
+            disabled=is_running,
+            use_container_width=True,
+            help=(
+                "Charge le marché sélectionné et met à jour l'aperçu OHLCV + indicateurs. "
+                "En mode Builder autonome, la présélection reste facultative."
+            ),
+        ):
+            if pending:
+                apply_pending_sidebar_config()
+            st.session_state["stop_requested"] = False
+            st.session_state["load_ohlcv_requested"] = True
+            st.rerun()
+
+    with col_run:
+        if st.button(
+            run_label,
+            key="main_run_action",
+            type="primary",
+            disabled=is_running,
+            use_container_width=True,
+        ):
+            if pending:
+                apply_pending_sidebar_config()
+            if state.optimization_mode == "🏗️ Strategy Builder":
+                _reset_builder_launch_state()
+            st.session_state["stop_requested"] = False
+            st.session_state["run_backtest_requested"] = True
+            st.rerun()
+
+    with col_stop:
+        if st.button(
+            "🛑 Arrêter et nettoyer",
+            key="main_stop_action",
+            type="secondary",
+            disabled=not is_running,
+            use_container_width=True,
+            help=(
+                "Arrête le run courant, décharge les modèles Ollama détectés, vide les caches "
+                "et réinitialise le runtime Builder/LLM pour un nouveau lancement propre."
+            ),
+        ):
+            _execute_clean_stop(state)
+            st.rerun()
+
+
 def render_controls() -> tuple[bool, Any]:
     st.title("📈 Backtest Core - Moteur Simplifié")
 
@@ -586,40 +912,6 @@ Le système de granularité limite le nombre de valeurs testables.
         st.session_state.is_running = False
     if "stop_requested" not in st.session_state:
         st.session_state.stop_requested = False
-
-    st.markdown("---")
-    stop_button = False
-    if st.session_state.is_running:
-        stop_button = st.button(
-            "⛔ Arrêt d'urgence",
-            type="secondary",
-            use_container_width=True,
-            key="btn_stop_backtest",
-        )
-
-    if stop_button:
-        st.session_state.stop_requested = True
-        st.session_state.is_running = False
-
-        gc.collect()
-
-        try:
-            import torch
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-                st.success("✅ VRAM GPU vidée")
-        except ImportError:
-            pass
-
-        logger = logging.getLogger(__name__)
-        safe_copy_cleanup(logger)
-
-        st.success("✅ RAM système vidée")
-        st.info("💡 Système prêt pour un nouveau test")
-        st.session_state.stop_requested = False
-        st.rerun()
 
     st.markdown("---")
 
@@ -866,12 +1158,28 @@ def render_main(
         )
 
     if not run_button and optimization_mode == "🏗️ Strategy Builder":
-        from ui.builder_view import should_auto_resume_builder_autonomous
+        from ui.builder_view import (
+            restore_builder_autonomous_ui_state_from_runtime,
+            should_auto_resume_builder_autonomous,
+        )
 
         resume_autonomous, _runtime_state = should_auto_resume_builder_autonomous(state)
-        if resume_autonomous:
+        runtime_pid = int((_runtime_state or {}).get("pid") or 0)
+        same_process_runtime_active = (
+            bool(st.session_state.get("is_running"))
+            and runtime_pid > 0
+            and runtime_pid == os.getpid()
+        )
+        if resume_autonomous and not same_process_runtime_active:
+            if not bool(getattr(state, "builder_autonomous", False)):
+                restore_builder_autonomous_ui_state_from_runtime()
+                try:
+                    state.builder_autonomous = True
+                except Exception:
+                    pass
             run_button = True
             st.session_state["is_running"] = True
+            st.session_state["builder_autonomous"] = True
 
     if run_button:
         st.session_state.is_running = True

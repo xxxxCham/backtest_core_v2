@@ -23,6 +23,8 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
+from backtest.result_store import get_results_root_dir
+
 # =============================================================================
 # TEMPLATES HTML
 # =============================================================================
@@ -352,7 +354,7 @@ def generate_backtest_report(
         Dict avec paths des fichiers générés {html, csv, json}
     """
     if output_dir is None:
-        output_dir = Path("backtest_results")
+        output_dir = get_results_root_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -422,7 +424,7 @@ def generate_sweep_report(
         Dict avec paths des fichiers générés
     """
     if output_dir is None:
-        output_dir = Path("backtest_results")
+        output_dir = get_results_root_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
