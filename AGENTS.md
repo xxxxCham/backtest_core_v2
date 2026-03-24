@@ -1578,3 +1578,12 @@ lète.
 - Résultat : `ResultStorage` s’appuie maintenant sur `BacktestStoreV3` pour l’écriture canonique dans `runs/<run_id>`, conserve l’API UI existante, sait relire les runs legacy racine et continue d’exposer un `index.json` compatible comme vue dérivée au lieu d’en faire la source de vérité.
 - Problèmes détectés : La façade garde volontairement certains helpers legacy (`index.json`, audit/catalogues basés sur `metadata.json`) pour compatibilité, ce qui maintient une couche de traduction temporaire entre le schéma historique et le schéma v3 ; les diagnostics statiques restants relevés par l’éditeur dans `backtest/storage.py` sont des warnings historiques/non bloquants non introduits par ce changement fonctionnel.
 - Améliorations proposées : Étape suivante logique : adapter `backtest/result_store.py` sur la même logique de façade v3 afin d’unifier aussi la couche CLI autour de `BacktestStoreV3`, puis factoriser le parsing dual des `metadata.json` dans un helper partagé si d’autres modules doivent encore relire des runs legacy et v3 côte à côte.
+
+- Date : 25/03/2026
+- Objectif : Isoler dans un commit séparé la mise à jour locale du catalogue de stratégies afin de conserver un historique Git lisible entre la migration stockage et les évolutions de catalogage métier.
+- Fichiers modifiés : `config/strategy_catalog.json`, `AGENTS.md`.
+- Actions réalisées : **1. Périmètre isolé** — conservation du changement `config/strategy_catalog.json` hors du commit précédent de migration store pour éviter de mélanger infrastructure de persistance et évolution fonctionnelle du catalogue ; **2. Journal dédié ajouté** — ajout d’une entrée spécifique dans `AGENTS.md` pour tracer explicitement ce commit séparé au lieu de le laisser implicite dans l’historique Git.
+- Vérifications effectuées : `python -m json.tool config\strategy_catalog.json` (OK).
+- Résultat : La mise à jour du catalogue peut maintenant être commitée séparément avec une intention claire, sans brouiller l’historique du lot `BacktestStoreV3` déjà poussé.
+- Problèmes détectés : Aucun problème fonctionnel détecté sur ce fichier ; le changement reste volumineux car il touche une grande base JSON générée/agrégée plutôt qu’un petit delta manuel.
+- Améliorations proposées : Si ce fichier continue à grossir, envisager ensuite une stratégie d’export découpé ou un format dérivé plus compact pour limiter le bruit de diff Git.

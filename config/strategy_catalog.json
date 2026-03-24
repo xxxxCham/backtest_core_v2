@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-03-23T17:15:03Z",
+  "updated_at": "2026-03-24T11:56:05Z",
   "entries": [
     {
       "id": "builder_generated|SOLUSDC|1h|none",
@@ -580,7 +580,7 @@
       "symbol": "0GUSDC",
       "timeframe": "1h",
       "params_hash": "none",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -822,7 +822,7 @@
       "symbol": "0GUSDC",
       "timeframe": "4h",
       "params_hash": "none",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -991,7 +991,7 @@
       "symbol": "0GUSDC",
       "timeframe": "30m",
       "params_hash": "none",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -1271,7 +1271,7 @@
       "symbol": "UNKNOWN",
       "timeframe": "1h",
       "params_hash": "c8b0bcdb34de",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -3927,7 +3927,7 @@
       "symbol": "HBARUSDC",
       "timeframe": "1w",
       "params_hash": "none",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -8705,7 +8705,7 @@
       "symbol": "ENSUSDC",
       "timeframe": "30m",
       "params_hash": "none",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -9362,7 +9362,7 @@
       "symbol": "EGLDUSDC",
       "timeframe": "4h",
       "params_hash": "none",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -10812,7 +10812,7 @@
       "symbol": "MUBARAKUSDC",
       "timeframe": "1h",
       "params_hash": "none",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -12009,7 +12009,7 @@
       "symbol": "AVAXUSDC",
       "timeframe": "4h",
       "params_hash": "none",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -12888,7 +12888,7 @@
       "symbol": "TRUMPUSDC",
       "timeframe": "1h",
       "params_hash": "none",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -14254,7 +14254,7 @@
       "symbol": "SKLUSDC",
       "timeframe": "15m",
       "params_hash": "none",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -15180,7 +15180,7 @@
       "symbol": "BIOUSDC",
       "timeframe": "4h",
       "params_hash": "none",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -17785,7 +17785,7 @@
       "symbol": "SAGAUSDC",
       "timeframe": "30m",
       "params_hash": "none",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -17835,7 +17835,7 @@
       "symbol": "MATICUSDC",
       "timeframe": "4h",
       "params_hash": "none",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -18868,7 +18868,7 @@
       "symbol": "LINEAUSDC",
       "timeframe": "4h",
       "params_hash": "7fac766ef8c5",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -19567,7 +19567,7 @@
       "symbol": "2ZUSDC",
       "timeframe": "1h",
       "params_hash": "c637b21b39a2",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -22569,7 +22569,7 @@
       "symbol": "WIFUSDC",
       "timeframe": "1h",
       "params_hash": "9c91b677ba37",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -23280,7 +23280,7 @@
       "symbol": "WIFUSDC",
       "timeframe": "1h",
       "params_hash": "962b85e22898",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -23745,7 +23745,7 @@
       "symbol": "FRONTUSDC",
       "timeframe": "1h",
       "params_hash": "86b126331358",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -23868,7 +23868,7 @@
       "symbol": "BERAUSDC",
       "timeframe": "4h",
       "params_hash": "6f77b04d0cda",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -24387,7 +24387,7 @@
       "symbol": "BONKUSDC",
       "timeframe": "4h",
       "params_hash": "4e3734c8b2aa",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -24875,7 +24875,7 @@
       "symbol": "PLUMEUSDC",
       "timeframe": "30m",
       "params_hash": "6bdc53a353ff",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -25044,7 +25044,7 @@
       "symbol": "PLUMEUSDC",
       "timeframe": "30m",
       "params_hash": "93ea117ec130",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -27303,7 +27303,7 @@
       "symbol": "JUPUSDC",
       "timeframe": "4h",
       "params_hash": "d6008d67418a",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -28318,7 +28318,7 @@
       "symbol": "MULTI",
       "timeframe": "MULTI",
       "params_hash": "b30610650c4a",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out",
@@ -29438,7 +29438,7 @@
       "symbol": "MULTI",
       "timeframe": "MULTI",
       "params_hash": "149c921d7329",
-      "category": "p3_watchlist",
+      "category": "p3_benchmark_consensus",
       "status": "active",
       "tags": [
         "builder_out",
@@ -50829,7 +50829,7 @@
       "symbol": "MANTAUSDC",
       "timeframe": "1d",
       "params_hash": "30ecff26d4db",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -50995,7 +50995,7 @@
       "symbol": "KMNOUSDC",
       "timeframe": "1h",
       "params_hash": "f00b460b8672",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -52899,7 +52899,7 @@
       "symbol": "TSTUSDC",
       "timeframe": "15m",
       "params_hash": "3ed7f1ead13a",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -53049,7 +53049,7 @@
       "symbol": "MMTUSDC",
       "timeframe": "1h",
       "params_hash": "f8a491b5af6f",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -53809,7 +53809,7 @@
       "symbol": "STOUSDC",
       "timeframe": "1d",
       "params_hash": "745428adc9af",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -53882,7 +53882,7 @@
       "symbol": "VIRTUALUSDC",
       "timeframe": "30m",
       "params_hash": "7399b3982745",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -53955,7 +53955,7 @@
       "symbol": "ROSEUSDC",
       "timeframe": "4h",
       "params_hash": "d8306d90712c",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -55111,7 +55111,7 @@
       "symbol": "MINAUSDC",
       "timeframe": "1h",
       "params_hash": "4a880f86cd74",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -55161,7 +55161,7 @@
       "symbol": "MKRUSDC",
       "timeframe": "1h",
       "params_hash": "2065562ed814",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -55493,7 +55493,7 @@
       "symbol": "PAXGUSDC",
       "timeframe": "1h",
       "params_hash": "f3472701bf39",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -56259,7 +56259,7 @@
       "symbol": "RUNEUSDC",
       "timeframe": "4h",
       "params_hash": "be2b3f0e99b2",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -56442,7 +56442,7 @@
       "symbol": "PYTHUSDC",
       "timeframe": "30m",
       "params_hash": "2de42a29ec06",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -57545,7 +57545,7 @@
       "symbol": "MKRUSDC",
       "timeframe": "1h",
       "params_hash": "fa3ae58844c7",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -58160,7 +58160,7 @@
       "symbol": "APEUSDC",
       "timeframe": "4h",
       "params_hash": "23482957aae3",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -58526,7 +58526,7 @@
       "symbol": "MIRAUSDC",
       "timeframe": "30m",
       "params_hash": "c6a97e91084c",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -59122,7 +59122,7 @@
       "symbol": "FETUSDC",
       "timeframe": "1d",
       "params_hash": "adda055bbfed",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -59520,7 +59520,7 @@
       "symbol": "BREVUSDC",
       "timeframe": "30m",
       "params_hash": "4b0db77513c1",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -67821,7 +67821,7 @@
       "symbol": "MATICUSDC",
       "timeframe": "4h",
       "params_hash": "a8f378f05d69",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -68166,7 +68166,7 @@
       "symbol": "FTMUSDC",
       "timeframe": "1h",
       "params_hash": "d21919f0f548",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -69206,7 +69206,7 @@
       "symbol": "FTMUSDC",
       "timeframe": "4h",
       "params_hash": "ebd8e53ff304",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -70069,7 +70069,7 @@
       "symbol": "FTMUSDC",
       "timeframe": "30m",
       "params_hash": "00bd57391349",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -71264,7 +71264,7 @@
       "symbol": "DYDXUSDC",
       "timeframe": "4h",
       "params_hash": "00a51f76044a",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -74105,7 +74105,7 @@
       "symbol": "WLFIUSDC",
       "timeframe": "4h",
       "params_hash": "6bbac0fe9d2b",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -74705,7 +74705,7 @@
       "symbol": "SENTUSDC",
       "timeframe": "1h",
       "params_hash": "600a507e8abc",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -77013,7 +77013,7 @@
       "symbol": "GRTUSDC",
       "timeframe": "1h",
       "params_hash": "ab3be79cf83d",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -77269,7 +77269,7 @@
       "symbol": "ZBTUSDC",
       "timeframe": "1h",
       "params_hash": "ff187f1b32d2",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -78048,7 +78048,7 @@
       "symbol": "MUBARAKUSDC",
       "timeframe": "4h",
       "params_hash": "8eae8ed5fecc",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -78763,7 +78763,7 @@
       "symbol": "FRONTUSDC",
       "timeframe": "1h",
       "params_hash": "f203ea0a71b2",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -80132,7 +80132,7 @@
       "symbol": "LAYERUSDC",
       "timeframe": "1d",
       "params_hash": "b68f9329b207",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -81167,7 +81167,7 @@
       "symbol": "LPTUSDC",
       "timeframe": "4h",
       "params_hash": "23cc961de4ef",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -83279,7 +83279,7 @@
       "symbol": "TURBOUSDC",
       "timeframe": "4h",
       "params_hash": "5048f042a9dd",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -86257,7 +86257,7 @@
       "symbol": "GRTUSDC",
       "timeframe": "1h",
       "params_hash": "79b0b30297f9",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -86763,7 +86763,7 @@
       "symbol": "MEMEUSDC",
       "timeframe": "4h",
       "params_hash": "6ba71bd2eb82",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -90493,7 +90493,7 @@
       "symbol": "GUNUSDC",
       "timeframe": "4h",
       "params_hash": "ab7d324048fe",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -91264,7 +91264,7 @@
       "symbol": "LPTUSDC",
       "timeframe": "4h",
       "params_hash": "09f8644d7910",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -93521,7 +93521,7 @@
       "symbol": "GUNUSDC",
       "timeframe": "4h",
       "params_hash": "e59962a53b8a",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -94202,7 +94202,7 @@
       "symbol": "BANANAS31USDC",
       "timeframe": "30m",
       "params_hash": "6d336db3ff01",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -94252,7 +94252,7 @@
       "symbol": "ZBTUSDC",
       "timeframe": "1h",
       "params_hash": "9d59f9e9d946",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -97947,7 +97947,7 @@
       "symbol": "XVGUSDC",
       "timeframe": "1h",
       "params_hash": "8e8128e93192",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -98818,7 +98818,7 @@
       "symbol": "KERNELUSDC",
       "timeframe": "4h",
       "params_hash": "7d336cab4448",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -99380,7 +99380,7 @@
       "symbol": "CETUSUSDC",
       "timeframe": "4h",
       "params_hash": "df6728e21775",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -101119,7 +101119,7 @@
       "symbol": "SENTUSDC",
       "timeframe": "1h",
       "params_hash": "321b4ef91bb9",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -101242,7 +101242,7 @@
       "symbol": "GRTUSDC",
       "timeframe": "1h",
       "params_hash": "b5c633bf9330",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -101315,7 +101315,7 @@
       "symbol": "LAUSDC",
       "timeframe": "4h",
       "params_hash": "cb852862389f",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -101515,7 +101515,7 @@
       "symbol": "ZKUSDC",
       "timeframe": "4h",
       "params_hash": "3fc797c7fe6a",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -103671,7 +103671,7 @@
       "symbol": "SANDUSDC",
       "timeframe": "4h",
       "params_hash": "5f721c501cab",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -105179,7 +105179,7 @@
       "symbol": "EGLDUSDC",
       "timeframe": "30m",
       "params_hash": "a0c772de8824",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -110218,7 +110218,7 @@
       "symbol": "ETHUSDC",
       "timeframe": "4h",
       "params_hash": "c8b0bcdb34de",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -110613,7 +110613,7 @@
       "symbol": "BANKUSDC",
       "timeframe": "1h",
       "params_hash": "60ae1fb0ce43",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -110802,7 +110802,7 @@
       "symbol": "TRUMPUSDC",
       "timeframe": "1h",
       "params_hash": "30a210fd7689",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -111322,7 +111322,7 @@
       "symbol": "GUNUSDC",
       "timeframe": "1h",
       "params_hash": "5d6b36ff955e",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -111530,7 +111530,7 @@
       "symbol": "ATUSDC",
       "timeframe": "1h",
       "params_hash": "0fd72a8f933e",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -112135,7 +112135,7 @@
       "symbol": "FRONTUSDC",
       "timeframe": "1h",
       "params_hash": "870b9c6a3b76",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -114106,7 +114106,7 @@
       "symbol": "DASHUSDC",
       "timeframe": "4h",
       "params_hash": "ead46b93bd25",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -116899,7 +116899,7 @@
       "symbol": "ATUSDC",
       "timeframe": "1h",
       "params_hash": "81b16a1f270d",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -117263,7 +117263,7 @@
       "symbol": "ZBTUSDC",
       "timeframe": "1h",
       "params_hash": "0d12cdc17827",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -118331,7 +118331,7 @@
       "symbol": "FRONTUSDC",
       "timeframe": "1h",
       "params_hash": "a94237c31aeb",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -118884,7 +118884,7 @@
       "symbol": "FRONTUSDC",
       "timeframe": "1h",
       "params_hash": "5c445c209660",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -119040,7 +119040,7 @@
       "symbol": "SOMIUSDC",
       "timeframe": "4h",
       "params_hash": "15203afa4d87",
-      "category": "p2_auto_shortlist",
+      "category": "p2_positive_observed",
       "status": "active",
       "tags": [
         "builder_out"
@@ -129187,6 +129187,110 @@
       },
       "created_at": "2026-03-23T17:15:03Z",
       "updated_at": "2026-03-23T17:15:03Z"
+    },
+    {
+      "id": "builder_generated|SOLVUSDC|5m|bead2f03caa0",
+      "strategy_name": "builder_generated",
+      "symbol": "SOLVUSDC",
+      "timeframe": "5m",
+      "params_hash": "bead2f03caa0",
+      "category": "p1_builder_inbox",
+      "status": "active",
+      "tags": [
+        "builder_out"
+      ],
+      "note": "Strat\u00e9gie de Scalping sur SOLVUSDC 5m. Indicateurs : STOCHASTIC + BOLLINGER + ATR. Scalp quand STOCHASTIC croise en zone extr\u00eame avec BOLLINGER align\u00e9. Sortie sur premier signal de retournement de STOCHASTIC. Stop serr\u00e9 1.1x ATR pour limiter le drawdown, TP \u00e0 3.0x ATR.",
+      "builder_state": "stopped",
+      "last_metrics_snapshot": {
+        "total_pnl": -30172.309516775662,
+        "total_return_pct": -301.72309516775664,
+        "annualized_return": 0.0,
+        "benchmark_return_pct": -90.89233753637245,
+        "alpha_simple_pct": -210.8307576313842,
+        "sharpe_ratio": -20.0,
+        "sortino_ratio": -20.0,
+        "max_drawdown_pct": -100.0,
+        "volatility_annual": 1242.8017531350697,
+        "max_drawdown_duration_days": 376.9895833333333,
+        "account_ruined": true,
+        "ruin_time": "2025-11-16 11:50:00+00:00",
+        "min_equity": -20364.72235279509,
+        "max_drawdown_pct_raw": -296.20315717232404,
+        "max_drawdown_pct_capped": -100.0,
+        "total_trades": 777,
+        "win_rate_pct": 33.59073359073359,
+        "profit_factor": 0.30037158672573633,
+        "avg_win": 49.631734951491346,
+        "avg_loss": -83.57789213006765,
+        "largest_win": 711.9682333899373,
+        "largest_loss": -7748.559839321532,
+        "avg_trade_duration_hours": 9.820999570999572,
+        "expectancy": -38.831801179891464,
+        "risk_reward_ratio": 0.5938380795037547,
+        "calmar_ratio": -20.0,
+        "tier_s": null,
+        "data_coverage_pct": 21.601458885941643
+      },
+      "source": "builder",
+      "meta": {
+        "session_id": "20260324_053453_strat_gie_de_scalping_sur_solvusdc_5m_in",
+        "best_sharpe": 0.0,
+        "total_iterations": 6
+      },
+      "created_at": "2026-03-24T05:32:27Z",
+      "updated_at": "2026-03-24T10:17:06Z"
+    },
+    {
+      "id": "builder_generated|GPSUSDC|4h|424c15971f73",
+      "strategy_name": "builder_generated",
+      "symbol": "GPSUSDC",
+      "timeframe": "4h",
+      "params_hash": "424c15971f73",
+      "category": "p1_builder_inbox",
+      "status": "active",
+      "tags": [
+        "builder_out"
+      ],
+      "note": "Strat\u00e9gie de Regime-adaptatif sur GPSUSDC 4h. Indicateurs : SUPERTREND + VWAP + EMA + ATR. Entr\u00e9e en mode tendance si SUPERTREND signale un regime fort, sinon bascule en mode reversion avec VWAP. Sortie adaptative : TP agressif en tendance, TP prudent en range. Stop-loss = 1.2x ATR, take-profit = 3.5x ATR.",
+      "builder_state": "stopped",
+      "last_metrics_snapshot": {
+        "total_pnl": 1962.2614919548832,
+        "total_return_pct": 19.622614919548834,
+        "annualized_return": 21.94197933164519,
+        "benchmark_return_pct": -77.60989010989012,
+        "alpha_simple_pct": 97.23250502943895,
+        "sharpe_ratio": 0.526401676157985,
+        "sortino_ratio": 0.4846647275006309,
+        "max_drawdown_pct": -35.27535368365625,
+        "volatility_annual": 46.3716305310675,
+        "max_drawdown_duration_days": 113.0,
+        "account_ruined": false,
+        "ruin_time": null,
+        "min_equity": 9890.22855630872,
+        "max_drawdown_pct_raw": -35.27535368365625,
+        "max_drawdown_pct_capped": -35.27535368365625,
+        "total_trades": 40,
+        "win_rate_pct": 45.0,
+        "profit_factor": 1.1364648782836255,
+        "avg_win": 907.8612980307105,
+        "avg_loss": -653.6019032999048,
+        "largest_win": 1979.324860722002,
+        "largest_loss": -2585.863439743842,
+        "avg_trade_duration_hours": 57.0,
+        "expectancy": 49.0565372988721,
+        "risk_reward_ratio": 1.3890126290133198,
+        "calmar_ratio": 0.6220201086689977,
+        "tier_s": null,
+        "data_coverage_pct": 100.0
+      },
+      "source": "builder",
+      "meta": {
+        "session_id": "20260324_111913_strat_gie_de_regime_adaptatif_sur_gpsusd",
+        "best_sharpe": 0.526401676157985,
+        "total_iterations": 10
+      },
+      "created_at": "2026-03-24T10:58:27Z",
+      "updated_at": "2026-03-24T11:56:05Z"
     }
   ]
 }
