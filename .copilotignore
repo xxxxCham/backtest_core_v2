@@ -1,0 +1,36 @@
+# Exclusions pour Copilot Chat / codebase index
+# Dossiers générés / caches — ne pas indexer
+.venv/
+.indicator_cache/
+.mypy_cache/
+.numba_cache/
+.pytest_cache/
+.pytest_tmp/
+.tmp/
+.codex/
+__pycache__/
+
+# Données et résultats générés
+data/
+backtest_results/
+backtest_results_organized/
+output/
+profiling_results/
+sweep_diagnostics/
+sandbox_strategies/
+orchestration_logs/
+logs/
+
+# Tests (gros fichiers, peu utiles pour le contexte Copilot en dev normal)
+tests/
+
+# Fichiers volumineux individuels — exclure les versions de cache
+*.pstats
+*.parquet
+*.feather
+*.csv
+*.pkl
+*.pickle
+
+# Document de maintenance à exclure du contexte Copilot pour ce dépôt
+docs/cahier de maintenance_sauvegarde
