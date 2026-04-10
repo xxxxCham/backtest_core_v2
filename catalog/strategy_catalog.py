@@ -547,11 +547,22 @@ def build_entry_from_saved_run(
         "source_parent_scope": _first_non_empty(payload, "parent_scope"),
         "loadable": loadable,
     }
-    for key in ("builder_session_id", "builder_iteration", "builder_objective", "origin"):
+    for key in (
+        "builder_session_id",
+        "builder_iteration",
+        "builder_objective",
+        "origin",
+        "universe_mode",
+        "universe_purpose",
+        "universe_strategy_type",
+    ):
         value = extra_metadata.get(key)
         if _is_missing(value):
             continue
         meta[key] = _normalize_value(value)
+    universe_mode = str(meta.get("universe_mode") or "").strip()
+    if universe_mode:
+        tags.append(f"universe_{universe_mode}")
 
     return {
         "id": entry_id,
@@ -653,6 +664,14 @@ def upsert_from_builder_session(session: Any, *, path: Optional[Path] = None) ->
             "session_id": session_id,
             "best_sharpe": getattr(session, "best_sharpe", None),
             "total_iterations": len(getattr(session, "iterations", []) or []),
+            "universe_mode": str(getattr(session, "universe_mode", "") or ""),
+            "universe_purpose": str(getattr(session, "universe_purpose", "") or ""),
+            "universe_strategy_type": str(
+                getattr(session, "universe_strategy_type", "") or ""
+            ),
         },
     }
+    universe_mode = str(getattr(session, "universe_mode", "") or "").strip()
+    if universe_mode:
+        entry["tags"].append(f"universe_{universe_mode}")
     return upsert_entry(entry, path=path)

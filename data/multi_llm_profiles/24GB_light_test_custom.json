@@ -40,7 +40,7 @@
     "critic_llm": {
       "backend": "ollama",
       "preferred_models": [
-        "gemma3:27b",
+        "mistral:22b",
         "nemotron-cascade-14b-local",
         "gpt-oss:20b",
         "deepseek-r1-distill:14b"
@@ -51,7 +51,7 @@
       "required": true,
       "description": "Light critique focused on smoke-testing the review path.",
       "random_pool_models": [
-        "gemma3:27b",
+        "mistral:22b",
         "nemotron-cascade-14b-local",
         "gpt-oss:20b",
         "deepseek-r1-distill:14b"
@@ -63,7 +63,7 @@
         "gpt-oss-safeguard:20b",
         "nemotron-cascade-14b-local",
         "gpt-oss:20b",
-        "gemma3:12b"
+        "gemma4:26b"
       ],
       "fallback_models": [
         "mistral:7b-instruct"
@@ -74,7 +74,7 @@
         "gpt-oss-safeguard:20b",
         "nemotron-cascade-14b-local",
         "gpt-oss:20b",
-        "gemma3:12b"
+        "gemma4:26b"
       ]
     },
     "execution_router_llm": {

@@ -31,7 +31,6 @@ def summarize_builder_session(session: Any) -> Dict[str, Any]:
         "session_id": getattr(session, "session_id", ""),
         "status": getattr(session, "status", ""),
         "best_sharpe": getattr(session, "best_sharpe", None),
-        "best_score": getattr(session, "best_score", None),
         "iterations": len(getattr(session, "iterations", []) or []),
         "metrics": metrics,
     }

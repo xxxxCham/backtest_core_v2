@@ -23,19 +23,21 @@ Skip-if: Vous utilisez seulement OpenAI.
 from __future__ import annotations
 
 # pylint: disable=logging-fstring-interpolation
+import atexit
 import os
 import platform
 import subprocess
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Generator, List, Optional, Tuple
+from typing import Any, Generator, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import httpx
 
 from utils.log import get_logger
-from utils.model_loader import get_ollama_models_root
+from utils.model_loader import get_ollama_models_root, normalize_model_name
 
 logger = get_logger(__name__)
 
@@ -62,6 +64,214 @@ _OLLAMA_LOCAL_RESTART_ENV_KEYS = (
 )
 
 _OLLAMA_PINNING_RESTARTED_HOSTS: set[str] = set()
+
+
+@dataclass
+class _OwnedOllamaProcess:
+    host: str
+    process: subprocess.Popen
+    started_at: float = field(default_factory=time.time)
+    windows_job_bound: bool = False
+
+
+_OWNED_OLLAMA_PROCESSES: dict[str, _OwnedOllamaProcess] = {}
+_OWNED_OLLAMA_LOCK = threading.Lock()
+_WINDOWS_OLLAMA_STATE: dict[str, Optional[int]] = {"job_handle": None}
+_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+_KERNEL32: Any = None
+
+
+if platform.system() == "Windows":
+    import ctypes
+    from ctypes import wintypes
+
+    class _LargeInteger(ctypes.Structure):
+        _fields_ = [("QuadPart", ctypes.c_longlong)]
+
+    class _IOCounters(ctypes.Structure):
+        _fields_ = [
+            ("ReadOperationCount", ctypes.c_ulonglong),
+            ("WriteOperationCount", ctypes.c_ulonglong),
+            ("OtherOperationCount", ctypes.c_ulonglong),
+            ("ReadTransferCount", ctypes.c_ulonglong),
+            ("WriteTransferCount", ctypes.c_ulonglong),
+            ("OtherTransferCount", ctypes.c_ulonglong),
+        ]
+
+    class _JobObjectBasicLimitInformation(ctypes.Structure):
+        _fields_ = [
+            ("PerProcessUserTimeLimit", _LargeInteger),
+            ("PerJobUserTimeLimit", _LargeInteger),
+            ("LimitFlags", wintypes.DWORD),
+            ("MinimumWorkingSetSize", ctypes.c_size_t),
+            ("MaximumWorkingSetSize", ctypes.c_size_t),
+            ("ActiveProcessLimit", wintypes.DWORD),
+            ("Affinity", ctypes.c_size_t),
+            ("PriorityClass", wintypes.DWORD),
+            ("SchedulingClass", wintypes.DWORD),
+        ]
+
+    class _JobObjectExtendedLimitInformation(ctypes.Structure):
+        _fields_ = [
+            ("BasicLimitInformation", _JobObjectBasicLimitInformation),
+            ("IoInfo", _IOCounters),
+            ("ProcessMemoryLimit", ctypes.c_size_t),
+            ("JobMemoryLimit", ctypes.c_size_t),
+            ("PeakProcessMemoryUsed", ctypes.c_size_t),
+            ("PeakJobMemoryUsed", ctypes.c_size_t),
+        ]
+
+    _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _KERNEL32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+    _KERNEL32.CreateJobObjectW.restype = wintypes.HANDLE
+    _KERNEL32.SetInformationJobObject.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+    ]
+    _KERNEL32.SetInformationJobObject.restype = wintypes.BOOL
+    _KERNEL32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    _KERNEL32.AssignProcessToJobObject.restype = wintypes.BOOL
+    _KERNEL32.CloseHandle.argtypes = [wintypes.HANDLE]
+    _KERNEL32.CloseHandle.restype = wintypes.BOOL
+
+
+def _prune_owned_ollama_processes() -> None:
+    stale_hosts: list[str] = []
+    with _OWNED_OLLAMA_LOCK:
+        for host, record in _OWNED_OLLAMA_PROCESSES.items():
+            if record.process.poll() is not None:
+                stale_hosts.append(host)
+        for host in stale_hosts:
+            _OWNED_OLLAMA_PROCESSES.pop(host, None)
+
+
+def _get_owned_ollama_process(ollama_host: Optional[str] = None) -> Optional[_OwnedOllamaProcess]:
+    normalized_host = _get_ollama_host(ollama_host)
+    _prune_owned_ollama_processes()
+    with _OWNED_OLLAMA_LOCK:
+        return _OWNED_OLLAMA_PROCESSES.get(normalized_host)
+
+
+def _ensure_windows_kill_on_close_job() -> Optional[int]:
+    if platform.system() != "Windows" or _KERNEL32 is None:
+        return None
+
+    existing_handle = _WINDOWS_OLLAMA_STATE["job_handle"]
+    if existing_handle is not None:
+        return existing_handle
+
+    job_handle = _KERNEL32.CreateJobObjectW(None, None)
+    if not job_handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+
+    job_info = _JobObjectExtendedLimitInformation()
+    job_info.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    success = _KERNEL32.SetInformationJobObject(
+        job_handle,
+        _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+        ctypes.byref(job_info),
+        ctypes.sizeof(job_info),
+    )
+    if not success:
+        _KERNEL32.CloseHandle(job_handle)
+        raise ctypes.WinError(ctypes.get_last_error())
+
+    _WINDOWS_OLLAMA_STATE["job_handle"] = int(job_handle)
+    return _WINDOWS_OLLAMA_STATE["job_handle"]
+
+
+def _bind_process_to_lifecycle(process: subprocess.Popen) -> bool:
+    if platform.system() != "Windows" or _KERNEL32 is None:
+        return False
+
+    process_handle_value = getattr(process, "_handle", None)
+    if process_handle_value is None:
+        return False
+
+    try:
+        job_handle = _ensure_windows_kill_on_close_job()
+    except OSError as exc:
+        logger.warning("⚠️ JobObject Ollama indisponible: %s", exc)
+        return False
+
+    if job_handle is None:
+        return False
+
+    success = _KERNEL32.AssignProcessToJobObject(
+        wintypes.HANDLE(job_handle),
+        wintypes.HANDLE(int(process_handle_value)),
+    )
+    if not success:
+        error = ctypes.get_last_error()
+        logger.warning(
+            "⚠️ Impossible d'attacher Ollama pid=%s au JobObject: %s",
+            process.pid,
+            ctypes.WinError(error),
+        )
+        return False
+
+    return True
+
+
+def _terminate_owned_ollama_process(record: _OwnedOllamaProcess, *, timeout_s: float) -> int:
+    process = record.process
+    if process.poll() is not None:
+        return 0
+
+    try:
+        process.terminate()
+    except OSError:
+        return 0
+
+    try:
+        process.wait(timeout=max(timeout_s, 0.5))
+        return 1
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+            process.wait(timeout=1.5)
+            return 1
+        except (OSError, subprocess.SubprocessError):
+            return 0
+
+
+def stop_owned_local_ollama_server(
+    ollama_host: Optional[str] = None,
+    *,
+    timeout_s: float = 3.0,
+) -> int:
+    """Arrête uniquement les daemons Ollama auto-démarrés par l'application."""
+    _prune_owned_ollama_processes()
+
+    with _OWNED_OLLAMA_LOCK:
+        if ollama_host is None:
+            owned_items = list(_OWNED_OLLAMA_PROCESSES.items())
+            _OWNED_OLLAMA_PROCESSES.clear()
+        else:
+            normalized_host = _get_ollama_host(ollama_host)
+            record = _OWNED_OLLAMA_PROCESSES.pop(normalized_host, None)
+            owned_items = [(normalized_host, record)] if record is not None else []
+
+    stopped = 0
+    for host, record in owned_items:
+        if record is None or not _is_local_ollama_host(host):
+            continue
+        stopped += _terminate_owned_ollama_process(record, timeout_s=timeout_s)
+
+    if stopped > 0:
+        logger.info("⛔ Ollama auto-démarré arrêté: %d process(s)", stopped)
+
+    return stopped
+
+
+def _cleanup_owned_ollama_processes_at_exit() -> None:
+    stop_owned_local_ollama_server()
+
+
+atexit.register(_cleanup_owned_ollama_processes_at_exit)
 
 
 def _get_ollama_host(override: Optional[str] = None) -> str:
@@ -234,6 +444,144 @@ def _fetch_tags_payload(
             time.sleep(retry_delay_s)
 
     return None, last_status, last_exc
+
+
+def probe_model_runtime_acceptance(
+    model_name: str,
+    *,
+    requested_model: Optional[str] = None,
+    ollama_host: Optional[str] = None,
+    tags_payload: Optional[dict] = None,
+    tags_status_code: Optional[int] = None,
+    tags_error: Optional[Exception] = None,
+    timeout_s: float = 20.0,
+) -> dict:
+    """Teste si l'hôte Ollama accepte réellement un nom de modèle exact."""
+
+    exact_name = str(model_name or "").strip()
+    requested_name = str(requested_model or exact_name).strip()
+    normalized_host = _get_ollama_host(ollama_host)
+    result = {
+        "requested_model": requested_name,
+        "resolved_model": exact_name,
+        "ollama_host": normalized_host,
+        "host_reachable": False,
+        "present_in_tags": False,
+        "accepted": False,
+        "status": "invalid_model_name",
+        "message": "Nom de modèle vide.",
+        "tags_status_code": tags_status_code,
+        "runtime_status_code": None,
+        "runtime_error_body": "",
+        "requested_matches_resolved": requested_name == exact_name,
+    }
+    if not exact_name:
+        return result
+
+    if tags_payload is None and tags_status_code is None and tags_error is None:
+        tags_payload, tags_status_code, tags_error = _fetch_tags_payload(
+            normalized_host,
+            timeout_s=min(timeout_s, 5.0),
+            max_attempts=1,
+        )
+
+    result["tags_status_code"] = tags_status_code
+    if tags_payload is None:
+        if tags_status_code is None:
+            result["status"] = "host_unreachable"
+            result["message"] = (
+                f"Ollama inaccessible sur {normalized_host}. "
+                f"Détail: {tags_error}"
+            )
+        else:
+            result["status"] = "host_http_error"
+            result["message"] = (
+                f"Ollama répond sur {normalized_host}, "
+                f"mais /api/tags retourne status={tags_status_code}."
+            )
+        return result
+
+    result["host_reachable"] = True
+    tag_models = tags_payload.get("models", []) or []
+    tag_names = [
+        str(item.get("name", "") or "").strip()
+        for item in tag_models
+        if str(item.get("name", "") or "").strip()
+    ]
+    normalized_exact = normalize_model_name(exact_name)
+    result["present_in_tags"] = any(
+        normalize_model_name(name) == normalized_exact
+        for name in tag_names
+    )
+
+    try:
+        response = httpx.post(
+            _ollama_url("/api/chat", normalized_host),
+            json={
+                "model": exact_name,
+                "messages": [{"role": "user", "content": "ping"}],
+                "stream": False,
+                "keep_alive": "0m",
+                "options": {"num_predict": 1},
+            },
+            timeout=timeout_s,
+        )
+        result["runtime_status_code"] = response.status_code
+        body = str(getattr(response, "text", "") or "").strip().replace("\n", " ")
+        if len(body) > 300:
+            body = body[:300] + "..."
+        result["runtime_error_body"] = body
+
+        if response.status_code == 200:
+            result["accepted"] = True
+            result["status"] = "accepted"
+            if result["present_in_tags"]:
+                result["message"] = (
+                    f"L'hôte {normalized_host} accepte `{exact_name}` "
+                    "et le modèle est visible dans /api/tags."
+                )
+            else:
+                result["message"] = (
+                    f"L'hôte {normalized_host} accepte le nom exact `{exact_name}` "
+                    "même s'il n'apparaît pas dans /api/tags."
+                )
+            return result
+
+        lowered_body = body.lower()
+        if response.status_code == 404 and (
+            "not found" in lowered_body or "model '" in lowered_body
+        ):
+            if requested_name != exact_name:
+                result["status"] = "requested_name_rewritten_but_exact_rejected"
+                result["message"] = (
+                    f"Le nom demandé `{requested_name}` a été réécrit en `{exact_name}`, "
+                    f"mais l'hôte {normalized_host} rejette aussi ce nom exact."
+                )
+            else:
+                result["status"] = "exact_name_rejected_by_host"
+                result["message"] = (
+                    f"L'hôte {normalized_host} est joignable, mais il rejette le nom exact `{exact_name}`."
+                )
+            return result
+
+        result["status"] = "runtime_http_error"
+        result["message"] = (
+            f"L'hôte {normalized_host} est joignable, mais le probe runtime sur `{exact_name}` "
+            f"retourne status={response.status_code}."
+        )
+        return result
+    except httpx.TimeoutException:
+        result["status"] = "runtime_timeout"
+        result["message"] = (
+            f"L'hôte {normalized_host} est joignable, mais le probe runtime sur `{exact_name}` a expiré."
+        )
+        return result
+    except Exception as exc:  # noqa: BLE001
+        result["status"] = "runtime_error"
+        result["message"] = (
+            f"L'hôte {normalized_host} est joignable, mais le probe runtime sur `{exact_name}` a échoué: {exc}"
+        )
+        return result
 
 
 # ==============================================================================
@@ -535,30 +883,54 @@ def ensure_ollama_running(
 
     # 2. Démarrer Ollama
     logger.info("🚀 Démarrage d'Ollama...")
+    started_new_process = False
     try:
         is_windows = platform.system() == "Windows"
         env = _build_ollama_subprocess_env(ollama_host, gpu_target=gpu_target)
 
-        if is_windows:
-            # Windows : daemon de fond sans nouvelle console visible.
-            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-            kwargs = {"creationflags": creationflags} if creationflags else {}
+        with _OWNED_OLLAMA_LOCK:
+            payload, _status_code, _exc = _fetch_tags_payload(
+                ollama_host,
+                timeout_s=1.0,
+                max_attempts=1,
+            )
+            if payload is not None:
+                model_count = len(payload.get("models", []) or [])
+                if model_count > 0:
+                    return True, f"✅ Ollama actif ({ollama_host}) | {model_count} modele(s)"
+                return True, f"⚠️ Ollama actif ({ollama_host}) mais aucun modele detecte"
 
-            subprocess.Popen(
-                ["ollama", "serve"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env=env,
-                **kwargs
-            )
-        else:
-            # Linux/Mac
-            subprocess.Popen(
-                ["ollama", "serve"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env=env,
-            )
+            owned_record = _OWNED_OLLAMA_PROCESSES.get(normalized_host)
+            if owned_record is not None and owned_record.process.poll() is not None:
+                _OWNED_OLLAMA_PROCESSES.pop(normalized_host, None)
+                owned_record = None
+
+            if owned_record is None:
+                process: subprocess.Popen
+                if is_windows:
+                    # Windows : daemon de fond sans nouvelle console visible.
+                    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                    process = subprocess.Popen(
+                        ["ollama", "serve"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        env=env,
+                        creationflags=creationflags,
+                    )
+                else:
+                    process = subprocess.Popen(
+                        ["ollama", "serve"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        env=env,
+                    )
+
+                _OWNED_OLLAMA_PROCESSES[normalized_host] = _OwnedOllamaProcess(
+                    host=normalized_host,
+                    process=process,
+                    windows_job_bound=_bind_process_to_lifecycle(process),
+                )
+                started_new_process = True
 
         # 3. Attendre qu'Ollama soit prêt (max 10s)
         for i in range(10):
@@ -597,11 +969,17 @@ def ensure_ollama_running(
                 f"{suffix}"
             )
 
+        if started_new_process:
+            stop_owned_local_ollama_server(ollama_host=ollama_host, timeout_s=2.0)
         return False, "⏱️ Timeout - Ollama n'a pas démarré en 10s"
 
     except FileNotFoundError:
+        if started_new_process:
+            stop_owned_local_ollama_server(ollama_host=ollama_host, timeout_s=2.0)
         return False, "❌ Ollama non trouvé (vérifiez l'installation)"
     except Exception as e:
+        if started_new_process:
+            stop_owned_local_ollama_server(ollama_host=ollama_host, timeout_s=2.0)
         return False, f"❌ Erreur: {str(e)}"
 
 
@@ -633,6 +1011,145 @@ def unload_model(model_name: str, ollama_host: Optional[str] = None) -> bool:
     except Exception as e:
         logger.warning(f"⚠️ Impossible de décharger {model_name}: {e}")
         return False
+
+
+def _extract_model_size_b(model_name: str) -> float:
+    normalized = normalize_model_name(str(model_name or "").strip())
+    if not normalized:
+        return -1.0
+    import re
+
+    match = re.search(r"(\d+(?:\.\d+)?)b", normalized.lower())
+    if not match:
+        return -1.0
+    try:
+        return float(match.group(1))
+    except (TypeError, ValueError):
+        return -1.0
+
+
+def _model_name_matches_runtime(loaded_name: str, requested_model: str) -> bool:
+    loaded = normalize_model_name(str(loaded_name or "").strip())
+    requested = normalize_model_name(str(requested_model or "").strip())
+    if not loaded or not requested:
+        return False
+    if loaded == requested:
+        return True
+
+    loaded_base = loaded.split(":", 1)[0]
+    requested_base = requested.split(":", 1)[0]
+    if loaded_base != requested_base:
+        return False
+
+    loaded_size = _extract_model_size_b(loaded)
+    requested_size = _extract_model_size_b(requested)
+    if loaded_size > 0 and requested_size > 0 and loaded_size != requested_size:
+        return False
+
+    if loaded.endswith(":latest") and loaded[:-7] == requested:
+        return True
+    if requested.endswith(":latest") and requested[:-7] == loaded:
+        return True
+
+    return True
+
+
+def is_model_loaded_in_memory(
+    model_name: str,
+    ollama_host: Optional[str] = None,
+    *,
+    timeout_s: float = 6.0,
+) -> Tuple[bool, str]:
+    """Vérifie via /api/ps si un modèle est déjà chargé en mémoire."""
+    ps_url = _ollama_url("/api/ps", ollama_host)
+    try:
+        response = httpx.get(ps_url, timeout=timeout_s)
+        if response.status_code != 200:
+            return False, f"/api/ps status={response.status_code}"
+
+        payload = response.json() if response.content else {}
+        models = payload.get("models", []) or []
+        loaded_names = [
+            str(item.get("name", "") or "").strip()
+            for item in models
+            if str(item.get("name", "") or "").strip()
+        ]
+        for loaded_name in loaded_names:
+            if _model_name_matches_runtime(loaded_name, model_name):
+                return True, f"modele deja charge (`{loaded_name}`)"
+
+        if loaded_names:
+            preview = ", ".join(loaded_names[:3])
+            return False, f"modeles actifs: {preview}"
+        return False, "aucun modele actif"
+    except Exception as exc:
+        return False, f"/api/ps inaccessible: {exc}"
+
+
+def warmup_model(
+    model_name: str,
+    ollama_host: Optional[str] = None,
+    *,
+    keep_alive_minutes: int = 10,
+    timeout_s: float = 300.0,
+    prompt: str = "Ready.",
+) -> Tuple[bool, str]:
+    """Précharge un modèle Ollama en mémoire via un prompt court."""
+    generate_url = _ollama_url("/api/generate", ollama_host)
+    keep_alive = f"{max(1, int(keep_alive_minutes))}m"
+    try:
+        response = httpx.post(
+            generate_url,
+            json={
+                "model": model_name,
+                "prompt": prompt,
+                "keep_alive": keep_alive,
+                "stream": False,
+            },
+            timeout=timeout_s,
+        )
+        if response.status_code == 200:
+            detail = "warmup /api/generate status=200"
+            try:
+                payload = response.json() if response.content else {}
+                done_reason = str(payload.get("done_reason", "") or "").strip()
+                if done_reason:
+                    detail += f", done_reason={done_reason}"
+            except Exception:
+                pass
+            return True, detail
+
+        body = str(getattr(response, "text", "") or "").strip().replace("\n", " ")
+        if len(body) > 300:
+            body = body[:300] + "..."
+        loaded, loaded_detail = is_model_loaded_in_memory(
+            model_name,
+            ollama_host=ollama_host,
+            timeout_s=min(timeout_s, 8.0),
+        )
+        if loaded:
+            return True, f"warmup status={response.status_code} mais {loaded_detail}"
+        return False, (
+            f"warmup status={response.status_code}, body={body or '<vide>'}, ps={loaded_detail}"
+        )
+    except httpx.TimeoutException:
+        loaded, loaded_detail = is_model_loaded_in_memory(
+            model_name,
+            ollama_host=ollama_host,
+            timeout_s=min(timeout_s, 8.0),
+        )
+        if loaded:
+            return True, f"timeout warmup ({int(timeout_s)}s) mais {loaded_detail}"
+        return False, f"timeout warmup ({int(timeout_s)}s), ps={loaded_detail}"
+    except Exception as exc:
+        loaded, loaded_detail = is_model_loaded_in_memory(
+            model_name,
+            ollama_host=ollama_host,
+            timeout_s=min(timeout_s, 8.0),
+        )
+        if loaded:
+            return True, f"erreur warmup ({exc}) mais {loaded_detail}"
+        return False, f"erreur warmup ({exc}), ps={loaded_detail}"
 
 
 def cleanup_all_models(ollama_host: Optional[str] = None) -> int:
@@ -671,6 +1188,7 @@ def stop_local_ollama_server(
     ollama_host: Optional[str] = None,
     *,
     force: bool = True,
+    owned_only: bool = False,
     timeout_s: float = 3.0,
 ) -> int:
     """Arrête brutalement le daemon Ollama local écoutant sur l'hôte donné.
@@ -680,6 +1198,13 @@ def stop_local_ollama_server(
     """
     if not _is_local_ollama_host(ollama_host):
         return 0
+
+    owned_stopped = stop_owned_local_ollama_server(
+        ollama_host=ollama_host,
+        timeout_s=timeout_s,
+    )
+    if owned_stopped > 0 or owned_only:
+        return owned_stopped
 
     try:
         import psutil
@@ -836,8 +1361,13 @@ def prepare_for_llm_run(ollama_host: Optional[str] = None) -> Tuple[bool, str]:
 __all__ = [
     "ensure_ollama_running",
     "unload_model",
+    "is_model_loaded_in_memory",
+    "warmup_model",
     "cleanup_all_models",
+    "stop_local_ollama_server",
+    "stop_owned_local_ollama_server",
     "list_ollama_models",
+    "probe_model_runtime_acceptance",
     "is_ollama_available",
     "prepare_for_llm_run",
     # GPU Memory Management

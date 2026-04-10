@@ -76,6 +76,28 @@ def test_collect_builder_sessions_reads_summary_and_latest_strategy(tmp_path: Pa
             {"iteration": 2, "return_pct": 8.5},
             {"iteration": 3, "return_pct": 12.25},
         ],
+        "orchestration_mode": "multi_llm",
+        "multi_llm_profile": "brain",
+        "multi_llm_router_decision": {
+            "action": "iterate",
+            "reason": "tighten exits",
+        },
+        "multi_llm_assignments": [
+            {
+                "role": "builder_llm",
+                "requested_model": "qwen3-coder:30b",
+                "resolved_model": "qwen3-coder:30b",
+                "available": True,
+            }
+        ],
+        "multi_llm_shared_memory": {
+            "continuity_context": {
+                "recent_sessions": [{"session_num": 8, "symbol": "BTCUSDT"}],
+                "best_recent_session": {"session_num": 8, "symbol": "BTCUSDT"},
+                "carry_over_focus": ["tighten exits"],
+                "recurring_risks": ["drawdown spike"],
+            }
+        },
     }
     (session_dir / "session_summary.json").write_text(json.dumps(summary), encoding="utf-8")
 
@@ -88,6 +110,9 @@ def test_collect_builder_sessions_reads_summary_and_latest_strategy(tmp_path: Pa
     assert row["best_return_pct"] == 12.25
     assert row["strategy_versions"] == 2
     assert Path(row["latest_strategy_path"]).name == "strategy.py"
+    assert row["multi_llm_profile"] == "brain"
+    assert row["multi_llm_router_decision"]["action"] == "iterate"
+    assert row["continuity_context"]["carry_over_focus"] == ["tighten exits"]
 
 
 def test_collect_store_inventory_counts_expected_directories(tmp_path: Path) -> None:

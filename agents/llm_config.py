@@ -60,6 +60,8 @@ except ImportError as e:
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 
 RECOMMENDED_FOR_STRATEGY = [
+    "gemma4:26b",
+    "gemma4:31b",
     "qwen3.5:35b",
     "lfm2:24b",
     "devstral-small-2:24b",
@@ -553,10 +555,10 @@ def get_optimal_models_for_role(
     """
     # Configuration optimale basée sur benchmarks
     optimal_config = {
-        "analyst": ["qwen2.5:14b", "gemma3:12b", "llama3.2:8b"],
-        "strategist": ["gemma3:27b", "qwen2.5:14b", "mistral:7b"],
-        "critic": ["llama3.3:70b", "deepseek-r1:32b", "gemma3:27b"],
-        "validator": ["llama3.3:70b", "deepseek-r1:32b", "qwen2.5:32b"],
+        "analyst": ["gemma4:26b", "qwen2.5:14b", "lfm2:24b"],
+        "strategist": ["gemma4:26b", "gemma4:31b", "lfm2:24b"],
+        "critic": ["gemma4:31b", "deepseek-r1:32b", "mistral:22b"],
+        "validator": ["gemma4:31b", "deepseek-r1:32b", "qwen2.5:32b"],
     }
 
     preferred = optimal_config.get(role, [])

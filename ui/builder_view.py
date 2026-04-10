@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import csv
 import html
+import inspect
 import io
 import json
 import logging
@@ -48,6 +49,13 @@ from agents.llm_config import (
     normalize_llm_inference_settings,
     normalize_llm_model_inference_profiles,
 )
+from config.market_selection import (
+    UNIVERSE_MODE_CANONICAL,
+    evaluate_market_dataset,
+    filter_market_universe,
+    infer_strategy_type,
+    normalize_universe_mode,
+)
 try:
     import psutil
 
@@ -68,7 +76,8 @@ if not logger.handlers:
     logger.addHandler(_handler)
 
 from agents.llm_client import LLMConfig, LLMProvider, create_llm_client
-from agents.ollama_manager import ensure_ollama_running
+from agents.model_config import is_cloud_only_model
+from agents.ollama_manager import ensure_ollama_running, probe_model_runtime_acceptance
 from agents.strategy_builder import (
     MIN_BUILDER_BARS,
     SANDBOX_ROOT,
@@ -103,17 +112,20 @@ except ImportError:
     )
 
 from ui.state import (
-    BUILDER_AUTO_START_OLLAMA_DEFAULT,
-    BUILDER_KEEP_ALIVE_MINUTES_DEFAULT,
-    BUILDER_PRELOAD_MODEL_DEFAULT,
-    BUILDER_UNLOAD_AFTER_RUN_DEFAULT,
+    BUILDER_UNIVERSE_MODE_CANONICAL,
+    BUILDER_EXECUTION_MODE_DUAL_LANE,
+    BUILDER_EXECUTION_MODE_EXPERT,
+    BUILDER_EXECUTION_MODE_MONO,
     normalize_builder_multi_llm_role_pool_overrides,
+    resolve_builder_execution_preferences,
+    resolve_builder_flow_analysis_preferences,
     resolve_builder_runtime_preferences,
 )
 
 
 _AUTONOMOUS_SUPERVISOR_STATE_FILE = SANDBOX_ROOT / "_autonomous_supervisor_state.json"
 _AUTONOMOUS_RUNTIME_STATE_FILE = SANDBOX_ROOT / "_autonomous_runtime_state.json"
+_BUILDER_SESSION_SUMMARY_PATCH_LOCK = threading.Lock()
 _AUTONOMOUS_SUPERVISOR_VERSION = "1.0"
 _AUTONOMOUS_RUNTIME_VERSION = "1.0"
 _AUTONOMOUS_MAX_PERSISTED_HISTORY = 1000
@@ -336,6 +348,37 @@ def _get_builder_code_provenance_badge(
 
 def _history_best_sharpe(history: List[Dict[str, Any]]) -> float:
     return max((_safe_numeric_float(item.get("best_sharpe"), 0.0) for item in history), default=0.0)
+
+
+def _autonomous_history_strategy_sort_key(entry: Dict[str, Any]) -> tuple[float, ...]:
+    final_return = _safe_numeric_float(
+        entry.get("final_return", entry.get("best_return")),
+        float("-inf"),
+    )
+    final_sharpe = _safe_numeric_float(
+        entry.get("final_sharpe", entry.get("best_sharpe")),
+        float("-inf"),
+    )
+    final_max_dd = abs(
+        _safe_numeric_float(
+            entry.get("final_max_dd", entry.get("best_max_dd")),
+            float("inf"),
+        )
+    )
+    final_trades = _safe_numeric_float(
+        entry.get("final_trades", entry.get("best_trades")),
+        0.0,
+    )
+    status = str(entry.get("status", "") or "").strip().lower()
+    status_rank = 1.0 if status == "success" else 0.0
+    return (
+        status_rank,
+        1.0 if final_return > 0.0 else 0.0,
+        final_return,
+        final_sharpe,
+        -final_max_dd,
+        final_trades,
+    )
 
 
 def _history_latest_session_num(history: List[Dict[str, Any]]) -> int:
@@ -989,7 +1032,11 @@ def _build_recovered_autonomous_history_entry(
     recovered["session_id"] = session_id
     recovered["n_iterations"] = int(summary.get("total_iterations") or len(iterations) or 0)
     recovered["best_sharpe"] = summary.get("best_sharpe")
-    recovered["best_score"] = summary.get("best_score")
+    recovered["best_telemetry_score"] = summary.get(
+        "best_telemetry_score",
+        summary.get("best_score"),
+    )
+    recovered["best_score"] = recovered["best_telemetry_score"]
     recovered["best_return"] = recovered_snapshot.get("best_return")
     recovered["best_return_iteration"] = recovered_snapshot.get("best_return_iteration")
     recovered["best_max_dd"] = recovered_snapshot.get("best_max_dd")
@@ -1008,6 +1055,69 @@ def _build_recovered_autonomous_history_entry(
     recovered["date_range_start"] = summary.get("date_range_start") or recovered.get("date_range_start")
     recovered["date_range_end"] = summary.get("date_range_end") or recovered.get("date_range_end")
     recovered["initial_capital"] = summary.get("initial_capital") or recovered.get("initial_capital")
+    recovered["universe_mode"] = (
+        summary.get("universe_mode")
+        or recovered.get("universe_mode")
+        or BUILDER_UNIVERSE_MODE_CANONICAL
+    )
+    recovered["universe_purpose"] = (
+        summary.get("universe_purpose")
+        or recovered.get("universe_purpose")
+        or "builder_autonomous"
+    )
+    recovered["universe_strategy_type"] = (
+        summary.get("universe_strategy_type")
+        or recovered.get("universe_strategy_type")
+        or ""
+    )
+    recovered["universe_meta"] = (
+        dict(summary.get("universe_meta", {}) or {})
+        if isinstance(summary.get("universe_meta"), dict)
+        else dict(recovered.get("universe_meta", {}) or {})
+    )
+    recovered["builder_execution_mode"] = (
+        summary.get("builder_execution_mode")
+        or recovered.get("builder_execution_mode")
+        or BUILDER_EXECUTION_MODE_MONO
+    )
+    recovered["orchestration_mode"] = (
+        summary.get("orchestration_mode")
+        or recovered.get("orchestration_mode")
+        or "single_llm"
+    )
+    recovered["instrumentation_enabled"] = bool(
+        summary.get("instrumentation_enabled", recovered.get("instrumentation_enabled", False))
+    )
+    recovered["instrumentation_summary"] = (
+        dict(summary.get("instrumentation_summary", {}) or {})
+        if isinstance(summary.get("instrumentation_summary"), dict)
+        else dict(recovered.get("instrumentation_summary", {}) or {})
+    )
+    recovered["pipeline_traces_path"] = str(
+        summary.get("pipeline_traces_path")
+        or recovered.get("pipeline_traces_path")
+        or ""
+    )
+    recovered["multi_llm_router_decision"] = (
+        dict(summary.get("multi_llm_router_decision", {}) or {})
+        if isinstance(summary.get("multi_llm_router_decision"), dict)
+        else dict(recovered.get("multi_llm_router_decision", {}) or {})
+    )
+    recovered["multi_llm_role_outputs"] = (
+        dict(summary.get("multi_llm_role_outputs", {}) or {})
+        if isinstance(summary.get("multi_llm_role_outputs"), dict)
+        else dict(recovered.get("multi_llm_role_outputs", {}) or {})
+    )
+    recovered["multi_llm_shared_memory"] = (
+        dict(summary.get("multi_llm_shared_memory", {}) or {})
+        if isinstance(summary.get("multi_llm_shared_memory"), dict)
+        else dict(recovered.get("multi_llm_shared_memory", {}) or {})
+    )
+    recovered["continuity_context"] = (
+        dict(summary.get("continuity_context", {}) or {})
+        if isinstance(summary.get("continuity_context"), dict)
+        else dict(recovered.get("continuity_context", {}) or {})
+    )
     recovered["last_runtime_error"] = (
         recovered.get("last_runtime_error")
         or runtime_feedback.get("last_runtime_error")
@@ -1253,6 +1363,10 @@ def _build_builder_autonomous_resume_ui_state(state: Any) -> Dict[str, Any]:
         "builder_auto_market_pick": bool(
             getattr(state, "builder_auto_market_pick", False)
         ),
+        "builder_universe_mode": str(
+            getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL)
+            or BUILDER_UNIVERSE_MODE_CANONICAL
+        ),
         "builder_preload_model": bool(
             getattr(state, "builder_preload_model", True)
         ),
@@ -1276,6 +1390,14 @@ def _build_builder_autonomous_resume_ui_state(state: Any) -> Dict[str, Any]:
             for role, models in role_overrides.items()
             if str(role).strip() and list(models)
         },
+        "builder_flow_analysis_enabled": bool(
+            getattr(state, "builder_flow_analysis_enabled", False)
+        ),
+        "builder_flow_analysis_ablation": (
+            dict(getattr(state, "builder_flow_analysis_ablation", {}) or {})
+            if isinstance(getattr(state, "builder_flow_analysis_ablation", {}), dict)
+            else {}
+        ),
         "builder_dual_lane_primary_model": str(
             getattr(state, "builder_dual_lane_primary_model", "") or ""
         ),
@@ -1331,6 +1453,7 @@ def restore_builder_autonomous_ui_state_from_runtime() -> tuple[bool, Dict[str, 
         ("builder_preload_model", "builder_preload_model_toggle"),
         ("builder_unload_after_run", "builder_unload_after_run_toggle"),
         ("builder_auto_start_ollama", "builder_auto_start_ollama_toggle"),
+        ("builder_flow_analysis_enabled", "builder_flow_analysis_enabled_toggle"),
         ("builder_multi_llm_enabled", "builder_multi_llm_enabled_toggle"),
     ):
         if name not in resume_ui_state:
@@ -1345,6 +1468,12 @@ def restore_builder_autonomous_ui_state_from_runtime() -> tuple[bool, Dict[str, 
         )
         st.session_state["builder_keep_alive_minutes"] = keep_alive
         st.session_state["builder_keep_alive_minutes_input"] = keep_alive
+
+    builder_universe_mode = str(
+        resume_ui_state.get("builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL)
+        or BUILDER_UNIVERSE_MODE_CANONICAL
+    ).strip() or BUILDER_UNIVERSE_MODE_CANONICAL
+    st.session_state["builder_universe_mode"] = builder_universe_mode
 
     builder_multi_llm_profile = str(
         resume_ui_state.get("builder_multi_llm_profile", "") or ""
@@ -1361,6 +1490,15 @@ def restore_builder_autonomous_ui_state_from_runtime() -> tuple[bool, Dict[str, 
             role_overrides
         )
         st.session_state["builder_multi_llm_role_overrides"] = cleaned_role_overrides
+
+    ablation_config = resume_ui_state.get("builder_flow_analysis_ablation", {})
+    if isinstance(ablation_config, dict):
+        st.session_state["builder_flow_analysis_ablation"] = dict(ablation_config)
+        st.session_state["builder_flow_analysis_disabled_steps_multiselect"] = [
+            step
+            for step, enabled in dict(ablation_config).items()
+            if not bool(enabled)
+        ]
 
     for name, widget_key in (
         ("builder_dual_lane_primary_model", "builder_dual_lane_primary_model_select"),
@@ -1492,10 +1630,9 @@ def _get_autonomous_recap_status_badge(entry: Dict[str, Any]) -> Dict[str, str]:
 def _get_autonomous_session_best_return_snapshot(session: Any) -> Dict[str, Any]:
     """Extrait la meilleure itération par return pour le récap autonome.
 
-    Le Builder conserve `best_iteration` selon un score continu. Le tableau autonome,
-    lui, doit garder visible le meilleur return observé dans la session, même si cette
-    itération n'est pas celle promue comme meilleure par score et même si la session
-    finit en échec.
+    Le tableau autonome doit garder visible le meilleur return observé dans la
+    session, même si cette itération n'est pas celle promue comme meilleur run
+    et même si la session finit en échec.
     """
     best_return: Optional[float] = None
     best_snapshot: Dict[str, Any] = {
@@ -1634,6 +1771,12 @@ def _classify_autonomous_failure_origin(
     traceback_text: str = "",
 ) -> str:
     text = f"{type(error).__name__}: {error}\n{traceback_text}".lower()
+    if (
+        "exact_name_rejected_by_host" in text
+        or "rejette le nom exact" in text
+        or "aucun nom exact du pool" in text
+    ):
+        return "llm_runtime_model_name_mismatch"
     if "streamlitapiexception" in text or "script run context" in text:
         return "streamlit_ui"
     if "ollama" in text or "httpx" in text or "timeout" in text or "connection" in text:
@@ -1734,7 +1877,7 @@ def render_iteration_card(
     *,
     expanded: bool = False,
 ) -> None:
-    """Affiche une carte enrichie pour une itération du builder."""
+    """Affiche un résumé compact d'une itération du builder."""
     it_num = iteration.iteration
     decision = getattr(iteration, "decision", "")
     error = getattr(iteration, "error", None)
@@ -1756,208 +1899,73 @@ def render_iteration_card(
         icon = "🔄"
         label = f"Itération {it_num} — Continue"
 
-    with st.expander(f"{icon} {label}", expanded=expanded):
-        # Diagnostic badge + type de modification
-        diag_cat = getattr(iteration, "diagnostic_category", "")
-        change_type = getattr(iteration, "change_type", "")
-        severity = diag.get("severity", "")
+    # Diagnostic badge + type de modification
+    diag_cat = getattr(iteration, "diagnostic_category", "")
+    change_type = getattr(iteration, "change_type", "")
+    severity = diag.get("severity", "")
 
-        sev_icons = {
-            "critical": "🔴", "warning": "🟡",
-            "info": "🔵", "success": "🟢",
-        }
-        type_labels = {
-            "logic": "🔀 Logique",
-            "params": "🎛️ Paramètres",
-            "both": "🔀🎛️ Logique + Params",
-            "accept": "✅ Acceptation",
-        }
-        sev_icon = sev_icons.get(severity, "⚪")
-        type_lbl = type_labels.get(change_type, "")
-        cat_lbl = diag_cat.replace("_", " ").title() if diag_cat else ""
+    sev_icons = {
+        "critical": "🔴", "warning": "🟡",
+        "info": "🔵", "success": "🟢",
+    }
+    type_labels = {
+        "logic": "🔀 Logique",
+        "params": "🎛️ Paramètres",
+        "both": "🔀🎛️ Logique + Params",
+        "accept": "✅ Acceptation",
+    }
+    sev_icon = sev_icons.get(severity, "⚪")
+    type_lbl = type_labels.get(change_type, "")
+    cat_lbl = diag_cat.replace("_", " ").title() if diag_cat else ""
 
-        badge_labels: List[str] = []
-        if cat_lbl:
-            badge_labels.append(f"{sev_icon} {cat_lbl}")
-        if type_lbl:
-            badge_labels.append(type_lbl)
-        if decision:
-            badge_labels.append(f"Decision: {decision}")
-        if provenance.get("badge"):
-            badge_labels.append(provenance["badge"])
-        _render_builder_badge_row(badge_labels)
+    st.markdown(f"**{icon} {label}**")
 
-        # Hypothèse
-        hypothesis = getattr(iteration, "hypothesis", "")
-        if hypothesis:
-            st.info(f"💡 Hypothèse active: {hypothesis}")
+    badge_labels: List[str] = []
+    if cat_lbl:
+        badge_labels.append(f"{sev_icon} {cat_lbl}")
+    if type_lbl:
+        badge_labels.append(type_lbl)
+    if decision:
+        badge_labels.append(f"Decision: {decision}")
+    if provenance.get("badge"):
+        badge_labels.append(provenance["badge"])
+    _render_builder_badge_row(badge_labels)
 
-        # Erreur
-        if error:
-            st.error(f"Erreur: {error}")
+    hypothesis = str(getattr(iteration, "hypothesis", "") or "").strip()
+    if hypothesis:
+        st.caption(f"Hypothèse: {hypothesis}")
 
-        # Résultats backtest
-        bt = getattr(iteration, "backtest_result", None)
-        if bt and hasattr(bt, "metrics"):
-            metrics = bt.metrics
-            score_info = diag.get("continuous_score")
-            if score_info is None:
-                score_info = (
-                    (phase_feedback.get("scoring", {}) if phase_feedback else {}).get(
-                        "continuous_score"
-                    )
-                )
+    provenance_detail = str(provenance.get("detail", "") or "").strip()
+    if provenance_detail:
+        st.caption(f"Origine des statistiques: {provenance_detail}")
 
-            provenance_detail = str(provenance.get("detail", "") or "").strip()
-            if provenance_detail:
-                st.caption(f"Origine des statistiques: {provenance_detail}")
+    if error:
+        st.error(f"Erreur: {error}")
 
-            # Ligne 1: métriques principales
-            col1, col2, col3, col4, col5 = st.columns(5)
-            with col1:
-                st.metric("Sharpe", f"{metrics.get('sharpe_ratio', 0):.3f}")
-            with col2:
-                st.metric("Return", f"{metrics.get('total_return_pct', 0):+.2f}%")
-            with col3:
-                st.metric("Max DD", f"{metrics.get('max_drawdown_pct', 0):.2f}%")
-            with col4:
-                st.metric("Trades", str(metrics.get("total_trades", 0)))
-            with col5:
-                if score_info is None:
-                    st.metric("Score", "n/a")
-                else:
-                    st.metric("Score", f"{float(score_info):.2f}")
+    bt = getattr(iteration, "backtest_result", None)
+    metrics = getattr(bt, "metrics", None) if bt is not None else None
+    if isinstance(metrics, dict):
+        summary_parts = [
+            f"Sharpe `{float(metrics.get('sharpe_ratio', 0.0) or 0.0):.3f}`",
+            f"Return `{float(metrics.get('total_return_pct', 0.0) or 0.0):+.2f}%`",
+            f"Max DD `{float(metrics.get('max_drawdown_pct', 0.0) or 0.0):.2f}%`",
+            f"Trades `{int(metrics.get('total_trades', 0) or 0)}`",
+            f"PF `{float(metrics.get('profit_factor', 0.0) or 0.0):.2f}`",
+            f"Win Rate `{float(metrics.get('win_rate_pct', 0.0) or 0.0):.1f}%`",
+        ]
+        st.markdown(" | ".join(summary_parts))
 
-            # Ligne 2: métriques secondaires
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                st.metric("Win Rate", f"{metrics.get('win_rate_pct', 0):.1f}%")
-            with c2:
-                st.metric("PF", f"{metrics.get('profit_factor', 0):.2f}")
-            with c3:
-                st.metric("Sortino", f"{metrics.get('sortino_ratio', 0):.3f}")
-            with c4:
-                st.metric("Expectancy", f"{metrics.get('expectancy', 0):.2f}")
+    analysis = str(getattr(iteration, "analysis", "") or "").strip()
+    if analysis:
+        st.caption(f"Analyse: {analysis[:240]}")
 
-            # Bulletin de notes compact
-            if diag and "score_card" in diag:
-                sc = diag["score_card"]
-                grades = " | ".join(
-                    f"**{dim.replace('_', ' ').title()}**: {info['grade']}"
-                    for dim, info in sc.items()
-                )
-                st.caption(f"📊 {grades}")
-
-        # Actions recommandées (expandable)
-        if diag and diag.get("actions"):
-            with st.expander("💡 Actions recommandées", expanded=False):
-                for act in diag["actions"]:
-                    st.markdown(f"- {act}")
-                for dont in diag.get("donts", []):
-                    st.markdown(f"- ⚠️ {dont}")
-
-        # Analyse LLM
-        analysis = getattr(iteration, "analysis", "")
-        if analysis:
-            with st.expander("🧠 Analyse LLM", expanded=False):
-                st.write(analysis[:1200])
-
-        # Feedback structuré de phase (diagnostic d'orchestration)
-        if phase_feedback:
-            with st.expander("🧭 Feedback d'orchestration", expanded=False):
-                pfb = phase_feedback.get("proposal", {}) or {}
-                cfb = phase_feedback.get("code", {}) or {}
-                bfb = phase_feedback.get("backtest", {}) or {}
-                dfb = phase_feedback.get("decision", {}) or {}
-
-                if pfb:
-                    st.markdown("**Proposal phase**")
-                    st.markdown(
-                        f"- kind initial: `{pfb.get('initial_kind', '?')}` | "
-                        f"realign attempts: `{pfb.get('realign_attempts', 0)}` | "
-                        f"realign success: `{pfb.get('realign_success', False)}` | "
-                        f"valid: `{pfb.get('final_valid', False)}`"
-                    )
-                    issues = pfb.get("issues") or pfb.get("issues_after_retry")
-                    if issues:
-                        st.markdown(f"- issues: `{issues}`")
-                    if pfb.get("fallback_retry_used"):
-                        st.markdown("- fallback retry utilisé")
-                    ct_override = pfb.get("change_type_overridden")
-                    if isinstance(ct_override, dict):
-                        st.markdown(
-                            "- change_type overridé: "
-                            f"`{ct_override.get('from', '?')}` → "
-                            f"`{ct_override.get('to', '?')}` "
-                            f"(`{ct_override.get('reason', '?')}`)"
-                        )
-
-                if cfb:
-                    st.markdown("**Code phase**")
-                    st.markdown(
-                        f"- kind initial: `{cfb.get('initial_kind', '?')}` | "
-                        f"realign attempts: `{cfb.get('realign_attempts', 0)}` | "
-                        f"realign success: `{cfb.get('realign_success', False)}` | "
-                        f"valid: `{cfb.get('final_valid', False)}`"
-                    )
-                    if cfb.get("source"):
-                        st.markdown(f"- source: `{cfb.get('source')}`")
-                    if cfb.get("fallback_retry_used"):
-                        st.markdown("- fallback retry utilisé")
-                    if cfb.get("fallback_deterministic_used"):
-                        st.markdown("- fallback déterministe appliqué")
-
-                if bfb:
-                    st.markdown("**Backtest phase**")
-                    if bfb.get("runtime_error"):
-                        st.markdown(f"- runtime_error: `{bfb.get('runtime_error')}`")
-                    if bfb.get("runtime_traceback_tail"):
-                        st.markdown("- traceback (tail):")
-                        st.code(str(bfb.get("runtime_traceback_tail")), language="text")
-                    if bfb.get("runtime_fix_applied"):
-                        st.markdown("- runtime_fix appliqué avec succès")
-                    if bfb.get("runtime_fix_fallback_deterministic_used"):
-                        st.markdown("- runtime_fix: fallback déterministe appliqué")
-                    if bfb.get("runtime_fix_retry_error"):
-                        st.markdown(
-                            "- runtime_fix second échec: "
-                            f"`{bfb.get('runtime_fix_retry_error')}`"
-                        )
-                    if bfb.get("runtime_fix_validation_error"):
-                        st.markdown(
-                            "- runtime_fix rejeté à la validation: "
-                            f"`{bfb.get('runtime_fix_validation_error')}`"
-                        )
-
-                sfb = phase_feedback.get("scoring", {}) or {}
-                if sfb:
-                    st.markdown("**Scoring continu**")
-                    score = sfb.get("continuous_score")
-                    dd_excess = sfb.get("drawdown_excess_pct")
-                    if score is not None:
-                        st.markdown(f"- score: `{float(score):.2f}`")
-                    if dd_excess is not None:
-                        st.markdown(f"- drawdown excess: `{float(dd_excess):.2f}%`")
-
-                if dfb:
-                    st.markdown("**Decision policy**")
-                    if dfb.get("stop_overridden"):
-                        st.markdown("- stop overridé en `continue`")
-                    if dfb.get("accept_overridden"):
-                        st.markdown("- accept overridé en `continue`")
-
-        # Code (collapsible)
-        code = getattr(iteration, "code", "")
-        if code:
-            with st.expander("📝 Code généré", expanded=False):
-                st.code(code, language="python")
+    st.markdown("---")
 
 
 def render_session_summary(session: Any) -> None:
     """Affiche le résumé final de la session builder."""
     status = getattr(session, "status", "unknown")
     best_sharpe_raw = getattr(session, "best_sharpe", None)
-    best_score_raw = getattr(session, "best_score", None)
     n_iters = len(getattr(session, "iterations", []))
 
     # Statut global
@@ -1971,10 +1979,8 @@ def render_session_summary(session: Any) -> None:
 
     st.markdown(f"### {icon} {label}")
     sharpe_txt = _format_optional_float(best_sharpe_raw, "{:.3f}")
-    score_txt = _format_optional_float(best_score_raw, "{:.2f}")
     st.markdown(
-        f"**Itérations:** {n_iters} | **Meilleur Sharpe:** {sharpe_txt} | "
-        f"**Meilleur Score:** {score_txt}"
+        f"**Itérations:** {n_iters} | **Meilleur Sharpe:** {sharpe_txt}"
     )
 
     auto_resets = int(getattr(session, "auto_reset_count", 0) or 0)
@@ -2043,6 +2049,560 @@ def render_session_summary(session: Any) -> None:
         st.caption(f"📁 Fichiers de session: `{session_dir}`")
 
 
+def _resolve_builder_flow_analysis_payload(session: Any) -> Dict[str, Any]:
+    payload = {
+        "builder_execution_mode": str(
+            getattr(session, "builder_execution_mode", "") or ""
+        ),
+        "orchestration_mode": str(
+            getattr(session, "orchestration_mode", "") or ""
+        ),
+        "instrumentation_enabled": bool(
+            getattr(session, "instrumentation_enabled", False)
+        ),
+        "instrumentation_summary": (
+            dict(getattr(session, "instrumentation_summary", {}) or {})
+            if isinstance(getattr(session, "instrumentation_summary", {}), dict)
+            else {}
+        ),
+        "ablation_config": (
+            dict(getattr(session, "ablation_config", {}) or {})
+            if isinstance(getattr(session, "ablation_config", {}), dict)
+            else {}
+        ),
+        "pipeline_traces_path": str(
+            getattr(session, "pipeline_traces_path", "") or ""
+        ),
+    }
+    session_dir = getattr(session, "session_dir", None)
+    if not session_dir:
+        return payload
+    summary_path = Path(session_dir) / "session_summary.json"
+    if not summary_path.exists():
+        return payload
+    try:
+        persisted_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    except Exception:
+        return payload
+    if not payload["builder_execution_mode"]:
+        payload["builder_execution_mode"] = str(
+            persisted_summary.get("builder_execution_mode", "") or ""
+        )
+    if not payload["orchestration_mode"]:
+        payload["orchestration_mode"] = str(
+            persisted_summary.get("orchestration_mode", "") or ""
+        )
+    if not payload["instrumentation_enabled"]:
+        payload["instrumentation_enabled"] = bool(
+            persisted_summary.get("instrumentation_enabled", False)
+        )
+    if not payload["instrumentation_summary"] and isinstance(
+        persisted_summary.get("instrumentation_summary"), dict
+    ):
+        payload["instrumentation_summary"] = dict(
+            persisted_summary.get("instrumentation_summary", {}) or {}
+        )
+    if not payload["ablation_config"] and isinstance(
+        persisted_summary.get("ablation_config"), dict
+    ):
+        payload["ablation_config"] = dict(
+            persisted_summary.get("ablation_config", {}) or {}
+        )
+    if not payload["pipeline_traces_path"]:
+        payload["pipeline_traces_path"] = str(
+            persisted_summary.get("pipeline_traces_path", "") or ""
+        )
+    return payload
+
+
+def _clone_json_compatible(payload: Any) -> Any:
+    try:
+        return json.loads(json.dumps(payload, ensure_ascii=False, default=str))
+    except Exception:
+        return payload
+
+
+def _read_builder_source_value(source: Any, name: str, default: Any = None) -> Any:
+    if isinstance(source, dict):
+        return source.get(name, default)
+    return getattr(source, name, default)
+
+
+def _load_builder_summary_payload(source: Any) -> Dict[str, Any]:
+    session_dir = _read_builder_source_value(source, "session_dir", None)
+    if not session_dir:
+        return {}
+    summary_path = Path(session_dir) / "session_summary.json"
+    if not summary_path.exists():
+        return {}
+    try:
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _persist_builder_session_summary_patch(
+    session: Any,
+    patch: Dict[str, Any],
+) -> None:
+    session_dir = getattr(session, "session_dir", None)
+    if not session_dir or not isinstance(patch, dict) or not patch:
+        return
+
+    summary_path = Path(session_dir) / "session_summary.json"
+    if not summary_path.exists():
+        return
+
+    try:
+        current_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("builder_session_summary_patch_load_failed session=%s error=%s", session_dir, exc)
+        return
+    if not isinstance(current_summary, dict):
+        current_summary = {}
+
+    current_summary.update(_clone_json_compatible(patch))
+    serialized = json.dumps(current_summary, indent=2, ensure_ascii=False, default=str)
+
+    with _BUILDER_SESSION_SUMMARY_PATCH_LOCK:
+        tmp_path = _build_unique_autonomous_tmp_path(summary_path)
+        try:
+            tmp_path.write_text(serialized, encoding="utf-8")
+            os.replace(tmp_path, summary_path)
+        except Exception as exc:
+            _cleanup_autonomous_tmp_file(tmp_path)
+            logger.warning(
+                "builder_session_summary_patch_save_failed session=%s error=%s",
+                session_dir,
+                exc,
+            )
+
+
+def _compact_multi_llm_role_outputs(
+    role_outputs: Dict[str, Any],
+) -> Dict[str, Dict[str, Any]]:
+    compact: Dict[str, Dict[str, Any]] = {}
+    for role, raw_payload in dict(role_outputs or {}).items():
+        if not isinstance(raw_payload, dict):
+            continue
+        content = str(raw_payload.get("content", "") or "").strip()
+        compact[str(role or "").strip()] = {
+            "model": str(raw_payload.get("model", "") or "").strip(),
+            "available": bool(raw_payload.get("available", False)),
+            "error": str(raw_payload.get("error", "") or "").strip(),
+            "content_excerpt": (
+                content[:280] + "…" if len(content) > 280 else content
+            ),
+            "metadata": (
+                _clone_json_compatible(raw_payload.get("metadata", {}) or {})
+                if isinstance(raw_payload.get("metadata"), dict)
+                else {}
+            ),
+        }
+    return compact
+
+
+def _finalize_multi_llm_session_review(
+    *,
+    objective: str,
+    session: Any,
+    target_sharpe: float,
+    multi_llm_manager: Optional["MultiLLMSessionManager"],
+    persist_summary: bool = True,
+) -> Dict[str, Any]:
+    if multi_llm_manager is None or session is None:
+        return {
+            "router_decision": {},
+            "role_outputs": {},
+            "role_outputs_compact": {},
+            "shared_memory": {},
+            "continuity_context": {},
+        }
+
+    review_bundle = multi_llm_manager.review_builder_session(
+        objective=objective,
+        builder_session=session,
+        target_sharpe=target_sharpe,
+    )
+    router_decision = dict(review_bundle.get("router_decision", {}) or {})
+    role_outputs = {
+        role_name: role_output.to_dict()
+        for role_name, role_output in (
+            review_bundle.get("role_outputs", {}) or {}
+        ).items()
+    }
+    role_outputs_compact = _compact_multi_llm_role_outputs(role_outputs)
+    shared_memory = _clone_json_compatible(
+        multi_llm_manager.consume_shared_memory() or {}
+    )
+    if not isinstance(shared_memory, dict):
+        shared_memory = {}
+    continuity_context = dict(shared_memory.get("continuity_context", {}) or {})
+
+    setattr(session, "multi_llm_router_decision", router_decision)
+    setattr(session, "multi_llm_role_outputs", role_outputs_compact)
+    setattr(session, "multi_llm_shared_memory", shared_memory)
+    setattr(session, "continuity_context", continuity_context)
+
+    if persist_summary:
+        _persist_builder_session_summary_patch(
+            session,
+            {
+                "multi_llm_router_decision": router_decision,
+                "multi_llm_role_outputs": role_outputs_compact,
+                "multi_llm_shared_memory": shared_memory,
+                "continuity_context": continuity_context,
+            },
+        )
+
+    return {
+        "router_decision": router_decision,
+        "role_outputs": role_outputs,
+        "role_outputs_compact": role_outputs_compact,
+        "shared_memory": shared_memory,
+        "continuity_context": continuity_context,
+    }
+
+
+def _resolve_builder_multi_llm_payload(source: Any) -> Dict[str, Any]:
+    payload = {
+        "builder_execution_mode": str(
+            _read_builder_source_value(source, "builder_execution_mode", "") or ""
+        ),
+        "orchestration_mode": str(
+            _read_builder_source_value(source, "orchestration_mode", "") or ""
+        ),
+        "multi_llm_profile": str(
+            _read_builder_source_value(source, "multi_llm_profile", "") or ""
+        ),
+        "multi_llm_assignments": (
+            list(_read_builder_source_value(source, "multi_llm_assignments", []) or [])
+            if isinstance(_read_builder_source_value(source, "multi_llm_assignments", []), list)
+            else []
+        ),
+        "multi_llm_router_decision": (
+            dict(_read_builder_source_value(source, "multi_llm_router_decision", {}) or {})
+            if isinstance(_read_builder_source_value(source, "multi_llm_router_decision", {}), dict)
+            else {}
+        ),
+        "multi_llm_role_outputs": (
+            dict(_read_builder_source_value(source, "multi_llm_role_outputs", {}) or {})
+            if isinstance(_read_builder_source_value(source, "multi_llm_role_outputs", {}), dict)
+            else {}
+        ),
+        "multi_llm_shared_memory": (
+            dict(_read_builder_source_value(source, "multi_llm_shared_memory", {}) or {})
+            if isinstance(_read_builder_source_value(source, "multi_llm_shared_memory", {}), dict)
+            else {}
+        ),
+        "continuity_context": (
+            dict(_read_builder_source_value(source, "continuity_context", {}) or {})
+            if isinstance(_read_builder_source_value(source, "continuity_context", {}), dict)
+            else {}
+        ),
+    }
+    persisted_summary = _load_builder_summary_payload(source)
+    if not payload["builder_execution_mode"]:
+        payload["builder_execution_mode"] = str(
+            persisted_summary.get("builder_execution_mode", "") or ""
+        )
+    if not payload["orchestration_mode"]:
+        payload["orchestration_mode"] = str(
+            persisted_summary.get("orchestration_mode", "") or ""
+        )
+    for field_name in (
+        "multi_llm_profile",
+        "multi_llm_assignments",
+        "multi_llm_router_decision",
+        "multi_llm_role_outputs",
+        "multi_llm_shared_memory",
+        "continuity_context",
+    ):
+        if payload.get(field_name):
+            continue
+        persisted_value = persisted_summary.get(field_name)
+        if isinstance(persisted_value, dict):
+            payload[field_name] = dict(persisted_value or {})
+        elif isinstance(persisted_value, list):
+            payload[field_name] = list(persisted_value or [])
+        elif persisted_value not in (None, ""):
+            payload[field_name] = persisted_value
+
+    if (
+        not payload["continuity_context"]
+        and isinstance(payload["multi_llm_shared_memory"], dict)
+    ):
+        payload["continuity_context"] = dict(
+            payload["multi_llm_shared_memory"].get("continuity_context", {}) or {}
+        )
+
+    return payload
+
+
+def _render_builder_campaign_memory_card(
+    source: Any,
+    *,
+    title: str = "Mémoire de campagne",
+) -> None:
+    payload = _resolve_builder_multi_llm_payload(source)
+    if str(payload.get("orchestration_mode") or "") != "multi_llm":
+        return
+
+    continuity = dict(payload.get("continuity_context", {}) or {})
+    shared_memory = dict(payload.get("multi_llm_shared_memory", {}) or {})
+    if not continuity and not shared_memory:
+        return
+
+    recent_sessions = list(continuity.get("recent_sessions", []) or [])
+    best_recent = dict(continuity.get("best_recent_session", {}) or {})
+    carry_over_focus = [
+        str(item or "").strip()
+        for item in list(continuity.get("carry_over_focus", []) or [])
+        if str(item or "").strip()
+    ]
+    recurring_risks = [
+        str(item or "").strip()
+        for item in list(continuity.get("recurring_risks", []) or [])
+        if str(item or "").strip()
+    ]
+    router_context = dict(shared_memory.get("router_context", {}) or {})
+
+    st.markdown(f"#### {title}")
+    st.caption(
+        "Référence commune partagée entre les rôles multi-LLM pour garder visibles le meilleur run récent, "
+        "les axes à poursuivre et les risques récurrents."
+    )
+
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Sessions récentes", len(recent_sessions))
+    metric_cols[1].metric("Focus à reprendre", len(carry_over_focus))
+    metric_cols[2].metric("Risques récurrents", len(recurring_risks))
+    metric_cols[3].metric(
+        "Dernière décision routeur",
+        str(router_context.get("action") or "n/a"),
+    )
+
+    if best_recent:
+        st.caption(
+            "Dernier meilleur run récent: "
+            f"session #{best_recent.get('session_num', '?')} | "
+            f"{best_recent.get('symbol', '?')} {best_recent.get('timeframe', '?')} | "
+            f"Sharpe {_format_optional_float(best_recent.get('best_sharpe'), '{:.3f}', default='n/a')}"
+        )
+
+    st.markdown("**Focus à reprendre**")
+    if carry_over_focus:
+        for item in carry_over_focus:
+            st.markdown(f"- {item}")
+    else:
+        st.caption("Aucun focus récurrent transmis par les derniers cycles.")
+
+    st.markdown("**Risques récurrents**")
+    if recurring_risks:
+        for item in recurring_risks:
+            st.markdown(f"- {item}")
+    else:
+        st.caption("Aucun risque récurrent dominant dans la mémoire partagée.")
+
+    if recent_sessions:
+        with st.expander("Sessions compactes transmises aux rôles", expanded=False):
+            st.dataframe(recent_sessions, width="stretch", hide_index=True)
+
+
+def _render_multi_llm_session_analysis_panel(
+    source: Any,
+    *,
+    title: str = "Analyse avancée multi-LLM",
+) -> None:
+    payload = _resolve_builder_multi_llm_payload(source)
+    if str(payload.get("orchestration_mode") or "") != "multi_llm":
+        return
+
+    router_decision = dict(payload.get("multi_llm_router_decision", {}) or {})
+    role_outputs = dict(payload.get("multi_llm_role_outputs", {}) or {})
+    shared_memory = dict(payload.get("multi_llm_shared_memory", {}) or {})
+    assignments = list(payload.get("multi_llm_assignments", []) or [])
+
+    if not router_decision and not role_outputs and not shared_memory and not assignments:
+        return
+
+    st.markdown(f"#### {title}")
+    st.caption(
+        "Lecture dédiée au flux multi-LLM: rôles réellement résolus, décision du routeur, "
+        "mémoire partagée et sorties compactes. Cette vue reste séparée du diagnostic mono."
+    )
+
+    resolved_roles = [
+        item for item in assignments
+        if isinstance(item, dict) and bool(item.get("available"))
+    ]
+    confidence = _safe_numeric_float(router_decision.get("confidence"), 0.0)
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Routeur", str(router_decision.get("action") or "n/a"))
+    metric_cols[1].metric("Confiance", f"{confidence:.2f}")
+    metric_cols[2].metric("Rôles résolus", len(resolved_roles))
+    metric_cols[3].metric(
+        "Profil actif",
+        str(payload.get("multi_llm_profile") or "n/a"),
+    )
+
+    router_reason = str(router_decision.get("reason", "") or "").strip()
+    if router_reason:
+        st.caption(f"Raison routeur: {router_reason}")
+
+    if assignments:
+        assignment_rows = [
+            {
+                "role": str(item.get("role", "") or ""),
+                "demande": str(item.get("requested_model", "") or ""),
+                "résolu": str(item.get("resolved_model", "") or ""),
+                "backend": str(item.get("backend", "") or ""),
+                "host": str(item.get("host", "") or ""),
+                "disponible": bool(item.get("available", False)),
+                "source": str(item.get("source", "") or ""),
+            }
+            for item in assignments
+            if isinstance(item, dict)
+        ]
+        with st.expander("Rôles et résolutions effectives", expanded=False):
+            st.dataframe(assignment_rows, width="stretch", hide_index=True)
+
+    if role_outputs:
+        role_rows = [
+            {
+                "role": role,
+                "modèle": str((payload or {}).get("model", "") or ""),
+                "disponible": bool((payload or {}).get("available", False)),
+                "erreur": str((payload or {}).get("error", "") or ""),
+                "aperçu": str((payload or {}).get("content_excerpt", "") or ""),
+            }
+            for role, payload in role_outputs.items()
+            if isinstance(payload, dict)
+        ]
+        with st.expander("Sorties compactes des rôles", expanded=False):
+            st.dataframe(role_rows, width="stretch", hide_index=True)
+
+    if shared_memory:
+        with st.expander("Mémoire partagée multi-LLM", expanded=False):
+            st.json(shared_memory)
+
+
+def _render_builder_flow_analysis_panel(session: Any) -> None:
+    payload = _resolve_builder_flow_analysis_payload(session)
+    summary = payload.get("instrumentation_summary") or {}
+    execution_mode = str(payload.get("builder_execution_mode") or "")
+    instrumentation_enabled = bool(payload.get("instrumentation_enabled"))
+
+    st.markdown("#### Analyse du flux Builder")
+    st.caption(
+        "Lecture orientée produit du pipeline Builder: ce qui bloque, ce qui aide, "
+        "et où comparer deux sessions instrumentées."
+    )
+
+    if not instrumentation_enabled or not isinstance(summary, dict) or not summary:
+        st.info(
+            "Aucune trace disponible pour cette session. Active `Activer l'analyse de flux sur le prochain run` "
+            "dans l'onglet `Modèles & runtime`, puis relance un Builder."
+        )
+        return
+
+    if execution_mode and execution_mode != BUILDER_EXECUTION_MODE_MONO:
+        st.caption(
+            "La lecture détaillée dans l'interface est prioritairement optimisée pour le mode Mono "
+            "dans cette première vague. Les mêmes champs de persistance restent disponibles en multi-LLM "
+            "et un panneau dédié `Analyse avancée multi-LLM` est affiché plus bas."
+        )
+
+    metric_cols = st.columns(6)
+    metric_cols[0].metric(
+        "Temps / itération",
+        f"{_safe_numeric_float(summary.get('avg_iteration_sec'), 0.0):.2f}s",
+    )
+    metric_cols[1].metric(
+        "Fallback",
+        f"{_safe_numeric_float(summary.get('fallback_rate'), 0.0) * 100:.1f}%",
+    )
+    metric_cols[2].metric(
+        "Réparation",
+        f"{_safe_numeric_float(summary.get('repair_rate'), 0.0) * 100:.1f}%",
+    )
+    metric_cols[3].metric(
+        "Runtime fix",
+        int(summary.get("runtime_fix_count", 0) or 0),
+    )
+    metric_cols[4].metric(
+        "Préchecks bloquants",
+        int(summary.get("precheck_skip_count", 0) or 0),
+    )
+    metric_cols[5].metric(
+        "Stagnation",
+        int(summary.get("stagnation_count", 0) or 0),
+    )
+
+    blockers = list(summary.get("blockers", []) or [])
+    helpers = list(summary.get("helpers", []) or [])
+    blocker_text = ", ".join(
+        f"{item.get('kind')} ({int(item.get('count', 0) or 0)})"
+        for item in blockers[:5]
+        if isinstance(item, dict)
+    )
+    helper_text = ", ".join(
+        f"{item.get('kind')} ({int(item.get('count', 0) or 0)})"
+        for item in helpers[:5]
+        if isinstance(item, dict)
+    )
+
+    st.markdown("**Qu’est-ce qui bloque ?**")
+    st.caption(
+        blocker_text or "Aucun frein récurrent n'a dominé cette session instrumentée."
+    )
+    st.markdown("**Qu’est-ce qui aide ?**")
+    st.caption(
+        helper_text or "Aucune aide récurrente n'a eu besoin de compenser fortement le flux."
+    )
+    st.markdown("**Où le flux diverge ?**")
+    st.caption(
+        "Utilise la comparaison de sessions dans l’explorateur des sessions Builder pour isoler la phase racine "
+        "entre deux runs instrumentés du même mode."
+    )
+
+    with st.expander("Chronologie de session", expanded=False):
+        phase_totals = dict(summary.get("phase_totals_sec", {}) or {})
+        phase_counts = dict(summary.get("phase_counts", {}) or {})
+        phase_errors = dict(summary.get("phase_errors", {}) or {})
+        phase_avg = dict(summary.get("phase_avg_sec", {}) or {})
+        phase_rows = [
+            {
+                "phase": phase,
+                "temps_total_s": _safe_numeric_float(phase_totals.get(phase), 0.0),
+                "temps_moyen_s": _safe_numeric_float(phase_avg.get(phase), 0.0),
+                "occurrences": int(phase_counts.get(phase, 0) or 0),
+                "erreurs": int(phase_errors.get(phase, 0) or 0),
+            }
+            for phase in sorted(set(phase_totals) | set(phase_counts) | set(phase_errors))
+        ]
+        if phase_rows:
+            st.dataframe(phase_rows, width="stretch", hide_index=True)
+        else:
+            st.caption("Aucune chronologie détaillée disponible pour cette session.")
+
+    with st.expander("Vue avancée", expanded=False):
+        disabled_steps = [
+            step
+            for step, enabled in dict(payload.get("ablation_config", {}) or {}).items()
+            if not enabled
+        ]
+        st.caption(
+            "Ablation active: "
+            + (", ".join(disabled_steps) if disabled_steps else "aucune, pipeline complet")
+        )
+        traces_path = str(payload.get("pipeline_traces_path", "") or "")
+        if traces_path:
+            st.caption(f"Trace détaillée: `{traces_path}`")
+        st.json(summary)
+
+
 # ---------------------------------------------------------------------------
 # Warmup Ollama — préchargement du modèle en VRAM
 # ---------------------------------------------------------------------------
@@ -2067,12 +2627,28 @@ def _normalize_ollama_host(ollama_host: str) -> str:
 
 
 def _model_matches(model_name: str, requested_model: str) -> bool:
-    """Matching tolérant entre nom de modèle demandé et liste Ollama."""
-    model_name_l = model_name.lower()
-    requested_l = requested_model.lower()
+    """Matching contrôlé entre nom demandé et liste Ollama.
+
+    Ne doit jamais confondre deux variantes de tailles différentes
+    comme `qwen3-coder:480b` et `qwen3-coder:30b`.
+    """
+    model_name_l = str(model_name or "").strip().lower()
+    requested_l = str(requested_model or "").strip().lower()
+
+    if not model_name_l or not requested_l:
+        return False
 
     if model_name_l == requested_l:
         return True
+
+    model_size = _extract_model_size_b(model_name_l)
+    requested_size = _extract_model_size_b(requested_l)
+    if model_size > 0 and requested_size > 0 and model_size != requested_size:
+        return False
+
+    if ":" in model_name_l and ":" in requested_l:
+        return False
+
     if model_name_l.startswith(requested_l):
         return True
     if requested_l.startswith(model_name_l):
@@ -2099,13 +2675,75 @@ def _extract_model_size_b(model_name: str) -> float:
         return -1.0
 
 
+def _is_cloud_only_model(model_name: str) -> bool:
+    return bool(is_cloud_only_model(model_name))
+
+
+def _store_builder_runtime_acceptance_probe(payload: Dict[str, Any]) -> Dict[str, Any]:
+    probe_payload = dict(payload or {})
+    st.session_state["builder_runtime_acceptance_probe"] = probe_payload
+    return probe_payload
+
+
+def _resolve_cloud_runtime_model_alias(
+    requested_model: str,
+    tag_entries: List[Dict[str, Any]],
+) -> tuple[str, str, bool]:
+    requested = str(requested_model or "").strip()
+    if not requested:
+        return "", "Nom de modèle vide.", False
+    if not _is_cloud_only_model(requested):
+        return requested, "", False
+
+    for entry in list(tag_entries or []):
+        tag_name = str(entry.get("name", "") or "").strip()
+        remote_model = str(entry.get("remote_model", "") or "").strip()
+        if not tag_name:
+            continue
+        if remote_model and (
+            _model_matches(remote_model, requested)
+            or _model_matches(requested, remote_model)
+        ):
+            return (
+                tag_name,
+                f"Alias runtime cloud détecté pour `{requested}` -> `{tag_name}`.",
+                True,
+            )
+        tag_name_l = tag_name.lower()
+        requested_l = requested.lower()
+        if tag_name_l == requested_l:
+            return tag_name, "", True
+        if tag_name_l.endswith("-cloud") and tag_name_l.startswith(requested_l):
+            return (
+                tag_name,
+                f"Alias runtime cloud détecté pour `{requested}` -> `{tag_name}`.",
+                True,
+            )
+
+    return (
+        requested,
+        (
+            f"Modèle cloud-only `{requested}` transmis tel quel au runtime Ollama Cloud. "
+            "Aucune substitution locale n'est autorisée."
+        ),
+        True,
+    )
+
+
 def _resolve_requested_model(
     requested_model: str,
     installed_models: List[str],
     *,
     allow_fallback: bool = False,
+    tag_entries: List[Dict[str, Any]] | None = None,
 ) -> tuple[str, str, bool]:
     """Résout un modèle demandé vers un modèle installé."""
+    if _is_cloud_only_model(requested_model):
+        return _resolve_cloud_runtime_model_alias(
+            requested_model,
+            list(tag_entries or []),
+        )
+
     if not installed_models:
         return requested_model, "Aucun modèle installé détecté.", False
 
@@ -2316,6 +2954,22 @@ def _prepare_builder_llm(
 ) -> tuple[bool, str, str]:
     """Prépare Ollama + modèle pour le Strategy Builder (check + warmup)."""
     ollama_host = _normalize_ollama_host(ollama_host)
+    probe_payload: Dict[str, Any] = {
+        "requested_model": str(model or "").strip(),
+        "resolved_model": str(model or "").strip(),
+        "ollama_host": ollama_host,
+        "cloud_only": _is_cloud_only_model(model),
+        "host_reachable": False,
+        "present_in_tags": False,
+        "accepted": False,
+        "status": "pending",
+        "message": "Préparation runtime en cours.",
+        "tags_status_code": None,
+        "runtime_status_code": None,
+        "warmup_attempted": False,
+        "warmup_ok": None,
+        "warmup_detail": "",
+    }
     if auto_start_ollama and _is_local_ollama_host(ollama_host):
         try:
             ok, msg = ensure_ollama_running(
@@ -2325,39 +2979,118 @@ def _prepare_builder_llm(
         except TypeError:
             ok, msg = ensure_ollama_running(ollama_host=ollama_host)
         if not ok:
+            probe_payload.update(
+                {
+                    "status": "startup_failed",
+                    "message": msg,
+                }
+            )
+            _store_builder_runtime_acceptance_probe(probe_payload)
             return False, msg, model
 
     try:
         tags = httpx.get(f"{ollama_host}/api/tags", timeout=8.0)
     except Exception as exc:
+        probe_payload.update(
+            {
+                "status": "host_unreachable",
+                "message": f"Ollama inaccessible ({ollama_host}): {exc}",
+            }
+        )
+        _store_builder_runtime_acceptance_probe(probe_payload)
         return False, f"Ollama inaccessible ({ollama_host}): {exc}", model
 
     if tags.status_code != 200:
+        probe_payload.update(
+            {
+                "status": "host_http_error",
+                "message": f"Ollama indisponible sur {ollama_host} (status={tags.status_code})",
+                "tags_status_code": tags.status_code,
+            }
+        )
+        _store_builder_runtime_acceptance_probe(probe_payload)
         return (
             False,
             f"Ollama indisponible sur {ollama_host} (status={tags.status_code})",
             model,
         )
 
-    models = [m.get("name", "") for m in tags.json().get("models", []) if m.get("name")]
+    try:
+        tags_payload = tags.json()
+    except Exception:
+        tags_payload = {}
+    tag_entries = list(tags_payload.get("models", []) or [])
+    models = [m.get("name", "") for m in tag_entries if m.get("name")]
+    probe_payload.update(
+        {
+            "host_reachable": True,
+            "tags_status_code": tags.status_code,
+        }
+    )
     resolved_model, resolve_note, model_found = _resolve_requested_model(
         model,
         models,
         allow_fallback=allow_model_fallback,
+        tag_entries=tag_entries,
     )
+    probe_payload["resolved_model"] = resolved_model
     if not model_found:
+        probe_payload.update(
+            {
+                "status": "local_model_missing",
+                "message": resolve_note,
+            }
+        )
+        _store_builder_runtime_acceptance_probe(probe_payload)
         return False, resolve_note, model
+
+    if _is_cloud_only_model(resolved_model):
+        acceptance_probe = probe_model_runtime_acceptance(
+            resolved_model,
+            requested_model=model,
+            ollama_host=ollama_host,
+            tags_payload=tags_payload,
+            tags_status_code=tags.status_code,
+        )
+        acceptance_probe["cloud_only"] = True
+        acceptance_probe["warmup_attempted"] = False
+        acceptance_probe["warmup_ok"] = None
+        acceptance_probe["warmup_detail"] = ""
+        _store_builder_runtime_acceptance_probe(acceptance_probe)
+        if not acceptance_probe.get("accepted"):
+            return False, str(acceptance_probe.get("message") or resolve_note), resolved_model
+        probe_payload = acceptance_probe
+    else:
+        probe_payload.update(
+            {
+                "cloud_only": False,
+                "present_in_tags": any(_model_matches(name, resolved_model) for name in models),
+                "accepted": True,
+                "status": "local_model_visible",
+                "message": f"Le modèle `{resolved_model}` est visible sur {ollama_host} via /api/tags.",
+            }
+        )
+        _store_builder_runtime_acceptance_probe(probe_payload)
 
     if not preload_model:
         msg = f"Ollama OK ({ollama_host}) — warmup désactivé."
         if resolve_note:
             msg = f"{resolve_note} {msg}"
+        probe_payload["message"] = f"{probe_payload.get('message', '').strip()} Warmup désactivé.".strip()
+        _store_builder_runtime_acceptance_probe(probe_payload)
         return True, msg, resolved_model
 
     warmup_ok, warmup_detail = _warmup_ollama_model(
         model=resolved_model,
         ollama_host=ollama_host,
         keep_alive_minutes=keep_alive_minutes,
+    )
+    probe_payload.update(
+        {
+            "warmup_attempted": True,
+            "warmup_ok": warmup_ok,
+            "warmup_detail": warmup_detail,
+        }
     )
     if warmup_ok:
         msg = (
@@ -2367,12 +3100,24 @@ def _prepare_builder_llm(
         )
         if resolve_note:
             msg = f"{resolve_note} {msg}"
+        probe_payload["message"] = msg
+        _store_builder_runtime_acceptance_probe(probe_payload)
         return (
             True,
             msg,
             resolved_model,
         )
 
+    probe_payload.update(
+        {
+            "status": "warmup_failed",
+            "message": (
+                f"Impossible de précharger `{resolved_model}` sur {ollama_host}. "
+                f"Détail: {warmup_detail}"
+            ),
+        }
+    )
+    _store_builder_runtime_acceptance_probe(probe_payload)
     return (
         False,
         (
@@ -2559,6 +3304,8 @@ def _stable_random_pick(session_key: str, candidates: List[str], fallback: str) 
 
 def _pick_builder_session_role_overrides(
     role_pools: Dict[str, List[str]],
+    *,
+    inventory: Any | None = None,
 ) -> Dict[str, str]:
     """Tire un seul modele par role pour la session courante.
 
@@ -2575,8 +3322,71 @@ def _pick_builder_session_role_overrides(
         ]
         if not pool:
             continue
+        if inventory is not None:
+            runtime_pickable_pool: List[str] = []
+            inventory_find = getattr(inventory, "find", None)
+            live_reachable = bool(getattr(inventory, "live_ollama_reachable", False))
+            for candidate in pool:
+                if not _is_cloud_only_model(candidate):
+                    runtime_pickable_pool.append(candidate)
+                    continue
+                discovered = inventory_find(candidate) if callable(inventory_find) else None
+                if discovered is not None and (not live_reachable or bool(getattr(discovered, "live", False))):
+                    runtime_pickable_pool.append(candidate)
+            if runtime_pickable_pool:
+                pool = runtime_pickable_pool
         selected[role] = random.choice(pool)
     return selected
+
+
+def _prepare_multi_llm_role_runtime_with_failover(
+    manager: "MultiLLMSessionManager",
+    *,
+    role: str,
+    preload_model: bool,
+    keep_alive_minutes: int,
+    auto_start_ollama: bool,
+) -> tuple[bool, str, str]:
+    assignment = manager.resolve_role_assignment(role)
+    route = manager.resolve_role_route(role)
+    attempted_messages: List[str] = []
+    last_model = ""
+
+    while assignment is not None and assignment.available:
+        candidate = str(assignment.resolved_model or assignment.requested_model or "").strip()
+        if not candidate:
+            break
+        last_model = candidate
+        ok, msg, resolved_model = _prepare_builder_llm(
+            model=candidate,
+            ollama_host=route.ollama_host,
+            gpu_target=str(route.gpu_target or "") or None,
+            preload_model=preload_model,
+            keep_alive_minutes=keep_alive_minutes,
+            auto_start_ollama=auto_start_ollama,
+        )
+        if ok:
+            if resolved_model and resolved_model != candidate:
+                assignment.resolved_model = resolved_model
+            if attempted_messages:
+                return (
+                    True,
+                    " | ".join(attempted_messages + [f"fallback actif: {resolved_model}", msg]),
+                    resolved_model,
+                )
+            return True, msg, resolved_model
+
+        attempted_messages.append(f"{candidate}: {msg}")
+        next_candidate = manager.select_next_role_candidate(
+            role,
+            rejected_model=candidate,
+            reason=msg,
+        )
+        if not next_candidate:
+            return False, " | ".join(attempted_messages), last_model or resolved_model
+        assignment = manager.resolve_role_assignment(role)
+
+    return False, " | ".join(attempted_messages) or "Aucun candidat runtime disponible.", last_model
 
 
 def _format_builder_role_pool_summary(role_pools: Dict[str, List[str]]) -> str:
@@ -2636,6 +3446,9 @@ def _builder_market_candidates(
     *,
     current_symbol: str,
     current_timeframe: str,
+    objective: str = "",
+    purpose: str = "builder",
+    fallback_df: Any = None,
 ) -> Tuple[List[str], List[str]]:
     """Construit l'univers symbol/timeframe proposé au LLM."""
     auto_market_pick = bool(getattr(state, "builder_auto_market_pick", False))
@@ -2700,8 +3513,96 @@ def _builder_market_candidates(
     random.shuffle(timeframe_pool)
     timeframes = [*timeframe_anchors, *timeframe_pool]
 
-    # Limiter la taille du prompt LLM.
-    return symbols[:24], timeframes[:12]
+    symbols = symbols[:24]
+    timeframes = timeframes[:12]
+
+    normalized_mode = normalize_universe_mode(
+        getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+        purpose=purpose,
+    )
+    normalized_strategy_type = infer_strategy_type(
+        strategy_key=str(getattr(state, "strategy_key", "") or ""),
+        objective=objective,
+    )
+
+    def _universe_loader(symbol: str, timeframe: str) -> Any:
+        use_fallback = (
+            _has_builder_market_df(fallback_df)
+            and str(symbol or "").strip().upper() == str(current_symbol or "").strip().upper()
+            and str(timeframe or "").strip() == str(current_timeframe or "").strip()
+        )
+        loaded_df, load_error, _data_source = _load_builder_market_data(
+            state=state,
+            symbol=symbol,
+            timeframe=timeframe,
+            fallback_df=fallback_df if use_fallback else None,
+            allow_current_fallback=use_fallback,
+        )
+        if load_error is not None or not _has_builder_market_df(loaded_df):
+            return None
+        return loaded_df
+
+    universe_payload = filter_market_universe(
+        symbols=symbols,
+        timeframes=timeframes,
+        universe_mode=normalized_mode,
+        purpose=purpose,
+        strategy_type=normalized_strategy_type,
+        strategy_key=str(getattr(state, "strategy_key", "") or ""),
+        objective=objective,
+        data_loader=_universe_loader,
+    )
+    universe_payload["requested_symbols"] = list(symbols)
+    universe_payload["requested_timeframes"] = list(timeframes)
+    universe_payload["current_symbol"] = str(current_symbol or "").strip().upper()
+    universe_payload["current_timeframe"] = str(current_timeframe or "").strip()
+    st.session_state["_builder_market_last_universe_meta"] = universe_payload
+
+    return list(universe_payload.get("symbols", []) or []), list(
+        universe_payload.get("timeframes", []) or []
+    )
+
+
+def _call_builder_market_candidates(
+    state: Any,
+    *,
+    current_symbol: str,
+    current_timeframe: str,
+    objective: str = "",
+    purpose: str = "builder",
+    fallback_df: Any = None,
+) -> Tuple[List[str], List[str]]:
+    """Appelle `_builder_market_candidates` en restant compatible avec les anciens stubs de test."""
+    candidate_fn = _builder_market_candidates
+    call_kwargs: Dict[str, Any] = {
+        "current_symbol": current_symbol,
+        "current_timeframe": current_timeframe,
+    }
+    optional_kwargs = {
+        "objective": objective,
+        "purpose": purpose,
+        "fallback_df": fallback_df,
+    }
+    try:
+        signature = inspect.signature(candidate_fn)
+    except (TypeError, ValueError):
+        signature = None
+    if signature is None:
+        return candidate_fn(state, **call_kwargs, **optional_kwargs)
+
+    accepts_var_kwargs = any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+    for key, value in optional_kwargs.items():
+        if accepts_var_kwargs or key in signature.parameters:
+            call_kwargs[key] = value
+    return candidate_fn(state, **call_kwargs)
+
+
+def _get_builder_market_universe_meta() -> Dict[str, Any]:
+    payload = st.session_state.get("_builder_market_last_universe_meta", {})
+    return dict(payload) if isinstance(payload, dict) else {}
 
 
 def _state_date_to_iso(value: Any) -> str | None:
@@ -2791,10 +3692,26 @@ def _validate_builder_market_dataset(
     df: Any,
     symbol: str,
     timeframe: str,
+    universe_mode: str = "canonical",
+    strategy_type: str = "",
+    purpose: str = "builder",
+    objective: str = "",
 ) -> tuple[bool, str]:
     if not _has_builder_market_df(df):
         return False, "Aucune donnée OHLCV chargée."
     try:
+        return validate_builder_dataset_exploitability(
+            df,
+            symbol=symbol,
+            timeframe=timeframe,
+            universe_mode=universe_mode,
+            strategy_type=strategy_type,
+            purpose=purpose,
+            objective=objective,
+        )
+    except TypeError as exc:
+        if "unexpected keyword argument" not in str(exc):
+            raise
         return validate_builder_dataset_exploitability(
             df,
             symbol=symbol,
@@ -2807,6 +3724,20 @@ def _validate_builder_market_dataset(
             timeframe,
             exc,
         )
+        evaluation = evaluate_market_dataset(
+            df,
+            symbol=symbol,
+            timeframe=timeframe,
+            universe_mode=universe_mode,
+            purpose=purpose,
+            strategy_type=strategy_type,
+            objective=objective,
+        )
+        if evaluation.get("accepted"):
+            return True, ""
+        reasons = list(evaluation.get("exclusion_reasons", []) or [])
+        if reasons:
+            return False, f"{symbol}/{timeframe}: " + " | ".join(str(reason) for reason in reasons)
         if not _has_builder_market_enough_bars(df):
             return False, _builder_market_min_bars_error(
                 symbol,
@@ -3066,6 +3997,8 @@ def _find_first_valid_builder_market(
     preferred_pairs: List[Tuple[str, str]] | None = None,
     recent_markets: List[Tuple[str, str]] | None = None,
     max_pairs: int = 24,
+    objective: str = "",
+    purpose: str = "builder",
 ) -> tuple[str, str, Any, Dict[str, Any]]:
     probe_pairs = _build_builder_market_probe_pairs(
         symbols,
@@ -3075,6 +4008,15 @@ def _find_first_valid_builder_market(
         max_pairs=max_pairs,
     )
     failures: List[Dict[str, str]] = []
+    strategy_type = infer_strategy_type(
+        strategy_key=str(getattr(state, "strategy_key", "") or ""),
+        objective=objective,
+    )
+    universe_mode = normalize_universe_mode(
+        getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+        purpose=purpose,
+    )
+    universe_meta = _get_builder_market_universe_meta()
 
     for probe_symbol, probe_timeframe in probe_pairs:
         use_fallback = (
@@ -3094,6 +4036,10 @@ def _find_first_valid_builder_market(
                 df=probe_df,
                 symbol=probe_symbol,
                 timeframe=probe_timeframe,
+                universe_mode=universe_mode,
+                strategy_type=strategy_type,
+                purpose=purpose,
+                objective=objective,
             )
             if not dataset_ok:
                 failures.append(
@@ -3108,6 +4054,9 @@ def _find_first_valid_builder_market(
                 "data_source": data_source,
                 "failures": failures,
                 "probed_pairs": probe_pairs,
+                "universe_mode": universe_mode,
+                "strategy_type": strategy_type,
+                "universe_criteria": dict(universe_meta.get("criteria", {}) or {}),
             }
         if load_error:
             failures.append(
@@ -3122,18 +4071,28 @@ def _find_first_valid_builder_market(
         df=fallback_df,
         symbol=default_symbol,
         timeframe=default_timeframe,
+        universe_mode=universe_mode,
+        strategy_type=strategy_type,
+        purpose=purpose,
+        objective=objective,
     )
     if fallback_ok:
         return default_symbol, default_timeframe, fallback_df, {
             "data_source": "fallback_current_df",
             "failures": failures,
             "probed_pairs": probe_pairs,
+            "universe_mode": universe_mode,
+            "strategy_type": strategy_type,
+            "universe_criteria": dict(universe_meta.get("criteria", {}) or {}),
         }
 
     return "", "", None, {
         "data_source": "load_error",
         "failures": failures,
         "probed_pairs": probe_pairs,
+        "universe_mode": universe_mode,
+        "strategy_type": strategy_type,
+        "universe_criteria": dict(universe_meta.get("criteria", {}) or {}),
     }
 
 
@@ -3146,13 +4105,45 @@ def _pick_market_for_objective(
     default_timeframe: str,
     fallback_df: Any,
     recent_markets: list[tuple[str, str]] | None = None,
+    purpose: str = "builder_auto_market",
 ) -> tuple[str, str, Any, Dict[str, Any]]:
     """Demande au LLM le meilleur marché pour l'objectif puis charge les données."""
-    symbols, timeframes = _builder_market_candidates(
+    symbols, timeframes = _call_builder_market_candidates(
         state,
         current_symbol=default_symbol,
         current_timeframe=default_timeframe,
+        objective=objective,
+        purpose=purpose,
+        fallback_df=fallback_df,
     )
+    universe_meta = _get_builder_market_universe_meta()
+    strategy_type = str(universe_meta.get("strategy_type") or infer_strategy_type(
+        strategy_key=str(getattr(state, "strategy_key", "") or ""),
+        objective=objective,
+    ))
+    universe_mode = str(
+        universe_meta.get("universe_mode")
+        or normalize_universe_mode(
+            getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+            purpose=purpose,
+        )
+    )
+    if not symbols or not timeframes:
+        return "", "", None, {
+            "symbol": "",
+            "timeframe": "",
+            "confidence": 0.0,
+            "reason": "Aucun marché éligible dans l'univers courant.",
+            "source": "universe_empty",
+            "data_source": "load_error",
+            "load_error": "Aucun marché éligible après filtres locaux/canoniques.",
+            "candidate_symbols": symbols,
+            "candidate_timeframes": timeframes,
+            "universe_mode": universe_mode,
+            "universe_strategy_type": strategy_type,
+            "universe_criteria": dict(universe_meta.get("criteria", {}) or {}),
+            "universe_exclusions": list(universe_meta.get("excluded_pairs", []) or []),
+        }
     pick = recommend_market_context(
         llm_client,
         objective=objective,
@@ -3176,6 +4167,10 @@ def _pick_market_for_objective(
             df=run_df,
             symbol=run_symbol,
             timeframe=run_timeframe,
+            universe_mode=universe_mode,
+            strategy_type=strategy_type,
+            purpose=purpose,
+            objective=objective,
         )
         if not dataset_ok:
             load_error = dataset_error
@@ -3191,11 +4186,17 @@ def _pick_market_for_objective(
             fallback_df=fallback_df,
             preferred_pairs=[(default_symbol, default_timeframe)],
             recent_markets=recent_markets,
+            objective=objective,
+            purpose=purpose,
         )
         fallback_ok, _fallback_error = _validate_builder_market_dataset(
             df=fallback_candidate_df,
             symbol=fallback_symbol,
             timeframe=fallback_timeframe,
+            universe_mode=universe_mode,
+            strategy_type=strategy_type,
+            purpose=purpose,
+            objective=objective,
         )
         if fallback_ok and fallback_symbol and fallback_timeframe:
             run_symbol = fallback_symbol
@@ -3214,7 +4215,119 @@ def _pick_market_for_objective(
     pick["load_error"] = load_error
     pick["candidate_symbols"] = symbols
     pick["candidate_timeframes"] = timeframes
+    pick["universe_mode"] = universe_mode
+    pick["universe_strategy_type"] = strategy_type
+    pick["universe_criteria"] = dict(universe_meta.get("criteria", {}) or {})
+    pick["universe_exclusions"] = list(universe_meta.get("excluded_pairs", []) or [])
     return run_symbol, run_timeframe, run_df, pick
+
+
+def _select_autonomous_market_for_session(
+    *,
+    state: Any,
+    objective: str,
+    objective_mode: str,
+    use_auto_market_pick: bool,
+    llm_client: Any,
+    default_symbol: str,
+    default_timeframe: str,
+    fallback_df: Any,
+    recent_markets: list[tuple[str, str]] | None = None,
+) -> tuple[str, str, Any, Dict[str, Any]]:
+    universe_mode = normalize_universe_mode(
+        getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+        purpose="builder_autonomous",
+    )
+    strategy_type = infer_strategy_type(
+        strategy_key=str(getattr(state, "strategy_key", "") or ""),
+        objective=objective,
+    )
+    if not use_auto_market_pick:
+        dataset_ok, dataset_msg = _validate_builder_market_dataset(
+            df=fallback_df,
+            symbol=default_symbol,
+            timeframe=default_timeframe,
+            universe_mode=universe_mode,
+            strategy_type=strategy_type,
+            purpose="builder_autonomous",
+            objective=objective,
+        )
+        return default_symbol, default_timeframe, fallback_df, {
+            "source": "auto_market_disabled",
+            "reason": (
+                "Auto-market pick désactivé."
+                if dataset_ok
+                else f"Marché courant rejeté par l'univers {universe_mode}: {dataset_msg}"
+            ),
+            "data_source": "fallback_current_df" if _has_builder_market_df(fallback_df) else "none",
+            "load_error": None if dataset_ok else dataset_msg,
+            "universe_mode": universe_mode,
+            "universe_strategy_type": strategy_type,
+        }
+
+    normalized_mode = str(objective_mode or "").strip().lower()
+    if normalized_mode == "llm" and llm_client is not None:
+        return _pick_market_for_objective(
+            state=state,
+            objective=objective,
+            llm_client=llm_client,
+            default_symbol=default_symbol,
+            default_timeframe=default_timeframe,
+            fallback_df=fallback_df,
+            recent_markets=recent_markets,
+            purpose="builder_autonomous",
+        )
+
+    fallback_symbols, fallback_timeframes = _call_builder_market_candidates(
+        state=state,
+        current_symbol=default_symbol,
+        current_timeframe=default_timeframe,
+        objective=objective,
+        purpose="builder_autonomous",
+        fallback_df=fallback_df,
+    )
+    fallback_symbol, fallback_timeframe, fallback_candidate_df, fallback_meta = _find_first_valid_builder_market(
+        state=state,
+        symbols=fallback_symbols,
+        timeframes=fallback_timeframes,
+        default_symbol=default_symbol,
+        default_timeframe=default_timeframe,
+        fallback_df=fallback_df,
+        preferred_pairs=[(default_symbol, default_timeframe)],
+        recent_markets=recent_markets,
+        objective=objective,
+        purpose="builder_autonomous",
+    )
+    if fallback_symbol and fallback_timeframe and _has_builder_market_df(fallback_candidate_df):
+        source = "deterministic_recovery" if normalized_mode != "llm" else "deterministic_no_llm_client"
+        reason = (
+            "Mode recovery/fallback: sélection déterministe d'un marché valide sans appel LLM."
+            if normalized_mode != "llm"
+            else "Client de sélection marché indisponible: fallback déterministe appliqué."
+        )
+        return fallback_symbol, fallback_timeframe, fallback_candidate_df, {
+            "source": source,
+            "reason": reason,
+            "confidence": 0.0,
+            "data_source": str(fallback_meta.get("data_source", "loaded") or "loaded"),
+            "load_error": None,
+            "candidate_symbols": fallback_symbols,
+            "candidate_timeframes": fallback_timeframes,
+            "probe_failures": fallback_meta.get("failures", []),
+            "universe_mode": str(fallback_meta.get("universe_mode") or universe_mode),
+            "universe_strategy_type": str(fallback_meta.get("strategy_type") or strategy_type),
+            "universe_criteria": dict(fallback_meta.get("universe_criteria", {}) or {}),
+        }
+
+    return default_symbol, default_timeframe, fallback_df, {
+        "source": "deterministic_recovery_failed",
+        "reason": "Aucun marché valide trouvé pendant le fallback déterministe.",
+        "confidence": 0.0,
+        "data_source": "load_error",
+        "load_error": "Aucun marché Builder exploitable trouvé.",
+        "universe_mode": universe_mode,
+        "universe_strategy_type": strategy_type,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -3241,12 +4354,24 @@ def _run_single_builder_session(
     fees_bps: float,
     slippage_bps: float,
     df: Any,
+    universe_mode: str = "canonical",
+    universe_purpose: str = "builder",
+    universe_strategy_type: str = "",
+    universe_meta: Optional[Dict[str, Any]] = None,
     session_label: str = "",
     skip_llm_prepare: bool = False,
     show_config_caption: bool = True,
     autonomous_runtime_watchdog: bool = False,
     phase_llm_clients: Optional[Dict[str, Any]] = None,
     multi_llm_manager: Optional["MultiLLMSessionManager"] = None,
+    builder_execution_mode: str = BUILDER_EXECUTION_MODE_MONO,
+    orchestration_mode: str = "single_llm",
+    builder_flow_analysis_enabled: bool = False,
+    builder_flow_analysis_ablation: Optional[Dict[str, bool]] = None,
+    multi_llm_profile: str = "",
+    multi_llm_role_overrides: Optional[Dict[str, Any]] = None,
+    multi_llm_assignments: Optional[List[Dict[str, Any]]] = None,
+    run_multi_llm_review: bool = False,
 ) -> Any:
     """Exécute une session builder unique et affiche les résultats.
 
@@ -3266,6 +4391,7 @@ def _run_single_builder_session(
             f"Modèle: `{model}` | Max itérations: {max_iterations} | "
             f"Sharpe cible: {target_sharpe} | Capital: ${capital:,.0f} | "
             f"Marché: {symbol} {timeframe} | "
+            f"Univers: `{universe_mode}` | "
             f"Données: {len(df):,} barres | "
             f"Frais: {fees_bps}bps + {slippage_bps}bps slip"
         )
@@ -3549,6 +4675,33 @@ def _run_single_builder_session(
         backtest_completed_callback=_maybe_auto_save_run,
         progress_callback=_on_builder_progress,
     )
+    builder.builder_execution_mode = str(
+        builder_execution_mode or BUILDER_EXECUTION_MODE_MONO
+    )
+    builder.orchestration_mode = str(orchestration_mode or "single_llm")
+    builder.multi_llm_profile = (
+        str(multi_llm_profile or "")
+        if builder.orchestration_mode == "multi_llm"
+        else ""
+    )
+    builder.multi_llm_role_overrides = (
+        dict(multi_llm_role_overrides or {})
+        if builder.orchestration_mode == "multi_llm"
+        else {}
+    )
+    builder.multi_llm_assignments = (
+        list(multi_llm_assignments or [])
+        if builder.orchestration_mode == "multi_llm"
+        else []
+    )
+    builder.instrumentation.enabled = bool(builder_flow_analysis_enabled)
+    builder.ablation.enable_all()
+    for step, enabled in dict(builder_flow_analysis_ablation or {}).items():
+        if not enabled:
+            try:
+                builder.ablation.disable(step)
+            except ValueError:
+                continue
     compatible_indicators = _get_builder_compatible_indicators(df)
     if compatible_indicators:
         builder.available_indicators = compatible_indicators
@@ -3570,6 +4723,10 @@ def _run_single_builder_session(
                 timeframe=timeframe,
                 fees_bps=fees_bps,
                 slippage_bps=slippage_bps,
+                universe_mode=universe_mode,
+                universe_purpose=universe_purpose,
+                universe_strategy_type=universe_strategy_type,
+                universe_meta=universe_meta,
             )
         except KeyboardInterrupt:
             live_status.update(label="⚠️ Interrompu", state="error")
@@ -3630,6 +4787,43 @@ def _run_single_builder_session(
 
     progress_bar.progress(1.0, text="Terminé")
 
+    if run_multi_llm_review and multi_llm_manager is not None:
+        try:
+            review_payload = _finalize_multi_llm_session_review(
+                objective=objective,
+                session=session,
+                target_sharpe=target_sharpe,
+                multi_llm_manager=multi_llm_manager,
+                persist_summary=True,
+            )
+            router_decision = dict(review_payload.get("router_decision", {}) or {})
+            router_action = str(router_decision.get("action", "iterate") or "iterate")
+            router_reason = str(router_decision.get("reason", "") or "").strip()
+            st.caption(
+                f"Multi-LLM router: {router_action}"
+                + (f" | {router_reason}" if router_reason else "")
+            )
+            if runtime_diag_placeholder is not None:
+                _sync_builder_runtime_diagnostic(
+                    multi_llm_manager,
+                    mode="multi_llm",
+                    event="session_review_done",
+                    phase="analysis",
+                    iteration=len(getattr(session, "iterations", []) or []),
+                    max_iterations=max_iterations,
+                    status=str(getattr(session, "status", "") or ""),
+                    session_label=session_label,
+                    objective=objective,
+                    placeholder=runtime_diag_placeholder,
+                    expanded=True,
+                )
+        except Exception as exc:
+            logger.warning("builder_manual_multi_llm_review_failed error=%s", exc)
+            st.warning(
+                "Relecture multi-LLM post-session indisponible pour ce run. "
+                f"Détail: {exc}"
+            )
+
     with iterations_container:
         st.markdown("### 📋 Historique des itérations")
         for it in session.iterations:
@@ -3639,6 +4833,9 @@ def _run_single_builder_session(
     with summary_placeholder.container():
         st.markdown("---")
         render_session_summary(session)
+        _render_builder_flow_analysis_panel(session)
+        _render_builder_campaign_memory_card(session)
+        _render_multi_llm_session_analysis_panel(session)
 
     if multi_llm_manager is not None and runtime_diag_placeholder is not None:
         _sync_builder_runtime_diagnostic(
@@ -3764,11 +4961,10 @@ def _render_autonomous_recap(
 
         source = str(h.get("source_label", "") or "-")
         status = h.get("status", "?")
-        sharpe = h.get("final_sharpe", h.get("best_sharpe"))
-        score = h.get("best_score")
-        ret = h.get("final_return", h.get("best_return"))
-        max_dd = h.get("final_max_dd", h.get("best_max_dd"))
-        trades = h.get("final_trades", h.get("best_trades"))
+        sharpe = h.get("best_sharpe", h.get("final_sharpe"))
+        ret = h.get("best_return", h.get("final_return"))
+        max_dd = h.get("best_max_dd", h.get("final_max_dd"))
+        trades = h.get("best_trades", h.get("final_trades"))
         duration = h.get("duration", 0)
         gain_metrics = _resolve_autonomous_gain_metrics(h)
 
@@ -3794,7 +4990,6 @@ def _render_autonomous_recap(
             f"<td>{_escape_autonomous_recap_cell(source)}</td>"
             f"<td>{objective_html}</td>"
             f"<td>{status_html}</td>"
-            f"<td class='builder-autonomous-recap-num'>{_escape_autonomous_recap_cell(_fmt_float(score, '{:.2f}'))}</td>"
             f"<td class='builder-autonomous-recap-num'>{_escape_autonomous_recap_cell(_fmt_float(sharpe, '{:.3f}'))}</td>"
             f"<td class='builder-autonomous-recap-num'>{_escape_autonomous_recap_cell(_fmt_float(ret, '{:+.2f}%'))}</td>"
             f"<td class='builder-autonomous-recap-num'>{_escape_autonomous_recap_cell(_fmt_currency(gain_metrics.get('total_pnl')))}</td>"
@@ -3820,7 +5015,6 @@ def _render_autonomous_recap(
                 "started_at_display": started_at,
                 "status": status,
                 "status_display": f"{badge['icon']} {badge['label']}",
-                "best_score": score,
                 "best_sharpe": h.get("best_sharpe"),
                 "final_sharpe": sharpe,
                 "final_return_pct": ret,
@@ -3964,10 +5158,9 @@ def _render_autonomous_recap(
     <tr>
       <th>Session</th>
         <th>Date/heure</th>
-        <th>Generation</th>
+            <th>Generation</th>
             <th>Objectif</th>
       <th>Statut</th>
-      <th>Score</th>
       <th>Sharpe fin.</th>
       <th>Return fin.</th>
       <th>Gain total EUR</th>
@@ -4001,8 +5194,7 @@ def _render_autonomous_recap(
 <div class="builder-autonomous-recap-legend">
     <strong>Generation :</strong> <strong>LLM</strong> = objectif formule par le modele ;
     <strong>Fallback simple</strong> = objectif de secours produit par le runtime quand il doit repartir sans dependre du flux LLM principal.<br>
-    <strong>Lecture des metriques :</strong> <strong>Score</strong> = meilleur score continu de la session ;
-    <strong>Sharpe/Return/Max DD/Trades</strong> = metriques de la derniere iteration backtestee de la session.<br>
+    <strong>Lecture des metriques :</strong> <strong>Sharpe/Return/Max DD/Trades</strong> = metriques de la derniere iteration backtestee de la session.<br>
     <strong>Gain total EUR / EUR-j</strong> = derive du PnL final si disponible, sinon du return final applique au capital initial ;
     <strong>Jours testes</strong> = plage de donnees reelle si disponible, sinon estimation via le nombre de barres et le timeframe.
 </div>
@@ -4011,10 +5203,10 @@ def _render_autonomous_recap(
 
     # Meilleur global
     if history:
-        best = max(history, key=lambda h: float(h.get("best_score", float("-inf")) or float("-inf")))
+        best = max(history, key=_autonomous_history_strategy_sort_key)
         st.success(
-            f"**Meilleure session :** Score {_fmt_float(best.get('best_score'), '{:.2f}')} "
-            f"(Sharpe {_fmt_float(best.get('best_sharpe'), '{:.3f}')}) — "
+            f"**Meilleure session :** Return {_fmt_float(best.get('final_return', best.get('best_return')), '{:+.2f}%')} "
+            f"(Sharpe {_fmt_float(best.get('final_sharpe', best.get('best_sharpe')), '{:.3f}')}) — "
             f"{best.get('objective', '')[:80]}"
         )
 
@@ -4033,6 +5225,24 @@ def _render_autonomous_recap(
                 "builder_autonomous_leaderboard_export_"
                 f"{max(latest_session_num, len(export_rows))}_{render_seq}"
             ),
+        )
+
+    latest_multi_entry = next(
+        (
+            item
+            for item in reversed(history)
+            if str(item.get("orchestration_mode", "") or "") == "multi_llm"
+        ),
+        None,
+    )
+    if isinstance(latest_multi_entry, dict):
+        _render_builder_campaign_memory_card(
+            latest_multi_entry,
+            title="Mémoire de campagne actuelle",
+        )
+        _render_multi_llm_session_analysis_panel(
+            latest_multi_entry,
+            title="Analyse avancée multi-LLM actuelle",
         )
 
 
@@ -4068,8 +5278,24 @@ def render_builder_view(
     unload_after_run = bool(runtime_preferences["builder_unload_after_run"])
     auto_start_ollama = bool(runtime_preferences["builder_auto_start_ollama"])
     auto_market_pick = bool(getattr(state, "builder_auto_market_pick", False))
+    execution_preferences = resolve_builder_execution_preferences(state)
+    builder_execution_mode = str(
+        execution_preferences["builder_execution_mode"] or BUILDER_EXECUTION_MODE_MONO
+    )
+    orchestration_mode = (
+        "multi_llm"
+        if builder_execution_mode != BUILDER_EXECUTION_MODE_MONO
+        else "single_llm"
+    )
     builder_multi_llm_enabled = bool(
-        getattr(state, "builder_multi_llm_enabled", False)
+        execution_preferences["builder_multi_llm_enabled"]
+    )
+    flow_analysis_preferences = resolve_builder_flow_analysis_preferences(state)
+    builder_flow_analysis_enabled = bool(
+        flow_analysis_preferences["builder_flow_analysis_enabled"]
+    )
+    builder_flow_analysis_ablation = dict(
+        flow_analysis_preferences["builder_flow_analysis_ablation"]
     )
     builder_multi_llm_profile = str(
         getattr(state, "builder_multi_llm_profile", DEFAULT_MULTI_LLM_PROFILE)
@@ -4086,6 +5312,11 @@ def render_builder_view(
     )
     if not builder_multi_llm_enabled:
         st.session_state.pop("builder_runtime_diagnostic", None)
+    orchestration_label = "Mono"
+    if builder_execution_mode == BUILDER_EXECUTION_MODE_EXPERT:
+        orchestration_label = "Multi-LLM Expert"
+    elif builder_execution_mode == BUILDER_EXECUTION_MODE_DUAL_LANE:
+        orchestration_label = "Multi-LLM Dual Lane"
     capital_raw = getattr(state, "builder_capital", 10000.0)
     try:
         capital = float(capital_raw)
@@ -4132,6 +5363,78 @@ def render_builder_view(
             available_tfs,
             "1h",
         )
+
+    autonomous = bool(getattr(state, "builder_autonomous", False))
+    autonomous_running = autonomous and bool(st.session_state.get("is_running", False))
+
+    if autonomous and not autonomous_running:
+        auto_pause = int(getattr(state, "builder_auto_pause", 10) or 10)
+        persisted_supervisor_state = _load_autonomous_supervisor_state()
+        history = st.session_state.get("builder_autonomous_history")
+        if not isinstance(history, list):
+            history = list(persisted_supervisor_state.get("history", []))
+        supervisor = st.session_state.get("builder_autonomous_supervisor")
+        if not isinstance(supervisor, dict):
+            supervisor = dict(
+                persisted_supervisor_state.get(
+                    "supervisor",
+                    _default_autonomous_supervisor_state(),
+                )
+            )
+
+        if auto_market_pick:
+            if available_tokens and available_tfs:
+                market_label = (
+                    f"{len(available_tokens)} symboles × "
+                    f"{len(available_tfs)} timeframes"
+                )
+            else:
+                market_label = "Univers marché indisponible"
+        else:
+            market_label = (
+                f"{symbol} {timeframe}"
+                if symbol and timeframe and symbol != "UNKNOWN"
+                else "Aucune présélection"
+            )
+
+        _render_builder_mode_hero(
+            mode_label="Autonome 24/24",
+            orchestration_label=orchestration_label,
+            market_label=market_label,
+            target_sharpe=target_sharpe,
+            capital=capital,
+            auto_market_pick=auto_market_pick,
+            extra_chips=[
+                f"Pause: {auto_pause}s",
+                "Objectifs: llm-first",
+                f"Max itérations/session: {max_iterations}",
+            ],
+            subtitle="Mode armé mais inactif: le bootstrap marché et le runtime ne démarrent qu'au lancement.",
+        )
+
+        idle_runtime_lines: List[str] = []
+        if builder_multi_llm_enabled:
+            idle_runtime_lines.append(f"Profil multi-LLM: {builder_multi_llm_profile}")
+            if builder_multi_llm_role_overrides:
+                idle_runtime_lines.append(
+                    "Pools par rôle: "
+                    + _format_builder_role_pool_summary(
+                        builder_multi_llm_role_overrides
+                    )
+                )
+        _render_builder_runtime_notes(
+            "🧩 Détails runtime autonome",
+            idle_runtime_lines,
+            expanded=False,
+        )
+        st.info(
+            "Mode autonome prêt. Cliquez sur Lancer pour démarrer la sonde marché, "
+            "préparer le runtime LLM et enchaîner les sessions."
+        )
+        if history:
+            st.markdown("---")
+            _render_autonomous_recap(history, supervisor)
+        return
 
     # ── DIAG: Mode auto-sélection marché ──
     logger.info(
@@ -4228,7 +5531,6 @@ def render_builder_view(
     except (TypeError, ValueError):
         slippage_bps = 5.0
 
-    autonomous = getattr(state, "builder_autonomous", False)
     autonomous_runtime_started = False
     autonomous_resume_ui_state: Dict[str, Any] = {}
 
@@ -4319,6 +5621,7 @@ def render_builder_view(
             fallback_df=df,
             preferred_pairs=preferred_pairs,
             max_pairs=24,
+            purpose="builder_autonomous",
         )
         if not _has_builder_market_df(df):
             with status_container:
@@ -4370,7 +5673,7 @@ def render_builder_view(
 
         _render_builder_mode_hero(
             mode_label="Manuel",
-            orchestration_label="multi-LLM" if builder_multi_llm_enabled else "single-LLM",
+            orchestration_label=orchestration_label,
             market_label=f"{symbol} {timeframe}",
             target_sharpe=target_sharpe,
             capital=capital,
@@ -4397,6 +5700,18 @@ def render_builder_view(
         run_symbol = symbol
         run_timeframe = timeframe
         run_df = df
+        manual_universe_mode = normalize_universe_mode(
+            getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+            purpose="builder_manual",
+        )
+        manual_strategy_type = infer_strategy_type(
+            strategy_key=str(getattr(state, "strategy_key", "") or ""),
+            objective=objective,
+        )
+        manual_universe_meta: Dict[str, Any] = {
+            "mode": manual_universe_mode,
+            "strategy_type": manual_strategy_type,
+        }
         skip_llm_prepare = False
         run_phase_llm_clients: Dict[str, Any] = {}
         manual_multi_llm_manager: Optional[MultiLLMSessionManager] = None
@@ -4407,8 +5722,13 @@ def render_builder_view(
                 st.error("Mode multi-LLM indisponible dans ce workspace.")
                 st.session_state.is_running = False
                 return
+            manual_multi_llm_inventory = discover_local_models(
+                ollama_host=ollama_host,
+                include_live_ollama=True,
+            )
             manual_session_role_overrides = _pick_builder_session_role_overrides(
-                builder_multi_llm_role_overrides
+                builder_multi_llm_role_overrides,
+                inventory=manual_multi_llm_inventory,
             )
             manual_multi_llm_manager = MultiLLMSessionManager(
                 profile_name=builder_multi_llm_profile,
@@ -4422,6 +5742,7 @@ def render_builder_view(
                     global_settings=llm_inference_global_settings,
                     model_profiles=llm_inference_model_profiles,
                 ),
+                inventory=manual_multi_llm_inventory,
                 llm_topology_config=getattr(state, "llm_topology_config", None),
                 inference_global_settings=llm_inference_global_settings,
                 inference_model_profiles=llm_inference_model_profiles,
@@ -4450,7 +5771,6 @@ def render_builder_view(
             run_model = manual_multi_llm_manager.resolve_builder_model()
             run_ollama_host = builder_route.ollama_host
             run_ollama_gpu_target = str(builder_route.gpu_target or "")
-            run_phase_llm_clients = manual_multi_llm_manager.build_builder_phase_clients()
             _sync_builder_runtime_diagnostic(
                 manual_multi_llm_manager,
                 mode="multi_llm",
@@ -4514,14 +5834,23 @@ def render_builder_view(
             with st.spinner(
                 f"⏳ Préparation LLM `{market_model}` ({market_host})…"
             ):
-                ok, msg, resolved_model = _prepare_builder_llm(
-                    model=market_model,
-                    ollama_host=market_host,
-                    gpu_target=market_gpu_target or None,
-                    preload_model=preload_model,
-                    keep_alive_minutes=keep_alive_minutes,
-                    auto_start_ollama=auto_start_ollama,
-                )
+                if manual_multi_llm_manager is not None and market_role in SIMPLE_MULTI_LLM_ACTIVE_ROLES:
+                    ok, msg, resolved_model = _prepare_multi_llm_role_runtime_with_failover(
+                        manual_multi_llm_manager,
+                        role=market_role,
+                        preload_model=preload_model,
+                        keep_alive_minutes=keep_alive_minutes,
+                        auto_start_ollama=auto_start_ollama,
+                    )
+                else:
+                    ok, msg, resolved_model = _prepare_builder_llm(
+                        model=market_model,
+                        ollama_host=market_host,
+                        gpu_target=market_gpu_target or None,
+                        preload_model=preload_model,
+                        keep_alive_minutes=keep_alive_minutes,
+                        auto_start_ollama=auto_start_ollama,
+                    )
                 if ok:
                     st.caption(f"✅ {msg}")
                     market_model = resolved_model
@@ -4602,7 +5931,17 @@ def render_builder_view(
                     default_symbol=symbol,
                     default_timeframe=timeframe,
                     fallback_df=df,
+                    purpose="builder_manual",
                 )
+            manual_universe_meta = {
+                "mode": str(market_pick.get("universe_mode") or manual_universe_mode),
+                "strategy_type": str(
+                    market_pick.get("universe_strategy_type") or manual_strategy_type
+                ),
+                "criteria": dict(market_pick.get("universe_criteria", {}) or {}),
+                "excluded_pairs": list(market_pick.get("universe_exclusions", []) or []),
+                "market_pick": dict(market_pick),
+            }
 
             confidence = float(market_pick.get("confidence", 0.0) or 0.0)
             reason = str(market_pick.get("reason", "") or "").strip()
@@ -4621,6 +5960,26 @@ def render_builder_view(
             if reason:
                 st.caption(f"Raison LLM: {reason}")
 
+        manual_dataset_ok, manual_dataset_msg = _validate_builder_market_dataset(
+            df=run_df,
+            symbol=run_symbol,
+            timeframe=run_timeframe,
+            universe_mode=manual_universe_mode,
+            strategy_type=manual_strategy_type,
+            purpose="builder_manual",
+            objective=objective,
+        )
+        if not manual_dataset_ok:
+            st.error(
+                f"Univers `{manual_universe_mode}`: marché rejeté pour ce run manuel "
+                f"({run_symbol} {run_timeframe}). {manual_dataset_msg}"
+            )
+            if manual_universe_mode != UNIVERSE_MODE_CANONICAL:
+                st.caption("Le mode exploratoire reste disponible, mais il doit être activé explicitement.")
+            _release_multi_llm_runtime(manual_multi_llm_manager)
+            st.session_state.is_running = False
+            return
+
         if (
             builder_multi_llm_enabled
             and manual_multi_llm_manager is not None
@@ -4628,10 +5987,9 @@ def render_builder_view(
             with st.spinner(
                 f"⏳ Préparation builder_llm `{run_model}` ({run_ollama_host})…"
             ):
-                ok, msg, resolved_model = _prepare_builder_llm(
-                    model=run_model,
-                    ollama_host=run_ollama_host,
-                    gpu_target=run_ollama_gpu_target or None,
+                ok, msg, resolved_model = _prepare_multi_llm_role_runtime_with_failover(
+                    manual_multi_llm_manager,
+                    role="builder_llm",
                     preload_model=preload_model,
                     keep_alive_minutes=keep_alive_minutes,
                     auto_start_ollama=auto_start_ollama,
@@ -4639,6 +5997,7 @@ def render_builder_view(
                 if ok:
                     st.caption(f"✅ {msg}")
                     run_model = resolved_model
+                    run_phase_llm_clients = manual_multi_llm_manager.build_builder_phase_clients()
                     manual_multi_llm_manager.activate_runtime_model(
                         run_model,
                         ollama_host=run_ollama_host,
@@ -4682,9 +6041,30 @@ def render_builder_view(
             fees_bps=fees_bps,
             slippage_bps=slippage_bps,
             df=run_df,
+            universe_mode=manual_universe_mode,
+            universe_purpose="builder_manual",
+            universe_strategy_type=manual_strategy_type,
+            universe_meta=manual_universe_meta,
             skip_llm_prepare=skip_llm_prepare,
             phase_llm_clients=run_phase_llm_clients or None,
             multi_llm_manager=manual_multi_llm_manager,
+            builder_execution_mode=builder_execution_mode,
+            orchestration_mode=orchestration_mode,
+            builder_flow_analysis_enabled=builder_flow_analysis_enabled,
+            builder_flow_analysis_ablation=builder_flow_analysis_ablation,
+            multi_llm_profile=builder_multi_llm_profile,
+            multi_llm_role_overrides=manual_session_role_overrides,
+            multi_llm_assignments=(
+                [
+                    assignment.to_dict()
+                    for assignment in manual_multi_llm_manager.assignments
+                ]
+                if manual_multi_llm_manager is not None
+                else []
+            ),
+            run_multi_llm_review=(
+                builder_multi_llm_enabled and manual_multi_llm_manager is not None
+            ),
         )
         _release_multi_llm_runtime(manual_multi_llm_manager)
         if manual_multi_llm_manager is not None:
@@ -4730,7 +6110,7 @@ def render_builder_view(
     )
     _render_builder_mode_hero(
         mode_label="Autonome 24/24",
-        orchestration_label="multi-LLM" if builder_multi_llm_enabled else "single-LLM",
+        orchestration_label=orchestration_label,
         market_label=_market_display,
         target_sharpe=target_sharpe,
         capital=capital,
@@ -5048,7 +6428,8 @@ def render_builder_view(
 
             if builder_multi_llm_enabled:
                 session_role_overrides = _pick_builder_session_role_overrides(
-                    builder_multi_llm_role_overrides
+                    builder_multi_llm_role_overrides,
+                    inventory=multi_llm_inventory,
                 )
                 multi_llm_manager = MultiLLMSessionManager(
                     profile_name=builder_multi_llm_profile,
@@ -5227,11 +6608,26 @@ def render_builder_view(
                         pre_data_source,
                     )
             market_pick: Dict[str, Any] = {}
-            if effective_auto_market_pick and llm_client_for_market is not None:
-                with st.spinner("🧭 Sélection automatique du marché (token/TF)…"):
-                    session_symbol, session_timeframe, session_df, market_pick = _pick_market_for_objective(
+            autonomous_universe_mode = normalize_universe_mode(
+                getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+                purpose="builder_autonomous",
+            )
+            autonomous_strategy_type = infer_strategy_type(
+                strategy_key=str(getattr(state, "strategy_key", "") or ""),
+                objective=objective,
+            )
+            if effective_auto_market_pick:
+                spinner_label = (
+                    "🧭 Sélection automatique du marché (token/TF)…"
+                    if effective_objective_mode == "llm" and llm_client_for_market is not None
+                    else "🧭 Sélection automatique du marché (fallback déterministe)…"
+                )
+                with st.spinner(spinner_label):
+                    session_symbol, session_timeframe, session_df, market_pick = _select_autonomous_market_for_session(
                         state=state,
                         objective=objective,
+                        objective_mode=effective_objective_mode,
+                        use_auto_market_pick=effective_auto_market_pick,
                         llm_client=llm_client_for_market,
                         default_symbol=default_session_symbol,
                         default_timeframe=default_session_timeframe,
@@ -5298,6 +6694,20 @@ def render_builder_view(
                     session_timeframe,
                 )
 
+            autonomous_universe_mode = str(
+                market_pick.get("universe_mode") or autonomous_universe_mode
+            ).strip() or autonomous_universe_mode
+            autonomous_strategy_type = str(
+                market_pick.get("universe_strategy_type") or autonomous_strategy_type
+            ).strip() or autonomous_strategy_type
+            autonomous_universe_meta: Dict[str, Any] = {
+                "mode": autonomous_universe_mode,
+                "strategy_type": autonomous_strategy_type,
+                "criteria": dict(market_pick.get("universe_criteria", {}) or {}),
+                "excluded_pairs": list(market_pick.get("universe_exclusions", []) or []),
+                "market_pick": dict(market_pick),
+            }
+
             # ── Remplacer les placeholders {symbol}/{timeframe} après sélection marché ──
             if "{symbol}" in objective or "{timeframe}" in objective:
                 objective = objective.replace("{symbol}", session_symbol)
@@ -5317,10 +6727,9 @@ def render_builder_view(
             # ── Exécuter la session (remplace l'affichage précédent) ──
             if builder_multi_llm_enabled and multi_llm_manager is not None:
                 with st.spinner(f"⏳ Préparation builder_llm session #{session_num}…"):
-                    ok, msg, resolved_model = _prepare_builder_llm(
-                        model=session_model,
-                        ollama_host=session_llm_host,
-                        gpu_target=session_llm_gpu_target or None,
+                    ok, msg, resolved_model = _prepare_multi_llm_role_runtime_with_failover(
+                        multi_llm_manager,
+                        role="builder_llm",
                         preload_model=preload_model,
                         keep_alive_minutes=keep_alive_minutes,
                         auto_start_ollama=auto_start_ollama,
@@ -5328,6 +6737,7 @@ def render_builder_view(
                     if not ok:
                         raise RuntimeError(msg)
                     session_model = resolved_model
+                    session_phase_llm_clients = multi_llm_manager.build_builder_phase_clients()
                     multi_llm_manager.activate_runtime_model(
                         session_model,
                         ollama_host=session_llm_host,
@@ -5354,53 +6764,93 @@ def render_builder_view(
                 if builder_multi_llm_enabled and multi_llm_manager is not None:
                     _release_multi_llm_runtime(multi_llm_manager)
                 break
-            with session_placeholder.container():
-                t0 = time.perf_counter()
-                session = _run_single_builder_session(
-                    objective=objective,
-                    model=session_model,
-                    ollama_host=session_llm_host,
-                    llm_inference_global_settings=llm_inference_global_settings,
-                    llm_inference_model_profiles=llm_inference_model_profiles,
-                    llm_topology_config=getattr(state, "llm_topology_config", None),
-                    preload_model=preload_model,
-                    keep_alive_minutes=keep_alive_minutes,
-                    unload_after_run=True,
-                    auto_start_ollama=auto_start_ollama,
-                    max_iterations=max_iterations,
-                    target_sharpe=target_sharpe,
-                    capital=capital,
-                    symbol=session_symbol,
-                    timeframe=session_timeframe,
-                    fees_bps=fees_bps,
-                    slippage_bps=slippage_bps,
-                    df=session_df,
-                    session_label=f"🔄 Session autonome #{session_num}",
-                    skip_llm_prepare=True,
-                    show_config_caption=False,
-                    autonomous_runtime_watchdog=True,
-                    phase_llm_clients=session_phase_llm_clients or None,
-                    multi_llm_manager=multi_llm_manager,
+            session_dataset_ok, session_dataset_msg = _validate_builder_market_dataset(
+                df=session_df,
+                symbol=session_symbol,
+                timeframe=session_timeframe,
+                universe_mode=autonomous_universe_mode,
+                strategy_type=autonomous_strategy_type,
+                purpose="builder_autonomous",
+                objective=objective,
+            )
+            session: Any = None
+            duration = 0.0
+            session_error_message = (
+                str(market_pick.get("load_error") or "").strip() or None
+            )
+            if not session_dataset_ok:
+                session_error_message = session_dataset_msg
+                st.warning(
+                    f"Session #{session_num}: marché rejeté par l'univers `{autonomous_universe_mode}` "
+                    f"({session_symbol} {session_timeframe}) - {session_dataset_msg}"
                 )
-                duration = time.perf_counter() - t0
+            with session_placeholder.container():
+                if session_dataset_ok:
+                    t0 = time.perf_counter()
+                    session = _run_single_builder_session(
+                        objective=objective,
+                        model=session_model,
+                        ollama_host=session_llm_host,
+                        llm_inference_global_settings=llm_inference_global_settings,
+                        llm_inference_model_profiles=llm_inference_model_profiles,
+                        llm_topology_config=getattr(state, "llm_topology_config", None),
+                        preload_model=preload_model,
+                        keep_alive_minutes=keep_alive_minutes,
+                        unload_after_run=True,
+                        auto_start_ollama=auto_start_ollama,
+                        max_iterations=max_iterations,
+                        target_sharpe=target_sharpe,
+                        capital=capital,
+                        symbol=session_symbol,
+                        timeframe=session_timeframe,
+                        fees_bps=fees_bps,
+                        slippage_bps=slippage_bps,
+                        df=session_df,
+                        universe_mode=autonomous_universe_mode,
+                        universe_purpose="builder_autonomous",
+                        universe_strategy_type=autonomous_strategy_type,
+                        universe_meta=autonomous_universe_meta,
+                        session_label=f"🔄 Session autonome #{session_num}",
+                        skip_llm_prepare=True,
+                        show_config_caption=False,
+                        autonomous_runtime_watchdog=True,
+                        phase_llm_clients=session_phase_llm_clients or None,
+                        multi_llm_manager=multi_llm_manager,
+                        builder_execution_mode=builder_execution_mode,
+                        orchestration_mode=orchestration_mode,
+                        builder_flow_analysis_enabled=builder_flow_analysis_enabled,
+                        builder_flow_analysis_ablation=builder_flow_analysis_ablation,
+                        multi_llm_profile=builder_multi_llm_profile,
+                        multi_llm_role_overrides=session_role_overrides,
+                        multi_llm_assignments=(
+                            [
+                                assignment.to_dict()
+                                for assignment in multi_llm_manager.assignments
+                            ]
+                            if multi_llm_manager is not None
+                            else []
+                        ),
+                    )
+                    duration = time.perf_counter() - t0
 
             if (
                 builder_multi_llm_enabled
                 and multi_llm_manager is not None
                 and session is not None
             ):
-                multi_review_bundle = multi_llm_manager.review_builder_session(
+                multi_review_payload = _finalize_multi_llm_session_review(
                     objective=objective,
-                    builder_session=session,
+                    session=session,
                     target_sharpe=target_sharpe,
+                    multi_llm_manager=multi_llm_manager,
+                    persist_summary=True,
                 )
                 multi_llm_router_decision = dict(
-                    multi_review_bundle.get("router_decision", {}) or {}
+                    multi_review_payload.get("router_decision", {}) or {}
                 )
-                for role_name, role_output in (
-                    multi_review_bundle.get("role_outputs", {}) or {}
-                ).items():
-                    multi_llm_role_outputs[role_name] = role_output.to_dict()
+                multi_llm_role_outputs = dict(
+                    multi_review_payload.get("role_outputs", {}) or {}
+                )
                 router_action = str(
                     multi_llm_router_decision.get("action", "iterate") or "iterate"
                 )
@@ -5411,7 +6861,9 @@ def render_builder_view(
                     f"Multi-LLM router: {router_action}"
                     + (f" | {router_reason}" if router_reason else "")
                 )
-                multi_llm_shared_memory = multi_llm_manager.consume_shared_memory()
+                multi_llm_shared_memory = dict(
+                    multi_review_payload.get("shared_memory", {}) or {}
+                )
 
             if (
                 builder_multi_llm_enabled
@@ -5450,6 +6902,7 @@ def render_builder_view(
                     "source_label": source_label,
                     "status": session.status,
                     "best_sharpe": session.best_sharpe,
+                    "best_telemetry_score": best_score,
                     "best_score": best_score,
                     "best_return": best_return_snapshot.get("best_return"),
                     "best_return_iteration": best_return_snapshot.get("best_return_iteration"),
@@ -5479,11 +6932,37 @@ def render_builder_view(
                     "last_runtime_traceback_tail": last_runtime_feedback.get("last_runtime_traceback_tail"),
                     "symbol": session_symbol,
                     "timeframe": session_timeframe,
+                    "universe_mode": str(getattr(session, "universe_mode", "") or autonomous_universe_mode),
+                    "universe_purpose": str(getattr(session, "universe_purpose", "") or "builder_autonomous"),
+                    "universe_strategy_type": str(
+                        getattr(session, "universe_strategy_type", "") or autonomous_strategy_type
+                    ),
+                    "universe_meta": (
+                        dict(getattr(session, "universe_meta", {}) or {})
+                        if isinstance(getattr(session, "universe_meta", {}), dict)
+                        else dict(autonomous_universe_meta)
+                    ),
                     "source_mode": effective_objective_mode,
                     "source_reason": objective_mode_policy.get("reason", ""),
                     "auto_market_pick_used": effective_auto_market_pick,
-                    "orchestration_mode": (
-                        "multi_llm" if builder_multi_llm_enabled else "single_llm"
+                    "builder_execution_mode": str(
+                        getattr(session, "builder_execution_mode", builder_execution_mode)
+                        or builder_execution_mode
+                    ),
+                    "orchestration_mode": str(
+                        getattr(session, "orchestration_mode", orchestration_mode)
+                        or orchestration_mode
+                    ),
+                    "instrumentation_enabled": bool(
+                        getattr(session, "instrumentation_enabled", False)
+                    ),
+                    "instrumentation_summary": (
+                        dict(getattr(session, "instrumentation_summary", {}) or {})
+                        if isinstance(getattr(session, "instrumentation_summary", {}), dict)
+                        else {}
+                    ),
+                    "pipeline_traces_path": str(
+                        getattr(session, "pipeline_traces_path", "") or ""
                     ),
                     "multi_llm_profile": (
                         builder_multi_llm_profile if builder_multi_llm_enabled else ""
@@ -5510,6 +6989,11 @@ def render_builder_view(
                     "multi_llm_router_decision": multi_llm_router_decision,
                     "multi_llm_role_outputs": multi_llm_role_outputs,
                     "multi_llm_shared_memory": multi_llm_shared_memory,
+                    "continuity_context": (
+                        dict(multi_llm_shared_memory.get("continuity_context", {}) or {})
+                        if isinstance(multi_llm_shared_memory, dict)
+                        else {}
+                    ),
                 }
                 history.append(history_entry)
                 history[:] = _trim_autonomous_history(history)
@@ -5538,6 +7022,7 @@ def render_builder_view(
                     "source_label": source_label,
                     "status": "error",
                     "best_sharpe": None,
+                    "best_telemetry_score": None,
                     "best_score": None,
                     "best_return": None,
                     "best_max_dd": None,
@@ -5562,12 +7047,19 @@ def render_builder_view(
                     "initial_capital": capital,
                     "symbol": session_symbol,
                     "timeframe": session_timeframe,
+                    "universe_mode": autonomous_universe_mode,
+                    "universe_purpose": "builder_autonomous",
+                    "universe_strategy_type": autonomous_strategy_type,
+                    "universe_meta": autonomous_universe_meta,
+                    "error": session_error_message,
                     "source_mode": effective_objective_mode,
                     "source_reason": objective_mode_policy.get("reason", ""),
                     "auto_market_pick_used": effective_auto_market_pick,
-                    "orchestration_mode": (
-                        "multi_llm" if builder_multi_llm_enabled else "single_llm"
-                    ),
+                    "builder_execution_mode": builder_execution_mode,
+                    "orchestration_mode": orchestration_mode,
+                    "instrumentation_enabled": builder_flow_analysis_enabled,
+                    "instrumentation_summary": {},
+                    "pipeline_traces_path": "",
                     "multi_llm_profile": (
                         builder_multi_llm_profile if builder_multi_llm_enabled else ""
                     ),
@@ -5593,6 +7085,11 @@ def render_builder_view(
                     "multi_llm_router_decision": multi_llm_router_decision,
                     "multi_llm_role_outputs": multi_llm_role_outputs,
                     "multi_llm_shared_memory": multi_llm_shared_memory,
+                    "continuity_context": (
+                        dict(multi_llm_shared_memory.get("continuity_context", {}) or {})
+                        if isinstance(multi_llm_shared_memory, dict)
+                        else {}
+                    ),
                 }
                 history_entry = _recover_autonomous_history_entry_from_disk(history_entry)
                 history.append(history_entry)
@@ -5677,6 +7174,7 @@ def render_builder_view(
                 "source_label": "Crash avant generation",
                 "status": "crash",
                 "best_sharpe": None,
+                "best_telemetry_score": None,
                 "best_score": None,
                 "best_return": None,
                 "best_max_dd": None,
@@ -5701,12 +7199,21 @@ def render_builder_view(
                 "initial_capital": capital,
                 "symbol": "",
                 "timeframe": "",
+                "universe_mode": normalize_universe_mode(
+                    getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+                    purpose="builder_autonomous",
+                ),
+                "universe_purpose": "builder_autonomous",
+                "universe_strategy_type": "",
+                "universe_meta": {},
                 "error": f"{type(_loop_exc).__name__}: {_loop_exc}",
                 "source_mode": effective_objective_mode,
                 "source_reason": supervisor.get("last_selected_source_reason", ""),
-                "orchestration_mode": (
-                    "multi_llm" if builder_multi_llm_enabled else "single_llm"
-                ),
+                "builder_execution_mode": builder_execution_mode,
+                "orchestration_mode": orchestration_mode,
+                "instrumentation_enabled": builder_flow_analysis_enabled,
+                "instrumentation_summary": {},
+                "pipeline_traces_path": "",
                 "multi_llm_profile": (
                     builder_multi_llm_profile if builder_multi_llm_enabled else ""
                 ),
@@ -5721,6 +7228,11 @@ def render_builder_view(
                     else {}
                 ),
                 "multi_llm_shared_memory": multi_llm_shared_memory,
+                "continuity_context": (
+                    dict(multi_llm_shared_memory.get("continuity_context", {}) or {})
+                    if isinstance(multi_llm_shared_memory, dict)
+                    else {}
+                ),
             })
             history[:] = _trim_autonomous_history(history)
             st.session_state["builder_autonomous_history"] = history
@@ -5739,6 +7251,16 @@ def render_builder_view(
                     _render_autonomous_recap(history, supervisor)
             except Exception:
                 pass
+            if failure_origin == "llm_runtime_model_name_mismatch":
+                st.error(
+                    f"Session #{session_num} arrêtée: {type(_loop_exc).__name__}: {_loop_exc}"
+                )
+                st.error(
+                    "Le preset multi-LLM actif ne contient aucun nom exact accepté par l'hôte Ollama courant. "
+                    "Corrige les noms du preset ou change d'hôte avant de relancer."
+                )
+                terminal_reason = "llm_runtime_model_name_mismatch"
+                break
             st.error(
                 f"Session #{session_num} crash: {type(_loop_exc).__name__}: {_loop_exc} "
                 f"-- reprise automatique ({_consecutive_errors}/{_MAX_CONSECUTIVE_ERRORS})"

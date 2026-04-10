@@ -94,6 +94,7 @@ class GraduationConfig:
     required_benchmark_name: str = "crypto_liquid_benchmark_v1_core"
     min_benchmarks_pass: int = 2
     no_silent_replacement: bool = True
+    universe_mode: str = "canonical"
 
     # Phase 3 — Benchmark suite
     validation_tokens: List[str] = field(default_factory=lambda: [
@@ -149,6 +150,8 @@ class GraduationCandidate:
     source_run_id: str = ""
     source_symbol: str = ""
     source_timeframe: str = ""
+    source_universe_mode: str = ""
+    source_universe_purpose: str = ""
 
     # Meilleure itération (par score, puis par return)
     best_iteration: int = 0
@@ -226,6 +229,8 @@ class GraduationCandidate:
             "source_run_id": self.source_run_id,
             "source_symbol": self.source_symbol,
             "source_timeframe": self.source_timeframe,
+            "source_universe_mode": self.source_universe_mode,
+            "source_universe_purpose": self.source_universe_purpose,
             "objective": self.objective[:120],
             "origin_status": self.origin_status,
             "best_iteration": self.best_iteration,
@@ -410,6 +415,7 @@ def _resolve_validation_contexts(config: GraduationConfig) -> Dict[str, Any]:
         coverage_pct = round(len(loaded_contexts) / len(configured_contexts) * 100.0, 1)
 
     return {
+        "universe_mode": str(config.universe_mode or "canonical"),
         "timeframes": timeframes,
         "benchmarks": benchmarks,
         "configured_contexts": configured_contexts,
@@ -642,6 +648,8 @@ def scan_sandbox(
             session_dir=session_dir,
             objective=_parse_objective(summary.get("objective", "")),
             origin_status=summary.get("status", ""),
+            source_universe_mode=str(summary.get("universe_mode") or "").strip(),
+            source_universe_purpose=str(summary.get("universe_purpose") or "").strip(),
             best_iteration=best_iter_num,
             best_return_pct=float(best_it.get("return_pct") or 0),
             best_profit_factor=float(best_it.get("profit_factor") or 0),
@@ -751,6 +759,8 @@ def scan_positive_import_candidates(
             source_run_id=str(meta.get("source_run_id") or "").strip(),
             source_symbol=source_symbol,
             source_timeframe=source_timeframe,
+            source_universe_mode=str(meta.get("universe_mode") or "").strip(),
+            source_universe_purpose=str(meta.get("universe_purpose") or "").strip(),
             best_iteration=best_iteration,
             best_return_pct=return_pct,
             best_profit_factor=_metric_as_float(metrics, "profit_factor", default=0.0),
@@ -800,6 +810,8 @@ def run_positive_observed_filter(
         candidate.phase = "P2"
 
         reasons = list(candidate.inclusion_reasons or [])
+        if str(candidate.source_universe_mode or "").strip().lower() == "exploratory":
+            reasons.append("exploratory_source_requires_canonical_validation")
         if candidate.best_return_pct > 0:
             if not any(str(reason).startswith("positive_observed") for reason in reasons):
                 reasons.append(f"positive_observed return={candidate.best_return_pct:.1f}%>0")
@@ -1596,6 +1608,7 @@ def run_multi_context_validation(
     from pandas.errors import SettingWithCopyWarning
 
     from backtest.engine import BacktestEngine
+    from config.market_selection import evaluate_market_dataset, infer_strategy_type
     from data.loader import load_ohlcv
 
     engine = BacktestEngine(initial_capital=10000.0)
@@ -1607,6 +1620,7 @@ def run_multi_context_validation(
     missing_contexts = list(context_plan["missing_contexts"])
     total_contexts = len(configured_contexts)
     survivors: List[GraduationCandidate] = []
+    excluded_contexts: Dict[str, List[str]] = {}
 
     logger.info(
         "Phase 3: validating %d candidates on %d configured contexts across benchmarks=%s timeframes=%s",
@@ -1620,6 +1634,24 @@ def run_multi_context_validation(
         try:
             df = load_ohlcv(token, tf)
             if df is not None and len(df) > 100:
+                evaluation = evaluate_market_dataset(
+                    df,
+                    symbol=token,
+                    timeframe=tf,
+                    universe_mode=config.universe_mode,
+                    purpose="validation",
+                )
+                if not evaluation.get("accepted"):
+                    excluded_contexts[key] = list(
+                        evaluation.get("exclusion_reasons", []) or ["excluded_by_universe"]
+                    )
+                    logger.warning(
+                        "Phase 3 excluding context %s mode=%s reasons=%s",
+                        key,
+                        config.universe_mode,
+                        "; ".join(excluded_contexts[key]),
+                    )
+                    continue
                 dataframes[key] = df
                 logger.debug("Loaded %s: %d bars", key, len(df))
             else:
@@ -1651,9 +1683,12 @@ def run_multi_context_validation(
         candidate.phase = "P3"
         candidate.configured_contexts = list(configured_contexts)
         candidate.loaded_contexts = sorted(dataframes.keys())
-        candidate.missing_contexts = list(missing_contexts)
+        candidate.missing_contexts = list(dict.fromkeys([*missing_contexts, *sorted(excluded_contexts.keys())]))
         candidate.tested_timeframes = list(timeframes)
-        candidate.coverage_pct = context_plan["coverage_pct"]
+        candidate.coverage_pct = round(
+            len(dataframes) / max(total_contexts, 1) * 100.0,
+            1,
+        )
 
         if progress_callback:
             progress_callback(
@@ -1671,6 +1706,10 @@ def run_multi_context_validation(
             )
         try:
             strategy, params = _load_strategy_for_candidate(candidate)
+            strategy_type = infer_strategy_type(
+                objective=candidate.objective,
+                strategy_key=candidate.strategy_name,
+            )
         except Exception as e:
             candidate.decision = "REJECTED"
             candidate.rejection_reason = f"load error: {e}"
@@ -1769,13 +1808,16 @@ def run_multi_context_validation(
 
             for key in benchmark_missing:
                 token, tf = _split_context_key(key)
+                error_message = "missing_data"
+                if key in excluded_contexts:
+                    error_message = "excluded_by_universe: " + "; ".join(excluded_contexts[key])
                 missing_result = {
                     "token": token,
                     "timeframe": tf,
                     "configured": True,
                     "loaded": False,
                     "missing": True,
-                    "error": "missing_data",
+                    "error": error_message,
                     "passed": False,
                     "benchmark": benchmark_name,
                 }
@@ -1818,7 +1860,10 @@ def run_multi_context_validation(
             "passed_count": passed_count,
             "total_contexts": len(configured_contexts),
             "loaded_contexts": len(dataframes),
-            "missing_contexts": len(missing_contexts),
+            "missing_contexts": len(candidate.missing_contexts),
+            "excluded_context_reasons": dict(excluded_contexts),
+            "universe_mode": str(config.universe_mode or "canonical"),
+            "strategy_type": strategy_type,
             "pass_rate": round(passed_count / max(len(configured_contexts), 1) * 100, 1),
         }
         candidate.benchmark_results = benchmark_results

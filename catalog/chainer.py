@@ -7,12 +7,10 @@ Purpose: Moteur de génération de variants (grid/sampling, seeding, batching, d
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 from datetime import datetime, timezone
-from itertools import product
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -24,7 +22,7 @@ from utils.parameters import (
     generate_param_grid,
 )
 
-from catalog.builder_export import to_json_proposal, to_text_v1
+from catalog.builder_export import to_text_v1
 from catalog.fingerprint import fingerprint_sha256
 from catalog.models import (
     Archetype,

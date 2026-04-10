@@ -74,6 +74,8 @@ def test_upsert_from_saved_run_promotes_to_catalog(tmp_path):
             "origin": "builder",
             "builder_session_id": "sess-123",
             "builder_iteration": 4,
+            "universe_mode": "canonical",
+            "universe_purpose": "builder_autonomous",
         },
     }
 
@@ -87,6 +89,8 @@ def test_upsert_from_saved_run_promotes_to_catalog(tmp_path):
     assert entry["meta"]["source_run_id"] == "run_001"
     assert entry["meta"]["builder_session_id"] == "sess-123"
     assert entry["meta"]["builder_iteration"] == 4
+    assert entry["meta"]["universe_mode"] == "canonical"
+    assert "universe_canonical" in entry["tags"]
 
 
 def test_upsert_from_saved_run_rejects_partial_status(tmp_path):
@@ -148,9 +152,15 @@ def test_upsert_from_builder_session_falls_back_to_session_hash(tmp_path):
         objective="Replay candidate",
         best_sharpe=1.5,
         iterations=[best_iteration],
+        universe_mode="exploratory",
+        universe_purpose="builder_manual",
+        universe_strategy_type="momentum",
     )
 
     entry = upsert_from_builder_session(session, path=path)
 
     assert entry["params_hash"] != "none"
     assert entry["id"].endswith(entry["params_hash"])
+    assert entry["meta"]["universe_mode"] == "exploratory"
+    assert entry["meta"]["universe_strategy_type"] == "momentum"
+    assert "universe_exploratory" in entry["tags"]

@@ -13,7 +13,7 @@
         "gpt-oss-safeguard:20b"
       ],
       "fallback_models": [
-        "gemma3:12b",
+        "gemma4:26b",
         "deepseek-moe-16b-local"
       ],
       "required": true,

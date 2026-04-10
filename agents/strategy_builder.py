@@ -28,22 +28,17 @@ Skip-if: Vous utilisez uniquement les stratégies existantes ou l'AutonomousStra
 from __future__ import annotations
 
 import ast
-import builtins
 import concurrent.futures
 import csv
 import importlib.util
 import json
-import math
 import os
 import pprint
-import random
 import re
 import sys
 import threading
 import textwrap
-import time
 import traceback
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -67,6 +62,23 @@ from utils.observability import generate_run_id, get_obs_logger
 from utils.template import render_prompt
 
 from agents.thought_stream import ThoughtStream
+from agents.pipeline_instrumentation import (
+    PipelineInstrumentation,
+    AblationController,
+)
+
+from agents.builder_state import (
+    BuilderIteration,
+    BuilderSession,
+    _select_session_recovery_anchor,
+)
+from agents.builder_code_validation import validate_generated_code  # noqa: F401
+from agents.builder_code_repair import _repair_code  # noqa: F401
+from config.market_selection import (
+    evaluate_market_dataset,
+    infer_strategy_type,
+    normalize_universe_mode,
+)
 
 logger = get_obs_logger(__name__)
 
@@ -119,12 +131,19 @@ _LLM_PHASE_TIMEOUT_PROPOSAL = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_PROPOSAL",
 _LLM_PHASE_TIMEOUT_CODE = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_CODE", "180"))
 _LLM_PHASE_TIMEOUT_ANALYSIS = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_ANALYSIS", "90"))
 _LLM_PHASE_TIMEOUT_DEFAULT = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_DEFAULT", "120"))
+_LLM_PHASE_TIMEOUT_VISION_FLOOR = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_VISION_FLOOR", "300"))
+_LLM_PHASE_TIMEOUT_REASONING_PROPOSAL_FLOOR = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_REASONING_PROPOSAL_FLOOR", "300"))
+_LLM_PHASE_TIMEOUT_REASONING_CODE_FLOOR = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_REASONING_CODE_FLOOR", "420"))
+_LLM_PHASE_TIMEOUT_REASONING_ANALYSIS_FLOOR = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_REASONING_ANALYSIS_FLOOR", "180"))
 _LLM_PHASE_TIMEOUTS: Dict[str, int] = {
     "proposal": _LLM_PHASE_TIMEOUT_PROPOSAL,
     "code": _LLM_PHASE_TIMEOUT_CODE,
     "analysis": _LLM_PHASE_TIMEOUT_ANALYSIS,
     "pre": _LLM_PHASE_TIMEOUT_ANALYSIS,
 }
+_BUILDER_MAX_UNTRADABLE_RATIO = float(
+    os.getenv("BACKTEST_BUILDER_MAX_UNTRADABLE_RATIO", "0.25")
+)
 
 
 def _is_interpreter_shutdown_runtime_error(exc: BaseException) -> bool:
@@ -136,6 +155,66 @@ def _is_interpreter_shutdown_runtime_error(exc: BaseException) -> bool:
         "interpreter shutdown" in message
         or "cannot schedule new futures after interpreter shutdown" in message
     )
+
+
+def _is_vision_model(model_name: str) -> bool:
+    model_lower = str(model_name or "").lower()
+    return any(
+        pattern in model_lower
+        for pattern in (
+            "qwen3-vl",
+            "qwen2-vl",
+            "-vl",
+            "vision",
+            "llava",
+            "multimodal",
+        )
+    )
+
+
+def _is_reasoning_builder_model(model_name: str) -> bool:
+    model_lower = str(model_name or "").lower()
+    return any(
+        pattern in model_lower
+        for pattern in (
+            "deepseek-r1",
+            "qwq",
+            "o1",
+            "o3",
+            "r1",
+            "reasoning",
+        )
+    )
+
+
+def _resolve_builder_phase_timeout(
+    base_phase: str,
+    base_timeout_sec: int,
+    llm_client: Any,
+) -> int:
+    model_name = str(
+        getattr(getattr(llm_client, "config", None), "model", "") or ""
+    )
+    timeout_sec = int(base_timeout_sec)
+
+    if _is_reasoning_builder_model(model_name):
+        floor_by_phase = {
+            "proposal": _LLM_PHASE_TIMEOUT_REASONING_PROPOSAL_FLOOR,
+            "code": _LLM_PHASE_TIMEOUT_REASONING_CODE_FLOOR,
+            "analysis": _LLM_PHASE_TIMEOUT_REASONING_ANALYSIS_FLOOR,
+            "pre": _LLM_PHASE_TIMEOUT_REASONING_ANALYSIS_FLOOR,
+        }
+        timeout_sec = max(timeout_sec, int(floor_by_phase.get(base_phase, timeout_sec)))
+    elif _is_vision_model(model_name):
+        floor_by_phase = {
+            "proposal": _LLM_PHASE_TIMEOUT_VISION_FLOOR,
+            "code": _LLM_PHASE_TIMEOUT_VISION_FLOOR,
+            "analysis": max(_LLM_PHASE_TIMEOUT_ANALYSIS, 150),
+            "pre": max(_LLM_PHASE_TIMEOUT_ANALYSIS, 150),
+        }
+        timeout_sec = max(timeout_sec, int(floor_by_phase.get(base_phase, timeout_sec)))
+
+    return int(timeout_sec)
 
 
 def _get_streamlit_script_run_ctx() -> Any:
@@ -228,6 +307,13 @@ _DICT_INDICATOR_ALLOWED_KEYS: Dict[str, set[str]] = {
     "smart_legs": {"smart_leg_bullish", "smart_leg_bearish"},
     "directional_bias": {"bull_score", "bear_score", "net_bias"},
     "markov_switching": {"regime", "prob_regime_0", "prob_regime_1", "prob_regime_2", "prob_regime_3"},
+}
+
+_DICT_INDICATOR_SAFE_SCALAR_KEYS: Dict[str, str] = {
+    "adx": "adx",
+    "supertrend": "supertrend",
+    "directional_bias": "net_bias",
+    "markov_switching": "regime",
 }
 
 _INDICATOR_ALIAS_HINTS = {
@@ -438,106 +524,6 @@ _AST_PARSE_RECOVERABLE_EXCEPTIONS = (
 )
 
 
-# ---------------------------------------------------------------------------
-# Dataclasses
-# ---------------------------------------------------------------------------
-
-@dataclass
-class BuilderIteration:
-    """Résultat d'une itération du builder."""
-
-    iteration: int
-    hypothesis: str = ""
-    code: str = ""
-    backtest_result: Optional[Any] = None
-    error: Optional[str] = None
-    analysis: str = ""
-    decision: str = ""  # "continue", "accept", "stop"
-    change_type: str = ""  # "logic", "params", "both"
-    diagnostic_category: str = ""  # computed by compute_diagnostic()
-    diagnostic_detail: Dict[str, Any] = field(default_factory=dict)
-    phase_feedback: Dict[str, Any] = field(default_factory=dict)
-    timestamp: datetime = field(default_factory=datetime.now)
-    is_fallback: bool = False  # True if deterministic fallback was used
-
-
-@dataclass
-class BuilderSession:
-    """Session complète de construction de stratégie."""
-
-    session_id: str
-    objective: str
-    session_dir: Path
-    available_indicators: List[str] = field(default_factory=list)
-
-    # État
-    iterations: List[BuilderIteration] = field(default_factory=list)
-    best_iteration: Optional[BuilderIteration] = None
-    best_sharpe: float = float("-inf")
-    best_score: float = float("-inf")
-    status: str = "running"  # "running", "success", "failed", "max_iterations"
-    auto_reset_count: int = 0
-    recovery_events: List[Dict[str, Any]] = field(default_factory=list)
-
-    # Configuration
-    max_iterations: int = 10
-    target_sharpe: float = 1.0
-    start_time: datetime = field(default_factory=datetime.now)
-
-    # Contexte de marché (transmis au LLM)
-    symbol: str = "UNKNOWN"
-    timeframe: str = "1h"
-    n_bars: int = 0
-    date_range_start: str = ""
-    date_range_end: str = ""
-    fees_bps: float = 10.0
-    slippage_bps: float = 5.0
-    initial_capital: float = 10000.0
-    direction_constraint: str = "long_short"
-
-
-def _iteration_is_recovery_anchor(
-    iteration: Optional[BuilderIteration],
-    *,
-    allow_fallback: bool = False,
-) -> bool:
-    """Retourne True si l'itération peut servir de point de reprise."""
-    if iteration is None:
-        return False
-    if iteration.error is not None:
-        return False
-    if iteration.backtest_result is None:
-        return False
-    if iteration.is_fallback and not allow_fallback:
-        return False
-    return True
-
-
-def _select_session_recovery_anchor(
-    session: BuilderSession,
-    last_iteration: Optional[BuilderIteration] = None,
-) -> tuple[Optional[BuilderIteration], str]:
-    """Choisit le meilleur ancrage disponible pour un auto-reset de session."""
-    if _iteration_is_recovery_anchor(session.best_iteration):
-        return session.best_iteration, "best_iteration"
-
-    if _iteration_is_recovery_anchor(last_iteration):
-        return last_iteration, "last_iteration"
-
-    for candidate in reversed(session.iterations):
-        if _iteration_is_recovery_anchor(candidate):
-            return candidate, "history_non_fallback"
-
-    if _iteration_is_recovery_anchor(last_iteration, allow_fallback=True):
-        return last_iteration, "last_iteration_fallback"
-
-    for candidate in reversed(session.iterations):
-        if _iteration_is_recovery_anchor(candidate, allow_fallback=True):
-            return candidate, "history_fallback"
-
-    return None, "none"
-
-
 def _err(code: str, message: str) -> str:
     """Formate un message d'erreur avec code stable."""
     return f"[{code}] {message}"
@@ -702,442 +688,8 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
 # Validation du code généré
 # ---------------------------------------------------------------------------
 
-def validate_generated_code(code: str) -> tuple[bool, str]:
-    """
-    Valide le code Python généré avant écriture/exécution.
 
-    Vérifie :
-    1. Syntaxe Python valide (ast.parse)
-    2. Présence de la classe BuilderGeneratedStrategy
-    3. Présence de generate_signals
-    4. Absence d'imports dangereux (os.system, subprocess, eval, exec)
-
-    Returns:
-        (is_valid, error_message)
-    """
-    # 1. Syntaxe
-    try:
-        tree = ast.parse(code)
-    except SyntaxError as e:
-        return False, _err(ERR_AST, f"Erreur de syntaxe ligne {e.lineno}: {e.msg}")
-
-    # 1b. Sécurité sandbox prioritaire
-    dangerous_patterns = [
-        "os.system", "subprocess", "eval(", "exec(",
-        "__import__", "shutil.rmtree", "open(",
-    ]
-    code_lower = code.lower()
-    for pattern in dangerous_patterns:
-        if pattern.lower() in code_lower:
-            return False, _err(ERR_SANDBOX, f"Import/appel dangereux détecté: '{pattern}'")
-
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if not _is_allowed_import(alias.name):
-                    return False, _err(
-                        ERR_SANDBOX,
-                        f"Import interdit en sandbox: '{alias.name}'.",
-                    )
-        elif isinstance(node, ast.ImportFrom):
-            mod = node.module or ""
-            if not _is_allowed_import(mod):
-                return False, _err(
-                    ERR_SANDBOX,
-                    f"Import interdit en sandbox: 'from {mod} import ...'.",
-                )
-
-    # 2. Vérifier la classe attendue
-    class_names = [
-        node.name for node in ast.walk(tree)
-        if isinstance(node, ast.ClassDef)
-    ]
-    if GENERATED_CLASS_NAME not in class_names:
-        return False, _err(
-            ERR_CLASS,
-            f"Classe '{GENERATED_CLASS_NAME}' absente. Classes trouvées: {class_names}",
-        )
-
-    # 3. Vérifier generate_signals (dans la classe attendue)
-    generate_fns = _iter_generate_signals_functions(tree)
-    if not generate_fns:
-        return False, _err(ERR_CLASS, "Méthode 'generate_signals' absente.")
-
-    # 3a. Héritage strict StrategyBase (après vérif structure minimale)
-    class_node = next(
-        (
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ClassDef) and node.name == GENERATED_CLASS_NAME
-        ),
-        None,
-    )
-    if class_node is not None:
-        base_names = {
-            getattr(base, "id", None)
-            for base in class_node.bases
-            if isinstance(base, ast.Name)
-        }
-        base_names.update(
-            getattr(base, "attr", None)
-            for base in class_node.bases
-            if isinstance(base, ast.Attribute)
-        )
-        if "StrategyBase" not in base_names:
-            return False, _err(
-                ERR_CLASS,
-                "La classe générée doit hériter explicitement de StrategyBase.",
-            )
-
-    # 3b. Signature minimale (évite TypeError runtime)
-    fn = generate_fns[0]
-
-    if len(fn.args.args) < 4 and fn.args.vararg is None:
-        return (
-            False,
-            _err(
-                ERR_CLASS,
-                "Signature invalide: generate_signals doit accepter "
-                "(self, df, indicators, params).",
-            ),
-        )
-
-    # 3c. default_params doit retourner un dict concret (pas une variable globale implicite)
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
-            continue
-        for item in node.body:
-            if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            if item.name != "default_params":
-                continue
-            arg_names = {a.arg for a in item.args.args}
-            arg_names.update(a.arg for a in item.args.kwonlyargs)
-            _, store_names = _collect_name_load_store_sets(item)
-            for sub in ast.walk(item):
-                if not isinstance(sub, ast.Return):
-                    continue
-                if isinstance(sub.value, ast.Name):
-                    name_id = sub.value.id
-                    if name_id not in arg_names and name_id not in store_names:
-                        return (
-                            False,
-                            _err(
-                                ERR_PARAM,
-                                "default_params invalide: `return "
-                                f"{name_id}` référence un nom non défini. "
-                                "Retourner un dict explicite (ex: {'leverage': 1, ...}) "
-                                "ou un attribut `self.<...>`."
-                            ),
-                        )
-        break
-
-    # 3d. NameError probable: variables coeur utilisées sans définition
-    #     (fréquent quand le LLM renomme l'argument `df` mais garde `df[...]` dans le corps)
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
-            continue
-        for item in node.body:
-            if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            arg_names = {a.arg for a in item.args.args}
-            arg_names.update(a.arg for a in item.args.kwonlyargs)
-            load_names, store_names = _collect_name_load_store_sets(item)
-            core_names: tuple[str, ...] = ("df", "indicators", "params")
-            if item.name == "generate_signals":
-                core_names: tuple[str, ...] = ("df", "indicators", "params", "warmup")
-            for core in core_names:
-                if core in load_names and core not in arg_names and core not in store_names:
-                    return (
-                        False,
-                        _err(
-                            ERR_CLASS,
-                            f"NameError probable: `{core}` utilisé dans `{item.name}` "
-                            "mais non défini (paramètre manquant ou variable non assignée).",
-                        ),
-                    )
-        break
-
-    # 3e. NameError probable: indicateur enregistré utilisé comme variable nue
-    #     sans alias local explicite depuis indicators['...'].
-    known_indicator_names = _get_known_indicator_names()
-    if known_indicator_names:
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
-                continue
-            for item in node.body:
-                if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    continue
-                if item.name != "generate_signals":
-                    continue
-                arg_names = {a.arg for a in item.args.args}
-                arg_names.update(a.arg for a in item.args.kwonlyargs)
-                load_names, _store_names = _collect_name_load_store_sets(item)
-                bound_names = _collect_bound_names(item)
-                missing_indicators = sorted(
-                    {
-                        name
-                        for name in load_names
-                        if name in known_indicator_names
-                        and name not in arg_names
-                        and name not in bound_names
-                    }
-                )
-                if missing_indicators:
-                    indicator_name = missing_indicators[0]
-                    return (
-                        False,
-                        _err(
-                            ERR_IND,
-                            "NameError probable: indicateur "
-                            f"`{indicator_name}` utilisé comme variable nue dans "
-                            "`generate_signals` sans alias local. "
-                            f"{_indicator_access_hint(indicator_name)}",
-                        ),
-                    )
-            break
-
-    # 3e-bis. Variables libres / placeholders explicites dans les méthodes.
-    module_bound_names = _collect_module_level_bound_names(tree)
-    builtin_names = set(dir(builtins))
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
-            continue
-        for item in node.body:
-            if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            for sub in ast.walk(item):
-                if isinstance(sub, ast.Constant) and sub.value is Ellipsis:
-                    return (
-                        False,
-                        _err(
-                            ERR_AST,
-                            f"Placeholder `...` interdit dans `{item.name}`. "
-                            "Fournir une logique complète.",
-                        ),
-                    )
-            load_names, _store_names = _collect_name_load_store_sets(item)
-            bound_names = _collect_bound_names(item)
-            allowed_names = bound_names | module_bound_names | builtin_names
-            missing_names = sorted(
-                {
-                    name
-                    for name in load_names
-                    if name not in allowed_names and not name.startswith("__")
-                }
-            )
-            if missing_names:
-                missing_name = missing_names[0]
-                return (
-                    False,
-                    _err(
-                        ERR_CLASS,
-                        f"NameError probable: `{missing_name}` utilisé dans "
-                        f"`{item.name}` sans définition locale.",
-                    ),
-                )
-        break
-
-    # 3f. Verrouillage required_indicators: lecture seule (pas d'assignation)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign):
-            targets = node.targets
-        elif isinstance(node, ast.AnnAssign):
-            targets = [node.target]
-        else:
-            continue
-        for target in targets:
-            if (
-                isinstance(target, ast.Attribute)
-                and isinstance(target.value, ast.Name)
-                and target.value.id == "self"
-                and target.attr == "required_indicators"
-            ):
-                return False, _err(
-                    ERR_CLASS,
-                    "required_indicators est en lecture seule: assignation interdite.",
-                )
-
-    # 3f-bis. Éviter l'écrasement des aliases d'import numpy/pandas.
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
-            continue
-        for item in node.body:
-            if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            for sub in ast.walk(item):
-                if isinstance(sub, ast.Assign):
-                    targets = sub.targets
-                elif isinstance(sub, ast.AnnAssign):
-                    targets = [sub.target]
-                elif isinstance(sub, ast.AugAssign):
-                    targets = [sub.target]
-                else:
-                    continue
-                for target in targets:
-                    if isinstance(target, ast.Name) and target.id in {"np", "pd"}:
-                        return False, _err(
-                            ERR_CLASS,
-                            f"Alias réservé `{target.id}` écrasé dans `{item.name}`. "
-                            f"Ne jamais réassigner `{target.id}`.",
-                        )
-        break
-
-    # 3g. Écriture df limitée aux colonnes SL/TP autorisées
-    ohlcv_cols = {"open", "high", "low", "close", "volume"}
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
-            continue
-        if isinstance(node, ast.Assign):
-            targets = list(node.targets)
-        elif isinstance(node, ast.AugAssign):
-            targets = [node.target]
-        else:
-            targets = [node.target]
-        for target in targets:
-            if not isinstance(target, ast.Subscript):
-                continue
-            is_df = isinstance(target.value, ast.Name) and target.value.id == "df"
-            is_df_loc = (
-                isinstance(target.value, ast.Attribute)
-                and target.value.attr == "loc"
-                and isinstance(target.value.value, ast.Name)
-                and target.value.value.id == "df"
-            )
-            if not (is_df or is_df_loc):
-                continue
-            col = _const_value(target.slice)
-            if col is None and is_df_loc and isinstance(target.slice, ast.Tuple):
-                items = list(target.slice.elts)
-                if len(items) >= 2:
-                    col = _const_value(items[1])
-            if not isinstance(col, str):
-                continue
-            low = col.lower()
-            if low in ohlcv_cols:
-                return False, _err(
-                    ERR_IND,
-                    f"Écriture interdite dans df['{col}'] (OHLCV read-only).",
-                )
-            if col not in _BUILDER_ALLOWED_WRITE_DF_COLUMNS:
-                hint = ""
-                if "signal" in col.lower():
-                    hint = " Use the `signals` variable instead of df columns for signal values."
-                return False, _err(
-                    ERR_IND,
-                    f"Écriture df['{col}'] non autorisée. Colonnes autorisées: "
-                    f"{', '.join(sorted(_BUILDER_ALLOWED_WRITE_DF_COLUMNS))}."
-                    f"{hint}",
-                )
-
-    # 3e. Interdictions structurées signaux/warmup
-    flow_ok, flow_err = _validate_signal_loop_and_warmup(tree)
-    if not flow_ok:
-        return False, flow_err
-
-    # 4. Imports dangereux
-    # 5. Accès invalide aux indicateurs via df[...] au lieu de indicators[...]
-    try:
-        known_indicators = {ind.lower() for ind in list_indicators()}
-    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-        known_indicators = set()
-
-    # 5b. Indicateurs inconnus via indicators[...] / indicators.get(...)
-    used_indicators = _collect_indicator_names(tree) | _collect_indicator_names_in_class(tree)
-    if known_indicators and used_indicators:
-        unknown = sorted(
-            {
-                name for name in used_indicators
-                if name.lower() not in known_indicators
-            }
-        )
-        if unknown:
-            ohlcv_and_runtime_cols = {
-                "open", "high", "low", "close", "volume",
-                *_BUILDER_ALLOWED_WRITE_DF_COLUMNS,
-            }
-            wrong_df_cols = [name for name in unknown if name.lower() in ohlcv_and_runtime_cols]
-            if wrong_df_cols:
-                return (
-                    False,
-                    _err(
-                        ERR_IND,
-                        "Colonnes de prix/runtime utilisées via `indicators[...]`: "
-                        f"{wrong_df_cols}. Utiliser `df['colonne']` pour OHLCV/SL-TP.",
-                    ),
-                )
-            hints = [
-                f"{name} -> {_INDICATOR_ALIAS_HINTS[name.lower()]}"
-                for name in unknown
-                if name.lower() in _INDICATOR_ALIAS_HINTS
-            ]
-            hint_suffix = (
-                f" Corrections possibles: {', '.join(hints)}."
-                if hints
-                else ""
-            )
-            return (
-                False,
-                "Indicateur(s) inconnu(s) via indicators détecté(s): "
-                f"{unknown}. Utiliser uniquement les noms du registre."
-                f"{hint_suffix}",
-            )
-
-    df_indexed = re.findall(r"df\s*\[\s*['\"]([^'\"]+)['\"]\s*\]", code)
-    bad_df_cols = sorted(
-        {col for col in df_indexed if col.lower() in known_indicators}
-    )
-    if bad_df_cols:
-        return (
-            False,
-            _err(
-                ERR_IND,
-                "Accès indicateur invalide via df[...] détecté: "
-                f"{bad_df_cols}. Utiliser indicators['name'].",
-            ),
-        )
-
-    # 6. Mauvais usage de np.nan_to_num sur indicateurs dict (bollinger, macd, ...)
-    for ind in _DICT_INDICATOR_NAMES:
-        bad_pattern = (
-            r"np\.nan_to_num\(\s*indicators\s*\[\s*['\"]"
-            + re.escape(ind)
-            + r"['\"]\s*\]\s*\)"
-        )
-        if re.search(bad_pattern, code):
-            return (
-                False,
-                _err(
-                    ERR_IND,
-                    f"Usage invalide: np.nan_to_num(indicators['{ind}']) (dict). "
-                    "Appliquer np.nan_to_num sur ses sous-clés.",
-                ),
-            )
-
-    # 7. Validation sémantique AST (usage indicateurs/arrays)
-    semantics_ok, semantics_err = _validate_indicator_usage_semantics(code)
-    if not semantics_ok:
-        return False, _err(ERR_IND, semantics_err)
-
-    # 8. Validation légère ParameterSpec: rejeter aliases/typos source de dérive
-    forbidden_paramspec_keys = (
-        "min_value=",
-        "max_value=",
-        "minimum=",
-        "maximum=",
-        "paramtype=",
-    )
-    for key in forbidden_paramspec_keys:
-        if key in code_lower:
-            return False, _err(
-                ERR_PARAM,
-                "ParameterSpec invalide: utiliser min_val/max_val/param_type/step.",
-            )
-
-    return True, ""
-
-
-def sanitize_objective_text(objective: Any) -> str:
+def sanitize_objective_text(objective: Any, *, enable_leakage_filter: bool = True) -> str:
     """Nettoie un objectif utilisateur et retire les contaminations de logs.
 
     Cas traités:
@@ -1220,7 +772,8 @@ def sanitize_objective_text(objective: Any) -> str:
 
     cleaned = "\n".join(cleaned_lines).strip()
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-    cleaned = _strip_objective_prompt_leakage(cleaned)
+    if enable_leakage_filter:
+        cleaned = _strip_objective_prompt_leakage(cleaned)
     cleaned = cleaned.strip("`'\" \n\t")
     if len(cleaned) > 4000:
         cleaned = cleaned[:4000].rstrip()
@@ -1476,12 +1029,17 @@ def _clamp(value: float, min_value: float, max_value: float) -> float:
     return max(min_value, min(max_value, value))
 
 
-def compute_continuous_builder_score(
+def compute_builder_telemetry_score(
     metrics: Dict[str, Any],
     *,
     target_sharpe: float = 1.0,
 ) -> Dict[str, Any]:
-    """Score continu de qualité stratégie (sans seuil binaire brutal)."""
+    """Score composite de télémétrie Builder.
+
+    Ce score reste purement informatif: il n'oriente plus l'acceptation, la
+    promotion d'itération ni le routing des modèles. Il sert uniquement à
+    l'observabilité et au diagnostic.
+    """
     sharpe = _metric_float(metrics, "sharpe_ratio", 0.0)
     ret = _metric_float(metrics, "total_return_pct", 0.0)
     max_dd = abs(_metric_float(metrics, "max_drawdown_pct", 0.0))
@@ -1521,17 +1079,88 @@ def compute_continuous_builder_score(
     }
 
 
+def compute_continuous_builder_score(
+    metrics: Dict[str, Any],
+    *,
+    target_sharpe: float = 1.0,
+) -> Dict[str, Any]:
+    """Alias de compatibilité vers `compute_builder_telemetry_score()`."""
+    return compute_builder_telemetry_score(
+        metrics,
+        target_sharpe=target_sharpe,
+    )
+
+
+def _telemetry_score_from_metrics(
+    metrics: Dict[str, Any],
+    *,
+    target_sharpe: float = 1.0,
+) -> float:
+    """Score composite de télémétrie dérivé des métriques brutes."""
+    return float(
+        compute_builder_telemetry_score(
+            metrics,
+            target_sharpe=target_sharpe,
+        ).get("score", -100.0)
+    )
+
+
 def _ranking_sharpe(
     metrics: Dict[str, Any],
     *,
     target_sharpe: float = 1.0,
 ) -> float:
-    """Score de ranking continu (historique conservé pour compatibilité de nom)."""
-    return float(
-        compute_continuous_builder_score(
-            metrics,
-            target_sharpe=target_sharpe,
-        ).get("score", -100.0)
+    """Alias de compatibilité vers `_telemetry_score_from_metrics()`."""
+    return _telemetry_score_from_metrics(
+        metrics,
+        target_sharpe=target_sharpe,
+    )
+
+
+def _builder_iteration_selection_key(
+    metrics: Dict[str, Any],
+    *,
+    is_fallback: bool = False,
+    target_sharpe: float = 1.0,
+) -> tuple[Any, ...]:
+    """Clé lexicographique explicite pour comparer deux runs Builder.
+
+    Cette politique remplace l'ancien arbitrage par score composite.
+    Priorités, de la plus importante à la moins importante :
+    1. run non-fallback
+    2. métriques non ruinées
+    3. rendement positif
+    4. profit factor acceptable
+    5. nombre minimum de trades atteint
+    6. target Sharpe atteinte
+    7. Sharpe plus élevé
+    8. rendement plus élevé
+    9. profit factor plus élevé
+    10. drawdown plus faible
+    11. plus de trades
+    12. meilleur win rate
+    """
+    sharpe = _metric_float(metrics, "sharpe_ratio", float("-inf"))
+    ret = _metric_float(metrics, "total_return_pct", float("-inf"))
+    max_dd = abs(_metric_float(metrics, "max_drawdown_pct", float("inf")))
+    profit_factor = _metric_float(metrics, "profit_factor", 0.0)
+    trades = int(metrics.get("total_trades", 0) or 0)
+    win_rate = _metric_float(metrics, "win_rate_pct", 0.0)
+    ruined = _is_ruined_metrics(metrics)
+
+    return (
+        0 if is_fallback else 1,
+        0 if ruined else 1,
+        1 if ret > MIN_RETURN_PCT_FOR_ACCEPT else 0,
+        1 if profit_factor >= MIN_PROFIT_FACTOR_FOR_ACCEPT else 0,
+        1 if trades >= MIN_TRADES_FOR_ACCEPT else 0,
+        1 if sharpe >= target_sharpe else 0,
+        sharpe,
+        ret,
+        profit_factor,
+        -max_dd,
+        trades,
+        win_rate,
     )
 
 
@@ -1556,11 +1185,6 @@ def _is_accept_candidate(
     ret = _metric_float(metrics, "total_return_pct", 0.0)
     max_dd = abs(_metric_float(metrics, "max_drawdown_pct", 0.0))
     profit_factor = _metric_float(metrics, "profit_factor", MIN_PROFIT_FACTOR_FOR_ACCEPT)
-    score_payload = compute_continuous_builder_score(
-        metrics,
-        target_sharpe=target_sharpe,
-    )
-    quality_score = float(score_payload.get("score", -100.0))
 
     if _is_ruined_metrics(metrics):
         return False, "ruined_metrics"
@@ -1574,8 +1198,6 @@ def _is_accept_candidate(
         return False, "profit_factor_too_low"
     if max_dd > (MAX_DRAWDOWN_PCT_FOR_ACCEPT + 25.0):
         return False, "drawdown_extreme"
-    if quality_score < 35.0:
-        return False, "quality_score_too_low"
     return True, "ok"
 
 
@@ -1880,322 +1502,6 @@ def _dict_indicator_allowed_keys_hint(indicator_name: str) -> str:
     return ", ".join(allowed)
 
 
-def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
-    """Validation AST des usages indicateurs pour éviter erreurs runtime récurrentes."""
-    try:
-        tree = ast.parse(code)
-    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
-        return True, ""
-
-    # var_name -> {"kind": "array|dict|values", "indicator": Optional[str]}
-    bindings: Dict[str, Dict[str, Any]] = {}
-
-    for fn in _iter_generate_signals_functions(tree):
-        # Pass 1: collect bindings
-        for node in ast.walk(fn):
-            targets: List[ast.Name] = []
-            value: Optional[ast.AST] = None
-
-            if isinstance(node, ast.Assign):
-                value = node.value
-                for t in node.targets:
-                    if isinstance(t, ast.Name):
-                        targets.append(t)
-            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-                value = node.value
-                targets.append(node.target)
-            else:
-                continue
-
-            if value is None or not targets:
-                continue
-
-            ind_name = _indicator_name_from_subscript(value)
-            kind: Optional[str] = None
-            if ind_name is not None:
-                kind = "dict" if ind_name.lower() in _DICT_INDICATOR_NAMES else "array"
-            elif _is_np_nan_to_num_call(value) and getattr(value, "args", None):
-                arg0 = value.args[0]
-                ind_name = _indicator_name_from_subscript(arg0)
-                if ind_name is not None:
-                    if ind_name.lower() in _DICT_INDICATOR_NAMES:
-                        return (
-                            False,
-                            f"Usage invalide: np.nan_to_num(indicators['{ind_name}']) "
-                            "(indicator dict).",
-                        )
-                    kind = "array"
-                elif isinstance(arg0, ast.Name) and arg0.id in bindings:
-                    if bindings[arg0.id]["kind"] == "dict":
-                        return (
-                            False,
-                            f"Usage invalide: np.nan_to_num({arg0.id}) alors que "
-                            f"{arg0.id} est un indicator dict.",
-                        )
-                    kind = "array"
-            elif isinstance(value, ast.Attribute) and value.attr == "values":
-                kind = "values"
-            elif _is_params_get_call(value) or _is_params_subscript(value):
-                kind = "scalar"
-            elif _is_scalar_cast_call(value) and getattr(value, "args", None):
-                arg0 = value.args[0]
-                if _is_params_get_call(arg0) or _is_params_subscript(arg0):
-                    kind = "scalar"
-                elif isinstance(arg0, ast.Name):
-                    b = bindings.get(arg0.id)
-                    if b and b["kind"] == "scalar":
-                        kind = "scalar"
-
-            if kind is not None:
-                for t in targets:
-                    bindings[t.id] = {"kind": kind, "indicator": ind_name}
-
-        # Pass 2: detect invalid usage
-        for node in ast.walk(fn):
-            # ndarray.shift(...) / ndarray.rolling(...)
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                attr = node.func.attr
-                value_binding = _binding_info_for_expr(node.func.value, bindings)
-                if value_binding and value_binding["kind"] == "dict" and attr not in {"get"}:
-                    label = _binding_expr_label(node.func.value, value_binding)
-                    hint_key = _dict_indicator_allowed_keys_hint(
-                        str(value_binding.get("indicator") or label)
-                    ).split(",")[0].strip()
-                    if hint_key:
-                        return (
-                            False,
-                            f"Usage invalide: `{label}.{attr}(...)` alors que `{label}` est "
-                            "un indicator dict. Extraire une sous-clé puis travailler "
-                            f"sur le ndarray correspondant (ex: {label}['{hint_key}']).",
-                        )
-                if (
-                    attr in {"shift", "rolling", "ewm"}
-                    and isinstance(node.func.value, ast.Name)
-                ):
-                    var = node.func.value.id
-                    b = bindings.get(var)
-                    if b and b["kind"] in {"array", "values"}:
-                        return (
-                            False,
-                            f"Usage invalide: {var}.{attr}(...) sur ndarray. "
-                            "Utiliser pandas Series ou logique vectorisée numpy.",
-                        )
-                if attr in {"shift", "rolling", "ewm"}:
-                    ind_name = _indicator_name_from_subscript(node.func.value)
-                    if ind_name:
-                        return (
-                            False,
-                            f"Usage invalide: indicators['{ind_name}'].{attr}(...) "
-                            "sur ndarray. Utiliser une logique numpy.",
-                        )
-
-                # np.nan_to_num(var_dict)
-                if _is_np_nan_to_num_call(node) and getattr(node, "args", None):
-                    arg0 = node.args[0]
-                    if isinstance(arg0, ast.Name):
-                        b = bindings.get(arg0.id)
-                        if b and b["kind"] == "dict":
-                            return (
-                                False,
-                                f"Usage invalide: np.nan_to_num({arg0.id}) alors que "
-                                f"{arg0.id} est un indicator dict.",
-                            )
-
-            # .iloc/.loc/.iat/.at sur indicateurs ndarray/dict
-            if isinstance(node, ast.Attribute) and node.attr in {"iloc", "loc", "iat", "at"}:
-                if isinstance(node.value, ast.Name):
-                    var = node.value.id
-                    b = bindings.get(var)
-                    if b and b["kind"] in {"array", "values", "dict"}:
-                        return (
-                            False,
-                            f"Usage invalide: {var}.{node.attr} sur indicateur "
-                            "numpy/dict. Utiliser indexation numpy (`arr[i]`).",
-                        )
-                ind_name = _indicator_name_from_subscript(node.value)
-                if ind_name:
-                    return (
-                        False,
-                        f"Usage invalide: indicators['{ind_name}'].{node.attr} "
-                        "n'est pas supporté. Utiliser indexation numpy (`arr[i]`).",
-                    )
-
-            # Subscript checks: multi-dim on 1D arrays, numeric key on dict indicators
-            if isinstance(node, ast.Subscript):
-                if isinstance(node.value, ast.Name):
-                    var = node.value.id
-                    b = bindings.get(var)
-                    if b:
-                        key = _const_value(node.slice)
-                        if b["kind"] in {"array", "values"} and isinstance(node.slice, ast.Tuple):
-                            return (
-                                False,
-                                f"Usage invalide: indexation multi-dim `{var}[..., ...]` "
-                                "sur indicateur 1D.",
-                            )
-                        if b["kind"] in {"array", "values"} and isinstance(key, str):
-                            return (
-                                False,
-                                f"Usage invalide: clé string `{var}['{key}']` sur "
-                                "indicateur ndarray. Utiliser directement l'array.",
-                            )
-                        if b["kind"] == "dict" and isinstance(key, (int, float)):
-                            return (
-                                False,
-                                f"Usage invalide: clé numérique `{var}[{key}]` sur "
-                                "indicator dict; utiliser des sous-clés string.",
-                            )
-                        if b["kind"] == "dict" and isinstance(key, str):
-                            ind = str(b.get("indicator") or "")
-                            if ind and not _dict_indicator_key_is_valid(ind, key):
-                                hint = _dict_indicator_allowed_keys_hint(ind)
-                                return (
-                                    False,
-                                    f"Usage invalide: `{var}['{key}']` pour "
-                                    f"indicateur dict '{ind}'. Sous-clés valides: {hint}.",
-                                )
-
-                # indicators['bollinger'][50] / indicators['ema']['ema_21']
-                ind_name = _indicator_name_from_subscript(node.value)
-                if ind_name:
-                    key = _const_value(node.slice)
-                    if ind_name.lower() in _DICT_INDICATOR_NAMES:
-                        if isinstance(key, (int, float)):
-                            return (
-                                False,
-                                f"Usage invalide: indicators['{ind_name}'][{key}] — "
-                                "utiliser des sous-clés string.",
-                            )
-                        if isinstance(key, str) and not _dict_indicator_key_is_valid(ind_name, key):
-                            hint = _dict_indicator_allowed_keys_hint(ind_name)
-                            return (
-                                False,
-                                f"Usage invalide: indicators['{ind_name}']['{key}'] — "
-                                f"sous-clé inconnue. Sous-clés valides: {hint}.",
-                            )
-                    elif isinstance(key, str):
-                        return (
-                            False,
-                            f"Usage invalide: indicators['{ind_name}']['{key}'] — "
-                            f"'{ind_name}' retourne un ndarray, pas un dict.",
-                        )
-                get_name = _indicator_name_from_get_call(node.value)
-                if get_name:
-                    key = _const_value(node.slice)
-                    if get_name.lower() in _DICT_INDICATOR_NAMES:
-                        if isinstance(key, (int, float)):
-                            return (
-                                False,
-                                f"Usage invalide: indicators.get('{get_name}')[{key}] — "
-                                "utiliser des sous-clés string.",
-                            )
-                        if isinstance(key, str) and not _dict_indicator_key_is_valid(get_name, key):
-                            hint = _dict_indicator_allowed_keys_hint(get_name)
-                            return (
-                                False,
-                                f"Usage invalide: indicators.get('{get_name}')['{key}'] — "
-                                f"sous-clé inconnue. Sous-clés valides: {hint}.",
-                            )
-                    elif isinstance(key, str):
-                        return (
-                            False,
-                            f"Usage invalide: indicators.get('{get_name}')['{key}'] — "
-                            f"'{get_name}' retourne un ndarray, pas un dict.",
-                        )
-
-            # Comparaisons/arithmétiques directes sur dict indicators
-            if isinstance(node, ast.Compare):
-                operands = [node.left, *node.comparators]
-                for operand in operands:
-                    binding = _binding_info_for_expr(operand, bindings)
-                    if binding and binding["kind"] == "dict":
-                        label = _binding_expr_label(operand, binding)
-                        hint_key = _dict_indicator_allowed_keys_hint(
-                            str(binding.get("indicator") or label)
-                        ).split(",")[0].strip()
-                        return (
-                            False,
-                            f"Usage invalide: comparaison `{label} ...` alors que "
-                            f"`{label}` est un indicator dict. Utiliser une sous-clé "
-                            f"(ex: {label}['{hint_key}']).",
-                        )
-
-            if isinstance(node, ast.BinOp):
-                for operand in (node.left, node.right):
-                    binding = _binding_info_for_expr(operand, bindings)
-                    if binding and binding["kind"] == "dict":
-                        label = _binding_expr_label(operand, binding)
-                        hint_key = _dict_indicator_allowed_keys_hint(
-                            str(binding.get("indicator") or label)
-                        ).split(",")[0].strip()
-                        return (
-                            False,
-                            f"Usage invalide: opération arithmétique sur `{label}` "
-                            "qui est un indicator dict. Utiliser une sous-clé "
-                            f"(ex: {label}['{hint_key}']).",
-                        )
-
-                if isinstance(node.op, (ast.BitAnd, ast.BitOr, ast.BitXor)):
-                    for operand in (node.left, node.right):
-                        binding = _binding_info_for_expr(operand, bindings)
-                        if binding and binding["kind"] == "dict":
-                            label = _binding_expr_label(operand, binding)
-                            hint_key = _dict_indicator_allowed_keys_hint(
-                                str(binding.get("indicator") or label)
-                            ).split(",")[0].strip()
-                            return (
-                                False,
-                                f"Usage invalide: opérateur logique bitwise appliqué à `{label}` "
-                                "qui est un indicator dict. Comparer d'abord une sous-clé "
-                                f"(ex: {label}['{hint_key}'] > seuil) puis combiner les masques.",
-                            )
-                        if isinstance(operand, ast.Name):
-                            b = bindings.get(operand.id)
-                            if b and b["kind"] == "scalar":
-                                return (
-                                    False,
-                                    f"Usage invalide: opérateur logique bitwise avec "
-                                    f"scalaire `{operand.id}`. Comparer d'abord la valeur "
-                                    "scalaire (ex: `arr > threshold`) puis combiner les masques.",
-                                )
-                        if _is_numeric_nonbool_constant(operand):
-                            return (
-                                False,
-                                "Usage invalide: opérateur logique bitwise avec constante "
-                                "numérique. Utiliser des comparaisons booléennes de part et d'autre.",
-                            )
-
-            if isinstance(node, ast.BoolOp):
-                for operand in node.values:
-                    binding = _binding_info_for_expr(operand, bindings)
-                    if binding and binding["kind"] == "dict":
-                        label = _binding_expr_label(operand, binding)
-                        hint_key = _dict_indicator_allowed_keys_hint(
-                            str(binding.get("indicator") or label)
-                        ).split(",")[0].strip()
-                        return (
-                            False,
-                            f"Usage invalide: test booléen direct sur `{label}` "
-                            "qui est un indicator dict. Utiliser une sous-clé "
-                            f"(ex: {label}['{hint_key}']).",
-                        )
-
-            if isinstance(node, (ast.If, ast.While)):
-                binding = _binding_info_for_expr(node.test, bindings)
-                if binding and binding["kind"] == "dict":
-                    label = _binding_expr_label(node.test, binding)
-                    hint_key = _dict_indicator_allowed_keys_hint(
-                        str(binding.get("indicator") or label)
-                    ).split(",")[0].strip()
-                    return (
-                        False,
-                        f"Usage invalide: condition `{label}` alors que `{label}` est un "
-                        f"indicator dict. Utiliser une sous-clé (ex: {label}['{hint_key}']).",
-                    )
-
-    return True, ""
-
-
 def _extract_json_from_response(text: str) -> Dict[str, Any]:
     """Extrait un bloc JSON depuis une réponse LLM (gère ```json ... ```, <think>, etc.)."""
     def _parse_json_dict(payload: str) -> Dict[str, Any]:
@@ -2469,58 +1775,30 @@ def _validate_builder_dataset_exploitability(
     *,
     symbol: str,
     timeframe: str,
+    universe_mode: str = "canonical",
+    strategy_type: str = "",
+    purpose: str = "builder",
+    objective: str = "",
 ) -> tuple[bool, str]:
     """Valide que le dataset/timeframe est exploitable pour le Builder."""
-    n_bars = int(len(data))
-    if n_bars < MIN_BUILDER_BARS:
-        return (
-            False,
-            (
-                f"Dataset insuffisant pour Builder: {n_bars} barres (< {MIN_BUILDER_BARS}) "
-                f"sur {symbol}/{timeframe}."
-            ),
-        )
-
-    if symbol and symbol != "UNKNOWN":
-        try:
-            from data.config import find_optimal_periods
-
-            periods = find_optimal_periods([symbol], [timeframe], min_period_days=30, max_periods=1)
-            if not periods:
-                return (
-                    False,
-                    (
-                        "Aucun segment exploitable sans gaps majeurs détecté "
-                        f"par data.config pour {symbol}/{timeframe}."
-                    ),
-                )
-        except (
-            ValueError,
-            KeyError,
-            RuntimeError,
-            AttributeError,
-            TypeError,
-            IndexError,
-            NameError,
-        ) as exc:
-            logger.warning(
-                "builder_dataset_quality_check_fallback symbol=%s timeframe=%s error=%s",
-                symbol,
-                timeframe,
-                exc,
-            )
-
-    max_segment = _max_contiguous_segment_bars(data, timeframe)
-    if max_segment < MIN_BUILDER_BARS:
-        return (
-            False,
-            (
-                "Aucun segment continu exploitable détecté: "
-                f"segment max={max_segment} barres (< {MIN_BUILDER_BARS}) sur {symbol}/{timeframe}."
-            ),
-        )
-
-    return True, ""
+    evaluation = evaluate_market_dataset(
+        data,
+        symbol=symbol,
+        timeframe=timeframe,
+        universe_mode=normalize_universe_mode(universe_mode, purpose=purpose),
+        purpose=purpose,
+        strategy_type=infer_strategy_type(
+            strategy_type=strategy_type,
+            objective=objective,
+        ),
+        objective=objective,
+    )
+    if evaluation.get("accepted"):
+        return True, ""
+    reasons = list(evaluation.get("exclusion_reasons", []) or [])
+    if not reasons:
+        return False, f"Dataset non exploitable sur {symbol}/{timeframe}."
+    return False, f"{symbol}/{timeframe}: " + " | ".join(str(reason) for reason in reasons)
 
 
 def validate_builder_dataset_exploitability(
@@ -2528,12 +1806,20 @@ def validate_builder_dataset_exploitability(
     *,
     symbol: str,
     timeframe: str,
+    universe_mode: str = "canonical",
+    strategy_type: str = "",
+    purpose: str = "builder",
+    objective: str = "",
 ) -> tuple[bool, str]:
     """API partagée UI/Builder pour valider un dataset exploitable."""
     return _validate_builder_dataset_exploitability(
         data,
         symbol=symbol,
         timeframe=timeframe,
+        universe_mode=universe_mode,
+        strategy_type=strategy_type,
+        purpose=purpose,
+        objective=objective,
     )
 
 
@@ -3114,240 +2400,82 @@ def _inject_generate_signals_indicator_aliases(code: str) -> str:
     return "\n".join(lines)
 
 
-def _repair_code(code: str, required_indicators: Optional[List[str]] = None) -> str:
-    """Auto-repair des erreurs courantes du code genere par LLM.
-
-    Corrige:
-    - Tags <think> des modeles de raisonnement (qwen3, deepseek-r1)
-    - Docstrings triple-quoted non terminées (cause #1 de crash)
-    - Nom de classe incorrect (cause #2 de crash)
-    - np.nan_to_num() appliqué directement sur indicateurs dict
-    - .shift() / .rolling() / .ewm() sur ndarray → remplacement numpy
-    - .iloc / .loc sur indicateurs ndarray → indexation numpy
-    - indicators['ema']['ema_XX'] → indicators['ema'] (array, pas dict)
-    """
-    # 1. Retirer les tags <think> des modeles de raisonnement
-    code = re.sub(r"<think>.*?</think>\s*", "", code, flags=re.DOTALL)
-    code = re.sub(r"<think>.*", "", code, flags=re.DOTALL)
-    code = _salvage_complex_ast_syntax(code)
-
-    # 2. Supprimer le preamble non-Python (markdown, texte explicatif)
-    #    avant la première ligne de code réelle (from/import/class/def)
-    lines = code.split("\n")
-    first_code_idx = 0
-    for idx, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped and (
-            stripped.startswith(("from ", "import ", "class ", "def ", "@"))
-            or stripped.startswith("#!")
-        ):
-            first_code_idx = idx
-            break
-    if first_code_idx > 0:
-        code = "\n".join(lines[first_code_idx:])
-    code = _drop_obvious_non_python_lines(code)
-    code = _sanitize_python_list_markers(code)
-
-    # 3. Supprimer docstrings si syntax error + tenter un dedent sur erreurs d'indentation
-    try:
-        ast.parse(code)
-    except SyntaxError as e:
-        msg = str(getattr(e, "msg", "") or "").lower()
-        if "unexpected indent" in msg or "unindent" in msg or "indentation" in msg:
-            code = textwrap.dedent(code)
-        code = _strip_docstrings(code)
-        code = _salvage_complex_ast_syntax(code)
-
-    # 3. Fixer le nom de classe
-    code = _fix_class_name(code)
-
-    # 3b. Réécrire les faux accès indicators[...] qui désignent des alias ou des params.
-    code = _rewrite_invalid_indicator_accesses(code)
-    for alias, correct in _SEMANTIC_INDICATOR_ALIAS_HINTS.items():
-        code = re.sub(
-            rf"(?<!['\"\[])(?<![A-Za-z0-9_]){re.escape(alias)}(?!['\"])(?![A-Za-z0-9_])",
-            correct,
-            code,
-        )
-
-    # 4. np.nan_to_num(indicators["bollinger"]) → indicateur dict accédé directement
-    #    Remplacer par extraction des sous-clés
-    for dict_ind in _DICT_INDICATOR_NAMES:
-        # np.nan_to_num(indicators["bollinger"]) → indicators["bollinger"]
-        code = re.sub(
-            r"np\.nan_to_num\(\s*indicators\s*\[\s*['\"]"
-            + re.escape(dict_ind)
-            + r"['\"]\s*\]\s*\)",
-            f'indicators["{dict_ind}"]',
-            code,
-        )
-        # np.nan_to_num(indicators.get("bollinger")) → indicators.get("bollinger")
-        code = re.sub(
-            r"np\.nan_to_num\(\s*indicators\.get\(\s*['\"]"
-            + re.escape(dict_ind)
-            + r"['\"]\s*\)\s*\)",
-            f'indicators.get("{dict_ind}")',
-            code,
-        )
-
-    # 4b. Normaliser les sous-clés erronées courantes (stochastic)
-    #     Certains modèles utilisent `indicators['stochastic']['signal|stochastic']`.
-    code = re.sub(
-        r"(indicators\s*\[\s*['\"]stochastic['\"]\s*\]\s*\[\s*['\"])(stochastic|k)(['\"]\s*\])",
-        r"\1stoch_k\3",
+def _rewrite_base_strategy_aliases(code: str) -> str:
+    """Normalise l'ancien alias BaseStrategy vers StrategyBase."""
+    fixed = re.sub(
+        r"from\s+strategies\.base_strategy\s+import\s+BaseStrategy\b",
+        "from strategies.base import StrategyBase",
         code,
-        flags=re.IGNORECASE,
     )
-    code = re.sub(
-        r"(indicators\s*\[\s*['\"]stochastic['\"]\s*\]\s*\[\s*['\"])(signal|d)(['\"]\s*\])",
-        r"\1stoch_d\3",
+    fixed = re.sub(r"\bBaseStrategy\b", "StrategyBase", fixed)
+    return fixed
+
+
+def _rewrite_signals_loc_assignments(code: str) -> str:
+    """Réécrit les patterns `signals.loc[mask, 'long'/'short'] = ...` vers une série 1D."""
+
+    def _replacement(match: re.Match[str]) -> str:
+        mask_expr = str(match.group("mask") or "").strip()
+        side = str(match.group("side") or "").strip().lower()
+        raw_value = str(match.group("value") or "").strip()
+        normalized_value = raw_value
+        if side == "short":
+            if re.fullmatch(r"0(?:\.0+)?", raw_value):
+                normalized_value = "0.0"
+            else:
+                normalized_value = "-1.0"
+        elif side == "long":
+            if re.fullmatch(r"0(?:\.0+)?", raw_value):
+                normalized_value = "0.0"
+            else:
+                normalized_value = "1.0"
+        elif re.fullmatch(r"1(?:\.0+)?", raw_value):
+            normalized_value = "1.0"
+        elif re.fullmatch(r"-1(?:\.0+)?", raw_value):
+            normalized_value = "-1.0"
+        elif re.fullmatch(r"0(?:\.0+)?", raw_value):
+            normalized_value = "0.0"
+        return f"signals[{mask_expr}] = {normalized_value}"
+
+    return re.sub(
+        r"signals\s*\.loc\s*\[\s*(?P<mask>[^,\]\n]+)\s*,\s*['\"](?P<side>long|short)['\"]\s*\]\s*=\s*(?P<value>[^\n#]+)",
+        _replacement,
         code,
         flags=re.IGNORECASE,
     )
 
-    # 5. .shift(N) sur ndarray → np.roll(..., N)
-    #    pattern: var_name.shift(N)  → np.roll(var_name, N)
-    code = re.sub(
-        r"(\b\w+)\.shift\(\s*(\d+)\s*\)",
-        r"np.roll(\1, \2)",
-        code,
-    )
-    # .shift() sans arg → np.roll(..., 1)
-    code = re.sub(
-        r"(\b\w+)\.shift\(\s*\)",
-        r"np.roll(\1, 1)",
-        code,
-    )
 
-    # 6. indicators['ema']['ema_XX'] → indicators['ema']
-    #    (ema/rsi/atr sont des plain arrays, pas des dicts)
-    for arr_ind in ("ema", "rsi", "atr", "sma", "cci", "mfi",
-                    "williams_r", "momentum", "obv", "roc"):
-        code = re.sub(
-            r"indicators\s*\[\s*['\"]"
-            + re.escape(arr_ind)
-            + r"['\"]\s*\]\s*\[\s*['\"][^'\"]*['\"]\s*\]",
-            f'indicators["{arr_ind}"]',
-            code,
-        )
-
-    # 7. Supprimer les imports incorrects "from indicators import ..."
-    #    Le LLM local tente parfois d'importer directement les indicateurs
-    #    alors qu'ils sont fournis via le dict `indicators`.
-    code = re.sub(
-        r"^from\s+indicators\s+import\s+[^\n]+\n?",
-        "",
-        code,
-        flags=re.MULTILINE,
-    )
-    code = re.sub(
-        r"^import\s+indicators\b[^\n]*\n?",
-        "",
-        code,
-        flags=re.MULTILINE,
-    )
-
-    # 8. Garantir les imports obligatoires
-    _REQUIRED_IMPORTS = [
-        ("from typing import", "from typing import Any, Dict, List\n"),
-        ("from strategies.base import StrategyBase", "from strategies.base import StrategyBase\n"),
-        ("from utils.parameters import ParameterSpec", "from utils.parameters import ParameterSpec\n"),
-        ("import numpy", "import numpy as np\n"),
-        ("import pandas", "import pandas as pd\n"),
-    ]
-    for check_str, import_line in _REQUIRED_IMPORTS:
-        if check_str not in code:
-            code = import_line + code
-
-    # 9. Garantir l'héritage StrategyBase
-    #    Si la classe est définie sans parent ou avec un parent incorrect,
-    #    forcer l'héritage de StrategyBase.
-    code = re.sub(
-        rf"class\s+{GENERATED_CLASS_NAME}\s*:\s*\n",
-        f"class {GENERATED_CLASS_NAME}(StrategyBase):\n",
-        code,
-    )
-    code = re.sub(
-        rf"class\s+{GENERATED_CLASS_NAME}\s*\(\s*\)\s*:",
-        f"class {GENERATED_CLASS_NAME}(StrategyBase):",
-        code,
-    )
-
-    # 10. Alias variables coeur dans generate_signals (évite NameError df/indicators/params)
-    code = _inject_generate_signals_core_param_aliases(code)
-
-    # 10a. Préambule systématique des indicateurs déclarés/attendus dans generate_signals
-    code = _inject_generate_signals_indicator_bindings(code, required_indicators)
-
-    # 10b. Alias indicateurs nus dans generate_signals (évite NameError coppock_curve, rsi, etc.)
-    code = _inject_generate_signals_indicator_aliases(code)
-
-    # 11. Bare indicator variable repair — fix keltner['upper'] → indicators['keltner']['upper']
-    #     and keltner_upper → np.nan_to_num(indicators['keltner']['upper'])
-    for dict_ind, subkeys in _DICT_INDICATOR_ALLOWED_KEYS.items():
-        # Pattern A: bare_name['subkey'] → indicators['bare_name']['subkey']
-        # Only match if NOT preceded by indicators[ (already correct)
-        code = re.sub(
-            r"(?<!\[)\b" + re.escape(dict_ind) + r"\s*\[\s*(['\"])(\w+)\1\s*\]",
-            lambda m, ind=dict_ind: (
-                f'indicators["{ind}"]["{m.group(2)}"]'
-                if m.group(2) in _DICT_INDICATOR_ALLOWED_KEYS.get(ind, set())
-                else m.group(0)
-            ),
-            code,
-        )
-        # Pattern B: bare_name_subkey used as variable → np.nan_to_num(indicators['name']['subkey'])
-        for subkey in sorted(subkeys, key=len, reverse=True):
-            alias = f"{dict_ind}_{subkey}"
-            # Only replace bare assignments like: keltner_upper = ... (don't touch indicators[...])
-            # Replace usages in comparisons: (keltner_upper > X) → (np.nan_to_num(indicators[...]) > X)
-            pattern = r"\b" + re.escape(alias) + r"\b(?!\s*=)"
-            replacement = f"np.nan_to_num(indicators['{dict_ind}']['{subkey}'])"
-            code = re.sub(pattern, replacement, code)
-
-    code = re.sub(
-        r"indicators\s*\[\s*['\"]([A-Za-z0-9_]+)['\"]\s*\]",
-        lambda m: f"indicators['{m.group(1).lower()}']",
-        code,
-    )
-    code = re.sub(
-        r"indicators\.get\(\s*['\"]([A-Za-z0-9_]+)['\"]",
-        lambda m: f"indicators.get('{m.group(1).lower()}'",
-        code,
-    )
-
-    for dict_ind, subkeys in _DICT_INDICATOR_ALLOWED_KEYS.items():
-        for subkey in subkeys:
-            code = re.sub(
-                rf"\b{re.escape(dict_ind)}\s*\.\s*{re.escape(subkey)}\b",
-                f"indicators['{dict_ind}']['{subkey}']",
-                code,
-                flags=re.IGNORECASE,
+def _rewrite_safe_dict_indicator_comparisons(code: str) -> str:
+    """Réécrit quelques comparaisons directes ambiguës sur indicateurs dict quand la sous-clé sûre est connue."""
+    compare_ops = r"(==|!=|>=|<=|>|<)"
+    rewritten_lines: List[str] = []
+    for raw_line in str(code or "").splitlines():
+        line = raw_line
+        for indicator_name, subkey in _DICT_INDICATOR_SAFE_SCALAR_KEYS.items():
+            scalar_expr = f"np.nan_to_num(indicators['{indicator_name}']['{subkey}'])"
+            indicator_expr = (
+                rf"indicators\s*\[\s*['\"]{re.escape(indicator_name)}['\"]\s*\](?!\s*\[)"
             )
-
-    df_cols = {"open", "high", "low", "close", "volume", *_BUILDER_ALLOWED_WRITE_DF_COLUMNS}
-    for col in sorted(df_cols):
-        code = re.sub(
-            rf"indicators\s*\[\s*['\"]{re.escape(col)}['\"]\s*\]",
-            f"df['{col}']",
-            code,
-            flags=re.IGNORECASE,
-        )
-        code = re.sub(
-            rf"indicators\.get\(\s*['\"]{re.escape(col)}['\"]\s*(?:,\s*[^)]*)?\)",
-            f"df['{col}']",
-            code,
-            flags=re.IGNORECASE,
-        )
-
-    for alias, correct in _SEMANTIC_INDICATOR_ALIAS_HINTS.items():
-        code = re.sub(
-            rf"(?<!['\"\[])(?<![A-Za-z0-9_]){re.escape(alias)}(?!['\"])(?![A-Za-z0-9_])",
-            correct,
-            code,
-        )
-
-    return code
+            get_expr = (
+                rf"indicators\.get\(\s*['\"]{re.escape(indicator_name)}['\"]\s*(?:,\s*[^)]*)?\)(?!\s*\[)"
+            )
+            for expr in (indicator_expr, get_expr):
+                line = re.sub(
+                    rf"({expr})\s*{compare_ops}",
+                    lambda m, replacement=scalar_expr: (
+                        f"{replacement} {m.group(2)}"
+                    ),
+                    line,
+                )
+                line = re.sub(
+                    rf"{compare_ops}\s*({expr})",
+                    lambda m, replacement=scalar_expr: (
+                        f"{m.group(1)} {replacement}"
+                    ),
+                    line,
+                )
+        rewritten_lines.append(line)
+    return "\n".join(rewritten_lines)
 
 
 def _extract_generate_signals_logic_block(code: str) -> str:
@@ -4491,6 +3619,106 @@ def _requires_indicator_exploration(
     }
 
 
+def _should_enable_stagnation_branching(
+    last_iteration: Optional["BuilderIteration"],
+) -> bool:
+    """N'ouvre des branches supplémentaires qu'après vraie stagnation."""
+    if last_iteration is None:
+        return False
+    stagnation = (getattr(last_iteration, "phase_feedback", {}) or {}).get("stagnation", {})
+    return bool(stagnation.get("identical_metrics")) and _requires_indicator_exploration(last_iteration)
+
+
+def _build_stagnation_branch_specs(
+    previous_indicators: tuple[str, ...],
+) -> List[Dict[str, str]]:
+    previous_text = ", ".join(previous_indicators) if previous_indicators else "the previous indicator set"
+    return [
+        {
+            "label": "keep",
+            "directive": (
+                "STAGNATION BRANCH: KEEP_SET. Reuse exactly the previous indicator set "
+                f"({previous_text}) but materially change the logic, filters, sequencing, or regime interpretation. "
+                "Do not add or remove indicators in this branch."
+            ),
+        },
+        {
+            "label": "add_one",
+            "directive": (
+                "STAGNATION BRANCH: ADD_ONE. Start from the previous indicator set "
+                f"({previous_text}) and add exactly one new indicator from the available list. "
+                "The added indicator must address the current failure mode."
+            ),
+        },
+        {
+            "label": "remove_or_replace",
+            "directive": (
+                "STAGNATION BRANCH: REMOVE_OR_REPLACE. Starting from the previous indicator set "
+                f"({previous_text}), either remove one weak/noisy indicator or replace one previous indicator "
+                "with a more relevant one. A smaller set is allowed if it improves clarity."
+            ),
+        },
+    ]
+
+
+def _is_logic_like_change_type(change_type: Any) -> bool:
+    return _normalize_change_type(change_type) in {"logic", "both"}
+
+
+def _should_trip_logic_stagnation_circuit(
+    last_iteration: Optional["BuilderIteration"],
+    iteration: "BuilderIteration",
+) -> bool:
+    if last_iteration is None:
+        return False
+    current_stagnation = (getattr(iteration, "phase_feedback", {}) or {}).get("stagnation", {})
+    previous_stagnation = (getattr(last_iteration, "phase_feedback", {}) or {}).get("stagnation", {})
+    if not bool(current_stagnation.get("identical_metrics")):
+        return False
+    if not bool(previous_stagnation.get("identical_metrics")):
+        return False
+    if not _is_logic_like_change_type(iteration.change_type):
+        return False
+    if not _is_logic_like_change_type(getattr(last_iteration, "change_type", "")):
+        return False
+    return True
+
+
+def _select_best_branch_candidate(
+    outcomes: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    successful = [outcome for outcome in outcomes if not outcome.get("error") and outcome.get("bt_result") is not None]
+    if not successful:
+        return outcomes[0] if outcomes else {}
+
+    branch_preference = {
+        "add_one": 2,
+        "remove_or_replace": 1,
+        "keep": 0,
+    }
+
+    def _outcome_metrics(outcome: Dict[str, Any]) -> Dict[str, Any]:
+        metrics = outcome.get("metrics")
+        if isinstance(metrics, dict):
+            return metrics
+        bt_result = outcome.get("bt_result")
+        bt_metrics = getattr(bt_result, "metrics", None)
+        return bt_metrics if isinstance(bt_metrics, dict) else {}
+
+    successful.sort(
+        key=lambda outcome: (
+            *_builder_iteration_selection_key(
+                _outcome_metrics(outcome),
+                is_fallback=bool(outcome.get("is_fallback", False)),
+                target_sharpe=float(outcome.get("target_sharpe", 1.0) or 1.0),
+            ),
+            branch_preference.get(str(outcome.get("branch_label", "")), 0),
+        ),
+        reverse=True,
+    )
+    return successful[0]
+
+
 def _proposal_reuses_previous_indicator_set(
     proposal: Dict[str, Any],
     previous_indicators: tuple[str, ...],
@@ -4797,6 +4025,62 @@ def _extract_generate_signals_signature(code: str) -> str:
     return ""
 
 
+def _extract_default_params_signature(code: str) -> Dict[str, Any]:
+    """Retourne le dict literal de default_params depuis le code généré."""
+    try:
+        tree = ast.parse(code)
+    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
+        return {}
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == GENERATED_CLASS_NAME:
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef) and item.name == "default_params":
+                    for stmt in item.body:
+                        if isinstance(stmt, ast.Return):
+                            try:
+                                value = ast.literal_eval(stmt.value)
+                            except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
+                                return {}
+                            if isinstance(value, dict):
+                                return value
+    return {}
+
+
+def _proposal_has_meaningful_param_delta(
+    previous_code: str,
+    proposal: Dict[str, Any],
+) -> bool:
+    """Indique si une proposition params-only change réellement default_params."""
+    previous_params = _sanitize_param_mapping(
+        _extract_default_params_signature(previous_code)
+    )
+    current_params = _sanitize_param_mapping(proposal.get("default_params"))
+    if not current_params:
+        return False
+    return current_params != previous_params
+
+
+def _proposal_changes_indicator_set_in_params_mode(
+    previous_code: str,
+    proposal: Dict[str, Any],
+) -> bool:
+    """Détecte une proposition params-only qui change en réalité les indicateurs."""
+    previous_indicators = {
+        str(ind).strip().lower()
+        for ind in _extract_required_indicators_signature(previous_code)
+        if str(ind).strip()
+    }
+    current_indicators = {
+        str(ind).strip().lower()
+        for ind in proposal.get("used_indicators", [])
+        if str(ind).strip()
+    }
+    if not previous_indicators or not current_indicators:
+        return False
+    return current_indicators != previous_indicators
+
+
 def _params_only_contract_respected(previous_code: str, new_code: str) -> tuple[bool, str]:
     """Vérifie qu'une itération params-only n'a pas modifié la logique."""
     prev_inds = _extract_required_indicators_signature(previous_code)
@@ -4917,7 +4201,7 @@ def compute_diagnostic(
             "detail": f"WR {wr:.1f}%, Trades {n}, AvgW/L {avg_w:.2f}/{avg_l:.2f}",
         },
     }
-    continuous_score = compute_continuous_builder_score(
+    telemetry_score = compute_builder_telemetry_score(
         metrics,
         target_sharpe=target_sharpe,
     )
@@ -5099,11 +4383,17 @@ def compute_diagnostic(
         "trend": trend,
         "trend_detail": trend_detail,
         "score_card": sc,
-        "continuous_score": round(float(continuous_score.get("score", 0.0)), 2),
+        "telemetry_score": round(float(telemetry_score.get("score", 0.0)), 2),
+        "continuous_score": round(float(telemetry_score.get("score", 0.0)), 2),
+        "telemetry_breakdown": {
+            "components": telemetry_score.get("components", {}),
+            "penalties": telemetry_score.get("penalties", {}),
+            "drawdown_excess_pct": telemetry_score.get("drawdown_excess_pct", 0.0),
+        },
         "score_breakdown": {
-            "components": continuous_score.get("components", {}),
-            "penalties": continuous_score.get("penalties", {}),
-            "drawdown_excess_pct": continuous_score.get("drawdown_excess_pct", 0.0),
+            "components": telemetry_score.get("components", {}),
+            "penalties": telemetry_score.get("penalties", {}),
+            "drawdown_excess_pct": telemetry_score.get("drawdown_excess_pct", 0.0),
         },
     }
 
@@ -5169,6 +4459,9 @@ class StrategyBuilder:
         self.llm_topology_config = llm_topology_config or build_phase1_topology(
             primary_host=getattr(getattr(self.llm, "config", None), "ollama_host", None)
         )
+        # ── Instrumentation & Ablation ──
+        self.instrumentation = PipelineInstrumentation(enabled=False)
+        self.ablation = AblationController()
 
     def _emit_completed_backtest(
         self,
@@ -5193,6 +4486,12 @@ class StrategyBuilder:
             meta.setdefault("builder_session_id", getattr(session, "session_id", ""))
             meta.setdefault("builder_iteration", iteration_num)
             meta.setdefault("builder_objective", getattr(session, "objective", ""))
+            meta.setdefault("universe_mode", getattr(session, "universe_mode", ""))
+            meta.setdefault("universe_purpose", getattr(session, "universe_purpose", ""))
+            meta.setdefault(
+                "universe_strategy_type",
+                getattr(session, "universe_strategy_type", ""),
+            )
 
         try:
             callback(raw_result)
@@ -5266,6 +4565,11 @@ class StrategyBuilder:
         )
         phase_client_key = self._resolve_phase_client_key(phase)
         llm_client = self.phase_llm_clients.get(phase_client_key, self.llm)
+        timeout_sec = _resolve_builder_phase_timeout(
+            base_phase,
+            timeout_sec,
+            llm_client,
+        )
         client_config = getattr(llm_client, "config", None)
         route = self.llm_topology_config.resolve_builder_phase_route(
             phase,
@@ -5411,6 +4715,7 @@ class StrategyBuilder:
         self,
         session: BuilderSession,
         last_iteration: Optional[BuilderIteration] = None,
+        branch_directive: str = "",
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         """Demande au LLM une proposition de stratégie.
 
@@ -5427,14 +4732,17 @@ class StrategyBuilder:
             last_iteration is not None
             and _requires_indicator_exploration(last_iteration)
         )
-        ordered_prompt_indicators = rank_indicator_selection(
-            self.available_indicators,
-            objective=session.objective,
-            diagnostic=diagnostic_detail,
-            previous_indicators=previous_indicators,
-            session_seed=f"{session.session_id}:proposal:{len(session.iterations)+1}",
-            prefer_diversity=prefer_diversity,
-        )
+        if self.ablation.is_enabled("indicator_ranking"):
+            ordered_prompt_indicators = rank_indicator_selection(
+                self.available_indicators,
+                objective=session.objective,
+                diagnostic=diagnostic_detail,
+                previous_indicators=previous_indicators,
+                session_seed=f"{session.session_id}:proposal:{len(session.iterations)+1}",
+                prefer_diversity=prefer_diversity,
+            )
+        else:
+            ordered_prompt_indicators = list(self.available_indicators)
 
         context = {
             "objective": session.objective,
@@ -5479,7 +4787,7 @@ class StrategyBuilder:
             if previous_indicators:
                 context["previous_indicators"] = previous_indicators
             # Diagnostic pré-calculé de la dernière itération
-            if diagnostic_detail:
+            if diagnostic_detail and self.ablation.is_enabled("diagnostic_context"):
                 context["diagnostic"] = diagnostic_detail
             # Stagnation détectée : forcer le LLM à changer radicalement
             stag = (last_iteration.phase_feedback or {}).get("stagnation", {})
@@ -5495,13 +4803,18 @@ class StrategyBuilder:
                 last_iteration
             )
 
-        if session.iterations:
+        if branch_directive:
+            context["branch_directive"] = branch_directive
+
+        if session.iterations and self.ablation.is_enabled("iteration_history"):
             context["iteration_history"] = [
                 {
                     "iteration": it.iteration,
                     "hypothesis": it.hypothesis,
                     "change_type": it.change_type,
                     "diagnostic_category": it.diagnostic_category,
+                    "decision": it.decision,
+                    "indicators": list(it.used_indicators or []),
                     "sharpe": (
                         it.backtest_result.metrics.get("sharpe_ratio", 0)
                         if it.backtest_result else None
@@ -5514,11 +4827,39 @@ class StrategyBuilder:
                         it.backtest_result.metrics.get("total_trades", 0)
                         if it.backtest_result else None
                     ),
+                    "win_rate": (
+                        it.backtest_result.metrics.get("win_rate_pct", 0)
+                        if it.backtest_result else None
+                    ),
+                    "max_drawdown_pct": (
+                        it.backtest_result.metrics.get("max_drawdown_pct", 0)
+                        if it.backtest_result else None
+                    ),
+                    "profit_factor": (
+                        it.backtest_result.metrics.get("profit_factor", 0)
+                        if it.backtest_result else None
+                    ),
                     "error": it.error,
                     "is_fallback": it.is_fallback,
                 }
                 for it in session.iterations[-5:]
             ]
+
+        # Fournir la meilleure config session pour ancrer le modèle
+        best_it = session.best_iteration
+        if best_it is not None and best_it.backtest_result is not None:
+            bm = best_it.backtest_result.metrics or {}
+            context["best_so_far"] = {
+                "iteration": best_it.iteration,
+                "hypothesis": best_it.hypothesis,
+                "indicators": list(best_it.used_indicators or []),
+                "sharpe": bm.get("sharpe_ratio", 0),
+                "return_pct": bm.get("total_return_pct", 0),
+                "max_drawdown_pct": bm.get("max_drawdown_pct", 0),
+                "win_rate": bm.get("win_rate_pct", 0),
+                "trades": bm.get("total_trades", 0),
+                "profit_factor": bm.get("profit_factor", 0),
+            }
 
         prompt = render_prompt("strategy_builder_proposal.jinja2", context)
         base_messages = [
@@ -5541,12 +4882,13 @@ class StrategyBuilder:
             "issues": [],
         }
         proposal = _normalize_proposal_keys(_extract_json_from_response(raw))
-        proposal = _sanitize_proposal_payload(
-            proposal,
-            available_indicators=self.available_indicators,
-            objective=session.objective,
-            direction_constraint=session.direction_constraint,
-        )
+        if self.ablation.is_enabled("proposal_sanitize"):
+            proposal = _sanitize_proposal_payload(
+                proposal,
+                available_indicators=self.available_indicators,
+                objective=session.objective,
+                direction_constraint=session.direction_constraint,
+            )
         issues = _proposal_issues(proposal)
         feedback["issues"] = issues
         if not issues:
@@ -5591,12 +4933,13 @@ class StrategyBuilder:
             raw = response.content or ""
             feedback["realign_attempts"] = attempt
             proposal = _normalize_proposal_keys(_extract_json_from_response(raw))
-            proposal = _sanitize_proposal_payload(
-                proposal,
-                available_indicators=self.available_indicators,
-                objective=session.objective,
-                direction_constraint=session.direction_constraint,
-            )
+            if self.ablation.is_enabled("proposal_sanitize"):
+                proposal = _sanitize_proposal_payload(
+                    proposal,
+                    available_indicators=self.available_indicators,
+                    objective=session.objective,
+                    direction_constraint=session.direction_constraint,
+                )
             issues = _proposal_issues(proposal)
             feedback["issues"] = issues
             if not issues:
@@ -5613,6 +4956,133 @@ class StrategyBuilder:
         feedback["error_code"] = _proposal_error_code(feedback.get("issues", []))
         return proposal, feedback
 
+    def _execute_proposal_candidate(
+        self,
+        *,
+        session: BuilderSession,
+        proposal: Dict[str, Any],
+        proposal_feedback: Dict[str, Any],
+        last_iteration: Optional[BuilderIteration],
+        iteration_num: int,
+        data: pd.DataFrame,
+        initial_capital: float,
+        fallback_count: int,
+        branch_label: str = "main",
+    ) -> tuple[Dict[str, Any], int]:
+        from agents.builder_candidate_executor import (
+            execute_proposal_candidate_v2,
+        )
+
+        return execute_proposal_candidate_v2(
+            self,
+            session=session,
+            proposal=proposal,
+            proposal_feedback=proposal_feedback,
+            last_iteration=last_iteration,
+            iteration_num=iteration_num,
+            data=data,
+            initial_capital=initial_capital,
+            fallback_count=fallback_count,
+            branch_label=branch_label,
+        )
+
+    def _instrument_candidate_outcome(
+        self,
+        outcome: Dict[str, Any],
+        iteration_num: int,
+    ) -> None:
+        """Enregistre les données d'un outcome candidat dans la trace courante."""
+        instr = self.instrumentation
+        if not instr.enabled:
+            return
+        trace = instr._current_trace
+        if trace is None:
+            return
+        trace.ablation_config = dict(self.ablation.get_config())
+
+        proposal = outcome.get("proposal") or {}
+        code_fb = outcome.get("code_feedback") or {}
+        precheck_fb = outcome.get("precheck_feedback") or {}
+        backtest_fb = outcome.get("backtest_feedback") or {}
+        metrics = outcome.get("metrics") or {}
+        scoring = outcome.get("scoring_payload") or {}
+        code = outcome.get("code", "")
+
+        instr.record_proposal(
+            trace,
+            proposal,
+            source=code_fb.get("source", "llm"),
+        )
+        instr.record_code(
+            trace,
+            code,
+            source=code_fb.get("source", "llm"),
+            valid_first=code_fb.get("final_valid", False),
+            repair_applied=bool(code_fb.get("repair_applied")),
+            fallback_used=bool(
+                code_fb.get("fallback_deterministic_used")
+                or code_fb.get("source") == "deterministic_fallback"
+            ),
+            fallback_variant=code_fb.get("fallback_variant", -1),
+        )
+        if code_fb.get("repair_applied"):
+            instr.record_restriction(
+                trace,
+                "code_repair",
+                effect="helper",
+                phase="code_repair",
+            )
+        if (
+            code_fb.get("fallback_deterministic_used")
+            or code_fb.get("source") == "deterministic_fallback"
+        ):
+            instr.record_restriction(
+                trace,
+                "deterministic_fallback",
+                effect="helper",
+                phase="code_gen",
+                metadata={
+                    "variant": int(code_fb.get("fallback_variant", -1) or -1),
+                },
+            )
+        instr.record_precheck(
+            trace,
+            passed=not precheck_fb.get("backtest_skipped", False),
+            signal_count=int(precheck_fb.get("signal_count", 0)),
+            error=precheck_fb.get("skip_reason"),
+        )
+        if precheck_fb.get("backtest_skipped"):
+            instr.record_restriction(
+                trace,
+                "precheck",
+                effect="blocker",
+                phase="precheck",
+                detail=str(precheck_fb.get("skip_reason", "") or ""),
+            )
+        if outcome.get("bt_result") is not None:
+            instr.record_backtest(
+                trace,
+                metrics,
+                runtime_fix=bool(backtest_fb.get("runtime_fix_applied")),
+                runtime_error=backtest_fb.get("runtime_error"),
+            )
+            if backtest_fb.get("runtime_fix_applied"):
+                instr.record_restriction(
+                    trace,
+                    "runtime_fix",
+                    effect="helper",
+                    phase="runtime_fix",
+                    detail=str(backtest_fb.get("runtime_error", "") or ""),
+                )
+        if scoring:
+            instr.record_scoring(
+                trace,
+                scoring,
+                rank_score=float(outcome.get("rank_score", float("-inf"))),
+            )
+
+        trace.is_fallback = bool(outcome.get("is_fallback", False))
+
     def _ask_code(
         self,
         session: BuilderSession,
@@ -5627,22 +5097,25 @@ class StrategyBuilder:
         # Extraire les actions diagnostiques de la dernière itération
         diag_actions: List[str] = []
         diag_donts: List[str] = []
-        if last_iteration is not None:
+        if last_iteration is not None and self.ablation.is_enabled("diagnostic_context"):
             diag_detail = getattr(last_iteration, "diagnostic_detail", {}) or {}
             diag_actions = diag_detail.get("actions", [])
             diag_donts = diag_detail.get("donts", [])
 
-        ordered_code_indicators = rank_indicator_selection(
-            self.available_indicators,
-            objective=(
-                f"{session.objective} {proposal.get('hypothesis', '')} "
-                f"{' '.join(proposal.get('used_indicators', []) or [])}"
-            ),
-            diagnostic=(last_iteration.diagnostic_detail if last_iteration else {}),
-            previous_indicators=proposal.get("used_indicators", []),
-            session_seed=f"{session.session_id}:code:{len(session.iterations)+1}",
-            prefer_diversity=False,
-        )
+        if self.ablation.is_enabled("indicator_ranking"):
+            ordered_code_indicators = rank_indicator_selection(
+                self.available_indicators,
+                objective=(
+                    f"{session.objective} {proposal.get('hypothesis', '')} "
+                    f"{' '.join(proposal.get('used_indicators', []) or [])}"
+                ),
+                diagnostic=(last_iteration.diagnostic_detail if last_iteration else {}),
+                previous_indicators=proposal.get("used_indicators", []),
+                session_seed=f"{session.session_id}:code:{len(session.iterations)+1}",
+                prefer_diversity=False,
+            )
+        else:
+            ordered_code_indicators = list(self.available_indicators)
 
         context = {
             "objective": session.objective,
@@ -6011,7 +5484,36 @@ class StrategyBuilder:
             f"- Meilleur Sharpe session: {session.best_sharpe:.3f}",
         ]
 
-        # Diagnostic pré-calculé
+        # Historique complet de la session (tendance visible itération par itération)
+        if len(session.iterations) > 1:
+            lines.append("")
+            lines.append("### Historique de la session")
+            for prev_it in session.iterations:
+                if prev_it.backtest_result:
+                    pm = prev_it.backtest_result.metrics or {}
+                    ps = float(pm.get("sharpe_ratio", 0) or 0)
+                    pr = float(pm.get("total_return_pct", 0) or 0)
+                    pd_ = float(pm.get("max_drawdown_pct", 0) or 0)
+                    pt = int(pm.get("total_trades", 0) or 0)
+                    pwr = float(pm.get("win_rate_pct", 0) or 0)
+                    best_mark = (
+                        " ★"
+                        if session.best_iteration is not None
+                        and prev_it.iteration == session.best_iteration.iteration
+                        else ""
+                    )
+                    lines.append(
+                        f"  iter {prev_it.iteration}{best_mark}: "
+                        f"Sharpe={ps:.3f} Ret={pr:+.2f}% DD={pd_:.1f}% "
+                        f"WR={pwr:.1f}% Trades={pt} "
+                        f"→ {prev_it.decision or '?'} [{prev_it.diagnostic_category or '-'}]"
+                        + (f" indicators=[{', '.join(prev_it.used_indicators)}]" if prev_it.used_indicators else "")
+                    )
+                else:
+                    lines.append(
+                        f"  iter {prev_it.iteration}: ⚠️ pas de backtest"
+                        + (f" ({prev_it.error[:60]})" if prev_it.error else "")
+                    )
         if diagnostic:
             lines.append("")
             lines.append("### Diagnostic automatique")
@@ -6084,10 +5586,15 @@ class StrategyBuilder:
                 LLMMessage(role="system", content=(
                     "Tu es un analyste quantitatif expert. "
                     "Analyse les résultats de backtest et le diagnostic fourni. "
-                    "Décide: accept (cible atteinte + robuste), "
-                    "continue (amélioration possible), stop (impasse). "
-                    "Privilégie 'continue' tant que des tests supplémentaires "
-                    "peuvent améliorer la stratégie. "
+                    f"Il reste {remaining} itérations disponibles. "
+                    "RÈGLE STRICTE pour 'stop': réservé uniquement quand (a) le compte est ruiné "
+                    "ET toutes les tentatives répétées échouent de la même façon depuis ≥3 itérations, "
+                    "OU (b) aucun trade n'a été généré depuis ≥3 itérations consécutives sans amélioration. "
+                    "RÈGLE 'continue': utilise 'continue' pour TOUTES les autres situations — "
+                    "résultats négatifs sur 1-2 itérations, overtrading, mauvais win rate, "
+                    "drawdown élevé — ce sont des problèmes réparables. "
+                    "RÈGLE 'accept': uniquement si Sharpe atteint la cible ET stratégie robuste (>20 trades, DD<40%). "
+                    "Ne stoppe JAMAIS après une seule itération négative. "
                     "Sois concis. Réponds en JSON."
                 )),
                 LLMMessage(role="user", content=prompt),
@@ -6194,7 +5701,8 @@ RULES:
 - Respond with ONLY valid JSON (no markdown, no commentary, no thinking)
 - Every indicator in used_indicators must exist in the available list
 - Always include ATR-based stop-loss/take-profit in risk_management
-- Use 2-3 indicators max to avoid overfitting
+- Prefer compact strategies, but allow 1 to 5 indicators when justified.
+- It is valid to remove an indicator, replace one, or add one if that materially improves the hypothesis.
 - Include realistic default_params with sensible ranges in parameter_specs
 - hypothesis must explain WHY this combination should work, not just WHAT it does
 - Never output placeholder values (e.g. "brief description", "when to BUY")
@@ -6658,6 +6166,10 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         timeframe: str = "1h",
         fees_bps: float = 10.0,
         slippage_bps: float = 5.0,
+        universe_mode: str = "canonical",
+        universe_purpose: str = "builder",
+        universe_strategy_type: str = "",
+        universe_meta: Optional[Dict[str, Any]] = None,
     ) -> BuilderSession:
         """
         Lance la boucle complète de construction de stratégie.
@@ -6672,12 +6184,21 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             timeframe: Timeframe des données (ex: 1h, 5m, 4h)
             fees_bps: Frais de trading en basis points
             slippage_bps: Slippage en basis points
+            universe_mode: Mode d'univers (`canonical` par défaut)
+            universe_purpose: Usage courant (builder/validation/graduation)
+            universe_strategy_type: Type de stratégie normalisé si déjà connu
+            universe_meta: Métadonnées additionnelles du filtrage univers
 
         Returns:
             BuilderSession avec l'historique complet et le meilleur résultat
         """
+        from agents.builder_loop import run_builder_loop_v2
+
         raw_objective = str(objective or "")
-        objective = sanitize_objective_text(raw_objective)
+        objective = sanitize_objective_text(
+            raw_objective,
+            enable_leakage_filter=self.ablation.is_enabled("prompt_leakage_filter"),
+        )
         if not objective and not _looks_like_log_pollution(raw_objective):
             objective = raw_objective.strip()
         if raw_objective.strip() != objective:
@@ -6696,23 +6217,29 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         session_dir = self.get_session_dir(session_id)
         session_dir.mkdir(parents=True, exist_ok=True)
 
-        # Calculer le contexte de marché à partir des données
         n_bars = len(data)
         date_range_start = ""
         date_range_end = ""
         try:
             idx = data.index
-            if hasattr(idx, 'min'):
+            if hasattr(idx, "min"):
                 date_range_start = str(idx.min())[:19]
                 date_range_end = str(idx.max())[:19]
-        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
+        except (
+            ValueError,
+            KeyError,
+            RuntimeError,
+            AttributeError,
+            TypeError,
+            IndexError,
+        ):
             pass
 
         session = BuilderSession(
             session_id=session_id,
             objective=objective,
             session_dir=session_dir,
-            available_indicators=self.available_indicators,
+            available_indicators=list(self.available_indicators),
             max_iterations=max_iterations,
             target_sharpe=target_sharpe,
             symbol=symbol,
@@ -6723,6 +6250,39 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             fees_bps=fees_bps,
             slippage_bps=slippage_bps,
             initial_capital=initial_capital,
+            universe_mode=normalize_universe_mode(
+                universe_mode,
+                purpose=universe_purpose,
+            ),
+            universe_purpose=str(universe_purpose or "builder"),
+            universe_strategy_type=infer_strategy_type(
+                strategy_type=universe_strategy_type,
+                objective=objective,
+            ),
+            universe_meta=(
+                dict(universe_meta)
+                if isinstance(universe_meta, dict)
+                else {}
+            ),
+            builder_execution_mode=str(
+                getattr(self, "builder_execution_mode", "mono_single_llm")
+                or "mono_single_llm"
+            ),
+            orchestration_mode=str(
+                getattr(self, "orchestration_mode", "single_llm")
+                or "single_llm"
+            ),
+            instrumentation_enabled=bool(self.instrumentation.enabled),
+            ablation_config=dict(self.ablation.get_config()),
+            multi_llm_profile=str(
+                getattr(self, "multi_llm_profile", "") or ""
+            ),
+            multi_llm_role_overrides=dict(
+                getattr(self, "multi_llm_role_overrides", {}) or {}
+            ),
+            multi_llm_assignments=list(
+                getattr(self, "multi_llm_assignments", []) or []
+            ),
         )
         session.direction_constraint = _infer_direction_constraint_from_objective(
             objective
@@ -6738,6 +6298,10 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             data,
             symbol=symbol,
             timeframe=timeframe,
+            universe_mode=session.universe_mode,
+            strategy_type=session.universe_strategy_type,
+            purpose=session.universe_purpose,
+            objective=objective,
         )
         if not dataset_ok:
             logger.warning(
@@ -6761,1086 +6325,64 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
 
         logger.info(
             "strategy_builder_start session=%s objective='%s' indicators=%d",
-            session_id, objective, len(self.available_indicators),
+            session_id,
+            objective,
+            len(self.available_indicators),
         )
 
-        # ── Flux de pensée temps réel ──
-        model_name = getattr(getattr(self.llm, 'config', None), 'model', '?')
-        ts = ThoughtStream(session_id, objective, model_name)
+        model_name = getattr(getattr(self.llm, "config", None), "model", "?")
+        thought_stream = ThoughtStream(session_id, objective, model_name)
+        run_builder_loop_v2(
+            self,
+            session=session,
+            data=data,
+            initial_capital=initial_capital,
+            thought_stream=thought_stream,
+        )
 
-        last_iteration: Optional[BuilderIteration] = None
-        consecutive_failures = 0
-        fallback_count = 0  # compteur de fallbacks déterministes dans la session
+        thought_stream.session_end(
+            session.status,
+            session.best_sharpe,
+            len(session.iterations),
+        )
 
-        for i in range(1, max_iterations + 1):
-            iteration = BuilderIteration(iteration=i)
-            self._emit_progress(
-                "iteration_start",
-                iteration=i,
-                max_iterations=max_iterations,
-            )
-            ts.iteration_start(i, max_iterations)
+        session.instrumentation_enabled = bool(self.instrumentation.enabled)
+        session.ablation_config = dict(self.ablation.get_config())
+        session.instrumentation_summary = (
+            self.instrumentation.session_summary()
+            if self.instrumentation.enabled
+            else {}
+        )
+        session.restriction_events = dict(
+            session.instrumentation_summary.get("restriction_events", {}) or {}
+        )
+        session.pipeline_traces_path = ""
 
-            # ── Circuit breaker ──
-            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                recovered, last_iteration, consecutive_failures, fallback_count, reset_event = (
-                    self._attempt_session_auto_reset(
-                        session,
-                        iteration_num=i,
-                        trigger="consecutive_failures",
-                        reason=(
-                            f"{consecutive_failures} échecs consécutifs "
-                            f"(seuil={MAX_CONSECUTIVE_FAILURES})"
-                        ),
-                        last_iteration=last_iteration,
-                        consecutive_failures=consecutive_failures,
-                        fallback_count=fallback_count,
-                    )
-                )
-                if recovered:
-                    iteration.phase_feedback.setdefault("session_reset", {}).update(
-                        reset_event
-                    )
-                    ts.warning(
-                        "Auto-reset Builder: reprise sur le meilleur ancrage stable "
-                        "disponible avant nouvelle tentative."
-                    )
-                else:
-                    ts.circuit_breaker(consecutive_failures, MAX_CONSECUTIVE_FAILURES)
-                    logger.warning(
-                        "builder_circuit_breaker consecutive=%d",
-                        consecutive_failures,
-                    )
-                    session.status = "failed"
-                    break
-
-            # ── Circuit breaker fallback ──
-            if fallback_count >= MAX_DETERMINISTIC_FALLBACKS:
-                recovered, last_iteration, consecutive_failures, fallback_count, reset_event = (
-                    self._attempt_session_auto_reset(
-                        session,
-                        iteration_num=i,
-                        trigger="deterministic_fallbacks",
-                        reason=(
-                            f"{fallback_count} fallbacks déterministes "
-                            f"(seuil={MAX_DETERMINISTIC_FALLBACKS})"
-                        ),
-                        last_iteration=last_iteration,
-                        consecutive_failures=consecutive_failures,
-                        fallback_count=fallback_count,
-                    )
-                )
-                if recovered:
-                    iteration.phase_feedback.setdefault("session_reset", {}).update(
-                        reset_event
-                    )
-                    ts.warning(
-                        "Auto-reset Builder: saturation fallback détectée, "
-                        "redémarrage sur une base plus saine."
-                    )
-                else:
-                    ts.warning(
-                        f"Arrêt: {fallback_count} fallbacks déterministes utilisés. "
-                        "Le LLM ne parvient pas à générer du code valide pour cette API."
-                    )
-                    logger.warning(
-                        "builder_fallback_circuit_breaker count=%d",
-                        fallback_count,
-                    )
-                    session.status = "failed"
-                    break
-
+        if self.instrumentation.enabled and self.instrumentation.traces:
             try:
-                # ── Phase 1 : Proposition ──
-                logger.info("builder_iter_%d_proposal", i)
-                self._emit_progress("phase_start", iteration=i, phase="proposal")
-                ts.proposal_sent(has_previous=last_iteration is not None)
-                t0 = time.perf_counter()
-                proposal, proposal_feedback = self._ask_proposal(
-                    session, last_iteration
-                )
-                iteration.phase_feedback["proposal"] = proposal_feedback
-                dt_proposal = time.perf_counter() - t0
-
-                # Garde : proposition vide → retry avec prompt simplifié
-                if _is_invalid_proposal(proposal):
-                    ts.warning(
-                        "Proposition invalide après retry contractuel — fallback déterministe"
-                    )
-                    issues = _proposal_issues(proposal)
-                    iteration.phase_feedback.setdefault("proposal", {})[
-                        "issues_after_retry"
-                    ] = issues
-                    proposal = _build_deterministic_proposal_fallback(
-                        objective=session.objective,
-                        available_indicators=self.available_indicators,
-                        last_iteration=last_iteration,
-                    )
-                    proposal = _sanitize_proposal_payload(
-                        proposal,
-                        available_indicators=self.available_indicators,
-                        objective=session.objective,
-                        direction_constraint=session.direction_constraint,
-                    )
-                    iteration.phase_feedback.setdefault("proposal", {})[
-                        "fallback_deterministic_used"
-                    ] = True
-                    iteration.phase_feedback.setdefault("proposal", {})[
-                        "source"
-                    ] = "deterministic_fallback"
-
-                iteration.hypothesis = proposal.get(
-                    "hypothesis", f"Itération {i}"
-                )
-                proposal["change_type"] = _normalize_change_type(
-                    proposal.get("change_type", "logic")
-                )
-                policy_ct = _policy_change_type_override(
-                    session=session,
-                    last_iteration=last_iteration,
-                )
-                if policy_ct and proposal["change_type"] != policy_ct:
-                    iteration.phase_feedback.setdefault("proposal", {})[
-                        "change_type_overridden"
-                    ] = {
-                        "from": proposal["change_type"],
-                        "to": policy_ct,
-                        "reason": "diagnostic_policy",
-                    }
-                    logger.info(
-                        "builder_iter_%d_change_type_overridden from=%s to=%s",
-                        i,
-                        proposal["change_type"],
-                        policy_ct,
-                    )
-                    proposal["change_type"] = policy_ct
-                iteration.change_type = proposal["change_type"]
-                self._emit_progress(
-                    "phase_done",
-                    iteration=i,
-                    phase="proposal",
-                    hypothesis=iteration.hypothesis,
-                )
-                ts.proposal_received(proposal, dt_proposal)
-
-                # Valider que les indicateurs demandés existent
-                used = proposal.get("used_indicators", [])
-                unknown = [
-                    ind for ind in used
-                    if ind.lower() not in (x.lower() for x in self.available_indicators)
-                ]
-                if unknown:
-                    logger.warning(
-                        "builder_unknown_indicators unknown=%s", unknown
-                    )
-                    proposal["used_indicators"] = [
-                        ind for ind in used if ind.lower() in
-                        (x.lower() for x in self.available_indicators)
-                    ]
-
-                # ── Phase 2 : Génération de code ──
-                logger.info("builder_iter_%d_codegen", i)
-                self._emit_progress("phase_start", iteration=i, phase="code")
-                ts.codegen_sent()
-                t0 = time.perf_counter()
-                change_type = _normalize_change_type(
-                    proposal.get("change_type", "logic")
-                )
-                has_stable_base_code = bool(
-                    last_iteration
-                    and last_iteration.code
-                    and last_iteration.error is None
-                    and last_iteration.backtest_result is not None
-                )
-                if change_type == "params" and not has_stable_base_code:
-                    iteration.phase_feedback.setdefault("proposal", {})[
-                        "change_type_overridden"
-                    ] = {
-                        "from": "params",
-                        "to": "logic",
-                        "reason": "no_stable_base_code",
-                    }
-                    logger.info(
-                        "builder_iter_%d_change_type_overridden from=params to=logic "
-                        "reason=no_stable_base_code",
-                        i,
-                    )
-                    change_type = "logic"
-                    proposal["change_type"] = "logic"
-                    iteration.change_type = "logic"
-                code: str
-                raw_code: str = ""
-                code_feedback: Dict[str, Any] = {
-                    "phase": "code",
-                    "initial_kind": "local_patch",
-                    "realign_attempts": 0,
-                    "realign_success": False,
-                    "final_valid": True,
-                }
-                if change_type == "params" and has_stable_base_code and last_iteration and last_iteration.code:
-                    patched = _rewrite_default_params_from_proposal(
-                        last_iteration.code, proposal,
-                    )
-                    if patched:
-                        code = patched
-                        code_feedback["source"] = "params_patch"
-                        code_feedback["final_kind"] = "python"
-                        iteration.phase_feedback["code"] = code_feedback
-                        logger.info(
-                            "builder_iter_%d_params_only_patch applied (no logic rewrite)",
-                            i,
-                        )
-                    else:
-                        raw_code, code_feedback = self._ask_code(
-                            session, proposal, last_iteration
-                        )
-                        iteration.phase_feedback["code"] = code_feedback
-                else:
-                    raw_code, code_feedback = self._ask_code(
-                        session, proposal, last_iteration
-                    )
-                    iteration.phase_feedback["code"] = code_feedback
-
-                if not (change_type == "params" and has_stable_base_code and last_iteration and last_iteration.code and "source" in code_feedback and code_feedback.get("source") == "params_patch"):
-                    req_inds = [
-                        str(x).strip().lower()
-                        for x in proposal.get("used_indicators", [])
-                        if isinstance(x, str) and str(x).strip()
-                    ]
-                    logic_block = _extract_generate_signals_logic_block(raw_code)
-                    if not logic_block.strip():
-                        logic_block = _extract_python_from_response(raw_code)
-                    logic_block = _postprocess_llm_logic_block(logic_block, req_inds)
-                    logic_ok, logic_err = _validate_llm_logic_block(logic_block)
-                    if not logic_ok:
-                        code_feedback["validation_error"] = logic_err
-                        ts.warning(f"Bloc logique invalide: {logic_err}")
-                        retry_logic_raw = self._retry_code_simple(proposal)
-                        retry_logic = _extract_python_from_response(retry_logic_raw)
-                        retry_logic = _postprocess_llm_logic_block(retry_logic, req_inds)
-                        retry_ok, retry_err = _validate_llm_logic_block(retry_logic)
-                        if not retry_ok:
-                            code_feedback["validation_error_retry"] = retry_err
-                            fallback_code = _build_deterministic_fallback_code(
-                                proposal,
-                                variant=fallback_count,
-                            )
-                            fallback_count += 1
-                            fallback_code = _repair_code(fallback_code, req_inds)
-                            is_valid_fb, error_msg_fb = validate_generated_code(fallback_code)
-                            if is_valid_fb:
-                                code = fallback_code
-                                code_feedback["fallback_deterministic_used"] = True
-                                code_feedback["source"] = "deterministic_fallback"
-                                code_feedback["fallback_variant"] = fallback_count - 1
-                                iteration.phase_feedback["code"] = code_feedback
-                                ts.warning(
-                                    "Bloc logique invalide après retry: fallback déterministe appliqué."
-                                )
-                                logger.warning(
-                                    "builder_iter_%d_logic_invalid_retry_fallback variant=%d",
-                                    i,
-                                    fallback_count - 1,
-                                )
-                            else:
-                                iteration.error = (
-                                    "Bloc logique LLM invalide après retry + fallback invalide: "
-                                    f"{error_msg_fb or retry_err}"
-                                )
-                                iteration.phase_feedback["code"] = code_feedback
-                                consecutive_failures += 1
-                                session.iterations.append(iteration)
-                                self._safe_save_session_summary(session)
-                                self._emit_progress(
-                                    "iteration_error",
-                                    iteration=i,
-                                    phase="code",
-                                    error=iteration.error,
-                                )
-                                last_iteration = iteration
-                                continue
-                        else:
-                            logic_block = retry_logic
-                            code_feedback["logic_retry_used"] = True
-                            code = _build_deterministic_strategy_code(proposal, logic_block)
-                    if "source" not in code_feedback:
-                        code = _build_deterministic_strategy_code(proposal, logic_block)
-                dt_code = time.perf_counter() - t0
-
-                iteration.code = code
-                ts.codegen_received(code, dt_code)
-
-                # Contrat strict params-only: logique identique entre itérations.
-                if change_type == "params" and last_iteration and last_iteration.code:
-                    contract_ok, contract_reason = _params_only_contract_respected(
-                        last_iteration.code,
-                        code,
-                    )
-                    if not contract_ok:
-                        ts.warning(f"Violation params-only: {contract_reason}")
-                        logger.warning(
-                            "builder_iter_%d_params_only_violation: %s",
-                            i,
-                            contract_reason,
-                        )
-                        patched = _rewrite_default_params_from_proposal(
-                            last_iteration.code, proposal,
-                        )
-                        if patched:
-                            code = patched
-                            iteration.code = code
-                            ts.warning(
-                                "Correctif automatique appliqué: "
-                                "logique précédente conservée, params réécrits."
-                            )
-                        else:
-                            # Fallback non bloquant: conserver la version précédente
-                            # plutôt que casser la session entière sur une itération params.
-                            code = last_iteration.code
-                            iteration.code = code
-                            iteration.phase_feedback.setdefault("code", {})[
-                                "params_contract_fallback"
-                            ] = "reused_previous_code"
-                            ts.warning(
-                                "Fallback params-only: code précédent conservé "
-                                "(patch default_params impossible)."
-                            )
-
-                # ── Phase 3 : Auto-repair + Validation syntaxe + sécurité ──
-                code = _repair_code(
-                    code,
-                    [
-                        str(x).strip().lower()
-                        for x in proposal.get("used_indicators", [])
-                        if isinstance(x, str) and str(x).strip()
-                    ],
-                )
-                iteration.code = code
-                is_valid, error_msg = validate_generated_code(code)
-
-                # Si invalide → retry avec prompt squelette + repair
-                if not is_valid:
-                    ts.warning(f"Code invalide: {error_msg} — retry simplifié")
-                    ts.retry("code_validation", 2)
-                    logger.warning(
-                        "builder_iter_%d_invalid code=%s — retrying", i, error_msg,
-                    )
-                    iteration.phase_feedback.setdefault("code", {})[
-                        "validation_error"
-                    ] = error_msg
-                    req_inds = [
-                        str(x).strip().lower()
-                        for x in proposal.get("used_indicators", [])
-                        if isinstance(x, str) and str(x).strip()
-                    ]
-                    retry_logic_raw = self._retry_code_simple(proposal)
-                    retry_logic = _extract_python_from_response(retry_logic_raw)
-                    retry_logic = _postprocess_llm_logic_block(retry_logic, req_inds)
-                    logic_ok, logic_err = _validate_llm_logic_block(retry_logic)
-                    if not logic_ok:
-                        is_valid_r, error_msg_r = False, logic_err
-                        retry_code = ""
-                    else:
-                        retry_code = _build_deterministic_strategy_code(proposal, retry_logic)
-                        retry_code = _repair_code(retry_code, req_inds)
-                        is_valid_r, error_msg_r = validate_generated_code(retry_code)
-                    if is_valid_r:
-                        code = retry_code
-                        iteration.code = code
-                        is_valid, error_msg = True, ""
-                    else:
-                        iteration.phase_feedback.setdefault("code", {})[
-                            "validation_error_retry"
-                        ] = error_msg_r
-                        # Fallback déterministe pour ne pas perdre l'itération
-                        fallback_code = _build_deterministic_fallback_code(
-                            proposal, variant=fallback_count,
-                        )
-                        fallback_count += 1
-                        fallback_code = _repair_code(fallback_code, req_inds)
-                        is_valid_fb, error_msg_fb = validate_generated_code(fallback_code)
-                        if is_valid_fb:
-                            code = fallback_code
-                            iteration.code = code
-                            iteration.phase_feedback.setdefault("code", {})[
-                                "fallback_deterministic_used"
-                            ] = True
-                            iteration.phase_feedback.setdefault("code", {})[
-                                "source"
-                            ] = "deterministic_fallback"
-                            iteration.phase_feedback.setdefault("code", {})[
-                                "fallback_variant"
-                            ] = fallback_count - 1
-                            ts.warning(
-                                f"Code LLM invalide après retry: fallback déterministe v{fallback_count - 1} appliqué."
-                            )
-                            is_valid, error_msg = True, ""
-                        else:
-                            error_msg = (
-                                f"{error_msg} | retry: {error_msg_r} | "
-                                f"fallback: {error_msg_fb}"
-                            )
-
-                ts.validation(is_valid, error_msg)
-                if not is_valid:
-                    iteration.error = f"Validation échouée: {error_msg}"
-                    logger.warning("builder_iter_%d_invalid_final code=%s", i, error_msg)
-                    consecutive_failures += 1
-                    session.iterations.append(iteration)
-                    self._safe_save_session_summary(session)
-                    self._emit_progress(
-                        "iteration_error",
-                        iteration=i,
-                        phase="validation",
-                        error=iteration.error,
-                    )
-                    last_iteration = iteration
-                    continue
-
-                # ── Phase 4 : Chargement dynamique ──
-                logger.info("builder_iter_%d_load", i)
-                strategy_cls = self._save_and_load(session, code, i)
-
-                # ── Phase 4b : Auto-fix required_indicators ──
-                strategy_cls = self._auto_fix_required_indicators(
-                    strategy_cls, code
-                )
-
-                # ── Phase 5 : Backtest + Pre-reflection (parallel) ──
-                logger.info("builder_iter_%d_backtest", i)
-                self._emit_progress("phase_start", iteration=i, phase="backtest")
-                ts.backtest_start()
-                default_params = proposal.get("default_params", {})
-
-                pre_reflection_future = None
-                pre_reflection_text = ""
-                pre_reflection_pool: Optional[concurrent.futures.ThreadPoolExecutor] = None
-
-                signal_probe = self._precheck_signal_counts(
-                    strategy_cls,
-                    data,
-                    default_params,
-                    initial_capital=initial_capital,
-                    fees_bps=session.fees_bps,
-                    slippage_bps=session.slippage_bps,
-                    direction_constraint=session.direction_constraint,
-                )
-                iteration.phase_feedback.setdefault("precheck", {}).update(signal_probe)
-
-                if signal_probe.get("ok") and int(signal_probe.get("total_signals", 0)) <= 0:
-                    long_n = int(signal_probe.get("long_signals", 0) or 0)
-                    short_n = int(signal_probe.get("short_signals", 0) or 0)
-                    ts.warning(
-                        "Pré-check: aucun signal d'entrée (long=0, short=0). "
-                        "Itération marquée no_trades, changement logique forcé."
-                    )
-                    logger.warning(
-                        "builder_iter_%d_precheck_no_signals long=%d short=%d",
-                        i,
-                        long_n,
-                        short_n,
-                    )
-                    iteration.phase_feedback.setdefault("precheck", {})["backtest_skipped"] = True
-                    proposal["_stagnation_detected"] = True
-                    bt_result = SimpleNamespace(
-                        success=True,
-                        metrics={
-                            "total_return_pct": 0.0,
-                            "sharpe_ratio": 0.0,
-                            "sortino_ratio": 0.0,
-                            "calmar_ratio": 0.0,
-                            "max_drawdown_pct": 0.0,
-                            "total_trades": 0,
-                            "win_rate_pct": 0.0,
-                            "profit_factor": 1.0,
-                            "expectancy": 0.0,
-                        },
-                        sharpe_ratio=0.0,
-                        total_return_pct=0.0,
-                        max_drawdown_pct=0.0,
-                        total_trades=0,
-                        execution_time_ms=0,
-                    )
-                elif self._is_pathological_signal_profile(signal_probe):
-                    total_n = int(signal_probe.get("total_signals", 0) or 0)
-                    density = float(signal_probe.get("signal_density", 0.0) or 0.0)
-                    repeated_same_ratio = float(
-                        signal_probe.get("repeated_same_ratio", 0.0) or 0.0
-                    )
-                    transition_n = int(signal_probe.get("transition_signals", 0) or 0)
-                    ts.warning(
-                        "Pré-check: densité de signaux aberrante "
-                        f"({density:.1%}, répétitions identiques {repeated_same_ratio:.1%}, "
-                        f"transitions {transition_n}). Backtest complet ignoré, "
-                        "correction logique forcée."
-                    )
-                    logger.warning(
-                        "builder_iter_%d_precheck_signal_spam total=%d density=%.3f "
-                        "repeated_same_ratio=%.3f transitions=%d",
-                        i,
-                        total_n,
-                        density,
-                        repeated_same_ratio,
-                        transition_n,
-                    )
-                    iteration.phase_feedback.setdefault("precheck", {}).update(
-                        {
-                            "pathological_signal_density": True,
-                            "skip_reason": "pathological_signal_density",
-                            "backtest_skipped": True,
-                            "suggested_fix": (
-                                "deduplicate_consecutive_signals_or_tighten_entry_logic"
-                            ),
-                        }
-                    )
-                    proposal["_stagnation_detected"] = True
-                    bt_result = self._build_precheck_overtrading_result(signal_probe)
-                else:
-                    # Launch pre-reflection in parallel with backtest
-                    pre_reflection_future = None
-                    pre_reflection_text = ""
-                    try:
-                        pre_reflection_pool = _new_streamlit_aware_thread_pool(max_workers=1)
-                        pre_reflection_future = pre_reflection_pool.submit(
-                            self._ask_pre_reflection,
-                            session, proposal, code, i,
-                        )
-                    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-                        pass
-
-                    try:
-                        bt_result = self._run_backtest(
-                            strategy_cls, data, default_params, initial_capital,
-                            symbol=session.symbol,
-                            timeframe=session.timeframe,
-                            fees_bps=session.fees_bps,
-                            slippage_bps=session.slippage_bps,
-                            direction_constraint=session.direction_constraint,
-                        )
-                    except (
-                        ValueError,
-                        KeyError,
-                        RuntimeError,
-                        AttributeError,
-                        TypeError,
-                        IndexError,
-                        NameError,
-                    ) as bt_exc:
-                        bt_error = f"{type(bt_exc).__name__}: {bt_exc}"
-                        tb = _safe_format_exception(bt_exc)
-                        tb_tail = ""
-                        if tb:
-                            tb_lines = [line.rstrip() for line in tb.splitlines() if line.rstrip()]
-                            tb_tail = "\n".join(tb_lines[-16:]).strip()
-                        iteration.phase_feedback.setdefault("backtest", {})[
-                            "runtime_error"
-                        ] = bt_error
-                        if tb_tail:
-                            iteration.phase_feedback.setdefault("backtest", {})[
-                                "runtime_traceback_tail"
-                            ] = tb_tail
-                        ts.warning(
-                            f"Backtest runtime error: {bt_error} — tentative auto-fix"
-                        )
-                        logger.warning(
-                            "builder_iter_%d_backtest_runtime_error: %s", i, bt_error
-                        )
-
-                        runtime_error_for_llm = bt_error
-                        if tb_tail:
-                            runtime_error_for_llm = (
-                                f"{bt_error}\n\nTraceback (tail):\n{tb_tail}"
-                            )
-
-                        retry_code = self._retry_code_runtime_fix(
-                            proposal=proposal,
-                            failing_code=code,
-                            runtime_error=runtime_error_for_llm,
-                        )
-                        retry_code = _repair_code(
-                            retry_code,
-                            [
-                                str(x).strip().lower()
-                                for x in proposal.get("used_indicators", [])
-                                if isinstance(x, str) and str(x).strip()
-                            ],
-                        )
-                        valid_retry, retry_err = validate_generated_code(retry_code)
-                        used_runtime_fallback = False
-                        if not valid_retry:
-                            iteration.phase_feedback.setdefault("backtest", {})[
-                                "runtime_fix_validation_error"
-                            ] = retry_err
-                            fallback_code = _build_deterministic_fallback_code(
-                                proposal, variant=fallback_count,
-                            )
-                            fallback_count += 1
-                            fallback_code = _repair_code(
-                                fallback_code,
-                                [
-                                    str(x).strip().lower()
-                                    for x in proposal.get("used_indicators", [])
-                                    if isinstance(x, str) and str(x).strip()
-                                ],
-                            )
-                            valid_fb, fb_err = validate_generated_code(fallback_code)
-                            if not valid_fb:
-                                raise ValueError(
-                                    "Runtime-fix invalide et fallback déterministe invalide: "
-                                    f"{retry_err} | {fb_err}"
-                                ) from bt_exc
-                            retry_code = fallback_code
-                            used_runtime_fallback = True
-                            iteration.phase_feedback.setdefault("backtest", {})[
-                                "runtime_fix_fallback_deterministic_used"
-                            ] = True
-                            iteration.phase_feedback.setdefault("code", {})[
-                                "source"
-                            ] = "deterministic_fallback"
-
-                        retry_cls = self._save_and_load(session, retry_code, i)
-                        retry_cls = self._auto_fix_required_indicators(
-                            retry_cls, retry_code
-                        )
-                        try:
-                            bt_result = self._run_backtest(
-                                retry_cls, data, default_params, initial_capital,
-                                symbol=session.symbol,
-                                timeframe=session.timeframe,
-                                fees_bps=session.fees_bps,
-                                slippage_bps=session.slippage_bps,
-                                direction_constraint=session.direction_constraint,
-                            )
-                        except (
-                            ValueError,
-                            KeyError,
-                            RuntimeError,
-                            AttributeError,
-                            TypeError,
-                            IndexError,
-                            NameError,
-                        ) as retry_bt_exc:
-                            if used_runtime_fallback:
-                                raise
-                            iteration.phase_feedback.setdefault("backtest", {})[
-                                "runtime_fix_retry_error"
-                            ] = f"{type(retry_bt_exc).__name__}: {retry_bt_exc}"
-                            fallback_code = _build_deterministic_fallback_code(
-                                proposal, variant=fallback_count,
-                            )
-                            fallback_count += 1
-                            fallback_code = _repair_code(
-                                fallback_code,
-                                [
-                                    str(x).strip().lower()
-                                    for x in proposal.get("used_indicators", [])
-                                    if isinstance(x, str) and str(x).strip()
-                                ],
-                            )
-                            valid_fb2, fb_err2 = validate_generated_code(fallback_code)
-                            if not valid_fb2:
-                                raise ValueError(
-                                    "Runtime-fix backtest failed and deterministic fallback "
-                                    f"is invalid: {fb_err2}"
-                                )
-                            fallback_cls = self._save_and_load(session, fallback_code, i)
-                            fallback_cls = self._auto_fix_required_indicators(
-                                fallback_cls, fallback_code
-                            )
-                            bt_result = self._run_backtest(
-                                fallback_cls, data, default_params, initial_capital,
-                                symbol=session.symbol,
-                                timeframe=session.timeframe,
-                                fees_bps=session.fees_bps,
-                                slippage_bps=session.slippage_bps,
-                                direction_constraint=session.direction_constraint,
-                            )
-                            retry_code = fallback_code
-                            used_runtime_fallback = True
-                            iteration.phase_feedback.setdefault("backtest", {})[
-                                "runtime_fix_fallback_deterministic_used"
-                            ] = True
-                            iteration.phase_feedback.setdefault("code", {})[
-                                "source"
-                            ] = "deterministic_fallback"
-                        code = retry_code
-                        iteration.code = retry_code
-                        iteration.phase_feedback.setdefault("backtest", {})[
-                            "runtime_fix_applied"
-                        ] = True
-                    self._emit_completed_backtest(
-                        bt_result,
-                        session=session,
-                        iteration_num=i,
-                    )
-                iteration.backtest_result = bt_result
-                self._emit_progress(
-                    "phase_done",
-                    iteration=i,
-                    phase="backtest",
-                    sharpe=bt_result.metrics.get("sharpe_ratio", 0.0),
-                    total_return_pct=bt_result.metrics.get("total_return_pct", 0.0),
-                    backtest_skipped=bool(
-                        iteration.phase_feedback.get("precheck", {}).get(
-                            "backtest_skipped"
-                        )
-                    ),
-                )
-                ts.backtest_result(bt_result.metrics)
-
-                # Collect pre-reflection result (ran in parallel with backtest)
-                if pre_reflection_future is not None:
-                    try:
-                        pre_reflection_text = pre_reflection_future.result(timeout=5)
-                        if pre_reflection_text:
-                            iteration.phase_feedback.setdefault("pre_reflection", {})[
-                                "text"
-                            ] = pre_reflection_text
-                            ts.append(f"🧠  PRÉ-RÉFLEXION (pendant backtest)\n    {pre_reflection_text[:300]}\n\n")
-                    except concurrent.futures.TimeoutError:
-                        iteration.phase_feedback.setdefault("pre_reflection", {})[
-                            "timeout"
-                        ] = True
-                    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-                        pass
-                    finally:
-                        if pre_reflection_pool is not None:
-                            pre_reflection_pool.shutdown(wait=False)
-
-                # Backtest réussi → reset circuit breaker
-                consecutive_failures = 0
-
-                # ── Phase 6 : Mise à jour best ──
-                # Detect if this iteration used a deterministic fallback
-                _code_fb = iteration.phase_feedback.get("code", {})
-                _prop_fb = iteration.phase_feedback.get("proposal", {})
-                if (
-                    _code_fb.get("fallback_deterministic_used")
-                    or _code_fb.get("source") == "deterministic_fallback"
-                    or _prop_fb.get("fallback_deterministic_used")
-                    or _code_fb.get("runtime_fix_fallback_deterministic_used")
-                ):
-                    iteration.is_fallback = True
-
-                metrics_cur = bt_result.metrics or {}
-                sharpe = _metric_float(metrics_cur, "sharpe_ratio", float("-inf"))
-                rank_score = _ranking_sharpe(
-                    metrics_cur,
-                    target_sharpe=session.target_sharpe,
-                )
-                score_payload = compute_continuous_builder_score(
-                    metrics_cur,
-                    target_sharpe=session.target_sharpe,
-                )
-                iteration.phase_feedback.setdefault("scoring", {}).update(
-                    {
-                        "continuous_score": score_payload.get("score"),
-                        "drawdown_excess_pct": score_payload.get("drawdown_excess_pct"),
-                        "components": score_payload.get("components"),
-                        "penalties": score_payload.get("penalties"),
-                    }
-                )
-                if math.isfinite(sharpe) and sharpe > session.best_sharpe:
-                    session.best_sharpe = sharpe
-
-                should_promote_best = False
-                if session.best_iteration is None:
-                    should_promote_best = True
-                elif session.best_iteration.is_fallback and not iteration.is_fallback:
-                    should_promote_best = True
-                elif not iteration.is_fallback and rank_score > session.best_score:
-                    should_promote_best = True
-
-                if should_promote_best:
-                    session.best_score = rank_score
-                    session.best_iteration = iteration
-                    ts.best_update(sharpe, i)
-                elif iteration.is_fallback:
-                    logger.info(
-                        "builder_iter_%d_fallback_not_scored rank_score=%.3f",
-                        i, rank_score,
-                    )
-
-                # ── Phase 6b : Détection de stagnation ──
-                cur_fp = _metrics_fingerprint(metrics_cur)
-                if last_iteration and last_iteration.backtest_result:
-                    prev_fp = _metrics_fingerprint(
-                        last_iteration.backtest_result.metrics or {}
-                    )
-                    if cur_fp == prev_fp:
-                        iteration.phase_feedback.setdefault("stagnation", {})[
-                            "identical_metrics"
-                        ] = True
-                        ts.warning(
-                            "Stagnation détectée: métriques identiques à "
-                            "l'itération précédente — forçage changement radical."
-                        )
-                        logger.warning(
-                            "builder_iter_%d_stagnation fingerprint=%s",
-                            i, cur_fp,
-                        )
-                        # Injecter un signal fort dans la proposition pour
-                        # forcer le LLM à changer d'approche à l'itération suivante
-                        proposal["_stagnation_detected"] = True
-
-                # ── Phase 7 : Diagnostic déterministe + Analyse LLM ──
-                logger.info("builder_iter_%d_diagnostic", i)
-                diag_history = [
-                    {
-                        "sharpe": (
-                            it.backtest_result.metrics.get("sharpe_ratio", 0)
-                            if it.backtest_result else 0
-                        ),
-                        "diagnostic_category": it.diagnostic_category,
-                    }
-                    for it in session.iterations
-                ]
-                diag = compute_diagnostic(
-                    bt_result.metrics, diag_history, session.target_sharpe,
-                )
-                iteration.diagnostic_category = diag["category"]
-                iteration.diagnostic_detail = diag
-                if not iteration.change_type:
-                    iteration.change_type = _normalize_change_type(
-                        diag.get("change_type", "logic")
-                    )
-                ts.diagnostic(diag)
-
-                positive_required = _required_positive_count_for_iteration(i)
-                if positive_required > 0:
-                    positive_count = _count_positive_iterations(session.iterations)
-                    if _is_positive_progress_iteration(metrics_cur):
-                        positive_count += 1
-
-                    # Logging détaillé du comptage pour diagnostic
-                    fallback_positive_count = sum(
-                        1 for it in session.iterations
-                        if it.backtest_result and it.is_fallback
-                        and _is_positive_progress_iteration(it.backtest_result.metrics or {})
-                    )
-                    llm_positive_count = positive_count - min(fallback_positive_count, MAX_POSITIVE_FALLBACK_COUNT)
-
-                    iteration.phase_feedback.setdefault("decision", {})[
-                        "positive_progress_gate"
-                    ] = {
-                        "iteration": i,
-                        "required_positive": positive_required,
-                        "observed_positive": positive_count,
-                        "llm_positive": llm_positive_count,
-                        "fallback_positive": min(fallback_positive_count, MAX_POSITIVE_FALLBACK_COUNT),
-                    }
-                    if positive_count < positive_required:
-                        gate_msg = (
-                            f"Arrêt anticipé: progression positive insuffisante "
-                            f"au checkpoint {i} ({positive_count}/{positive_required} positifs, "
-                            f"dont {llm_positive_count} LLM et {min(fallback_positive_count, MAX_POSITIVE_FALLBACK_COUNT)} fallback)."
-                        )
-                        ts.warning(gate_msg)
-                        logger.info(
-                            "builder_iter_%d_positive_gate_stop observed=%d required=%d "
-                            "llm=%d fallback=%d",
-                            i,
-                            positive_count,
-                            positive_required,
-                            llm_positive_count,
-                            min(fallback_positive_count, MAX_POSITIVE_FALLBACK_COUNT),
-                        )
-                        iteration.analysis = (
-                            "[Policy] early stop triggered by positive progression gate "
-                            f"at iteration {i}: {positive_count}/{positive_required}."
-                        )
-                        iteration.decision = "stop"
-                        session.status = "failed"
-                        session.iterations.append(iteration)
-                        self._safe_save_session_summary(session)
-                        self._emit_progress(
-                            "iteration_done",
-                            iteration=i,
-                            decision=iteration.decision,
-                            status=session.status,
-                        )
-                        last_iteration = iteration
-                        break
-                    logger.info(
-                        "builder_iter_%d_positive_gate_pass observed=%d required=%d",
-                        i,
-                        positive_count,
-                        positive_required,
-                    )
-
+                traces_path = session_dir / "pipeline_traces.json"
+                self.instrumentation.export_traces_json(traces_path)
+                session.pipeline_traces_path = traces_path.name
                 logger.info(
-                    "builder_iter_%d_analysis diag=%s sev=%s",
-                    i, diag["category"], diag["severity"],
+                    "builder_instrumentation_exported path=%s traces=%d",
+                    traces_path,
+                    len(self.instrumentation.traces),
                 )
-                self._emit_progress("phase_start", iteration=i, phase="analysis")
-                ts.analysis_sent()
-                t0 = time.perf_counter()
-                analysis, decision = self._ask_analysis(
-                    session, iteration, diag,
-                    pre_reflection=pre_reflection_text,
-                )
-                dt_analysis = time.perf_counter() - t0
-
-                # Garde anti-arrêt prématuré: forcer la phase d'ajustement
-                # tant que la session n'a pas suffisamment itéré.
-                successful_iters = (
-                    sum(1 for it in session.iterations if it.backtest_result is not None)
-                    + 1
-                )
-                if decision == "stop" and i < max_iterations:
-                    if (
-                        successful_iters < MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP
-                        or session.best_sharpe < session.target_sharpe
-                    ):
-                        ts.warning(
-                            "Décision 'stop' ignorée: poursuite obligatoire "
-                            "de la phase test/ajustement."
-                        )
-                        logger.info(
-                            "builder_iter_%d_stop_overridden successful_iters=%d "
-                            "best_sharpe=%.3f target=%.3f",
-                            i,
-                            successful_iters,
-                            session.best_sharpe,
-                            session.target_sharpe,
-                        )
-                        decision = "continue"
-                        analysis = (
-                            f"{analysis}\n"
-                            "[Policy] stop overridden to continue optimization."
-                        )
-                        iteration.phase_feedback.setdefault("decision", {})[
-                            "stop_overridden"
-                        ] = True
-
-                trades = int(metrics_cur.get("total_trades", 0) or 0)
-                max_dd = abs(float(metrics_cur.get("max_drawdown_pct", 0) or 0))
-                accept_allowed, accept_reason = _is_accept_candidate(
-                    metrics_cur,
-                    target_sharpe=session.target_sharpe,
-                )
-                if decision == "accept" and i < max_iterations:
-                    if not accept_allowed:
-                        ts.warning(
-                            "Décision 'accept' ignorée: qualité statistique "
-                            "insuffisante, poursuite optimisation."
-                        )
-                        logger.info(
-                            "builder_iter_%d_accept_overridden reason=%s trades=%d "
-                            "best_sharpe=%.3f best_score=%.2f target=%.3f max_dd=%.2f",
-                            i,
-                            accept_reason,
-                            trades,
-                            session.best_sharpe,
-                            session.best_score,
-                            session.target_sharpe,
-                            max_dd,
-                        )
-                        decision = "continue"
-                        analysis = (
-                            f"{analysis}\n"
-                            "[Policy] accept overridden to continue optimization."
-                        )
-                        iteration.phase_feedback.setdefault("decision", {})[
-                            "accept_overridden"
-                        ] = True
-
-                iteration.analysis = analysis
-                iteration.decision = decision
-                ts.analysis_received(
-                    analysis, decision, iteration.change_type, dt_analysis,
+            except (OSError, ValueError, TypeError):
+                logger.warning(
+                    "builder_instrumentation_export_failed session=%s",
+                    session.session_id,
+                    exc_info=True,
                 )
 
-                session.iterations.append(iteration)
-                self._safe_save_session_summary(session)
-                self._emit_progress(
-                    "iteration_done",
-                    iteration=i,
-                    decision=decision,
-                    status="success" if decision == "accept" else "running",
-                    best_sharpe=session.best_sharpe,
-                )
-                last_iteration = iteration
-
-                logger.info(
-                    "builder_iter_%d_done sharpe=%.3f decision=%s",
-                    i, sharpe, decision,
-                )
-
-                if decision == "accept":
-                    accept_now, accept_now_reason = _is_accept_candidate(
-                        metrics_cur,
-                        target_sharpe=session.target_sharpe,
-                    )
-                    if accept_now:
-                        session.status = "success"
-                    else:
-                        session.status = "failed"
-                        logger.info(
-                            "builder_iter_%d_accept_rejected reason=%s",
-                            i,
-                            accept_now_reason,
-                        )
-                    break
-                if decision == "stop":
-                    best_metrics = (
-                        session.best_iteration.backtest_result.metrics
-                        if session.best_iteration and session.best_iteration.backtest_result
-                        else {}
-                    )
-                    best_ok, best_reason = _is_accept_candidate(
-                        best_metrics,
-                        target_sharpe=session.target_sharpe,
-                    )
-                    session.status = "success" if best_ok else "failed"
-                    if not best_ok:
-                        logger.info(
-                            "builder_iter_%d_stop_rejected_success reason=%s "
-                            "best_sharpe=%.3f best_score=%.2f",
-                            i,
-                            best_reason,
-                            session.best_sharpe,
-                            session.best_score,
-                        )
-                    break
-
-            except KeyboardInterrupt:
-                logger.info(
-                    "builder_iter_%d_interrupted reason=keyboard_interrupt_or_interpreter_shutdown",
-                    i,
-                )
-                raise
-            except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as e:
-                iteration.error = f"{type(e).__name__}: {e}"
-                ts.error(i, str(e))
-                consecutive_failures += 1
-                logger.error(
-                    "builder_iter_%d_error error=%s\n%s",
-                    i, e, _safe_format_exception(e),
-                )
-                session.iterations.append(iteration)
-                self._safe_save_session_summary(session)
-                self._emit_progress(
-                    "iteration_error",
-                    iteration=i,
-                    error=iteration.error,
-                )
-                last_iteration = iteration
-
-        else:
-            session.status = "max_iterations"
-
-        ts.session_end(
-            session.status, session.best_sharpe, len(session.iterations),
-        )
-
-        # Sauvegarder le résumé de session
         self._save_session_summary(session)
 
         logger.info(
             "strategy_builder_end session=%s status=%s best_sharpe=%.3f iters=%d",
-            session.session_id, session.status,
-            session.best_sharpe, len(session.iterations),
+            session.session_id,
+            session.status,
+            session.best_sharpe,
+            len(session.iterations),
         )
         self._emit_progress(
             "session_done",
@@ -7870,7 +6412,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 else {}
             )
             score_payload = (
-                compute_continuous_builder_score(
+                compute_builder_telemetry_score(
                     metrics,
                     target_sharpe=session.target_sharpe,
                 )
@@ -7891,7 +6433,15 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 "profit_factor": metrics.get("profit_factor") if metrics else None,
                 "win_rate_pct": metrics.get("win_rate_pct") if metrics else None,
                 "trades": metrics.get("total_trades") if metrics else None,
+                "telemetry_score": score_payload.get("score") if score_payload else None,
                 "continuous_score": score_payload.get("score") if score_payload else None,
+                "telemetry_breakdown": {
+                    "components": score_payload.get("components", {}) if score_payload else {},
+                    "penalties": score_payload.get("penalties", {}) if score_payload else {},
+                    "drawdown_excess_pct": score_payload.get("drawdown_excess_pct", 0.0) if score_payload else 0.0,
+                }
+                if score_payload
+                else None,
                 "score_breakdown": {
                     "components": score_payload.get("components", {}) if score_payload else {},
                     "penalties": score_payload.get("penalties", {}) if score_payload else {},
@@ -7904,15 +6454,23 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                     if it.diagnostic_detail else None
                 ),
                 "is_fallback": it.is_fallback,
-                "phase_feedback": it.phase_feedback or None,
+                "phase_feedback": (
+                    it.phase_feedback.to_dict()
+                    if hasattr(it.phase_feedback, "to_dict")
+                    else (it.phase_feedback or None)
+                ),
             }
             iteration_rows.append(row)
 
-            phase_feedback = it.phase_feedback if isinstance(it.phase_feedback, dict) else {}
+            phase_feedback = (
+                it.phase_feedback.to_dict()
+                if hasattr(it.phase_feedback, "to_dict")
+                else (it.phase_feedback if isinstance(it.phase_feedback, dict) else {})
+            )
             backtest_feedback = (
                 phase_feedback.get("backtest", {})
                 if isinstance(phase_feedback, dict)
-                else {}
+            else {}
             )
             if not isinstance(backtest_feedback, dict):
                 backtest_feedback = {}
@@ -7928,8 +6486,19 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 }
 
         leaderboard = sorted(
-            [row for row in iteration_rows if row.get("continuous_score") is not None],
-            key=lambda row: float(row.get("continuous_score") or -100.0),
+            [row for row in iteration_rows if row.get("sharpe") is not None],
+            key=lambda row: _builder_iteration_selection_key(
+                {
+                    "sharpe_ratio": row.get("sharpe"),
+                    "total_return_pct": row.get("return_pct"),
+                    "max_drawdown_pct": row.get("max_drawdown_pct"),
+                    "profit_factor": row.get("profit_factor"),
+                    "total_trades": row.get("trades"),
+                    "win_rate_pct": row.get("win_rate_pct"),
+                },
+                is_fallback=bool(row.get("is_fallback", False)),
+                target_sharpe=session.target_sharpe,
+            ),
             reverse=True,
         )
         for rank, row in enumerate(leaderboard, start=1):
@@ -7940,6 +6509,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             "objective": session.objective,
             "status": session.status,
             "best_sharpe": session.best_sharpe,
+            "best_telemetry_score": session.best_score,
             "best_score": session.best_score,
             "symbol": session.symbol,
             "timeframe": session.timeframe,
@@ -7949,11 +6519,37 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             "initial_capital": session.initial_capital,
             "fees_bps": session.fees_bps,
             "slippage_bps": session.slippage_bps,
+            "universe_mode": session.universe_mode,
+            "universe_purpose": session.universe_purpose,
+            "universe_strategy_type": session.universe_strategy_type,
+            "universe_meta": session.universe_meta,
             "start_time": session.start_time.isoformat(),
             "auto_reset_count": session.auto_reset_count,
             "recovery_events": session.recovery_events,
             "total_iterations": len(session.iterations),
             "available_indicators": session.available_indicators,
+            "builder_execution_mode": session.builder_execution_mode,
+            "orchestration_mode": session.orchestration_mode,
+            "instrumentation_enabled": session.instrumentation_enabled,
+            "instrumentation_summary": session.instrumentation_summary,
+            "ablation_config": session.ablation_config,
+            "pipeline_traces_path": session.pipeline_traces_path,
+            "restriction_events": session.restriction_events,
+            "multi_llm_profile": (
+                session.multi_llm_profile
+                if session.orchestration_mode == "multi_llm"
+                else ""
+            ),
+            "multi_llm_role_overrides": (
+                session.multi_llm_role_overrides
+                if session.orchestration_mode == "multi_llm"
+                else {}
+            ),
+            "multi_llm_assignments": (
+                session.multi_llm_assignments
+                if session.orchestration_mode == "multi_llm"
+                else []
+            ),
             "last_runtime_error": last_runtime_feedback.get("last_runtime_error"),
             "last_runtime_error_iteration": last_runtime_feedback.get("last_runtime_error_iteration"),
             "last_runtime_traceback_tail": last_runtime_feedback.get("last_runtime_traceback_tail"),
@@ -7974,7 +6570,6 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 "rank",
                 "iteration",
                 "decision",
-                "continuous_score",
                 "sharpe",
                 "return_pct",
                 "max_drawdown_pct",
@@ -7999,17 +6594,15 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 f"Objective: {session.objective}",
                 f"Status: {session.status}",
                 f"Best Sharpe: {session.best_sharpe:.3f}",
-                f"Best Continuous Score: {session.best_score:.2f}",
                 "",
-                "| Rank | Iter | Score | Sharpe | Return % | Max DD % | PF | Trades | Decision | Category |",
-                "|---|---|---|---|---|---|---|---|---|---|",
+                "| Rank | Iter | Sharpe | Return % | Max DD % | PF | Trades | Decision | Category |",
+                "|---|---|---|---|---|---|---|---|---|",
             ]
             for row in leaderboard:
                 lines.append(
-                    "| {rank} | {it} | {score:.2f} | {sharpe:.3f} | {ret:+.2f}% | {dd:.2f}% | {pf:.2f} | {trades} | {decision} | {cat} |".format(
+                    "| {rank} | {it} | {sharpe:.3f} | {ret:+.2f}% | {dd:.2f}% | {pf:.2f} | {trades} | {decision} | {cat} |".format(
                         rank=int(row.get("rank", 0) or 0),
                         it=int(row.get("iteration", 0) or 0),
-                        score=float(row.get("continuous_score", 0.0) or 0.0),
                         sharpe=float(row.get("sharpe", 0.0) or 0.0),
                         ret=float(row.get("return_pct", 0.0) or 0.0),
                         dd=float(row.get("max_drawdown_pct", 0.0) or 0.0),
@@ -8030,430 +6623,21 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
 
 
 # ---------------------------------------------------------------------------
-# Générateurs d'objectifs pour le mode autonome
+# Générateurs d'objectifs pour le mode autonome (delegated)
 # ---------------------------------------------------------------------------
-
-# Groupes d'indicateurs par famille de stratégie (combinaisons cohérentes)
-_INDICATOR_FAMILIES: Dict[str, Dict[str, Any]] = {
-    "trend-following": {
-        "label": "Trend-following",
-        "primary": ["ema", "sma", "macd", "supertrend", "adx", "ichimoku", "vortex", "aroon"],
-        "entry_templates": [
-            "Entrée long quand {ind1} confirme une tendance haussière et {ind2} valide le momentum.",
-            "Entrée sur croisement haussier de {ind1} avec filtre de tendance {ind2}.",
-            "Position dans le sens de la tendance détectée par {ind1}, confirmée par {ind2}.",
-        ],
-        "exit_templates": [
-            "Sortie sur retournement de {ind1} ou signal contraire de {ind2}.",
-            "Sortie quand la tendance s'essouffle (divergence {ind1}/{ind2}).",
-        ],
-    },
-    "mean-reversion": {
-        "label": "Mean-reversion",
-        "primary": ["bollinger", "rsi", "stochastic", "cci", "williams_r", "stoch_rsi", "keltner", "mfi", "obv"],
-        "entry_templates": [
-            "Entrée quand le prix touche la bande extrême de {ind1} avec {ind2} en zone de survente/surachat.",
-            "Achat en survente ({ind1} < seuil) avec confirmation {ind2}, vente en surachat.",
-            "Entrée contrariante quand {ind1} atteint un extrême et {ind2} montre un retournement.",
-        ],
-        "exit_templates": [
-            "Sortie quand le prix revient vers la moyenne ({ind1} neutre).",
-            "Take-profit au retour à la bande médiane, stop si {ind2} continue dans la tendance.",
-        ],
-    },
-    "momentum": {
-        "label": "Momentum",
-        "primary": ["rsi", "macd", "momentum", "roc", "stochastic", "mfi"],
-        "entry_templates": [
-            "Entrée quand {ind1} dépasse son seuil de momentum avec confirmation {ind2}.",
-            "Position quand le momentum ({ind1}) accélère et {ind2} est aligné.",
-            "Entrée sur divergence haussière/baissière entre {ind1} et {ind2}.",
-        ],
-        "exit_templates": [
-            "Sortie quand le momentum ({ind1}) s'épuise ou diverge du prix.",
-            "Take-profit sur perte de momentum, stop basé sur ATR.",
-        ],
-    },
-    "breakout": {
-        "label": "Breakout",
-        "primary": ["bollinger", "donchian", "keltner", "atr", "supertrend", "adx", "pivot_points", "psar", "ichimoku"],
-        "entry_templates": [
-            "Entrée sur cassure de la bande supérieure/inférieure de {ind1} avec volume confirmé.",
-            "Position quand le prix sort du range {ind1} avec {ind2} montrant une expansion de volatilité.",
-            "Entrée sur breakout validé par {ind1} et force de tendance ({ind2}).",
-        ],
-        "exit_templates": [
-            "Sortie si le prix réintègre le range ou trailing stop basé sur ATR.",
-            "Take-profit en multiple d'ATR, stop si faux breakout ({ind1} se contracte).",
-        ],
-    },
-    "scalping": {
-        "label": "Scalping",
-        "primary": ["ema", "macd", "rsi", "stochastic", "vwap", "bollinger"],
-        "entry_templates": [
-            "Entrée rapide sur signal {ind1} avec confirmation {ind2} sur timeframe court.",
-            "Scalp quand {ind1} croise en zone extrême avec {ind2} aligné.",
-            "Entrée quand prix croise {ind1} avec {ind2} en confirmation, objectif serré.",
-        ],
-        "exit_templates": [
-            "Sortie rapide : take-profit serré (1-1.5x ATR), stop-loss serré (0.5-1x ATR).",
-            "Sortie sur premier signal de retournement de {ind1}.",
-        ],
-    },
-    "multi-factor": {
-        "label": "Multi-factor",
-        "primary": ["ema", "rsi", "macd", "bollinger", "adx", "supertrend", "stochastic", "obv"],
-        "entry_templates": [
-            "Entrée quand au moins 3 facteurs sont alignés : tendance ({ind1}), momentum ({ind2}), volatilité ({ind3}).",
-            "Signal composite : {ind1} + {ind2} + {ind3} doivent tous confirmer la direction.",
-        ],
-        "exit_templates": [
-            "Sortie quand plus de la moitié des facteurs se retournent.",
-            "Sortie progressive : réduction quand {ind1} diverge, clôture si {ind2} se retourne.",
-        ],
-    },
-    "regime-adaptive": {
-        "label": "Regime-adaptatif",
-        "primary": ["adx", "atr", "bollinger", "keltner", "supertrend", "rsi", "vwap", "obv", "ema"],
-        "entry_templates": [
-            "Entrée en mode tendance si {ind1} signale un regime fort, sinon bascule en mode reversion avec {ind2}.",
-            "Signal adaptatif : si volatilite elevee ({ind1}), suivre la cassure ; sinon trader le retour a la moyenne via {ind2}.",
-            "Déclencher uniquement quand {ind1} et {ind2} confirment le meme regime de marche.",
-        ],
-        "exit_templates": [
-            "Sortie lors d'un changement de regime detecte par {ind1}.",
-            "Sortie adaptative : TP agressif en tendance, TP prudent en range.",
-        ],
-    },
-}
-
-# Templates de risk management
-_RISK_TEMPLATES = [
-    "Stop-loss = {sl_mult}x ATR, take-profit = {tp_mult}x ATR.",
-    "Stop-loss dynamique basé sur ATR ({sl_mult}x), ratio risk/reward {rr}:1.",
-    "Trailing stop à {sl_mult}x ATR, take-profit à {tp_mult}x ATR.",
-    "Stop serré {sl_mult}x ATR pour limiter le drawdown, TP à {tp_mult}x ATR.",
-]
-
-# Cache global pour éviter de répéter les mêmes indicateurs et familles
-_RECENT_INDICATORS: List[str] = []
-_MAX_RECENT_INDICATORS = 8  # Évite de réutiliser les 8 derniers indicateurs principaux
-_RECENT_FAMILIES: List[str] = []
-_MAX_RECENT_FAMILIES = 3  # Évite de réutiliser les 3 dernières familles
-
 
 def generate_random_objective(
     symbol: "str | List[str]" = "BTCUSDC",
     timeframe: "str | List[str]" = "1h",
     available_indicators: Optional[List[str]] = None,
 ) -> str:
-    """Génère un objectif de stratégie aléatoire à partir de templates.
+    from agents.builder_objectives import generate_random_objective as _impl
 
-    Accepte des listes de symboles/timeframes : un couple est choisi
-    aléatoirement pour diversifier les objectifs en mode autonome.
-
-    Combine une famille de stratégie, des indicateurs du registry,
-    des conditions d'entrée/sortie et du risk management.
-
-    Returns:
-        Objectif structuré en français prêt à être passé au StrategyBuilder.
-    """
-    global _RECENT_INDICATORS, _RECENT_FAMILIES
-
-    # Normaliser listes → valeur unique (choix aléatoire)
-    if isinstance(symbol, list):
-        symbol = random.choice(symbol) if symbol else "BTCUSDC"
-    if isinstance(timeframe, list):
-        timeframe = random.choice(timeframe) if timeframe else "1h"
-
-    if available_indicators is None:
-        available_indicators = list_indicators()
-
-    avail_lower = {ind.lower() for ind in available_indicators}
-
-    # 🎯 Choisir une famille en évitant les récentes
-    all_families = list(_INDICATOR_FAMILIES.keys())
-    fresh_families = [f for f in all_families if f not in _RECENT_FAMILIES]
-
-    # Si toutes les familles ont été utilisées récemment, réinitialiser
-    if not fresh_families:
-        fresh_families = all_families
-        _RECENT_FAMILIES.clear()
-
-    family_key = random.choice(fresh_families)
-    family = _INDICATOR_FAMILIES[family_key]
-
-    # Mettre à jour le cache des familles récentes
-    _RECENT_FAMILIES.append(family_key)
-    if len(_RECENT_FAMILIES) > _MAX_RECENT_FAMILIES:
-        _RECENT_FAMILIES.pop(0)
-
-    # Filtrer les indicateurs disponibles dans cette famille
-    valid_primary = [ind for ind in family["primary"] if ind.lower() in avail_lower]
-    if len(valid_primary) < 2:
-        valid_primary = [ind for ind in available_indicators if ind.lower() != "atr"]
-
-    # 🎯 Anti-répétition : retirer les indicateurs récemment utilisés
-    recent_lower = {ind.lower() for ind in _RECENT_INDICATORS}
-    fresh_indicators = [ind for ind in valid_primary if ind.lower() not in recent_lower]
-
-    # Si tous les indicateurs ont été utilisés récemment, on réinitialise
-    if len(fresh_indicators) < 2:
-        fresh_indicators = valid_primary
-        _RECENT_INDICATORS.clear()
-
-    # Sélectionner 2-3 indicateurs parmi les frais
-    n_indicators = random.randint(2, min(3, len(fresh_indicators)))
-    selected = random.sample(fresh_indicators, n_indicators)
-
-    # 🎯 Mettre à jour le cache des indicateurs récents
-    for ind in selected:
-        if ind.lower() != "atr":  # ATR n'est pas compté car toujours présent
-            _RECENT_INDICATORS.append(ind)
-            if len(_RECENT_INDICATORS) > _MAX_RECENT_INDICATORS:
-                _RECENT_INDICATORS.pop(0)  # FIFO
-    if "atr" not in [s.lower() for s in selected] and "atr" in avail_lower:
-        selected.append("atr")
-
-    # Générer l'entrée
-    ind1 = selected[0].upper()
-    ind2 = selected[1].upper() if len(selected) > 1 else selected[0].upper()
-    ind3 = selected[2].upper() if len(selected) > 2 else ind1
-
-    entry = random.choice(family["entry_templates"]).format(
-        ind1=ind1, ind2=ind2, ind3=ind3,
+    return _impl(
+        symbol=symbol,
+        timeframe=timeframe,
+        available_indicators=available_indicators,
     )
-    exit_rule = random.choice(family["exit_templates"]).format(
-        ind1=ind1, ind2=ind2, ind3=ind3,
-    )
-
-    # Risk management
-    sl_mult = round(random.uniform(1.0, 2.5), 1)
-    tp_mult = round(sl_mult * random.uniform(1.5, 3.0), 1)
-    rr = round(tp_mult / sl_mult, 1)
-    risk = random.choice(_RISK_TEMPLATES).format(
-        sl_mult=sl_mult, tp_mult=tp_mult, rr=rr,
-    )
-    indicators_str = " + ".join(ind.upper() for ind in selected)
-
-    objective = (
-        f"Stratégie de {family['label']} sur {symbol} {timeframe}. "
-        f"Indicateurs : {indicators_str}. "
-        f"{entry} "
-        f"{exit_rule} "
-        f"{risk}"
-    )
-
-    return objective
-
-
-def _sanitize_objective_indicators_section(
-    objective: str,
-    available_indicators: List[str],
-) -> str:
-    """Nettoie le bloc `Indicateurs:` pour ne garder que des noms calculables."""
-    text = str(objective or "")
-    if not text:
-        return text
-
-    allowed = [
-        str(ind or "").strip().lower()
-        for ind in (available_indicators or [])
-        if str(ind or "").strip()
-    ]
-    if not allowed:
-        return text
-    allowed_set = set(allowed)
-
-    preferred_fallback = [
-        name
-        for name in ("ema", "rsi", "bollinger", "macd", "stochastic", "adx", "atr")
-        if name in allowed_set
-    ]
-
-    match = re.search(
-        r"(Indicateurs?\s*:\s*)(.+?)(\.\s|\n|$)",
-        text,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    if not match:
-        return text
-
-    prefix = str(match.group(1) or "")
-    raw_block = str(match.group(2) or "")
-    suffix = str(match.group(3) or "")
-
-    extracted = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", raw_block)
-    selected: List[str] = []
-    for token in extracted:
-        normalized = _canonicalize_indicator_name(token, known=allowed_set)
-        if normalized and normalized not in selected:
-            selected.append(normalized)
-
-    if "atr" in allowed_set and "atr" not in selected:
-        selected.append("atr")
-
-    if len(selected) < 2:
-        for candidate in preferred_fallback:
-            if candidate not in selected:
-                selected.append(candidate)
-            if len(selected) >= 3:
-                break
-
-    if not selected:
-        return text
-
-    rebuilt = f"{prefix}{' + '.join(ind.upper() for ind in selected[:4])}{suffix}"
-    start, end = match.span()
-    return f"{text[:start]}{rebuilt}{text[end:]}"
-
-
-def _sanitize_objective_indicator_candidates(
-    raw_indicators: Any,
-    available_indicators: List[str],
-) -> List[str]:
-    """Normalise une liste d'indicateurs issus d'un payload structuré."""
-    allowed = [
-        str(ind or "").strip().lower()
-        for ind in (available_indicators or [])
-        if str(ind or "").strip()
-    ]
-    allowed_set = set(allowed)
-    if not allowed_set:
-        return []
-
-    raw_tokens: List[str] = []
-    if isinstance(raw_indicators, str):
-        raw_tokens = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", raw_indicators)
-    elif isinstance(raw_indicators, (list, tuple, set)):
-        raw_tokens = [str(item or "") for item in raw_indicators]
-
-    selected: List[str] = []
-    for token in raw_tokens:
-        normalized = _canonicalize_indicator_name(token, known=allowed_set)
-        if normalized and normalized not in selected:
-            selected.append(normalized)
-
-    if len(selected) < 2:
-        preferred = [
-            name
-            for name in ("ema", "rsi", "bollinger", "macd", "stochastic", "adx", "atr")
-            if name in allowed_set and name not in selected
-        ]
-        for candidate in preferred:
-            selected.append(candidate)
-            if len(selected) >= 3:
-                break
-
-    return selected[:4]
-
-
-def _request_structured_objective_payload(
-    llm_client: Any,
-    *,
-    system_prompt: str,
-    user_prompt: str,
-    stream_callback: Optional[Callable[[str, str], None]],
-    max_tokens: int,
-) -> tuple[Dict[str, Any], str]:
-    """Demande un handoff JSON pour la génération d'objectif."""
-    messages = [
-        LLMMessage(role="system", content=system_prompt),
-        LLMMessage(role="user", content=user_prompt),
-    ]
-    if stream_callback and hasattr(llm_client, "chat_stream"):
-        raw = llm_client.chat_stream(
-            messages,
-            on_chunk=lambda c: stream_callback("objective_gen", c),
-            max_tokens=max_tokens,
-            json_mode=True,
-        )
-    else:
-        raw = llm_client.chat(messages, max_tokens=max_tokens, json_mode=True)
-
-    raw_text = str(getattr(raw, "content", raw) or "").strip()
-    return _extract_json_from_response(raw_text), raw_text
-
-
-def _resolve_structured_objective_market(
-    payload: Dict[str, Any],
-    *,
-    market_auto_selection: bool,
-    symbols_list: List[str],
-    timeframes_list: List[str],
-) -> tuple[str, str]:
-    if market_auto_selection:
-        return "{symbol}", "{timeframe}"
-
-    symbol_value = str(payload.get("symbol", "") or "").strip().upper()
-    timeframe_value = str(payload.get("timeframe", "") or "").strip()
-
-    if symbols_list:
-        allowed_symbols = {str(item or "").strip().upper() for item in symbols_list}
-        if symbol_value not in allowed_symbols:
-            symbol_value = str(symbols_list[0] or "").strip().upper()
-    if timeframes_list:
-        allowed_timeframes = {str(item or "").strip() for item in timeframes_list}
-        if timeframe_value not in allowed_timeframes:
-            timeframe_value = str(timeframes_list[0] or "").strip()
-
-    return symbol_value, timeframe_value
-
-
-def _structured_objective_to_text(
-    payload: Dict[str, Any],
-    *,
-    available_indicators: List[str],
-    market_auto_selection: bool,
-    symbols_list: List[str],
-    timeframes_list: List[str],
-) -> str:
-    """Reconstruit un objectif lisible depuis un payload JSON."""
-    if not isinstance(payload, dict) or not payload:
-        return ""
-
-    if not any(
-        str(payload.get(key, "") or "").strip()
-        for key in ("objective", "style", "entry_logic", "exit_logic", "risk_management", "hypothesis")
-    ) and not payload.get("used_indicators"):
-        return ""
-
-    objective = _normalize_llm_text(payload.get("objective"), max_len=900)
-    objective = sanitize_objective_text(objective)
-    if objective and not _looks_like_prompt_instruction_leakage(objective):
-        return objective
-
-    symbol_value, timeframe_value = _resolve_structured_objective_market(
-        payload,
-        market_auto_selection=market_auto_selection,
-        symbols_list=symbols_list,
-        timeframes_list=timeframes_list,
-    )
-    style = _normalize_llm_text(payload.get("style"), max_len=80) or "Stratégie"
-    entry_logic = _normalize_llm_text(payload.get("entry_logic"), max_len=260)
-    exit_logic = _normalize_llm_text(payload.get("exit_logic"), max_len=260)
-    risk_management = _normalize_llm_text(payload.get("risk_management"), max_len=220)
-    hypothesis = _normalize_llm_text(payload.get("hypothesis"), max_len=220)
-    indicators = _sanitize_objective_indicator_candidates(
-        payload.get("used_indicators"),
-        available_indicators,
-    )
-
-    parts: List[str] = []
-    market_label = f"{symbol_value} {timeframe_value}".strip()
-    parts.append(f"[{style}] sur {market_label}.")
-    if indicators:
-        parts.append(f"Indicateurs : {' + '.join(ind.upper() for ind in indicators)}.")
-    if hypothesis:
-        parts.append(f"Hypothèse : {hypothesis}.")
-    if entry_logic:
-        parts.append(f"Entrées : {entry_logic}.")
-    if exit_logic:
-        parts.append(f"Sorties : {exit_logic}.")
-    if risk_management:
-        parts.append(f"Risk management : {risk_management}.")
-
-    return " ".join(part.strip() for part in parts if part.strip()).strip()
 
 
 def generate_llm_objective(
@@ -8464,224 +6648,16 @@ def generate_llm_objective(
     stream_callback: Optional[Callable[[str, str], None]] = None,
     recent_markets: Optional[List[Tuple[str, str]]] = None,
 ) -> str:
-    """Génère un objectif de stratégie via un appel LLM.
+    from agents.builder_objectives import generate_llm_objective as _impl
 
-    Accepte des listes de symboles/timeframes : le LLM est invité à
-    choisir le couple le plus pertinent pour sa stratégie.
-
-    Returns:
-        Objectif en texte libre généré par le LLM.
-    """
-    if available_indicators is None:
-        available_indicators = list_indicators()
-
-    indicators_list = ", ".join(sorted(available_indicators))
-
-    # Normaliser en listes pour construire le prompt multi-marché.
-    # IMPORTANT : si None est passé, ne pas fallback sur BTCUSDC/1h.
-    market_auto_selection = (symbol is None or timeframe is None)
-
-    if market_auto_selection:
-        # Mode auto : le marché sera choisi plus tard via recommend_market_context.
-        # L'objectif doit rester neutre et utiliser les placeholders.
-        market_instruction = (
-            "Le marché (token + timeframe) est sélectionné automatiquement par une étape dédiée.\n"
-            "Tu DOIS utiliser exactement les placeholders `{symbol}` et `{timeframe}` dans l'objectif.\n"
-            "N'écris AUCUN token réel (BTCUSDC, ETHUSDC...) ni timeframe réel (1h, 15m...).\n\n"
-        )
-        symbols_list = []
-        timeframes_list = []
-    else:
-        # Mode manuel ou multi-marché : comportement normal
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        timeframes_list = timeframe if isinstance(timeframe, list) else [timeframe]
-        symbols_list = [s for s in symbols_list if s] or ["BTCUSDC"]
-        timeframes_list = [t for t in timeframes_list if t] or ["1h"]
-
-        # Construire l'instruction marché selon l'univers disponible
-        if len(symbols_list) > 1 or len(timeframes_list) > 1:
-            # Mélanger pour réduire le biais de position (BTC toujours 1er)
-            shuffled_symbols = symbols_list.copy()
-            random.shuffle(shuffled_symbols)
-            shuffled_timeframes = timeframes_list.copy()
-            random.shuffle(shuffled_timeframes)
-
-            market_instruction = (
-                f"Symboles disponibles (SEULS autorisés) : {', '.join(shuffled_symbols)}\n"
-                f"Timeframes disponibles (SEULS autorisés) : {', '.join(shuffled_timeframes)}\n"
-                "CHOISIS le symbole et le timeframe les plus adaptés à ta stratégie. "
-                "Tu ne DOIS utiliser QUE des symboles et timeframes de ces listes. "
-                "N'invente AUCUN timeframe (pas de 3m, 5m, 2h, etc. s'ils ne sont pas listés). "
-                "Ne te limite pas à BTC — explore les altcoins si ta stratégie s'y prête mieux.\n\n"
-            )
-            # Injecter l'historique récent pour forcer la diversité
-            if recent_markets:
-                recent_str = ", ".join(f"{s} {tf}" for s, tf in recent_markets[-6:])
-                market_instruction += (
-                    f"IMPORTANT — Les marchés suivants ont DÉJÀ été utilisés récemment : {recent_str}. "
-                    "Tu DOIS choisir un couple symbol/timeframe DIFFÉRENT de ceux-ci. "
-                    "Varie les tokens ET les timeframes.\n\n"
-                )
-        else:
-            market_instruction = f"Marché : {symbols_list[0]} en {timeframes_list[0]}.\n\n"
-
-    novelty_axes = [
-        "asymetrie long/short (seuils differents)",
-        "adaptation de regime (trend vs range)",
-        "filtre anti-faux-signaux (confirmation inverse partielle)",
-        "filtre horaire de liquidite",
-        "gestion du risque non lineaire (SL/TP adaptes a la volatilite)",
-        "gating par volatilite implicite/realisee",
-        "combinaison de signaux contradictoires avec vote majoritaire",
-    ]
-    random.shuffle(novelty_axes)
-    selected_axes = novelty_axes[:4]
-
-    random_behaviors = [
-        "mode_offbeat: prioriser des paires d'indicateurs rarement combinees",
-        "mode_inverse: tester une logique inversee puis filtrer par regime",
-        "mode_microstructure: ajouter un filtre de session/horaire et liquidite",
-        "mode_risk_rotation: alterner profile risque serre/large selon volatilite",
-        "mode_counter_consensus: exiger une confirmation contrarienne partielle",
-    ]
-    random.shuffle(random_behaviors)
-    selected_behaviors = random_behaviors[:2]
-    system_prompt = (
-        "Tu es un quant designer specialise en strategies de trading crypto. "
-        "Tu dois produire un handoff STRUCTURE et exploitable par un Builder. "
-        "Reponds UNIQUEMENT avec un objet JSON valide, sans markdown ni commentaire."
-    )
-    if market_auto_selection:
-        market_contract = (
-            "- symbol MUST be exactly `{symbol}`.\n"
-            "- timeframe MUST be exactly `{timeframe}`.\n"
-        )
-    else:
-        allowed_symbols = ", ".join(symbols_list)
-        allowed_timeframes = ", ".join(timeframes_list)
-        market_contract = (
-            f"- symbol MUST be one of: {allowed_symbols}.\n"
-            f"- timeframe MUST be one of: {allowed_timeframes}.\n"
-        )
-
-    user_prompt = (
-        "Genere un objectif de strategie de trading sous forme de JSON.\n\n"
-        f"{market_instruction}"
-        f"Indicateurs disponibles : {indicators_list}\n\n"
-        "Contraintes de diversification:\n"
-        f"- Integre au moins un axe 'hors sentiers battus' parmi: {', '.join(selected_axes)}.\n"
-        f"- Comportements aleatoires imposes pour cette generation: {', '.join(selected_behaviors)}.\n"
-        "- Evite les formulations generiques de type 'RSI<30/RSI>70' sans filtre additionnel.\n"
-        "- Propose une hypothese testable et falsifiable.\n"
-        "- Explore des combinaisons inhabituelles, des filtres originaux, des approches multi-timeframe conceptuelles.\n"
-        "- used_indicators doit contenir 2 a 4 indicateurs maximum.\n"
-        "- objective doit etre un texte court de 2 a 4 phrases maximum.\n"
-        f"{market_contract}"
-        "- Tous les indicateurs doivent provenir strictement de la liste disponible.\n\n"
-        "Retourne EXACTEMENT ce schema JSON:\n"
-        "{\n"
-        '  "objective": "texte final lisible par un humain",\n'
-        '  "style": "nom court de la logique",\n'
-        '  "symbol": "marche cible",\n'
-        '  "timeframe": "timeframe cible",\n'
-        '  "used_indicators": ["indicator_1", "indicator_2"],\n'
-        '  "entry_logic": "condition d entree",\n'
-        '  "exit_logic": "condition de sortie",\n'
-        '  "risk_management": "resume du risk management",\n'
-        '  "hypothesis": "pourquoi cette strategie peut fonctionner"\n'
-        "}"
-    )
-
-    payload, raw_text = _request_structured_objective_payload(
+    return _impl(
         llm_client,
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        stream_callback=stream_callback,
-        max_tokens=420,
-    )
-    objective = _structured_objective_to_text(
-        payload,
+        symbol=symbol,
+        timeframe=timeframe,
         available_indicators=available_indicators,
-        market_auto_selection=market_auto_selection,
-        symbols_list=symbols_list,
-        timeframes_list=timeframes_list,
+        stream_callback=stream_callback,
+        recent_markets=recent_markets,
     )
-    if not objective:
-        objective = sanitize_objective_text(raw_text)
-    if _looks_like_prompt_instruction_leakage(objective):
-        logger.warning(
-            "generate_llm_objective: contamination de prompt detectee, fallback template",
-        )
-        objective = ""
-
-    # Fallback si le LLM retourne du vide
-    if not objective or len(objective) < 20:
-        logger.warning("generate_llm_objective: résultat LLM vide, fallback template")
-        if market_auto_selection:
-            return generate_random_objective(
-                symbol="{symbol}",
-                timeframe="{timeframe}",
-                available_indicators=available_indicators,
-            )
-        return generate_random_objective(symbol, timeframe, available_indicators)
-
-    if market_auto_selection:
-        # Nettoyage défensif : retire toute fuite de token/TF hardcodé.
-        objective = _remove_hardcoded_tokens(objective)
-        objective = _remove_hardcoded_timeframes(objective)
-
-        # Garantit la présence des placeholders attendus.
-        if "{symbol}" not in objective or "{timeframe}" not in objective:
-            objective = re.sub(
-                r"\bsur\s+crypto\b",
-                "sur {symbol} {timeframe}",
-                objective,
-                flags=re.IGNORECASE,
-            )
-        if "{symbol}" not in objective or "{timeframe}" not in objective:
-            objective = f"Stratégie sur {{symbol}} {{timeframe}}. {objective}"
-
-        objective = _sanitize_objective_indicators_section(
-            objective,
-            available_indicators,
-        )
-        return sanitize_objective_text(objective)
-
-    # ── Post-validation : remplacer les TF/tokens hallucinés ──
-    tf_pattern = re.compile(r"\b(\d{1,2}[mhdwM])\b")
-    found_tfs = tf_pattern.findall(objective)
-    if timeframes_list:
-        for found_tf in found_tfs:
-            if found_tf not in timeframes_list:
-                replacement = random.choice(timeframes_list)
-                objective = objective.replace(found_tf, replacement, 1)
-                logger.info(
-                    "generate_llm_objective: TF halluciné '%s' → '%s'",
-                    found_tf, replacement,
-                )
-
-    sym_upper_set = {s.upper() for s in symbols_list}
-    # Vérifier que le symbole mentionné est valide
-    sym_pattern = re.compile(r"\b([A-Z]{2,10}USDC)\b")
-    found_syms = sym_pattern.findall(objective.upper())
-    if symbols_list:
-        for found_sym in found_syms:
-            if found_sym not in sym_upper_set:
-                replacement = random.choice(symbols_list)
-                objective = re.sub(
-                    re.escape(found_sym), replacement, objective,
-                    count=1, flags=re.IGNORECASE,
-                )
-                logger.info(
-                    "generate_llm_objective: token halluciné '%s' → '%s'",
-                    found_sym, replacement,
-                )
-
-    objective = _sanitize_objective_indicators_section(
-        objective,
-        available_indicators,
-    )
-    return objective
 
 
 def generate_llm_objective_from_seed(
@@ -8699,170 +6675,22 @@ def generate_llm_objective_from_seed(
     stream_callback: Optional[Callable[[str, str], None]] = None,
     recent_markets: Optional[List[Tuple[str, str]]] = None,
 ) -> str:
-    """Raffine une piste catalogue en objectif LLM plus adapté au setup étudié."""
-    if available_indicators is None:
-        available_indicators = list_indicators()
+    from agents.builder_objectives import generate_llm_objective_from_seed as _impl
 
-    seed_text = sanitize_objective_text(seed_objective)
-    if not seed_text:
-        return generate_llm_objective(
-            llm_client,
-            symbol=symbol,
-            timeframe=timeframe,
-            available_indicators=available_indicators,
-            stream_callback=stream_callback,
-            recent_markets=recent_markets,
-        )
-
-    indicators_list = ", ".join(sorted(available_indicators))
-    market_auto_selection = (symbol is None or timeframe is None)
-
-    if market_auto_selection:
-        market_instruction = (
-            "Le marché (token + timeframe) est sélectionné automatiquement par une étape dédiée.\n"
-            "Tu DOIS utiliser exactement les placeholders `{symbol}` et `{timeframe}` dans l'objectif final.\n"
-            "N'écris AUCUN token réel ni timeframe réel.\n\n"
-        )
-        symbols_list: List[str] = []
-        timeframes_list: List[str] = []
-    else:
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        timeframes_list = timeframe if isinstance(timeframe, list) else [timeframe]
-        symbols_list = [s for s in symbols_list if s] or ["BTCUSDC"]
-        timeframes_list = [t for t in timeframes_list if t] or ["1h"]
-        if len(symbols_list) > 1 or len(timeframes_list) > 1:
-            shuffled_symbols = symbols_list.copy()
-            random.shuffle(shuffled_symbols)
-            shuffled_timeframes = timeframes_list.copy()
-            random.shuffle(shuffled_timeframes)
-            market_instruction = (
-                f"Symboles disponibles (SEULS autorisés) : {', '.join(shuffled_symbols)}\n"
-                f"Timeframes disponibles (SEULS autorisés) : {', '.join(shuffled_timeframes)}\n"
-                "Choisis le couple le plus pertinent pour étudier cette stratégie. "
-                "N'utilise QUE ces symboles/timeframes.\n\n"
-            )
-            if recent_markets:
-                recent_str = ", ".join(f"{s} {tf}" for s, tf in recent_markets[-6:])
-                market_instruction += (
-                    f"Les marchés suivants ont déjà été testés récemment : {recent_str}. "
-                    "Privilégie un couple différent si cela reste cohérent.\n\n"
-                )
-        else:
-            market_instruction = f"Marché à étudier : {symbols_list[0]} {timeframes_list[0]}.\n\n"
-
-    seed_context = [
-        f"Piste catalogue de départ : {seed_text}",
-        f"Famille cible : {family or 'n/a'}",
-        f"Direction visée : {direction or 'n/a'}",
-        f"Profil de risque : {risk_profile or 'n/a'}",
-        f"Angle de nouveauté : {novelty_angle or 'n/a'}",
-    ]
-    clean_tags = [str(tag or "").strip() for tag in (tags or []) if str(tag or "").strip()]
-    if clean_tags:
-        seed_context.append(f"Tags utiles : {', '.join(clean_tags)}")
-
-    if market_auto_selection:
-        market_contract = (
-            "- symbol MUST be exactly `{symbol}`.\n"
-            "- timeframe MUST be exactly `{timeframe}`.\n"
-        )
-    else:
-        market_contract = (
-            f"- symbol MUST be one of: {', '.join(symbols_list)}.\n"
-            f"- timeframe MUST be one of: {', '.join(timeframes_list)}.\n"
-        )
-
-    system_prompt = (
-        "Tu es un quant designer. On te donne une piste catalogue brute. "
-        "Ta tache est de la transformer en un objectif de recherche plus precis, plus robuste "
-        "et mieux adapte au setup etudie, tout en conservant l intention strategique generale. "
-        "Reponds UNIQUEMENT avec un objet JSON valide."
-    )
-    user_prompt = (
-        f"{market_instruction}"
-        f"{chr(10).join(seed_context)}\n\n"
-        f"Indicateurs disponibles : {indicators_list}\n\n"
-        "Contraintes :\n"
-        "- Pars de la piste catalogue, mais reformule-la pour en faire une hypothese testable et falsifiable.\n"
-        "- Choisis les indicateurs les plus coherents avec cette strategie.\n"
-        "- N'utilise QUE des indicateurs disponibles.\n"
-        "- used_indicators doit contenir 2 a 4 indicateurs maximum.\n"
-        "- objective doit rester en 2 a 4 phrases.\n"
-        "- Evite les formulations generiques et les signaux trop triviaux.\n"
-        f"{market_contract}"
-        "Retourne EXACTEMENT ce schema JSON:\n"
-        "{\n"
-        '  "objective": "texte final lisible par un humain",\n'
-        '  "style": "nom court de la logique",\n'
-        '  "symbol": "marche cible",\n'
-        '  "timeframe": "timeframe cible",\n'
-        '  "used_indicators": ["indicator_1", "indicator_2"],\n'
-        '  "entry_logic": "condition d entree",\n'
-        '  "exit_logic": "condition de sortie",\n'
-        '  "risk_management": "resume du risk management",\n'
-        '  "hypothesis": "pourquoi cette strategie peut fonctionner"\n'
-        "}"
-    )
-
-    payload, raw_text = _request_structured_objective_payload(
+    return _impl(
         llm_client,
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        stream_callback=stream_callback,
-        max_tokens=440,
-    )
-    objective = _structured_objective_to_text(
-        payload,
+        seed_objective=seed_objective,
+        symbol=symbol,
+        timeframe=timeframe,
         available_indicators=available_indicators,
-        market_auto_selection=market_auto_selection,
-        symbols_list=symbols_list,
-        timeframes_list=timeframes_list,
+        family=family,
+        direction=direction,
+        risk_profile=risk_profile,
+        novelty_angle=novelty_angle,
+        tags=tags,
+        stream_callback=stream_callback,
+        recent_markets=recent_markets,
     )
-    if not objective:
-        objective = sanitize_objective_text(raw_text)
-    if _looks_like_prompt_instruction_leakage(objective):
-        logger.warning(
-            "generate_llm_objective_from_seed: contamination de prompt detectee, fallback seed",
-        )
-        objective = ""
-    if not objective or len(objective) < 20:
-        logger.warning("generate_llm_objective_from_seed: résultat LLM vide, fallback seed")
-        objective = seed_text
-
-    if market_auto_selection:
-        objective = _remove_hardcoded_tokens(objective)
-        objective = _remove_hardcoded_timeframes(objective)
-        if "{symbol}" not in objective or "{timeframe}" not in objective:
-            objective = f"Stratégie sur {{symbol}} {{timeframe}}. {objective}"
-        objective = _sanitize_objective_indicators_section(
-            objective,
-            available_indicators,
-        )
-        return sanitize_objective_text(objective)
-
-    tf_pattern = re.compile(r"\b(\d{1,2}[mhdwM])\b")
-    found_tfs = tf_pattern.findall(objective)
-    for found_tf in found_tfs:
-        if found_tf not in timeframes_list:
-            replacement = random.choice(timeframes_list)
-            objective = objective.replace(found_tf, replacement, 1)
-
-    sym_upper_set = {s.upper() for s in symbols_list}
-    sym_pattern = re.compile(r"\b([A-Z]{2,10}USDC)\b")
-    found_syms = sym_pattern.findall(objective.upper())
-    for found_sym in found_syms:
-        if found_sym not in sym_upper_set:
-            replacement = random.choice(symbols_list)
-            objective = re.sub(
-                re.escape(found_sym), replacement, objective,
-                count=1, flags=re.IGNORECASE,
-            )
-
-    objective = _sanitize_objective_indicators_section(
-        objective,
-        available_indicators,
-    )
-    return objective
 
 
 def recommend_market_context(
@@ -8876,606 +6704,21 @@ def recommend_market_context(
     stream_callback: Optional[Callable[[str, str], None]] = None,
     recent_markets: Optional[List[Tuple[str, str]]] = None,
 ) -> Dict[str, Any]:
-    """Recommande un couple (symbol, timeframe) adapté à un objectif Builder.
+    from agents.builder_objectives import recommend_market_context as _impl
 
-    Le choix est strictement borné à l'univers fourni (`candidate_symbols`,
-    `candidate_timeframes`). En cas de réponse invalide du LLM, un fallback
-    robuste est appliqué.
-    """
-
-    def _unique_non_empty(values: List[str], *, upper: bool = False) -> List[str]:
-        out: List[str] = []
-        seen: set[str] = set()
-        for raw in values:
-            val = str(raw or "").strip()
-            if not val:
-                continue
-            if upper:
-                val = val.upper()
-            if val in seen:
-                continue
-            seen.add(val)
-            out.append(val)
-        return out
-
-    def _find_objective_market_hints(
-        objective_text: str,
-        *,
-        allowed_symbols: List[str],
-        allowed_timeframes: List[str],
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """Extrait les indices explicites symbol/timeframe présents dans l'objectif."""
-        text = sanitize_objective_text(objective_text)
-        if not text:
-            return None, None
-
-        text_upper = text.upper()
-
-        symbol_hits: List[Tuple[int, str]] = []
-        for symbol in allowed_symbols:
-            match = re.search(
-                rf"(?<![A-Z0-9]){re.escape(symbol)}(?![A-Z0-9])",
-                text_upper,
-            )
-            if match:
-                symbol_hits.append((match.start(), symbol))
-
-        timeframe_hits: List[Tuple[int, str]] = []
-        for timeframe in allowed_timeframes:
-            tf = str(timeframe or "").strip()
-            if not tf:
-                continue
-            if re.fullmatch(r"\d+[mhdwM]", tf):
-                match = re.search(
-                    rf"(?<![A-Za-z0-9]){re.escape(tf[:-1])}\s*{re.escape(tf[-1])}(?![A-Za-z0-9])",
-                    text,
-                    flags=re.IGNORECASE,
-                )
-            else:
-                match = re.search(
-                    rf"(?<![A-Za-z0-9]){re.escape(tf)}(?![A-Za-z0-9])",
-                    text,
-                    flags=re.IGNORECASE,
-                )
-            if match:
-                timeframe_hits.append((match.start(), tf))
-
-        hinted_symbol = min(symbol_hits, key=lambda x: x[0])[1] if symbol_hits else None
-        hinted_timeframe = (
-            min(timeframe_hits, key=lambda x: x[0])[1]
-            if timeframe_hits else None
-        )
-        return hinted_symbol, hinted_timeframe
-
-    symbol_re = re.compile(r"^[A-Za-z0-9_.-]{2,24}$")
-    timeframe_re = re.compile(r"^\d+[mhdwM]$")
-
-    # Universe-first: don't inject default symbol/timeframe when a valid universe exists.
-    symbols = _unique_non_empty(candidate_symbols, upper=True)
-    if not symbols:
-        symbols = _unique_non_empty([default_symbol or "BTCUSDC"], upper=True)
-    symbols = [s for s in symbols if symbol_re.match(s)]
-
-    timeframes = _unique_non_empty(candidate_timeframes, upper=False)
-    if not timeframes:
-        timeframes = _unique_non_empty([default_timeframe or "1h"], upper=False)
-    timeframes = [tf for tf in timeframes if timeframe_re.match(tf)]
-
-    # Fallback contractuel: prioriser le couple par défaut quand il est valide.
-    # Utilisé pour les cas "réponse LLM invalide / hors univers" afin de garder
-    # un comportement déterministe et prévisible côté tests et UI.
-    strict_fallback_symbol = (
-        str(default_symbol).strip().upper()
-        if str(default_symbol).strip().upper() in symbols
-        else (symbols[0] if symbols else "BTCUSDC")
-    )
-    strict_fallback_timeframe = (
-        str(default_timeframe).strip()
-        if str(default_timeframe).strip() in timeframes
-        else (timeframes[0] if timeframes else "1h")
+    return _impl(
+        llm_client,
+        objective=objective,
+        candidate_symbols=candidate_symbols,
+        candidate_timeframes=candidate_timeframes,
+        default_symbol=default_symbol,
+        default_timeframe=default_timeframe,
+        stream_callback=stream_callback,
+        recent_markets=recent_markets,
     )
 
-    # Fallback initial (sera recalculé après détection du type de stratégie)
-    _initial_fallback_symbol = (
-        str(default_symbol).strip().upper()
-        if str(default_symbol).strip().upper() in symbols
-        else (random.choice(symbols) if symbols else "BTCUSDC")
-    )
-    _initial_fallback_timeframe = (
-        str(default_timeframe).strip()
-        if str(default_timeframe).strip() in timeframes
-        else (random.choice(timeframes) if timeframes else "1h")
-    )
-
-    if not symbols or not timeframes:
-        return {
-            "symbol": strict_fallback_symbol,
-            "timeframe": strict_fallback_timeframe,
-            "confidence": 0.0,
-            "reason": "Univers marché incomplet, fallback par défaut.",
-            "source": "fallback_no_candidates",
-        }
-
-    clean_objective = sanitize_objective_text(objective)
-    if not clean_objective:
-        clean_objective = str(objective or "").strip()
-
-    # Détecter le type de stratégie AVANT d'extraire les hints
-    # (car si type détecté, on ignore les hints pour privilégier le tri intelligent)
-    detected_strategy_type = None
-    objective_lower = clean_objective.lower()
-
-    if any(kw in objective_lower for kw in ["scalp", "court terme", "rapide"]):
-        detected_strategy_type = "scalping"
-    elif any(kw in objective_lower for kw in ["breakout", "cassure", "sortie.*range", "donchian"]):
-        detected_strategy_type = "breakout"
-    elif any(kw in objective_lower for kw in ["momentum", "directionnel"]):
-        detected_strategy_type = "momentum"
-    elif any(kw in objective_lower for kw in ["tendance", "trend", "suivre"]):
-        detected_strategy_type = "trend"
-    elif any(kw in objective_lower for kw in ["mean", "reversion", "retour", "moyenne", "bollinger", "survente"]):
-        detected_strategy_type = "mean_reversion"
-
-    # Trier les tokens selon le type de stratégie détecté
-    ranked_symbols: List[str] = []
-    if detected_strategy_type:
-        from config.market_selection import rank_tokens_for_strategy
-        # Mélange d'abord les candidats pour randomiser les égalités de score.
-        # rank_tokens_for_strategy est stable: à score égal, l'ordre d'entrée est conservé.
-        symbols_for_ranking = symbols.copy()
-        random.shuffle(symbols_for_ranking)
-        ranked_symbols = rank_tokens_for_strategy(symbols_for_ranking, detected_strategy_type)
-        # Anti-biais de position: l'ordre envoyé au LLM est volontairement mélangé.
-        # Le ranking reste conservé pour le fallback deterministic.
-        shuffled_symbols = ranked_symbols.copy()
-        random.shuffle(shuffled_symbols)
-        logger.info(
-            "Market selection: strategy_type=%s, ranked_tokens=%s, prompt_tokens_shuffled=YES",
-            detected_strategy_type,
-            ", ".join(ranked_symbols[:5]),  # Log top 5 ranking brut
-        )
-    else:
-        # Fallback : shuffle aléatoire si type non détecté
-        shuffled_symbols = symbols.copy()
-        random.shuffle(shuffled_symbols)
-        logger.info("Market selection: strategy_type=UNKNOWN, tokens=shuffled")
-
-    # Mélanger les timeframes (pas de tri spécifique)
-    shuffled_timeframes = timeframes.copy()
-    random.shuffle(shuffled_timeframes)
-
-    # Extraction des hints : SEULEMENT si aucun type de stratégie détecté
-    # Si type détecté, on ignore les hints du catalogue pour privilégier le tri intelligent
-    hinted_symbol = None
-    hinted_timeframe = None
-
-    if not detected_strategy_type:
-        # Pas de type détecté : extraire les hints pour guider le LLM
-        hinted_symbol, hinted_timeframe = _find_objective_market_hints(
-            clean_objective,
-            allowed_symbols=symbols,
-            allowed_timeframes=timeframes,
-        )
-        logger.info(
-            "Market selection: strategy_type=NONE → using hints, symbol=%s, timeframe=%s",
-            hinted_symbol or "NONE",
-            hinted_timeframe or "NONE"
-        )
-    else:
-        # Type détecté : IGNORER les hints hardcodés pour privilégier le tri intelligent
-        logger.info(
-            "Market selection: strategy_type=%s → IGNORING hints from objective (prioritize intelligent ranking)",
-            detected_strategy_type
-        )
-
-    recent_symbol_set = {
-        str(s or "").strip().upper()
-        for s, _ in (recent_markets or [])
-        if str(s or "").strip()
-    }
-
-    # Fallback intelligent : éviter le biais top-1 quand plusieurs candidats sont valides.
-    if hinted_symbol and hinted_symbol in symbols:
-        fallback_symbol = hinted_symbol
-    else:
-        # Si stratégie détectée, piocher dans un pool top-N pour réduire le biais "toujours le même token".
-        if detected_strategy_type and ranked_symbols:
-            fallback_pool = ranked_symbols[: min(5, len(ranked_symbols))]
-            non_recent_pool = [s for s in fallback_pool if s not in recent_symbol_set]
-            if non_recent_pool:
-                fallback_pool = non_recent_pool
-            fallback_symbol = random.choice(fallback_pool) if fallback_pool else ranked_symbols[0]
-        else:
-            fallback_symbol = (
-                shuffled_symbols[0] if shuffled_symbols else _initial_fallback_symbol
-            )
-
-    # Fallback timeframe : prioriser TF recommandés / hints / diversité.
-    if detected_strategy_type:
-        try:
-            from config.market_selection import get_strategy_requirements
-            reqs = get_strategy_requirements(detected_strategy_type)
-            recommended_tfs = reqs.get("timeframes", ["1h"])
-            # Choisir un TF recommandé disponible, sans biais de position dans la liste.
-            recommended_available = [tf for tf in recommended_tfs if tf in timeframes]
-            if recommended_available:
-                fallback_timeframe = random.choice(recommended_available)
-            else:
-                fallback_timeframe = (
-                    shuffled_timeframes[0] if shuffled_timeframes else _initial_fallback_timeframe
-                )
-        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-            fallback_timeframe = (
-                shuffled_timeframes[0] if shuffled_timeframes else _initial_fallback_timeframe
-            )
-    elif hinted_timeframe and hinted_timeframe in timeframes:
-        fallback_timeframe = hinted_timeframe
-    else:
-        fallback_timeframe = (
-            shuffled_timeframes[0] if shuffled_timeframes else _initial_fallback_timeframe
-        )
-
-    logger.info(
-        "Market selection: fallback=%s %s (source=%s)",
-        fallback_symbol,
-        fallback_timeframe,
-        "strategy_optimized" if detected_strategy_type else "default"
-    )
-
-    # Validation diversité : désactiver si trop peu d'alternatives
-    diversity_instruction = ""
-    if recent_markets:
-        from config.market_selection import get_diversity_min_alternatives
-
-        available_combos = [(s, tf) for s in symbols for tf in timeframes]
-        recent_window = recent_markets[-6:]  # Fenêtre de diversité (6 derniers)
-        unused_combos = [c for c in available_combos if c not in recent_window]
-        min_alts = get_diversity_min_alternatives()
-
-        if len(unused_combos) >= min_alts:
-            recent_str = ", ".join(f"{s} {tf}" for s, tf in recent_window)
-            diversity_instruction = (
-                f"\n- DÉJÀ UTILISÉS récemment : {recent_str}. "
-                "Tu DOIS choisir un couple DIFFÉRENT. Varie tokens ET timeframes."
-            )
-            # Log structuré : diversité activée
-            logger.info(
-                "Market selection: diversity=ACTIVE, excluded_count=%d, alternatives=%d, recent=%s",
-                len(recent_window),
-                len(unused_combos),
-                recent_str,
-            )
-        else:
-            # Diversité désactivée : univers trop restreint
-            logger.warning(
-                "Market selection: diversity=DISABLED, reason=Univers restreint (%d alternatives < %d min), "
-                "recent_count=%d",
-                len(unused_combos),
-                min_alts,
-                len(recent_window),
-            )
-            diversity_instruction = ""  # Pas de contrainte
-
-    objective_hint_instruction = ""
-    hint_lines: List[str] = []
-
-    # Détection conflit hints vs diversité
-    if hinted_symbol and hinted_timeframe and recent_markets:
-        hinted_combo = (hinted_symbol, hinted_timeframe)
-        recent_window = recent_markets[-6:]
-        if hinted_combo in recent_window:
-            # Conflict detection done in strategy recommendation logic
-            logger.warning(
-                "Market selection: CONFLICT hints vs diversity, hinted=%s %s (already in recent_markets), "
-                "priority=diversity → hints IGNORED",
-                hinted_symbol, hinted_timeframe
-            )
-            # Annuler les hints (priorité à la diversité)
-            hinted_symbol = None
-            hinted_timeframe = None
-
-    # Construction des instructions hints (si pas de conflit)
-    if hinted_symbol:
-        hint_lines.append(
-            f"- L'objectif mentionne le symbole `{hinted_symbol}` : "
-            "considère-le comme une préférence, pas comme une contrainte absolue."
-        )
-    if hinted_timeframe:
-        hint_lines.append(
-            f"- L'objectif mentionne le timeframe `{hinted_timeframe}` : "
-            "considère-le comme une préférence, pas comme une contrainte absolue."
-        )
-
-    if hint_lines:
-        objective_hint_instruction = "\n" + "\n".join(hint_lines)
-
-        # Log structuré : hints détectés (si pas de conflit)
-        from config.market_selection import get_hints_confidence_boost
-        boost = get_hints_confidence_boost()
-        logger.info(
-            "Market selection: hints_detected=YES, symbol=%s, timeframe=%s, boost=+%.2f confidence",
-            hinted_symbol or "NONE",
-            hinted_timeframe or "NONE",
-            boost if (hinted_symbol or hinted_timeframe) else 0.0,
-        )
-
-    system_msg = LLMMessage(
-        role="system",
-        content=(
-            "Tu es un analyste quant. Choisis UN seul couple symbole/timeframe "
-            "le plus pertinent pour l'objectif. Réponds en JSON strict uniquement."
-        ),
-    )
-    # Enrichissement : recommandations TF/token basées sur type de stratégie détecté
-    strategy_hints = ""
-    try:
-        if detected_strategy_type:
-            from config.market_selection import get_strategy_requirements
-
-            reqs = get_strategy_requirements(detected_strategy_type)
-            recommended_tfs = reqs.get("timeframes", ["1h"])
-
-            # Extraire top 5 tokens recommandés (déjà triés par rank_tokens_for_strategy)
-            top_tokens = shuffled_symbols[:5]
-
-            strategy_hints = (
-                f"\n📊 RECOMMANDATION STRATÉGIE: **{detected_strategy_type.replace('_', ' ').title()}** détecté\n"
-                f"  → TFs optimaux: {', '.join(recommended_tfs[:3])}\n"
-                f"  → Tokens candidats pertinents (ordre mélangé): {', '.join(top_tokens)}\n"
-                "  → IMPORTANT: Ne choisis PAS automatiquement le premier token de la liste.\n"
-                "    Évalue l'adéquation avec l'objectif + la diversité récente.\n"
-            )
-    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-        pass  # Si détection échoue, continuer sans hints
-
-    user_msg = LLMMessage(
-        role="user",
-        content=(
-            "Objectif:\n"
-            f"{clean_objective}\n\n"
-            "Contraintes:\n"
-            f"- symbol MUST be one of: {', '.join(shuffled_symbols)}\n"
-            f"- timeframe MUST be one of: {', '.join(shuffled_timeframes)}\n"
-            "- Anti-biais de position: ne sélectionne PAS automatiquement le premier élément des listes.\n"
-            "- Si plusieurs choix sont valides, privilégie un couple moins récent (diversité).\n"
-            f"{strategy_hints}"
-            f"{objective_hint_instruction}\n"
-            "- Retourne un JSON strict, sans markdown:\n"
-            '{"symbol":"...","timeframe":"...","confidence":0.0,"reason":"..."}\n'
-            f"- confidence doit être entre 0 et 1.{diversity_instruction}"
-        ),
-    )
-
-    try:
-        if stream_callback and hasattr(llm_client, "chat_stream"):
-            raw = llm_client.chat_stream(
-                [system_msg, user_msg],
-                on_chunk=lambda c: stream_callback("market_pick", c),
-                max_tokens=180,
-            )
-        else:
-            raw = llm_client.chat([system_msg, user_msg], max_tokens=180)
-        # Extraire .content si LLMResponse, sinon str()
-        raw_text = str(getattr(raw, "content", raw) or "").strip()
-    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as exc:
-        logger.warning("recommend_market_context: fallback exception=%s", exc)
-        return {
-            "symbol": fallback_symbol,
-            "timeframe": fallback_timeframe,
-            "confidence": 0.0,
-            "reason": f"Échec appel LLM ({exc}). Fallback appliqué.",
-            "source": "fallback_exception",
-        }
-
-    payload = _extract_json_from_response(raw_text)
-    symbol = str(payload.get("symbol", "")).strip().upper()
-    timeframe = str(payload.get("timeframe", "")).strip()
-
-    try:
-        confidence = float(payload.get("confidence", 0.5))
-    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-        confidence = 0.5
-    confidence = max(0.0, min(1.0, confidence))
-
-    reason = str(payload.get("reason", "") or "").strip()
-
-    source = "llm"
-    if symbol not in symbols:
-        source = "fallback_out_of_universe"
-        symbol = strict_fallback_symbol
-    if timeframe not in timeframes:
-        source = "fallback_out_of_universe"
-        timeframe = strict_fallback_timeframe
-
-    if not payload:
-        source = "fallback_invalid_json"
-        symbol = strict_fallback_symbol
-        timeframe = strict_fallback_timeframe
-        confidence = 0.0
-        if not reason:
-            reason = "Réponse LLM non parseable en JSON. Fallback appliqué."
-    # Évite de rester figé sur le même couple déjà utilisé récemment.
-    if recent_markets:
-        recent_order = [
-            (str(s or "").upper(), str(tf or "").strip())
-            for s, tf in recent_markets
-            if str(s or "").strip() and str(tf or "").strip()
-        ]
-        recent_pairs = set(recent_order)
-        all_pairs = [(s, tf) for s in symbols for tf in timeframes]
-        selected_pair = (symbol, timeframe)
-
-        if selected_pair in recent_pairs and len(all_pairs) > 1:
-            alternatives = [p for p in all_pairs if p not in recent_pairs]
-            candidate_pool = alternatives
-
-            # Si tout l'univers a déjà été vu, forcer une rotation sur le moins récent.
-            if not candidate_pool:
-                last_seen: Dict[Tuple[str, str], int] = {p: -1 for p in all_pairs}
-                for idx, pair in enumerate(recent_order):
-                    if pair in last_seen:
-                        last_seen[pair] = idx
-                candidate_pool = sorted(
-                    [p for p in all_pairs if p != selected_pair],
-                    key=lambda p: (last_seen.get(p, -1), p[0], p[1]),
-                )
-
-            preferred = candidate_pool
-            if hinted_symbol and hinted_timeframe:
-                same_symbol = [p for p in candidate_pool if p[0] == hinted_symbol]
-                same_timeframe = [p for p in candidate_pool if p[1] == hinted_timeframe]
-                preferred = same_symbol or same_timeframe or candidate_pool
-            elif hinted_symbol:
-                by_symbol = [p for p in candidate_pool if p[0] == hinted_symbol]
-                preferred = by_symbol or candidate_pool
-            elif hinted_timeframe:
-                by_timeframe = [p for p in candidate_pool if p[1] == hinted_timeframe]
-                preferred = by_timeframe or candidate_pool
-
-            if preferred:
-                symbol, timeframe = random.choice(preferred)
-                source = f"{source}_diversity_override" if source != "llm" else "llm_diversity_override"
-                confidence = min(confidence, 0.75)
-                if reason:
-                    reason = (
-                        f"{reason} Couple récent évité automatiquement "
-                        f"({selected_pair[0]} {selected_pair[1]})."
-                    )
-                else:
-                    reason = (
-                        f"Couple récent évité automatiquement "
-                        f"({selected_pair[0]} {selected_pair[1]})."
-                    )
-
-    # Bonus léger si le LLM choisit spontanément les hints de l'objectif,
-    # sans les forcer pour préserver la diversité multi-market.
-    hint_matches: List[str] = []
-    if hinted_symbol and symbol == hinted_symbol:
-        hint_matches.append(f"symbol={hinted_symbol}")
-    if hinted_timeframe and timeframe == hinted_timeframe:
-        hint_matches.append(f"timeframe={hinted_timeframe}")
-    if hint_matches:
-        source = "llm_with_objective_hint" if source == "llm" else source
-        confidence = max(confidence, 0.8)
-        matched = ", ".join(hint_matches)
-        if reason:
-            reason = f"{reason} Hints objectif alignés ({matched})."
-        else:
-            reason = f"Hints objectif alignés ({matched})."
-
-    if not reason:
-        if source == "llm":
-            reason = "Choix basé sur style de stratégie, volatilité attendue et fréquence des signaux."
-        else:
-            reason = "Choix par défaut suite à une réponse LLM non exploitable."
-    if len(reason) > 280:
-        reason = reason[:280].rstrip()
-
-    return {
-        "symbol": symbol,
-        "timeframe": timeframe,
-        "confidence": confidence,
-        "reason": reason,
-        "source": source,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Public wrapper – catalog integration
-# ---------------------------------------------------------------------------
 
 def compile_proposal_to_code(proposal: Dict[str, Any], variant: int = 0) -> str:
-    """Compile un proposal JSON en code Python stratégie exécutable.
+    from agents.builder_objectives import compile_proposal_to_code as _impl
 
-    Wrapper public autour de _build_deterministic_fallback_code, destiné
-    au module catalog.gating pour le mini-backtest sans LLM.
-    """
-    return _build_deterministic_fallback_code(proposal, variant=variant)
-
-
-def _remove_hardcoded_tokens(text: str) -> str:
-    """
-    Retire les tokens crypto hardcodés d'un objectif (ex: "0GUSDC", "BTCUSDC").
-
-    Remplace les patterns comme:
-    - "sur 0GUSDC en" → "sur crypto en"
-    - "sur BTCUSDC dans" → "sur crypto dans"
-    - "[Momentum] sur 0GUSDC" → "[Momentum] sur crypto"
-
-    Utilisé quand symbol=None pour permettre sélection LLM intelligente.
-    """
-    if not text:
-        return text
-
-    # Pattern : tokens crypto (XXXXXUSDC où XXXXX = lettres/chiffres)
-    # Exemples : 0GUSDC, BTCUSDC, ETHUSDC, 1000SATSUSDC, etc.
-    token_pattern = r'\b[A-Z0-9]{2,12}USDC\b'
-
-    # Remplacer "sur TOKEN en/dans/..." par "sur crypto en/dans/..."
-    text = re.sub(
-        rf'sur\s+{token_pattern}\s+(en|dans|avec|pour)',
-        r'sur crypto \1',
-        text,
-        flags=re.IGNORECASE
-    )
-
-    # Remplacer "TOKEN en/dans" restants par "crypto en/dans"
-    text = re.sub(
-        rf'{token_pattern}\s+(en|dans)',
-        r'crypto \1',
-        text,
-        flags=re.IGNORECASE
-    )
-
-    # Filet final : remplace tout token crypto restant (ex: "sur BTCUSDC.")
-    text = re.sub(
-        token_pattern,
-        'crypto',
-        text,
-        flags=re.IGNORECASE
-    )
-
-    # Nettoyer les doubles espaces
-    text = re.sub(r'\s+', ' ', text).strip()
-
-    return text
-
-
-def _remove_hardcoded_timeframes(text: str) -> str:
-    """
-    Retire les timeframes hardcodés d'un objectif (ex: "1h", "30m", "5m").
-
-    Remplace les patterns comme:
-    - "en 1h" → "en timeframe adapté"
-    - "dans les 5m" → "dans un timeframe court"
-    - "crypto 30m" → "crypto"
-
-    Utilisé quand timeframe=None pour permettre sélection LLM intelligente.
-    """
-    if not text:
-        return text
-
-    # Pattern : timeframes (1m, 5m, 15m, 30m, 1h, 4h, 1d, etc.)
-    tf_pattern = r'\b\d+[mhdwM]\b'
-
-    # Remplacer "en/dans [TF]" par une description générique
-    text = re.sub(
-        rf'(en|dans)\s+(les?\s+)?{tf_pattern}',
-        r'\1 timeframe adapté',
-        text,
-        flags=re.IGNORECASE
-    )
-
-    # Remplacer TF isolés restants
-    text = re.sub(
-        rf'\s+{tf_pattern}\b',
-        '',
-        text,
-        flags=re.IGNORECASE
-    )
-
-    # Nettoyer les doubles espaces
-    text = re.sub(r'\s+', ' ', text).strip()
-
-    return text
-
+    return _impl(proposal, variant=variant)

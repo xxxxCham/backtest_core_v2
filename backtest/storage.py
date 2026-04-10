@@ -69,6 +69,9 @@ _NATIVE_EXTRA_METADATA_KEYS = (
     "builder_session_id",
     "builder_iteration",
     "builder_objective",
+    "universe_mode",
+    "universe_purpose",
+    "universe_strategy_type",
 )
 
 

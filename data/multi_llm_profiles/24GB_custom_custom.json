@@ -50,7 +50,7 @@
     "critic_llm": {
       "backend": "ollama",
       "preferred_models": [
-        "gemma3:27b",
+        "mistral:22b",
         "glm-4.7-flash-23b-local",
         "deepseek-r1:70b",
         "alia-40b-local",
@@ -64,7 +64,7 @@
       "required": true,
       "description": "Challenges robustness and overfitting risk.",
       "random_pool_models": [
-        "gemma3:27b",
+        "mistral:22b",
         "glm-4.7-flash-23b-local",
         "deepseek-r1:70b",
         "alia-40b-local",

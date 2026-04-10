@@ -241,7 +241,6 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
     numeric_cols = [
         "best_return_pct",
         "best_profit_factor",
-        "best_score",
         "best_sharpe",
         "best_trades",
         "best_max_drawdown_pct",

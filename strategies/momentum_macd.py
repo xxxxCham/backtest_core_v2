@@ -112,11 +112,8 @@ class MomentumMacdStrategy(StrategyBase):
         # Extract indicator arrays
         indicators['macd']['macd'] = np.nan_to_num(indicators['macd']["macd"])
         signal_line = np.nan_to_num(indicators['macd']["signal"])
-        hist = np.nan_to_num(indicators['macd']["histogram"])
-
         bb = indicators['bollinger']
         upper = np.nan_to_num(bb["upper"])
-        middle = np.nan_to_num(bb["middle"])
         lower = np.nan_to_num(bb["lower"])
 
         atr = np.nan_to_num(indicators['atr'])

@@ -10,6 +10,7 @@ from agents.llm_config import (
 )
 from agents.llm_client import LLMConfig, LLMProvider
 from agents.llm_router import build_phase1_topology
+from core.llm_multi.adapters.strategy_builder_adapter import summarize_builder_session
 from core.llm_multi.download_manager import plan_missing_downloads
 from core.llm_multi.model_discovery import (
     DiscoveredModel,
@@ -17,12 +18,15 @@ from core.llm_multi.model_discovery import (
     discover_local_models,
 )
 from core.llm_multi.registry import (
+    delete_multi_llm_profile,
     get_profile_role_pools,
+    get_user_multi_llm_profiles_dir,
     list_profile_names,
     load_multi_llm_config,
     resolve_profile_assignments,
     save_multi_llm_profile,
 )
+from agents.model_config import list_available_models
 from core.llm_multi.session_manager import MultiLLMSessionManager
 import core.llm_multi.model_discovery as model_discovery_module
 import core.llm_multi.download_manager as download_manager_module
@@ -63,11 +67,64 @@ def _inventory(
     )
 
 
+def _cloud_inventory(*models: tuple[str, str]) -> ModelInventory:
+    discovered = []
+    for tag_name, remote_model in models:
+        discovered.append(
+            DiscoveredModel(
+                name=tag_name,
+                backend="ollama",
+                source="ollama_api",
+                verified_available=True,
+                path=f"/fake/{tag_name}",
+                exists_on_disk=True,
+                aliases=[tag_name, remote_model, remote_model.split(":", 1)[0]],
+                live=True,
+                metadata={"remote_model": remote_model, "cloud_only": True},
+            )
+        )
+    return ModelInventory(
+        discovered_models=discovered,
+        scanned_roots=[],
+        missing_roots=[],
+        live_ollama_reachable=True,
+        live_ollama_host="http://127.0.0.1:11434",
+    )
+
+
+def test_summarize_builder_session_excludes_best_score():
+    summary = summarize_builder_session(
+        SimpleNamespace(
+            session_id="sess-test",
+            status="success",
+            best_sharpe=1.18,
+            best_score=42.0,
+            iterations=[1, 2, 3],
+            best_iteration=SimpleNamespace(
+                backtest_result=SimpleNamespace(
+                    metrics={
+                        "sharpe_ratio": 1.18,
+                        "total_return_pct": 9.4,
+                        "max_drawdown_pct": -7.5,
+                        "profit_factor": 1.26,
+                        "total_trades": 23,
+                    }
+                )
+            ),
+        )
+    )
+
+    assert summary["best_sharpe"] == 1.18
+    assert "best_score" not in summary
+    assert summary["metrics"]["total_return_pct"] == 9.4
+
+
 def test_discover_local_models_detects_verified_manifest_and_hf_dirs(
     tmp_path: Path,
     monkeypatch,
 ):
-    ollama_root = tmp_path / "ollama"
+    models_root = tmp_path / "models"
+    ollama_root = models_root / "ollama"
     manifest_path = (
         ollama_root
         / "manifests"
@@ -79,7 +136,7 @@ def test_discover_local_models_detects_verified_manifest_and_hf_dirs(
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text("{}", encoding="utf-8")
 
-    hf_root = tmp_path / "huggingface"
+    hf_root = models_root / "huggingface"
     hf_model_dir = hf_root / "fin-llama-33b"
     hf_model_dir.mkdir(parents=True, exist_ok=True)
     (hf_model_dir / "config.json").write_text("{}", encoding="utf-8")
@@ -100,7 +157,7 @@ def test_discover_local_models_detects_verified_manifest_and_hf_dirs(
     monkeypatch.setattr(
         model_discovery_module,
         "load_models_json",
-        lambda force_reload=True: {"ollama_models": [], "huggingface_models": []},
+        lambda **kwargs: {"ollama_models": [], "huggingface_models": []},
     )
 
     inventory = discover_local_models(include_live_ollama=False)
@@ -114,7 +171,7 @@ def test_discover_local_models_detects_verified_manifest_and_hf_dirs(
 def test_resolve_profile_assignments_prefers_verified_local_models():
     inventory = _inventory(
         [
-            ("gemma3:12b", "ollama"),
+            ("gemma4:26b", "ollama"),
             ("qwen3-coder:30b", "ollama"),
             ("deepseek-r1-distill:14b", "ollama"),
             ("martain7r/finance-llama-8b:q4_k_m", "ollama"),
@@ -157,13 +214,103 @@ def test_resolve_profile_assignments_curated_profile_prefers_recent_local_models
     assert assignments["critic_llm"].resolved_model == "qwen3.5:35b"
 
 
+def test_resolve_profile_assignments_cloud_power_roles_keeps_cloud_candidates_when_live_validation_disabled():
+    inventory = _inventory([], live_ollama_reachable=True)
+
+    resolved = resolve_profile_assignments(
+        "cloud_power_roles",
+        inventory,
+        require_live_ollama=False,
+    )
+    assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
+
+    assert resolved["missing_roles"] == []
+    assert assignments["idea_llm"].resolved_model == "qwen3.5:122b"
+    assert assignments["builder_llm"].resolved_model == "qwen3-coder:480b"
+    assert assignments["critic_llm"].resolved_model == "kimi-k2-thinking"
+    assert assignments["risk_llm"].resolved_model == "cogito-2.1:671b"
+    assert assignments["execution_router_llm"].resolved_model == "glm-4.6"
+    assert assignments["builder_llm"].source == "ollama_cloud"
+    assert assignments["builder_llm"].available is True
+
+
+def test_resolve_profile_assignments_cloud_power_roles_requires_runtime_visible_cloud_candidates_when_live_validation_enabled():
+    inventory = _inventory([], live_ollama_reachable=True)
+
+    resolved = resolve_profile_assignments(
+        "cloud_power_roles",
+        inventory,
+        require_live_ollama=True,
+    )
+    assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
+
+    assert resolved["missing_roles"] == ["idea_llm", "builder_llm", "critic_llm", "risk_llm"]
+    assert assignments["idea_llm"].available is False
+    assert assignments["idea_llm"].reason == "cloud candidate not exposed by current Ollama host"
+    assert assignments["builder_llm"].available is False
+    assert assignments["execution_router_llm"].available is False
+
+
+def test_resolve_profile_assignments_prefers_live_cloud_runtime_alias_when_available():
+    inventory = _cloud_inventory(
+        ("deepseek-v3.1:671b-cloud", "deepseek-v3.1:671b"),
+        ("gpt-oss:120b-cloud", "gpt-oss:120b"),
+    )
+
+    resolved = resolve_profile_assignments(
+        "brain",
+        inventory,
+        require_live_ollama=True,
+    )
+    assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
+
+    assert assignments["critic_llm"].requested_model == "deepseek-v3.1"
+    assert assignments["critic_llm"].resolved_model == "deepseek-v3.1:671b-cloud"
+    assert assignments["risk_llm"].requested_model == "gpt-oss:120b"
+    assert assignments["risk_llm"].resolved_model == "gpt-oss:120b-cloud"
+
+
+def test_build_continuity_context_ignores_crash_entries_for_best_recent_session():
+    continuity = session_manager_module._build_continuity_context(
+        [
+            {
+                "session_num": 2205,
+                "objective": "(crash avant execution)",
+                "status": "crash",
+                "best_sharpe": None,
+                "best_return": None,
+                "best_pf": None,
+                "best_trades": None,
+            },
+            {
+                "session_num": 2227,
+                "objective": "run sans edge mais exécuté",
+                "status": "completed",
+                "best_sharpe": 0.0,
+                "best_return": 0.0,
+                "best_pf": 1.0,
+                "best_trades": 0,
+            },
+        ]
+    )
+
+    assert continuity["best_recent_session"]["session_num"] == 2227
+
+
+def test_get_profile_role_pools_returns_cloud_power_roles_random_pools():
+    role_pools = get_profile_role_pools("cloud_power_roles")
+
+    assert role_pools["idea_llm"][:3] == ["qwen3.5:122b", "kimi-k2.5", "qwen3-vl:235b"]
+    assert role_pools["builder_llm"][:3] == ["qwen3-coder:480b", "devstral-2:123b", "kimi-k2"]
+
+
 def test_get_profile_role_pools_returns_builtin_diverse_role_pools():
     role_pools = get_profile_role_pools("24GB_diverse_roles")
 
     assert role_pools["idea_llm"][:3] == [
         "qwen3.5:35b",
-        "gemma3:27b",
         "mistral:22b",
+        "lfm2:24b",
     ]
     assert role_pools["builder_llm"] == [
         "gpt-oss:20b",
@@ -174,9 +321,18 @@ def test_get_profile_role_pools_returns_builtin_diverse_role_pools():
     assert role_pools["critic_llm"][:3] == [
         "qwen3.5:35b",
         "deepseek-r1:32b",
-        "gemma3:27b",
+        "mistral:22b",
     ]
     assert role_pools["risk_llm"][0] == "fin-llama-33b:33b"
+
+
+def test_get_profile_role_pools_returns_gemma4_duo_role_pools():
+    role_pools = get_profile_role_pools("24GB_gemma4_duo")
+
+    assert role_pools["idea_llm"] == ["gemma4:26b", "gemma4:31b"]
+    assert role_pools["builder_llm"] == ["gemma4:26b", "qwen3-coder:30b"]
+    assert role_pools["critic_llm"][:2] == ["gemma4:31b", "gemma4:26b"]
+    assert role_pools["risk_llm"][:2] == ["gemma4:31b", "gemma4:26b"]
 
 
 def test_resolve_llm_inference_settings_merges_builtin_model_profile():
@@ -236,7 +392,7 @@ def test_resolve_profile_assignments_light_profile_prefers_small_models():
     inventory = _inventory(
         [
             ("mistral:7b-instruct", "ollama", True),
-            ("gemma3:12b", "ollama", True),
+            ("gemma4:26b", "ollama", True),
             ("deepseek-r1:8b", "ollama", True),
             ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
             ("nemotron-orchestrator-8b:latest", "ollama", True),
@@ -254,7 +410,7 @@ def test_resolve_profile_assignments_light_profile_prefers_small_models():
 
     assert resolved["missing_roles"] == []
     assert assignments["idea_llm"].resolved_model == "mistral:7b-instruct"
-    assert assignments["builder_llm"].resolved_model == "gemma3:12b"
+    assert assignments["builder_llm"].resolved_model == "gemma4:26b"
     assert assignments["critic_llm"].resolved_model == "deepseek-r1:8b"
     assert assignments["risk_llm"].resolved_model == "martain7r/finance-llama-8b:q4_k_m"
 
@@ -278,7 +434,7 @@ def test_resolve_profile_assignments_prefers_live_ollama_match_when_required():
     inventory = _inventory(
         [
             ("qwen2.5:32b", "ollama", False),
-            ("gemma3:12b", "ollama", True),
+            ("gemma4:26b", "ollama", True),
             ("qwen3-coder:30b", "ollama", True),
             ("deepseek-r1-distill:14b", "ollama", True),
             ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
@@ -294,7 +450,7 @@ def test_resolve_profile_assignments_prefers_live_ollama_match_when_required():
     )
     assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
 
-    assert assignments["idea_llm"].resolved_model == "gemma3:12b"
+    assert assignments["idea_llm"].resolved_model == "gemma4:26b"
     assert assignments["idea_llm"].live is True
     assert assignments["idea_llm"].available is True
 
@@ -323,6 +479,113 @@ def test_resolve_profile_assignments_applies_role_override():
     assert assignments["risk_llm"].requested_model == "mistral:7b-instruct"
     assert assignments["risk_llm"].resolved_model == "mistral:7b-instruct"
     assert assignments["risk_llm"].available is True
+
+
+def test_resolve_profile_assignments_accepts_cloud_only_override_without_local_match_when_live_validation_disabled():
+    inventory = _inventory(
+        [
+            ("qwen2.5:32b", "ollama", True),
+            ("qwen3-coder:30b", "ollama", True),
+            ("deepseek-r1-distill:14b", "ollama", True),
+            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
+            ("nemotron-orchestrator-8b:latest", "ollama", True),
+        ],
+        live_ollama_reachable=True,
+    )
+
+    resolved = resolve_profile_assignments(
+        "24GB_balanced",
+        inventory,
+        role_overrides={"builder_llm": ["qwen3-coder:480b"]},
+        require_live_ollama=False,
+    )
+    assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
+
+    assert assignments["builder_llm"].requested_model == "qwen3-coder:480b"
+    assert assignments["builder_llm"].resolved_model == "qwen3-coder:480b"
+    assert assignments["builder_llm"].available is True
+    assert assignments["builder_llm"].source == "ollama_cloud"
+
+
+def test_list_available_models_includes_cloud_only_models_even_with_local_inventory():
+    models = {model.name for model in list_available_models()}
+
+    assert "qwen3-coder:480b" in models
+    assert "deepseek-v3.2" in models
+    assert "gpt-oss:120b" in models
+
+
+def test_multi_llm_manager_select_next_role_candidate_promotes_runtime_visible_cloud_model():
+    inventory = _inventory(
+        [
+            ("qwen3-coder:30b", "ollama", True),
+        ],
+        live_ollama_reachable=True,
+    )
+    inventory.discovered_models.append(
+        DiscoveredModel(
+            name="qwen3-coder:480b-cloud",
+            backend="ollama",
+            source="ollama_api",
+            verified_available=True,
+            path="/fake/qwen3-coder:480b-cloud",
+            exists_on_disk=True,
+            aliases=["qwen3-coder:480b-cloud", "qwen3-coder:480b"],
+            live=True,
+            metadata={"remote_model": "qwen3-coder:480b", "cloud_only": True},
+        )
+    )
+
+    manager = MultiLLMSessionManager(
+        profile_name="24GB_balanced",
+        base_llm_config=LLMConfig(model="qwen3-coder:30b", ollama_host="http://127.0.0.1:11434"),
+        inventory=inventory,
+        role_overrides={"builder_llm": ["qwen3-coder:30b", "qwen3-coder:480b"]},
+        require_live_ollama=True,
+        client_factory=lambda config: SimpleNamespace(config=config),
+    )
+
+    promoted = manager.select_next_role_candidate(
+        "builder_llm",
+        rejected_model="qwen3-coder:30b",
+        reason="model rejected by host",
+    )
+    assignment = manager.resolve_role_assignment("builder_llm")
+
+    assert promoted == "qwen3-coder:480b-cloud"
+    assert assignment is not None
+    assert assignment.requested_model == "qwen3-coder:480b"
+    assert assignment.resolved_model == "qwen3-coder:480b-cloud"
+    assert assignment.source == "ollama_api"
+
+
+def test_multi_llm_manager_builds_cloud_client_with_live_runtime_alias():
+    inventory = _cloud_inventory(
+        ("gpt-oss:120b-cloud", "gpt-oss:120b"),
+        ("deepseek-v3.1:671b-cloud", "deepseek-v3.1:671b"),
+    )
+    captured: list[LLMConfig] = []
+
+    class DummyClient:
+        def __init__(self, config: LLMConfig):
+            self.config = config
+
+    def _factory(config: LLMConfig):
+        captured.append(config)
+        return DummyClient(config)
+
+    manager = MultiLLMSessionManager(
+        profile_name="brain",
+        base_llm_config=LLMConfig(model="gpt-oss:20b", ollama_host="http://127.0.0.1:11434"),
+        inventory=inventory,
+        require_live_ollama=True,
+        client_factory=_factory,
+    )
+
+    client = manager.build_role_client("risk_llm")
+
+    assert client is not None
+    assert captured[-1].model == "gpt-oss:120b-cloud"
 
 
 def test_save_multi_llm_profile_adds_user_profile_to_registry(tmp_path: Path):
@@ -395,6 +658,38 @@ def test_resolve_profile_assignments_supports_saved_user_profile(tmp_path: Path)
     assert assignments["builder_llm"].resolved_model == "qwen3-30b-a3b:q4_k_m"
     assert assignments["critic_llm"].requested_model == "deepseek-r1:32b"
     assert assignments["critic_llm"].resolved_model == "deepseek-r1:32b"
+
+
+def test_delete_multi_llm_profile_removes_custom_profile(tmp_path: Path):
+    user_profiles_dir = tmp_path / "profiles"
+    saved_path = save_multi_llm_profile(
+        "Profil Temporaire",
+        base_profile_name="24GB_balanced",
+        role_overrides={"builder_llm": ["qwen3-coder:30b"]},
+        user_profiles_dir=user_profiles_dir,
+    )
+
+    deleted = delete_multi_llm_profile(
+        "Profil Temporaire",
+        user_profiles_dir=user_profiles_dir,
+    )
+
+    assert deleted is True
+    assert not saved_path.exists()
+    assert "Profil Temporaire" not in list_profile_names(user_profiles_dir=user_profiles_dir)
+
+
+def test_get_user_multi_llm_profiles_dir_resolves_relative_path_from_project_root(
+    tmp_path: Path,
+    monkeypatch,
+):
+    relative_dir = "tmp_multi_profiles"
+    monkeypatch.setattr("core.llm_multi.registry.PROJECT_ROOT", tmp_path)
+
+    resolved = get_user_multi_llm_profiles_dir(relative_dir)
+
+    assert resolved == tmp_path / relative_dir
+    assert resolved.exists()
 
 
 def test_get_profile_role_pools_falls_back_to_user_preferred_models(tmp_path: Path):
@@ -1508,16 +1803,23 @@ def test_model_loader_resolves_historical_aliases(monkeypatch):
                 "name": "Qwen3 VL 32B",
                 "ollama_name": "qwen3-vl:32b",
                 "size_gb": 20.0,
+            },
+            {
+                "id": "gemma4-31b",
+                "name": "Gemma 4 31B",
+                "ollama_name": "gemma4:31b",
+                "size_gb": 20.5,
             }
         ],
         "huggingface_models": [],
         "diffusion_models": [],
     }
-    monkeypatch.setattr(model_loader_module, "load_models_json", lambda force_reload=False: payload)
+    monkeypatch.setattr(model_loader_module, "load_models_json", lambda **kwargs: payload)
 
     resolved = model_loader_module.get_model_by_id("qwen3-coder-40b-local")
     resolved_coder_next = model_loader_module.get_model_by_id("qwen3-coder-next:q4_k_m")
     resolved_vl = model_loader_module.get_model_by_id("qwen3-vl:30b")
+    resolved_gemma4 = model_loader_module.get_model_by_id("gemma4:31b-it-q8_0")
 
     assert resolved is not None
     assert resolved["ollama_name"] == "qwen3-coder:30b"
@@ -1525,7 +1827,13 @@ def test_model_loader_resolves_historical_aliases(monkeypatch):
     assert resolved_coder_next["ollama_name"] == "qwen3-coder:30b"
     assert resolved_vl is not None
     assert resolved_vl["ollama_name"] == "qwen3-vl:32b"
-    assert model_loader_module.get_ollama_model_names() == ["qwen3-coder:30b", "qwen3-vl:32b"]
+    assert resolved_gemma4 is not None
+    assert resolved_gemma4["ollama_name"] == "gemma4:31b"
+    assert model_loader_module.get_ollama_model_names() == [
+        "qwen3-coder:30b",
+        "qwen3-vl:32b",
+        "gemma4:31b",
+    ]
 
 
 def test_model_loader_runtime_names_include_manifest_only_models(tmp_path: Path, monkeypatch):
@@ -1548,7 +1856,7 @@ def test_model_loader_runtime_names_include_manifest_only_models(tmp_path: Path,
     monkeypatch.setattr(
         model_loader_module,
         "load_models_json",
-        lambda force_reload=False: {"ollama_models": [], "huggingface_models": [], "diffusion_models": []},
+        lambda **kwargs: {"ollama_models": [], "huggingface_models": [], "diffusion_models": []},
     )
 
     assert model_loader_module.get_ollama_manifest_model_names() == ["qwen3-48b-savant"]

@@ -150,6 +150,23 @@ def test_compact_session_rows_recovers_runtime_error_from_session_summary(tmp_pa
     assert rows[0]["last_runtime_traceback_tail"] == "Traceback tail persisted"
 
 
+def test_compact_session_rows_exposes_best_telemetry_score_alias():
+    rows = model_stats_view._compact_session_rows(
+        [
+            {
+                "session_num": 42,
+                "session_id": "session_alias",
+                "status": "success",
+                "best_score": 18.75,
+                "multi_llm_builder_model": "qwen3-coder:30b",
+            }
+        ]
+    )
+
+    assert rows[0]["best_telemetry_score"] == 18.75
+    assert "best_score" not in rows[0]
+
+
 def test_archive_active_window_writes_archive_and_updates_baseline(tmp_path: Path):
     history = _history_sample()
     state = model_stats_view._default_model_stats_state()

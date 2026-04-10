@@ -20,7 +20,6 @@ Read-if: Modification formats supports ou paths par défaut.
 Skip-if: Vous appelez load_ohlcv(filename).
 """
 
-import json
 import os
 import re
 from functools import lru_cache

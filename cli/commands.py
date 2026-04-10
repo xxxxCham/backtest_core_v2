@@ -26,7 +26,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -129,19 +129,30 @@ def _apply_date_filter(df: pd.DataFrame, start: str | None, end: str | None) -> 
     return df
 
 
+def _get_resolved_data_dir() -> Path:
+    """Résout le dossier de données via le loader central si disponible."""
+    try:
+        from data.loader import _get_data_dir
+
+        return _get_data_dir()
+    except Exception:
+        env_data_dir = os.environ.get("BACKTEST_DATA_DIR")
+        if env_data_dir:
+            return Path(env_data_dir)
+        return Path(__file__).parent.parent / "data" / "sample_data"
+
+
 def _resolve_data_path(data_arg: str) -> Path:
-    """Résout un chemin de données avec fallback BACKTEST_DATA_DIR et sample_data."""
+    """Résout un chemin de données via le dossier réellement utilisé par le loader."""
     data_path = Path(data_arg)
     if data_path.exists():
         return data_path
 
-    env_data_dir = os.environ.get("BACKTEST_DATA_DIR")
-    if env_data_dir:
-        candidate = Path(env_data_dir) / data_arg
-        if candidate.exists():
-            return candidate
+    candidate = _get_resolved_data_dir() / data_arg
+    if candidate.exists():
+        return candidate
 
-    return Path(__file__).parent.parent / "data" / "sample_data" / data_arg
+    return candidate
 
 
 def _resolve_output_format(output_path: Path, requested_format: str | None, default: str = "json") -> str:
@@ -751,27 +762,13 @@ def _list_indicators(args) -> int:
 
 def _list_data(args) -> int:
     """Liste les fichiers de données."""
-    import os
-
-    from data.loader import discover_available_data
+    from data.loader import _scan_data_files, discover_available_data
 
     # Récupérer tokens et timeframes
     tokens, timeframes = discover_available_data()
 
-    # Chercher les fichiers via variable d'environnement ou répertoire par défaut
-    env_data_dir = os.environ.get("BACKTEST_DATA_DIR")
-    if env_data_dir:
-        data_dir = Path(env_data_dir)
-    else:
-        data_dir = Path(__file__).parent.parent / "data" / "sample_data"
-
-    data_files = []
-    if data_dir.exists():
-        # Format parquet uniquement (selon variable d'environnement)
-        data_files.extend(data_dir.glob("*.parquet"))
-        # Aussi chercher CSV et Feather comme fallback
-        data_files.extend(data_dir.glob("*.csv"))
-        data_files.extend(data_dir.glob("*.feather"))
+    data_dir = _get_resolved_data_dir()
+    data_files = list(_scan_data_files()) if data_dir.exists() else []
 
     if args.json:
         print(json.dumps({
@@ -784,15 +781,11 @@ def _list_data(args) -> int:
 
     print_header(f"Fichiers de données ({len(data_files)})")
 
-    if env_data_dir:
-        print_info(f"Répertoire: {data_dir} (via $BACKTEST_DATA_DIR)")
-    else:
-        print_info(f"Répertoire: {data_dir}")
+    print_info(f"Répertoire résolu: {data_dir}")
 
     if not data_files:
         print_warning("Aucun fichier de données trouvé")
-        if not env_data_dir:
-            print_info("Définissez $env:BACKTEST_DATA_DIR ou placez des fichiers .parquet dans data/sample_data/")
+        print_info("Vérifiez BACKTEST_DATA_DIR ou la banque du gestionnaire multi-timeframe.")
         return 0
 
     rows = []
@@ -1659,8 +1652,9 @@ def cmd_validate(args) -> int:
         if args.data:
             data_files = [args.data]
         else:
-            data_dir = Path("data/sample_data")
-            data_files = list(data_dir.glob("*.parquet")) + list(data_dir.glob("*.csv"))
+            from data.loader import _scan_data_files
+
+            data_files = [str(path) for path in _scan_data_files()]
 
         for f in data_files:
             try:
@@ -1882,13 +1876,7 @@ def _cmd_optuna_single(args, strategy_name: str) -> int:
         return 1
 
     # Résolution du chemin des données
-    data_path = Path(args.data)
-    if not data_path.exists():
-        env_data_dir = os.environ.get("BACKTEST_DATA_DIR")
-        if env_data_dir:
-            data_path = Path(env_data_dir) / args.data
-        else:
-            data_path = Path(__file__).parent.parent / "data" / "sample_data" / args.data
+    data_path = _resolve_data_path(args.data)
 
     if not data_path.exists():
         print_error(f"Fichier non trouvé: {args.data}")
@@ -2207,17 +2195,10 @@ def cmd_visualize(args) -> int:
     data_path = None
 
     if args.data:
-        data_path = Path(args.data)
+        data_path = _resolve_data_path(args.data)
         if not data_path.exists():
-            # Chercher dans BACKTEST_DATA_DIR
-            import os
-            data_dir = os.environ.get("BACKTEST_DATA_DIR", "data/sample_data")
-            alt_path = Path(data_dir) / args.data
-            if alt_path.exists():
-                data_path = alt_path
-            else:
-                print_warning(f"Fichier de données non trouvé: {args.data}")
-                data_path = None
+            print_warning(f"Fichier de données non trouvé: {args.data}")
+            data_path = None
 
     # Output path
     output_path = None
@@ -4300,13 +4281,7 @@ def cmd_builder(args) -> int:
     from agents.strategy_builder import StrategyBuilder
 
     objective = args.objective
-    data_path = Path(args.data)
-    if not data_path.exists():
-        env_data_dir = os.environ.get("BACKTEST_DATA_DIR")
-        if env_data_dir:
-            data_path = Path(env_data_dir) / args.data
-        else:
-            data_path = Path(__file__).parent.parent / "data" / "sample_data" / args.data
+    data_path = _resolve_data_path(args.data)
 
     if not data_path.exists():
         print(f"{Colors.RED}❌ Fichier non trouvé: {args.data}{Colors.RESET}")

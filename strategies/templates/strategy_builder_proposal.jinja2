@@ -81,8 +81,10 @@ Required behavior:
 {% elif diagnostic.change_type == "logic" %}
 - Perform structural changes in logic, filters, and/or indicators.
 - Do not only tweak numbers.
+- You may remove one noisy indicator, replace one indicator, or add one new indicator if it strengthens the hypothesis.
 {% elif diagnostic.change_type == "both" %}
 - Change both logic and parameters.
+- You may also change the indicator set if that helps fix the diagnostic.
 {% endif %}
 {% endif %}
 
@@ -91,12 +93,18 @@ Required behavior:
 - Last iteration used: {{ previous_indicators|join(", ") }}
 {% endif %}
 
+{% if branch_directive %}
+## BRANCH DIRECTIVE
+- {{ branch_directive }}
+{% endif %}
+
 {% if should_consider_indicator_expansion %}
 ## INDICATOR EXPLORATION GUIDANCE
 - The previous result suggests a structural issue or a real stagnation.
 - You MAY keep the same indicators if you have a concrete structural redesign in mind.
 - But first ask yourself whether adding, replacing, or removing at least one indicator would better address the failure mode.
 - Reusing the exact same indicator set is acceptable only if the new hypothesis is materially different, not just threshold tuning.
+- When in doubt, prefer a small but real change in the indicator set over another near-identical retry.
 {% endif %}
 
 {% if stagnation_warning %}
@@ -112,10 +120,18 @@ Required behavior:
 {% endif %}
 
 {% if iteration_history and iteration_history|length > 0 %}
-## ITERATION HISTORY (LAST 5)
+## ITERATION HISTORY (LAST {{ iteration_history|length }})
 {% for h in iteration_history %}
-- iter={{ h.iteration }} change={{ h.change_type|default("?") }} sharpe={{ h.sharpe|default("N/A") }} trades={{ h.trades|default("N/A") }} diag={{ h.diagnostic_category|default("-") }}{% if h.is_fallback %} [FALLBACK-NOT-SCORED]{% endif %}{% if h.error %} error={{ h.error }}{% endif %}
+- iter={{ h.iteration }} | sharpe={{ h.sharpe|default("?") }} ret={{ h.return_pct|default("?") }}% dd={{ h.max_drawdown_pct|default("?") }}% wr={{ h.win_rate|default("?") }}% pf={{ h.profit_factor|default("?") }} trades={{ h.trades|default("?") }} | change={{ h.change_type|default("?") }} diag={{ h.diagnostic_category|default("-") }} → {{ h.decision|default("?") }}{% if h.indicators and h.indicators|length > 0 %} | indicators=[{{ h.indicators|join(", ") }}]{% endif %}{% if h.is_fallback %} [FALLBACK]{% endif %}{% if h.error %} [ERROR: {{ h.error[:60] }}]{% endif %}
 {% endfor %}
+{% endif %}
+
+{% if best_so_far %}
+## BEST CONFIGURATION SO FAR (iter={{ best_so_far.iteration }})
+- Sharpe: {{ best_so_far.sharpe|default("?") }} | Return: {{ best_so_far.return_pct|default("?") }}% | MaxDD: {{ best_so_far.max_drawdown_pct|default("?") }}% | WR: {{ best_so_far.win_rate|default("?") }}% | PF: {{ best_so_far.profit_factor|default("?") }} | Trades: {{ best_so_far.trades|default("?") }}
+- Indicators: {{ best_so_far.indicators|join(", ") if best_so_far.indicators else "unknown" }}
+- Hypothesis: {{ best_so_far.hypothesis }}
+- Note: beat this configuration OR explain why the new hypothesis is a stronger foundation.
 {% endif %}
 
 ## HARD RULES
@@ -131,7 +147,7 @@ Required behavior:
   Never compare close vs ATR directly; use ATR as a filter (e.g. ATR > threshold).
 - entry_long_logic, entry_short_logic, exit_logic MUST be plain strings (one sentence each).
   NEVER nest JSON objects, "logic_expression" keys, or "indicators" arrays inside them.
-- Keep it simple: 2-3 indicators max. One clear entry rule, one clear exit rule.
+- Keep it simple: usually 1 to 5 indicators. One clear entry rule, one clear exit rule.
 {% if direction_constraint == "long_only" %}
 - Objective is LONG ONLY: entry_short_logic MUST be "".
 {% elif direction_constraint == "short_only" %}

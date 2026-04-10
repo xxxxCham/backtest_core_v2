@@ -1,6 +1,7 @@
 # Exclusions pour Copilot Chat / codebase index
 # Dossiers générés / caches — ne pas indexer
 .venv/
+.claude/
 .indicator_cache/
 .mypy_cache/
 .numba_cache/
@@ -21,16 +22,26 @@ sandbox_strategies/
 orchestration_logs/
 logs/
 
+# Zones expérimentales / archives / documentation lourde
+docs/
+labs/
+examples/
+catalog/generated/
+catalog/graduation_results/
+ui/components/archive/
+
 # Tests (gros fichiers, peu utiles pour le contexte Copilot en dev normal)
 tests/
 
-# Fichiers volumineux individuels — exclure les versions de cache
+# Fichiers volumineux ou historiques — exclure de l'index automatique
+AGEND_HISTORY.md
+config/strategy_catalog.json
+.coverage
+*.bak
+*.bak_*
 *.pstats
 *.parquet
 *.feather
 *.csv
 *.pkl
 *.pickle
-
-# Document de maintenance à exclure du contexte Copilot pour ce dépôt
-docs/cahier de maintenance_sauvegarde

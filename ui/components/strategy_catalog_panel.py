@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import re
 from functools import lru_cache
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -357,7 +356,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
 
         col_c, col_d = st.columns(2)
         with col_c:
-            symbols = st.multiselect(
+            st.multiselect(
                 "🪙 Token (filtre)",
                 all_symbols,
                 default=st.session_state.get("catalog_filter_symbols", []),
@@ -365,7 +364,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
                 help="Optionnel : filtrer par token spécifique"
             )
         with col_d:
-            timeframes = st.multiselect(
+            st.multiselect(
                 "⏰ Timeframe (filtre)",
                 all_timeframes,
                 default=st.session_state.get("catalog_filter_timeframes", []),
@@ -373,7 +372,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
                 help="Optionnel : filtrer par timeframe spécifique"
             )
 
-        tags = st.multiselect(
+        st.multiselect(
             "🏷️ Tags (filtre)",
             all_tags,
             default=st.session_state.get("catalog_filter_tags", []),
@@ -383,7 +382,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
 
         col_e, col_f = st.columns(2)
         with col_e:
-            phases = st.multiselect(
+            st.multiselect(
                 "🧭 Phase canonique",
                 all_phases,
                 default=st.session_state.get("catalog_filter_phases", []),
@@ -391,7 +390,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
                 help="Optionnel : filtrer par phase P2-P6"
             )
         with col_f:
-            decisions = st.multiselect(
+            st.multiselect(
                 "🧾 Décision",
                 all_decisions,
                 default=st.session_state.get("catalog_filter_decisions", []),

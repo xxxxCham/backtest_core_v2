@@ -4,7 +4,6 @@ Tests pour le module catalog — générateur paramétrique de fiches de straté
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest

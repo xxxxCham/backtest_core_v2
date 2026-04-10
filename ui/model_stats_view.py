@@ -74,7 +74,7 @@ _SESSION_PRIORITY_COLUMNS: Tuple[str, ...] = (
     "last_runtime_error",
     "best_return_pct",
     "best_sharpe",
-    "best_score",
+    "best_telemetry_score",
     "best_trades",
     "symbol",
     "timeframe",
@@ -379,6 +379,11 @@ def _extract_active_entries(
 
 
 def _build_record(entry: Dict[str, Any], *, model: str) -> Dict[str, Any]:
+    instrumentation_summary = (
+        dict(entry.get("instrumentation_summary", {}) or {})
+        if isinstance(entry.get("instrumentation_summary"), dict)
+        else {}
+    )
     return {
         "model": _normalize_model_label(model),
         "session_num": _safe_int(entry.get("session_num"), 0),
@@ -391,7 +396,11 @@ def _build_record(entry: Dict[str, Any], *, model: str) -> Dict[str, Any]:
         "symbol": _normalize_text_label(entry.get("symbol")),
         "timeframe": _normalize_text_label(entry.get("timeframe")),
         "source_mode": _normalize_text_label(entry.get("source_mode")),
+        "builder_execution_mode": _normalize_text_label(entry.get("builder_execution_mode")),
         "orchestration_mode": _normalize_text_label(entry.get("orchestration_mode")),
+        "instrumentation_enabled": bool(entry.get("instrumentation_enabled", False)),
+        "trace_fallback_rate": _safe_float(instrumentation_summary.get("fallback_rate")),
+        "trace_repair_rate": _safe_float(instrumentation_summary.get("repair_rate")),
         "multi_llm_profile": _normalize_text_label(entry.get("multi_llm_profile")),
         "objective": _normalize_text_label(entry.get("objective"), fallback=""),
     }
@@ -424,7 +433,9 @@ def _compact_session_rows(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]
                 "last_runtime_error": runtime_feedback.get("last_runtime_error"),
                 "best_return_pct": _safe_float(entry.get("best_return")),
                 "best_sharpe": _safe_float(entry.get("best_sharpe")),
-                "best_score": _safe_float(entry.get("best_score")),
+                "best_telemetry_score": _safe_float(
+                    entry.get("best_telemetry_score", entry.get("best_score"))
+                ),
                 "best_trades": _safe_float(entry.get("best_trades")),
                 "symbol": _normalize_text_label(entry.get("symbol")),
                 "timeframe": _normalize_text_label(entry.get("timeframe")),
@@ -627,6 +638,9 @@ def summarize_window(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
     distinct_builder_models = set()
     multi_llm_sessions = 0
     single_llm_sessions = 0
+    instrumented_sessions = 0
+    fallback_rates: List[float] = []
+    repair_rates: List[float] = []
 
     for entry in list(entries or []):
         if not isinstance(entry, dict):
@@ -647,6 +661,16 @@ def summarize_window(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
             multi_llm_sessions += 1
         elif orchestration_mode == "single_llm":
             single_llm_sessions += 1
+        if bool(entry.get("instrumentation_enabled", False)):
+            instrumented_sessions += 1
+            instrumentation_summary = entry.get("instrumentation_summary", {})
+            if isinstance(instrumentation_summary, dict):
+                fallback_rate = _safe_float(instrumentation_summary.get("fallback_rate"))
+                repair_rate = _safe_float(instrumentation_summary.get("repair_rate"))
+                if fallback_rate is not None:
+                    fallback_rates.append(fallback_rate)
+                if repair_rate is not None:
+                    repair_rates.append(repair_rate)
 
     return {
         "sessions": len(entries or []),
@@ -661,6 +685,9 @@ def summarize_window(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
         "crash_status": int(status_counts.get("crash", 0)),
         "multi_llm_sessions": multi_llm_sessions,
         "single_llm_sessions": single_llm_sessions,
+        "instrumented_sessions": instrumented_sessions,
+        "avg_trace_fallback_rate": _mean_or_none(fallback_rates, 4),
+        "avg_trace_repair_rate": _mean_or_none(repair_rates, 4),
         "latest_session_num": _latest_session_num(entries),
     }
 
@@ -830,6 +857,24 @@ def _render_overview_cards(overview: Dict[str, Any], *, archives_count: int) -> 
         st.metric("Errors", int(overview.get("error_status", 0) or 0))
     with col10:
         st.metric("Crash", int(overview.get("crash_status", 0) or 0))
+
+    col11, col12, col13, col14 = st.columns(4)
+    with col11:
+        st.metric("Sessions tracées", int(overview.get("instrumented_sessions", 0) or 0))
+    with col12:
+        st.metric("Mono", int(overview.get("single_llm_sessions", 0) or 0))
+    with col13:
+        st.metric("Multi-LLM", int(overview.get("multi_llm_sessions", 0) or 0))
+    with col14:
+        fallback_rate = _safe_float(overview.get("avg_trace_fallback_rate"))
+        repair_rate = _safe_float(overview.get("avg_trace_repair_rate"))
+        summary = "n/a"
+        if fallback_rate is not None or repair_rate is not None:
+            summary = (
+                f"fb {float(fallback_rate or 0.0) * 100:.1f}% | "
+                f"rep {float(repair_rate or 0.0) * 100:.1f}%"
+            )
+        st.metric("Flux moyen", summary)
 
 
 def _render_table_section(

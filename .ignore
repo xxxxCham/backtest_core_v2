@@ -4,6 +4,17 @@ output/
 sandbox_strategies/
 sweep_diagnostics/
 profiling_results/
+docs/
+labs/
+examples/
+catalog/generated/
+catalog/graduation_results/
+ui/components/archive/
+AGEND_HISTORY.md
+config/strategy_catalog.json
+.claude/
+*.bak
+*.bak_*
 .coverage
 analysis_report.html
 analysis_report_filtered.html

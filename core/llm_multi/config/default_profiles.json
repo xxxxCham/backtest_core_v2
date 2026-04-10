@@ -23,7 +23,7 @@
           "backend": "ollama",
           "preferred_models": [
             "qwen2.5:32b",
-            "gemma3:12b"
+            "gemma4:26b"
           ],
           "fallback_models": [
             "deepseek-moe-16b-local",
@@ -94,7 +94,7 @@
             "qwen2.5:32b"
           ],
           "fallback_models": [
-            "gemma3:12b",
+            "gemma4:26b",
             "deepseek-moe-16b-local"
           ],
           "required": true,
@@ -160,24 +160,23 @@
           "backend": "ollama",
           "preferred_models": [
             "qwen3.5:35b",
-            "gemma3:27b",
-            "mistral:22b"
+            "mistral:22b",
+            "lfm2:24b"
           ],
           "random_pool_models": [
             "qwen3.5:35b",
-            "gemma3:27b",
             "mistral:22b",
+            "lfm2:24b",
             "deepseek-r1:32b",
             "qwen2.5:32b",
-            "lfm2:24b",
             "deepseek-moe-16b-local:latest"
           ],
           "fallback_models": [
-            "gemma3:12b",
+            "gemma4:26b",
             "mistral:7b-instruct"
           ],
           "required": true,
-          "description": "Role ideation pool prioritizing source diversity across Qwen, Google Gemma, Mistral, DeepSeek and Liquid styles."
+          "description": "Role ideation pool prioritizing source diversity across Qwen, Mistral, DeepSeek and Liquid styles."
         },
         "builder_llm": {
           "backend": "ollama",
@@ -204,12 +203,11 @@
           "preferred_models": [
             "qwen3.5:35b",
             "deepseek-r1:32b",
-            "gemma3:27b"
+            "mistral:22b"
           ],
           "random_pool_models": [
             "qwen3.5:35b",
             "deepseek-r1:32b",
-            "gemma3:27b",
             "mistral:22b",
             "qwq:32b",
             "olmo-3.1:32b-think"
@@ -255,6 +253,93 @@
         }
       }
     },
+    "24GB_gemma4_duo": {
+      "description": "Profil local dédié à l'évaluation des deux nouveaux Gemma 4, avec 26B pour la génération et 31B pour la critique/validation.",
+      "roles": {
+        "idea_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "gemma4:26b",
+            "gemma4:31b"
+          ],
+          "random_pool_models": [
+            "gemma4:26b",
+            "gemma4:31b"
+          ],
+          "fallback_models": [
+            "qwen3.5:35b",
+            "gemma4:26b"
+          ],
+          "required": true,
+          "description": "Idéation locale priorisant Gemma 4 26B tout en gardant 31B disponible pour comparer la qualité."
+        },
+        "builder_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "gemma4:26b",
+            "qwen3-coder:30b"
+          ],
+          "random_pool_models": [
+            "gemma4:26b",
+            "qwen3-coder:30b"
+          ],
+          "fallback_models": [
+            "devstral-small-2:24b",
+            "gpt-oss:20b"
+          ],
+          "required": true,
+          "description": "Builder local permettant de comparer Gemma 4 26B face au coder principal actuel."
+        },
+        "critic_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "gemma4:31b",
+            "gemma4:26b"
+          ],
+          "random_pool_models": [
+            "gemma4:31b",
+            "gemma4:26b",
+            "deepseek-r1:32b"
+          ],
+          "fallback_models": [
+            "deepseek-r1:32b",
+            "qwen3.5:35b"
+          ],
+          "required": true,
+          "description": "Critique robuste centrée sur Gemma 4 31B, avec repli contrôlé sur 26B et DeepSeek."
+        },
+        "risk_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "gemma4:31b",
+            "gemma4:26b"
+          ],
+          "random_pool_models": [
+            "gemma4:31b",
+            "gemma4:26b",
+            "deepseek-r1-distill:14b"
+          ],
+          "fallback_models": [
+            "fin-llama-33b:33b",
+            "deepseek-r1-distill:14b"
+          ],
+          "required": true,
+          "description": "Rôle risque pour confronter les sorties Gemma 4 à un fallback finance-aware."
+        },
+        "execution_router_llm": {
+          "backend": "ollama",
+          "preferred_models": [
+            "nemotron-orchestrator-8b",
+            "mistral:7b-instruct"
+          ],
+          "fallback_models": [
+            "deepseek-moe-16b-local"
+          ],
+          "required": false,
+          "description": "Legacy LLM router kept for audit only; the simple multi-LLM mode now uses a deterministic local router."
+        }
+      }
+    },
     "24GB_light_test": {
       "description": "Lightweight local smoke-test profile for Builder multi-role validation with smaller models and faster reloads.",
       "roles": {
@@ -262,7 +347,7 @@
           "backend": "ollama",
           "preferred_models": [
             "mistral:7b-instruct",
-            "gemma3:12b"
+            "gemma4:26b"
           ],
           "fallback_models": [
             "deepseek-r1:8b"
@@ -273,7 +358,7 @@
         "builder_llm": {
           "backend": "ollama",
           "preferred_models": [
-            "gemma3:12b",
+            "gemma4:26b",
             "mistral:7b-instruct"
           ],
           "fallback_models": [
@@ -286,7 +371,7 @@
           "backend": "ollama",
           "preferred_models": [
             "deepseek-r1:8b",
-            "gemma3:12b"
+            "gemma4:26b"
           ],
           "fallback_models": [
             "mistral:7b-instruct"
@@ -330,7 +415,7 @@
             "mistral:7b-instruct"
           ],
           "fallback_models": [
-            "gemma3:12b"
+            "gemma4:26b"
           ],
           "required": true,
           "description": "Fast objective generation."
@@ -352,7 +437,7 @@
           "backend": "ollama",
           "preferred_models": [
             "deepseek-r1-distill:14b",
-            "gemma3:12b"
+            "gemma4:26b"
           ],
           "fallback_models": [
             "mistral:7b-instruct"
@@ -396,7 +481,7 @@
             "qwen2.5:32b"
           ],
           "fallback_models": [
-            "gemma3:12b"
+            "gemma4:26b"
           ],
           "required": true,
           "description": "Prefers finance-aware ideation."

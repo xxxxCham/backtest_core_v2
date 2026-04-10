@@ -42,7 +42,7 @@ BUILTIN_PRESETS: Dict[str, Dict[str, Any]] = {
         "description": "Configuration optimale basée sur benchmarks Dec 2025",
         "models": {
             "analyst": ["qwen2.5:32b"],
-            "strategist": ["gemma3:27b"],
+            "strategist": ["lfm2:24b"],
             "critic": ["llama3.3:70b-instruct-q4_K_M"],
             "validator": ["llama3.3:70b-instruct-q4_K_M"]
         },
@@ -52,7 +52,7 @@ BUILTIN_PRESETS: Dict[str, Dict[str, Any]] = {
         "name": "Rapide",
         "description": "Modèles légers pour exploration rapide",
         "models": {
-            "analyst": ["gemma3:12b"],
+            "analyst": ["gemma4:26b"],
             "strategist": ["mistral:22b"],
             "critic": ["deepseek-r1:32b"],
             "validator": ["deepseek-r1:32b"]
@@ -64,9 +64,20 @@ BUILTIN_PRESETS: Dict[str, Dict[str, Any]] = {
         "description": "Mix light/medium/heavy pour compromis performance/vitesse",
         "models": {
             "analyst": ["qwen2.5:32b"],
-            "strategist": ["gemma3:27b"],
+            "strategist": ["lfm2:24b"],
             "critic": ["deepseek-r1:32b"],
             "validator": ["qwq:32b"]
+        },
+        "builtin": True
+    },
+    "Gemma 4": {
+        "name": "Gemma 4",
+        "description": "Preset local dédié aux nouveaux modèles Google Gemma 4 26B/31B",
+        "models": {
+            "analyst": ["gemma4:26b"],
+            "strategist": ["gemma4:26b"],
+            "critic": ["gemma4:31b"],
+            "validator": ["gemma4:31b"]
         },
         "builtin": True
     },

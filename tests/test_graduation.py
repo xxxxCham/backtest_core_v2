@@ -33,6 +33,8 @@ def _write_session(
     status: str,
     iterations: list[dict],
     objective: str = "",
+    universe_mode: str = "",
+    universe_purpose: str = "",
 ) -> None:
     session_dir = root / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -42,6 +44,8 @@ def _write_session(
         "status": status,
         "objective": objective,
         "iterations": iterations,
+        "universe_mode": universe_mode,
+        "universe_purpose": universe_purpose,
     }
     (session_dir / "session_summary.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
@@ -72,6 +76,8 @@ def test_scan_sandbox_uses_or_based_repechage(tmp_path: Path) -> None:
         "success_candidate",
         status="success",
         objective='{"objective": "trend alpha"}',
+        universe_mode="canonical",
+        universe_purpose="builder_autonomous",
         iterations=[
             {
                 "iteration": 1,
@@ -140,6 +146,8 @@ def test_scan_sandbox_uses_or_based_repechage(tmp_path: Path) -> None:
         "pf_candidate",
     ]
     assert candidates[1].objective == "trend alpha"
+    assert candidates[1].source_universe_mode == "canonical"
+    assert candidates[1].source_universe_purpose == "builder_autonomous"
     assert "status=success" in candidates[1].inclusion_reasons
     assert any(reason.startswith("score=") for reason in candidates[0].inclusion_reasons)
     assert any(reason.startswith("PF=") for reason in candidates[2].inclusion_reasons)
@@ -614,6 +622,8 @@ def test_scan_positive_import_candidates_reads_catalog_entry_and_builder_file(tm
                 "source_params": {"fast_period": 12, "slow_period": 26},
                 "source_symbol": "BTCUSDC",
                 "source_timeframe": "1h",
+                "universe_mode": "exploratory",
+                "universe_purpose": "builder_manual",
                 "import_source_kind": "metadata_fallback",
             },
         },
@@ -631,6 +641,8 @@ def test_scan_positive_import_candidates_reads_catalog_entry_and_builder_file(tm
     assert candidate.strategy_name == "ema_cross"
     assert candidate.strategy_params == {"fast_period": 12, "slow_period": 26}
     assert candidate.source_run_id == "run-123"
+    assert candidate.source_universe_mode == "exploratory"
+    assert candidate.source_universe_purpose == "builder_manual"
     assert candidate.strategy_file.endswith("sess-1\\strategy_v4.py") or candidate.strategy_file.endswith("sess-1/strategy_v4.py")
 
 

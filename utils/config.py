@@ -30,12 +30,21 @@ from typing import Any, Optional
 def _default_data_dir() -> Path:
     """
     Résout un data_dir portable:
-    BACKTEST_DATA_DIR > BACKTEST_CORE_DATA_DIR > TRADX_DATA_ROOT > ./data/sample_data
+    utilise d'abord la résolution canonique du loader central, puis fallback env.
     """
+    try:
+        from data.loader import _get_data_dir
+
+        return _get_data_dir()
+    except Exception:
+        pass
+
     for key in ("BACKTEST_DATA_DIR", "BACKTEST_CORE_DATA_DIR", "TRADX_DATA_ROOT"):
         value = os.environ.get(key)
         if value:
-            return Path(value)
+            candidate = Path(value)
+            if candidate.exists():
+                return candidate
     return Path.cwd() / "data" / "sample_data"
 
 

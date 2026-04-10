@@ -34,7 +34,7 @@ def validate_kernel_compilation():
         k_sls = np.array([1.5, 2.0], dtype=np.float64)
 
         # Forcer compilation JIT
-        result = _sweep_bollinger_full(
+        _sweep_bollinger_full(
             closes, highs, lows,
             bb_periods, bb_stds, entry_zs,
             leverages, k_sls,
@@ -64,7 +64,7 @@ def validate_kernel_compilation():
             signals = np.random.choice([-1, 0, 1], size=1000).astype(np.float64)
 
             # Forcer compilation
-            result = _simulate_trades_numba(
+            _simulate_trades_numba(
                 closes, highs, lows, signals,
                 1.0, 1.5, 10000.0, 10.0, 5.0
             )
@@ -90,7 +90,7 @@ def validate_kernel_compilation():
         leverages = np.array([1.0, 1.0], dtype=np.float64)
         k_sls = np.array([1.5, 2.0], dtype=np.float64)
 
-        result = _sweep_ema_cross_full(
+        _sweep_ema_cross_full(
             closes, highs, lows,
             fast_periods, slow_periods,
             leverages, k_sls,
@@ -119,7 +119,7 @@ def validate_kernel_compilation():
         leverages = np.array([1.0, 1.0], dtype=np.float64)
         k_sls = np.array([1.5, 2.0], dtype=np.float64)
 
-        result = _sweep_rsi_reversal_full(
+        _sweep_rsi_reversal_full(
             closes, highs, lows,
             rsi_periods, overboughts, oversolds,
             leverages, k_sls,

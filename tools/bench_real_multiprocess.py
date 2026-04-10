@@ -8,7 +8,6 @@ os.environ["INDICATOR_CACHE_ENABLED"] = "1"
 os.environ["BACKTEST_DATA_DIR"] = r"D:\my_soft\gestionnaire_telechargement_multi-timeframe\processed\parquet"
 
 import pandas as pd
-import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 DATA_PATH = r"D:\my_soft\gestionnaire_telechargement_multi-timeframe\processed\parquet\BTCUSDC_1h.parquet"

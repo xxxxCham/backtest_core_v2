@@ -16,14 +16,12 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from catalog.builder_export import to_json_proposal, to_text_v1
 from catalog.chainer import generate_catalog
 from catalog.gating import run_gating_batch
 from catalog.models import CatalogConfig, CatalogResult, Variant
@@ -114,7 +112,6 @@ def _apply_gating(
     config: CatalogConfig,
 ) -> list:
     """Applique le gating par batch."""
-    from catalog.gating import run_gating_batch
     return run_gating_batch(variants, df, config.gating)
 
 

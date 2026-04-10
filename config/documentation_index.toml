@@ -2,8 +2,8 @@
 # Date de création: 04/01/2026
 
 [meta]
-version = "1.0.0"
-last_update = "2026-03-10"
+version = "1.1.0"
+last_update = "2026-03-28"
 description = "Index centralisé de toute la documentation du projet backtest-core-v2"
 
 [documentation.reorganization_20260310]
@@ -12,6 +12,7 @@ date = "2026-03-10"
 description = "Docs techniques de la racine deplacees vers docs/markdowns avec conservation des guides essentiels en racine."
 docs_racine_essentielles = [
     "AGENTS.md",
+    "AGEND_HISTORY.md",
     "README.md",
     "GUIDE_CREATION_NOUVELLE_STRATEGIE.md"
 ]
@@ -22,7 +23,7 @@ titre = "Rapport de Validation du Système de Backtest"
 fichier = "VALIDATION_REPORT.md"
 date_creation = "2026-01-03"
 type = "rapport_technique"
-statut = "archivé_dans_agents_md"
+statut = "archivé_dans_agents_files"
 contenu_original_lignes = 223
 description = """
 Validation complète du système après reconstruction environnement.
@@ -43,7 +44,7 @@ titre = "Résumé des Tests - Configurations Rentables"
 fichier = "PROFITABLE_CONFIGS_SUMMARY.md"
 date_creation = "2026-01-03"
 type = "rapport_resultats"
-statut = "archivé_dans_agents_md"
+statut = "archivé_dans_agents_files"
 contenu_original_lignes = 193
 description = """
 Documentation des 3 configurations rentables validées.
@@ -57,24 +58,38 @@ vice_champion = { strategie = "rsi_reversal", params = "14/70/30", pnl = 1880.04
 bronze = { strategie = "ema_cross", params = "12/26", pnl = 377.70, return_pct = 3.78, trades = 130 }
 
 [documentation.agents_md]
-titre = "AGENTS.md - Source Unique de Vérité"
+titre = "AGENTS.md - Règles et résumé opératoire"
 fichier = "AGENTS.md"
-role = "documentation_centrale"
+role = "point_entree_compact"
 sections = [
     "Introduction (Règles fondamentales)",
-    "SOMMAIRE",
-    "Configurations Validées Rentables",
-    "Commandes CLI",
-    "Rapports de Tests et Validation",
-    "Cahier de Maintenance (Journal chronologique)"
+    "Résumé opératoire",
+    "Configurations validées rentables",
+    "Commandes essentielles",
+    "Références utiles",
+    "Priorités ouvertes"
 ]
 description = """
-Fichier central du projet contenant:
+Fichier compact du projet contenant:
 - Règles de contribution
-- Historique complet des interventions
-- Documentation des configurations validées
-- Catalogue des commandes CLI
-- Intégration des rapports de validation
+- Résumé opératoire courant
+- Synthèse des configurations validées
+- Commandes essentielles
+- Références critiques
+"""
+
+[documentation.agend_history]
+titre = "AGEND_HISTORY.md - Journal complet append-only"
+fichier = "AGEND_HISTORY.md"
+role = "historique_detaille"
+sections = [
+    "Snapshot historique de l'ancien AGENTS.md",
+    "Cahier de Maintenance",
+    "Entrées append-only"
+]
+description = """
+Historique complet extrait de l'ancien AGENTS.md.
+Ce fichier sert de journal détaillé append-only et doit rester exclu de l'indexation Copilot.
 """
 
 [documentation.presets_toml]
@@ -101,6 +116,6 @@ description = "Guide des 5 roles du Builder autonome multi-LLM simple, avec pipe
 [archive]
 date_archivage = "2026-01-04"
 fichiers_archives = ["VALIDATION_REPORT.md", "PROFITABLE_CONFIGS_SUMMARY.md"]
-raison = "Contenu intégré dans AGENTS.md pour centralisation documentation"
+raison = "Contenu désormais réparti entre AGENTS.md (résumé) et AGEND_HISTORY.md (historique complet)"
 recuperation = "Contenu complet disponible dans git history si nécessaire"
-nouveau_emplacement = "AGENTS.md - Sections 'Rapports de Tests' et 'Configurations Validées'"
+nouveau_emplacement = "AGENTS.md et AGEND_HISTORY.md"

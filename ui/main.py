@@ -687,45 +687,19 @@ def _reset_builder_launch_state() -> None:
 
 
 def _execute_clean_stop(state: SidebarState) -> None:
-    from agents.ollama_manager import cleanup_all_models, stop_local_ollama_server
     from ui.builder_view import mark_builder_autonomous_runtime_stopped
     from ui.emergency_stop import execute_emergency_stop
 
     logger = logging.getLogger(__name__)
-    st.session_state["stop_requested"] = True
-    st.session_state["is_running"] = False
-    st.session_state["run_backtest_requested"] = False
-    st.session_state["load_ohlcv_requested"] = False
-
-    cleanup_stats = execute_emergency_stop(st.session_state)
-    clear_data_cache()
-    try:
-        st.cache_data.clear()
-        st.cache_resource.clear()
-    except Exception:
-        pass
-    safe_copy_cleanup(logger)
-
-    unloaded_by_host: List[str] = []
-    hard_stopped_hosts: List[str] = []
-    for host in _collect_runtime_cleanup_hosts(state):
-        try:
-            unloaded = int(cleanup_all_models(ollama_host=host) or 0)
-        except Exception as exc:  # noqa: BLE001
-            cleanup_stats.setdefault("errors", []).append(
-                f"cleanup_all_models[{host}]: {exc}"
-            )
-        else:
-            unloaded_by_host.append(f"{host}: {unloaded}")
-        try:
-            stopped = int(stop_local_ollama_server(ollama_host=host) or 0)
-        except Exception as exc:  # noqa: BLE001
-            cleanup_stats.setdefault("errors", []).append(
-                f"stop_local_ollama_server[{host}]: {exc}"
-            )
-        else:
-            if stopped > 0:
-                hard_stopped_hosts.append(f"{host}: {stopped}")
+    cleanup_stats = execute_emergency_stop(
+        st.session_state,
+        ollama_hosts=_collect_runtime_cleanup_hosts(state),
+        cache_callbacks=(
+            st.cache_data.clear,
+            st.cache_resource.clear,
+            lambda: safe_copy_cleanup(logger),
+        ),
+    )
 
     if (
         state.optimization_mode == "🏗️ Strategy Builder"
@@ -746,6 +720,18 @@ def _execute_clean_stop(state: SidebarState) -> None:
 
     cleaned_components = len(cleanup_stats.get("components_cleaned", []))
     error_count = len(cleanup_stats.get("errors", []))
+    unloaded_by_host = [
+        f"{host}: {count}"
+        for host, count in dict(cleanup_stats.get("ollama_unloaded", {}) or {}).items()
+    ]
+    hard_stopped_hosts = [
+        f"{host}: {count}"
+        for host, count in dict(cleanup_stats.get("ollama_stopped", {}) or {}).items()
+    ]
+    remaining_hosts = [
+        f"{host}: {', '.join(models[:3])}"
+        for host, models in dict(cleanup_stats.get("ollama_remaining", {}) or {}).items()
+    ]
     host_summary = (
         " | ".join(unloaded_by_host)
         if unloaded_by_host
@@ -767,6 +753,11 @@ def _execute_clean_stop(state: SidebarState) -> None:
             f"erreurs: {error_count} | "
             f"déchargement Ollama: {host_summary} | "
             f"arrêt dur: {hard_stop_summary}"
+            + (
+                f" | modèles restants: {' | '.join(remaining_hosts)}"
+                if remaining_hosts
+                else ""
+            )
         ),
     }
 

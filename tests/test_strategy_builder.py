@@ -21,6 +21,12 @@ import pandas as pd
 import pytest
 
 import agents.strategy_builder as strategy_builder_module
+from config.market_selection import evaluate_market_dataset, filter_market_universe
+from agents.builder_feedback import (
+    CodeFeedbackSection,
+    IterationPhaseFeedback,
+    ProposalFeedbackSection,
+)
 from agents.indicator_context import build_indicator_selection_guide
 from agents.indicator_context import INDICATOR_SELECTION_REFERENCE
 from agents.indicator_context import get_indicator_builder_access_example
@@ -51,6 +57,12 @@ from agents.strategy_builder import (
     _extract_json_from_response,
     _extract_generate_signals_logic_block,
     _extract_python_from_response,
+    _extract_default_params_signature,
+    _proposal_has_meaningful_param_delta,
+    _proposal_changes_indicator_set_in_params_mode,
+    _should_enable_stagnation_branching,
+    _should_trip_logic_stagnation_circuit,
+    _select_best_branch_candidate,
     generate_llm_objective,
     generate_llm_objective_from_seed,
     recommend_market_context,
@@ -124,6 +136,40 @@ def sample_ohlcv():
     })
 
 
+def _make_market_df(
+    *,
+    n_bars: int = 1600,
+    start: str = "2025-01-01",
+    price_scale: float = 100.0,
+    volatility_sigma: float = 0.01,
+    volume: float = 5000.0,
+    tradable_ratio: float = 1.0,
+) -> pd.DataFrame:
+    rng = np.random.default_rng(123)
+    index = pd.date_range(start, periods=n_bars, freq="1h", tz="UTC")
+    returns = rng.normal(0.0, volatility_sigma, n_bars)
+    close = price_scale * np.exp(np.cumsum(returns))
+    open_ = close * (1.0 + rng.normal(0.0, max(volatility_sigma / 2.0, 0.001), n_bars))
+    high = np.maximum(open_, close) * 1.01
+    low = np.minimum(open_, close) * 0.99
+    df = pd.DataFrame(
+        {
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": np.full(n_bars, volume, dtype=float),
+        },
+        index=index,
+    )
+    tradable = np.ones(n_bars, dtype=bool)
+    inactive = int(round(n_bars * max(0.0, min(1.0, 1.0 - tradable_ratio))))
+    if inactive > 0:
+        tradable[:inactive] = False
+    df["_tradable"] = tradable
+    return df
+
+
 def test_emit_completed_backtest_forwards_raw_result_to_callback():
     saved = []
     builder = StrategyBuilder(
@@ -165,7 +211,7 @@ def test_precheck_signal_counts_handles_nameerror(sample_ohlcv):
 
         def generate_signals(self, df, indicators, params):
             signals = pd.Series(0.0, index=df.index, dtype=np.float64)
-            signals[missing_filter] = 1.0
+            signals[missing_filter] = 1.0  # noqa: F821 - intentional NameError path under test
             return signals
 
     builder = StrategyBuilder(llm_client=SimpleNamespace())
@@ -224,6 +270,202 @@ def test_chat_llm_uses_phase_specific_client_for_analysis():
     assert response.content == "critic-response"
     assert len(critic_client.calls) == 1
     assert len(default_client.calls) == 0
+
+
+def test_chat_llm_extends_timeout_for_vision_models(monkeypatch):
+    captured: dict[str, int] = {}
+
+    class _FakeClient:
+        def __init__(self):
+            self.config = LLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="qwen3-vl:32b",
+                ollama_host="http://127.0.0.1:11434",
+            )
+
+        def chat(self, messages, json_mode=False, temperature=None, max_tokens=None):
+            return SimpleNamespace(content="ok")
+
+    class _Future:
+        def result(self, timeout=None):
+            captured["timeout"] = int(timeout or 0)
+            return SimpleNamespace(content="ok")
+
+    class _Pool:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def submit(self, fn):
+            return _Future()
+
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_new_streamlit_aware_thread_pool",
+        lambda max_workers=1: _Pool(),
+    )
+
+    builder = StrategyBuilder(llm_client=_FakeClient())
+    response = builder._chat_llm(
+        [LLMMessage(role="user", content="propose une stratégie")],
+        phase="proposal",
+    )
+
+    assert response.content == "ok"
+    assert captured["timeout"] >= 300
+
+
+def test_validate_builder_dataset_exploitability_rejects_high_untradable_ratio(sample_ohlcv):
+    df = pd.concat([sample_ohlcv.copy(), sample_ohlcv.copy()])
+    df["_tradable"] = True
+    df.loc[df.index[:320], "_tradable"] = False
+
+    ok, reason = strategy_builder_module.validate_builder_dataset_exploitability(
+        df,
+        symbol="UNKNOWN",
+        timeframe="1h",
+    )
+
+    assert ok is False
+    assert "tradable ratio" in reason.lower()
+
+
+def test_filter_market_universe_differs_between_canonical_and_exploratory():
+    good_df = _make_market_df()
+    loader = lambda symbol, timeframe: good_df.copy()
+
+    canonical = filter_market_universe(
+        symbols=["DOGEUSDC", "BTCUSDC"],
+        timeframes=["1h"],
+        universe_mode="canonical",
+        purpose="builder",
+        strategy_type="trend",
+        data_loader=loader,
+    )
+    exploratory = filter_market_universe(
+        symbols=["DOGEUSDC", "BTCUSDC"],
+        timeframes=["1h"],
+        universe_mode="exploratory",
+        purpose="builder",
+        strategy_type="trend",
+        data_loader=loader,
+    )
+
+    assert canonical["symbols"] == ["BTCUSDC"]
+    assert any(
+        item["symbol"] == "DOGEUSDC"
+        and "outside canonical universe" in " | ".join(item.get("exclusion_reasons", []))
+        for item in canonical["excluded_pairs"]
+    )
+    assert set(exploratory["symbols"]) == {"DOGEUSDC", "BTCUSDC"}
+
+
+def test_evaluate_market_dataset_accepts_missing_market_cap_with_good_local_metrics():
+    result = evaluate_market_dataset(
+        _make_market_df(),
+        symbol="BTCUSDC",
+        timeframe="1h",
+        universe_mode="canonical",
+        purpose="builder",
+        strategy_type="trend",
+        token_profile={
+            "volatility": "medium",
+            "liquidity": "high",
+            "strategies": ["trend"],
+            "market_cap": None,
+        },
+    )
+
+    assert result["accepted"] is True
+    assert result["local_metrics"]["market_cap"] == 0.0
+    assert result["local_metrics"]["market_cap_used"] is False
+
+
+def test_evaluate_market_dataset_prioritizes_dollar_volume_over_raw_volume():
+    low_price_high_volume_df = _make_market_df(price_scale=0.01, volume=50_000.0)
+
+    result = evaluate_market_dataset(
+        low_price_high_volume_df,
+        symbol="BTCUSDC",
+        timeframe="1h",
+        universe_mode="canonical",
+        purpose="builder",
+        strategy_type="trend",
+        token_profile={
+            "volatility": "medium",
+            "liquidity": "high",
+            "strategies": ["trend"],
+        },
+    )
+
+    assert result["accepted"] is False
+    assert result["local_metrics"]["median_volume"] > 1000.0
+    assert result["local_metrics"]["median_dollar_volume"] < 250000.0
+    assert any(
+        "median dollar volume insufficient" in reason
+        for reason in result["exclusion_reasons"]
+    )
+
+
+def test_evaluate_market_dataset_volatility_depends_on_strategy_type():
+    volatile_df = _make_market_df(volatility_sigma=0.08, volume=20_000.0)
+
+    trend_result = evaluate_market_dataset(
+        volatile_df,
+        symbol="BTCUSDC",
+        timeframe="1h",
+        universe_mode="canonical",
+        purpose="builder",
+        strategy_type="trend",
+        token_profile={
+            "volatility": "high",
+            "liquidity": "high",
+            "strategies": ["trend", "breakout"],
+        },
+    )
+    breakout_result = evaluate_market_dataset(
+        volatile_df,
+        symbol="BTCUSDC",
+        timeframe="1h",
+        universe_mode="canonical",
+        purpose="builder",
+        strategy_type="breakout",
+        token_profile={
+            "volatility": "high",
+            "liquidity": "high",
+            "strategies": ["trend", "breakout"],
+        },
+    )
+
+    assert trend_result["accepted"] is False
+    assert breakout_result["accepted"] is True
+    assert trend_result["local_metrics"]["volatility_bucket"] == "high"
+    assert breakout_result["local_metrics"]["volatility_bucket"] == "high"
+
+
+def test_extract_default_params_signature_reads_generated_literal(valid_strategy_code):
+    defaults = _extract_default_params_signature(valid_strategy_code)
+
+    assert defaults["rsi_period"] == 14
+    assert defaults["atr_period"] == 14
+
+
+def test_proposal_has_no_meaningful_param_delta_when_defaults_are_identical(valid_strategy_code):
+    proposal = {
+        "default_params": {"rsi_period": 14, "atr_period": 14},
+    }
+
+    assert _proposal_has_meaningful_param_delta(valid_strategy_code, proposal) is False
+
+
+def test_proposal_detects_indicator_shift_in_params_mode(valid_strategy_code):
+    proposal = {
+        "used_indicators": ["bollinger", "adx"],
+    }
+
+    assert _proposal_changes_indicator_set_in_params_mode(valid_strategy_code, proposal) is True
 
 
 def test_builder_run_emits_progress_events(
@@ -517,6 +759,151 @@ def test_builder_run_ignores_pre_reflection_timeout(
     assert session.iterations[0].phase_feedback.get("pre_reflection", {}).get("timeout") is True
 
 
+def test_builder_overrides_params_when_no_real_param_delta(
+    monkeypatch,
+    tmp_path,
+    sample_ohlcv,
+    valid_strategy_code,
+):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.available_indicators = ["rsi", "atr", "bollinger", "adx"]
+
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "create_session_id",
+        staticmethod(lambda objective: "builder_params_no_delta_test"),
+    )
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "get_session_dir",
+        staticmethod(lambda session_id: tmp_path / session_id),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_validate_builder_dataset_exploitability",
+        lambda *args, **kwargs: (True, ""),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_build_deterministic_strategy_code",
+        lambda proposal, logic_block: valid_strategy_code,
+    )
+
+    builder._save_session_summary = lambda session: None
+    builder._safe_save_session_summary = lambda session: None
+
+    proposals = iter(
+        [
+            (
+                {
+                    "hypothesis": "Base RSI/ATR",
+                    "used_indicators": ["rsi", "atr"],
+                    "change_type": "logic",
+                    "default_params": {
+                        "rsi_period": 14,
+                        "atr_period": 14,
+                        "leverage": 1,
+                        "stop_atr_mult": 1.5,
+                        "tp_atr_mult": 3.0,
+                        "warmup": 50,
+                    },
+                },
+                {"phase": "proposal", "final_valid": True},
+            ),
+            (
+                {
+                    "hypothesis": "Je prétends tuner les paramètres mais je change les indicateurs",
+                    "used_indicators": ["bollinger", "adx"],
+                    "change_type": "params",
+                    "default_params": {
+                        "rsi_period": 14,
+                        "atr_period": 14,
+                        "leverage": 1,
+                        "stop_atr_mult": 1.5,
+                        "tp_atr_mult": 3.0,
+                        "warmup": 50,
+                    },
+                },
+                {"phase": "proposal", "final_valid": True},
+            ),
+        ]
+    )
+    builder._ask_proposal = lambda session, last_iteration: next(proposals)
+
+    code_calls = []
+
+    def _ask_code(session, proposal, last_iteration):
+        code_calls.append(proposal.get("change_type"))
+        return "signals[:] = 0.0", {"phase": "code", "final_valid": True}
+
+    builder._ask_code = _ask_code
+    builder._save_and_load = lambda session, code, iteration_num: object
+    builder._auto_fix_required_indicators = lambda strategy_cls, code: strategy_cls
+    builder._precheck_signal_counts = lambda *args, **kwargs: {
+        "ok": True,
+        "total_signals": 2,
+        "long_signals": 1,
+        "short_signals": 1,
+    }
+    builder._ask_pre_reflection = lambda *args, **kwargs: ""
+
+    metric_stream = iter(
+        [
+            {
+                "total_return_pct": 5.0,
+                "sharpe_ratio": 0.4,
+                "sortino_ratio": 0.5,
+                "calmar_ratio": 0.3,
+                "max_drawdown_pct": -20.0,
+                "total_trades": 20,
+                "win_rate_pct": 45.0,
+                "profit_factor": 1.1,
+                "expectancy": 0.1,
+            },
+            {
+                "total_return_pct": 6.0,
+                "sharpe_ratio": 0.6,
+                "sortino_ratio": 0.7,
+                "calmar_ratio": 0.4,
+                "max_drawdown_pct": -18.0,
+                "total_trades": 22,
+                "win_rate_pct": 47.0,
+                "profit_factor": 1.2,
+                "expectancy": 0.12,
+            },
+        ]
+    )
+    builder._run_backtest = lambda *args, **kwargs: SimpleNamespace(
+        metrics=next(metric_stream),
+        meta={},
+    )
+
+    analysis_calls = iter([
+        ("continuer", "continue"),
+        ("accepter", "accept"),
+    ])
+    builder._ask_analysis = lambda *args, **kwargs: next(analysis_calls)
+
+    session = builder.run(
+        objective="Tester override params-only",
+        data=sample_ohlcv,
+        max_iterations=2,
+        target_sharpe=0.5,
+        symbol="BTCUSDC",
+        timeframe="1h",
+    )
+
+    assert session.status == "success"
+    assert code_calls == ["logic", "logic"]
+    assert session.iterations[1].change_type == "logic"
+    assert (
+        session.iterations[1]
+        .phase_feedback["proposal"]["change_type_overridden"]["reason"]
+        == "indicator_set_changed"
+    )
+    assert session.iterations[1].phase_feedback["code"].get("source") != "params_patch"
+
+
 def test_infer_direction_constraint_from_objective_detects_buy_only():
     objective = (
         "Generate buy signals on BTCUSDC 4h timeframe. "
@@ -584,6 +971,37 @@ def test_sanitize_proposal_payload_drops_pathological_param_names():
     assert "rsi_period" in cleaned["default_params"]
     assert "distance_to_force_index_weight_volume_weight_volume_weight_volume_weight" not in cleaned["default_params"]
     assert "distance_to_force_index_weight_volume_weight_volume_weight_volume_weight" not in cleaned["parameter_specs"]
+
+
+def test_builder_iteration_phase_feedback_coerces_to_typed_mapping():
+    iteration = BuilderIteration(
+        iteration=1,
+        phase_feedback={
+            "proposal": {
+                "phase": "proposal",
+                "final_valid": True,
+                "lm_signature": "custom-model-trace",
+            }
+        },
+    )
+
+    assert isinstance(iteration.phase_feedback, IterationPhaseFeedback)
+    assert isinstance(iteration.phase_feedback, dict)
+    assert isinstance(iteration.phase_feedback["proposal"], ProposalFeedbackSection)
+    assert iteration.phase_feedback["proposal"]["phase"] == "proposal"
+    assert iteration.phase_feedback["proposal"].extras == {
+        "lm_signature": "custom-model-trace"
+    }
+
+    iteration.phase_feedback["code"] = {
+        "source": "llm",
+        "provider_hint": "reasoning-pass",
+    }
+
+    assert isinstance(iteration.phase_feedback["code"], CodeFeedbackSection)
+    assert iteration.phase_feedback["code"].extras == {
+        "provider_hint": "reasoning-pass"
+    }
 
 
 def test_sanitize_proposal_payload_canonicalizes_common_indicator_aliases():
@@ -1424,6 +1842,54 @@ class TestCodeRepair:
         """)
         repaired = _repair_code(raw)
         assert "coppock_curve = np.nan_to_num(indicators['coppock_curve'])" in repaired
+
+    def test_repair_normalizes_legacy_base_strategy_import(self):
+        raw = textwrap.dedent(f"""\
+            import numpy as np
+            import pandas as pd
+            from strategies.base_strategy import BaseStrategy
+
+            class {GENERATED_CLASS_NAME}(BaseStrategy):
+                required_indicators = ["ema_fast"]
+                default_params = {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    signals[indicators["ema_fast"] > 0] = 1.0
+                    return signals
+        """)
+        repaired = _repair_code(raw)
+        assert "from strategies.base import StrategyBase" in repaired
+        assert f"class {GENERATED_CLASS_NAME}(StrategyBase):" in repaired
+
+    def test_repair_rewrites_signals_loc_2d_long_short_assignments(self):
+        raw = textwrap.dedent(f"""\
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                required_indicators = ["ema_fast"]
+                default_params = {{}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    long_mask = indicators["ema_fast"] > 0
+                    short_mask = indicators["ema_fast"] < 0
+                    signals.loc[long_mask, "long"] = 1.0
+                    signals.loc[short_mask, "short"] = 1.0
+                    return signals
+        """)
+        repaired = _repair_code(raw)
+        assert "signals.loc[" not in repaired
+        assert "signals[long_mask] = 1.0" in repaired
+        assert "signals[short_mask] = -1.0" in repaired
+
+    def test_repair_rewrites_safe_dict_indicator_direct_comparison(self):
+        raw = "if indicators['adx'] > 25:\n    signals[mask] = 1.0\n"
+        repaired = _repair_code(raw)
+        assert "indicators['adx'] > 25" not in repaired
+        assert "indicators['adx']['adx']" in repaired
 
     def test_repair_injects_binding_block_from_required_indicators(self):
         raw = textwrap.dedent(f"""\
@@ -2440,6 +2906,27 @@ class TestTemplates:
 
         assert ordered.index("donchian") < ordered.index("rsi")
 
+    def test_rank_indicator_selection_demotes_previous_indicator_when_diversity_is_requested(self):
+        ordered_stable = rank_indicator_selection(
+            ["rsi", "mfi", "roc", "atr"],
+            objective="",
+            diagnostic={},
+            previous_indicators=["rsi"],
+            session_seed="seed-1",
+            prefer_diversity=False,
+        )
+        ordered_diverse = rank_indicator_selection(
+            ["rsi", "mfi", "roc", "atr"],
+            objective="",
+            diagnostic={},
+            previous_indicators=["rsi"],
+            session_seed="seed-1",
+            prefer_diversity=True,
+        )
+
+        assert ordered_diverse.index("rsi") > ordered_stable.index("rsi")
+        assert ordered_diverse != ordered_stable
+
     def test_indicator_selection_guide_expands_abbreviations(self):
         guide = build_indicator_selection_guide(["rsi", "macd", "markov_switching"])
 
@@ -2493,6 +2980,154 @@ class TestTemplates:
         assert "REGIME FILTER GUIDANCE" in result
         assert "markov_switching" in result
         assert "directional_bias" in result
+        assert "1 to 5 indicators" in result
+
+    def test_proposal_template_explicitly_allows_indicator_add_remove_replace_on_stagnation(self):
+        from utils.template import render_prompt
+
+        context = {
+            "objective": "Breakout ETH",
+            "available_indicators": ["rsi", "bollinger", "atr", "adx"],
+            "available_indicator_guide": build_indicator_selection_guide(
+                ["rsi", "bollinger", "atr", "adx"]
+            ),
+            "iteration": 4,
+            "max_iterations": 10,
+            "diagnostic": {
+                "category": "poor_performance",
+                "severity": "high",
+                "change_type": "logic",
+                "summary": "Signals remain noisy and the previous setup stagnated.",
+            },
+            "previous_indicators": ["rsi", "atr"],
+            "should_consider_indicator_expansion": True,
+        }
+
+        result = render_prompt("strategy_builder_proposal.jinja2", context)
+
+        assert "remove one noisy indicator" in result
+        assert "replace one indicator" in result
+        assert "add one new indicator" in result
+        assert "small but real change in the indicator set" in result
+
+    def test_proposal_template_renders_branch_directive(self):
+        from utils.template import render_prompt
+
+        context = {
+            "objective": "Breakout ETH",
+            "available_indicators": ["rsi", "bollinger", "atr"],
+            "available_indicator_guide": build_indicator_selection_guide(
+                ["rsi", "bollinger", "atr"]
+            ),
+            "iteration": 5,
+            "max_iterations": 10,
+            "branch_directive": "STAGNATION BRANCH: ADD_ONE. Add exactly one new indicator.",
+        }
+
+        result = render_prompt("strategy_builder_proposal.jinja2", context)
+
+        assert "BRANCH DIRECTIVE" in result
+        assert "STAGNATION BRANCH: ADD_ONE" in result
+
+    def test_should_enable_stagnation_branching_requires_identical_metrics(self):
+        last_iteration = BuilderIteration(iteration=1)
+        last_iteration.phase_feedback = {
+            "stagnation": {"identical_metrics": True},
+            "diagnostic": {"category": "needs_work"},
+        }
+
+        assert _should_enable_stagnation_branching(last_iteration) is True
+
+        last_iteration.phase_feedback = {
+            "stagnation": {"identical_metrics": False},
+            "diagnostic": {"category": "needs_work"},
+        }
+
+        assert _should_enable_stagnation_branching(last_iteration) is False
+
+    def test_select_best_branch_candidate_prefers_non_fallback_and_additive_branch_on_tie(self):
+        keep_result = {
+            "branch_label": "keep",
+            "bt_result": SimpleNamespace(metrics={"sharpe_ratio": 1.2}),
+            "rank_score": 10.0,
+            "is_fallback": False,
+        }
+        add_result = {
+            "branch_label": "add_one",
+            "bt_result": SimpleNamespace(metrics={"sharpe_ratio": 1.2}),
+            "rank_score": 10.0,
+            "is_fallback": False,
+        }
+
+        selected = _select_best_branch_candidate([keep_result, add_result])
+
+        assert selected["branch_label"] == "add_one"
+
+    def test_select_best_branch_candidate_uses_raw_metrics_before_rank_score(self):
+        keep_result = {
+            "branch_label": "keep",
+            "bt_result": SimpleNamespace(
+                metrics={
+                    "sharpe_ratio": 0.8,
+                    "total_return_pct": 4.0,
+                    "max_drawdown_pct": -12.0,
+                    "profit_factor": 1.10,
+                    "total_trades": 30,
+                    "win_rate_pct": 42.0,
+                }
+            ),
+            "metrics": {
+                "sharpe_ratio": 0.8,
+                "total_return_pct": 4.0,
+                "max_drawdown_pct": -12.0,
+                "profit_factor": 1.10,
+                "total_trades": 30,
+                "win_rate_pct": 42.0,
+            },
+            "rank_score": 50.0,
+            "target_sharpe": 1.0,
+            "is_fallback": False,
+        }
+        add_result = {
+            "branch_label": "add_one",
+            "bt_result": SimpleNamespace(
+                metrics={
+                    "sharpe_ratio": 1.3,
+                    "total_return_pct": 12.0,
+                    "max_drawdown_pct": -8.0,
+                    "profit_factor": 1.30,
+                    "total_trades": 44,
+                    "win_rate_pct": 47.0,
+                }
+            ),
+            "metrics": {
+                "sharpe_ratio": 1.3,
+                "total_return_pct": 12.0,
+                "max_drawdown_pct": -8.0,
+                "profit_factor": 1.30,
+                "total_trades": 44,
+                "win_rate_pct": 47.0,
+            },
+            "rank_score": -20.0,
+            "target_sharpe": 1.0,
+            "is_fallback": False,
+        }
+
+        selected = _select_best_branch_candidate([keep_result, add_result])
+
+        assert selected["branch_label"] == "add_one"
+
+    def test_should_trip_logic_stagnation_circuit_after_two_identical_logic_iterations(self):
+        last_iteration = BuilderIteration(iteration=4, change_type="logic")
+        last_iteration.phase_feedback = {"stagnation": {"identical_metrics": True}}
+
+        iteration = BuilderIteration(iteration=5, change_type="both")
+        iteration.phase_feedback = {"stagnation": {"identical_metrics": True}}
+
+        assert _should_trip_logic_stagnation_circuit(last_iteration, iteration) is True
+
+        iteration.change_type = "params"
+        assert _should_trip_logic_stagnation_circuit(last_iteration, iteration) is False
 
     def test_code_template_renders(self):
         from utils.template import render_prompt
@@ -2587,6 +3222,21 @@ class TestBuilderRobustnessProfitFactor:
         assert ok is True
         assert reason == "ok"
 
+    def test_accept_candidate_ignores_low_continuous_score_when_hard_metrics_are_valid(self):
+        metrics = {
+            "sharpe_ratio": 1.0,
+            "total_return_pct": 0.2,
+            "max_drawdown_pct": 35.0,
+            "total_trades": 20,
+            "profit_factor": 1.05,
+            "win_rate_pct": 20.0,
+        }
+        score = compute_continuous_builder_score(metrics, target_sharpe=1.0)["score"]
+        assert score < 35.0
+        ok, reason = _is_accept_candidate(metrics, target_sharpe=1.0)
+        assert ok is True
+        assert reason == "ok"
+
     def test_accept_candidate_rejects_extreme_drawdown(self):
         metrics = {
             "sharpe_ratio": 1.8,
@@ -2664,6 +3314,23 @@ class TestBuilderSummaryLeaderboard:
             target_sharpe=1.0,
         )["score"]
         session.status = "success"
+        session.builder_execution_mode = "expert_multi_role"
+        session.orchestration_mode = "multi_llm"
+        session.instrumentation_enabled = True
+        session.instrumentation_summary = {
+            "iterations": 2,
+            "fallback_rate": 0.5,
+            "repair_rate": 0.5,
+            "blockers": [{"kind": "precheck", "count": 1}],
+            "helpers": [{"kind": "runtime_fix", "count": 1}],
+            "restriction_events": {"precheck": 1, "runtime_fix": 1},
+        }
+        session.ablation_config = {"code_repair": True, "precheck": False}
+        session.pipeline_traces_path = "pipeline_traces.json"
+        session.restriction_events = {"precheck": 1, "runtime_fix": 1}
+        session.multi_llm_profile = "brain"
+        session.multi_llm_role_overrides = {"builder_llm": ["qwen3:30b"]}
+        session.multi_llm_assignments = [{"role": "builder_llm", "resolved_model": "qwen3:30b"}]
         session.auto_reset_count = 1
         session.recovery_events = [
             {
@@ -2700,6 +3367,15 @@ class TestBuilderSummaryLeaderboard:
             assert payload["last_runtime_error"] == "ValueError: test runtime"
             assert payload["last_runtime_error_iteration"] == 1
             assert payload["last_runtime_traceback_tail"] == "Traceback line 1\nTraceback line 2"
+            assert payload["builder_execution_mode"] == "expert_multi_role"
+            assert payload["orchestration_mode"] == "multi_llm"
+            assert payload["instrumentation_enabled"] is True
+            assert payload["instrumentation_summary"]["fallback_rate"] == 0.5
+            assert payload["ablation_config"]["precheck"] is False
+            assert payload["pipeline_traces_path"] == "pipeline_traces.json"
+            assert payload["restriction_events"]["runtime_fix"] == 1
+            assert payload["multi_llm_profile"] == "brain"
+            assert payload["multi_llm_role_overrides"]["builder_llm"] == ["qwen3:30b"]
         finally:
             shutil.rmtree(session_dir, ignore_errors=True)
 

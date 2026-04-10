@@ -17,7 +17,9 @@ Pipeline:
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass, field
+import time
 from typing import Any, Dict, Optional, Union
 
 import numpy as np
@@ -212,11 +214,17 @@ class BacktestEngine:
             ValueError: Si données ou paramètres invalides
         """
         # Initialiser counters et contexte
-        self.counters = PerfCounters()
-        self.counters.start("total")
+        counters_enabled = not silent_mode
+        self.counters = PerfCounters() if counters_enabled else None
+        run_start = time.perf_counter()
+        if self.counters is not None:
+            self.counters.start("total")
+        base_logger = self.logger
+        use_trace_spans = not silent_mode
 
         # Enrichir le logger avec contexte
-        self.logger = self.logger.with_context(symbol=symbol, timeframe=timeframe)
+        if use_trace_spans:
+            self.logger = self.logger.with_context(symbol=symbol, timeframe=timeframe)
         if not silent_mode:
             self.logger.info("pipeline_start strategy=%s bars=%s",
                              strategy if isinstance(strategy, str) else getattr(strategy, 'name', 'custom'),
@@ -235,7 +243,7 @@ class BacktestEngine:
 
         try:
             # 1. Validation des entrées
-            with trace_span(self.logger, "validation"):
+            with trace_span(self.logger, "validation") if use_trace_spans else nullcontext():
                 self._validate_inputs(df, strategy, params)
 
             # 2. Préparer la stratégie
@@ -243,7 +251,8 @@ class BacktestEngine:
                 strategy = self._get_strategy_by_name(strategy)
 
             strategy_name = strategy.name
-            self.logger = self.logger.with_context(strategy=strategy_name)
+            if use_trace_spans:
+                self.logger = self.logger.with_context(strategy=strategy_name)
 
             # 3. Fusionner paramètres
             final_params = {
@@ -257,14 +266,17 @@ class BacktestEngine:
             self.logger.debug("params=%s", final_params)
 
             # 4. Calculer les indicateurs requis
-            self.counters.start("indicators")
-            with trace_span(self.logger, "indicators", count=len(strategy.required_indicators)):
+            if self.counters is not None:
+                self.counters.start("indicators")
+            with trace_span(self.logger, "indicators", count=len(strategy.required_indicators)) if use_trace_spans else nullcontext():
                 indicators = self._calculate_indicators(df, strategy, final_params)
-            self.counters.stop("indicators")
+            if self.counters is not None:
+                self.counters.stop("indicators")
 
             # 5. Générer les signaux
-            self.counters.start("signals")
-            with trace_span(self.logger, "signals"):
+            if self.counters is not None:
+                self.counters.start("signals")
+            with trace_span(self.logger, "signals") if use_trace_spans else nullcontext():
                 signals = strategy.generate_signals(df, indicators, final_params)
                 # Masquer entrées sur barres non-tradables (volume=0)
                 if "_tradable" in df.columns:
@@ -275,32 +287,38 @@ class BacktestEngine:
                         signals[mask] = 0
                         self.logger.debug("signals_masked_untradable count=%s", n_masked)
                 n_signals = int((signals != 0).sum())
-            self.counters.stop("signals")
-            self.counters.increment("signals_count", n_signals)
+            if self.counters is not None:
+                self.counters.stop("signals")
+                self.counters.increment("signals_count", n_signals)
             self.logger.debug("signals_generated count=%s", n_signals)
 
             # 6. Simuler les trades (utilise version rapide si disponible)
-            self.counters.start("simulation")
-            with trace_span(self.logger, "simulation"):
+            if self.counters is not None:
+                self.counters.start("simulation")
+            with trace_span(self.logger, "simulation") if use_trace_spans else nullcontext():
                 if USE_FAST_SIMULATOR:
                     trades_df = simulate_trades_fast(df, signals, final_params)
                 else:
                     trades_df = simulate_trades(df, signals, final_params)
-            self.counters.stop("simulation")
-            self.counters.increment("trades_count", len(trades_df))
+            if self.counters is not None:
+                self.counters.stop("simulation")
+                self.counters.increment("trades_count", len(trades_df))
 
             # 7. Calculer équité et rendements (version rapide si disponible)
-            self.counters.start("equity")
+            if self.counters is not None:
+                self.counters.start("equity")
             if USE_FAST_SIMULATOR:
                 equity = calculate_equity_fast(df, trades_df, self.initial_capital)
                 returns = calculate_returns_fast(equity)
             else:
                 equity = calculate_equity_curve(df, trades_df, self.initial_capital)
                 returns = calculate_returns(equity)
-            self.counters.stop("equity")
+            if self.counters is not None:
+                self.counters.stop("equity")
 
             # 8. Calculer les métriques
-            self.counters.start("metrics")
+            if self.counters is not None:
+                self.counters.start("metrics")
             periods_per_year = self._get_periods_per_year(timeframe)
 
             # ✅ CRITIQUE: Utiliser fast_metrics pour les sweeps (50× plus rapide)
@@ -371,11 +389,21 @@ class BacktestEngine:
                 metrics.pop("win_rate", None)
                 metrics.pop("total_return", None)
 
-            self.counters.stop("metrics")
+            if self.counters is not None:
+                self.counters.stop("metrics")
 
             # 9. Construire les métadonnées
-            self.counters.stop("total")
-            total_ms = self.counters.get_duration("total")
+            if self.counters is not None:
+                self.counters.stop("total")
+                total_ms = self.counters.get_duration("total")
+                perf_counters = self.counters.summary()
+            else:
+                total_ms = (time.perf_counter() - run_start) * 1000
+                perf_counters = {
+                    "durations_ms": {},
+                    "counts": {},
+                    "total_ms": round(total_ms, 2),
+                }
 
             meta = {
                 "run_id": self.run_id,
@@ -388,7 +416,7 @@ class BacktestEngine:
                 "period_start": str(df.index[0]),
                 "period_end": str(df.index[-1]),
                 "seed": seed,
-                "perf_counters": self.counters.summary(),
+                "perf_counters": perf_counters,
             }
 
             self.last_run_meta = meta
@@ -411,9 +439,12 @@ class BacktestEngine:
             return result
 
         except Exception as e:
-            self.counters.stop("total")
+            if self.counters is not None:
+                self.counters.stop("total")
             self.logger.error("pipeline_error error=%s", str(e))
             raise
+        finally:
+            self.logger = base_logger
 
     def _validate_inputs(
         self,

@@ -19,8 +19,10 @@ from agents.llm_router import (
     build_single_host_topology,
     normalize_ollama_host,
 )
+from agents.model_config import is_cloud_only_model
 from agents.ollama_manager import ensure_ollama_running, unload_model
 from agents.strategy_builder import generate_random_objective, sanitize_objective_text
+from utils.model_loader import normalize_model_name
 
 from .adapters.strategy_builder_adapter import summarize_builder_session
 from .model_discovery import ModelInventory, discover_local_models
@@ -214,15 +216,50 @@ def _compact_history_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _safe_continuity_metric(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_successful_continuity_entry(entry: Dict[str, Any]) -> bool:
+    status = str(entry.get("status", "") or "").strip().lower()
+    if status in {"crash", "crashed", "error", "failed", "failure"}:
+        return False
+    return any(
+        _safe_continuity_metric(entry.get(metric_name)) is not None
+        for metric_name in ("best_sharpe", "best_return", "best_pf", "best_trades")
+    )
+
+
 def _build_continuity_context(history_tail: List[Dict[str, Any]]) -> Dict[str, Any]:
     recent_entries = [
         _compact_history_entry(item)
         for item in list(history_tail or [])[-4:]
         if isinstance(item, dict)
     ]
+    eligible_entries = [
+        entry for entry in recent_entries if _is_successful_continuity_entry(entry)
+    ]
     best_recent = max(
-        recent_entries,
-        key=lambda item: float(item.get("best_sharpe") or float("-inf")),
+        eligible_entries,
+        key=lambda item: (
+            _safe_continuity_metric(item.get("best_sharpe"))
+            if _safe_continuity_metric(item.get("best_sharpe")) is not None
+            else float("-inf"),
+            _safe_continuity_metric(item.get("best_return"))
+            if _safe_continuity_metric(item.get("best_return")) is not None
+            else float("-inf"),
+            _safe_continuity_metric(item.get("best_pf"))
+            if _safe_continuity_metric(item.get("best_pf")) is not None
+            else float("-inf"),
+            _safe_continuity_metric(item.get("best_trades"))
+            if _safe_continuity_metric(item.get("best_trades")) is not None
+            else float("-inf"),
+        ),
         default={},
     )
     carry_over_focus = _dedupe_texts(
@@ -346,9 +383,37 @@ class _ManagedRoleLLMClient:
                         detail="role retry failed",
                         error=str(retry_exc),
                     )
-                    raise
+                    next_model = self._manager.select_next_role_candidate(
+                        self._role,
+                        rejected_model=str(getattr(self.config, "model", "") or ""),
+                        reason=str(retry_exc),
+                    )
+                    if not next_model:
+                        raise
+                    self._client = self._manager._build_client(self._role)
+                    self._manager.mark_role_signal(
+                        self._role,
+                        signal="mission_start",
+                        phase="chat_failover",
+                        detail=f"role call restarted with fallback {next_model}",
+                    )
+                    response = self._client.chat(messages, **kwargs)
             else:
-                raise
+                next_model = self._manager.select_next_role_candidate(
+                    self._role,
+                    rejected_model=str(getattr(self.config, "model", "") or ""),
+                    reason=str(exc),
+                )
+                if not next_model:
+                    raise
+                self._client = self._manager._build_client(self._role)
+                self._manager.mark_role_signal(
+                    self._role,
+                    signal="mission_start",
+                    phase="chat_failover",
+                    detail=f"role call restarted with fallback {next_model}",
+                )
+                response = self._client.chat(messages, **kwargs)
         self._manager.mark_role_signal(
             self._role,
             signal="mission_done",
@@ -406,9 +471,45 @@ class _ManagedRoleLLMClient:
                         detail="streaming role retry failed",
                         error=str(retry_exc),
                     )
-                    raise
+                    next_model = self._manager.select_next_role_candidate(
+                        self._role,
+                        rejected_model=str(getattr(self.config, "model", "") or ""),
+                        reason=str(retry_exc),
+                    )
+                    if not next_model:
+                        raise
+                    self._client = self._manager._build_client(self._role)
+                    self._manager.mark_role_signal(
+                        self._role,
+                        signal="mission_start",
+                        phase="chat_stream_failover",
+                        detail=f"streaming role call restarted with fallback {next_model}",
+                    )
+                    response = self._client.chat_stream(
+                        messages,
+                        on_chunk=on_chunk,
+                        **kwargs,
+                    )
             else:
-                raise
+                next_model = self._manager.select_next_role_candidate(
+                    self._role,
+                    rejected_model=str(getattr(self.config, "model", "") or ""),
+                    reason=str(exc),
+                )
+                if not next_model:
+                    raise
+                self._client = self._manager._build_client(self._role)
+                self._manager.mark_role_signal(
+                    self._role,
+                    signal="mission_start",
+                    phase="chat_stream_failover",
+                    detail=f"streaming role call restarted with fallback {next_model}",
+                )
+                response = self._client.chat_stream(
+                    messages,
+                    on_chunk=on_chunk,
+                    **kwargs,
+                )
         self._manager.mark_role_signal(
             self._role,
             signal="mission_done",
@@ -607,6 +708,116 @@ class MultiLLMSessionManager:
             "multi_llm_builder_model_unavailable: `builder_llm` must be resolved "
             "explicitly by the active multi-LLM profile; mono-model fallback disabled"
         )
+
+    def _apply_role_candidate(self, role: str, candidate: str, *, reason: str = "") -> bool:
+        assignment = self.resolve_role_assignment(role)
+        if assignment is None:
+            return False
+
+        normalized_candidate = normalize_model_name(str(candidate or "").strip()) or str(candidate or "").strip()
+        if not normalized_candidate:
+            return False
+
+        if is_cloud_only_model(normalized_candidate):
+            discovered = self.inventory.find(normalized_candidate) if self.inventory is not None else None
+            if discovered is not None and (
+                not self.require_live_ollama
+                or not getattr(self.inventory, "live_ollama_reachable", False)
+                or discovered.live
+            ):
+                metadata = dict(discovered.metadata or {})
+                metadata["cloud_only"] = True
+                assignment.requested_model = normalized_candidate
+                assignment.resolved_model = discovered.name
+                assignment.available = True
+                assignment.verified = bool(discovered.verified_available)
+                assignment.source = str(discovered.source or "ollama_cloud")
+                assignment.reason = reason or "fallback candidate selected"
+                assignment.discovered_path = str(discovered.path or "")
+                assignment.live = bool(discovered.live)
+                assignment.install_required = False
+                assignment.metadata = metadata
+                return True
+            if self.require_live_ollama and bool(getattr(self.inventory, "live_ollama_reachable", False)):
+                return False
+            metadata = dict(assignment.metadata or {})
+            metadata["cloud_only"] = True
+            assignment.requested_model = normalized_candidate
+            assignment.resolved_model = normalized_candidate
+            assignment.available = True
+            assignment.verified = True
+            assignment.source = "ollama_cloud"
+            assignment.reason = reason or "fallback candidate selected"
+            assignment.discovered_path = ""
+            assignment.live = bool(getattr(self.inventory, "live_ollama_reachable", False))
+            assignment.install_required = False
+            assignment.metadata = metadata
+            return True
+
+        discovered = self.inventory.find(normalized_candidate) if self.inventory is not None else None
+        if discovered is None or not discovered.verified_available:
+            return False
+
+        assignment.requested_model = normalized_candidate
+        assignment.resolved_model = discovered.name
+        assignment.available = True
+        assignment.verified = bool(discovered.verified_available)
+        assignment.source = str(discovered.source or "")
+        assignment.reason = reason or "fallback candidate selected"
+        assignment.discovered_path = str(discovered.path or "")
+        assignment.live = bool(discovered.live)
+        assignment.install_required = False
+        assignment.metadata = dict(discovered.metadata or {})
+        return True
+
+    def select_next_role_candidate(
+        self,
+        role: str,
+        *,
+        rejected_model: str = "",
+        reason: str = "",
+    ) -> Optional[str]:
+        assignment = self.resolve_role_assignment(role)
+        if assignment is None:
+            return None
+
+        normalized_rejected = normalize_model_name(
+            str(rejected_model or assignment.resolved_model or assignment.requested_model).strip()
+        )
+        remaining = [
+            normalize_model_name(str(candidate or "").strip()) or str(candidate or "").strip()
+            for candidate in list(assignment.alternatives or [])
+            if (normalize_model_name(str(candidate or "").strip()) or str(candidate or "").strip())
+        ]
+        remaining = [candidate for candidate in remaining if candidate != normalized_rejected]
+        if not remaining:
+            return None
+
+        for index, next_candidate in enumerate(remaining):
+            if not self._apply_role_candidate(
+                role,
+                next_candidate,
+                reason=f"fallback after runtime rejection: {reason}",
+            ):
+                continue
+            assignment.alternatives = remaining[index + 1 :]
+            route = self.resolve_role_route(role)
+            self.forget_runtime_model(
+                ollama_host=route.ollama_host,
+                model_name=normalized_rejected,
+            )
+            self.mark_role_signal(
+                role,
+                signal="fallback_candidate",
+                phase="runtime_prepare",
+                detail=f"fallback to {assignment.resolved_model}",
+                error=str(reason or "").strip(),
+                model=assignment.resolved_model,
+                host=route.ollama_host,
+            )
+            return assignment.resolved_model
+
+        return None
 
     def _append_runtime_flow_event(
         self,

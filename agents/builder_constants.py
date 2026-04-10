@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 import re
-from pathlib import Path
 from typing import Dict
 
 from backtest.result_store import get_builder_sessions_dir

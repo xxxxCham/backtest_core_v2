@@ -218,7 +218,7 @@ def _register_model(
 ) -> None:
     aliases = sorted(_alias_variants(name))
     if metadata:
-        for alias_key in ("ollama_name", "id", "model_name", "name"):
+        for alias_key in ("ollama_name", "id", "model_name", "name", "remote_model"):
             alias_value = metadata.get(alias_key)
             aliases.extend(sorted(_alias_variants(alias_value)))
     model = DiscoveredModel(

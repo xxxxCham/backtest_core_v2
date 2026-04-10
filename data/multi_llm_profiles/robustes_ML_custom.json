@@ -14,7 +14,7 @@
         "llama3.3:70b-instruct-q4_K_M"
       ],
       "fallback_models": [
-        "gemma3:12b",
+        "gemma4:26b",
         "deepseek-moe-16b-local"
       ],
       "required": true,

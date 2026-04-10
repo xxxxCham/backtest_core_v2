@@ -34,19 +34,38 @@ except ImportError:
 from utils.log import get_logger
 from utils.model_loader import (
     get_model_by_id,
-    get_model_info_for_ui,
     get_ollama_runtime_model_names,
-    load_models_json,
     normalize_model_name as normalize_catalog_model_name,
 )
 
+try:
+    from core.llm_multi import discover_local_models
+except ImportError:
+    discover_local_models = None
+
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Helper cloud detection
+# ---------------------------------------------------------------------------
+
+def _is_cloud_model(name: str) -> bool:
+    """Retourne True si le modèle est cloud-only (Ollama Cloud, crédits requis)."""
+    try:
+        from agents.model_config import KNOWN_MODELS
+        info = KNOWN_MODELS.get(str(name or "").strip())
+        return bool(info and info.cloud_only)
+    except Exception:
+        return False
 
 # ---------------------------------------------------------------------------
 # Constantes
 # ---------------------------------------------------------------------------
 
 FALLBACK_LLM_MODELS: List[str] = [
+    # Local
+    "gemma4:31b",
+    "gemma4:26b",
     "qwen3.5:35b",
     "qwen3-vl:32b",
     "lfm2:24b",
@@ -57,31 +76,40 @@ FALLBACK_LLM_MODELS: List[str] = [
     "qwq:32b",
     "qwen2.5:32b",
     "mistral:22b",
-    "gemma3:27b",
     "deepseek-r1-distill:14b",
-    "gemma3:12b",
     "deepseek-r1:8b",
     "mistral:7b-instruct",
+    # Cloud (nécessite crédits Ollama)
+    "deepseek-v3.2",
+    "glm-5",
+    "qwen3-coder:480b",
+    "kimi-k2",
+    "kimi-k2-thinking",
+    "minimax-m2.7",
+    "nemotron-3-super:120b",
+    "devstral-2:123b",
+    "qwen3.5:122b",
+    # deepseek-r1:671b et deepseek-v3:671b : téléchargeables (non cloud), retirés d'ici
     "nemotron-3-nano:30b",
 ]
 
-RECOMMENDED_FOR_ANALYSIS = ["qwen3-vl:32b", "qwen3.5:35b", "deepseek-r1:32b"]
-RECOMMENDED_FOR_STRATEGY = ["qwen3.5:35b", "qwen2.5:32b", "lfm2:24b"]
-RECOMMENDED_FOR_CRITICISM = ["qwen3.5:35b", "mistral:22b", "gemma3:27b"]
-RECOMMENDED_FOR_FAST = ["lfm2:24b", "gemma3:12b", "mistral:7b-instruct"]
+RECOMMENDED_FOR_ANALYSIS = ["gemma4:26b", "qwen3-vl:32b", "qwen3.5:35b"]
+RECOMMENDED_FOR_STRATEGY = ["gemma4:26b", "gemma4:31b", "qwen3.5:35b"]
+RECOMMENDED_FOR_CRITICISM = ["gemma4:31b", "qwen3.5:35b", "deepseek-r1:32b"]
+RECOMMENDED_FOR_FAST = ["gemma4:26b", "lfm2:24b", "mistral:7b-instruct"]
 
 OPTIMAL_CONFIG_BY_ROLE = {
-    "analyst": ["qwen3-vl:32b", "qwen3.5:35b"],
-    "strategist": ["qwen3-coder:30b", "devstral-small-2:24b"],
-    "critic": ["qwen3.5:35b", "deepseek-r1:32b"],
-    "validator": ["qwen3.5:35b", "deepseek-r1:32b"],
+    "analyst": ["gemma4:26b", "qwen3-vl:32b"],
+    "strategist": ["gemma4:26b", "gemma4:31b"],
+    "critic": ["gemma4:31b", "qwen3.5:35b"],
+    "validator": ["gemma4:31b", "deepseek-r1:32b"],
 }
 
 OPTIMAL_CONFIG_FALLBACK = {
-    "analyst": ["lfm2:24b", "gemma3:12b"],
-    "strategist": ["lfm2:24b", "qwen3-30b-a3b:q4_k_m"],
-    "critic": ["gemma3:27b", "qwq:32b"],
-    "validator": ["gemma3:27b", "qwq:32b"],
+    "analyst": ["lfm2:24b", "gemma4:26b"],
+    "strategist": ["qwen3-coder:30b", "devstral-small-2:24b"],
+    "critic": ["gemma4:26b", "mistral:22b"],
+    "validator": ["gemma4:26b", "qwq:32b"],
 }
 
 # Mapping categorie affichee -> use_case dans models.json
@@ -94,6 +122,7 @@ _CATEGORY_LABELS = {
     "Instruction": "instruction",
     "Multimodal": "multimodal",
     "Securite": "safety",
+    "☁\ufe0f Cloud": "__cloud__",
 }
 
 # ---------------------------------------------------------------------------
@@ -278,6 +307,33 @@ def _get_installed_ollama_models(ollama_host: Optional[str] = None) -> List[str]
     return [str(name) for name in names if str(name).strip()]
 
 
+def _get_local_inventory_models(ollama_host: Optional[str] = None) -> List[str]:
+    """Retourne les modèles locaux vérifiés via l'inventaire disque/manifests.
+
+    Sert de secours quand Ollama n'a pas encore redémarré mais que les modèles
+    sont toujours présents sur la machine.
+    """
+    if not callable(discover_local_models):
+        return []
+    try:
+        inventory = discover_local_models(
+            ollama_host=ollama_host,
+            include_live_ollama=True,
+        )
+    except Exception as exc:
+        logger.debug("Erreur lecture inventaire local modèles: %s", exc)
+        return []
+
+    names: List[str] = []
+    for model in inventory.discovered_models:
+        if model.backend != "ollama" or not model.verified_available:
+            continue
+        normalized = _normalize_model_name(model.name)
+        if normalized:
+            names.append(normalized)
+    return sorted(set(names))
+
+
 def _fetch_ollama_details(ollama_host: Optional[str] = None) -> Dict[str, Dict]:
     """Charge les détails des modèles Ollama depuis l'inventaire cache unique."""
     inventory = _fetch_ollama_inventory(ollama_host)
@@ -369,6 +425,15 @@ def _normalize_model_name(name: str) -> str:
     return normalize_catalog_model_name(name)
 
 
+def _get_cloud_only_models() -> List[str]:
+    """Retourne la liste des modèles cloud-only définis dans KNOWN_MODELS."""
+    try:
+        from agents.model_config import KNOWN_MODELS
+        return [name for name, info in KNOWN_MODELS.items() if info.cloud_only]
+    except Exception:
+        return []
+
+
 def get_available_models_for_ui(
     preferred_order: Sequence[str] | None = None,
     fallback: Sequence[str] | None = None,
@@ -376,31 +441,48 @@ def get_available_models_for_ui(
     include_library_models: bool = False,
     current_value: Optional[str] = None,
 ) -> List[str]:
-    """Retourne la liste dedupliquee des modeles LLM pour l'UI."""
-    installed = [
+    """Retourne la liste des modèles LLM pour l'UI.
+
+    Règle stricte : uniquement les modèles **installés localement** (détectés via
+    Ollama /api/tags) + les modèles **cloud-only** (toujours affichés, crédits requis).
+    Les modèles présents dans le catalogue mais non installés ne sont PAS affichés.
+    """
+    installed_runtime = [
         _normalize_model_name(n) for n in _get_installed_ollama_models(ollama_host) if n
     ]
-    library_models = _get_library_models() if include_library_models else []
-    available = sorted(set(installed) | set(library_models))
+    installed_inventory = _get_local_inventory_models(ollama_host)
+    installed_catalog = [
+        _normalize_model_name(name) for name in _get_library_models() if name
+    ]
+    installed = sorted(
+        set(name for name in installed_runtime if name)
+        | set(name for name in installed_catalog if name)
+        | set(name for name in installed_inventory if name)
+    )
+    cloud_models = _get_cloud_only_models()
+
+    # Fusionner : installés locaux + cloud (dédupliqués)
+    available = sorted(set(installed) | set(cloud_models))
 
     if available:
         if preferred_order:
             return _sort_with_preferred(available, preferred_order)
         return available
 
+    # Fallback ultime : si aucun modèle local n'est détecté,
+    # on garde quand même les cloud-only + la valeur courante
     current_model = _normalize_model_name(str(current_value or "").strip())
-    if current_model:
+    fallback_list: List[str] = list(cloud_models)
+    if current_model and current_model not in fallback_list:
+        fallback_list.insert(0, current_model)
+    if fallback_list:
         logger.warning(
-            "Ollama ne renvoie aucun modele sur %s, conservation de la valeur courante UI: %s",
+            "Aucun modèle local détecté sur %s — affichage limité aux modèles cloud.",
             _normalize_host(ollama_host),
-            current_model,
         )
-        return [current_model]
+        return fallback_list
 
-    models = list(fallback or [])
-    if models:
-        logger.warning("Ollama ne renvoie aucun modele, fallback UI explicite: %s", models[:3])
-    return models
+    return []
 
 
 def get_model_info(model_name: str) -> dict:
@@ -444,12 +526,16 @@ def _vram_badge(fits_gpu: Optional[bool]) -> str:
 
 
 def _format_model_option(name: str, details: Dict) -> str:
-    """Formate le nom affiche dans le selectbox avec taille et badge GPU."""
+    """Formate le nom affiché dans le selectbox avec taille et badge GPU ou \u2601\ufe0f."""
     display_name = str(details.get("display_name") or name or "").strip() or name
     size = details.get("size_gb", "?")
     params = details.get("parameters", "?")
-    badge = _vram_badge(details.get("fits_gpu"))
-    size_str = f"{size}G" if isinstance(size, (int, float)) else "?"
+    if _is_cloud_model(name):
+        badge = "\u2601\ufe0f"
+        size_str = "Cloud"
+    else:
+        badge = _vram_badge(details.get("fits_gpu"))
+        size_str = f"{size}G" if isinstance(size, (int, float)) else "?"
     label = display_name if display_name == name else f"{display_name} | {name}"
     return f"{badge} {label}  [{params} / {size_str}]"
 
@@ -537,7 +623,11 @@ def render_model_selector(
             label_visibility="collapsed",
         )
         use_case_filter = _CATEGORY_LABELS.get(category)
-        if use_case_filter:
+        if use_case_filter == "__cloud__":
+            filtered = [m for m in models if _is_cloud_model(m)]
+            if filtered:
+                models = filtered
+        elif use_case_filter:
             filtered = []
             for m in models:
                 d = get_model_details(m, ollama_host=ollama_host)
@@ -571,6 +661,12 @@ def render_model_selector(
     # Fiche detaillee
     if selected and show_details:
         d = details_map.get(selected) or get_model_details(selected, ollama_host=ollama_host)
+        if _is_cloud_model(selected):
+            st.info(
+                "☁️ **Modèle Cloud Ollama** — Ce modèle s'exécute sur l'infrastructure Ollama Cloud. "
+                "Il **nécessite des crédits Ollama**. Il ne sera pas téléchargé sur votre machine.",
+                icon="☁️",
+            )
         _render_model_card(d, compact=compact, ollama_host=ollama_host)
         if include_library_models and selected not in installed_models:
             st.caption(

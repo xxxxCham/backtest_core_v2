@@ -5,7 +5,6 @@ Test performance Numba sweep avec prange activé
 """
 
 import os
-import sys
 import time
 
 # ⚡ CONFIGURATION NUMBA (AVANT imports)
@@ -16,7 +15,7 @@ os.environ['MKL_NUM_THREADS'] = '32'
 
 import numpy as np
 import numba
-from backtest.sweep_numba import _sweep_bollinger_full, benchmark_sweep_numba
+from backtest.sweep_numba import _sweep_bollinger_full
 
 print("=" * 80)
 print("TEST PERFORMANCE SWEEP NUMBA avec prange")

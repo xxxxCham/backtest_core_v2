@@ -111,7 +111,6 @@ class MeanReversionBollingerRsiStrategy(StrategyBase):
         }
 
     def generate_signals(self, df: pd.DataFrame, indicators: Dict[str, Any], params: Dict[str, Any]) -> pd.Series:
-        n = len(df)
         warmup = int(params.get('warmup', 50))
 
         # Initialize signal series

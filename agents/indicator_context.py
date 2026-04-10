@@ -454,9 +454,9 @@ _populate_indicator_reference_builder_access()
 
 _INDICATOR_DIRECT_MATCH_BONUS = 6.0
 _INDICATOR_DIAGNOSTIC_MATCH_BONUS = 3.0
-_INDICATOR_PREVIOUS_DIVERSITY_PENALTY = 0.35
-_INDICATOR_PREVIOUS_STABILITY_BONUS = 0.15
-_INDICATOR_NOVELTY_BONUS = 0.10
+_INDICATOR_PREVIOUS_DIVERSITY_PENALTY = 0.30
+_INDICATOR_PREVIOUS_STABILITY_BONUS = 0.03
+_INDICATOR_NOVELTY_BONUS = 0.40
 _INDICATOR_NOISE_WEIGHT = 0.12
 _INDICATOR_BASELINE_UTILITY_BONUS = 0.05
 
@@ -554,8 +554,9 @@ def rank_indicator_selection(
 
     Important : cette fonction ne retire jamais d'indicateur, ne maintient aucune
     memoire punitive entre sessions, et n'utilise pas les performances passees pour
-    "condamner" un indicateur. Les ajustements de diversite sont volontairement
-    faibles et servent seulement de tie-break souple.
+    "condamner" un indicateur. Les ajustements de diversite restent conservateurs,
+    mais ils doivent etre assez visibles pour encourager de vrais ajouts/retraits
+    d'indicateurs quand une session stagne.
     """
     query_tokens = _build_indicator_query_tokens(objective, diagnostic)
     previous = {

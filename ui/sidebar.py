@@ -49,36 +49,21 @@ from ui.constants import (
     get_strategy_ui_indicators,
 )
 from ui.context import (
-    KNOWN_MODELS,
-    LLM_AVAILABLE,
-    LLM_IMPORT_ERROR,
-    RECOMMENDED_FOR_STRATEGY,
-    LLMConfig,
-    LLMProvider,
-    ModelCategory,
     compute_search_space_stats,
     discover_available_data,
-    ensure_ollama_running,
-    get_available_models_for_ui,
-    get_global_model_config,
-    get_model_info,
     get_storage,
     get_strategy,
     get_strategy_info,
-    is_ollama_available,
-    list_available_models,
     list_strategies,
     list_strategy_versions,
     load_strategy_version,
     resolve_latest_version,
-    set_global_model_config,
 )
 from ui.helpers import (
     _data_cache_key,
     _find_saved_run_meta,
     _parse_run_timestamp,
     apply_versioned_preset,
-    build_param_values,
     compute_global_granularity_percent,
     create_param_range_selector,
     granularity_transform,
@@ -88,6 +73,7 @@ from ui.helpers import (
     validate_param,
 )
 from ui.state import (
+    BUILDER_UNIVERSE_MODE_CANONICAL,
     BUILDER_EXECUTION_MODE_MONO,
     BUILDER_AUTO_START_OLLAMA_DEFAULT,
     BUILDER_KEEP_ALIVE_MINUTES_DEFAULT,
@@ -96,6 +82,7 @@ from ui.state import (
     SidebarState,
     resolve_builder_dual_lane_preferences,
     resolve_builder_execution_preferences,
+    resolve_builder_flow_analysis_preferences,
     resolve_builder_multi_llm_preferences,
     resolve_builder_runtime_preferences,
 )
@@ -555,6 +542,7 @@ def _build_config_signature(state: SidebarState) -> str:
         "builder_unload_after_run": state.builder_unload_after_run,
         "builder_auto_start_ollama": state.builder_auto_start_ollama,
         "builder_auto_market_pick": state.builder_auto_market_pick,
+        "builder_universe_mode": state.builder_universe_mode,
         "builder_autonomous": state.builder_autonomous,
         "builder_auto_pause": state.builder_auto_pause,
         "builder_auto_use_llm": state.builder_auto_use_llm,
@@ -1774,6 +1762,7 @@ def render_sidebar() -> SidebarState:
     builder_unload_after_run = BUILDER_UNLOAD_AFTER_RUN_DEFAULT
     builder_auto_start_ollama = BUILDER_AUTO_START_OLLAMA_DEFAULT
     builder_auto_market_pick = False
+    builder_universe_mode = BUILDER_UNIVERSE_MODE_CANONICAL
     builder_autonomous = False
     builder_auto_pause = 10
     builder_auto_use_llm = True
@@ -1783,6 +1772,8 @@ def render_sidebar() -> SidebarState:
     builder_multi_llm_enabled = False
     builder_multi_llm_profile = "24GB_balanced"
     builder_multi_llm_role_overrides: Dict[str, List[str]] = {}
+    builder_flow_analysis_enabled = False
+    builder_flow_analysis_ablation: Dict[str, bool] = {}
     builder_use_parametric_catalog = False
     topology_state_key = (
         "builder_llm_topology_config"
@@ -1816,6 +1807,11 @@ def render_sidebar() -> SidebarState:
         builder_use_parametric_catalog = bool(st.session_state.get("builder_use_parametric_catalog", False))
         builder_objective = str(st.session_state.get("builder_objective", ""))
         builder_auto_market_pick = bool(st.session_state.get("builder_auto_market_pick", True))
+        builder_universe_mode = str(
+            st.session_state.get("builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL)
+            or BUILDER_UNIVERSE_MODE_CANONICAL
+        ).strip() or BUILDER_UNIVERSE_MODE_CANONICAL
+        st.session_state["builder_universe_mode"] = builder_universe_mode
         legacy_builder_model = str(
             st.session_state.pop("builder_model", "") or ""
         ).strip()
@@ -1867,6 +1863,21 @@ def render_sidebar() -> SidebarState:
         st.session_state["builder_multi_llm_profile"] = builder_multi_llm_profile
         st.session_state["builder_multi_llm_role_overrides"] = dict(
             builder_multi_llm_role_overrides
+        )
+        builder_flow_analysis_preferences = resolve_builder_flow_analysis_preferences(
+            st.session_state
+        )
+        builder_flow_analysis_enabled = bool(
+            builder_flow_analysis_preferences["builder_flow_analysis_enabled"]
+        )
+        builder_flow_analysis_ablation = dict(
+            builder_flow_analysis_preferences["builder_flow_analysis_ablation"]
+        )
+        st.session_state["builder_flow_analysis_enabled"] = (
+            builder_flow_analysis_enabled
+        )
+        st.session_state["builder_flow_analysis_ablation"] = dict(
+            builder_flow_analysis_ablation
         )
         builder_ollama_host = str(
             st.session_state.get(
@@ -2571,6 +2582,7 @@ def render_sidebar() -> SidebarState:
         builder_unload_after_run=builder_unload_after_run,
         builder_auto_start_ollama=builder_auto_start_ollama,
         builder_auto_market_pick=builder_auto_market_pick,
+        builder_universe_mode=builder_universe_mode,
         # Mode autonome
         builder_autonomous=builder_autonomous,
         builder_auto_pause=builder_auto_pause,
@@ -2581,6 +2593,8 @@ def render_sidebar() -> SidebarState:
         builder_multi_llm_enabled=builder_multi_llm_enabled,
         builder_multi_llm_profile=builder_multi_llm_profile,
         builder_multi_llm_role_overrides=builder_multi_llm_role_overrides,
+        builder_flow_analysis_enabled=builder_flow_analysis_enabled,
+        builder_flow_analysis_ablation=builder_flow_analysis_ablation,
         # Catalogue paramétrique
         builder_use_parametric_catalog=builder_use_parametric_catalog,
     )

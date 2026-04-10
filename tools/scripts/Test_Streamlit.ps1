@@ -15,9 +15,24 @@ if (Test-Path ".venv\Scripts\Activate.ps1") {
 
 Write-Host ""
 Write-Host "Variables d'environnement:" -ForegroundColor Yellow
-$env:BACKTEST_DATA_DIR = "D:\my_soft\gestionnaire_telechargement_multi-timeframe\processed\parquet"
+$dataCandidates = @(
+    "D:\.my_soft\gestionnaire_telechargement_multi-timeframe_clean\processed\parquet",
+    "D:\my_soft\gestionnaire_telechargement_multi-timeframe_clean\processed\parquet",
+    "D:\.my_soft\gestionnaire_telechargement_multi-timeframe\processed\parquet",
+    "D:\my_soft\gestionnaire_telechargement_multi-timeframe\processed\parquet"
+)
+$resolvedDataDir = $dataCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($resolvedDataDir) {
+    $env:BACKTEST_DATA_DIR = $resolvedDataDir
+} else {
+    Remove-Item Env:BACKTEST_DATA_DIR -ErrorAction SilentlyContinue
+}
 $env:BACKTEST_WORKER_THREADS = "1"
-Write-Host "  BACKTEST_DATA_DIR = $env:BACKTEST_DATA_DIR" -ForegroundColor Gray
+if ($env:BACKTEST_DATA_DIR) {
+    Write-Host "  BACKTEST_DATA_DIR = $env:BACKTEST_DATA_DIR" -ForegroundColor Gray
+} else {
+    Write-Host "  BACKTEST_DATA_DIR = <auto-detection loader>" -ForegroundColor Gray
+}
 Write-Host "  BACKTEST_WORKER_THREADS = $env:BACKTEST_WORKER_THREADS" -ForegroundColor Gray
 
 Write-Host ""

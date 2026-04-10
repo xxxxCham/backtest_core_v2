@@ -3,22 +3,26 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from agents.model_config import is_cloud_only_model
 from utils.log import get_logger
 from utils.model_loader import normalize_model_name
 
-from .model_discovery import ModelInventory
+from .model_discovery import DiscoveredModel, ModelInventory
 from .roles import RoleAssignment, RolePreference
 
 DEFAULT_MULTI_LLM_CONFIG_PATH = (
     Path(__file__).resolve().parent / "config" / "default_profiles.json"
 )
 DEFAULT_MULTI_LLM_PROFILE = "24GB_balanced"
-USER_MULTI_LLM_PROFILES_DIR = Path("data") / "multi_llm_profiles"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+USER_MULTI_LLM_PROFILES_DIR = PROJECT_ROOT / "data" / "multi_llm_profiles"
+USER_MULTI_LLM_PROFILES_ENV = "BACKTEST_MULTI_LLM_PROFILES_DIR"
 
 logger = get_logger(__name__)
 
@@ -30,7 +34,10 @@ def _clone_json_like(payload: Dict[str, Any]) -> Dict[str, Any]:
 def get_user_multi_llm_profiles_dir(
     user_profiles_dir: Optional[str | Path] = None,
 ) -> Path:
-    path = Path(user_profiles_dir or USER_MULTI_LLM_PROFILES_DIR)
+    raw_path = user_profiles_dir or os.getenv(USER_MULTI_LLM_PROFILES_ENV) or USER_MULTI_LLM_PROFILES_DIR
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -250,6 +257,30 @@ def save_multi_llm_profile(
     return filepath
 
 
+def delete_multi_llm_profile(
+    profile_name: str,
+    *,
+    config_path: Optional[str | Path] = None,
+    user_profiles_dir: Optional[str | Path] = None,
+) -> bool:
+    normalized_name = str(profile_name or "").strip()
+    if not normalized_name:
+        raise ValueError("Nom de présélection requis")
+
+    builtin_names = _builtin_profile_names(config_path)
+    if normalized_name in builtin_names:
+        raise ValueError(
+            f"Le profil '{normalized_name}' est intégré et ne peut pas être supprimé"
+        )
+
+    directory = get_user_multi_llm_profiles_dir(user_profiles_dir)
+    filepath = directory / f"{_sanitize_user_profile_filename(normalized_name)}.json"
+    if not filepath.exists():
+        return False
+    filepath.unlink()
+    return True
+
+
 def _role_preference_from_payload(role: str, payload: Dict[str, Any]) -> RolePreference:
     return RolePreference(
         role=role,
@@ -263,13 +294,13 @@ def _role_preference_from_payload(role: str, payload: Dict[str, Any]) -> RolePre
 
 def _normalize_override_candidates(override_model: Any) -> List[str]:
     if isinstance(override_model, str):
-        normalized = str(override_model or "").strip()
+        normalized = normalize_model_name(str(override_model or "").strip()) or str(override_model or "").strip()
         return [normalized] if normalized else []
     if isinstance(override_model, (list, tuple, set)):
         ordered: List[str] = []
         seen: set[str] = set()
         for raw_candidate in override_model:
-            normalized = str(raw_candidate or "").strip()
+            normalized = normalize_model_name(str(raw_candidate or "").strip()) or str(raw_candidate or "").strip()
             if not normalized or normalized in seen:
                 continue
             seen.add(normalized)
@@ -289,7 +320,7 @@ def _candidate_order(
     seen: set[str] = set()
     unique: List[str] = []
     for candidate in ordered:
-        normalized = str(candidate or "").strip()
+        normalized = normalize_model_name(str(candidate or "").strip()) or str(candidate or "").strip()
         if not normalized or normalized in seen:
             continue
         seen.add(normalized)
@@ -338,8 +369,38 @@ def resolve_profile_assignments(
         resolved_model = None
         resolved_request = requested_candidates[0] if requested_candidates else ""
         deferred_non_live_match = None
+        deferred_cloud_candidate = ""
         for candidate in requested_candidates:
+            normalized_candidate = normalize_model_name(str(candidate or "").strip()) or str(candidate or "").strip()
             candidate_model = inventory.find(candidate)
+            if is_cloud_only_model(normalized_candidate):
+                if candidate_model is not None and (
+                    not require_live_ollama
+                    or not inventory.live_ollama_reachable
+                    or candidate_model.live
+                ):
+                    resolved_model = candidate_model
+                    resolved_request = normalized_candidate
+                    break
+                if require_live_ollama and inventory.live_ollama_reachable:
+                    if not deferred_cloud_candidate:
+                        deferred_cloud_candidate = normalized_candidate
+                    resolved_request = normalized_candidate
+                    continue
+                resolved_model = DiscoveredModel(
+                    name=normalized_candidate,
+                    backend=preference.backend,
+                    source="ollama_cloud",
+                    verified_available=True,
+                    path="",
+                    exists_on_disk=False,
+                    live=bool(inventory.live_ollama_reachable),
+                    aliases=[normalized_candidate],
+                    role_hints=[],
+                    metadata={"cloud_only": True},
+                )
+                resolved_request = normalized_candidate
+                break
             if candidate_model is None:
                 continue
             if (
@@ -376,20 +437,25 @@ def resolve_profile_assignments(
                 metadata=deferred_model.metadata,
             )
         elif resolved_model is None:
+            unresolved_cloud_request = deferred_cloud_candidate or resolved_request
             assignment = RoleAssignment(
                 role=role,
                 backend=preference.backend,
-                requested_model=resolved_request,
+                requested_model=unresolved_cloud_request,
                 required=preference.required,
                 reason=(
-                    "no local match found"
-                    if requested_candidates
-                    else "no candidate declared for role"
+                    "cloud candidate not exposed by current Ollama host"
+                    if deferred_cloud_candidate
+                    else (
+                        "no local match found"
+                        if requested_candidates
+                        else "no candidate declared for role"
+                    )
                 ),
                 install_required=bool(requested_candidates),
                 alternatives=_remaining_candidates(
                     requested_candidates,
-                    resolved_request,
+                    unresolved_cloud_request,
                 )
                 if requested_candidates
                 else [],

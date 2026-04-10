@@ -72,9 +72,22 @@ class ThoughtStream:
             f"{'━' * 59}\n\n"
         )
 
-    def proposal_sent(self, has_previous: bool = False) -> None:
+    def proposal_sent(self, has_previous: bool = False, prev_metrics: Optional[Dict[str, Any]] = None) -> None:
         ctx = "avec résultats précédents" if has_previous else "première itération"
         self._append(f"📤  PROPOSITION → LLM…  ({ctx})\n")
+        if has_previous and isinstance(prev_metrics, dict) and prev_metrics:
+            ret = prev_metrics.get("total_return_pct", 0) or 0
+            sharpe = prev_metrics.get("sharpe_ratio", 0) or 0
+            dd = prev_metrics.get("max_drawdown_pct", 0) or 0
+            n = int(prev_metrics.get("total_trades", 0) or 0)
+            wr = prev_metrics.get("win_rate_pct", 0) or 0
+            pf = prev_metrics.get("profit_factor", 0) or 0
+            icon = "🟢" if ret > 0 else "🔴"
+            self._append(
+                f"    └─ {icon}  Résultats précédents : "
+                f"Return {ret:+.2f}%  |  Sharpe {sharpe:.3f}  |  MaxDD {dd:.2f}%  "
+                f"|  Trades {n}  |  WinRate {wr:.1f}%  |  PF {pf:.2f}\n"
+            )
 
     def proposal_received(
         self,
@@ -87,17 +100,56 @@ class ThoughtStream:
         entry_s = proposal.get("entry_short_logic", "—")
         risk = proposal.get("risk_management", "—")
         ct = proposal.get("change_type", "")
+        default_params = proposal.get("default_params", {})
         lat = f"  ({latency_s:.1f}s)" if latency_s else ""
         ct_tag = f"  [{ct.upper()}]" if ct else ""
+
+        # Ligne indicateurs avec paramètres
+        if isinstance(default_params, dict) and default_params:
+            ind_parts = []
+            for ind in (inds if inds else []):
+                # Chercher les paramètres associés à cet indicateur
+                ind_key = str(ind).lower()
+                matched = {
+                    k: v for k, v in default_params.items()
+                    if ind_key in k.lower() or k.lower().startswith(ind_key[:4])
+                }
+                if matched:
+                    params_str = ", ".join(f"{k}={v}" for k, v in matched.items())
+                    ind_parts.append(f"{ind}({params_str})")
+                else:
+                    ind_parts.append(str(ind))
+            # Paramètres généraux (non attribués à un indicateur spécifique)
+            other_params = {
+                k: v for k, v in default_params.items()
+                if not any(
+                    str(ind).lower()[:4] in k.lower() or k.lower().startswith(str(ind).lower()[:4])
+                    for ind in inds
+                )
+            }
+            inds_display = ", ".join(ind_parts) if ind_parts else "—"
+            params_extra = (
+                "  ▸ " + ", ".join(f"{k}={v}" for k, v in other_params.items())
+                if other_params else ""
+            )
+        else:
+            inds_display = ", ".join(inds) if inds else "—"
+            params_extra = ""
+            # Afficher quand même tous les default_params si dispo
+            if isinstance(default_params, dict):
+                params_extra = "  ▸ " + ", ".join(f"{k}={v}" for k, v in default_params.items()) if default_params else ""
 
         self._append(
             f"📥  PROPOSITION REÇUE{lat}{ct_tag}\n"
             f"    💡 Hypothèse  : {hyp}\n"
-            f"    📊 Indicateurs: {', '.join(inds) if inds else '—'}\n"
+            f"    📊 Indicateurs: {inds_display}\n"
             f"    🟢 LONG       : {_trunc(entry_l)}\n"
             f"    🔴 SHORT      : {_trunc(entry_s)}\n"
-            f"    🛡️  Risque     : {_trunc(risk)}\n\n"
+            f"    🛡️  Risque     : {_trunc(risk)}\n"
         )
+        if params_extra:
+            self._append(f"    🔧 Paramètres  :{params_extra}\n")
+        self._append("\n")
 
     def codegen_sent(self) -> None:
         self._append("🔧  GÉNÉRATION DE CODE → LLM…\n")

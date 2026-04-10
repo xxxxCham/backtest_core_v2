@@ -6,12 +6,12 @@
     "idea_llm": {
       "backend": "ollama",
       "preferred_models": [
-        "alia-40b-local:latest",
+        "alia-40b-local",
         "llama3.3:70b-instruct-q4_K_M",
-        "qwen3-48b-savant:latest",
+        "qwen3-48b-savant",
         "gpt-oss:20b",
         "nemotron-3-nano:30b",
-        "glm-4.7-flash-23b-local:latest"
+        "glm-4.7-flash-23b-local"
       ],
       "fallback_models": [
         "deepseek-moe-16b-local",
@@ -24,8 +24,8 @@
       "backend": "ollama",
       "preferred_models": [
         "gpt-oss:20b",
-        "nemotron-orchestrator-8b:latest",
-        "qwen3-vl:30b"
+        "nemotron-orchestrator-8b",
+        "qwen3-vl:32b"
       ],
       "fallback_models": [
         "deepseek-coder-33b-local",
@@ -38,8 +38,8 @@
       "backend": "ollama",
       "preferred_models": [
         "fin-llama-33b:33b",
-        "gemma3:27b",
-        "glm-4.7-flash-23b-local:latest"
+        "mistral:22b",
+        "glm-4.7-flash-23b-local"
       ],
       "fallback_models": [
         "deepseek-r1:32b",
@@ -52,8 +52,8 @@
       "backend": "ollama",
       "preferred_models": [
         "gpt-oss-safeguard:20b",
-        "deepseek-moe-16b-local:latest",
-        "deepseek-coder-33b-local:latest"
+        "deepseek-moe-16b-local",
+        "deepseek-coder-33b-local"
       ],
       "fallback_models": [
         "deepseek-r1-distill:14b"
@@ -74,6 +74,6 @@
       "description": "Legacy LLM router kept for audit only; the simple multi-LLM mode now uses a deterministic local router."
     }
   },
-  "updated_at": "2026-03-15T06:27:23Z",
+  "updated_at": "2026-03-28T00:00:00Z",
   "created_at": "2026-03-15T06:27:23Z"
 }

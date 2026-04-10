@@ -22,7 +22,7 @@ df = pd.DataFrame(
 )
 
 # Test 1: Worker init + fast path
-from backtest.worker import init_worker_with_dataframe, run_backtest_worker, _worker_sweep_ready
+from backtest.worker import init_worker_with_dataframe, run_backtest_worker
 
 print("=== Test Worker Fast Path ===")
 init_worker_with_dataframe(

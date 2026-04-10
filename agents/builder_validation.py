@@ -10,7 +10,6 @@ import ast
 import json
 import os
 import re
-import textwrap
 import traceback
 from typing import Any, Dict, List, Optional
 
@@ -164,7 +163,6 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
                     sl = tgt.slice
                     if isinstance(sl, ast.Slice):
                         lower = _const_value(sl.lower) if sl.lower is not None else None
-                        upper = _const_value(sl.upper) if sl.upper is not None else None
                         # Autorisé: [:N] = 0 (warmup préfixe), N constant ou variable
                         if lower is None and sl.upper is not None:
                             continue

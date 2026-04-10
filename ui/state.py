@@ -26,6 +26,12 @@ from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from config.market_selection import (
+    UNIVERSE_MODE_CANONICAL,
+    UNIVERSE_MODE_OPTIONS,
+    normalize_universe_mode,
+)
+
 try:
     from core.llm_multi import get_profile_role_pools
     from core.llm_multi.roles import SIMPLE_MULTI_LLM_ACTIVE_ROLES
@@ -50,6 +56,8 @@ BUILDER_EXECUTION_MODE_OPTIONS = (
     BUILDER_EXECUTION_MODE_EXPERT,
     BUILDER_EXECUTION_MODE_DUAL_LANE,
 )
+BUILDER_UNIVERSE_MODE_CANONICAL = UNIVERSE_MODE_CANONICAL
+BUILDER_UNIVERSE_MODE_OPTIONS = UNIVERSE_MODE_OPTIONS
 
 
 def _coerce_bool(value: Any, default: bool) -> bool:
@@ -239,6 +247,64 @@ def resolve_builder_runtime_preferences(source: Any) -> Dict[str, Any]:
     }
 
 
+def _default_builder_flow_analysis_ablation() -> Dict[str, bool]:
+    try:
+        from agents.pipeline_instrumentation import AblationController
+
+        return {
+            step: True
+            for step in sorted(AblationController.ABLATABLE_STEPS)
+        }
+    except Exception:
+        return {}
+
+
+def _normalize_builder_flow_analysis_ablation(
+    raw_value: Any,
+) -> Dict[str, bool]:
+    normalized = _default_builder_flow_analysis_ablation()
+    if not isinstance(raw_value, dict):
+        return normalized
+    for step in list(normalized.keys()):
+        if step in raw_value:
+            normalized[step] = _coerce_bool(raw_value.get(step), normalized[step])
+    return normalized
+
+
+def resolve_builder_flow_analysis_preferences(source: Any) -> Dict[str, Any]:
+    """Normalise l'analyse de flux Builder depuis session_state ou SidebarState."""
+
+    def _read(name: str, default: Any) -> Any:
+        if isinstance(source, dict):
+            widget_key_overrides = {
+                "builder_flow_analysis_enabled": "builder_flow_analysis_enabled_toggle",
+            }
+            widget_key = widget_key_overrides.get(name)
+            if widget_key and widget_key in source:
+                return source.get(widget_key, default)
+            return source.get(name, default)
+        return getattr(source, name, default)
+
+    enabled = _coerce_bool(_read("builder_flow_analysis_enabled", False), False)
+    ablation = _normalize_builder_flow_analysis_ablation(
+        _read("builder_flow_analysis_ablation", {})
+    )
+
+    if isinstance(source, dict):
+        disabled_steps = source.get("builder_flow_analysis_disabled_steps_multiselect")
+        if isinstance(disabled_steps, (list, tuple, set)):
+            ablation = _default_builder_flow_analysis_ablation()
+            for step in disabled_steps:
+                step_name = str(step or "").strip()
+                if step_name in ablation:
+                    ablation[step_name] = False
+
+    return {
+        "builder_flow_analysis_enabled": enabled,
+        "builder_flow_analysis_ablation": ablation,
+    }
+
+
 def resolve_builder_multi_llm_preferences(source: Any) -> Dict[str, Any]:
     """Normalise le pilotage multi-LLM Builder depuis session_state ou SidebarState."""
     execution_preferences = resolve_builder_execution_preferences(source)
@@ -327,6 +393,7 @@ def resolve_builder_multi_llm_preferences(source: Any) -> Dict[str, Any]:
             overrides["risk_llm"] = [critic_model]
 
     return {
+        "builder_execution_mode": execution_mode,
         "builder_multi_llm_enabled": enabled,
         "builder_multi_llm_profile": profile_name,
         "builder_multi_llm_role_overrides": overrides,
@@ -428,6 +495,7 @@ class SidebarState:
     builder_unload_after_run: bool
     builder_auto_start_ollama: bool
     builder_auto_market_pick: bool
+    builder_universe_mode: str
     # Mode autonome 24/24 (11/02/2026)
     builder_autonomous: bool
     builder_auto_pause: int       # Pause en secondes entre runs (0-120)
@@ -438,6 +506,8 @@ class SidebarState:
     builder_multi_llm_enabled: bool
     builder_multi_llm_profile: str
     builder_multi_llm_role_overrides: Dict[str, List[str]]
+    builder_flow_analysis_enabled: bool
+    builder_flow_analysis_ablation: Dict[str, bool]
     builder_use_parametric_catalog: bool  # Compat legacy, forcé à False dans l'UI Builder
 
     def __post_init__(self) -> None:
@@ -453,3 +523,8 @@ class SidebarState:
         assert self.initial_capital >= 0
         assert self.builder_keep_alive_minutes >= 0
         assert self.builder_execution_mode in BUILDER_EXECUTION_MODE_OPTIONS
+        self.builder_universe_mode = normalize_universe_mode(
+            self.builder_universe_mode,
+            purpose="builder",
+        )
+        assert self.builder_universe_mode in BUILDER_UNIVERSE_MODE_OPTIONS
