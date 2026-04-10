@@ -319,6 +319,39 @@ def run_builder_loop_v2(
             if not selected_outcome or selected_outcome.get("error"):
                 iteration.error = (selected_outcome or {}).get("error", "Aucune branche exploitable")
                 consecutive_failures += 1
+                if selected_outcome:
+                    if selected_outcome.get("proposal_feedback"):
+                        iteration.phase_feedback["proposal"] = selected_outcome.get(
+                            "proposal_feedback",
+                            {},
+                        )
+                    if selected_outcome.get("code_feedback"):
+                        iteration.phase_feedback["code"] = selected_outcome.get(
+                            "code_feedback",
+                            {},
+                        )
+                    if selected_outcome.get("precheck_feedback"):
+                        iteration.phase_feedback["precheck"] = selected_outcome.get(
+                            "precheck_feedback",
+                            {},
+                        )
+                    if selected_outcome.get("pre_reflection_feedback"):
+                        iteration.phase_feedback["pre_reflection"] = selected_outcome.get(
+                            "pre_reflection_feedback",
+                            {},
+                        )
+                    if selected_outcome.get("backtest_feedback"):
+                        iteration.phase_feedback["backtest"] = selected_outcome.get(
+                            "backtest_feedback",
+                            {},
+                        )
+                    failure_payload = {
+                        "branch_label": selected_outcome.get("branch_label"),
+                        "failure_stage": selected_outcome.get("failure_stage"),
+                        "traceback_tail": selected_outcome.get("traceback_tail"),
+                        "checkpoint_file": selected_outcome.get("checkpoint_file"),
+                    }
+                    iteration.phase_feedback["execution"] = failure_payload
                 iteration.phase_feedback.setdefault("proposal", {})["branching"] = {
                     "enabled": len(proposal_candidates) > 1,
                     "candidates": [
@@ -350,6 +383,7 @@ def run_builder_loop_v2(
             sharpe = float(selected_outcome.get("sharpe", float("-inf")) or float("-inf"))
             iteration.code = code
             iteration.backtest_result = bt_result
+            builder._persist_session_strategy_code(session, code)
             iteration.phase_feedback["proposal"] = selected_outcome.get("proposal_feedback", {})
             if len(proposal_candidates) > 1:
                 iteration.phase_feedback.setdefault("proposal", {})["branching"] = {
@@ -396,6 +430,16 @@ def run_builder_loop_v2(
                 phase="backtest",
                 sharpe=bt_result.metrics.get("sharpe_ratio", 0.0),
                 total_return_pct=bt_result.metrics.get("total_return_pct", 0.0),
+                evaluation_mode=(
+                    iteration.phase_feedback.get("backtest", {}).get("mode", "single")
+                ),
+                sweep_total_tested=int(
+                    iteration.phase_feedback.get("backtest", {}).get(
+                        "sweep_total_tested",
+                        0,
+                    )
+                    or 0
+                ),
                 backtest_skipped=bool(
                     iteration.phase_feedback.get("precheck", {}).get(
                         "backtest_skipped"

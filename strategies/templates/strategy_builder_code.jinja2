@@ -25,6 +25,7 @@ Do NOT output explanations before/after code.
 {% if proposal.default_params %}
 - Default params: {{ proposal.default_params|tojson }}
 {% endif %}
+- Reminder: `default_params` and `parameter_specs` feed a limited Builder sweep after code generation, so keep names/types aligned with the actual signal logic.
 
 ## MARKET CONTEXT
 - Symbol: {{ symbol|default("UNKNOWN") }}

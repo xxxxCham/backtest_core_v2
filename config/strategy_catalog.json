@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-04-10T01:05:23Z",
+  "updated_at": "2026-04-10T13:50:26Z",
   "entries": [
     {
       "id": "builder_generated|ARBUSDC|1d|cd214eb66077",
@@ -538,7 +538,7 @@
         "universe_strategy_type": ""
       },
       "created_at": "2026-04-09T13:15:58Z",
-      "updated_at": "2026-04-10T01:05:23Z"
+      "updated_at": "2026-04-10T07:35:10Z"
     },
     {
       "id": "builder_generated|BTCUSDC|1h|d65d69c2919b",
@@ -1811,6 +1811,118 @@
       },
       "created_at": "2026-04-10T00:16:05Z",
       "updated_at": "2026-04-10T00:24:18Z"
+    },
+    {
+      "id": "builder_generated|BTCUSDC|1w|f8d61b65fce9",
+      "strategy_name": "builder_generated",
+      "symbol": "BTCUSDC",
+      "timeframe": "1w",
+      "params_hash": "f8d61b65fce9",
+      "category": "p2_positive_observed",
+      "status": "active",
+      "tags": [
+        "builder_out",
+        "universe_canonical"
+      ],
+      "note": "Strat\u00e9gie de Scalping sur BTCUSDC 1w. Indicateurs : BOLLINGER + EMA + ATR. Entr\u00e9e rapide sur signal BOLLINGER avec confirmation EMA sur timeframe court. Sortie rapide : take-profit serr\u00e9 (1-1.5x ATR), stop-loss serr\u00e9 (0.5-1x ATR). Stop-loss dynamique bas\u00e9 sur ATR (1.3x), ratio risk/reward 2.9:1.",
+      "builder_state": "completed",
+      "last_metrics_snapshot": {
+        "total_pnl": 11662.056315302634,
+        "total_return_pct": 116.62056315302634,
+        "annualized_return": 11.346928436703173,
+        "benchmark_return_pct": 1922.896708911193,
+        "alpha_simple_pct": -1806.2761457581666,
+        "sharpe_ratio": 1.0644281711923527,
+        "sortino_ratio": 1.2882782253544947,
+        "max_drawdown_pct": -58.22167229300466,
+        "volatility_annual": 72.83412379118336,
+        "max_drawdown_duration_days": 1008.0,
+        "account_ruined": false,
+        "ruin_time": null,
+        "min_equity": 4177.832770699534,
+        "max_drawdown_pct_raw": -58.22167229300466,
+        "max_drawdown_pct_capped": -58.22167229300466,
+        "total_trades": 27,
+        "win_rate_pct": 44.44444444444444,
+        "profit_factor": 1.5571579616756213,
+        "avg_win": 2716.115400240172,
+        "avg_loss": -1395.4218991719629,
+        "largest_win": 5573.693304625207,
+        "largest_loss": -2934.9264093930365,
+        "avg_trade_duration_hours": 1294.2222222222222,
+        "expectancy": 431.9280116778752,
+        "risk_reward_ratio": 1.9464474520945263,
+        "calmar_ratio": 0.19489183305486243,
+        "tier_s": null,
+        "data_coverage_pct": 100.0
+      },
+      "source": "builder",
+      "meta": {
+        "session_id": "20260410_151504_strat_gie_de_scalping_sur_btcusdc_1w_ind",
+        "best_sharpe": 1.0644281711923527,
+        "total_iterations": 1,
+        "universe_mode": "canonical",
+        "universe_purpose": "builder_autonomous",
+        "universe_strategy_type": "scalping"
+      },
+      "created_at": "2026-04-10T13:17:32Z",
+      "updated_at": "2026-04-10T13:17:32Z"
+    },
+    {
+      "id": "builder_generated|APTUSDC|1d|ac6e75cd7522",
+      "strategy_name": "builder_generated",
+      "symbol": "APTUSDC",
+      "timeframe": "1d",
+      "params_hash": "ac6e75cd7522",
+      "category": "p1_builder_inbox",
+      "status": "active",
+      "tags": [
+        "builder_out",
+        "universe_canonical"
+      ],
+      "note": "Strat\u00e9gie de Regime-adaptatif sur APTUSDC 1d. Indicateurs : KELTNER + VWAP + ATR. D\u00e9clencher uniquement quand KELTNER et VWAP confirment le meme regime de marche. Sortie adaptative : TP agressif en tendance, TP prudent en range. Stop serr\u00e9 1.3x ATR pour limiter le drawdown, TP \u00e0 2.5x ATR.",
+      "builder_state": "in_progress",
+      "last_metrics_snapshot": {
+        "total_pnl": 0.0,
+        "total_return_pct": 0.0,
+        "annualized_return": 0.0,
+        "benchmark_return_pct": -91.57300549411919,
+        "alpha_simple_pct": 91.57300549411919,
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "volatility_annual": 0.0,
+        "max_drawdown_duration_days": 0.0,
+        "account_ruined": false,
+        "ruin_time": null,
+        "min_equity": 10000.0,
+        "max_drawdown_pct_raw": 0.0,
+        "max_drawdown_pct_capped": 0.0,
+        "total_trades": 0,
+        "win_rate_pct": 0.0,
+        "profit_factor": 0,
+        "avg_win": 0,
+        "avg_loss": 0,
+        "largest_win": 0,
+        "largest_loss": 0,
+        "avg_trade_duration_hours": 0,
+        "expectancy": 0,
+        "risk_reward_ratio": 0,
+        "calmar_ratio": 0,
+        "tier_s": null,
+        "data_coverage_pct": 100.0
+      },
+      "source": "builder",
+      "meta": {
+        "session_id": "20260410_151811_strat_gie_de_regime_adaptatif_sur_aptusd",
+        "best_sharpe": 0.0,
+        "total_iterations": 9,
+        "universe_mode": "canonical",
+        "universe_purpose": "builder_autonomous",
+        "universe_strategy_type": "trend"
+      },
+      "created_at": "2026-04-10T13:21:40Z",
+      "updated_at": "2026-04-10T13:50:26Z"
     }
   ]
 }

@@ -1731,6 +1731,55 @@ def test_recover_autonomous_history_entry_from_disk_restores_metrics_from_sessio
     assert recovered["recovered_from_summary"] is True
 
 
+def test_recover_autonomous_history_entry_from_disk_uses_runtime_checkpoint_without_summary(tmp_path, monkeypatch):
+    sandbox_root = tmp_path / "sandbox_strategies"
+    session_dir = sandbox_root / "20260410_080512_checkpoint_only"
+    session_dir.mkdir(parents=True)
+    (session_dir / "runtime_checkpoint.json").write_text(
+        json.dumps(
+            {
+                "session_id": session_dir.name,
+                "objective": "Strategie sur XRPUSDC 1h. Exemple objectif.",
+                "iteration": 1,
+                "stage": "save_and_load",
+                "status": "error",
+                "error": "RuntimeError: checkpoint recovered",
+                "traceback_tail": "Traceback checkpoint recovered",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(builder_view_module, "SANDBOX_ROOT", sandbox_root)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_autonomous_runtime_state",
+        lambda: {"last_session_id": session_dir.name},
+    )
+
+    entry = {
+        "session_num": 908,
+        "objective": "Strategie sur XRPUSDC 1h. Exemple objectif.",
+        "status": "crash",
+        "source_label": "LLM",
+        "best_sharpe": None,
+        "best_score": None,
+        "best_return": None,
+        "best_max_dd": None,
+        "best_pf": None,
+        "best_trades": None,
+        "n_iterations": 0,
+        "session_id": "",
+    }
+
+    recovered = builder_view_module._recover_autonomous_history_entry_from_disk(entry)
+
+    assert recovered["session_id"] == session_dir.name
+    assert recovered["last_runtime_error"] == "RuntimeError: checkpoint recovered"
+    assert recovered["last_runtime_error_iteration"] == 1
+    assert recovered["last_runtime_traceback_tail"] == "Traceback checkpoint recovered"
+    assert recovered["recovered_from_runtime_checkpoint"] is True
+
+
 def test_finalize_multi_llm_session_review_persists_continuity_context(tmp_path):
     session_dir = tmp_path / "builder_session_multi"
     session_dir.mkdir(parents=True)

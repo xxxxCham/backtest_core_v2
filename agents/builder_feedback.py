@@ -123,12 +123,23 @@ class PreReflectionFeedbackSection(FeedbackSection):
 class BacktestFeedbackSection(FeedbackSection):
     KNOWN_KEYS = frozenset(
         {
+            "mode",
+            "params_used",
             "runtime_error",
             "runtime_traceback_tail",
             "runtime_fix_applied",
             "runtime_fix_retry_error",
             "runtime_fix_validation_error",
             "runtime_fix_fallback_deterministic_used",
+            "sweep_skipped_reason",
+            "sweep_total_tested",
+            "sweep_success",
+            "sweep_failed",
+            "sweep_duration_ms",
+            "sweep_param_names",
+            "sweep_candidate_values",
+            "sweep_best_params",
+            "sweep_top_results",
         }
     )
 

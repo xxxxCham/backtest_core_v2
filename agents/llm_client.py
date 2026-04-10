@@ -325,12 +325,21 @@ class OllamaClient(LLMClient):
             payload["format"] = "json"
 
         start_time = time.time()
-        response = self._http_client.post(
-            url,
-            json=payload,
-            timeout=self._adaptive_timeout,
-        )
-        response.raise_for_status()
+        try:
+            response = self._http_client.post(
+                url,
+                json=payload,
+                timeout=self._adaptive_timeout,
+            )
+            response.raise_for_status()
+        except Exception as exc:
+            logger.warning("Ollama /api/generate échoué: %s", exc)
+            return LLMResponse(
+                content="",
+                model=self.config.model,
+                provider=LLMProvider.OLLAMA,
+                parse_error=f"generate fallback failed: {exc}",
+            )
 
         data = response.json()
         latency = (time.time() - start_time) * 1000
@@ -357,6 +366,13 @@ class OllamaClient(LLMClient):
             llm_response.parse_json()
 
         return llm_response
+
+    def close(self) -> None:
+        """Ferme le client HTTP sous-jacent."""
+        try:
+            self._http_client.close()
+        except Exception:  # noqa: BLE001
+            pass
 
     def is_available(self) -> bool:
         """Vérifie si Ollama est disponible."""
@@ -625,6 +641,13 @@ class OpenAIClient(LLMClient):
                 "Content-Type": "application/json",
             },
         )
+
+    def close(self) -> None:
+        """Ferme le client HTTP sous-jacent."""
+        try:
+            self._http_client.close()
+        except Exception:  # noqa: BLE001
+            pass
 
     def is_available(self) -> bool:
         """Vérifie si l'API OpenAI est disponible."""

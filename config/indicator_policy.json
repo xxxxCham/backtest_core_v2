@@ -1,0 +1,29 @@
+{
+  "_comment": "Politique de diversité des indicateurs pour le Strategy Builder.",
+  "_doc": {
+    "history_length": "Nombre de runs mémorisés (FIFO) pour les pénalités inter-sessions.",
+    "ban_threshold": "Nombre d'apparitions dans les derniers 'history_length' runs pour déclencher un bannissement.",
+    "ban_duration": "Nombre de runs pendant lesquels un indicateur banni est exclu.",
+    "family_penalty_runs": "Nombre de familles récentes dont les indicateurs reçoivent un malus.",
+    "previous_penalty": "Malus de score appliqué aux indicateurs déjà vus dans les runs récents (>0 = pénalité).",
+    "novelty_bonus": "Bonus de score accordé aux indicateurs jamais vus récemment.",
+    "family_penalty": "Malus additionnel pour les indicateurs appartenant à une famille récemment utilisée.",
+    "family_bonus": "Bonus pour les indicateurs appartenant à une famille peu utilisée récemment.",
+    "category_sampling_enabled": "Active le mode de sélection par quota de familles.",
+    "category_min_families": "Nombre minimum de familles distinctes à représenter quand category_sampling est actif.",
+    "history_file": "Chemin relatif (depuis la racine du projet) vers le fichier JSON d'historique.",
+    "enabled": "Désactivez pour revenir au comportement d'origine (pas de persistance inter-sessions)."
+  },
+  "enabled": true,
+  "history_length": 10,
+  "ban_threshold": 4,
+  "ban_duration": 3,
+  "family_penalty_runs": 3,
+  "previous_penalty": 0.50,
+  "novelty_bonus": 0.60,
+  "family_penalty": 0.25,
+  "family_bonus": 0.15,
+  "category_sampling_enabled": false,
+  "category_min_families": 2,
+  "history_file": "config/indicator_history.json"
+}

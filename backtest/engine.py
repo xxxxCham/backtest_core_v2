@@ -610,7 +610,7 @@ class BacktestEngine:
             finite_values = eq_values[np.isfinite(eq_values)]
             min_equity = float(finite_values.min()) if finite_values.size > 0 else float(initial_capital)
             total_pnl = final_equity - initial_capital
-            total_return_pct = (total_pnl / initial_capital) * 100
+            total_return_pct = (total_pnl / initial_capital) * 100 if initial_capital != 0.0 else 0.0
             account_ruined = bool(min_equity <= 0.0 or final_equity <= 0.0 or total_return_pct <= -100.0)
         else:
             total_pnl = 0.0
@@ -644,7 +644,12 @@ class BacktestEngine:
         # Max drawdown simple
         if not equity.empty and len(equity) > 0:
             running_max = np.maximum.accumulate(equity.values)
-            drawdown = (equity.values - running_max) / running_max
+            with np.errstate(divide="ignore", invalid="ignore"):
+                drawdown = np.where(
+                    running_max > 0.0,
+                    (equity.values - running_max) / running_max,
+                    0.0,
+                )
             max_dd = drawdown.min() * 100  # En %
             metrics["max_drawdown_pct"] = max(-100.0, max_dd)  # Plafonné à -100%
             metrics["max_drawdown"] = metrics["max_drawdown_pct"]  # Alias

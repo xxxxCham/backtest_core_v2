@@ -460,6 +460,21 @@ _INDICATOR_NOVELTY_BONUS = 0.40
 _INDICATOR_NOISE_WEIGHT = 0.12
 _INDICATOR_BASELINE_UTILITY_BONUS = 0.05
 
+# Mapping indicateur → famille (chargé paresseusement, partagé en mémoire)
+_INDICATOR_FAMILY_MAP_CACHE: Optional[Dict[str, str]] = None
+
+
+def _get_indicator_family_map() -> Dict[str, str]:
+    """Retourne le mapping indicateur→famille (construit une seule fois par processus)."""
+    global _INDICATOR_FAMILY_MAP_CACHE
+    if _INDICATOR_FAMILY_MAP_CACHE is None:
+        try:
+            from config.indicator_history import build_indicator_to_family_map
+            _INDICATOR_FAMILY_MAP_CACHE = build_indicator_to_family_map()
+        except Exception:
+            _INDICATOR_FAMILY_MAP_CACHE = {}
+    return _INDICATOR_FAMILY_MAP_CACHE
+
 
 def _tokenize_indicator_selection_text(*texts: Any) -> set[str]:
     tokens: set[str] = set()
@@ -545,18 +560,39 @@ def rank_indicator_selection(
     previous_indicators: Optional[Iterable[str]] = None,
     session_seed: str = "",
     prefer_diversity: bool = False,
+    # ── Nouvelles options de diversité inter-sessions ──────────────────────
+    banned_indicators: Optional[Iterable[str]] = None,
+    previous_families: Optional[Iterable[str]] = None,
+    family_penalty: float = 0.0,
+    family_bonus: float = 0.0,
+    inter_session_penalty: float = 0.0,
+    inter_session_novelty_bonus: float = 0.0,
+    inter_session_indicators: Optional[Iterable[str]] = None,
 ) -> List[str]:
     """Classe les indicateurs pour le prompt Builder.
 
-    Le classement combine deux contraintes liees :
-    - ordre pseudo-aleatoire mais stable pour une session donnee ;
-    - biais de pertinence vis-a-vis de l'objectif et du diagnostic courant.
+    Le classement combine deux contraintes liées :
+    - ordre pseudo-aléatoire mais stable pour une session donnée ;
+    - biais de pertinence vis-à-vis de l'objectif et du diagnostic courant.
 
     Important : cette fonction ne retire jamais d'indicateur, ne maintient aucune
-    memoire punitive entre sessions, et n'utilise pas les performances passees pour
-    "condamner" un indicateur. Les ajustements de diversite restent conservateurs,
-    mais ils doivent etre assez visibles pour encourager de vrais ajouts/retraits
-    d'indicateurs quand une session stagne.
+    mémoire punitive entre sessions, et n'utilise pas les performances passées pour
+    "condamner" un indicateur (sauf via les arguments optionnels ci-dessous).
+    Les ajustements de diversité restent conservateurs.
+
+    Args supplémentaires (diversité inter-sessions) :
+        banned_indicators: Indicateurs à filtrer complètement de la liste.
+        previous_families: Familles récemment utilisées — leurs indicateurs
+            reçoivent un malus ``family_penalty``.
+        family_penalty: Malus appliqué aux indicateurs appartenant à une
+            famille de ``previous_families``.
+        family_bonus: Bonus pour les indicateurs dans une famille non récente.
+        inter_session_penalty: Malus appliqué aux indicateurs présents dans
+            ``inter_session_indicators`` (historique inter-sessions).
+        inter_session_novelty_bonus: Bonus accordé aux indicateurs absents
+            de l'historique inter-sessions.
+        inter_session_indicators: Indicateurs vus dans les runs précédents
+            (passé depuis ``config.indicator_history``).
     """
     query_tokens = _build_indicator_query_tokens(objective, diagnostic)
     previous = {
@@ -564,10 +600,34 @@ def rank_indicator_selection(
         for ind in (previous_indicators or [])
         if str(ind or "").strip()
     }
+    banned = {
+        str(ind or "").strip().lower()
+        for ind in (banned_indicators or [])
+        if str(ind or "").strip()
+    }
+    recent_families = {
+        str(fam or "").strip().lower()
+        for fam in (previous_families or [])
+        if str(fam or "").strip()
+    }
+    inter_session = {
+        str(ind or "").strip().lower()
+        for ind in (inter_session_indicators or [])
+        if str(ind or "").strip()
+    }
+
+    # Charger le mapping famille une seule fois si on a besoin des malus/bonus
+    family_map: Dict[str, str] = (
+        _get_indicator_family_map()
+        if (recent_families or family_penalty or family_bonus)
+        else {}
+    )
+
+    # Filtrer les indicateurs bannis
     normalized = [
         str(ind or "").strip()
         for ind in (available_indicators or [])
-        if str(ind or "").strip()
+        if str(ind or "").strip() and str(ind or "").strip().lower() not in banned
     ]
     if not normalized:
         return []
@@ -587,6 +647,7 @@ def rank_indicator_selection(
         if key in summary_lower:
             relevance_score += _INDICATOR_DIAGNOSTIC_MATCH_BONUS
 
+        # ── Pénalité/bonus intra-session (previous_indicators) ────────────
         if previous:
             if key in previous:
                 relevance_score += (
@@ -596,6 +657,22 @@ def rank_indicator_selection(
                 )
             elif prefer_diversity:
                 relevance_score += _INDICATOR_NOVELTY_BONUS
+
+        # ── Pénalité/bonus inter-sessions ─────────────────────────────────
+        if inter_session:
+            if key in inter_session:
+                relevance_score -= inter_session_penalty
+            elif inter_session_novelty_bonus:
+                relevance_score += inter_session_novelty_bonus
+
+        # ── Pénalité/bonus famille ─────────────────────────────────────────
+        if family_map and (family_penalty or family_bonus):
+            ind_family = family_map.get(key, "")
+            if ind_family:
+                if ind_family in recent_families and family_penalty:
+                    relevance_score -= family_penalty
+                elif ind_family not in recent_families and family_bonus:
+                    relevance_score += family_bonus
 
         if key == "atr":
             relevance_score += _INDICATOR_BASELINE_UTILITY_BONUS

@@ -31,8 +31,9 @@ from agents.strategy_builder import (
     _postprocess_llm_logic_block,
     _proposal_changes_indicator_set_in_params_mode,
     _proposal_has_meaningful_param_delta,
-    _telemetry_score_from_metrics,
     _rewrite_default_params_from_proposal,
+    _safe_format_exception,
+    _telemetry_score_from_metrics,
     _validate_llm_logic_block,
     compute_builder_telemetry_score,
 )
@@ -74,6 +75,7 @@ class BuilderCandidateExecutorV2:
             "sharpe": float("-inf"),
             "target_sharpe": float(context.session.target_sharpe or 1.0),
             "telemetry_score": None,
+            "checkpoint_file": "runtime_checkpoint.json",
         }
         self.change_type = _normalize_change_type(
             self.candidate_proposal.get("change_type", "logic")
@@ -94,6 +96,7 @@ class BuilderCandidateExecutorV2:
         self.precheck_feedback: Dict[str, Any] = {}
         self.backtest_feedback: Dict[str, Any] = {}
         self.pre_reflection_feedback: Dict[str, Any] = {}
+        self.current_stage = "init"
         self.req_inds = [
             str(x).strip().lower()
             for x in self.candidate_proposal.get("used_indicators", [])
@@ -104,39 +107,99 @@ class BuilderCandidateExecutorV2:
         try:
             self._apply_change_type_policy()
             code = self._resolve_candidate_code()
+            self._checkpoint("code_generated", "ok")
+            self.current_stage = "save_and_load"
+            self._checkpoint("save_and_load", "start")
             strategy_cls = self.builder._save_and_load(
                 self.ctx.session,
                 code,
                 self.ctx.iteration_num,
             )
+            self._checkpoint("save_and_load", "ok")
             if self.builder.ablation.is_enabled("auto_fix_indicators"):
                 strategy_cls = self.builder._auto_fix_required_indicators(
                     strategy_cls,
                     code,
                 )
+            self.current_stage = "precheck"
+            self._checkpoint("precheck", "start")
             signal_probe = self.builder._precheck_signal_counts(
                 strategy_cls,
                 self.ctx.data,
                 self.candidate_proposal.get("default_params", {}),
+            )
+            self.precheck_feedback.update(
+                {
+                    "signal_count": int(signal_probe.get("total_signals", 0) or 0),
+                    "bar_count": int(len(self.ctx.data.index)),
+                }
+            )
+            self._checkpoint(
+                "precheck",
+                "ok",
+                extra={"signal_probe": dict(signal_probe or {})},
             )
             code, bt_result = self._execute_backtest_pipeline(
                 strategy_cls,
                 code,
                 signal_probe,
             )
+            self.current_stage = "finalize"
             self._finalize_success(code, bt_result)
+            self._checkpoint("iteration_complete", "ok")
             self.builder._instrument_candidate_outcome(
                 self.outcome,
                 self.ctx.iteration_num,
             )
             return self.outcome, self.ctx.fallback_count
-        except Exception as exc:
-            self.outcome["error"] = f"{type(exc).__name__}: {exc}"
+        except BaseException as exc:
+            failure_text = f"{type(exc).__name__}: {exc}"
+            traceback_tail = _safe_format_exception(exc)
+            self.outcome["error"] = failure_text
+            self.outcome["failure_stage"] = self.current_stage
+            self.outcome["traceback_tail"] = traceback_tail
+            self.outcome["proposal_feedback"] = self.candidate_feedback
+            self.outcome["code_feedback"] = self.code_feedback
+            self.outcome["precheck_feedback"] = self.precheck_feedback
+            self.outcome["pre_reflection_feedback"] = self.pre_reflection_feedback
+            self.outcome["backtest_feedback"] = self.backtest_feedback
+            self._checkpoint(
+                self.current_stage or "unknown",
+                "error",
+                error=failure_text,
+                traceback_tail=traceback_tail,
+            )
             self.builder._instrument_candidate_outcome(
                 self.outcome,
                 self.ctx.iteration_num,
             )
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                raise
             return self.outcome, self.ctx.fallback_count
+
+    def _checkpoint(
+        self,
+        stage: str,
+        status: str,
+        *,
+        error: str = "",
+        traceback_tail: str = "",
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self.builder._persist_runtime_checkpoint(
+            self.ctx.session,
+            iteration_num=self.ctx.iteration_num,
+            stage=stage,
+            status=status,
+            branch_label=self.ctx.branch_label,
+            error=error,
+            traceback_tail=traceback_tail,
+            proposal_feedback=self.candidate_feedback,
+            code_feedback=self.code_feedback,
+            precheck_feedback=self.precheck_feedback,
+            backtest_feedback=self.backtest_feedback,
+            extra=extra,
+        )
 
     def _apply_change_type_policy(self) -> None:
         last_iteration = self.ctx.last_iteration
@@ -339,6 +402,11 @@ class BuilderCandidateExecutorV2:
     ) -> tuple[str, Any]:
         if not signal_probe.get("ok"):
             self.precheck_feedback["backtest_skipped"] = True
+            self._checkpoint(
+                "precheck",
+                "blocked",
+                extra={"signal_probe": dict(signal_probe or {})},
+            )
             return code, self._empty_backtest_result()
 
         if (
@@ -351,6 +419,11 @@ class BuilderCandidateExecutorV2:
                     "skip_reason": "pathological_signal_density",
                     "backtest_skipped": True,
                 }
+            )
+            self._checkpoint(
+                "precheck",
+                "blocked",
+                extra={"signal_probe": dict(signal_probe or {})},
             )
             return code, self.builder._build_precheck_overtrading_result(signal_probe)
 
@@ -381,7 +454,10 @@ class BuilderCandidateExecutorV2:
                 pre_reflection_future = None
 
             try:
+                self.current_stage = "backtest"
+                self._checkpoint("backtest", "start")
                 bt_result = self._run_backtest(strategy_cls)
+                self._checkpoint("backtest", "ok")
             except (
                 ValueError,
                 KeyError,
@@ -392,6 +468,22 @@ class BuilderCandidateExecutorV2:
                 NameError,
             ) as bt_exc:
                 code, bt_result = self._recover_runtime_failure(code, bt_exc)
+
+            best_params = self.backtest_feedback.get("params_used")
+            if isinstance(best_params, dict) and best_params:
+                self.candidate_proposal["default_params"] = dict(best_params)
+                parameter_specs = self.candidate_proposal.get("parameter_specs", {})
+                if isinstance(parameter_specs, dict):
+                    for param_name, param_value in best_params.items():
+                        spec = parameter_specs.get(param_name)
+                        if isinstance(spec, dict):
+                            spec["default"] = param_value
+                patched_code = _rewrite_default_params_from_proposal(
+                    code,
+                    self.candidate_proposal,
+                )
+                if patched_code:
+                    code = patched_code
             return code, bt_result
         finally:
             if pre_reflection_future is not None:
@@ -420,7 +512,18 @@ class BuilderCandidateExecutorV2:
     ) -> tuple[str, Any]:
         bt_error = f"{type(bt_exc).__name__}: {bt_exc}"
         self.backtest_feedback["runtime_error"] = bt_error
+        self.backtest_feedback["runtime_traceback_tail"] = _safe_format_exception(
+            bt_exc
+        )
+        self.current_stage = "runtime_fix"
+        self._checkpoint(
+            "backtest",
+            "error",
+            error=bt_error,
+            traceback_tail=self.backtest_feedback["runtime_traceback_tail"],
+        )
         if self.builder.ablation.is_enabled("runtime_fix"):
+            self._checkpoint("runtime_fix", "start")
             retry_code = self.builder._retry_code_runtime_fix(
                 proposal=self.candidate_proposal,
                 failing_code=code,
@@ -476,17 +579,20 @@ class BuilderCandidateExecutorV2:
             IndexError,
             NameError,
         ) as retry_bt_exc:
+            retry_bt_error = f"{type(retry_bt_exc).__name__}: {retry_bt_exc}"
+            self.backtest_feedback["runtime_fix_retry_error"] = retry_bt_error
+            self._checkpoint(
+                "runtime_fix",
+                "error",
+                error=retry_bt_error,
+                traceback_tail=_safe_format_exception(retry_bt_exc),
+            )
             if used_runtime_fallback:
-                self.outcome["error"] = (
-                    f"{type(retry_bt_exc).__name__}: {retry_bt_exc}"
-                )
+                self.outcome["error"] = retry_bt_error
                 self.outcome["code_feedback"] = self.code_feedback
                 self.outcome["backtest_feedback"] = self.backtest_feedback
                 raise RuntimeError(str(self.outcome["error"]))
 
-            self.backtest_feedback["runtime_fix_retry_error"] = (
-                f"{type(retry_bt_exc).__name__}: {retry_bt_exc}"
-            )
             fallback_code = self._next_fallback_code()
             valid_fb2, fb_err2 = validate_generated_code(fallback_code)
             if not valid_fb2:
@@ -507,7 +613,9 @@ class BuilderCandidateExecutorV2:
                     fallback_cls,
                     fallback_code,
                 )
+            self._checkpoint("runtime_fix_fallback_backtest", "start")
             bt_result = self._run_backtest(fallback_cls)
+            self._checkpoint("runtime_fix_fallback_backtest", "ok")
             retry_code = fallback_code
             self.backtest_feedback[
                 "runtime_fix_fallback_deterministic_used"
@@ -515,20 +623,49 @@ class BuilderCandidateExecutorV2:
             self.code_feedback["source"] = "deterministic_fallback"
 
         self.backtest_feedback["runtime_fix_applied"] = True
+        self._checkpoint("runtime_fix", "ok")
         return retry_code, bt_result
 
     def _run_backtest(self, strategy_cls: Any) -> Any:
-        return self.builder._run_backtest(
+        if (
+            self.candidate_feedback.get("fallback_deterministic_used")
+            or self.candidate_feedback.get("source") == "deterministic_fallback"
+        ):
+            params = dict(self.candidate_proposal.get("default_params", {}) or {})
+            self.backtest_feedback.update(
+                {
+                    "mode": "single",
+                    "params_used": dict(params),
+                    "sweep_skipped_reason": "deterministic_fallback",
+                }
+            )
+            return self.builder._run_backtest(
+                strategy_cls,
+                self.ctx.data,
+                params,
+                self.ctx.initial_capital,
+                symbol=self.ctx.session.symbol,
+                timeframe=self.ctx.session.timeframe,
+                fees_bps=self.ctx.session.fees_bps,
+                slippage_bps=self.ctx.session.slippage_bps,
+                direction_constraint=self.ctx.session.direction_constraint,
+            )
+
+        bt_result, feedback = self.builder._run_backtest_with_optional_sweep(
             strategy_cls,
             self.ctx.data,
-            self.candidate_proposal.get("default_params", {}),
-            self.ctx.initial_capital,
+            self.candidate_proposal,
+            initial_capital=self.ctx.initial_capital,
             symbol=self.ctx.session.symbol,
             timeframe=self.ctx.session.timeframe,
             fees_bps=self.ctx.session.fees_bps,
             slippage_bps=self.ctx.session.slippage_bps,
             direction_constraint=self.ctx.session.direction_constraint,
+            target_sharpe=self.ctx.session.target_sharpe,
         )
+        if isinstance(feedback, dict):
+            self.backtest_feedback.update(feedback)
+        return bt_result
 
     def _finalize_success(self, code: str, bt_result: Any) -> None:
         metrics_cur = bt_result.metrics or {}

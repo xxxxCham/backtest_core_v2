@@ -28,6 +28,8 @@ Do NOT output markdown outside the requested JSON.
 - Bars: {{ n_bars|default(0) }}{% if date_range_start %} ({{ date_range_start }} -> {{ date_range_end }}){% endif %}
 - Costs: fees={{ fees_bps|default(10) }} bps, slippage={{ slippage_bps|default(5) }} bps
 - Capital: {{ initial_capital|default(10000) }}
+- Evaluation: the Builder runs a limited parameter sweep from your `parameter_specs`, then keeps the best combination as the canonical result.
+- Keep the sweep compact: prioritize 2 to 4 impactful numeric params with realistic min/max/default/step values.
 
 ## AVAILABLE INDICATORS (ONLY THESE)
 - Order is session-stable and lightly re-ranked for this objective/diagnostic to reduce fixed-position bias.
@@ -64,6 +66,19 @@ Do NOT output markdown outside the requested JSON.
 - Trades: {{ last_metrics.total_trades }}
 - WinRate: {{ last_metrics.win_rate_pct|format_float(1) }}%
 - ProfitFactor: {{ last_metrics.profit_factor|format_float(2) }}
+{% endif %}
+
+{% if last_sweep %}
+## LAST PARAMETER SWEEP
+- Tested: {{ last_sweep.total_tested|default(0) }} combos ({{ last_sweep.success|default(0) }} ok / {{ last_sweep.failed|default(0) }} failed)
+- Best params: {{ last_sweep.best_params|tojson }}
+{% if last_sweep.top_results and last_sweep.top_results|length > 0 %}
+- Best candidates:
+{% for row in last_sweep.top_results %}
+  - score={{ row.telemetry_score|default(0)|format_float(2) }} sharpe={{ row.sharpe_ratio|default(0)|format_float(3) }} ret={{ row.total_return_pct|default(0)|format_float(2) }}% dd={{ row.max_drawdown_pct|default(0)|format_float(2) }}% trades={{ row.total_trades|default(0) }} params={{ row.params|tojson }}
+{% endfor %}
+{% endif %}
+- Use this feedback: if the best combo is still weak, change logic or indicators. If the edge is visible, refine the ranges instead of widening them blindly.
 {% endif %}
 
 {% if diagnostic %}
@@ -122,7 +137,7 @@ Required behavior:
 {% if iteration_history and iteration_history|length > 0 %}
 ## ITERATION HISTORY (LAST {{ iteration_history|length }})
 {% for h in iteration_history %}
-- iter={{ h.iteration }} | sharpe={{ h.sharpe|default("?") }} ret={{ h.return_pct|default("?") }}% dd={{ h.max_drawdown_pct|default("?") }}% wr={{ h.win_rate|default("?") }}% pf={{ h.profit_factor|default("?") }} trades={{ h.trades|default("?") }} | change={{ h.change_type|default("?") }} diag={{ h.diagnostic_category|default("-") }} → {{ h.decision|default("?") }}{% if h.indicators and h.indicators|length > 0 %} | indicators=[{{ h.indicators|join(", ") }}]{% endif %}{% if h.is_fallback %} [FALLBACK]{% endif %}{% if h.error %} [ERROR: {{ h.error[:60] }}]{% endif %}
+- iter={{ h.iteration }} | sharpe={{ h.sharpe|default("?") }} ret={{ h.return_pct|default("?") }}% dd={{ h.max_drawdown_pct|default("?") }}% wr={{ h.win_rate|default("?") }}% pf={{ h.profit_factor|default("?") }} trades={{ h.trades|default("?") }} | change={{ h.change_type|default("?") }} diag={{ h.diagnostic_category|default("-") }} → {{ h.decision|default("?") }}{% if h.indicators and h.indicators|length > 0 %} | indicators=[{{ h.indicators|join(", ") }}]{% endif %}{% if h.evaluation_mode == "sweep" %} | sweep={{ h.sweep_total_tested|default("?") }} combos{% endif %}{% if h.params_used %} | params={{ h.params_used|tojson }}{% endif %}{% if h.is_fallback %} [FALLBACK]{% endif %}{% if h.error %} [ERROR: {{ h.error[:60] }}]{% endif %}
 {% endfor %}
 {% endif %}
 
@@ -141,6 +156,7 @@ Required behavior:
 - hypothesis and logic fields must be concrete and actionable.
 - Include ATR risk management in risk_management and params.
 - change_type must be exactly one of: logic, params, both, accept.
+- `parameter_specs` are executed as a limited sweep budget by the Builder. Keep ranges realistic and compact.
 - NEVER use pandas idioms (.iloc, .loc, .rolling, .shift, df['signal']) in logic fields.
   Logic must describe vectorized numpy boolean conditions only.
 - SEMANTIC CHECKS: ATR is a distance (not a price), RSI/MFI are 0-100 oscillators.

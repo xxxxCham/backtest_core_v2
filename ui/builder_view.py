@@ -1006,6 +1006,76 @@ def _extract_autonomous_session_last_runtime_feedback(session: Any) -> Dict[str,
     }
 
 
+def _load_builder_runtime_checkpoint(session_id: str) -> Optional[Dict[str, Any]]:
+    checkpoint_path = SANDBOX_ROOT / str(session_id or "").strip() / "runtime_checkpoint.json"
+    if not checkpoint_path.exists():
+        return None
+    try:
+        raw = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
+def _extract_last_runtime_feedback_from_checkpoint(
+    checkpoint: Dict[str, Any],
+) -> Dict[str, Any]:
+    if not isinstance(checkpoint, dict):
+        return {
+            "last_runtime_error": None,
+            "last_runtime_error_iteration": None,
+            "last_runtime_traceback_tail": None,
+        }
+
+    backtest_feedback = checkpoint.get("backtest_feedback", {})
+    if not isinstance(backtest_feedback, dict):
+        backtest_feedback = {}
+
+    runtime_error = str(
+        checkpoint.get("error") or backtest_feedback.get("runtime_error") or ""
+    ).strip()
+    runtime_traceback_tail = str(
+        checkpoint.get("traceback_tail")
+        or backtest_feedback.get("runtime_traceback_tail")
+        or ""
+    ).strip()
+    runtime_iteration = checkpoint.get("iteration")
+    if runtime_error or runtime_traceback_tail:
+        return {
+            "last_runtime_error": runtime_error or None,
+            "last_runtime_error_iteration": runtime_iteration,
+            "last_runtime_traceback_tail": runtime_traceback_tail or None,
+        }
+
+    return {
+        "last_runtime_error": None,
+        "last_runtime_error_iteration": None,
+        "last_runtime_traceback_tail": None,
+    }
+
+
+def _build_recovered_autonomous_history_entry_from_checkpoint(
+    entry: Dict[str, Any],
+    checkpoint: Dict[str, Any],
+    *,
+    session_id: str,
+) -> Dict[str, Any]:
+    recovered = dict(entry)
+    runtime_feedback = _extract_last_runtime_feedback_from_checkpoint(checkpoint)
+    recovered["session_id"] = session_id
+    recovered["last_runtime_error"] = runtime_feedback.get("last_runtime_error")
+    recovered["last_runtime_error_iteration"] = runtime_feedback.get(
+        "last_runtime_error_iteration"
+    )
+    recovered["last_runtime_traceback_tail"] = runtime_feedback.get(
+        "last_runtime_traceback_tail"
+    )
+    recovered["recovered_from_runtime_checkpoint"] = True
+    if checkpoint.get("objective"):
+        recovered["objective"] = checkpoint.get("objective")
+    return recovered
+
+
 def _load_autonomous_session_summary(summary_path: Path) -> Optional[Dict[str, Any]]:
     try:
         raw = json.loads(summary_path.read_text(encoding="utf-8"))
@@ -1170,6 +1240,18 @@ def _recover_autonomous_history_entry_from_disk(
     for session_id in candidate_session_ids:
         summary_path = SANDBOX_ROOT / session_id / "session_summary.json"
         if not summary_path.exists():
+            checkpoint = _load_builder_runtime_checkpoint(session_id)
+            if checkpoint is None:
+                continue
+            checkpoint_objective = _normalize_autonomous_objective_text(
+                checkpoint.get("objective")
+            )
+            if normalized_objective == checkpoint_objective:
+                return _build_recovered_autonomous_history_entry_from_checkpoint(
+                    entry,
+                    checkpoint,
+                    session_id=session_id,
+                )
             continue
         summary = _load_autonomous_session_summary(summary_path)
         if summary is None:
@@ -1202,6 +1284,34 @@ def _recover_autonomous_history_entry_from_disk(
             entry,
             summary,
             session_id=summary_path.parent.name,
+        )
+
+    recent_checkpoint_paths: List[Path] = []
+    try:
+        for child in SANDBOX_ROOT.iterdir():
+            if not child.is_dir() or child.name.startswith("_"):
+                continue
+            checkpoint_path = child / "runtime_checkpoint.json"
+            if not checkpoint_path.exists():
+                continue
+            recent_checkpoint_paths.append(checkpoint_path)
+    except Exception:
+        return entry
+
+    recent_checkpoint_paths.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    for checkpoint_path in recent_checkpoint_paths[:max_candidates]:
+        checkpoint = _load_builder_runtime_checkpoint(checkpoint_path.parent.name)
+        if checkpoint is None:
+            continue
+        checkpoint_objective = _normalize_autonomous_objective_text(
+            checkpoint.get("objective")
+        )
+        if normalized_objective != checkpoint_objective:
+            continue
+        return _build_recovered_autonomous_history_entry_from_checkpoint(
+            entry,
+            checkpoint,
+            session_id=checkpoint_path.parent.name,
         )
 
     return entry
@@ -1944,6 +2054,7 @@ def render_iteration_card(
 
     bt = getattr(iteration, "backtest_result", None)
     metrics = getattr(bt, "metrics", None) if bt is not None else None
+    backtest_feedback = phase_feedback.get("backtest", {}) or {}
     if isinstance(metrics, dict):
         summary_parts = [
             f"Sharpe `{float(metrics.get('sharpe_ratio', 0.0) or 0.0):.3f}`",
@@ -1954,6 +2065,20 @@ def render_iteration_card(
             f"Win Rate `{float(metrics.get('win_rate_pct', 0.0) or 0.0):.1f}%`",
         ]
         st.markdown(" | ".join(summary_parts))
+        if isinstance(backtest_feedback, dict) and backtest_feedback.get("mode") == "sweep":
+            total_tested = int(backtest_feedback.get("sweep_total_tested", 0) or 0)
+            success_count = int(backtest_feedback.get("sweep_success", 0) or 0)
+            failed_count = int(backtest_feedback.get("sweep_failed", 0) or 0)
+            params_used = backtest_feedback.get("params_used", {}) or {}
+            st.caption(
+                f"Sweep Builder: {success_count}/{total_tested} combinaisons valides"
+                + (f" ({failed_count} échecs)" if failed_count else "")
+            )
+            if isinstance(params_used, dict) and params_used:
+                st.caption(
+                    "Paramètres retenus: "
+                    + json.dumps(params_used, ensure_ascii=False, sort_keys=True)
+                )
 
     analysis = str(getattr(iteration, "analysis", "") or "").strip()
     if analysis:
@@ -2019,6 +2144,20 @@ def render_session_summary(session: Any) -> None:
         provenance_detail = str(provenance.get("detail", "") or "").strip()
         if provenance_detail:
             st.caption(f"Origine du meilleur résultat: {provenance_detail}")
+
+        best_backtest_feedback = best_phase_feedback.get("backtest", {}) or {}
+        if (
+            isinstance(best_backtest_feedback, dict)
+            and best_backtest_feedback.get("mode") == "sweep"
+        ):
+            total_tested = int(best_backtest_feedback.get("sweep_total_tested", 0) or 0)
+            params_used = best_backtest_feedback.get("params_used", {}) or {}
+            st.caption(f"Meilleur résultat sélectionné via sweep ({total_tested} combinaisons).")
+            if isinstance(params_used, dict) and params_used:
+                st.caption(
+                    "Paramètres gagnants: "
+                    + json.dumps(params_used, ensure_ascii=False, sort_keys=True)
+                )
 
         col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
@@ -4961,10 +5100,12 @@ def _render_autonomous_recap(
 
         source = str(h.get("source_label", "") or "-")
         status = h.get("status", "?")
-        sharpe = h.get("best_sharpe", h.get("final_sharpe"))
-        ret = h.get("best_return", h.get("final_return"))
-        max_dd = h.get("best_max_dd", h.get("final_max_dd"))
-        trades = h.get("best_trades", h.get("final_trades"))
+        _bs = h.get("best_sharpe")
+        _use_best = _bs is not None and _bs > 0
+        sharpe = _bs if _use_best else h.get("final_sharpe", _bs)
+        ret = h.get("best_return") if _use_best else h.get("final_return", h.get("best_return"))
+        max_dd = h.get("best_max_dd") if _use_best else h.get("final_max_dd", h.get("best_max_dd"))
+        trades = h.get("best_trades") if _use_best else h.get("final_trades", h.get("best_trades"))
         duration = h.get("duration", 0)
         gain_metrics = _resolve_autonomous_gain_metrics(h)
 

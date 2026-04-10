@@ -468,6 +468,49 @@ def test_proposal_detects_indicator_shift_in_params_mode(valid_strategy_code):
     assert _proposal_changes_indicator_set_in_params_mode(valid_strategy_code, proposal) is True
 
 
+def test_build_builder_sweep_plan_uses_parameter_specs_ranges():
+    proposal = {
+        "change_type": "logic",
+        "default_params": {
+            "rsi_period": 14,
+            "stop_atr_mult": 1.5,
+            "leverage": 1,
+        },
+        "parameter_specs": {
+            "rsi_period": {
+                "min": 5,
+                "max": 30,
+                "default": 14,
+                "type": "int",
+                "step": 1,
+            },
+            "stop_atr_mult": {
+                "min": 1.0,
+                "max": 2.0,
+                "default": 1.5,
+                "type": "float",
+                "step": 0.2,
+            },
+            "leverage": {
+                "min": 1,
+                "max": 2,
+                "default": 1,
+                "type": "int",
+                "step": 1,
+            },
+        },
+    }
+
+    plan = strategy_builder_module._build_builder_sweep_plan(proposal)
+
+    assert plan["enabled"] is True
+    assert plan["param_names"] == ["rsi_period", "stop_atr_mult"]
+    assert plan["parameter_values"]["rsi_period"] == [14, 13, 15]
+    assert plan["parameter_values"]["stop_atr_mult"] == [1.5, 1.3, 1.7]
+    assert len(plan["param_grid"]) == 9
+    assert all(item["leverage"] == 1 for item in plan["param_grid"])
+
+
 def test_builder_run_emits_progress_events(
     monkeypatch,
     tmp_path,
@@ -578,6 +621,230 @@ def test_builder_run_emits_progress_events(
     )
     assert session.best_sharpe == pytest.approx(1.42)
     assert not any(event["event"] == "iteration_error" for event in progress_events)
+
+
+def test_builder_persists_runtime_checkpoint_on_save_and_load_failure(
+    monkeypatch,
+    tmp_path,
+    sample_ohlcv,
+    valid_strategy_code,
+):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.available_indicators = ["rsi", "atr"]
+
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "create_session_id",
+        staticmethod(lambda objective: "builder_runtime_checkpoint_test"),
+    )
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "get_session_dir",
+        staticmethod(lambda session_id: tmp_path / session_id),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_validate_builder_dataset_exploitability",
+        lambda *args, **kwargs: (True, ""),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_build_deterministic_strategy_code",
+        lambda proposal, logic_block: valid_strategy_code,
+    )
+
+    builder._save_session_summary = lambda session: None
+    builder._safe_save_session_summary = lambda session: None
+    builder._ask_proposal = lambda session, last_iteration: (
+        {
+            "strategy_name": "builder_checkpoint_test",
+            "hypothesis": "RSI reversal simple",
+            "used_indicators": ["rsi", "atr"],
+            "change_type": "logic",
+            "entry_long_logic": "rsi < 30",
+            "entry_short_logic": "rsi > 70",
+            "exit_logic": "rsi crosses 50",
+            "risk_management": "atr stop",
+            "default_params": {"rsi_period": 14, "atr_period": 14},
+            "parameter_specs": {},
+        },
+        {"phase": "proposal", "final_valid": True},
+    )
+    builder._ask_code = lambda session, proposal, last_iteration: (
+        "signals[:] = 0.0",
+        {"phase": "code", "final_valid": True, "source": "llm"},
+    )
+
+    def _raise_save_and_load(session, code, iteration_num):
+        raise RuntimeError("boom load")
+
+    builder._save_and_load = _raise_save_and_load
+    builder._ask_analysis = lambda *args, **kwargs: ("Analyse stable", "stop")
+
+    session = builder.run(
+        objective="Tester checkpoint runtime Builder",
+        data=sample_ohlcv,
+        max_iterations=1,
+        target_sharpe=1.0,
+        symbol="BTCUSDC",
+        timeframe="1h",
+    )
+
+    assert session.iterations
+    iteration = session.iterations[0]
+    assert iteration.error == "RuntimeError: boom load"
+    assert iteration.phase_feedback["execution"]["failure_stage"] == "save_and_load"
+    checkpoint_path = session.session_dir / "runtime_checkpoint.json"
+    assert checkpoint_path.exists()
+    payload = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    assert payload["iteration"] == 1
+    assert payload["stage"] == "save_and_load"
+    assert payload["status"] == "error"
+    assert payload["error"] == "RuntimeError: boom load"
+    assert payload["code_feedback"]["source"] == "llm"
+    assert payload["events"][-1]["stage"] == "save_and_load"
+
+
+def test_builder_run_uses_sweep_and_rewrites_code_defaults(
+    monkeypatch,
+    tmp_path,
+    sample_ohlcv,
+    valid_strategy_code,
+):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.available_indicators = ["rsi", "atr"]
+
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "create_session_id",
+        staticmethod(lambda objective: "builder_sweep_defaults_test"),
+    )
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "get_session_dir",
+        staticmethod(lambda session_id: tmp_path / session_id),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_validate_builder_dataset_exploitability",
+        lambda *args, **kwargs: (True, ""),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_build_deterministic_strategy_code",
+        lambda proposal, logic_block: valid_strategy_code,
+    )
+
+    builder._save_session_summary = lambda session: None
+    builder._safe_save_session_summary = lambda session: None
+    builder._ask_proposal = lambda session, last_iteration: (
+        {
+            "strategy_name": "builder_rsi_atr_sweep",
+            "hypothesis": "RSI + ATR with local sweep",
+            "used_indicators": ["rsi", "atr"],
+            "change_type": "logic",
+            "entry_long_logic": "rsi < 30 AND atr > 0",
+            "entry_short_logic": "rsi > 70 AND atr > 0",
+            "exit_logic": "rsi crosses above 50 OR rsi crosses below 50",
+            "risk_management": "ATR-based stop and take-profit",
+            "default_params": {"rsi_period": 14, "atr_period": 14},
+            "parameter_specs": {
+                "rsi_period": {
+                    "min": 10,
+                    "max": 20,
+                    "default": 14,
+                    "type": "int",
+                    "step": 1,
+                },
+                "atr_period": {
+                    "min": 10,
+                    "max": 20,
+                    "default": 14,
+                    "type": "int",
+                    "step": 1,
+                },
+            },
+        },
+        {"phase": "proposal", "final_valid": True},
+    )
+    builder._ask_code = lambda session, proposal, last_iteration: (
+        "signals[:] = 0.0",
+        {"phase": "code", "final_valid": True},
+    )
+    builder._save_and_load = lambda session, code, iteration_num: object
+    builder._auto_fix_required_indicators = lambda strategy_cls, code: strategy_cls
+    builder._precheck_signal_counts = lambda *args, **kwargs: {
+        "ok": True,
+        "total_signals": 2,
+        "long_signals": 1,
+        "short_signals": 1,
+    }
+    builder._ask_pre_reflection = lambda *args, **kwargs: ""
+
+    def _fake_run_backtest(*args, **kwargs):
+        params = dict(args[2])
+        rsi_period = int(params.get("rsi_period", 14))
+        atr_period = int(params.get("atr_period", 14))
+        sharpe = 2.0 - (abs(rsi_period - 15) * 0.1) - (abs(atr_period - 13) * 0.1)
+        return SimpleNamespace(
+            metrics={
+                "total_return_pct": 10.0 + sharpe,
+                "sharpe_ratio": sharpe,
+                "sortino_ratio": sharpe + 0.2,
+                "calmar_ratio": sharpe,
+                "max_drawdown_pct": -8.0,
+                "total_trades": 28,
+                "win_rate_pct": 41.0,
+                "profit_factor": 1.35,
+                "expectancy": 0.12,
+            },
+            meta={},
+            run_result=SimpleNamespace(meta={}),
+        )
+
+    builder._run_backtest = _fake_run_backtest
+    builder._ask_analysis = lambda *args, **kwargs: ("Analyse stable", "accept")
+
+    session = builder.run(
+        objective="Tester le sweep Builder",
+        data=sample_ohlcv,
+        max_iterations=1,
+        target_sharpe=1.0,
+        symbol="BTCUSDC",
+        timeframe="1h",
+    )
+
+    iteration = session.iterations[0]
+    backtest_feedback = iteration.phase_feedback["backtest"]
+
+    assert backtest_feedback["mode"] == "sweep"
+    assert backtest_feedback["sweep_total_tested"] == 9
+    assert backtest_feedback["params_used"]["rsi_period"] == 15
+    assert backtest_feedback["params_used"]["atr_period"] == 13
+    assert (
+        _extract_default_params_signature(iteration.code)["rsi_period"] == 15
+    )
+    assert (
+        _extract_default_params_signature(iteration.code)["atr_period"] == 13
+    )
+
+
+def test_retry_runtime_timeout_ignores_reasoning_floor():
+    llm_client = SimpleNamespace(config=SimpleNamespace(model="deepseek-r1:14b"))
+
+    main_code_timeout = strategy_builder_module._resolve_builder_phase_timeout(
+        "code",
+        180,
+        llm_client,
+    )
+    retry_timeout = strategy_builder_module._resolve_builder_phase_timeout(
+        "retry_code_runtime",
+        90,
+        llm_client,
+    )
+
+    assert main_code_timeout >= 420
+    assert retry_timeout == 90
 
 
 def test_builder_run_fallback_accept_tracks_best_sharpe(
@@ -897,9 +1164,14 @@ def test_builder_overrides_params_when_no_real_param_delta(
     assert code_calls == ["logic", "logic"]
     assert session.iterations[1].change_type == "logic"
     assert (
+        "indicator_set_changed"
+        in session.iterations[1]
+        .phase_feedback["proposal"]["change_type_overridden"]["reason"]
+    )
+    assert (
         session.iterations[1]
         .phase_feedback["proposal"]["change_type_overridden"]["reason"]
-        == "indicator_set_changed"
+        != ""
     )
     assert session.iterations[1].phase_feedback["code"].get("source") != "params_patch"
 
@@ -2973,6 +3245,7 @@ class TestTemplates:
         assert "Trend following BTC" in result
         assert "rsi" in result
         assert "ITERATION 1" in result
+        assert "limited parameter sweep" in result
         assert "INDICATOR QUICK GUIDE" in result
         assert "session-stable and lightly re-ranked" in result
         assert "Relative Strength Index" in result
@@ -3152,6 +3425,7 @@ class TestTemplates:
         assert GENERATED_CLASS_NAME in result
         assert "Mean reversion ETH" in result
         assert "rsi, bollinger" in result
+        assert "feed a limited Builder sweep" in result
         assert "INDICATOR QUICK GUIDE" in result
         assert "session-stable and lightly re-ranked" in result
         assert "Average True Range" in result

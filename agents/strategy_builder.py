@@ -31,6 +31,7 @@ import ast
 import concurrent.futures
 import csv
 import importlib.util
+import itertools
 import json
 import os
 import pprint
@@ -131,18 +132,55 @@ _LLM_PHASE_TIMEOUT_PROPOSAL = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_PROPOSAL",
 _LLM_PHASE_TIMEOUT_CODE = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_CODE", "180"))
 _LLM_PHASE_TIMEOUT_ANALYSIS = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_ANALYSIS", "90"))
 _LLM_PHASE_TIMEOUT_DEFAULT = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_DEFAULT", "120"))
+_LLM_PHASE_TIMEOUT_PROPOSAL_REALIGN = int(
+    os.getenv("BACKTEST_BUILDER_TIMEOUT_PROPOSAL_REALIGN", "45")
+)
+_LLM_PHASE_TIMEOUT_RETRY_PROPOSAL = int(
+    os.getenv("BACKTEST_BUILDER_TIMEOUT_RETRY_PROPOSAL", "45")
+)
+_LLM_PHASE_TIMEOUT_RETRY_CODE = int(
+    os.getenv("BACKTEST_BUILDER_TIMEOUT_RETRY_CODE", "60")
+)
+_LLM_PHASE_TIMEOUT_RETRY_CODE_RUNTIME = int(
+    os.getenv("BACKTEST_BUILDER_TIMEOUT_RETRY_CODE_RUNTIME", "90")
+)
 _LLM_PHASE_TIMEOUT_VISION_FLOOR = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_VISION_FLOOR", "300"))
 _LLM_PHASE_TIMEOUT_REASONING_PROPOSAL_FLOOR = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_REASONING_PROPOSAL_FLOOR", "300"))
 _LLM_PHASE_TIMEOUT_REASONING_CODE_FLOOR = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_REASONING_CODE_FLOOR", "420"))
 _LLM_PHASE_TIMEOUT_REASONING_ANALYSIS_FLOOR = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_REASONING_ANALYSIS_FLOOR", "180"))
 _LLM_PHASE_TIMEOUTS: Dict[str, int] = {
     "proposal": _LLM_PHASE_TIMEOUT_PROPOSAL,
+    "proposal_realign": _LLM_PHASE_TIMEOUT_PROPOSAL_REALIGN,
+    "retry_proposal": _LLM_PHASE_TIMEOUT_RETRY_PROPOSAL,
     "code": _LLM_PHASE_TIMEOUT_CODE,
+    "retry_code": _LLM_PHASE_TIMEOUT_RETRY_CODE,
+    "retry_code_runtime": _LLM_PHASE_TIMEOUT_RETRY_CODE_RUNTIME,
     "analysis": _LLM_PHASE_TIMEOUT_ANALYSIS,
     "pre": _LLM_PHASE_TIMEOUT_ANALYSIS,
+    "pre_reflection": _LLM_PHASE_TIMEOUT_ANALYSIS,
 }
 _BUILDER_MAX_UNTRADABLE_RATIO = float(
     os.getenv("BACKTEST_BUILDER_MAX_UNTRADABLE_RATIO", "0.25")
+)
+_BUILDER_SWEEP_MAX_COMBINATIONS = max(
+    1,
+    int(os.getenv("BACKTEST_BUILDER_SWEEP_MAX_COMBINATIONS", "9")),
+)
+_BUILDER_SWEEP_MAX_PARAMS = max(
+    1,
+    int(os.getenv("BACKTEST_BUILDER_SWEEP_MAX_PARAMS", "3")),
+)
+_BUILDER_SWEEP_TOP_RESULTS = max(
+    1,
+    int(os.getenv("BACKTEST_BUILDER_SWEEP_TOP_RESULTS", "3")),
+)
+_BUILDER_SWEEP_EXCLUDED_PARAMS = frozenset(
+    {
+        "leverage",
+        "warmup",
+        "fees_bps",
+        "slippage_bps",
+    }
 )
 
 
@@ -188,7 +226,7 @@ def _is_reasoning_builder_model(model_name: str) -> bool:
 
 
 def _resolve_builder_phase_timeout(
-    base_phase: str,
+    phase_key: str,
     base_timeout_sec: int,
     llm_client: Any,
 ) -> int:
@@ -197,6 +235,9 @@ def _resolve_builder_phase_timeout(
     )
     timeout_sec = int(base_timeout_sec)
 
+    if phase_key not in {"proposal", "code", "analysis", "pre"}:
+        return timeout_sec
+
     if _is_reasoning_builder_model(model_name):
         floor_by_phase = {
             "proposal": _LLM_PHASE_TIMEOUT_REASONING_PROPOSAL_FLOOR,
@@ -204,7 +245,7 @@ def _resolve_builder_phase_timeout(
             "analysis": _LLM_PHASE_TIMEOUT_REASONING_ANALYSIS_FLOOR,
             "pre": _LLM_PHASE_TIMEOUT_REASONING_ANALYSIS_FLOOR,
         }
-        timeout_sec = max(timeout_sec, int(floor_by_phase.get(base_phase, timeout_sec)))
+        timeout_sec = max(timeout_sec, int(floor_by_phase.get(phase_key, timeout_sec)))
     elif _is_vision_model(model_name):
         floor_by_phase = {
             "proposal": _LLM_PHASE_TIMEOUT_VISION_FLOOR,
@@ -212,9 +253,41 @@ def _resolve_builder_phase_timeout(
             "analysis": max(_LLM_PHASE_TIMEOUT_ANALYSIS, 150),
             "pre": max(_LLM_PHASE_TIMEOUT_ANALYSIS, 150),
         }
-        timeout_sec = max(timeout_sec, int(floor_by_phase.get(base_phase, timeout_sec)))
+        timeout_sec = max(timeout_sec, int(floor_by_phase.get(phase_key, timeout_sec)))
 
     return int(timeout_sec)
+
+
+def _normalize_builder_timeout_phase(phase: str) -> str:
+    normalized = str(phase or "").strip().lower()
+    if normalized.startswith("proposal_realign"):
+        return "proposal_realign"
+    if normalized.startswith("retry_proposal"):
+        return "retry_proposal"
+    if normalized.startswith("retry_code_runtime"):
+        return "retry_code_runtime"
+    if normalized.startswith("retry_code"):
+        return "retry_code"
+    if normalized.startswith("pre_reflection"):
+        return "pre_reflection"
+    return normalized.split("_")[0] if normalized else ""
+
+
+def _truncate_runtime_traceback_tail(
+    text: Any,
+    *,
+    max_lines: int = 25,
+    max_chars: int = 4000,
+) -> str:
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    lines = raw.splitlines()
+    if len(lines) > max_lines:
+        raw = "\n".join(lines[-max_lines:])
+    if len(raw) > max_chars:
+        raw = raw[-max_chars:]
+    return raw.strip()
 
 
 def _get_streamlit_script_run_ctx() -> Any:
@@ -3500,6 +3573,165 @@ def _normalize_change_type(change_type: Any) -> str:
     return "logic"
 
 
+def _dedupe_preserve_order(values: List[Any]) -> List[Any]:
+    deduped: List[Any] = []
+    for value in values:
+        if value not in deduped:
+            deduped.append(value)
+    return deduped
+
+
+def _coerce_builder_sweep_value(value: Any, param_type: str) -> Any:
+    normalized_type = str(param_type or "").strip().lower()
+    if normalized_type == "bool":
+        return bool(value)
+    numeric = float(value)
+    if normalized_type == "int":
+        return int(round(numeric))
+    return round(numeric, 6)
+
+
+def _build_builder_sweep_values(
+    param_name: str,
+    default_value: Any,
+    spec: Dict[str, Any],
+) -> List[Any]:
+    param_type = str(spec.get("type", "") or "").strip().lower()
+    if param_name in _BUILDER_SWEEP_EXCLUDED_PARAMS:
+        return [default_value]
+
+    if param_type == "bool":
+        return _dedupe_preserve_order([bool(default_value), not bool(default_value)])
+
+    if param_type not in {"int", "float"}:
+        return [default_value]
+
+    try:
+        min_v = float(spec.get("min"))
+        max_v = float(spec.get("max"))
+    except (ValueError, TypeError):
+        return [default_value]
+
+    if min_v > max_v:
+        return [default_value]
+
+    try:
+        default_numeric = float(
+            default_value if default_value is not None else spec.get("default")
+        )
+    except (ValueError, TypeError):
+        default_numeric = float(spec.get("default", min_v) or min_v)
+
+    default_numeric = min(max(default_numeric, min_v), max_v)
+
+    step_numeric: Optional[float] = None
+    if spec.get("step") is not None:
+        try:
+            step_numeric = float(spec.get("step"))
+        except (ValueError, TypeError):
+            step_numeric = None
+        if step_numeric is not None and step_numeric <= 0:
+            step_numeric = None
+
+    if step_numeric is not None:
+        raw_values = [
+            default_numeric,
+            max(min_v, default_numeric - step_numeric),
+            min(max_v, default_numeric + step_numeric),
+        ]
+    else:
+        raw_values = [default_numeric, min_v, max_v]
+
+    coerced = _dedupe_preserve_order(
+        [
+            _coerce_builder_sweep_value(value, param_type)
+            for value in raw_values
+        ]
+    )
+    return coerced[:3] if coerced else [default_value]
+
+
+def _build_builder_sweep_plan(proposal: Dict[str, Any]) -> Dict[str, Any]:
+    change_type = _normalize_change_type(proposal.get("change_type", "logic"))
+    if change_type == "accept":
+        return {
+            "enabled": False,
+            "reason": "accept_change_type",
+            "param_grid": [],
+            "parameter_values": {},
+            "param_names": [],
+        }
+
+    default_params = _sanitize_param_mapping(proposal.get("default_params"))
+    parameter_specs = _sanitize_param_mapping(proposal.get("parameter_specs"))
+    if not default_params or not parameter_specs:
+        return {
+            "enabled": False,
+            "reason": "missing_parameter_specs",
+            "param_grid": [],
+            "parameter_values": {},
+            "param_names": [],
+        }
+
+    sweep_candidates: List[tuple[str, List[Any]]] = []
+    for param_name, spec in parameter_specs.items():
+        if not isinstance(spec, dict):
+            continue
+        default_value = default_params.get(param_name, spec.get("default"))
+        values = _build_builder_sweep_values(param_name, default_value, spec)
+        if len(values) > 1:
+            sweep_candidates.append((param_name, values))
+
+    if not sweep_candidates:
+        return {
+            "enabled": False,
+            "reason": "single_point_only",
+            "param_grid": [],
+            "parameter_values": {},
+            "param_names": [],
+        }
+
+    selected: List[tuple[str, List[Any]]] = []
+    current_combinations = 1
+    for param_name, values in sweep_candidates[:_BUILDER_SWEEP_MAX_PARAMS]:
+        limited_values = list(values[:3])
+        while (
+            len(limited_values) > 1
+            and current_combinations * len(limited_values) > _BUILDER_SWEEP_MAX_COMBINATIONS
+        ):
+            limited_values = limited_values[:-1]
+        if len(limited_values) <= 1:
+            continue
+        selected.append((param_name, limited_values))
+        current_combinations *= len(limited_values)
+
+    if not selected:
+        return {
+            "enabled": False,
+            "reason": "max_combination_budget",
+            "param_grid": [],
+            "parameter_values": {},
+            "param_names": [],
+        }
+
+    param_names = [param_name for param_name, _ in selected]
+    parameter_values = {param_name: list(values) for param_name, values in selected}
+    param_grid: List[Dict[str, Any]] = []
+    for combo in itertools.product(*(values for _, values in selected)):
+        params = dict(default_params)
+        for param_name, value in zip(param_names, combo):
+            params[param_name] = value
+        param_grid.append(params)
+
+    return {
+        "enabled": len(param_grid) > 1,
+        "reason": "" if len(param_grid) > 1 else "single_point_only",
+        "param_grid": param_grid[:_BUILDER_SWEEP_MAX_COMBINATIONS],
+        "parameter_values": parameter_values,
+        "param_names": param_names,
+    }
+
+
 def _build_deterministic_proposal_fallback(
     *,
     objective: str,
@@ -4463,6 +4695,14 @@ class StrategyBuilder:
         self.instrumentation = PipelineInstrumentation(enabled=False)
         self.ablation = AblationController()
 
+        # ── Politique et historique de diversité des indicateurs ──────────
+        try:
+            from config.indicator_history import load_policy
+            self._indicator_policy = load_policy()
+        except Exception:
+            self._indicator_policy = {}
+        self._indicator_history: Dict[str, Any] = {}  # chargé au début de chaque run
+
     def _emit_completed_backtest(
         self,
         bt_result: Any,
@@ -4501,6 +4741,123 @@ class StrategyBuilder:
                 iteration_num,
                 getattr(session, "session_id", "unknown"),
             )
+
+    def _persist_session_strategy_code(
+        self,
+        session: BuilderSession,
+        code: str,
+    ) -> None:
+        """Persiste le code effectivement retenu pour la session courante."""
+        if not code:
+            return
+        try:
+            (session.session_dir / "strategy.py").write_text(code, encoding="utf-8")
+        except (
+            ValueError,
+            KeyError,
+            RuntimeError,
+            AttributeError,
+            TypeError,
+            IndexError,
+            OSError,
+        ):
+            logger.debug(
+                "builder_strategy_code_persist_failed session=%s",
+                getattr(session, "session_id", "unknown"),
+                exc_info=True,
+            )
+
+    def _persist_runtime_checkpoint(
+        self,
+        session: BuilderSession,
+        *,
+        iteration_num: int,
+        stage: str,
+        status: str,
+        branch_label: str = "main",
+        error: str = "",
+        traceback_tail: str = "",
+        proposal_feedback: Optional[Dict[str, Any]] = None,
+        code_feedback: Optional[Dict[str, Any]] = None,
+        precheck_feedback: Optional[Dict[str, Any]] = None,
+        backtest_feedback: Optional[Dict[str, Any]] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Persiste un checkpoint léger pour diagnostiquer un crash intra-itération."""
+        timestamp = datetime.now().isoformat()
+        checkpoint_path = (
+            session.session_dir / f"iteration_{int(iteration_num):03d}_runtime_checkpoint.json"
+        )
+        latest_path = session.session_dir / "runtime_checkpoint.json"
+
+        payload: Dict[str, Any] = {}
+        try:
+            if checkpoint_path.exists():
+                raw_payload = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+                if isinstance(raw_payload, dict):
+                    payload = dict(raw_payload)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            payload = {}
+
+        events = payload.get("events", [])
+        if not isinstance(events, list):
+            events = []
+
+        trimmed_error = str(error or "").strip()
+        trimmed_traceback = _truncate_runtime_traceback_tail(traceback_tail)
+        event_payload: Dict[str, Any] = {
+            "timestamp": timestamp,
+            "stage": str(stage or "").strip(),
+            "status": str(status or "").strip(),
+        }
+        if trimmed_error:
+            event_payload["error"] = trimmed_error
+        if trimmed_traceback:
+            event_payload["traceback_tail"] = trimmed_traceback
+        events = [*events[-19:], event_payload]
+
+        serialized_payload = {
+            "session_id": session.session_id,
+            "objective": session.objective,
+            "iteration": int(iteration_num),
+            "branch_label": str(branch_label or "main"),
+            "stage": str(stage or "").strip(),
+            "status": str(status or "").strip(),
+            "updated_at": timestamp,
+            "strategy_file": "strategy.py",
+            "strategy_version_file": f"strategy_v{int(iteration_num)}.py",
+            "error": trimmed_error or None,
+            "traceback_tail": trimmed_traceback or None,
+            "proposal_feedback": dict(proposal_feedback or {}),
+            "code_feedback": dict(code_feedback or {}),
+            "precheck_feedback": dict(precheck_feedback or {}),
+            "backtest_feedback": dict(backtest_feedback or {}),
+            "events": events,
+        }
+        if isinstance(extra, dict) and extra:
+            serialized_payload["extra"] = dict(extra)
+
+        for destination in (checkpoint_path, latest_path):
+            try:
+                destination.write_text(
+                    json.dumps(serialized_payload, indent=2, default=str),
+                    encoding="utf-8",
+                )
+            except (
+                OSError,
+                ValueError,
+                RuntimeError,
+                AttributeError,
+                TypeError,
+                IndexError,
+            ):
+                logger.debug(
+                    "builder_runtime_checkpoint_persist_failed session=%s stage=%s status=%s",
+                    getattr(session, "session_id", "unknown"),
+                    stage,
+                    status,
+                    exc_info=True,
+                )
 
     def _emit_progress(self, event: str, **payload: Any) -> None:
         """Notifie l'UI de l'état courant d'une session Builder."""
@@ -4559,14 +4916,18 @@ class StrategyBuilder:
         (ex: un appel code qui prend 8 min au lieu de 15 s en médiane).
         """
         # Resolve phase-specific timeout
-        base_phase = phase.split("_")[0] if phase else ""
+        timeout_phase_key = _normalize_builder_timeout_phase(phase)
         timeout_sec = _LLM_PHASE_TIMEOUTS.get(
-            base_phase, _LLM_PHASE_TIMEOUT_DEFAULT
+            timeout_phase_key,
+            _LLM_PHASE_TIMEOUTS.get(
+                timeout_phase_key.split("_")[0] if timeout_phase_key else "",
+                _LLM_PHASE_TIMEOUT_DEFAULT,
+            ),
         )
         phase_client_key = self._resolve_phase_client_key(phase)
         llm_client = self.phase_llm_clients.get(phase_client_key, self.llm)
         timeout_sec = _resolve_builder_phase_timeout(
-            base_phase,
+            timeout_phase_key,
             timeout_sec,
             llm_client,
         )
@@ -4614,6 +4975,19 @@ class StrategyBuilder:
                     phase, timeout_sec,
                 )
                 # Return a stub response so callers can handle gracefully
+                return SimpleNamespace(content="")
+            except (ConnectionError, OSError) as exc:
+                logger.warning(
+                    "builder_llm_connection_error phase=%s error=%s",
+                    phase, exc,
+                )
+                return SimpleNamespace(content="")
+            except Exception as exc:
+                logger.error(
+                    "builder_llm_unexpected_error phase=%s error=%s",
+                    phase, exc,
+                    exc_info=True,
+                )
                 return SimpleNamespace(content="")
             finally:
                 if client_config is not None:
@@ -4733,6 +5107,12 @@ class StrategyBuilder:
             and _requires_indicator_exploration(last_iteration)
         )
         if self.ablation.is_enabled("indicator_ranking"):
+            _inter_hist = getattr(self, "_indicator_history", {})
+            _pol = getattr(self, "_indicator_policy", {})
+            from config.indicator_history import get_banned_indicators, get_recent_indicators, get_recent_families
+            _banned = get_banned_indicators(_inter_hist, _pol) if _pol.get("enabled", True) else set()
+            _inter_recent = get_recent_indicators(_inter_hist, _pol) if _pol.get("enabled", True) else []
+            _prev_families = get_recent_families(_inter_hist, _pol) if _pol.get("enabled", True) else []
             ordered_prompt_indicators = rank_indicator_selection(
                 self.available_indicators,
                 objective=session.objective,
@@ -4740,6 +5120,13 @@ class StrategyBuilder:
                 previous_indicators=previous_indicators,
                 session_seed=f"{session.session_id}:proposal:{len(session.iterations)+1}",
                 prefer_diversity=prefer_diversity,
+                banned_indicators=_banned,
+                inter_session_indicators=_inter_recent,
+                inter_session_penalty=float(_pol.get("previous_penalty", 0.0)),
+                inter_session_novelty_bonus=float(_pol.get("novelty_bonus", 0.0)) if prefer_diversity else 0.0,
+                previous_families=_prev_families,
+                family_penalty=float(_pol.get("family_penalty", 0.0)),
+                family_bonus=float(_pol.get("family_bonus", 0.0)),
             )
         else:
             ordered_prompt_indicators = list(self.available_indicators)
@@ -4789,6 +5176,27 @@ class StrategyBuilder:
             # Diagnostic pré-calculé de la dernière itération
             if diagnostic_detail and self.ablation.is_enabled("diagnostic_context"):
                 context["diagnostic"] = diagnostic_detail
+            last_phase_feedback = (
+                last_iteration.phase_feedback.to_dict()
+                if hasattr(last_iteration.phase_feedback, "to_dict")
+                else (last_iteration.phase_feedback or {})
+            )
+            last_backtest_feedback = (
+                last_phase_feedback.get("backtest", {})
+                if isinstance(last_phase_feedback, dict)
+                else {}
+            )
+            if (
+                isinstance(last_backtest_feedback, dict)
+                and last_backtest_feedback.get("mode") == "sweep"
+            ):
+                context["last_sweep"] = {
+                    "total_tested": last_backtest_feedback.get("sweep_total_tested", 0),
+                    "success": last_backtest_feedback.get("sweep_success", 0),
+                    "failed": last_backtest_feedback.get("sweep_failed", 0),
+                    "best_params": last_backtest_feedback.get("sweep_best_params", {}),
+                    "top_results": last_backtest_feedback.get("sweep_top_results", []),
+                }
             # Stagnation détectée : forcer le LLM à changer radicalement
             stag = (last_iteration.phase_feedback or {}).get("stagnation", {})
             if stag.get("identical_metrics"):
@@ -4807,8 +5215,22 @@ class StrategyBuilder:
             context["branch_directive"] = branch_directive
 
         if session.iterations and self.ablation.is_enabled("iteration_history"):
+            def _iteration_backtest_feedback(
+                iteration_row: BuilderIteration,
+            ) -> Dict[str, Any]:
+                raw_feedback = (
+                    iteration_row.phase_feedback.to_dict()
+                    if hasattr(iteration_row.phase_feedback, "to_dict")
+                    else (iteration_row.phase_feedback or {})
+                )
+                if not isinstance(raw_feedback, dict):
+                    return {}
+                backtest_feedback = raw_feedback.get("backtest", {})
+                return backtest_feedback if isinstance(backtest_feedback, dict) else {}
+
             context["iteration_history"] = [
                 {
+                    "backtest_feedback": _iteration_backtest_feedback(it),
                     "iteration": it.iteration,
                     "hypothesis": it.hypothesis,
                     "change_type": it.change_type,
@@ -4841,6 +5263,9 @@ class StrategyBuilder:
                     ),
                     "error": it.error,
                     "is_fallback": it.is_fallback,
+                    "evaluation_mode": _iteration_backtest_feedback(it).get("mode", ""),
+                    "sweep_total_tested": _iteration_backtest_feedback(it).get("sweep_total_tested"),
+                    "params_used": _iteration_backtest_feedback(it).get("params_used"),
                 }
                 for it in session.iterations[-5:]
             ]
@@ -5103,6 +5528,12 @@ class StrategyBuilder:
             diag_donts = diag_detail.get("donts", [])
 
         if self.ablation.is_enabled("indicator_ranking"):
+            _inter_hist2 = getattr(self, "_indicator_history", {})
+            _pol2 = getattr(self, "_indicator_policy", {})
+            from config.indicator_history import get_banned_indicators, get_recent_indicators, get_recent_families
+            _banned2 = get_banned_indicators(_inter_hist2, _pol2) if _pol2.get("enabled", True) else set()
+            _inter_recent2 = get_recent_indicators(_inter_hist2, _pol2) if _pol2.get("enabled", True) else []
+            _prev_families2 = get_recent_families(_inter_hist2, _pol2) if _pol2.get("enabled", True) else []
             ordered_code_indicators = rank_indicator_selection(
                 self.available_indicators,
                 objective=(
@@ -5113,6 +5544,13 @@ class StrategyBuilder:
                 previous_indicators=proposal.get("used_indicators", []),
                 session_seed=f"{session.session_id}:code:{len(session.iterations)+1}",
                 prefer_diversity=False,
+                banned_indicators=_banned2,
+                inter_session_indicators=_inter_recent2,
+                inter_session_penalty=float(_pol2.get("previous_penalty", 0.0)),
+                inter_session_novelty_bonus=0.0,
+                previous_families=_prev_families2,
+                family_penalty=float(_pol2.get("family_penalty", 0.0)),
+                family_bonus=float(_pol2.get("family_bonus", 0.0)),
             )
         else:
             ordered_code_indicators = list(self.available_indicators)
@@ -5484,6 +5922,62 @@ class StrategyBuilder:
             f"- Meilleur Sharpe session: {session.best_sharpe:.3f}",
         ]
 
+        phase_feedback = (
+            iteration.phase_feedback.to_dict()
+            if hasattr(iteration.phase_feedback, "to_dict")
+            else (iteration.phase_feedback or {})
+        )
+        backtest_feedback = (
+            phase_feedback.get("backtest", {})
+            if isinstance(phase_feedback, dict)
+            else {}
+        )
+        if (
+            isinstance(backtest_feedback, dict)
+            and backtest_feedback.get("mode") == "sweep"
+        ):
+            lines.extend(
+                [
+                    "",
+                    "### Sweep paramétrique",
+                    (
+                        f"- Combinaisons testées: "
+                        f"{int(backtest_feedback.get('sweep_total_tested', 0) or 0)} "
+                        f"({int(backtest_feedback.get('sweep_success', 0) or 0)} ok / "
+                        f"{int(backtest_feedback.get('sweep_failed', 0) or 0)} échec)"
+                    ),
+                    (
+                        " - Meilleurs paramètres: "
+                        + json.dumps(
+                            backtest_feedback.get("sweep_best_params", {}) or {},
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        )
+                    ),
+                ]
+            )
+            top_results = backtest_feedback.get("sweep_top_results", [])
+            if isinstance(top_results, list):
+                for rank, row in enumerate(top_results[:3], start=1):
+                    if not isinstance(row, dict):
+                        continue
+                    lines.append(
+                        "  - Top {rank}: score={score:.2f} sharpe={sharpe:.3f} "
+                        "ret={ret:+.2f}% dd={dd:.2f}% trades={trades} params={params}".format(
+                            rank=rank,
+                            score=float(row.get("telemetry_score", 0.0) or 0.0),
+                            sharpe=float(row.get("sharpe_ratio", 0.0) or 0.0),
+                            ret=float(row.get("total_return_pct", 0.0) or 0.0),
+                            dd=float(row.get("max_drawdown_pct", 0.0) or 0.0),
+                            trades=int(row.get("total_trades", 0) or 0),
+                            params=json.dumps(
+                                row.get("params", {}) or {},
+                                ensure_ascii=False,
+                                sort_keys=True,
+                            ),
+                        )
+                    )
+
         # Historique complet de la session (tendance visible itération par itération)
         if len(session.iterations) > 1:
             lines.append("")
@@ -5704,6 +6198,7 @@ RULES:
 - Prefer compact strategies, but allow 1 to 5 indicators when justified.
 - It is valid to remove an indicator, replace one, or add one if that materially improves the hypothesis.
 - Include realistic default_params with sensible ranges in parameter_specs
+- parameter_specs drive a limited Builder sweep after code generation; keep the range compact and focus on 2 to 4 impactful numeric params
 - hypothesis must explain WHY this combination should work, not just WHAT it does
 - Never output placeholder values (e.g. "brief description", "when to BUY")
 - This phase is proposal-only: NEVER output Python code
@@ -6055,6 +6550,146 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
     # Core: run backtest on generated strategy
     # ------------------------------------------------------------------
 
+    def _run_backtest_with_optional_sweep(
+        self,
+        strategy_cls: type,
+        data: pd.DataFrame,
+        proposal: Dict[str, Any],
+        *,
+        initial_capital: float = 10000.0,
+        symbol: str = "UNKNOWN",
+        timeframe: str = "1h",
+        fees_bps: float = 10.0,
+        slippage_bps: float = 5.0,
+        direction_constraint: str = "long_short",
+        target_sharpe: float = 1.0,
+    ) -> tuple[Any, Dict[str, Any]]:
+        base_params = dict(_sanitize_param_mapping(proposal.get("default_params")))
+        sweep_plan = _build_builder_sweep_plan(proposal)
+        if not sweep_plan.get("enabled"):
+            bt_result = self._run_backtest(
+                strategy_cls,
+                data,
+                base_params,
+                initial_capital,
+                symbol=symbol,
+                timeframe=timeframe,
+                fees_bps=fees_bps,
+                slippage_bps=slippage_bps,
+                direction_constraint=direction_constraint,
+            )
+            raw_result = getattr(bt_result, "run_result", None)
+            if raw_result is not None and isinstance(getattr(raw_result, "meta", None), dict):
+                raw_result.meta["builder_evaluation_mode"] = "single"
+                raw_result.meta["params"] = dict(base_params)
+            return bt_result, {
+                "mode": "single",
+                "params_used": dict(base_params),
+                "sweep_skipped_reason": sweep_plan.get("reason", ""),
+            }
+
+        start = datetime.now()
+        best_result = None
+        best_params: Dict[str, Any] = {}
+        best_selection_key = None
+        best_score = float("-inf")
+        success_count = 0
+        fail_count = 0
+        first_error: Optional[BaseException] = None
+        successful_rows: List[Dict[str, Any]] = []
+
+        for candidate_params in sweep_plan.get("param_grid", []):
+            try:
+                bt_result = self._run_backtest(
+                    strategy_cls,
+                    data,
+                    dict(candidate_params),
+                    initial_capital,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    fees_bps=fees_bps,
+                    slippage_bps=slippage_bps,
+                    direction_constraint=direction_constraint,
+                )
+                metrics = dict(getattr(bt_result, "metrics", {}) or {})
+                score_payload = compute_builder_telemetry_score(
+                    metrics,
+                    target_sharpe=target_sharpe,
+                )
+                selection_key = _builder_iteration_selection_key(
+                    metrics,
+                    is_fallback=False,
+                    target_sharpe=target_sharpe,
+                )
+                success_count += 1
+                successful_rows.append(
+                    {
+                        "params": dict(candidate_params),
+                        "telemetry_score": score_payload.get("score"),
+                        "sharpe_ratio": metrics.get("sharpe_ratio"),
+                        "total_return_pct": metrics.get("total_return_pct"),
+                        "max_drawdown_pct": metrics.get("max_drawdown_pct"),
+                        "profit_factor": metrics.get("profit_factor"),
+                        "total_trades": metrics.get("total_trades"),
+                    }
+                )
+                if best_selection_key is None or selection_key > best_selection_key:
+                    best_selection_key = selection_key
+                    best_score = float(score_payload.get("score", float("-inf")) or float("-inf"))
+                    best_result = bt_result
+                    best_params = dict(candidate_params)
+            except (
+                ValueError,
+                KeyError,
+                RuntimeError,
+                AttributeError,
+                TypeError,
+                IndexError,
+                NameError,
+            ) as exc:
+                fail_count += 1
+                if first_error is None:
+                    first_error = exc
+
+        if best_result is None:
+            if first_error is not None:
+                raise first_error
+            raise RuntimeError("Aucune combinaison sweep exploitable")
+
+        duration_ms = (datetime.now() - start).total_seconds() * 1000.0
+        successful_rows.sort(
+            key=lambda row: float(row.get("telemetry_score", float("-inf")) or float("-inf")),
+            reverse=True,
+        )
+
+        raw_result = getattr(best_result, "run_result", None)
+        if raw_result is not None and isinstance(getattr(raw_result, "meta", None), dict):
+            raw_result.meta["builder_evaluation_mode"] = "sweep"
+            raw_result.meta["builder_sweep_total_tested"] = int(
+                len(sweep_plan.get("param_grid", []))
+            )
+            raw_result.meta["builder_sweep_success"] = int(success_count)
+            raw_result.meta["builder_sweep_failed"] = int(fail_count)
+            raw_result.meta["builder_sweep_best_params"] = dict(best_params)
+            raw_result.meta["builder_sweep_parameter_values"] = dict(
+                sweep_plan.get("parameter_values", {})
+            )
+            raw_result.meta["params"] = dict(best_params)
+
+        return best_result, {
+            "mode": "sweep",
+            "params_used": dict(best_params),
+            "sweep_total_tested": int(len(sweep_plan.get("param_grid", []))),
+            "sweep_success": int(success_count),
+            "sweep_failed": int(fail_count),
+            "sweep_duration_ms": round(duration_ms, 3),
+            "sweep_param_names": list(sweep_plan.get("param_names", [])),
+            "sweep_candidate_values": dict(sweep_plan.get("parameter_values", {})),
+            "sweep_best_params": dict(best_params),
+            "sweep_top_results": successful_rows[:_BUILDER_SWEEP_TOP_RESULTS],
+            "sweep_selection_score": best_score,
+        }
+
     def _run_backtest(
 
         self,
@@ -6330,6 +6965,14 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             len(self.available_indicators),
         )
 
+        # Charger l'historique de diversité au début du run
+        try:
+            from config.indicator_history import load_history, load_policy
+            self._indicator_policy = load_policy()
+            self._indicator_history = load_history(self._indicator_policy) if self._indicator_policy.get("enabled", True) else {}
+        except Exception:
+            self._indicator_history = {}
+
         model_name = getattr(getattr(self.llm, "config", None), "model", "?")
         thought_stream = ThoughtStream(session_id, objective, model_name)
         run_builder_loop_v2(
@@ -6391,6 +7034,31 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             best_sharpe=session.best_sharpe,
         )
 
+        # Mettre à jour l'historique de diversité après la session
+        try:
+            policy = getattr(self, "_indicator_policy", {})
+            if policy.get("enabled", True):
+                from config.indicator_history import (
+                    infer_families_from_indicators,
+                    update_history,
+                )
+                all_used: List[str] = []
+                for it in session.iterations:
+                    for ind in (it.used_indicators or []):
+                        key = str(ind).strip().lower()
+                        if key and key not in all_used:
+                            all_used.append(key)
+                families_used = infer_families_from_indicators(all_used)
+                update_history(all_used, families_used=families_used, policy=policy)
+                logger.debug(
+                    "indicator_history_updated session=%s indicators=%s families=%s",
+                    session.session_id,
+                    all_used,
+                    families_used,
+                )
+        except Exception:
+            logger.debug("indicator_history_update_failed", exc_info=True)
+
         return session
 
     # ------------------------------------------------------------------
@@ -6411,6 +7079,18 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 if it.backtest_result and isinstance(it.backtest_result.metrics, dict)
                 else {}
             )
+            phase_feedback = (
+                it.phase_feedback.to_dict()
+                if hasattr(it.phase_feedback, "to_dict")
+                else (it.phase_feedback if isinstance(it.phase_feedback, dict) else {})
+            )
+            backtest_feedback = (
+                phase_feedback.get("backtest", {})
+                if isinstance(phase_feedback, dict)
+                else {}
+            )
+            if not isinstance(backtest_feedback, dict):
+                backtest_feedback = {}
             score_payload = (
                 compute_builder_telemetry_score(
                     metrics,
@@ -6426,6 +7106,11 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 "diagnostic_category": it.diagnostic_category,
                 "error": it.error,
                 "decision": it.decision,
+                "evaluation_mode": backtest_feedback.get("mode"),
+                "params_used": backtest_feedback.get("params_used"),
+                "sweep_total_tested": backtest_feedback.get("sweep_total_tested"),
+                "sweep_success": backtest_feedback.get("sweep_success"),
+                "sweep_failed": backtest_feedback.get("sweep_failed"),
                 "sharpe": metrics.get("sharpe_ratio") if metrics else None,
                 "total_pnl": metrics.get("total_pnl") if metrics else None,
                 "return_pct": metrics.get("total_return_pct") if metrics else None,
@@ -6454,26 +7139,10 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                     if it.diagnostic_detail else None
                 ),
                 "is_fallback": it.is_fallback,
-                "phase_feedback": (
-                    it.phase_feedback.to_dict()
-                    if hasattr(it.phase_feedback, "to_dict")
-                    else (it.phase_feedback or None)
-                ),
+                "phase_feedback": phase_feedback or None,
             }
             iteration_rows.append(row)
 
-            phase_feedback = (
-                it.phase_feedback.to_dict()
-                if hasattr(it.phase_feedback, "to_dict")
-                else (it.phase_feedback if isinstance(it.phase_feedback, dict) else {})
-            )
-            backtest_feedback = (
-                phase_feedback.get("backtest", {})
-                if isinstance(phase_feedback, dict)
-            else {}
-            )
-            if not isinstance(backtest_feedback, dict):
-                backtest_feedback = {}
             runtime_error = str(backtest_feedback.get("runtime_error") or "").strip()
             runtime_traceback_tail = str(
                 backtest_feedback.get("runtime_traceback_tail") or ""
@@ -6570,6 +7239,8 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 "rank",
                 "iteration",
                 "decision",
+                "evaluation_mode",
+                "sweep_total_tested",
                 "sharpe",
                 "return_pct",
                 "max_drawdown_pct",
