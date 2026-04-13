@@ -440,6 +440,13 @@ def run_builder_loop_v2(
             sharpe = float(selected_outcome.get("sharpe", float("-inf")) or float("-inf"))
             iteration.code = code
             iteration.backtest_result = bt_result
+            # ── Perf / quality scores from micro-benchmark ──
+            _cfb = selected_outcome.get("code_feedback") or {}
+            _perf_bench = _cfb.get("perf_benchmark") or {}
+            iteration.perf_score = float(_perf_bench.get("median_ms", 0.0) or 0.0)
+            iteration.code_quality_score = float(
+                selected_outcome.get("code_quality_score", 1.0) or 1.0
+            )
             builder._persist_session_strategy_code(session, code)
             iteration.phase_feedback["proposal"] = selected_outcome.get("proposal_feedback", {})
             if len(proposal_candidates) > 1:

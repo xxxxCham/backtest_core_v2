@@ -378,6 +378,55 @@ def _is_np_nan_to_num_call(node: ast.AST) -> bool:
     )
 
 
+def _extract_required_indicators_from_ast(tree: ast.AST) -> set[str]:
+    """Extrait les noms déclarés dans la propriété ``required_indicators``."""
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
+            continue
+        for item in node.body:
+            if not isinstance(item, ast.FunctionDef):
+                continue
+            if item.name != "required_indicators":
+                continue
+            for sub in ast.walk(item):
+                if not isinstance(sub, ast.Return):
+                    continue
+                if isinstance(sub.value, ast.List):
+                    return {
+                        _const_value(elt)
+                        for elt in sub.value.elts
+                        if isinstance(_const_value(elt), str)
+                    }
+    return set()
+
+
+def _has_warmup_guard(tree: ast.AST) -> bool:
+    """Vérifie qu'un warmup ``signals[:N] = 0`` est présent dans generate_signals."""
+    for fn in _iter_generate_signals_functions(tree):
+        for node in ast.walk(fn):
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for tgt in targets:
+                if not isinstance(tgt, ast.Subscript):
+                    continue
+                is_signals = (
+                    isinstance(tgt.value, ast.Name) and tgt.value.id == "signals"
+                )
+                is_signals_iloc = (
+                    isinstance(tgt.value, ast.Attribute)
+                    and tgt.value.attr == "iloc"
+                    and isinstance(tgt.value.value, ast.Name)
+                    and tgt.value.value.id == "signals"
+                )
+                if not (is_signals or is_signals_iloc):
+                    continue
+                sl = tgt.slice
+                if isinstance(sl, ast.Slice) and sl.lower is None and sl.upper is not None:
+                    return True
+    return False
+
+
 def _is_params_get_call(node: ast.AST) -> bool:
     """Vérifie si le noeud est un appel params.get(...)."""
     return (
@@ -507,9 +556,15 @@ def _indicator_access_hint(indicator_name: str) -> str:
 def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
     """Valide des patterns signaux/warmup dangereux.
 
-    - Interdit les boucles indexées qui écrivent `signals.iloc[i]`
-    - Interdit warmup destructif (`signals.iloc[x:] = 0`, `signals[:] = 0`)
-    - Interdit l'indexation 2D sur `signals` (Series 1D uniquement)
+    Couverture SIG001 complète alignée sur GUIDE_CREATION_NOUVELLE_STRATEGIE.md :
+    - Boucles indexées ``for i in range(...)`` / ``signals.iloc[i]``
+    - Boucle ``while``
+    - Warmup destructif (``signals[N:]``, ``signals[:]``, ``signals[N:M]``)
+    - Indexation 2D interdite sur ``signals``
+    - Opérateurs scalaires ``and`` / ``or`` sur masques (→ ``&`` / ``|``)
+    - ``signals.loc[mask, ...]`` (→ ``signals[mask] = 1.0``)
+    - ``signals.notnull()`` / ``signals.isnull()`` (→ ``signals != 0``)
+    - ``np.diff`` sans ``np.insert`` (produit un array n-1)
     """
     for fn in _iter_generate_signals_functions(tree):
         for node in ast.walk(fn):
@@ -539,6 +594,47 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
                             ERR_SIG,
                             "Boucle indexée avec `signals.iloc[i]` interdite. "
                             "Utiliser des masques vectorisés.",
+                        )
+
+            # -- SIG001-and/or : opérateurs scalaires ``and``/``or`` ---
+            if isinstance(node, ast.BoolOp) and isinstance(node.op, (ast.And, ast.Or)):
+                has_compare = any(
+                    isinstance(v, ast.Compare) for v in node.values
+                )
+                if has_compare:
+                    bad_op = "and" if isinstance(node.op, ast.And) else "or"
+                    good_op = "&" if bad_op == "and" else "|"
+                    return False, _err(
+                        ERR_SIG,
+                        f"Opérateur scalaire `{bad_op}` interdit sur masques vectorisés. "
+                        f"Utiliser `{good_op}` avec des parenthèses autour de chaque condition.",
+                    )
+
+            # -- SIG001-loc : signals.loc[...] (toute forme) ---
+            if isinstance(node, ast.Subscript):
+                if (
+                    isinstance(node.value, ast.Attribute)
+                    and node.value.attr == "loc"
+                    and isinstance(node.value.value, ast.Name)
+                    and node.value.value.id == "signals"
+                ):
+                    return False, _err(
+                        ERR_SIG,
+                        "Accès `signals.loc[...]` interdit. "
+                        "Utiliser `signals[mask] = 1.0` (masques vectorisés).",
+                    )
+
+            # -- SIG001-isnull/notnull ---
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                if node.func.attr in {"isnull", "notnull", "isna", "notna"}:
+                    if (
+                        isinstance(node.func.value, ast.Name)
+                        and node.func.value.id == "signals"
+                    ):
+                        return False, _err(
+                            ERR_SIG,
+                            f"`signals.{node.func.attr}()` interdit. "
+                            "Utiliser `signals != 0` ou `signals == 0`.",
                         )
 
             # Warmup checks sur assignations
@@ -594,6 +690,16 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
                     "Boucle `while` interdite dans generate_signals. "
                     "Utiliser une logique vectorisée.",
                 )
+
+    # -- SIG001-diff : np.diff sans np.insert (longueur n-1) ---
+    code_text = ast.unparse(tree) if hasattr(ast, "unparse") else ""
+    if code_text and "np.diff" in code_text:
+        if "np.insert" not in code_text and "np.concatenate" not in code_text:
+            return False, _err(
+                ERR_SIG,
+                "`np.diff()` produit un tableau de longueur n-1. "
+                "Utiliser `np.insert(np.diff(arr), 0, 0.0)` pour conserver la même longueur.",
+            )
 
     return True, ""
 
@@ -1309,6 +1415,43 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
             ),
         )
 
+    # 5c. Cohérence required_indicators vs registre (avertissement non bloquant)
+    _soft_warnings: list[str] = []
+    if known_indicators:
+        declared_indicators = _extract_required_indicators_from_ast(tree)
+        unknown_declared = sorted(
+            {name for name in declared_indicators if name.lower() not in known_indicators}
+        )
+        if unknown_declared:
+            hints = [
+                f"{name} -> {_INDICATOR_ALIAS_HINTS[name.lower()]}"
+                for name in unknown_declared
+                if name.lower() in _INDICATOR_ALIAS_HINTS
+            ]
+            hint_suffix = (
+                f" Corrections possibles: {', '.join(hints)}."
+                if hints
+                else ""
+            )
+            _soft_warnings.append(
+                _err(
+                    ERR_IND,
+                    "required_indicators contient des noms inconnus du registre: "
+                    f"{unknown_declared}. Utiliser uniquement les noms du registre."
+                    f"{hint_suffix}",
+                )
+            )
+
+    # 5d. Warmup obligatoire dans generate_signals (avertissement non bloquant)
+    if not _has_warmup_guard(tree):
+        _soft_warnings.append(
+            _err(
+                ERR_WARM,
+                "generate_signals ne contient pas de warmup explicite. "
+                "Ajouter: `warmup = int(params.get('warmup', 50)); signals.iloc[:warmup] = 0.0`.",
+            )
+        )
+
     # 6. Mauvais usage de np.nan_to_num sur indicateurs dict (bollinger, macd, ...)
     for ind in _DICT_INDICATOR_NAMES:
         bad_pattern = (
@@ -1346,6 +1489,6 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
                 "ParameterSpec invalide: utiliser min_val/max_val/param_type/step.",
             )
 
-    return True, ""
+    return True, "; ".join(_soft_warnings) if _soft_warnings else ""
 
 

@@ -59,7 +59,6 @@ class LLMConfig:
 
     # Ollama
     ollama_host: str = "http://127.0.0.1:11434"
-    keep_alive: Optional[str] = None
 
     # OpenAI
     openai_api_key: Optional[str] = None
@@ -88,7 +87,6 @@ class LLMConfig:
             provider=provider,
             model=os.environ.get("BACKTEST_LLM_MODEL", "llama3.2"),
             ollama_host=os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434"),
-            keep_alive=os.environ.get("BACKTEST_LLM_KEEP_ALIVE"),
             openai_api_key=os.environ.get("OPENAI_API_KEY"),
             openai_base_url=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
             temperature=float(os.environ.get("BACKTEST_LLM_TEMPERATURE", "0.7")),
@@ -130,6 +128,7 @@ class LLMResponse:
     raw_response: Dict[str, Any] = field(default_factory=dict)
     parsed_json: Optional[Dict[str, Any]] = None
     parse_error: Optional[str] = None
+
     # Streaming abort (répétition détectée en cours de génération)
     aborted: bool = False
 
@@ -177,21 +176,6 @@ class LLMResponse:
 
         self.parse_error = "Aucun JSON trouvé dans la réponse"
         return None
-
-
-def _resolve_ollama_keep_alive(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        minutes = max(0, int(value))
-        return "0m" if minutes <= 0 else f"{minutes}m"
-    normalized = str(value).strip()
-    if not normalized:
-        return None
-    if normalized.lstrip("-").isdigit():
-        minutes = max(0, int(normalized))
-        return "0m" if minutes <= 0 else f"{minutes}m"
-    return normalized
 
 
 class LLMClient(ABC):
@@ -382,9 +366,6 @@ class OllamaClient(LLMClient):
                 max_tokens=max_tokens,
             ),
         }
-        keep_alive = _resolve_ollama_keep_alive(self.config.keep_alive)
-        if keep_alive is not None:
-            payload["keep_alive"] = keep_alive
 
         if json_mode:
             payload["format"] = "json"
@@ -499,9 +480,6 @@ class OllamaClient(LLMClient):
                 max_tokens=max_tokens,
             ),
         }
-        keep_alive = _resolve_ollama_keep_alive(self.config.keep_alive)
-        if keep_alive is not None:
-            payload["keep_alive"] = keep_alive
 
         if json_mode:
             payload["format"] = "json"
@@ -619,9 +597,6 @@ class OllamaClient(LLMClient):
                 max_tokens=max_tokens,
             ),
         }
-        keep_alive = _resolve_ollama_keep_alive(self.config.keep_alive)
-        if keep_alive is not None:
-            payload["keep_alive"] = keep_alive
         if json_mode:
             payload["format"] = "json"
 

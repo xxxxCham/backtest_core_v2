@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-04-13T13:33:46Z",
+  "updated_at": "2026-04-13T19:19:13Z",
   "entries": [
     {
       "id": "builder_generated|BTCUSDC|1w|39a55e716545",
@@ -1304,7 +1304,7 @@
         "universe_strategy_type": ""
       },
       "created_at": "2026-04-11T08:34:23Z",
-      "updated_at": "2026-04-11T16:28:42Z"
+      "updated_at": "2026-04-13T14:59:19Z"
     },
     {
       "id": "builder_generated|FILUSDC|1d|369d085017d0",
@@ -2385,6 +2385,154 @@
       },
       "created_at": "2026-04-13T13:33:46Z",
       "updated_at": "2026-04-13T13:33:46Z"
+    },
+    {
+      "id": "builder_generated|LTCUSDC|1w|0bb759780465",
+      "strategy_name": "builder_generated",
+      "symbol": "LTCUSDC",
+      "timeframe": "1w",
+      "params_hash": "0bb759780465",
+      "category": "p1_builder_inbox",
+      "status": "active",
+      "tags": [
+        "builder_out",
+        "universe_canonical"
+      ],
+      "note": "Strat\u00e9gie sur LTCUSDC 1w. Acheter lors de divergence baissi\u00e8re sur Bollinger et ATR, vendre sur surachat via RSI et volume",
+      "builder_state": "stopped",
+      "last_metrics_snapshot": {
+        "total_return_pct": 0.0,
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "calmar_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "total_trades": 0,
+        "win_rate_pct": 0.0,
+        "profit_factor": 1.0,
+        "expectancy": 0.0
+      },
+      "source": "builder",
+      "meta": {
+        "session_id": "20260413_205942_strat_gie_sur_ltcusdc_1w_acheter_lors_de",
+        "best_sharpe": 1.0843168437071742,
+        "total_iterations": 7,
+        "universe_mode": "canonical",
+        "universe_purpose": "builder_autonomous",
+        "universe_strategy_type": "mean_reversion"
+      },
+      "created_at": "2026-04-13T19:00:30Z",
+      "updated_at": "2026-04-13T19:04:57Z"
+    },
+    {
+      "id": "builder_generated|ADAUSDC|1d|75c5b4a9d3d3",
+      "strategy_name": "builder_generated",
+      "symbol": "ADAUSDC",
+      "timeframe": "1d",
+      "params_hash": "75c5b4a9d3d3",
+      "category": "p1_builder_inbox",
+      "status": "active",
+      "tags": [
+        "builder_out",
+        "universe_canonical"
+      ],
+      "note": "Strat\u00e9gie sur ADAUSDC 1d. Acheter lorsque l'AMI d\u00e9passe le niveau 50 et que le RSI est au-dessus de 60, en filtrant par volatilit\u00e9 r\u00e9duite.",
+      "builder_state": "stopped",
+      "last_metrics_snapshot": {
+        "total_return_pct": 0.0,
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "calmar_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "total_trades": 0,
+        "win_rate_pct": 0.0,
+        "profit_factor": 1.0,
+        "expectancy": 0.0
+      },
+      "source": "builder",
+      "meta": {
+        "session_id": "20260413_210546_strat_gie_sur_adausdc_1d_acheter_lorsque",
+        "best_sharpe": 0.44472703152177706,
+        "total_iterations": 8,
+        "universe_mode": "canonical",
+        "universe_purpose": "builder_autonomous",
+        "universe_strategy_type": "unknown"
+      },
+      "created_at": "2026-04-13T19:06:16Z",
+      "updated_at": "2026-04-13T19:12:23Z"
+    },
+    {
+      "id": "builder_generated|LINKUSDC|1w|660a275e445f",
+      "strategy_name": "builder_generated",
+      "symbol": "LINKUSDC",
+      "timeframe": "1w",
+      "params_hash": "660a275e445f",
+      "category": "p1_builder_inbox",
+      "status": "active",
+      "tags": [
+        "builder_out",
+        "universe_canonical"
+      ],
+      "note": "Strat\u00e9gie de Multi-factor sur LINKUSDC 1w. Indicateurs : ADX + EMA + ATR. Signal composite : ADX + EMA + ATR doivent tous confirmer la direction. Sortie progressive : r\u00e9duction quand ADX diverge, cl\u00f4ture si EMA se retourne. Trailing stop \u00e0 1.3x ATR, take-profit \u00e0 3.7x ATR.",
+      "builder_state": "stopped",
+      "last_metrics_snapshot": {
+        "total_return_pct": 0.0,
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "calmar_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "total_trades": 0,
+        "win_rate_pct": 0.0,
+        "profit_factor": 1.0,
+        "expectancy": 0.0
+      },
+      "source": "builder",
+      "meta": {
+        "session_id": "20260413_211300_strat_gie_de_multi_factor_sur_linkusdc_1",
+        "best_sharpe": 1.1944570819505658,
+        "total_iterations": 7,
+        "universe_mode": "canonical",
+        "universe_purpose": "builder_autonomous",
+        "universe_strategy_type": "unknown"
+      },
+      "created_at": "2026-04-13T19:13:32Z",
+      "updated_at": "2026-04-13T19:17:38Z"
+    },
+    {
+      "id": "builder_generated|ADAUSDC|1w|ddbb4df20a5b",
+      "strategy_name": "builder_generated",
+      "symbol": "ADAUSDC",
+      "timeframe": "1w",
+      "params_hash": "ddbb4df20a5b",
+      "category": "p1_builder_inbox",
+      "status": "active",
+      "tags": [
+        "builder_out",
+        "universe_canonical"
+      ],
+      "note": "Strat\u00e9gie de Breakout sur ADAUSDC 1w. Indicateurs : DONCHIAN + PSAR + ATR. Position quand le prix sort du range DONCHIAN avec PSAR montrant une expansion de volatilit\u00e9. Sortie si le prix r\u00e9int\u00e8gre le range ou trailing stop bas\u00e9 sur ATR. Stop serr\u00e9 2.3x ATR pour limiter le drawdown, TP \u00e0 6.7x ATR.",
+      "builder_state": "in_progress",
+      "last_metrics_snapshot": {
+        "total_return_pct": 0.0,
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "calmar_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "total_trades": 0,
+        "win_rate_pct": 0.0,
+        "profit_factor": 1.0,
+        "expectancy": 0.0
+      },
+      "source": "builder",
+      "meta": {
+        "session_id": "20260413_211820_strat_gie_de_breakout_sur_adausdc_1w_ind",
+        "best_sharpe": 0.0,
+        "total_iterations": 2,
+        "universe_mode": "canonical",
+        "universe_purpose": "builder_autonomous",
+        "universe_strategy_type": "breakout"
+      },
+      "created_at": "2026-04-13T19:18:47Z",
+      "updated_at": "2026-04-13T19:19:13Z"
     }
   ]
 }
