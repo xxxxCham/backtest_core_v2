@@ -69,6 +69,7 @@ def run_builder_loop_v2(
     initial_capital: float,
     thought_stream: Any,
 ) -> Any:
+    del thought_stream
     session_id = session.session_id
     max_iterations = session.max_iterations
     last_iteration: Optional[BuilderIteration] = None
@@ -85,7 +86,6 @@ def run_builder_loop_v2(
             iteration=i,
             max_iterations=max_iterations,
         )
-        thought_stream.iteration_start(i, max_iterations)
 
         # ── Circuit breaker ──
         if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
@@ -107,12 +107,23 @@ def run_builder_loop_v2(
                 iteration.phase_feedback.setdefault("session_reset", {}).update(
                     reset_event
                 )
-                thought_stream.warning(
-                    "Auto-reset Builder: reprise sur le meilleur ancrage stable "
-                    "disponible avant nouvelle tentative."
+                builder._emit_progress(
+                    "warning",
+                    iteration=i,
+                    message=(
+                        "Auto-reset Builder: reprise sur le meilleur ancrage stable "
+                        "disponible avant nouvelle tentative."
+                    ),
                 )
             else:
-                thought_stream.circuit_breaker(consecutive_failures, MAX_CONSECUTIVE_FAILURES)
+                builder._emit_progress(
+                    "warning",
+                    iteration=i,
+                    message=(
+                        f"Circuit breaker: {consecutive_failures} echecs consecutifs "
+                        f"(limite {MAX_CONSECUTIVE_FAILURES})."
+                    ),
+                )
                 logger.warning(
                     "builder_circuit_breaker consecutive=%d",
                     consecutive_failures,
@@ -140,14 +151,22 @@ def run_builder_loop_v2(
                 iteration.phase_feedback.setdefault("session_reset", {}).update(
                     reset_event
                 )
-                thought_stream.warning(
-                    "Auto-reset Builder: saturation fallback détectée, "
-                    "redémarrage sur une base plus saine."
+                builder._emit_progress(
+                    "warning",
+                    iteration=i,
+                    message=(
+                        "Auto-reset Builder: saturation fallback detectee, "
+                        "redemarrage sur une base plus saine."
+                    ),
                 )
             else:
-                thought_stream.warning(
-                    f"Arrêt: {fallback_count} fallbacks déterministes utilisés. "
-                    "Le LLM ne parvient pas à générer du code valide pour cette API."
+                builder._emit_progress(
+                    "warning",
+                    iteration=i,
+                    message=(
+                        f"Arret: {fallback_count} fallbacks deterministes utilises. "
+                        "Le LLM ne parvient pas a generer du code valide pour cette API."
+                    ),
                 )
                 logger.warning(
                     "builder_fallback_circuit_breaker count=%d",
@@ -159,17 +178,22 @@ def run_builder_loop_v2(
         try:
             # ── Phase 1 : Proposition ──
             logger.info("builder_iter_%d_proposal", i)
-            builder._emit_progress("phase_start", iteration=i, phase="proposal")
-            prev_metrics: Optional[Dict[str, Any]] = (
-                dict(last_iteration.backtest_result.metrics)
-                if last_iteration is not None
-                and last_iteration.backtest_result is not None
-                and isinstance(getattr(last_iteration.backtest_result, "metrics", None), dict)
-                else None
-            )
-            thought_stream.proposal_sent(
-                has_previous=last_iteration is not None,
-                prev_metrics=prev_metrics,
+            builder._emit_progress(
+                "phase_start",
+                iteration=i,
+                phase="proposal",
+                detail=(
+                    "avec resultats precedents"
+                    if last_iteration is not None
+                    else "premiere iteration"
+                ),
+                prev_metrics=(
+                    dict(last_iteration.backtest_result.metrics)
+                    if last_iteration is not None
+                    and last_iteration.backtest_result is not None
+                    and isinstance(getattr(last_iteration.backtest_result, "metrics", None), dict)
+                    else {}
+                ),
             )
             t0 = time.perf_counter()
             proposal, proposal_feedback = builder._ask_proposal(
@@ -181,8 +205,13 @@ def run_builder_loop_v2(
 
             # Garde : proposition vide → retry avec prompt simplifié
             if _is_invalid_proposal(proposal):
-                thought_stream.warning(
-                    "Proposition invalide après retry contractuel — fallback déterministe"
+                builder._emit_progress(
+                    "warning",
+                    iteration=i,
+                    phase="proposal",
+                    message=(
+                        "Proposition invalide apres retry contractuel - fallback deterministe"
+                    ),
                 )
                 issues = _proposal_issues(proposal)
                 proposal_feedback["issues_after_retry"] = issues
@@ -243,7 +272,6 @@ def run_builder_loop_v2(
                         phase="proposal",
                         metadata={"branches": len(branch_specs)},
                     )
-                proposal = proposal_candidates[0]["proposal"]
             else:
                 proposal_candidates.append(
                     {
@@ -286,18 +314,47 @@ def run_builder_loop_v2(
                         ind for ind in candidate_used
                         if ind.lower() in (x.lower() for x in builder.available_indicators)
                     ]
+                builder._emit_progress(
+                    "proposal_candidate",
+                    iteration=i,
+                    phase="proposal",
+                    branch_label=candidate.get("branch_label", ""),
+                    proposal=dict(candidate.get("proposal") or {}),
+                    latency_s=dt_proposal,
+                )
 
-            builder._emit_progress(
-                "phase_done",
-                iteration=i,
-                phase="proposal",
-                hypothesis=proposal.get("hypothesis", f"Itération {i}"),
-            )
-            thought_stream.proposal_received(proposal, dt_proposal)
+            if len(proposal_candidates) == 1:
+                builder._emit_progress(
+                    "proposal_selected",
+                    iteration=i,
+                    phase="proposal",
+                    branch_label=proposal_candidates[0].get("branch_label", "main"),
+                    selected_branch_label=proposal_candidates[0].get("branch_label", "main"),
+                    proposal=dict(proposal_candidates[0].get("proposal") or {}),
+                    latency_s=dt_proposal,
+                )
+                builder._emit_progress(
+                    "phase_done",
+                    iteration=i,
+                    phase="proposal",
+                    selected_branch_label=proposal_candidates[0].get("branch_label", "main"),
+                    detail="proposition retenue pour generation de code",
+                    hypothesis=(proposal_candidates[0].get("proposal") or {}).get(
+                        "hypothesis",
+                        f"Iteration {i}",
+                    ),
+                )
+            else:
+                builder._emit_progress(
+                    "phase_done",
+                    iteration=i,
+                    phase="proposal",
+                    detail=f"{len(proposal_candidates)} branches candidates generees",
+                    candidate_count=len(proposal_candidates),
+                )
 
             logger.info("builder_iter_%d_codegen", i)
             builder._emit_progress("phase_start", iteration=i, phase="code")
-            thought_stream.codegen_sent()
             t0 = time.perf_counter()
 
             branch_outcomes: List[Dict[str, Any]] = []
@@ -383,6 +440,13 @@ def run_builder_loop_v2(
             sharpe = float(selected_outcome.get("sharpe", float("-inf")) or float("-inf"))
             iteration.code = code
             iteration.backtest_result = bt_result
+            # ── Perf / quality scores from micro-benchmark ──
+            _cfb = selected_outcome.get("code_feedback") or {}
+            _perf_bench = _cfb.get("perf_benchmark") or {}
+            iteration.perf_score = float(_perf_bench.get("median_ms", 0.0) or 0.0)
+            iteration.code_quality_score = float(
+                selected_outcome.get("code_quality_score", 1.0) or 1.0
+            )
             builder._persist_session_strategy_code(session, code)
             iteration.phase_feedback["proposal"] = selected_outcome.get("proposal_feedback", {})
             if len(proposal_candidates) > 1:
@@ -402,8 +466,16 @@ def run_builder_loop_v2(
                         for outcome in branch_outcomes
                     ],
                 }
-                thought_stream.append(
-                    f"🌿  BRANCHING STAGNATION — branche retenue: {selected_outcome.get('branch_label')}\n"
+                builder._emit_progress(
+                    "proposal_selected",
+                    iteration=i,
+                    phase="proposal",
+                    branch_label=selected_outcome.get("branch_label", ""),
+                    selected_branch_label=selected_outcome.get("branch_label", ""),
+                    proposal=dict(selected_outcome.get("proposal") or {}),
+                    candidate_count=len(proposal_candidates),
+                    rank_score=selected_outcome.get("rank_score"),
+                    sharpe=selected_outcome.get("sharpe"),
                 )
             iteration.phase_feedback["code"] = selected_outcome.get("code_feedback", {})
             if selected_outcome.get("precheck_feedback"):
@@ -414,11 +486,17 @@ def run_builder_loop_v2(
                 iteration.phase_feedback["backtest"] = selected_outcome.get("backtest_feedback", {})
 
             dt_code = time.perf_counter() - t0
-            thought_stream.codegen_received(code, dt_code)
+            builder._emit_progress(
+                "phase_done",
+                iteration=i,
+                phase="code",
+                branch_label=selected_outcome.get("branch_label", ""),
+                detail=f"code genere en {dt_code:.2f}s",
+                latency_s=dt_code,
+                code_lines=len(str(code or "").splitlines()),
+            )
 
             logger.info("builder_iter_%d_backtest", i)
-            builder._emit_progress("phase_start", iteration=i, phase="backtest")
-            thought_stream.backtest_start()
             builder._emit_completed_backtest(
                 bt_result,
                 session=session,
@@ -445,8 +523,13 @@ def run_builder_loop_v2(
                         "backtest_skipped"
                     )
                 ),
+                branch_label=selected_outcome.get("branch_label", ""),
+                detail=(
+                    "resume backtest de la branche retenue"
+                    if len(proposal_candidates) > 1
+                    else "resume backtest courant"
+                ),
             )
-            thought_stream.backtest_result(bt_result.metrics)
 
             # Backtest réussi → reset circuit breaker
             consecutive_failures = 0
@@ -506,7 +589,6 @@ def run_builder_loop_v2(
                     score_payload.get("score", float("-inf")) or float("-inf")
                 )
                 session.best_iteration = iteration
-                thought_stream.best_update(sharpe, i)
 
             # ── Phase 6b : Détection de stagnation ──
             cur_fp = _metrics_fingerprint(metrics_cur)
@@ -518,9 +600,14 @@ def run_builder_loop_v2(
                     iteration.phase_feedback.setdefault("stagnation", {})[
                         "identical_metrics"
                     ] = True
-                    thought_stream.warning(
-                        "Stagnation détectée: métriques identiques à "
-                        "l'itération précédente — forçage changement radical."
+                    builder._emit_progress(
+                        "warning",
+                        iteration=i,
+                        phase="proposal",
+                        message=(
+                            "Stagnation detectee: metriques identiques a "
+                            "l'iteration precedente - forcage changement radical."
+                        ),
                     )
                     logger.warning(
                         "builder_iter_%d_stagnation fingerprint=%s",
@@ -551,7 +638,12 @@ def run_builder_loop_v2(
                 iteration.change_type = _normalize_change_type(
                     diag.get("change_type", "logic")
                 )
-            thought_stream.diagnostic(diag)
+            builder._emit_progress(
+                "diagnostic",
+                iteration=i,
+                phase="analysis",
+                diagnostic=diag,
+            )
             # ── Instrumentation: diagnostic ──
             if builder.instrumentation.enabled:
                 builder.instrumentation.record_diagnostic(_itrace, diag)
@@ -574,7 +666,12 @@ def run_builder_loop_v2(
             if positive_gate_policy.triggered:
                 gate_feedback = positive_gate_policy.feedback
                 if positive_gate_policy.warning_message:
-                    thought_stream.warning(positive_gate_policy.warning_message)
+                    builder._emit_progress(
+                        "warning",
+                        iteration=i,
+                        phase="analysis",
+                        message=positive_gate_policy.warning_message,
+                    )
                 if gate_feedback is not None:
                     logger.info(
                         "builder_iter_%d_positive_gate_stop observed=%d required=%d "
@@ -625,7 +722,6 @@ def run_builder_loop_v2(
                 i, diag["category"], diag["severity"],
             )
             builder._emit_progress("phase_start", iteration=i, phase="analysis")
-            thought_stream.analysis_sent()
             pre_reflection_text = ""
             t0 = time.perf_counter()
             if builder.ablation.is_enabled("llm_analysis"):
@@ -684,16 +780,22 @@ def run_builder_loop_v2(
                 )
 
             if decision_policy.stagnation_warning_message:
-                thought_stream.warning(
-                    decision_policy.stagnation_warning_message
+                builder._emit_progress(
+                    "warning",
+                    iteration=i,
+                    phase="analysis",
+                    message=decision_policy.stagnation_warning_message,
                 )
                 logger.info(
                     "builder_iter_%d_stagnation_circuit_breaker triggered",
                     i,
                 )
             if decision_policy.stop_override_warning_message:
-                thought_stream.warning(
-                    decision_policy.stop_override_warning_message
+                builder._emit_progress(
+                    "warning",
+                    iteration=i,
+                    phase="analysis",
+                    message=decision_policy.stop_override_warning_message,
                 )
                 logger.info(
                     "builder_iter_%d_stop_overridden successful_iters=%d "
@@ -704,8 +806,11 @@ def run_builder_loop_v2(
                     session.target_sharpe,
                 )
             if decision_policy.accept_override_warning_message:
-                thought_stream.warning(
-                    decision_policy.accept_override_warning_message
+                builder._emit_progress(
+                    "warning",
+                    iteration=i,
+                    phase="analysis",
+                    message=decision_policy.accept_override_warning_message,
                 )
                 logger.info(
                     "builder_iter_%d_accept_overridden reason=%s trades=%d "
@@ -726,8 +831,15 @@ def run_builder_loop_v2(
 
             iteration.analysis = analysis
             iteration.decision = decision
-            thought_stream.analysis_received(
-                analysis, decision, iteration.change_type, dt_analysis,
+            builder._emit_progress(
+                "analysis",
+                iteration=i,
+                phase="analysis",
+                status=decision,
+                message=analysis,
+                decision=decision,
+                change_type=iteration.change_type,
+                latency_s=dt_analysis,
             )
             # ── Instrumentation: décision + stagnation + finalisation ──
             if builder.instrumentation.enabled:
@@ -771,6 +883,7 @@ def run_builder_loop_v2(
                 decision=decision,
                 status="success" if decision == "accept" else "running",
                 best_sharpe=session.best_sharpe,
+                new_best=should_promote_best,
             )
             last_iteration = iteration
 
@@ -825,7 +938,6 @@ def run_builder_loop_v2(
             raise
         except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as e:
             iteration.error = f"{type(e).__name__}: {e}"
-            thought_stream.error(i, str(e))
             consecutive_failures += 1
             logger.error(
                 "builder_iter_%d_error error=%s\n%s",

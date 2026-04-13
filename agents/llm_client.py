@@ -21,9 +21,11 @@ Skip-if: Vous appelez juste le client via create_llm_client().
 """
 
 from __future__ import annotations
+# pylint: disable=broad-except
 
 import json
 import os
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -36,6 +38,10 @@ from backtest.errors import LLMUnavailableError
 from utils.observability import get_obs_logger
 
 logger = get_obs_logger(__name__)
+
+
+class StreamAbortRequest(Exception):
+    """Levée par on_chunk pour demander un arrêt gracieux du stream (ex: boucle de répétition)."""
 
 
 class LLMProvider(Enum):
@@ -123,6 +129,9 @@ class LLMResponse:
     parsed_json: Optional[Dict[str, Any]] = None
     parse_error: Optional[str] = None
 
+    # Streaming abort (répétition détectée en cours de génération)
+    aborted: bool = False
+
     @property
     def is_valid(self) -> bool:
         """Vérifie si la réponse est valide."""
@@ -197,12 +206,10 @@ class LLMClient(ABC):
         Returns:
             Réponse du LLM
         """
-        pass
 
     @abstractmethod
     def is_available(self) -> bool:
         """Vérifie si le LLM est disponible."""
-        pass
 
     def simple_chat(
         self,
@@ -237,6 +244,10 @@ class LLMClient(ABC):
             "provider": self.config.provider.value,
             "model": self.config.model,
         }
+
+    def abort_current_stream(self) -> bool:
+        """Demande l'arrêt du stream actif quand le provider le supporte."""
+        return False
 
 
 def _is_reasoning_model(model_name: str) -> bool:
@@ -280,6 +291,41 @@ class OllamaClient(LLMClient):
         adaptive_timeout = _get_adaptive_timeout(config)
         self._http_client = httpx.Client(timeout=adaptive_timeout)
         self._adaptive_timeout = adaptive_timeout
+        self._stream_lock = threading.Lock()
+        self._active_stream_response: Optional[httpx.Response] = None
+        self._stream_abort_requested = False
+
+    def _register_active_stream_response(self, response: httpx.Response) -> None:
+        with self._stream_lock:
+            self._active_stream_response = response
+            self._stream_abort_requested = False
+
+    def _clear_active_stream_response(self) -> None:
+        with self._stream_lock:
+            self._active_stream_response = None
+
+    def _consume_stream_abort_requested(self) -> bool:
+        with self._stream_lock:
+            requested = bool(self._stream_abort_requested)
+            self._stream_abort_requested = False
+            return requested
+
+    def _is_stream_abort_requested(self) -> bool:
+        with self._stream_lock:
+            return bool(self._stream_abort_requested)
+
+    def abort_current_stream(self) -> bool:
+        with self._stream_lock:
+            response = self._active_stream_response
+            if response is None:
+                return False
+            self._stream_abort_requested = True
+            self._active_stream_response = None
+        try:
+            response.close()
+        except Exception:  # noqa: BLE001
+            pass
+        return True
 
     def _messages_to_prompt(self, messages: List[LLMMessage], json_mode: bool) -> str:
         """Convertit une conversation en prompt simple pour /api/generate."""
@@ -370,6 +416,7 @@ class OllamaClient(LLMClient):
     def close(self) -> None:
         """Ferme le client HTTP sous-jacent."""
         try:
+            self.abort_current_stream()
             self._http_client.close()
         except Exception:  # noqa: BLE001
             pass
@@ -557,6 +604,7 @@ class OllamaClient(LLMClient):
         full_content: List[str] = []
         prompt_tokens = 0
         completion_tokens = 0
+        _stream_aborted = False
 
         logger.info(
             "🤖 Interrogation streaming %s (timeout: %.0fs)...",
@@ -567,33 +615,55 @@ class OllamaClient(LLMClient):
             with self._http_client.stream(
                 "POST", url, json=payload, timeout=self._adaptive_timeout,
             ) as response:
-                response.raise_for_status()
-                for line in response.iter_lines():
-                    if not line:
-                        continue
-                    try:
-                        data = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    chunk = data.get("message", {}).get("content", "")
-                    if chunk:
-                        full_content.append(chunk)
+                self._register_active_stream_response(response)
+                try:
+                    response.raise_for_status()
+                    for line in response.iter_lines():
+                        if self._is_stream_abort_requested():
+                            _stream_aborted = True
+                            break
+                        if not line:
+                            continue
                         try:
-                            on_chunk(chunk)
-                        except Exception:  # noqa: BLE001
-                            pass  # callback UI peut échouer sans casser le stream
-                    if data.get("done", False):
-                        prompt_tokens = data.get("prompt_eval_count", 0)
-                        completion_tokens = data.get("eval_count", 0)
-                        break
+                            data = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        chunk = data.get("message", {}).get("content", "")
+                        if chunk:
+                            full_content.append(chunk)
+                            try:
+                                on_chunk(chunk)
+                            except StreamAbortRequest:
+                                # Le guard a détecté une boucle de répétition — on coupe proprement
+                                logger.warning(
+                                    "stream_repetition_abort model=%s chars_received=%d",
+                                    self.config.model, sum(len(c) for c in full_content),
+                                )
+                                _stream_aborted = True
+                                break
+                            except Exception:  # noqa: BLE001
+                                pass  # callback UI peut échouer sans casser le stream
+                        if data.get("done", False):
+                            prompt_tokens = data.get("prompt_eval_count", 0)
+                            completion_tokens = data.get("eval_count", 0)
+                            break
+                finally:
+                    self._clear_active_stream_response()
         except Exception as exc:
-            logger.warning("Streaming Ollama échoué (%s) — fallback non-stream", exc)
-            return self.chat(
-                messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                json_mode=json_mode,
-            )
+            if self._consume_stream_abort_requested():
+                logger.info(
+                    "Streaming Ollama interrompu explicitement model=%s",
+                    self.config.model,
+                )
+                _stream_aborted = True
+            else:
+                logger.warning("Streaming Ollama échoué (%s) — fallback non-stream", exc)
+                return self.chat(
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    json_mode=json_mode,
+                )
 
         latency = (time.time() - start_time) * 1000
         total_tokens = prompt_tokens + completion_tokens
@@ -610,6 +680,7 @@ class OllamaClient(LLMClient):
             total_tokens=total_tokens,
             latency_ms=latency,
             raw_response={},
+            aborted=_stream_aborted,
         )
         if json_mode:
             llm_response.parse_json()

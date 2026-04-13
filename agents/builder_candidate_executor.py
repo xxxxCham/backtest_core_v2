@@ -8,9 +8,12 @@ avoid circular imports during the initial load of `agents.strategy_builder`.
 """
 
 from __future__ import annotations
+# pylint: disable=protected-access
+# pylint: disable=broad-except
 
 import concurrent.futures
 import copy
+import time as _time
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
@@ -18,7 +21,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 import agents.strategy_builder as strategy_builder_module
-from agents.builder_code_repair import _repair_code
+from agents.builder_code_repair import _auto_repair_vectorize, _repair_code
 from agents.builder_code_validation import validate_generated_code
 from agents.builder_state import BuilderIteration, BuilderSession
 from agents.strategy_builder import (
@@ -109,6 +112,10 @@ class BuilderCandidateExecutorV2:
             code = self._resolve_candidate_code()
             self._checkpoint("code_generated", "ok")
             self.current_stage = "save_and_load"
+            self._phase_start(
+                "save_and_load",
+                detail="écriture du candidat et chargement dynamique",
+            )
             self._checkpoint("save_and_load", "start")
             strategy_cls = self.builder._save_and_load(
                 self.ctx.session,
@@ -116,12 +123,17 @@ class BuilderCandidateExecutorV2:
                 self.ctx.iteration_num,
             )
             self._checkpoint("save_and_load", "ok")
+            self._phase_done("save_and_load", status="ok", detail="stratégie chargée")
             if self.builder.ablation.is_enabled("auto_fix_indicators"):
                 strategy_cls = self.builder._auto_fix_required_indicators(
                     strategy_cls,
                     code,
                 )
             self.current_stage = "precheck"
+            self._phase_start(
+                "precheck",
+                detail="validation densité / répartition des signaux",
+            )
             self._checkpoint("precheck", "start")
             signal_probe = self.builder._precheck_signal_counts(
                 strategy_cls,
@@ -139,6 +151,12 @@ class BuilderCandidateExecutorV2:
                 "ok",
                 extra={"signal_probe": dict(signal_probe or {})},
             )
+            # ── Micro-benchmark generate_signals ──
+            if signal_probe.get("ok"):
+                perf_bench = self._benchmark_generate_signals(strategy_cls)
+                self.code_feedback["perf_benchmark"] = perf_bench
+            else:
+                perf_bench = {"ok": False, "median_ms": 0.0, "is_slow": False}
             code, bt_result = self._execute_backtest_pipeline(
                 strategy_cls,
                 code,
@@ -152,7 +170,7 @@ class BuilderCandidateExecutorV2:
                 self.ctx.iteration_num,
             )
             return self.outcome, self.ctx.fallback_count
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001
             failure_text = f"{type(exc).__name__}: {exc}"
             traceback_tail = _safe_format_exception(exc)
             self.outcome["error"] = failure_text
@@ -163,6 +181,12 @@ class BuilderCandidateExecutorV2:
             self.outcome["precheck_feedback"] = self.precheck_feedback
             self.outcome["pre_reflection_feedback"] = self.pre_reflection_feedback
             self.outcome["backtest_feedback"] = self.backtest_feedback
+            if self.current_stage and self.current_stage != "init":
+                self._phase_done(
+                    self.current_stage,
+                    status="error",
+                    detail=failure_text,
+                )
             self._checkpoint(
                 self.current_stage or "unknown",
                 "error",
@@ -199,6 +223,33 @@ class BuilderCandidateExecutorV2:
             precheck_feedback=self.precheck_feedback,
             backtest_feedback=self.backtest_feedback,
             extra=extra,
+        )
+
+    def _phase_start(self, phase: str, *, detail: str = "") -> None:
+        self.builder._emit_progress(
+            "phase_start",
+            iteration=self.ctx.iteration_num,
+            phase=phase,
+            branch_label=self.ctx.branch_label,
+            detail=detail,
+        )
+
+    def _phase_done(
+        self,
+        phase: str,
+        *,
+        status: str = "done",
+        detail: str = "",
+        **payload: Any,
+    ) -> None:
+        self.builder._emit_progress(
+            "phase_done",
+            iteration=self.ctx.iteration_num,
+            phase=phase,
+            branch_label=self.ctx.branch_label,
+            status=status,
+            detail=detail,
+            **payload,
         )
 
     def _apply_change_type_policy(self) -> None:
@@ -350,6 +401,10 @@ class BuilderCandidateExecutorV2:
             if self.builder.ablation.is_enabled("code_repair")
             else code
         )
+        # Auto-repair vectorisation (and/or→&/|, signals.loc, isnull, ParameterSpec, np.diff)
+        repaired_code, vectorize_fixes = _auto_repair_vectorize(repaired_code)
+        if vectorize_fixes:
+            self.code_feedback["vectorize_fixes"] = vectorize_fixes
         is_valid, error_msg = validate_generated_code(repaired_code)
         if is_valid:
             return repaired_code
@@ -402,6 +457,11 @@ class BuilderCandidateExecutorV2:
     ) -> tuple[str, Any]:
         if not signal_probe.get("ok"):
             self.precheck_feedback["backtest_skipped"] = True
+            self._phase_done(
+                "precheck",
+                status="blocked",
+                detail="précheck bloquant: aucun signal exploitable",
+            )
             self._checkpoint(
                 "precheck",
                 "blocked",
@@ -420,6 +480,11 @@ class BuilderCandidateExecutorV2:
                     "backtest_skipped": True,
                 }
             )
+            self._phase_done(
+                "precheck",
+                status="blocked",
+                detail="précheck bloquant: densité de signaux pathologique",
+            )
             self._checkpoint(
                 "precheck",
                 "blocked",
@@ -427,34 +492,43 @@ class BuilderCandidateExecutorV2:
             )
             return code, self.builder._build_precheck_overtrading_result(signal_probe)
 
+        signal_count = int(signal_probe.get("total_signals", 0) or 0)
+        self._phase_done(
+            "precheck",
+            status="ok",
+            detail=f"{signal_count} signaux détectés avant backtest",
+        )
+
         pre_reflection_future = None
         pre_reflection_pool: Optional[
             concurrent.futures.ThreadPoolExecutor
         ] = None
         try:
-            try:
-                pre_reflection_pool = strategy_builder_module._new_streamlit_aware_thread_pool(
-                    max_workers=1
-                )
-                pre_reflection_future = pre_reflection_pool.submit(
-                    self.builder._ask_pre_reflection,
-                    self.ctx.session,
-                    self.candidate_proposal,
-                    code,
-                    self.ctx.iteration_num,
-                )
-            except (
-                ValueError,
-                KeyError,
-                RuntimeError,
-                AttributeError,
-                TypeError,
-                IndexError,
-            ):
-                pre_reflection_future = None
+            if self.builder.ablation.is_enabled("pre_reflection"):
+                try:
+                    pre_reflection_pool = strategy_builder_module._new_streamlit_aware_thread_pool(
+                        max_workers=1
+                    )
+                    pre_reflection_future = pre_reflection_pool.submit(
+                        self.builder._ask_pre_reflection,
+                        self.ctx.session,
+                        self.candidate_proposal,
+                        code,
+                        self.ctx.iteration_num,
+                    )
+                except (
+                    ValueError,
+                    KeyError,
+                    RuntimeError,
+                    AttributeError,
+                    TypeError,
+                    IndexError,
+                ):
+                    pre_reflection_future = None
 
             try:
                 self.current_stage = "backtest"
+                self._phase_start("backtest", detail="simulation de la stratégie")
                 self._checkpoint("backtest", "start")
                 bt_result = self._run_backtest(strategy_cls)
                 self._checkpoint("backtest", "ok")
@@ -516,6 +590,7 @@ class BuilderCandidateExecutorV2:
             bt_exc
         )
         self.current_stage = "runtime_fix"
+        self._phase_start("runtime_fix", detail=bt_error)
         self._checkpoint(
             "backtest",
             "error",
@@ -587,11 +662,16 @@ class BuilderCandidateExecutorV2:
                 error=retry_bt_error,
                 traceback_tail=_safe_format_exception(retry_bt_exc),
             )
+            self._phase_done(
+                "runtime_fix",
+                status="error",
+                detail=retry_bt_error,
+            )
             if used_runtime_fallback:
                 self.outcome["error"] = retry_bt_error
                 self.outcome["code_feedback"] = self.code_feedback
                 self.outcome["backtest_feedback"] = self.backtest_feedback
-                raise RuntimeError(str(self.outcome["error"]))
+                raise RuntimeError(str(self.outcome["error"])) from retry_bt_exc  # noqa: B904  # pylint: disable=raise-missing-from
 
             fallback_code = self._next_fallback_code()
             valid_fb2, fb_err2 = validate_generated_code(fallback_code)
@@ -602,7 +682,7 @@ class BuilderCandidateExecutorV2:
                 )
                 self.outcome["code_feedback"] = self.code_feedback
                 self.outcome["backtest_feedback"] = self.backtest_feedback
-                raise RuntimeError(str(self.outcome["error"]))
+                raise RuntimeError(str(self.outcome["error"])) from retry_bt_exc  # noqa: B904  # pylint: disable=raise-missing-from
             fallback_cls = self.builder._save_and_load(
                 self.ctx.session,
                 fallback_code,
@@ -613,9 +693,18 @@ class BuilderCandidateExecutorV2:
                     fallback_cls,
                     fallback_code,
                 )
+            self._phase_start(
+                "runtime_fix_fallback_backtest",
+                detail="fallback déterministe après échec du patch runtime",
+            )
             self._checkpoint("runtime_fix_fallback_backtest", "start")
             bt_result = self._run_backtest(fallback_cls)
             self._checkpoint("runtime_fix_fallback_backtest", "ok")
+            self._phase_done(
+                "runtime_fix_fallback_backtest",
+                status="ok",
+                detail="fallback runtime validé",
+            )
             retry_code = fallback_code
             self.backtest_feedback[
                 "runtime_fix_fallback_deterministic_used"
@@ -624,6 +713,7 @@ class BuilderCandidateExecutorV2:
 
         self.backtest_feedback["runtime_fix_applied"] = True
         self._checkpoint("runtime_fix", "ok")
+        self._phase_done("runtime_fix", status="ok", detail="patch runtime appliqué")
         return retry_code, bt_result
 
     def _run_backtest(self, strategy_cls: Any) -> Any:
@@ -705,8 +795,80 @@ class BuilderCandidateExecutorV2:
                 "continuous_score": scoring_payload.get("score"),
                 "telemetry_payload": scoring_payload,
                 "scoring_payload": scoring_payload,
+                "code_quality_score": self._compute_code_quality_score(),
             }
         )
+
+    # ── Micro-benchmark ────────────────────────────────────────────────
+
+    _BENCH_N_RUNS: int = 5
+    _BENCH_MAX_BARS: int = 5000
+    _BENCH_THRESHOLD_MS: float = 50.0
+
+    def _benchmark_generate_signals(self, strategy_cls: Any) -> Dict[str, Any]:
+        """Median generate_signals latency over *_BENCH_N_RUNS* runs."""
+        from backtest.engine import BacktestEngine
+        from utils.observability import generate_run_id
+
+        try:
+            engine = BacktestEngine(
+                initial_capital=10_000.0,
+                run_id=generate_run_id(),
+            )
+            inst = strategy_cls()
+            params = dict(getattr(inst, "default_params", {}) or {})
+            params.update(self.candidate_proposal.get("default_params", {}) or {})
+
+            bench_df = self.ctx.data.iloc[: self._BENCH_MAX_BARS].copy(deep=True)
+            indicators = engine.calculate_indicators(bench_df, inst, params)
+
+            # Warmup (JIT / caches)
+            inst.generate_signals(bench_df, indicators, params)
+
+            timings: List[float] = []
+            for _ in range(self._BENCH_N_RUNS):
+                t0 = _time.perf_counter()
+                inst.generate_signals(bench_df, indicators, params)
+                timings.append((_time.perf_counter() - t0) * 1000.0)
+
+            timings.sort()
+            median_ms = timings[len(timings) // 2]
+            return {
+                "ok": True,
+                "median_ms": round(median_ms, 3),
+                "min_ms": round(timings[0], 3),
+                "max_ms": round(timings[-1], 3),
+                "n_bars": len(bench_df),
+                "n_runs": self._BENCH_N_RUNS,
+                "threshold_ms": self._BENCH_THRESHOLD_MS,
+                "is_slow": median_ms > self._BENCH_THRESHOLD_MS,
+            }
+        except Exception:  # noqa: BLE001
+            return {"ok": False, "median_ms": 0.0, "is_slow": False}
+
+    # ── Code-quality score ─────────────────────────────────────────────
+
+    def _compute_code_quality_score(self) -> float:
+        """0–1 composite: 1 = fast + clean LLM code, 0 = slow / many repairs / fallback."""
+        bench = self.code_feedback.get("perf_benchmark") or {}
+        median_ms = float(bench.get("median_ms", 0.0) or 0.0)
+        threshold = float(bench.get("threshold_ms", self._BENCH_THRESHOLD_MS) or self._BENCH_THRESHOLD_MS)
+
+        # Speed component: 1.0 if <= 5 ms, 0.0 if >= threshold
+        if threshold > 0 and median_ms > 0:
+            perf = max(0.0, 1.0 - median_ms / threshold)
+        else:
+            perf = 1.0
+
+        # Repair penalty: each fix costs 0.05, cap 0.4
+        vectorize_fixes = int(self.code_feedback.get("vectorize_fixes", 0) or 0)
+        logic_retry = 1 if self.code_feedback.get("logic_retry_used") else 0
+        repair_penalty = min((vectorize_fixes + logic_retry) * 0.05, 0.4)
+
+        # Fallback penalty
+        fallback_penalty = 0.5 if self.outcome.get("is_fallback") else 0.0
+
+        return round(max(0.0, perf - repair_penalty - fallback_penalty), 4)
 
     def _next_fallback_code(self) -> str:
         if not self.builder.ablation.is_enabled("deterministic_fallback"):

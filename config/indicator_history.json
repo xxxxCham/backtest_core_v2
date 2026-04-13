@@ -1,22 +1,18 @@
 {
   "recent_runs": [
     [
-      "rsi",
+      "bollinger",
+      "adx",
       "atr",
+      "rsi",
+      "ema"
+    ],
+    [
+      "markov_switching",
+      "aroon",
+      "atr",
+      "rsi",
       "bollinger"
-    ],
-    [
-      "rsi",
-      "atr"
-    ],
-    [
-      "rsi",
-      "atr"
-    ],
-    [],
-    [
-      "rsi",
-      "atr"
     ],
     [
       "rsi",
@@ -29,7 +25,7 @@
     [
       "rsi",
       "atr",
-      "bollinger"
+      "ema"
     ],
     [
       "rsi",
@@ -37,52 +33,68 @@
     ],
     [
       "rsi",
-      "ema",
+      "atr"
+    ],
+    [
+      "rsi",
+      "atr"
+    ],
+    [
+      "rsi",
+      "atr"
+    ],
+    [
+      "rsi",
       "atr"
     ]
   ],
   "recent_families": [
     [
       "mean-reversion",
-      "breakout"
-    ],
-    [
-      "mean-reversion",
-      "breakout"
-    ],
-    [
-      "mean-reversion",
-      "breakout"
-    ],
-    [],
-    [
-      "mean-reversion",
-      "breakout"
-    ],
-    [
-      "mean-reversion",
-      "breakout"
-    ],
-    [
-      "mean-reversion",
-      "breakout"
-    ],
-    [
-      "mean-reversion",
-      "breakout"
-    ],
-    [
-      "mean-reversion",
-      "breakout"
-    ],
-    [
-      "mean-reversion",
       "trend-following",
+      "breakout"
+    ],
+    [
+      "trend-following",
+      "breakout",
+      "mean-reversion"
+    ],
+    [
+      "mean-reversion",
+      "breakout"
+    ],
+    [
+      "mean-reversion",
+      "breakout"
+    ],
+    [
+      "mean-reversion",
+      "breakout",
+      "trend-following"
+    ],
+    [
+      "mean-reversion",
+      "breakout"
+    ],
+    [
+      "mean-reversion",
+      "breakout"
+    ],
+    [
+      "mean-reversion",
+      "breakout"
+    ],
+    [
+      "mean-reversion",
+      "breakout"
+    ],
+    [
+      "mean-reversion",
       "breakout"
     ]
   ],
   "banned_indicators": {
-    "rsi": 1,
-    "atr": 1
+    "atr": 2,
+    "rsi": 2
   }
 }

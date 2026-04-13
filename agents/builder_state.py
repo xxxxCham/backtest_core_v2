@@ -36,6 +36,8 @@ class BuilderIteration:
     timestamp: datetime = field(default_factory=datetime.now)
     is_fallback: bool = False  # True if deterministic fallback was used
     used_indicators: List[str] = field(default_factory=list)
+    perf_score: float = 0.0  # median generate_signals time in ms (micro-benchmark)
+    code_quality_score: float = 1.0  # 0–1 composite quality (speed + repair count)
 
     def __post_init__(self) -> None:
         self.phase_feedback = coerce_iteration_phase_feedback(

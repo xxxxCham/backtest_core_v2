@@ -1,10 +1,10 @@
 """
 Module-ID: agents.thought_stream
 
-Purpose: Flux de réflexion en temps réel du Strategy Builder.
-         Écrit un fichier Markdown lisible que l'utilisateur surveille en terminal.
+Purpose: Flux live canonique du Strategy Builder.
+         Rend un fichier Markdown de session courante pour le terminal dedie.
 
-Role in pipeline: observabilité
+Role in pipeline: observabilite
 
 Usage (terminal PowerShell) :
     Get-Content "$env:BACKTEST_ARTIFACTS_DIR\\_builder_sessions\\_live_thoughts.md" -Wait -Tail 50
@@ -14,23 +14,79 @@ Skip-if: Vous n'utilisez pas le Strategy Builder.
 
 from __future__ import annotations
 
+import shutil
+import threading
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 from backtest.result_store import get_builder_sessions_dir
 
-# Fichier fixe — toujours le même pour la session courante
 STREAM_FILE = get_builder_sessions_dir() / "_live_thoughts.md"
+STREAM_ARCHIVE_DIR = get_builder_sessions_dir() / "_live_thoughts_archives"
+
+# Nombre de caractères accumulés avant d'écrire une ligne dans le flux terminal.
+# Réduit le bruit (1 ligne/80 chars au lieu de 1 ligne/token) tout en restant live.
+_STREAM_BATCH_CHARS: int = 80
+
+_LIVE_STREAM_LABELS = {
+    "proposal": ("IDEA", "Proposition"),
+    "retry_proposal": ("RETRY", "Retry proposition"),
+    "code": ("CODE", "Generation de code"),
+    "retry_code": ("RETRY", "Retry code"),
+    "analysis": ("ANALYSE", "Analyse"),
+    "objective_gen": ("OBJECTIF", "Generation d'objectif"),
+    "save_and_load": ("LOAD", "Sauvegarde / chargement"),
+    "precheck": ("CHECK", "Precheck signaux"),
+    "backtest": ("BACKTEST", "Backtest"),
+    "runtime_fix": ("FIX", "Reparation runtime"),
+    "runtime_fix_fallback_backtest": ("FALLBACK", "Backtest fallback"),
+}
+_LIVE_STREAM_STATUS_ICONS = {
+    "start": "[...]",
+    "ok": "[OK]",
+    "done": "[OK]",
+    "selected": "[OK]",
+    "blocked": "[BLOCKED]",
+    "warning": "[WARN]",
+    "error": "[ERROR]",
+    "success": "[OK]",
+    "failed": "[ERROR]",
+    "running": "[RUN]",
+}
+
+
+@dataclass(frozen=True)
+class BuilderLiveEvent:
+    event: str
+    timestamp: str
+    session_id: str = ""
+    iteration: int = 0
+    branch_label: str = ""
+    selected_branch_label: str = ""
+    phase: str = ""
+    status: str = ""
+    message: str = ""
+    payload: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "event": str(self.event or ""),
+            "timestamp": str(self.timestamp or ""),
+            "session_id": str(self.session_id or ""),
+            "iteration": int(self.iteration or 0),
+            "branch_label": str(self.branch_label or ""),
+            "selected_branch_label": str(self.selected_branch_label or ""),
+            "phase": str(self.phase or ""),
+            "status": str(self.status or ""),
+            "message": str(self.message or ""),
+            "payload": dict(self.payload or {}),
+        }
 
 
 class ThoughtStream:
-    """Écrit les réflexions du Strategy Builder dans un fichier Markdown temps réel.
-
-    Chaque méthode append une section formatée.
-    Le fichier est flushé après chaque écriture et peut être
-    surveillé via ``Get-Content ... -Wait`` ou ``tail -f``.
-    """
+    """Rend le stream Builder courant a partir d'un contrat d'evenements canonique."""
 
     def __init__(
         self,
@@ -39,246 +95,85 @@ class ThoughtStream:
         model: str,
         *,
         path: Optional[Path] = None,
+        archive_dir: Optional[Path] = None,
     ):
+        self.session_id = str(session_id or "")
+        self.objective = str(objective or "")
+        self.model = str(model or "")
         self.path = path or STREAM_FILE
+        self.archive_dir = archive_dir or STREAM_ARCHIVE_DIR
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._write_header(session_id, objective, model)
+        self.archive_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.RLock()
+        self._session_started = False
+        self._archived = False
+        self._stream_closed = False
+        self._stream_phase = ""
+        self._stream_buffer = ""  # Buffer pour regrouper les tokens avant écriture
+
+    def consume(self, event: BuilderLiveEvent | Mapping[str, Any]) -> None:
+        payload = event.to_dict() if isinstance(event, BuilderLiveEvent) else dict(event or {})
+        event_name = str(payload.get("event", "") or "")
+        if not event_name:
+            return
+
+        # Flush le buffer stream avant tout événement structurel pour garantir
+        # que les tokens LLM apparaissent dans le bon ordre chronologique.
+        with self._lock:
+            self._flush_stream_buffer_no_lock()
+
+        if event_name == "session_start":
+            self._start_session(payload)
+
+        rendered = self._render_event(payload)
+        if rendered:
+            self._append(rendered)
+
+        if event_name == "session_done":
+            with self._lock:
+                self._stream_closed = True
+                self._stream_phase = ""
+                self._stream_buffer = ""
+            self._archive_current_session()
 
     # ------------------------------------------------------------------ #
-    # En-tête de session
+    # Backward-compatible helpers
     # ------------------------------------------------------------------ #
 
-    def _write_header(self, session_id: str, objective: str, model: str) -> None:
-        ts = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        self._overwrite(
-            f"{'═' * 59}\n"
-            f"  🧠  STRATEGY BUILDER — Flux de pensée\n"
-            f"{'─' * 59}\n"
-            f"  📋  Objectif : {objective}\n"
-            f"  🤖  Modèle   : {model}\n"
-            f"  🆔  Session  : {session_id}\n"
-            f"  🕐  Début    : {ts}\n"
-            f"{'═' * 59}\n\n"
-        )
-
-    # ------------------------------------------------------------------ #
-    # Events — appelés par StrategyBuilder.run()
-    # ------------------------------------------------------------------ #
-
-    def iteration_start(self, num: int, total: int) -> None:
-        self._append(
-            f"\n{'━' * 59}\n"
-            f"  ⏳  ITÉRATION {num}/{total}\n"
-            f"{'━' * 59}\n\n"
-        )
-
-    def proposal_sent(self, has_previous: bool = False, prev_metrics: Optional[Dict[str, Any]] = None) -> None:
-        ctx = "avec résultats précédents" if has_previous else "première itération"
-        self._append(f"📤  PROPOSITION → LLM…  ({ctx})\n")
-        if has_previous and isinstance(prev_metrics, dict) and prev_metrics:
-            ret = prev_metrics.get("total_return_pct", 0) or 0
-            sharpe = prev_metrics.get("sharpe_ratio", 0) or 0
-            dd = prev_metrics.get("max_drawdown_pct", 0) or 0
-            n = int(prev_metrics.get("total_trades", 0) or 0)
-            wr = prev_metrics.get("win_rate_pct", 0) or 0
-            pf = prev_metrics.get("profit_factor", 0) or 0
-            icon = "🟢" if ret > 0 else "🔴"
-            self._append(
-                f"    └─ {icon}  Résultats précédents : "
-                f"Return {ret:+.2f}%  |  Sharpe {sharpe:.3f}  |  MaxDD {dd:.2f}%  "
-                f"|  Trades {n}  |  WinRate {wr:.1f}%  |  PF {pf:.2f}\n"
-            )
-
-    def proposal_received(
-        self,
-        proposal: Dict[str, Any],
-        latency_s: float = 0,
-    ) -> None:
-        hyp = proposal.get("hypothesis", "—")
-        inds = proposal.get("used_indicators", [])
-        entry_l = proposal.get("entry_long_logic", "—")
-        entry_s = proposal.get("entry_short_logic", "—")
-        risk = proposal.get("risk_management", "—")
-        ct = proposal.get("change_type", "")
-        default_params = proposal.get("default_params", {})
-        lat = f"  ({latency_s:.1f}s)" if latency_s else ""
-        ct_tag = f"  [{ct.upper()}]" if ct else ""
-
-        # Ligne indicateurs avec paramètres
-        if isinstance(default_params, dict) and default_params:
-            ind_parts = []
-            for ind in (inds if inds else []):
-                # Chercher les paramètres associés à cet indicateur
-                ind_key = str(ind).lower()
-                matched = {
-                    k: v for k, v in default_params.items()
-                    if ind_key in k.lower() or k.lower().startswith(ind_key[:4])
-                }
-                if matched:
-                    params_str = ", ".join(f"{k}={v}" for k, v in matched.items())
-                    ind_parts.append(f"{ind}({params_str})")
-                else:
-                    ind_parts.append(str(ind))
-            # Paramètres généraux (non attribués à un indicateur spécifique)
-            other_params = {
-                k: v for k, v in default_params.items()
-                if not any(
-                    str(ind).lower()[:4] in k.lower() or k.lower().startswith(str(ind).lower()[:4])
-                    for ind in inds
-                )
-            }
-            inds_display = ", ".join(ind_parts) if ind_parts else "—"
-            params_extra = (
-                "  ▸ " + ", ".join(f"{k}={v}" for k, v in other_params.items())
-                if other_params else ""
-            )
-        else:
-            inds_display = ", ".join(inds) if inds else "—"
-            params_extra = ""
-            # Afficher quand même tous les default_params si dispo
-            if isinstance(default_params, dict):
-                params_extra = "  ▸ " + ", ".join(f"{k}={v}" for k, v in default_params.items()) if default_params else ""
-
-        self._append(
-            f"📥  PROPOSITION REÇUE{lat}{ct_tag}\n"
-            f"    💡 Hypothèse  : {hyp}\n"
-            f"    📊 Indicateurs: {inds_display}\n"
-            f"    🟢 LONG       : {_trunc(entry_l)}\n"
-            f"    🔴 SHORT      : {_trunc(entry_s)}\n"
-            f"    🛡️  Risque     : {_trunc(risk)}\n"
-        )
-        if params_extra:
-            self._append(f"    🔧 Paramètres  :{params_extra}\n")
-        self._append("\n")
-
-    def codegen_sent(self) -> None:
-        self._append("🔧  GÉNÉRATION DE CODE → LLM…\n")
-
-    def codegen_received(self, code: str, latency_s: float = 0) -> None:
-        n = len(code.strip().splitlines())
-        lat = f"  ({latency_s:.1f}s)" if latency_s else ""
-        self._append(f"📥  CODE REÇU{lat} — {n} lignes\n\n")
-
-    def validation(self, is_valid: bool, error: str = "") -> None:
-        if is_valid:
-            self._append("✅  Validation syntaxe + sécurité : OK\n\n")
-        else:
-            self._append(f"❌  Validation échouée : {error}\n\n")
-
-    def backtest_start(self) -> None:
-        self._append("⚙️  Backtest en cours…\n")
-
-    def backtest_result(self, metrics: Dict[str, Any]) -> None:
-        ret = metrics.get("total_return_pct", 0) or 0
-        sharpe = metrics.get("sharpe_ratio", 0) or 0
-        dd = metrics.get("max_drawdown_pct", 0) or 0
-        n = int(metrics.get("total_trades", 0) or 0)
-        wr = metrics.get("win_rate_pct", 0) or 0
-        pf = metrics.get("profit_factor", 0) or 0
-        sortino = metrics.get("sortino_ratio", 0) or 0
-        exp = metrics.get("expectancy", 0) or 0
-
-        icon = "🟢" if ret > 0 else "🔴"
-        self._append(
-            f"{icon}  RÉSULTATS BACKTEST\n"
-            f"    ┌───────────────────────────────────────────┐\n"
-            f"    │ Return: {ret:+8.2f}%  │  Sharpe:  {sharpe:7.3f}  │\n"
-            f"    │ MaxDD:  {dd:+8.2f}%  │  Sortino: {sortino:7.3f}  │\n"
-            f"    │ Trades: {n:8d}   │  WinRate: {wr:5.1f}%   │\n"
-            f"    │ PF:     {pf:8.2f}   │  Expect:  {exp:7.3f}  │\n"
-            f"    └───────────────────────────────────────────┘\n\n"
-        )
-
-    def diagnostic(self, diag: Dict[str, Any]) -> None:
-        cat = diag.get("category", "?")
-        sev = diag.get("severity", "?")
-        summary = diag.get("summary", "")
-        ct = diag.get("change_type", "")
-        trend = diag.get("trend", "")
-        trend_detail = diag.get("trend_detail", "")
-        actions = diag.get("actions", [])
-        donts = diag.get("donts", [])
-        sc = diag.get("score_card", {})
-
-        sev_icon = {
-            "critical": "🔴", "warning": "🟡",
-            "info": "🔵", "success": "🟢",
-        }.get(sev, "⚪")
-
-        lines = ["🔍  DIAGNOSTIC AUTOMATIQUE"]
-        lines.append(f"    {sev_icon}  {cat.upper()} ({sev}) → modifier : {ct}")
-        lines.append(f"    {summary}")
-
-        if sc:
-            grades = "  |  ".join(
-                f"{k.title()}: {v['grade']}" for k, v in sc.items()
-            )
-            lines.append(f"    📊  {grades}")
-
-        if trend:
-            lines.append(f"    📈  Tendance : {trend}  {trend_detail}")
-
-        if actions:
-            lines.append("    ▸ Actions :")
-            for j, a in enumerate(actions, 1):
-                lines.append(f"      {j}. {a}")
-
-        if donts:
-            lines.append("    ⚠️  À éviter :")
-            for d in donts:
-                lines.append(f"      • {d}")
-
-        self._append("\n".join(lines) + "\n\n")
-
-    def analysis_sent(self) -> None:
-        self._append("🤔  ANALYSE → LLM…\n")
-
-    def analysis_received(
-        self,
-        analysis: str,
-        decision: str,
-        change_type: str = "",
-        latency_s: float = 0,
-    ) -> None:
-        lat = f"  ({latency_s:.1f}s)" if latency_s else ""
-        dec_icon = {
-            "accept": "🏆", "continue": "🔄", "stop": "🛑",
-        }.get(decision, "❓")
-        ct_tag = f"  [{change_type.upper()}]" if change_type else ""
-
-        # Afficher l'analyse sur plusieurs lignes indentées
-        if isinstance(analysis, list):
-            analysis = "\n".join(str(a) for a in analysis)
-        analysis_lines = analysis.strip().replace("\n", "\n    ")
-
-        self._append(
-            f"📥  ANALYSE LLM{lat}\n"
-            f"    {analysis_lines}\n\n"
-            f"    {dec_icon}  DÉCISION : {decision}{ct_tag}\n\n"
-        )
-
-    def best_update(self, sharpe: float, iteration: int) -> None:
-        self._append(
-            f"    ⭐  Nouveau meilleur Sharpe : {sharpe:.3f}"
-            f"  (itération {iteration})\n\n"
-        )
+    def append(self, text: str) -> None:
+        self._append(str(text or ""))
 
     def warning(self, message: str) -> None:
-        self._append(f"⚠️  {message}\n")
-
-    def retry(self, phase: str, attempt: int) -> None:
-        self._append(f"🔁  RETRY {phase} (tentative {attempt})…\n")
-
-    def circuit_breaker(self, consecutive: int, max_allowed: int) -> None:
-        self._append(
-            f"\n🚨  CIRCUIT BREAKER: {consecutive} échecs consécutifs "
-            f"(limite: {max_allowed})\n"
-            f"    → Arrêt de la session pour éviter une boucle infinie.\n\n"
+        self.consume(
+            BuilderLiveEvent(
+                event="warning",
+                timestamp=_now_iso(),
+                session_id=self.session_id,
+                message=str(message or ""),
+            )
         )
 
-    def error(self, iteration: int, error_msg: str) -> None:
-        short = _trunc(error_msg, 300)
-        self._append(f"💥  ERREUR itération {iteration} : {short}\n\n")
+    def stage_update(
+        self,
+        phase: str,
+        *,
+        status: str = "start",
+        detail: str = "",
+        branch_label: str = "",
+    ) -> None:
+        event_name = "phase_start" if str(status or "start") == "start" else "phase_done"
+        self.consume(
+            BuilderLiveEvent(
+                event=event_name,
+                timestamp=_now_iso(),
+                session_id=self.session_id,
+                branch_label=str(branch_label or ""),
+                phase=str(phase or ""),
+                status=str(status or ""),
+                message=str(detail or ""),
+                payload={"detail": str(detail or "")},
+            )
+        )
 
     def session_end(
         self,
@@ -286,45 +181,327 @@ class ThoughtStream:
         best_sharpe: float,
         total_iters: int,
     ) -> None:
-        status_icon = {
-            "success": "🏆", "failed": "💀", "max_iterations": "⏰",
-        }.get(status, "❓")
-        ts = datetime.now().strftime("%H:%M:%S")
-        self._append(
-            f"\n{'═' * 59}\n"
-            f"  {status_icon}  SESSION TERMINÉE — {status}\n"
-            f"     Meilleur Sharpe : {best_sharpe:.3f}\n"
-            f"     Itérations     : {total_iters}\n"
-            f"     Fin            : {ts}\n"
-            f"{'═' * 59}\n"
+        self.consume(
+            BuilderLiveEvent(
+                event="session_done",
+                timestamp=_now_iso(),
+                session_id=self.session_id,
+                status=str(status or ""),
+                message=f"Session terminee ({status})",
+                payload={
+                    "best_sharpe": float(best_sharpe or 0.0),
+                    "total_iterations": int(total_iters or 0),
+                },
+            )
         )
+
+    def stream_chunk(self, phase: str, chunk: str) -> None:
+        """Accumule les tokens LLM et écrit une ligne tous les _STREAM_BATCH_CHARS chars.
+
+        Préférer un flux groupé (80 chars/ligne) plutôt qu'une écriture fichier
+        par token pour réduire le bruit et rendre le terminal lisible en live.
+        """
+        text = str(chunk or "")
+        if not text:
+            return
+
+        phase_name = str(phase or "").strip().lower()
+
+        with self._lock:
+            if not self._session_started or self._archived or self._stream_closed:
+                return
+            # Changement de phase : flush le buffer précédent + en-tête nouvelle phase
+            if phase_name and phase_name != self._stream_phase:
+                self._flush_stream_buffer_no_lock()
+                self._stream_phase = phase_name
+                phase_icon, phase_label = _stream_phase_label(phase_name)
+                self._append(f"[STREAM] {phase_icon} {phase_label} — démarrage du flux\n")
+            elif not self._stream_phase:
+                self._stream_phase = phase_name
+
+            # Accumulation dans le buffer
+            self._stream_buffer += text
+
+            # Écriture quand le buffer atteint le seuil
+            if len(self._stream_buffer) >= _STREAM_BATCH_CHARS:
+                self._flush_stream_buffer_no_lock()
+
+    def flush_stream(self) -> None:
+        """Flush public : appelé après la fin d'un appel LLM pour écrire le buffer résiduel."""
+        with self._lock:
+            self._flush_stream_buffer_no_lock()
+
+    def accepts_streaming(self) -> bool:
+        with self._lock:
+            return bool(self._session_started and not self._archived and not self._stream_closed)
+
+    # ------------------------------------------------------------------ #
+    # Session lifecycle
+    # ------------------------------------------------------------------ #
+
+    def _start_session(self, event: Mapping[str, Any]) -> None:
+        with self._lock:
+            self._session_started = True
+            self._archived = False
+            self._stream_closed = False
+            self._stream_phase = ""
+            self._stream_buffer = ""
+            self._overwrite(self._render_header(event))
+
+    def _flush_stream_buffer_no_lock(self) -> None:
+        """Flush le buffer stream vers le fichier. A appeler avec self._lock déjà tenu."""
+        buf = self._stream_buffer.strip()
+        self._stream_buffer = ""
+        if not buf:
+            return
+        phase_icon, phase_label = _stream_phase_label(self._stream_phase)
+        preview = _trunc(buf, max_len=200)
+        self._append(f"[STREAM] {phase_icon} {phase_label} - {preview}\n")
+
+    def _archive_current_session(self) -> None:
+        with self._lock:
+            if self._archived or not self.path.exists():
+                return
+            archive_target = self.archive_dir / f"{self.session_id or 'builder_session'}.md"
+            shutil.copyfile(self.path, archive_target)
+            self._archived = True
+
+    # ------------------------------------------------------------------ #
+    # Rendering
+    # ------------------------------------------------------------------ #
+
+    def _render_header(self, event: Mapping[str, Any]) -> str:
+        payload = dict(event.get("payload") or {})
+        started_at = _format_datetime(event.get("timestamp"))
+        symbol = str(payload.get("symbol", "") or "")
+        timeframe = str(payload.get("timeframe", "") or "")
+        market = f"{symbol} {timeframe}".strip()
+        market_line = f"  MARCHE   : {market}\n" if market else ""
+        return (
+            f"{'=' * 68}\n"
+            f"  STRATEGY BUILDER - Flux live canonique\n"
+            f"{'-' * 68}\n"
+            f"  OBJECTIF : {self.objective}\n"
+            f"  MODELE   : {self.model}\n"
+            f"  SESSION  : {self.session_id}\n"
+            f"{market_line}"
+            f"  DEBUT    : {started_at}\n"
+            f"{'=' * 68}\n\n"
+        )
+
+    def _render_event(self, event: Mapping[str, Any]) -> str:
+        event_name = str(event.get("event", "") or "")
+        payload = dict(event.get("payload") or {})
+        branch_label = str(
+            event.get("selected_branch_label")
+            or event.get("branch_label")
+            or payload.get("selected_branch_label")
+            or payload.get("branch_label")
+            or ""
+        )
+        message = str(event.get("message", "") or "").strip()
+        phase = str(event.get("phase", "") or "")
+        iteration = int(event.get("iteration", 0) or 0)
+        status = str(event.get("status", "") or "")
+
+        if event_name == "session_start":
+            return ""
+        if event_name == "iteration_start":
+            total = int(payload.get("max_iterations", 0) or 0)
+            return (
+                f"\n{'-' * 68}\n"
+                f"  ITERATION {iteration}/{total or '?'}\n"
+                f"{'-' * 68}\n"
+            )
+        if event_name == "proposal_candidate":
+            proposal = dict(payload.get("proposal") or {})
+            return self._render_proposal_block(
+                title=f"CANDIDATE {branch_label or 'main'}",
+                proposal=proposal,
+                branch_label=branch_label,
+                footer=message,
+            )
+        if event_name == "proposal_selected":
+            proposal = dict(payload.get("proposal") or {})
+            return self._render_proposal_block(
+                title=f"BRANCHE RETENUE {branch_label or 'main'}",
+                proposal=proposal,
+                branch_label=branch_label,
+                footer=message,
+            )
+        if event_name in {"phase_start", "phase_done"}:
+            icon = _LIVE_STREAM_STATUS_ICONS.get(status or ("start" if event_name == "phase_start" else "done"), "[INFO]")
+            phase_icon, phase_label = _stream_phase_label(phase)
+            detail = str(payload.get("detail", "") or "").strip()
+            suffix = _branch_suffix(branch_label)
+            line = f"{icon} {phase_icon} {phase_label}{suffix}"
+            if detail:
+                line += f" - {_trunc(detail, max_len=220)}"
+            elif message:
+                line += f" - {_trunc(message, max_len=220)}"
+            line += "\n"
+            if event_name == "phase_done" and phase == "backtest":
+                sharpe = payload.get("sharpe")
+                ret_pct = payload.get("total_return_pct")
+                try:
+                    line += (
+                        f"    RESULTATS : Sharpe {float(sharpe):.3f} | "
+                        f"Return {float(ret_pct):+.2f}%\n"
+                    )
+                except Exception:
+                    pass
+            return line
+        if event_name == "diagnostic":
+            diagnostic = dict(payload.get("diagnostic") or {})
+            category = str(diagnostic.get("category", "") or "")
+            severity = str(diagnostic.get("severity", "") or "")
+            change_type = str(diagnostic.get("change_type", "") or "")
+            summary = str(diagnostic.get("summary", message) or message).strip()
+            line = f"[DIAG] {category or 'diagnostic'}"
+            if severity:
+                line += f" | {severity}"
+            if change_type:
+                line += f" | {change_type}"
+            if summary:
+                line += f" - {_trunc(summary, max_len=240)}"
+            return line + "\n"
+        if event_name == "analysis":
+            decision = str(payload.get("decision", "") or "")
+            change_type = str(payload.get("change_type", "") or "")
+            line = "[ANALYSE]"
+            if decision:
+                line += f" decision={decision}"
+            if change_type:
+                line += f" | change_type={change_type}"
+            if message:
+                line += f" - {_trunc(message, max_len=260)}"
+            return line + "\n"
+        if event_name == "warning":
+            return f"[WARN] {_trunc(message or str(payload.get('detail', '') or ''), max_len=260)}\n"
+        if event_name == "iteration_done":
+            decision = str(payload.get("decision", "") or "")
+            best = payload.get("best_sharpe")
+            prefix = "[ITER]"
+            if payload.get("new_best"):
+                prefix = "[ITER][BEST]"
+            line = f"{prefix} Iteration {iteration} terminee"
+            if decision:
+                line += f" | decision={decision}"
+            try:
+                line += f" | best_sharpe={float(best):.3f}"
+            except Exception:
+                pass
+            return line + "\n"
+        if event_name == "iteration_error":
+            error_text = message or str(payload.get("error", "") or "")
+            return f"[ERROR] Iteration {iteration} - {_trunc(error_text, max_len=260)}\n"
+        if event_name == "session_done":
+            total_iterations = int(payload.get("total_iterations", 0) or 0)
+            best_sharpe = payload.get("best_sharpe")
+            ended_at = _format_datetime(event.get("timestamp"))
+            line = (
+                f"\n{'=' * 68}\n"
+                f"  SESSION TERMINEE - {status or 'n/a'}\n"
+                f"  ITERATIONS : {total_iterations}\n"
+            )
+            try:
+                line += f"  BEST SHARPE: {float(best_sharpe):.3f}\n"
+            except Exception:
+                pass
+            line += f"  FIN       : {ended_at}\n{'=' * 68}\n"
+            return line
+        if message:
+            return f"[INFO] {_trunc(message, max_len=260)}\n"
+        return ""
+
+    def _render_proposal_block(
+        self,
+        *,
+        title: str,
+        proposal: Mapping[str, Any],
+        branch_label: str,
+        footer: str = "",
+    ) -> str:
+        hypothesis = str(proposal.get("hypothesis", "") or "Hypothese non renseignee")
+        indicators = proposal.get("used_indicators", [])
+        used_indicators = ", ".join(str(item) for item in indicators if str(item).strip()) or "-"
+        change_type = str(proposal.get("change_type", "") or "")
+        entry_long = _trunc(proposal.get("entry_long_logic", ""), max_len=160)
+        entry_short = _trunc(proposal.get("entry_short_logic", ""), max_len=160)
+        risk = _trunc(proposal.get("risk_management", ""), max_len=160)
+        params = proposal.get("default_params")
+        params_text = ""
+        if isinstance(params, dict) and params:
+            params_text = ", ".join(f"{key}={value}" for key, value in params.items())
+        block = [
+            f"[PROPOSAL] {title}{_branch_suffix(branch_label, include_main=True)}",
+            f"    Hypothese   : {hypothesis}",
+            f"    Indicateurs : {used_indicators}",
+        ]
+        if change_type:
+            block.append(f"    Change type : {change_type}")
+        if entry_long and entry_long != "-":
+            block.append(f"    Long        : {entry_long}")
+        if entry_short and entry_short != "-":
+            block.append(f"    Short       : {entry_short}")
+        if risk and risk != "-":
+            block.append(f"    Risque      : {risk}")
+        if params_text:
+            block.append(f"    Params      : {params_text}")
+        if footer:
+            block.append(f"    Note        : {_trunc(footer, max_len=220)}")
+        return "\n".join(block) + "\n"
 
     # ------------------------------------------------------------------ #
     # I/O helpers
     # ------------------------------------------------------------------ #
 
     def _overwrite(self, text: str) -> None:
-        """Écrase le fichier de flux avec un nouvel en-tête."""
-        with open(self.path, "w", encoding="utf-8") as f:
-            f.write(text)
-            f.flush()
-
-    def append(self, text: str) -> None:
-        """Ajoute un bloc de texte au flux existant."""
-        self._append(text)
+        with open(self.path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
 
     def _append(self, text: str) -> None:
-        """Internal — use append() instead."""
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(text)
-            f.flush()
+        if not text:
+            return
+        with self._lock:
+            with open(self.path, "a", encoding="utf-8") as handle:
+                handle.write(text)
+                handle.flush()
 
 
-# ------------------------------------------------------------------ #
-# Utilitaire
-# ------------------------------------------------------------------ #
+def _trunc(text: Any, max_len: int = 140) -> str:
+    cleaned = str(text or "").replace("\n", " ").strip()
+    if not cleaned:
+        return "-"
+    return cleaned[:max_len] + "..." if len(cleaned) > max_len else cleaned
 
-def _trunc(text: str, max_len: int = 140) -> str:
-    """Tronque un texte sur une seule ligne."""
-    text = str(text).replace("\n", " ").strip()
-    return text[:max_len] + "…" if len(text) > max_len else text
+
+def _stream_phase_label(phase: str) -> tuple[str, str]:
+    normalized = str(phase or "").strip().lower()
+    return _LIVE_STREAM_LABELS.get(normalized, ("LIVE", normalized or "Activite Builder"))
+
+
+def _branch_suffix(branch_label: str, *, include_main: bool = False) -> str:
+    cleaned = str(branch_label or "").strip()
+    if not cleaned:
+        return ""
+    if cleaned == "main" and not include_main:
+        return ""
+    return f" | branche `{cleaned}`"
+
+
+def _format_datetime(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(text).strftime("%d/%m/%Y %H:%M:%S")
+    except Exception:
+        return text
+
+
+def _now_iso() -> str:
+    return datetime.utcnow().isoformat(timespec="seconds") + "Z"

@@ -249,7 +249,7 @@ class TestAblationController:
         assert len(disabled) == 2
 
     def test_all_18_steps_declared(self):
-        """Vérifie que les 18 étapes UI sont toutes présentes dans ABLATABLE_STEPS."""
+        """Vérifie que les 19 étapes UI sont toutes présentes dans ABLATABLE_STEPS."""
         expected = {
             "code_repair",
             "precheck",
@@ -268,6 +268,7 @@ class TestAblationController:
             "indicator_ranking",
             "iteration_history",
             "diagnostic_context",
+            "pre_reflection",
             "llm_analysis",
         }
         assert expected == AblationController.ABLATABLE_STEPS
@@ -289,9 +290,92 @@ class TestAblationController:
         # Avec binding : un préambule d'affectation indicateur est injecté
         # Sans binding : le code reste inchangé sur ce point (pas de ligne rsi = …)
         assert "rsi" in with_binding
-        # sans binding, aucune ligne d'affectation automatique de type `rsi = indicators[…]`
-        # n'est ajoutée par le mécanisme de binding (les autres réparations restent actives)
-        assert with_binding != without_binding or True  # permissif: juste vérifier pas d'erreur
+        # Sans binding : aucune exception, le code compile toujours
+        assert without_binding is not None
+
+    def test_repair_code_fixes_canonical_dot_access_on_structurally_sound_code(self):
+        """bollinger.upper sur code propre (structurally_sound=True) doit être réécrit."""
+        from agents.builder_code_repair import _repair_code
+
+        code = (
+            "from agents.strategy_builder import StrategyBase\n"
+            "class GeneratedStrategy(StrategyBase):\n"
+            "    default_params = {}\n"
+            "    REQUIRED_INDICATORS = ['bollinger']\n"
+            "    def generate_signals(self, df, indicators, params):\n"
+            "        long_entry = df['close'] > bollinger.upper\n"
+            "        short_entry = df['close'] < bollinger.lower\n"
+            "        signal = long_entry.astype(int) - short_entry.astype(int)\n"
+            "        return df.assign(signal=signal, position=signal)\n"
+        )
+        repaired = _repair_code(code, ["bollinger"])
+        assert "bollinger.upper" not in repaired
+        assert "bollinger.lower" not in repaired
+        assert "indicators['bollinger']['upper']" in repaired
+        assert "indicators['bollinger']['lower']" in repaired
+
+    def test_repair_code_fixes_alias_dot_access_bb_upper(self):
+        """bb.upper → indicators['bollinger']['upper'] même sur code structurellement propre."""
+        from agents.builder_code_repair import _repair_code
+
+        code = (
+            "from agents.strategy_builder import StrategyBase\n"
+            "class GeneratedStrategy(StrategyBase):\n"
+            "    default_params = {}\n"
+            "    REQUIRED_INDICATORS = ['bollinger']\n"
+            "    def generate_signals(self, df, indicators, params):\n"
+            "        bb = indicators['bollinger']\n"
+            "        long_entry = df['close'] > bb.upper\n"
+            "        short_entry = df['close'] < bb.lower\n"
+            "        signal = long_entry.astype(int) - short_entry.astype(int)\n"
+            "        return df.assign(signal=signal, position=signal)\n"
+        )
+        repaired = _repair_code(code, ["bollinger"])
+        assert "bb.upper" not in repaired
+        assert "bb.lower" not in repaired
+        assert "indicators['bollinger']['upper']" in repaired
+        assert "indicators['bollinger']['lower']" in repaired
+
+    def test_repair_code_fixes_kelt_alias_dot_access(self):
+        """kelt.upper → indicators['keltner']['upper']."""
+        from agents.builder_code_repair import _repair_code
+
+        code = (
+            "from agents.strategy_builder import StrategyBase\n"
+            "class GeneratedStrategy(StrategyBase):\n"
+            "    default_params = {}\n"
+            "    REQUIRED_INDICATORS = ['keltner']\n"
+            "    def generate_signals(self, df, indicators, params):\n"
+            "        squeeze = (df['close'] > kelt.upper) & (adx.adx > 20)\n"
+            "        signal = squeeze.astype(int)\n"
+            "        return df.assign(signal=signal, position=signal)\n"
+        )
+        repaired = _repair_code(code, ["keltner", "adx"])
+        assert "kelt.upper" not in repaired
+        assert "indicators['keltner']['upper']" in repaired
+        # adx.adx (canonical.subkey) doit aussi être corrigé
+        assert "adx.adx" not in repaired
+        assert "indicators['adx']['adx']" in repaired
+
+    def test_repair_code_no_false_positive_on_correct_code(self):
+        """Code qui utilise déjà indicators['bollinger']['upper'] doit rester intact."""
+        from agents.builder_code_repair import _repair_code
+
+        code = (
+            "from agents.strategy_builder import StrategyBase\n"
+            "class GeneratedStrategy(StrategyBase):\n"
+            "    default_params = {}\n"
+            "    REQUIRED_INDICATORS = ['bollinger']\n"
+            "    def generate_signals(self, df, indicators, params):\n"
+            "        upper = indicators['bollinger']['upper']\n"
+            "        lower = indicators['bollinger']['lower']\n"
+            "        signal = (df['close'] > upper).astype(int)\n"
+            "        return df.assign(signal=signal, position=signal)\n"
+        )
+        repaired = _repair_code(code, ["bollinger"])
+        assert "indicators['bollinger']['upper']" in repaired
+        # Aucun double-wrapping
+        assert "indicators['indicators['bollinger']" not in repaired
 
     def test_sanitize_objective_skips_leakage_filter_when_disabled(self):
         """sanitize_objective_text avec enable_leakage_filter=False laisse passer la fuite."""
@@ -548,6 +632,53 @@ def _extract_bare_names(code: str) -> set:
 # =====================================================================
 # Integration: Builder instrumentation & ablation wiring
 # =====================================================================
+
+
+class TestComputeDiagnostic:
+    """Tests unitaires pour compute_diagnostic — catégorie signal_always_true."""
+
+    def _diag(self, n, ret, dd=0.0, wr=50.0, sharpe=0.0, pf=1.0):
+        from agents.builder_diagnostics import compute_diagnostic
+        metrics = {
+            "total_trades": n,
+            "total_return_pct": ret,
+            "max_drawdown_pct": dd,
+            "win_rate": wr,
+            "sharpe_ratio": sharpe,
+            "profit_factor": pf,
+        }
+        return compute_diagnostic(metrics, iteration_history=[])
+
+    def test_signal_always_true_triggers_above_800_trades_ruined(self):
+        """n > 800 AND ruined → signal_always_true (pas ruined générique)."""
+        diag = self._diag(n=1354, ret=-445.63, dd=95.0, wr=32.1, sharpe=-20.0, pf=0.72)
+        assert diag["category"] == "signal_always_true"
+        assert diag["severity"] == "critical"
+        # Le message doit mentionner l'accès dict
+        hint = " ".join(diag["actions"])
+        assert "indicators[" in hint or "dict" in hint.lower()
+
+    def test_signal_always_true_boundary_exactly_800_trades(self):
+        """n == 800 (pas strictement > 800) → ruined classique, pas signal_always_true."""
+        diag = self._diag(n=800, ret=-200.0, dd=99.0)
+        assert diag["category"] == "ruined"
+
+    def test_ruined_below_800_trades_stays_ruined(self):
+        """n=200, compte ruiné → catégorie ruined, pas signal_always_true."""
+        diag = self._diag(n=200, ret=-150.0, dd=95.0)
+        assert diag["category"] == "ruined"
+
+    def test_high_trade_count_without_ruin_stays_overtrading(self):
+        """n=1000 mais pas ruiné et WR low → overtrading, pas signal_always_true."""
+        diag = self._diag(n=1000, ret=5.0, dd=20.0, wr=28.0, sharpe=0.3, pf=0.99)
+        assert diag["category"] == "overtrading"
+
+    def test_signal_always_true_donts_mention_dot_notation(self):
+        """Les donts de signal_always_true doivent mentionner bb.upper ou bollinger.upper."""
+        diag = self._diag(n=1354, ret=-445.63, dd=95.0)
+        donts_text = " ".join(diag.get("donts", []))
+        # Doit guider l'utilisateur vers la notation correcte
+        assert "bb.upper" in donts_text or "bollinger.upper" in donts_text
 
 
 class TestBuilderInstrumentationWiring:

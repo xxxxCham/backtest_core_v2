@@ -11,16 +11,10 @@ Couvre :
 from __future__ import annotations
 
 import json
-import sys
-import types
-import importlib
-import tempfile
 from pathlib import Path
-from typing import Dict, Any, List
-from unittest.mock import MagicMock, patch
+from typing import Dict, List
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helper : stub indicator_history sans toucher le disque du projet

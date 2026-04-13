@@ -76,6 +76,7 @@ if not logger.handlers:
     logger.addHandler(_handler)
 
 from agents.llm_client import LLMConfig, LLMProvider, create_llm_client
+from agents.llm_router import LLMTopologyConfig
 from agents.model_config import is_cloud_only_model
 from agents.ollama_manager import ensure_ollama_running, probe_model_runtime_acceptance
 from agents.strategy_builder import (
@@ -217,6 +218,74 @@ def _safe_numeric_float(value: Any, default: float = 0.0) -> float:
 
 def _inject_builder_view_styles() -> None:
     st.markdown(BUILDER_VIEW_CSS, unsafe_allow_html=True)
+
+
+def _load_builder_live_thoughts_preview(
+    path: Path = STREAM_FILE,
+    *,
+    tail_lines: int = 220,
+    max_chars: int = 30000,
+) -> tuple[str, bool]:
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except (OSError, UnicodeError):
+        return "", False
+
+    lines = raw.splitlines()
+    truncated = False
+    if tail_lines > 0 and len(lines) > tail_lines:
+        lines = lines[-tail_lines:]
+        truncated = True
+    text = "\n".join(lines).strip()
+    if max_chars > 0 and len(text) > max_chars:
+        text = text[-max_chars:]
+        truncated = True
+    if truncated and text:
+        text = "…(truncated)…\n" + text
+    return text, truncated
+
+
+def _render_builder_live_thoughts_panel(
+    *,
+    title: str = "📂 Live Thought Stream",
+    expanded: bool = False,
+    show_terminal_command: bool = True,
+    tail_lines: int = 220,
+) -> None:
+    with st.expander(title, expanded=expanded):
+        if show_terminal_command:
+            st.code(
+                f'Get-Content "{STREAM_FILE}" -Wait -Tail 80',
+                language="powershell",
+            )
+        try:
+            file_exists = STREAM_FILE.exists()
+            modified_at = (
+                datetime.fromtimestamp(STREAM_FILE.stat().st_mtime).strftime(
+                    "%d/%m/%Y %H:%M:%S"
+                )
+                if file_exists
+                else "n/a"
+            )
+        except OSError:
+            file_exists = False
+            modified_at = "n/a"
+        st.caption(
+            f"📄 File: `{STREAM_FILE}`"
+            + (f" | Updated: {modified_at}" if file_exists else "")
+        )
+        preview, truncated = _load_builder_live_thoughts_preview(
+            STREAM_FILE,
+            tail_lines=tail_lines,
+        )
+        if preview:
+            if truncated:
+                st.caption(
+                    f"Showing the latest {tail_lines} lines of the current live stream."
+                )
+            st.code(preview, language="markdown")
+        else:
+            st.caption("No live thought stream available yet.")
 
 
 def _render_builder_mode_hero(
@@ -487,6 +556,110 @@ def _sanitize_builder_stream_text(phase: str, text: str) -> tuple[str, str]:
             continue
         lines.append(line)
     return "\n".join(lines).strip(), "text"
+
+
+_BUILDER_PROGRESS_PHASE_LABELS = {
+    "proposal": "proposition",
+    "code": "generation code",
+    "save_and_load": "sauvegarde / chargement",
+    "precheck": "precheck signaux",
+    "analysis": "analyse",
+    "backtest": "backtest",
+    "runtime_fix": "reparation runtime",
+    "runtime_fix_fallback_backtest": "backtest fallback",
+    "validation": "validation",
+}
+
+
+def _builder_event_payload(event_payload: Dict[str, Any]) -> Dict[str, Any]:
+    payload = event_payload.get("payload")
+    if isinstance(payload, dict):
+        return dict(payload)
+    return {}
+
+
+def _builder_event_branch_label(event_payload: Dict[str, Any]) -> str:
+    payload = _builder_event_payload(event_payload)
+    return str(
+        event_payload.get("selected_branch_label")
+        or event_payload.get("branch_label")
+        or payload.get("selected_branch_label")
+        or payload.get("branch_label")
+        or ""
+    ).strip()
+
+
+def _builder_branch_prefix(branch_label: str, *, include_main: bool = False) -> str:
+    cleaned = str(branch_label or "").strip()
+    if not cleaned:
+        return ""
+    if cleaned == "main" and not include_main:
+        return ""
+    return f"[{cleaned}] "
+
+
+def _format_builder_live_event_line(event_payload: Dict[str, Any]) -> str:
+    event = str(event_payload.get("event", "") or "")
+    message = str(event_payload.get("message", "") or "").strip()
+    payload = _builder_event_payload(event_payload)
+    phase = str(event_payload.get("phase", "") or payload.get("phase", "") or "")
+    branch_label = _builder_event_branch_label(event_payload)
+    prefix = _builder_branch_prefix(
+        branch_label,
+        include_main=event in {"proposal_candidate", "proposal_selected"},
+    )
+    if event == "proposal_candidate":
+        proposal = dict(payload.get("proposal") or {})
+        hypothesis = str(proposal.get("hypothesis", "") or "hypothese candidate")
+        return f"{prefix}Proposition candidate: {hypothesis}"
+    if event == "proposal_selected":
+        proposal = dict(payload.get("proposal") or {})
+        hypothesis = str(proposal.get("hypothesis", "") or "hypothese retenue")
+        return f"{prefix}Branche retenue: {hypothesis}"
+    if event == "phase_done" and phase == "backtest":
+        sharpe = payload.get("sharpe")
+        ret_pct = payload.get("total_return_pct")
+        try:
+            return f"{prefix}Backtest: Sharpe {float(sharpe):.3f} | Return {float(ret_pct):+.2f}%"
+        except Exception:
+            pass
+    if message:
+        return prefix + message
+    if event == "iteration_done":
+        decision = str(payload.get("decision", "") or "").strip()
+        return f"Iteration terminee{f' ({decision})' if decision else ''}"
+    return prefix + (event or "progress")
+
+
+def _format_builder_live_detail_lines(event_payload: Dict[str, Any]) -> List[str]:
+    event = str(event_payload.get("event", "") or "")
+    payload = _builder_event_payload(event_payload)
+    details: List[str] = []
+    if event == "proposal_selected":
+        proposal = dict(payload.get("proposal") or {})
+        used = proposal.get("used_indicators", [])
+        if proposal.get("hypothesis"):
+            details.append(f"Hypothese retenue: {proposal['hypothesis']}")
+        if isinstance(used, list) and used:
+            details.append("Indicateurs: " + ", ".join(str(item) for item in used))
+    elif event == "phase_done" and str(event_payload.get("phase", "") or "") == "backtest":
+        sharpe = payload.get("sharpe")
+        ret_pct = payload.get("total_return_pct")
+        try:
+            details.append(
+                f"Backtest courant: Sharpe {float(sharpe):.3f} | Return {float(ret_pct):+.2f}%"
+            )
+        except Exception:
+            pass
+    elif event == "iteration_error":
+        error_text = str(payload.get("error", "") or "").strip()
+        if error_text:
+            details.append(f"Erreur: {error_text[:220]}")
+    else:
+        detail_text = str(payload.get("detail", "") or "").strip()
+        if detail_text:
+            details.append(f"Detail: {detail_text[:220]}")
+    return details
 
 
 def _default_autonomous_supervisor_state() -> Dict[str, Any]:
@@ -2765,6 +2938,32 @@ def _normalize_ollama_host(ollama_host: str) -> str:
     return host.rstrip("/")
 
 
+def _resolve_single_llm_runtime_route(
+    ollama_host: str,
+    llm_topology_config: Any = None,
+) -> tuple[str, str]:
+    """Résout la route mono-LLM effective depuis la topologie UI."""
+    fallback_host = _normalize_ollama_host(ollama_host)
+    try:
+        if isinstance(llm_topology_config, LLMTopologyConfig):
+            topology = llm_topology_config
+        elif isinstance(llm_topology_config, dict):
+            topology = LLMTopologyConfig.from_dict(llm_topology_config)
+        else:
+            return fallback_host, ""
+        route = topology.resolve_builder_phase_route(
+            "default",
+            fallback_host=fallback_host,
+        )
+        resolved_host = _normalize_ollama_host(
+            str(getattr(route, "ollama_host", "") or fallback_host)
+        )
+        resolved_gpu_target = str(getattr(route, "gpu_target", "") or "").strip()
+        return resolved_host, resolved_gpu_target
+    except Exception:
+        return fallback_host, ""
+
+
 def _model_matches(model_name: str, requested_model: str) -> bool:
     """Matching contrôlé entre nom demandé et liste Ollama.
 
@@ -2978,6 +3177,21 @@ def _is_model_loaded_in_ollama_ps(
         return False, f"/api/ps inaccessible: {exc}"
 
 
+def _format_ollama_keep_alive(keep_alive_minutes: int) -> str:
+    resolved = max(0, int(keep_alive_minutes))
+    return "0m" if resolved <= 0 else f"{resolved}m"
+
+
+def _apply_builder_keep_alive(
+    config: LLMConfig,
+    *,
+    keep_alive_minutes: int,
+) -> LLMConfig:
+    if getattr(config, "provider", None) == LLMProvider.OLLAMA:
+        config.keep_alive = _format_ollama_keep_alive(keep_alive_minutes)
+    return config
+
+
 def _warmup_ollama_model(
     *,
     model: str,
@@ -2993,7 +3207,7 @@ def _warmup_ollama_model(
     Returns:
         (succès, détail).
     """
-    keep_alive = f"{max(1, int(keep_alive_minutes))}m"
+    keep_alive = _format_ollama_keep_alive(keep_alive_minutes)
     try:
         resp = httpx.post(
             f"{ollama_host}/api/generate",
@@ -3209,7 +3423,32 @@ def _prepare_builder_llm(
                 "message": f"Le modèle `{resolved_model}` est visible sur {ollama_host} via /api/tags.",
             }
         )
-        _store_builder_runtime_acceptance_probe(probe_payload)
+        if not preload_model:
+            acceptance_probe = probe_model_runtime_acceptance(
+                resolved_model,
+                requested_model=model,
+                ollama_host=ollama_host,
+                tags_payload=tags_payload,
+                tags_status_code=tags.status_code,
+            )
+            acceptance_probe["cloud_only"] = False
+            acceptance_probe["warmup_attempted"] = False
+            acceptance_probe["warmup_ok"] = None
+            acceptance_probe["warmup_detail"] = ""
+            if resolve_note:
+                acceptance_probe["message"] = (
+                    f"{resolve_note} {str(acceptance_probe.get('message') or '').strip()}"
+                ).strip()
+            _store_builder_runtime_acceptance_probe(acceptance_probe)
+            if not acceptance_probe.get("accepted"):
+                return (
+                    False,
+                    str(acceptance_probe.get("message") or resolve_note or ""),
+                    resolved_model,
+                )
+            probe_payload = acceptance_probe
+        else:
+            _store_builder_runtime_acceptance_probe(probe_payload)
 
     if not preload_model:
         msg = f"Ollama OK ({ollama_host}) — warmup désactivé."
@@ -4478,6 +4717,7 @@ def _run_single_builder_session(
     objective: str,
     model: str,
     ollama_host: str,
+    gpu_target: str | None = None,
     llm_inference_global_settings: Optional[Dict[str, Any]] = None,
     llm_inference_model_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
     llm_topology_config: Any = None,
@@ -4561,6 +4801,7 @@ def _run_single_builder_session(
             ok, msg, resolved_model = _prepare_builder_llm(
                 model=model,
                 ollama_host=ollama_host,
+                gpu_target=gpu_target,
                 preload_model=preload_model,
                 keep_alive_minutes=keep_alive_minutes,
                 auto_start_ollama=auto_start_ollama,
@@ -4586,6 +4827,7 @@ def _run_single_builder_session(
 
     progress_bar = st.progress(0.0, text="Initialisation...")
     progress_detail_placeholder = st.empty()
+    live_events_placeholder = st.empty()
     runtime_diag_placeholder = st.empty() if multi_llm_manager is not None else None
     if multi_llm_manager is not None and runtime_diag_placeholder is not None:
         _sync_builder_runtime_diagnostic(
@@ -4609,6 +4851,7 @@ def _run_single_builder_session(
         "max_iterations": max_iterations,
         "phase": "initialisation",
         "event": "session_start",
+        "recent_events": [],
     }
 
     _PHASE_LABELS = {
@@ -4621,19 +4864,22 @@ def _run_single_builder_session(
         "objective_gen": ("🎯", "Génération d'objectif", "text"),
     }
 
-    _PROGRESS_PHASE_LABELS = {
-        "proposal": "proposition",
-        "code": "génération code",
-        "analysis": "analyse",
-        "backtest": "backtest",
-        "validation": "validation",
-    }
-
     def _on_builder_progress(payload: Dict[str, Any]) -> None:
+        event_payload = dict(payload or {})
+        raw_payload = _builder_event_payload(event_payload)
         event = str(payload.get("event", "") or "")
-        iteration = int(payload.get("iteration", _progress_state["iteration"]) or 0)
-        max_iters = int(payload.get("max_iterations", _progress_state["max_iterations"]) or max_iterations)
-        phase = str(payload.get("phase", _progress_state["phase"]) or "")
+        iteration = int(
+            event_payload.get("iteration", _progress_state["iteration"]) or 0
+        )
+        max_iters = int(
+            raw_payload.get("max_iterations", _progress_state["max_iterations"])
+            or max_iterations
+        )
+        phase = str(
+            event_payload.get("phase", _progress_state["phase"])
+            or raw_payload.get("phase", "")
+            or ""
+        )
         _progress_state.update(
             {
                 "iteration": iteration,
@@ -4662,8 +4908,12 @@ def _run_single_builder_session(
         phase_fraction = {
             "proposal": 0.18,
             "code": 0.46,
-            "validation": 0.58,
-            "backtest": 0.78,
+            "save_and_load": 0.56,
+            "validation": 0.60,
+            "precheck": 0.66,
+            "runtime_fix": 0.72,
+            "runtime_fix_fallback_backtest": 0.76,
+            "backtest": 0.82,
             "analysis": 0.92,
         }
         completed_iterations = max(iteration - 1, 0)
@@ -4680,49 +4930,52 @@ def _run_single_builder_session(
         if max_iters > 0:
             progress_value = min((completed_iterations + fraction) / max_iters, 1.0)
 
-        if event == "session_start":
-            progress_text = "Initialisation de la session Builder..."
-        elif event == "iteration_start":
-            progress_text = f"Itération {iteration}/{max_iters} — démarrage"
-        elif event == "phase_start":
-            progress_text = (
-                f"Itération {iteration}/{max_iters} — "
-                f"{_PROGRESS_PHASE_LABELS.get(phase, phase or 'phase en cours')}"
-            )
-        elif event == "iteration_error":
-            progress_text = (
-                f"Itération {iteration}/{max_iters} — erreur "
-                f"({_PROGRESS_PHASE_LABELS.get(phase, phase or 'runtime')})"
-            )
-        elif event == "iteration_done":
-            decision = str(payload.get("decision", "") or "continue")
-            progress_text = f"Itération {iteration}/{max_iters} — décision {decision}"
-        elif event == "session_done":
-            progress_text = (
-                f"Session terminée — {payload.get('status', 'n/a')} "
-                f"({payload.get('total_iterations', 0)} itérations)"
-            )
-        else:
-            progress_text = f"Itération {iteration}/{max_iters} — activité en cours"
+        progress_text = str(event_payload.get("message", "") or "").strip()
+        branch_label = _builder_event_branch_label(event_payload)
+        if not progress_text:
+            if event == "session_start":
+                progress_text = "Initialisation de la session Builder..."
+            elif event == "iteration_start":
+                progress_text = f"Itération {iteration}/{max_iters} — démarrage"
+            elif event in {"phase_start", "phase_done"}:
+                progress_text = (
+                    f"Itération {iteration}/{max_iters} — "
+                    f"{_BUILDER_PROGRESS_PHASE_LABELS.get(phase, phase or 'phase en cours')}"
+                )
+            elif event == "iteration_error":
+                progress_text = (
+                    f"Itération {iteration}/{max_iters} — erreur "
+                    f"({_BUILDER_PROGRESS_PHASE_LABELS.get(phase, phase or 'runtime')})"
+                )
+            elif event == "iteration_done":
+                decision = str(raw_payload.get("decision", "") or "continue")
+                progress_text = f"Itération {iteration}/{max_iters} — décision {decision}"
+            elif event == "session_done":
+                progress_text = (
+                    f"Session terminée — {event_payload.get('status', 'n/a')} "
+                    f"({raw_payload.get('total_iterations', 0)} itérations)"
+                )
+            else:
+                progress_text = f"Itération {iteration}/{max_iters} — activité en cours"
+        timeline_line = _format_builder_live_event_line(event_payload)
+        if timeline_line:
+            recent_events = list(_progress_state.get("recent_events", []) or [])
+            recent_events.append(timeline_line)
+            _progress_state["recent_events"] = recent_events[-8:]
 
         try:
             progress_bar.progress(progress_value, text=progress_text)
             with progress_detail_placeholder.container():
-                st.caption(progress_text)
-                if event == "iteration_error":
-                    error_text = str(payload.get("error", "") or "").strip()
-                    if error_text:
-                        st.caption(f"Détail: {error_text[:220]}")
-                elif event == "phase_done" and phase == "backtest":
-                    sharpe = payload.get("sharpe")
-                    ret_pct = payload.get("total_return_pct")
-                    try:
-                        st.caption(
-                            f"Backtest courant: Sharpe {float(sharpe):.3f} | "
-                            f"Return {float(ret_pct):+.2f}%"
-                        )
-                    except Exception:
-                        pass
+                if branch_label and branch_label != "main":
+                    st.caption(f"Contexte branche: {branch_label}")
+                for detail_line in _format_builder_live_detail_lines(event_payload):
+                    st.caption(detail_line)
+            with live_events_placeholder.container():
+                recent_events = list(_progress_state.get("recent_events", []) or [])
+                if recent_events:
+                    st.caption("Timeline live")
+                    for entry in reversed(recent_events[-6:]):
+                        st.caption(entry)
             if multi_llm_manager is not None and runtime_diag_placeholder is not None:
                 _sync_builder_runtime_diagnostic(
                     multi_llm_manager,
@@ -4759,15 +5012,18 @@ def _run_single_builder_session(
         except Exception:
             pass
 
-    llm_config = apply_llm_inference_settings(
-        LLMConfig(
-            provider=LLMProvider.OLLAMA,
-            model=runtime_model,
-            ollama_host=ollama_host,
+    llm_config = _apply_builder_keep_alive(
+        apply_llm_inference_settings(
+            LLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model=runtime_model,
+                ollama_host=ollama_host,
+            ),
+            model_name=runtime_model,
+            global_settings=llm_inference_global_settings,
+            model_profiles=llm_inference_model_profiles,
         ),
-        model_name=runtime_model,
-        global_settings=llm_inference_global_settings,
-        model_profiles=llm_inference_model_profiles,
+        keep_alive_minutes=keep_alive_minutes,
     )
 
     watchdog_stop_event = threading.Event()
@@ -4848,75 +5104,64 @@ def _run_single_builder_session(
     iterations_container = st.container()
     summary_placeholder = st.empty()
 
-    start_time = time.perf_counter()
-
-    with st.status("🏗️ Construction en cours...", expanded=True) as live_status:
-        try:
-            session = builder.run(
-                objective=objective,
-                data=df,
-                max_iterations=max_iterations,
-                target_sharpe=target_sharpe,
-                initial_capital=capital,
-                symbol=symbol,
-                timeframe=timeframe,
-                fees_bps=fees_bps,
-                slippage_bps=slippage_bps,
-                universe_mode=universe_mode,
-                universe_purpose=universe_purpose,
-                universe_strategy_type=universe_strategy_type,
-                universe_meta=universe_meta,
-            )
-        except KeyboardInterrupt:
-            live_status.update(label="⚠️ Interrompu", state="error")
-            st.warning("Construction interrompue par l'utilisateur.")
-            if multi_llm_manager is not None and runtime_diag_placeholder is not None:
-                _sync_builder_runtime_diagnostic(
-                    multi_llm_manager,
-                    mode="multi_llm",
-                    event="session_interrupted",
-                    phase=str(_progress_state.get("phase", "") or "runtime"),
-                    iteration=int(_progress_state.get("iteration", 0) or 0),
-                    max_iterations=max_iterations,
-                    status="interrupted",
-                    session_label=session_label,
-                    objective=objective,
-                    placeholder=runtime_diag_placeholder,
-                    expanded=True,
-                )
-            _release_runtime_model()
-            return None
-        except Exception as exc:
-            live_status.update(label=f"❌ Erreur: {exc}", state="error")
-            show_status("error", f"Erreur Strategy Builder: {exc}")
-            st.code(traceback.format_exc())
-            if multi_llm_manager is not None and runtime_diag_placeholder is not None:
-                _sync_builder_runtime_diagnostic(
-                    multi_llm_manager,
-                    mode="multi_llm",
-                    event="session_error",
-                    phase=str(_progress_state.get("phase", "") or "runtime"),
-                    iteration=int(_progress_state.get("iteration", 0) or 0),
-                    max_iterations=max_iterations,
-                    status="error",
-                    session_label=session_label,
-                    objective=objective,
-                    placeholder=runtime_diag_placeholder,
-                    expanded=True,
-                )
-            _release_runtime_model()
-            return None
-        finally:
-            if autonomous_runtime_watchdog:
-                watchdog_stop_event.set()
-                if watchdog_thread is not None:
-                    watchdog_thread.join(timeout=2.0)
-
-        elapsed = time.perf_counter() - start_time
-        live_status.update(
-            label=f"✅ Terminé en {elapsed:.1f}s — {len(session.iterations)} itérations",
-            state="complete",
+    try:
+        session = builder.run(
+            objective=objective,
+            data=df,
+            max_iterations=max_iterations,
+            target_sharpe=target_sharpe,
+            initial_capital=capital,
+            symbol=symbol,
+            timeframe=timeframe,
+            fees_bps=fees_bps,
+            slippage_bps=slippage_bps,
+            universe_mode=universe_mode,
+            universe_purpose=universe_purpose,
+            universe_strategy_type=universe_strategy_type,
+            universe_meta=universe_meta,
         )
+    except KeyboardInterrupt:
+        st.warning("Construction interrompue par l'utilisateur.")
+        if multi_llm_manager is not None and runtime_diag_placeholder is not None:
+            _sync_builder_runtime_diagnostic(
+                multi_llm_manager,
+                mode="multi_llm",
+                event="session_interrupted",
+                phase=str(_progress_state.get("phase", "") or "runtime"),
+                iteration=int(_progress_state.get("iteration", 0) or 0),
+                max_iterations=max_iterations,
+                status="interrupted",
+                session_label=session_label,
+                objective=objective,
+                placeholder=runtime_diag_placeholder,
+                expanded=True,
+            )
+        _release_runtime_model()
+        return None
+    except Exception as exc:
+        show_status("error", f"Erreur Strategy Builder: {exc}")
+        st.code(traceback.format_exc())
+        if multi_llm_manager is not None and runtime_diag_placeholder is not None:
+            _sync_builder_runtime_diagnostic(
+                multi_llm_manager,
+                mode="multi_llm",
+                event="session_error",
+                phase=str(_progress_state.get("phase", "") or "runtime"),
+                iteration=int(_progress_state.get("iteration", 0) or 0),
+                max_iterations=max_iterations,
+                status="error",
+                session_label=session_label,
+                objective=objective,
+                placeholder=runtime_diag_placeholder,
+                expanded=True,
+            )
+        _release_runtime_model()
+        return None
+    finally:
+        if autonomous_runtime_watchdog:
+            watchdog_stop_event.set()
+            if watchdog_thread is not None:
+                watchdog_thread.join(timeout=2.0)
 
     # Nettoyage
     try:
@@ -5340,34 +5585,6 @@ def _render_autonomous_recap(
     <strong>Jours testes</strong> = plage de donnees reelle si disponible, sinon estimation via le nombre de barres et le timeframe.
 </div>
 """
-    st.markdown(recap_table_html, unsafe_allow_html=True)
-
-    # Meilleur global
-    if history:
-        best = max(history, key=_autonomous_history_strategy_sort_key)
-        st.success(
-            f"**Meilleure session :** Return {_fmt_float(best.get('final_return', best.get('best_return')), '{:+.2f}%')} "
-            f"(Sharpe {_fmt_float(best.get('final_sharpe', best.get('best_sharpe')), '{:.3f}')}) — "
-            f"{best.get('objective', '')[:80]}"
-        )
-
-    if export_rows:
-        csv_buf = io.StringIO()
-        writer = csv.DictWriter(csv_buf, fieldnames=list(export_rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(export_rows)
-        render_seq = _next_autonomous_recap_render_seq()
-        st.download_button(
-            "⬇️ Export leaderboard CSV",
-            data=csv_buf.getvalue(),
-            file_name="builder_autonomous_leaderboard.csv",
-            mime="text/csv",
-            key=(
-                "builder_autonomous_leaderboard_export_"
-                f"{max(latest_session_num, len(export_rows))}_{render_seq}"
-            ),
-        )
-
     latest_multi_entry = next(
         (
             item
@@ -5376,14 +5593,63 @@ def _render_autonomous_recap(
         ),
         None,
     )
-    if isinstance(latest_multi_entry, dict):
-        _render_builder_campaign_memory_card(
-            latest_multi_entry,
-            title="Mémoire de campagne actuelle",
+    overview_tab, history_tab, live_tab = st.tabs(
+        [
+            "Overview",
+            f"History Table ({len(history)})",
+            "Live Thought",
+        ]
+    )
+
+    with overview_tab:
+        best = max(history, key=_autonomous_history_strategy_sort_key)
+        st.success(
+            f"**Meilleure session :** Return {_fmt_float(best.get('final_return', best.get('best_return')), '{:+.2f}%')} "
+            f"(Sharpe {_fmt_float(best.get('final_sharpe', best.get('best_sharpe')), '{:.3f}')}) — "
+            f"{best.get('objective', '')[:80]}"
         )
-        _render_multi_llm_session_analysis_panel(
-            latest_multi_entry,
-            title="Analyse avancée multi-LLM actuelle",
+        if export_rows:
+            csv_buf = io.StringIO()
+            writer = csv.DictWriter(csv_buf, fieldnames=list(export_rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(export_rows)
+            render_seq = _next_autonomous_recap_render_seq()
+            st.download_button(
+                "⬇️ Export leaderboard CSV",
+                data=csv_buf.getvalue(),
+                file_name="builder_autonomous_leaderboard.csv",
+                mime="text/csv",
+                key=(
+                    "builder_autonomous_leaderboard_export_"
+                    f"{max(latest_session_num, len(export_rows))}_{render_seq}"
+                ),
+            )
+        st.caption(
+            "Use the tabs below to show or hide the heavy recap blocks without losing the main summary."
+        )
+        if isinstance(latest_multi_entry, dict):
+            _render_builder_campaign_memory_card(
+                latest_multi_entry,
+                title="Mémoire de campagne actuelle",
+            )
+            _render_multi_llm_session_analysis_panel(
+                latest_multi_entry,
+                title="Analyse avancée multi-LLM actuelle",
+            )
+
+    with history_tab:
+        with st.expander(
+            f"Open history table ({len(history)} sessions)",
+            expanded=False,
+        ):
+            st.markdown(recap_table_html, unsafe_allow_html=True)
+
+    with live_tab:
+        _render_builder_live_thoughts_panel(
+            title="Open live thought stream",
+            expanded=False,
+            show_terminal_command=True,
+            tail_lines=260,
         )
 
 
@@ -5822,22 +6088,20 @@ def render_builder_view(
             extra_chips=[f"Max itérations: {max_iterations}"],
             subtitle="Session unique orientée création et lecture rapide des itérations, avec les détails runtime repoussés au second niveau.",
         )
-        # Flux de pensée
-        with st.expander("📂 Flux de pensée en terminal (optionnel)", expanded=False):
-            st.code(
-                f'Get-Content "{STREAM_FILE}" -Wait -Tail 80',
-                language="powershell",
-            )
-            st.caption(
-                f"📄 Fichier : `{STREAM_FILE}`  \n"
-                "Alternative : surveiller ce fichier dans un terminal séparé."
-            )
+        _render_builder_live_thoughts_panel(
+            title="📂 Flux de pensée live (optionnel)",
+            expanded=False,
+            show_terminal_command=True,
+            tail_lines=180,
+        )
 
         st.markdown("---")
 
         run_model = model
-        run_ollama_host = ollama_host
-        run_ollama_gpu_target = ""
+        run_ollama_host, run_ollama_gpu_target = _resolve_single_llm_runtime_route(
+            ollama_host,
+            getattr(state, "llm_topology_config", None),
+        )
         run_symbol = symbol
         run_timeframe = timeframe
         run_df = df
@@ -5873,15 +6137,18 @@ def render_builder_view(
             )
             manual_multi_llm_manager = MultiLLMSessionManager(
                 profile_name=builder_multi_llm_profile,
-                base_llm_config=apply_llm_inference_settings(
-                    LLMConfig(
-                        provider=LLMProvider.OLLAMA,
-                        model=model,
-                        ollama_host=ollama_host,
+                base_llm_config=_apply_builder_keep_alive(
+                    apply_llm_inference_settings(
+                        LLMConfig(
+                            provider=LLMProvider.OLLAMA,
+                            model=model,
+                            ollama_host=ollama_host,
+                        ),
+                        model_name=model,
+                        global_settings=llm_inference_global_settings,
+                        model_profiles=llm_inference_model_profiles,
                     ),
-                    model_name=model,
-                    global_settings=llm_inference_global_settings,
-                    model_profiles=llm_inference_model_profiles,
+                    keep_alive_minutes=keep_alive_minutes,
                 ),
                 inventory=manual_multi_llm_inventory,
                 llm_topology_config=getattr(state, "llm_topology_config", None),
@@ -6028,15 +6295,18 @@ def render_builder_view(
                 )
                 if llm_client_for_market is None:
                     llm_client_for_market = create_llm_client(
-                        apply_llm_inference_settings(
-                            LLMConfig(
-                                provider=LLMProvider.OLLAMA,
-                                model=market_model,
-                                ollama_host=market_host,
+                        _apply_builder_keep_alive(
+                            apply_llm_inference_settings(
+                                LLMConfig(
+                                    provider=LLMProvider.OLLAMA,
+                                    model=market_model,
+                                    ollama_host=market_host,
+                                ),
+                                model_name=market_model,
+                                global_settings=llm_inference_global_settings,
+                                model_profiles=llm_inference_model_profiles,
                             ),
-                            model_name=market_model,
-                            global_settings=llm_inference_global_settings,
-                            model_profiles=llm_inference_model_profiles,
+                            keep_alive_minutes=keep_alive_minutes,
                         ),
                     )
                 else:
@@ -6050,15 +6320,18 @@ def render_builder_view(
                     )
             else:
                 llm_client_for_market = create_llm_client(
-                    apply_llm_inference_settings(
-                        LLMConfig(
-                            provider=LLMProvider.OLLAMA,
-                            model=market_model,
-                            ollama_host=market_host,
+                    _apply_builder_keep_alive(
+                        apply_llm_inference_settings(
+                            LLMConfig(
+                                provider=LLMProvider.OLLAMA,
+                                model=market_model,
+                                ollama_host=market_host,
+                            ),
+                            model_name=market_model,
+                            global_settings=llm_inference_global_settings,
+                            model_profiles=llm_inference_model_profiles,
                         ),
-                        model_name=market_model,
-                        global_settings=llm_inference_global_settings,
-                        model_profiles=llm_inference_model_profiles,
+                        keep_alive_minutes=keep_alive_minutes,
                     ),
                 )
                 run_model = market_model
@@ -6167,6 +6440,7 @@ def render_builder_view(
             objective=objective,
             model=run_model,
             ollama_host=run_ollama_host,
+            gpu_target=run_ollama_gpu_target or None,
             llm_inference_global_settings=llm_inference_global_settings,
             llm_inference_model_profiles=llm_inference_model_profiles,
             llm_topology_config=getattr(state, "llm_topology_config", None),
@@ -6207,7 +6481,8 @@ def render_builder_view(
                 builder_multi_llm_enabled and manual_multi_llm_manager is not None
             ),
         )
-        _release_multi_llm_runtime(manual_multi_llm_manager)
+        if unload_after_run:
+            _release_multi_llm_runtime(manual_multi_llm_manager)
         if manual_multi_llm_manager is not None:
             _sync_builder_runtime_diagnostic(
                 manual_multi_llm_manager,
@@ -6230,6 +6505,7 @@ def render_builder_view(
                     "Builder terminé: "
                     f"{session.status} (Sharpe {_format_optional_float(getattr(session, 'best_sharpe', None), '{:.3f}')})",
                 )
+            st.session_state.is_running = False
         else:
             st.session_state.is_running = False
 
@@ -6275,23 +6551,24 @@ def render_builder_view(
             )
     _render_builder_runtime_notes("🧩 Détails runtime autonome", autonomous_runtime_lines, expanded=False)
 
-    # Flux de pensée
-    with st.expander("📂 Flux de pensée en terminal (optionnel)", expanded=False):
-        st.code(
-            f'Get-Content "{STREAM_FILE}" -Wait -Tail 80',
-            language="powershell",
-        )
-        st.caption(
-            f"📄 Fichier : `{STREAM_FILE}`  \n"
-            "Alternative : surveiller ce fichier dans un terminal séparé."
-        )
+    _render_builder_live_thoughts_panel(
+        title="📂 Flux de pensée live (optionnel)",
+        expanded=False,
+        show_terminal_command=True,
+        tail_lines=180,
+    )
 
     st.markdown("---")
 
     multi_llm_manager: Optional[MultiLLMSessionManager] = None
     multi_llm_inventory: Any = None
-    builder_runtime_host = ollama_host
-    builder_runtime_gpu_target = ""
+    single_llm_runtime_prepared = False
+    single_llm_prepared_model = ""
+    single_llm_prepared_host = ""
+    builder_runtime_host, builder_runtime_gpu_target = _resolve_single_llm_runtime_route(
+        ollama_host,
+        getattr(state, "llm_topology_config", None),
+    )
     if builder_multi_llm_enabled:
         if not _MULTI_LLM_RUNTIME_AVAILABLE:
             show_status("error", "Mode multi-LLM indisponible dans ce workspace.")
@@ -6306,15 +6583,18 @@ def render_builder_view(
         )
         multi_llm_manager = MultiLLMSessionManager(
             profile_name=builder_multi_llm_profile,
-            base_llm_config=apply_llm_inference_settings(
-                LLMConfig(
-                    provider=LLMProvider.OLLAMA,
-                    model=model,
-                    ollama_host=ollama_host,
+            base_llm_config=_apply_builder_keep_alive(
+                apply_llm_inference_settings(
+                    LLMConfig(
+                        provider=LLMProvider.OLLAMA,
+                        model=model,
+                        ollama_host=ollama_host,
+                    ),
+                    model_name=model,
+                    global_settings=llm_inference_global_settings,
+                    model_profiles=llm_inference_model_profiles,
                 ),
-                model_name=model,
-                global_settings=llm_inference_global_settings,
-                model_profiles=llm_inference_model_profiles,
+                keep_alive_minutes=keep_alive_minutes,
             ),
             inventory=multi_llm_inventory,
             llm_topology_config=getattr(state, "llm_topology_config", None),
@@ -6394,8 +6674,8 @@ def render_builder_view(
         with st.spinner(f"⏳ Préparation LLM `{model}` ({ollama_host})…"):
             ok, msg, resolved_model, lazy_fallback_used = _prepare_builder_llm_resilient(
                 model=model,
-                ollama_host=ollama_host,
-                gpu_target=None,
+                ollama_host=builder_runtime_host,
+                gpu_target=builder_runtime_gpu_target or None,
                 preload_model=preload_model,
                 keep_alive_minutes=keep_alive_minutes,
                 auto_start_ollama=auto_start_ollama,
@@ -6411,7 +6691,7 @@ def render_builder_view(
                 model = resolved_model
                 single_llm_runtime_prepared = True
                 single_llm_prepared_model = str(model or "").strip()
-                single_llm_prepared_host = _normalize_ollama_host(ollama_host)
+                single_llm_prepared_host = _normalize_ollama_host(builder_runtime_host)
             else:
                 show_status("error", msg)
                 _abort_autonomous_start(
@@ -6422,13 +6702,13 @@ def render_builder_view(
 
     objective_indicators = _get_builder_compatible_indicators(df)
     autonomous_resume_ui_state["builder_model_single_llm"] = str(model or "")
-    autonomous_resume_ui_state["builder_ollama_host"] = str(ollama_host or "")
+    autonomous_resume_ui_state["builder_ollama_host"] = str(builder_runtime_host or "")
     _heartbeat_builder_autonomous_runtime(
         last_event="runtime_ready",
         last_progress_event="runtime_ready",
         last_progress_phase="initialisation",
         model=str(model or ""),
-        ollama_host=str(ollama_host or ""),
+        ollama_host=str(builder_runtime_host or ""),
         requested_source_mode=str(requested_objective_mode or ""),
         auto_market_pick=bool(auto_market_pick),
         resume_ui_state=autonomous_resume_ui_state,
@@ -6476,9 +6756,6 @@ def render_builder_view(
     _MAX_CONSECUTIVE_ERRORS = 5  # Arrêt de sécurité après N erreurs consécutives
     terminal_reason = "completed"
     terminal_error = ""
-    single_llm_runtime_prepared = False
-    single_llm_prepared_model = ""
-    single_llm_prepared_host = ""
 
     while st.session_state.get("is_running", False):
         if st.session_state.get("stop_requested", False):
@@ -6574,15 +6851,18 @@ def render_builder_view(
                 )
                 multi_llm_manager = MultiLLMSessionManager(
                     profile_name=builder_multi_llm_profile,
-                    base_llm_config=apply_llm_inference_settings(
-                        LLMConfig(
-                            provider=LLMProvider.OLLAMA,
-                            model=model,
-                            ollama_host=ollama_host,
+                    base_llm_config=_apply_builder_keep_alive(
+                        apply_llm_inference_settings(
+                            LLMConfig(
+                                provider=LLMProvider.OLLAMA,
+                                model=model,
+                                ollama_host=ollama_host,
+                            ),
+                            model_name=model,
+                            global_settings=llm_inference_global_settings,
+                            model_profiles=llm_inference_model_profiles,
                         ),
-                        model_name=model,
-                        global_settings=llm_inference_global_settings,
-                        model_profiles=llm_inference_model_profiles,
+                        keep_alive_minutes=keep_alive_minutes,
                     ),
                     inventory=multi_llm_inventory,
                     llm_topology_config=getattr(state, "llm_topology_config", None),
@@ -6628,15 +6908,18 @@ def render_builder_view(
                     )
                     if llm_client_for_market is None:
                         llm_client_for_market = create_llm_client(
-                            apply_llm_inference_settings(
-                                LLMConfig(
-                                    provider=LLMProvider.OLLAMA,
-                                    model=session_model,
-                                    ollama_host=session_llm_host,
+                            _apply_builder_keep_alive(
+                                apply_llm_inference_settings(
+                                    LLMConfig(
+                                        provider=LLMProvider.OLLAMA,
+                                        model=session_model,
+                                        ollama_host=session_llm_host,
+                                    ),
+                                    model_name=session_model,
+                                    global_settings=llm_inference_global_settings,
+                                    model_profiles=llm_inference_model_profiles,
                                 ),
-                                model_name=session_model,
-                                global_settings=llm_inference_global_settings,
-                                model_profiles=llm_inference_model_profiles,
+                                keep_alive_minutes=keep_alive_minutes,
                             )
                         )
             else:
@@ -6644,7 +6927,7 @@ def render_builder_view(
                     session_num == 1
                     and single_llm_runtime_prepared
                     and str(model or "").strip() == single_llm_prepared_model
-                    and _normalize_ollama_host(ollama_host) == single_llm_prepared_host
+                    and _normalize_ollama_host(session_llm_host) == single_llm_prepared_host
                 )
                 if reuse_prepared_runtime:
                     st.caption(
@@ -6655,8 +6938,8 @@ def render_builder_view(
                     with st.spinner(f"⏳ Vérification LLM session #{session_num}…"):
                         ok, msg, resolved_model = _prepare_builder_llm(
                             model=model,
-                            ollama_host=ollama_host,
-                            gpu_target=None,
+                            ollama_host=session_llm_host,
+                            gpu_target=session_llm_gpu_target or None,
                             preload_model=False if single_llm_runtime_prepared else preload_model,
                             keep_alive_minutes=keep_alive_minutes,
                             auto_start_ollama=auto_start_ollama,
@@ -6671,17 +6954,20 @@ def render_builder_view(
                         session_model = model
                         single_llm_runtime_prepared = True
                         single_llm_prepared_model = str(model or "").strip()
-                        single_llm_prepared_host = _normalize_ollama_host(ollama_host)
+                        single_llm_prepared_host = _normalize_ollama_host(session_llm_host)
 
-                llm_config_shared = apply_llm_inference_settings(
-                    LLMConfig(
-                        provider=LLMProvider.OLLAMA,
-                        model=model,
-                        ollama_host=ollama_host,
+                llm_config_shared = _apply_builder_keep_alive(
+                    apply_llm_inference_settings(
+                        LLMConfig(
+                            provider=LLMProvider.OLLAMA,
+                            model=model,
+                            ollama_host=session_llm_host,
+                        ),
+                        model_name=model,
+                        global_settings=llm_inference_global_settings,
+                        model_profiles=llm_inference_model_profiles,
                     ),
-                    model_name=model,
-                    global_settings=llm_inference_global_settings,
-                    model_profiles=llm_inference_model_profiles,
+                    keep_alive_minutes=keep_alive_minutes,
                 )
                 if effective_objective_mode == "llm":
                     llm_client_for_obj = create_llm_client(llm_config_shared)
@@ -6932,12 +7218,13 @@ def render_builder_view(
                         objective=objective,
                         model=session_model,
                         ollama_host=session_llm_host,
+                        gpu_target=session_llm_gpu_target or None,
                         llm_inference_global_settings=llm_inference_global_settings,
                         llm_inference_model_profiles=llm_inference_model_profiles,
                         llm_topology_config=getattr(state, "llm_topology_config", None),
                         preload_model=preload_model,
                         keep_alive_minutes=keep_alive_minutes,
-                        unload_after_run=True,
+                        unload_after_run=unload_after_run,
                         auto_start_ollama=auto_start_ollama,
                         max_iterations=max_iterations,
                         target_sharpe=target_sharpe,
@@ -7012,7 +7299,11 @@ def render_builder_view(
                 and not multi_llm_shared_memory
             ):
                 multi_llm_shared_memory = multi_llm_manager.consume_shared_memory()
-            if builder_multi_llm_enabled and multi_llm_manager is not None:
+            if (
+                builder_multi_llm_enabled
+                and multi_llm_manager is not None
+                and unload_after_run
+            ):
                 _release_multi_llm_runtime(multi_llm_manager)
                 _sync_builder_runtime_diagnostic(
                     multi_llm_manager,
@@ -7025,6 +7316,10 @@ def render_builder_view(
                     session_label=f"Session autonome #{session_num}",
                     objective=objective,
                 )
+            if not builder_multi_llm_enabled and unload_after_run:
+                single_llm_runtime_prepared = False
+                single_llm_prepared_model = ""
+                single_llm_prepared_host = ""
 
             # ── Enregistrer le résultat ──
             if session is not None:

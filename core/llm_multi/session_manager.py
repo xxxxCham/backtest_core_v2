@@ -1217,6 +1217,7 @@ class MultiLLMSessionManager:
             provider=provider,
             model=assignment.resolved_model,
             ollama_host=route.ollama_host,
+            keep_alive=self.base_llm_config.keep_alive,
             openai_api_key=self.base_llm_config.openai_api_key,
             openai_base_url=self.base_llm_config.openai_base_url,
             temperature=self.base_llm_config.temperature,

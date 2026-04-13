@@ -15,6 +15,8 @@ Outputs: Model list [str], model details [dict], rendered selector widget
 Dependencies: agents.ollama_manager (optionnel), utils.model_loader, httpx
 """
 
+# pylint: disable=broad-exception-caught
+
 from __future__ import annotations
 
 import os
@@ -24,12 +26,10 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
 try:
-    from agents.ollama_manager import is_ollama_available, list_ollama_models
+    from agents.ollama_manager import is_ollama_available
 except ImportError:
-    def list_ollama_models() -> List[str]:
-        return []
-
     def is_ollama_available(ollama_host: Optional[str] = None) -> bool:
+        del ollama_host
         return False
 from utils.log import get_logger
 from utils.model_loader import (
@@ -38,12 +38,23 @@ from utils.model_loader import (
     normalize_model_name as normalize_catalog_model_name,
 )
 
-try:
-    from core.llm_multi import discover_local_models
-except ImportError:
-    discover_local_models = None
+
+def _load_discover_local_models() -> Any:
+    try:
+        from core.llm_multi import discover_local_models as discover_local_models_fn
+    except ImportError:
+        def _missing_discover_local_models(*args: Any, **kwargs: Any) -> Any:
+            del args, kwargs
+            return None
+
+        return _missing_discover_local_models
+    return discover_local_models_fn
+
+
+discover_local_models: Any = _load_discover_local_models()
 
 logger = get_logger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Helper cloud detection
@@ -55,8 +66,9 @@ def _is_cloud_model(name: str) -> bool:
         from agents.model_config import KNOWN_MODELS
         info = KNOWN_MODELS.get(str(name or "").strip())
         return bool(info and info.cloud_only)
-    except Exception:
+    except (ImportError, AttributeError, KeyError):
         return False
+
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -74,6 +86,7 @@ FALLBACK_LLM_MODELS: List[str] = [
     "deepseek-r1:70b",
     "deepseek-r1:32b",
     "qwq:32b",
+
     "qwen2.5:32b",
     "mistral:22b",
     "deepseek-r1-distill:14b",
@@ -125,24 +138,31 @@ _CATEGORY_LABELS = {
     "☁\ufe0f Cloud": "__cloud__",
 }
 
+
 # ---------------------------------------------------------------------------
 # Cache GPU info (ne change pas pendant une session)
 # ---------------------------------------------------------------------------
 
-_gpu_cache: Optional[List[Dict]] = None
-_gpu_cache_ts: float = 0.0
+_gpu_cache_state: Dict[str, Any] = {"value": None, "ts": 0.0}
 
 
 def _get_gpu_info() -> List[Dict]:
     """Retourne les GPUs avec leur VRAM totale et libre (cache 60s)."""
-    global _gpu_cache, _gpu_cache_ts
-    if _gpu_cache is not None and (time.time() - _gpu_cache_ts) < 60:
-        return _gpu_cache
+    cached_value = _gpu_cache_state.get("value")
+    cached_ts = float(_gpu_cache_state.get("ts", 0.0))
+    if cached_value is not None and (time.time() - cached_ts) < 60:
+        return list(cached_value)
     try:
         result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name,memory.total,memory.free",
-             "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=5,
+            [
+                "nvidia-smi",
+                "--query-gpu=name,memory.total,memory.free",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         )
         gpus = []
         for line in result.stdout.strip().splitlines():
@@ -153,19 +173,27 @@ def _get_gpu_info() -> List[Dict]:
                     "vram_total_mb": int(parts[1]),
                     "vram_free_mb": int(parts[2]),
                 })
-        _gpu_cache = gpus
-        _gpu_cache_ts = time.time()
+        _gpu_cache_state["value"] = gpus
+        _gpu_cache_state["ts"] = time.time()
         return gpus
-    except Exception:
-        _gpu_cache = []
-        _gpu_cache_ts = time.time()
+    except (OSError, subprocess.SubprocessError, ValueError):
+        _gpu_cache_state["value"] = []
+        _gpu_cache_state["ts"] = time.time()
         return []
 
 
 def _get_total_vram_gb() -> float:
     """VRAM totale combinee de tous les GPUs en GB."""
     gpus = _get_gpu_info()
-    return sum(g["vram_total_mb"] for g in gpus) / 1024
+    return float(sum(float(g["vram_total_mb"]) for g in gpus)) / 1024.0
+
+
+def _get_max_gpu_vram_gb() -> float:
+    """VRAM totale du plus gros GPU local, utile pour un endpoint pinne sur une seule carte."""
+    gpus = _get_gpu_info()
+    if not gpus:
+        return 0.0
+    return max(float(g.get("vram_total_mb") or 0.0) for g in gpus) / 1024.0
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +207,7 @@ def _get_ollama_inventory_ttl_sec() -> float:
     raw_value = str(os.environ.get("BACKTEST_UI_OLLAMA_CACHE_TTL_SEC", "300") or "300").strip()
     try:
         return max(5.0, float(raw_value))
-    except Exception:
+    except (TypeError, ValueError):
         return 300.0
 
 
@@ -199,7 +227,7 @@ def _is_local_ollama_host(ollama_host: Optional[str] = None) -> bool:
     host = _normalize_host(ollama_host)
     try:
         parsed = urlparse(host)
-    except Exception:
+    except (TypeError, ValueError):
         return False
     return (parsed.hostname or "").lower() in {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
 
@@ -292,7 +320,7 @@ def _fetch_ollama_inventory(ollama_host: Optional[str] = None) -> Dict[str, Any]
             }
         inventory["names"] = names
         inventory["details"] = details_map
-    except Exception:
+    except (httpx.HTTPError, OSError, ValueError, KeyError, AttributeError):
         pass
 
     inventory["ts"] = time.time()
@@ -320,7 +348,7 @@ def _get_local_inventory_models(ollama_host: Optional[str] = None) -> List[str]:
             ollama_host=ollama_host,
             include_live_ollama=True,
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("Erreur lecture inventaire local modèles: %s", exc)
         return []
 
@@ -366,11 +394,40 @@ def get_model_details(model_name: str, ollama_host: Optional[str] = None) -> Dic
     json_data = {}
     try:
         json_data = get_model_by_id(model_name) or {}
-    except Exception:
+    except Exception:  # noqa: BLE001
         json_data = {}
 
     size_gb = ollama_data.get("size_gb") or json_data.get("size_gb") or "?"
+
+    # Fallback 3 : KNOWN_MODELS — utilisé quand Ollama est hors ligne et que
+    # models.json ne connaît pas le modèle.  On estime la taille disque depuis
+    # params_billions (Q4_K_M empirique : ~0.55 GB / milliard de paramètres).
+    _known_info = None
+    if size_gb == "?":
+        try:
+            from agents.model_config import KNOWN_MODELS
+            _known_info = KNOWN_MODELS.get(normalized_model_name) or KNOWN_MODELS.get(
+                _normalize_model_name(model_name)
+            )
+            if _known_info and getattr(_known_info, "params_billions", 0) > 0:
+                size_gb = round(_known_info.params_billions * 0.55, 1)
+        except Exception:  # noqa: BLE001
+            pass
+
+    # Fallback 4 : extraction du count depuis le nom (ex: "fin-o1:14b-q6_k", "model:33b").
+    # Couvre les modèles locaux installés mais absents de KNOWN_MODELS et de models.json.
+    if size_gb == "?" and not _is_cloud_model(normalized_model_name or model_name):
+        import re as _re
+        _m = _re.search(r"[:\-_\.](\d+\.?\d*)b", (normalized_model_name or model_name), _re.IGNORECASE)
+        if _m:
+            _approx_params = float(_m.group(1))
+            if 0.5 <= _approx_params <= 500:
+                size_gb = round(_approx_params * 0.55, 1)
+
     vram_gb = _estimate_vram_gb(size_gb) if isinstance(size_gb, (int, float)) else "?"
+    # On utilise la VRAM totale combinée (tous les GPUs) car Ollama distribue
+    # automatiquement la charge. Le badge répond à "peut tourner sur cette machine ?".
+    # La logique de pinning mono-GPU reste gérée séparément dans ollama_manager.
     total_vram = _get_total_vram_gb() if _is_local_ollama_host(ollama_host) else 0.0
 
     if isinstance(vram_gb, (int, float)) and total_vram > 0:
@@ -383,7 +440,15 @@ def get_model_details(model_name: str, ollama_host: Optional[str] = None) -> Dic
         "display_name": json_data.get("name") or normalized_model_name or model_name,
         "size_gb": size_gb,
         "vram_gb": vram_gb,
-        "parameters": ollama_data.get("parameters") or json_data.get("parameters", "?"),
+        "parameters": (
+            ollama_data.get("parameters")
+            or json_data.get("parameters")
+            or (
+                f"{_known_info.params_billions:.0f}B"
+                if _known_info and getattr(_known_info, "params_billions", 0) > 0
+                else "?"
+            )
+        ),
         "quantization": ollama_data.get("quantization") or json_data.get("quantization", "?"),
         "family": ollama_data.get("family", "?"),
         "use_case": json_data.get("use_case", "general"),
@@ -447,6 +512,8 @@ def get_available_models_for_ui(
     Ollama /api/tags) + les modèles **cloud-only** (toujours affichés, crédits requis).
     Les modèles présents dans le catalogue mais non installés ne sont PAS affichés.
     """
+    del fallback, include_library_models
+
     installed_runtime = [
         _normalize_model_name(n) for n in _get_installed_ollama_models(ollama_host) if n
     ]
@@ -727,8 +794,8 @@ def _render_model_card(
 
     with col1:
         lines = [
-            f"| | |",
-            f"|---|---|",
+            "| | |",
+            "|---|---|",
             f"| **Parametres** | {params} |",
             f"| **Quantization** | {quant} |",
             f"| **Famille** | {family} |",
@@ -752,8 +819,8 @@ def _render_model_card(
             gpu_status = f"{badge} GPU non detecte"
 
         lines2 = [
-            f"| | |",
-            f"|---|---|",
+            "| | |",
+            "|---|---|",
             f"| **Taille disque** | {size_str} |",
             f"| **VRAM estimee** | ~{vram_str} |",
             f"| **GPU** | {gpu_status} |",

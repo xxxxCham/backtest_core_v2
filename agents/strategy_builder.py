@@ -1,3 +1,4 @@
+# ruff: noqa: I001
 """
 Module-ID: agents.strategy_builder
 
@@ -37,17 +38,17 @@ import os
 import pprint
 import re
 import sys
-import threading
 import textwrap
+import threading
 import traceback
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
-import pandas as pd
 import numpy as np
-from agents.llm_client import LLMClient, LLMConfig, LLMMessage, create_llm_client
+import pandas as pd
+from agents.llm_client import LLMClient, LLMConfig, LLMMessage, StreamAbortRequest, create_llm_client
 from agents.llm_router import LLMTopologyConfig, build_phase1_topology
 from agents.indicator_context import (
     build_indicator_selection_guide,
@@ -62,7 +63,7 @@ from metrics_types import normalize_metrics
 from utils.observability import generate_run_id, get_obs_logger
 from utils.template import render_prompt
 
-from agents.thought_stream import ThoughtStream
+from agents.thought_stream import BuilderLiveEvent, ThoughtStream
 from agents.pipeline_instrumentation import (
     PipelineInstrumentation,
     AblationController,
@@ -73,13 +74,13 @@ from agents.builder_state import (
     BuilderSession,
     _select_session_recovery_anchor,
 )
-from agents.builder_code_validation import validate_generated_code  # noqa: F401
-from agents.builder_code_repair import _repair_code  # noqa: F401
 from config.market_selection import (
     evaluate_market_dataset,
     infer_strategy_type,
     normalize_universe_mode,
 )
+# pylint: disable=broad-except
+# pylint: disable=protected-access
 
 logger = get_obs_logger(__name__)
 
@@ -1442,8 +1443,9 @@ def _binding_info_for_expr(
             "indicator": indicator_name,
         }
 
-    if _is_np_nan_to_num_call(node) and getattr(node, "args", None):
-        parent = _binding_info_for_expr(node.args[0], bindings)
+    _node_args = getattr(node, "args", None)
+    if _is_np_nan_to_num_call(node) and _node_args:
+        parent = _binding_info_for_expr(_node_args[0], bindings)
         if parent is None:
             return None
         if parent["kind"] == "dict":
@@ -2265,10 +2267,11 @@ def _inject_generate_signals_indicator_bindings(
 
         if fn.body:
             first_stmt = fn.body[0]
+            _first_val = getattr(first_stmt, "value", None)
             if (
                 isinstance(first_stmt, ast.Expr)
-                and isinstance(getattr(first_stmt, "value", None), ast.Constant)
-                and isinstance(first_stmt.value.value, str)
+                and isinstance(_first_val, ast.Constant)
+                and isinstance(_first_val.value, str)
             ):
                 end = getattr(first_stmt, "end_lineno", None) or first_stmt.lineno
                 insert_lineno = int(end) + 1
@@ -2279,10 +2282,12 @@ def _inject_generate_signals_indicator_bindings(
 
         insert_idx = max(0, min(len(lines), insert_lineno - 1))
         if 0 <= insert_idx < len(lines) and lines:
-            indent = re.match(r"^(\s*)", lines[insert_idx]).group(1)
+            _m = re.match(r"^(\s*)", lines[insert_idx])
+            indent = _m.group(1) if _m else ""
         else:
             def_line_idx = max(0, min(len(lines) - 1, int(fn.lineno) - 1)) if lines else 0
-            def_indent = re.match(r"^(\s*)", lines[def_line_idx]).group(1) if lines else ""
+            _dm = re.match(r"^(\s*)", lines[def_line_idx]) if lines else None
+            def_indent = _dm.group(1) if _dm else ""
             indent = def_indent + "    "
 
         insertions.append((insert_idx, [indent + line for line in binding_lines]))
@@ -2363,10 +2368,11 @@ def _inject_generate_signals_core_param_aliases(code: str) -> str:
         insert_lineno: int
         if fn.body:
             first_stmt = fn.body[0]
+            _first_val = getattr(first_stmt, "value", None)
             if (
                 isinstance(first_stmt, ast.Expr)
-                and isinstance(getattr(first_stmt, "value", None), ast.Constant)
-                and isinstance(first_stmt.value.value, str)
+                and isinstance(_first_val, ast.Constant)
+                and isinstance(_first_val.value, str)
             ):
                 end = getattr(first_stmt, "end_lineno", None) or first_stmt.lineno
                 insert_lineno = int(end) + 1
@@ -2380,10 +2386,12 @@ def _inject_generate_signals_core_param_aliases(code: str) -> str:
         # Indentation = indentation de la première ligne de body (ou fallback def+4)
         indent = ""
         if 0 <= insert_idx < len(lines) and lines:
-            indent = re.match(r"^(\s*)", lines[insert_idx]).group(1)
+            _m = re.match(r"^(\s*)", lines[insert_idx])
+            indent = _m.group(1) if _m else ""
         else:
             def_line_idx = max(0, min(len(lines) - 1, int(fn.lineno) - 1)) if lines else 0
-            def_indent = re.match(r"^(\s*)", lines[def_line_idx]).group(1) if lines else ""
+            _dm = re.match(r"^(\s*)", lines[def_line_idx]) if lines else None
+            def_indent = _dm.group(1) if _dm else ""
             indent = def_indent + "    "
 
         insertions.append((insert_idx, [indent + line for line in alias_raw]))
@@ -2442,10 +2450,11 @@ def _inject_generate_signals_indicator_aliases(code: str) -> str:
 
         if fn.body:
             first_stmt = fn.body[0]
+            _first_val = getattr(first_stmt, "value", None)
             if (
                 isinstance(first_stmt, ast.Expr)
-                and isinstance(getattr(first_stmt, "value", None), ast.Constant)
-                and isinstance(first_stmt.value.value, str)
+                and isinstance(_first_val, ast.Constant)
+                and isinstance(_first_val.value, str)
             ):
                 end = getattr(first_stmt, "end_lineno", None) or first_stmt.lineno
                 insert_lineno = int(end) + 1
@@ -2456,10 +2465,12 @@ def _inject_generate_signals_indicator_aliases(code: str) -> str:
 
         insert_idx = max(0, min(len(lines), insert_lineno - 1))
         if 0 <= insert_idx < len(lines) and lines:
-            indent = re.match(r"^(\s*)", lines[insert_idx]).group(1)
+            _m = re.match(r"^(\s*)", lines[insert_idx])
+            indent = _m.group(1) if _m else ""
         else:
             def_line_idx = max(0, min(len(lines) - 1, int(fn.lineno) - 1)) if lines else 0
-            def_indent = re.match(r"^(\s*)", lines[def_line_idx]).group(1) if lines else ""
+            _dm = re.match(r"^(\s*)", lines[def_line_idx]) if lines else None
+            def_indent = _dm.group(1) if _dm else ""
             indent = def_indent + "    "
 
         insertions.append((insert_idx, [indent + line for line in alias_raw]))
@@ -2535,14 +2546,14 @@ def _rewrite_safe_dict_indicator_comparisons(code: str) -> str:
             for expr in (indicator_expr, get_expr):
                 line = re.sub(
                     rf"({expr})\s*{compare_ops}",
-                    lambda m, replacement=scalar_expr: (
+                    lambda m, replacement=scalar_expr: (  # type: ignore[misc]
                         f"{replacement} {m.group(2)}"
                     ),
                     line,
                 )
                 line = re.sub(
                     rf"{compare_ops}\s*({expr})",
-                    lambda m, replacement=scalar_expr: (
+                    lambda m, replacement=scalar_expr: (  # type: ignore[misc]
                         f"{m.group(1)} {replacement}"
                     ),
                     line,
@@ -3607,8 +3618,8 @@ def _build_builder_sweep_values(
         return [default_value]
 
     try:
-        min_v = float(spec.get("min"))
-        max_v = float(spec.get("max"))
+        min_v = float(spec.get("min"))  # type: ignore[arg-type]
+        max_v = float(spec.get("max"))  # type: ignore[arg-type]
     except (ValueError, TypeError):
         return [default_value]
 
@@ -3617,17 +3628,17 @@ def _build_builder_sweep_values(
 
     try:
         default_numeric = float(
-            default_value if default_value is not None else spec.get("default")
+            default_value if default_value is not None else spec.get("default")  # type: ignore[arg-type]
         )
     except (ValueError, TypeError):
-        default_numeric = float(spec.get("default", min_v) or min_v)
+        default_numeric = float(spec.get("default", min_v) or min_v)  # type: ignore[arg-type]
 
     default_numeric = min(max(default_numeric, min_v), max_v)
 
     step_numeric: Optional[float] = None
     if spec.get("step") is not None:
         try:
-            step_numeric = float(spec.get("step"))
+            step_numeric = float(spec.get("step"))  # type: ignore[arg-type]
         except (ValueError, TypeError):
             step_numeric = None
         if step_numeric is not None and step_numeric <= 0:
@@ -3739,6 +3750,7 @@ def _build_deterministic_proposal_fallback(
     last_iteration: Optional["BuilderIteration"] = None,
 ) -> Dict[str, Any]:
     """Construit une proposition contractuelle minimale quand le LLM dérape."""
+    _ = objective  # paramètre stable d'API, non utilisé dans le fallback déterministe
     known = [x.strip().lower() for x in available_indicators if isinstance(x, str) and x.strip()]
     preferred = [
         x for x in ["rsi", "ema", "atr", "bollinger", "supertrend", "adx", "stochastic"]
@@ -4053,15 +4065,15 @@ def _proposal_issues(proposal: Dict[str, Any]) -> List[str]:
             if ptype and ptype not in {"int", "float", "bool"}:
                 issues.append("parameter_spec_invalid_type")
             try:
-                min_v = float(spec.get("min"))
-                max_v = float(spec.get("max"))
+                min_v = float(spec.get("min"))  # type: ignore[arg-type]
+                max_v = float(spec.get("max"))  # type: ignore[arg-type]
                 if min_v > max_v:
                     issues.append("parameter_spec_min_gt_max")
             except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
                 issues.append("parameter_spec_non_numeric_bounds")
             if "step" in spec and spec.get("step") is not None:
                 try:
-                    step = float(spec.get("step"))
+                    step = float(spec.get("step"))  # type: ignore[arg-type]
                     if step <= 0:
                         issues.append("parameter_spec_invalid_step")
                 except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
@@ -4149,7 +4161,7 @@ def _coerce_and_validate_signals_runtime(signals: Any, df: pd.DataFrame) -> pd.S
     coerced = np.sign(values).astype(np.float64)
     series = pd.Series(coerced, index=df.index, dtype=np.float64)
 
-    unique = set(np.unique(series.values).tolist())
+    unique = set(np.unique(np.asarray(series.values)).tolist())  # type: ignore[call-overload]
     if not unique.issubset({-1.0, 0.0, 1.0}):
         raise ValueError(
             _err(ERR_SIG, f"Valeurs signaux hors contrat détectées: {sorted(unique)}")
@@ -4230,7 +4242,7 @@ def _extract_required_indicators_signature(code: str) -> tuple[str, ...]:
                     for stmt in item.body:
                         if isinstance(stmt, ast.Return):
                             try:
-                                value = ast.literal_eval(stmt.value)
+                                value = ast.literal_eval(stmt.value)  # type: ignore[arg-type]
                             except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
                                 return tuple()
                             if isinstance(value, (list, tuple)):
@@ -4271,7 +4283,7 @@ def _extract_default_params_signature(code: str) -> Dict[str, Any]:
                     for stmt in item.body:
                         if isinstance(stmt, ast.Return):
                             try:
-                                value = ast.literal_eval(stmt.value)
+                                value = ast.literal_eval(stmt.value)  # type: ignore[arg-type]
                             except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
                                 return {}
                             if isinstance(value, dict):
@@ -4681,6 +4693,8 @@ class StrategyBuilder:
         self.stream_callback = stream_callback
         self.backtest_completed_callback = backtest_completed_callback
         self.progress_callback = progress_callback
+        self._active_thought_stream: Optional[Any] = None
+        self._active_builder_session_id: str = ""
         self.phase_llm_clients = {
             str(key or "").strip(): value
             for key, value in dict(phase_llm_clients or {}).items()
@@ -4699,9 +4713,38 @@ class StrategyBuilder:
         try:
             from config.indicator_history import load_policy
             self._indicator_policy = load_policy()
-        except Exception:
+        except Exception:  # noqa: BLE001
             self._indicator_policy = {}
         self._indicator_history: Dict[str, Any] = {}  # chargé au début de chaque run
+
+    def _iter_llm_clients(self) -> List[Any]:
+        ordered: List[Any] = []
+        seen: set[int] = set()
+        for client in [self.llm, *list(self.phase_llm_clients.values())]:
+            if client is None:
+                continue
+            marker = id(client)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            ordered.append(client)
+        return ordered
+
+    def _abort_active_llm_streams(self) -> bool:
+        aborted_any = False
+        for client in self._iter_llm_clients():
+            abort = getattr(client, "abort_current_stream", None)
+            if not callable(abort):
+                continue
+            try:
+                aborted_any = bool(abort()) or aborted_any
+            except Exception:  # noqa: BLE001
+                logger.debug(
+                    "builder_abort_active_llm_stream_failed client=%s",
+                    type(client).__name__,
+                    exc_info=True,
+                )
+        return aborted_any
 
     def _emit_completed_backtest(
         self,
@@ -4859,24 +4902,348 @@ class StrategyBuilder:
                     exc_info=True,
                 )
 
+    @staticmethod
+    def _default_live_status(event: str) -> str:
+        if event in {"phase_start", "session_start", "iteration_start"}:
+            return "start"
+        if event == "proposal_selected":
+            return "selected"
+        if event in {"iteration_error"}:
+            return "error"
+        if event == "warning":
+            return "warning"
+        if event == "session_done":
+            return "done"
+        return "done"
+
+    @staticmethod
+    def _live_phase_label(phase: str) -> str:
+        labels = {
+            "proposal": "proposition",
+            "code": "generation code",
+            "save_and_load": "sauvegarde / chargement",
+            "precheck": "precheck signaux",
+            "analysis": "analyse",
+            "backtest": "backtest",
+            "runtime_fix": "reparation runtime",
+            "runtime_fix_fallback_backtest": "backtest fallback",
+            "validation": "validation",
+        }
+        normalized = str(phase or "").strip()
+        return labels.get(normalized, normalized or "activite Builder")
+
+    @staticmethod
+    def _live_branch_suffix(branch_label: str, *, include_main: bool = False) -> str:
+        cleaned = str(branch_label or "").strip()
+        if not cleaned:
+            return ""
+        if cleaned == "main" and not include_main:
+            return ""
+        return f" | branche `{cleaned}`"
+
+    def _build_live_event(self, event: str, **payload: Any) -> Dict[str, Any]:
+        raw_payload = dict(payload or {})
+        iteration = int(raw_payload.pop("iteration", 0) or 0)
+        phase = str(raw_payload.pop("phase", "") or "")
+        branch_label = str(raw_payload.pop("branch_label", "") or "")
+        selected_branch_label = str(
+            raw_payload.pop("selected_branch_label", "") or ""
+        )
+        status = str(
+            raw_payload.pop("status", "") or self._default_live_status(event)
+        )
+        explicit_message = str(raw_payload.pop("message", "") or "").strip()
+        session_id = str(
+            raw_payload.pop("session_id", "") or self._active_builder_session_id or ""
+        )
+        if not session_id:
+            thought_stream = getattr(self, "_active_thought_stream", None)
+            session_id = str(getattr(thought_stream, "session_id", "") or "")
+        if event == "proposal_selected" and not selected_branch_label:
+            selected_branch_label = branch_label
+        message = explicit_message or self._format_live_message(
+            event=event,
+            iteration=iteration,
+            phase=phase,
+            status=status,
+            branch_label=branch_label,
+            selected_branch_label=selected_branch_label,
+            payload=raw_payload,
+        )
+        live_event = BuilderLiveEvent(
+            event=str(event or ""),
+            timestamp=datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            session_id=session_id,
+            iteration=iteration,
+            branch_label=branch_label,
+            selected_branch_label=selected_branch_label,
+            phase=phase,
+            status=status,
+            message=message,
+            payload=raw_payload,
+        )
+        return live_event.to_dict()
+
+    def _format_live_message(
+        self,
+        *,
+        event: str,
+        iteration: int,
+        phase: str,
+        status: str,
+        branch_label: str,
+        selected_branch_label: str,
+        payload: Dict[str, Any],
+    ) -> str:
+        if event == "session_start":
+            symbol = str(payload.get("symbol", "") or "").strip()
+            timeframe = str(payload.get("timeframe", "") or "").strip()
+            market = f" sur {symbol} {timeframe}".rstrip()
+            return f"Initialisation de la session Builder{market}"
+        if event == "iteration_start":
+            total = int(payload.get("max_iterations", 0) or 0)
+            return f"Iteration {iteration}/{total or '?'} demarree"
+        if event == "proposal_candidate":
+            proposal = dict(payload.get("proposal") or {})
+            hypothesis = str(proposal.get("hypothesis", "") or "hypothese candidate")
+            return (
+                f"Proposition candidate{self._live_branch_suffix(branch_label, include_main=True)}"
+                f" - {hypothesis}"
+            )
+        if event == "proposal_selected":
+            proposal = dict(payload.get("proposal") or {})
+            hypothesis = str(proposal.get("hypothesis", "") or "hypothese retenue")
+            target_branch = selected_branch_label or branch_label
+            return (
+                f"Branche retenue{self._live_branch_suffix(target_branch, include_main=True)}"
+                f" - {hypothesis}"
+            )
+        if event == "phase_start":
+            detail = str(payload.get("detail", "") or "").strip()
+            message = (
+                f"{self._live_phase_label(phase).capitalize()} en cours"
+                f"{self._live_branch_suffix(branch_label)}"
+            )
+            if detail:
+                message += f" - {detail}"
+            return message
+        if event == "phase_done":
+            detail = str(payload.get("detail", "") or "").strip()
+            message = (
+                f"{self._live_phase_label(phase).capitalize()} terminee"
+                f"{self._live_branch_suffix(branch_label)}"
+            )
+            if phase == "backtest":
+                sharpe = payload.get("sharpe")
+                ret_pct = payload.get("total_return_pct")
+                try:
+                    return (
+                        f"{message} - Sharpe {float(sharpe or 0):.3f} | "  # type: ignore[arg-type]
+                        f"Return {float(ret_pct or 0):+.2f}%"  # type: ignore[arg-type]
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            if detail:
+                message += f" - {detail}"
+            return message
+        if event == "diagnostic":
+            diagnostic = dict(payload.get("diagnostic") or {})
+            summary = str(diagnostic.get("summary", "") or "").strip()
+            category = str(diagnostic.get("category", "") or "").strip()
+            if summary and category:
+                return f"Diagnostic {category} - {summary}"
+            if summary:
+                return summary
+            return "Diagnostic mis a jour"
+        if event == "analysis":
+            decision = str(payload.get("decision", "") or "").strip()
+            if decision:
+                return f"Analyse terminee - decision {decision}"
+            return "Analyse terminee"
+        if event == "warning":
+            return str(payload.get("detail", "") or "Avertissement Builder").strip()
+        if event == "iteration_done":
+            decision = str(payload.get("decision", "") or "").strip()
+            message = f"Iteration {iteration} terminee"
+            if decision:
+                message += f" - decision {decision}"
+            if payload.get("new_best"):
+                message += " - nouveau meilleur resultat"
+            return message
+        if event == "iteration_error":
+            error_text = str(payload.get("error", "") or "").strip()
+            return f"Iteration {iteration} en erreur - {error_text}" if error_text else f"Iteration {iteration} en erreur"
+        if event == "session_done":
+            total_iterations = int(payload.get("total_iterations", 0) or 0)
+            return f"Session terminee - {status} ({total_iterations} iterations)"
+        return str(payload.get("detail", "") or "").strip()
+
     def _emit_progress(self, event: str, **payload: Any) -> None:
-        """Notifie l'UI de l'état courant d'une session Builder."""
+        """Emet un evenement live canonique vers le terminal et l'UI."""
+        message = self._build_live_event(event, **payload)
+
+        thought_stream = getattr(self, "_active_thought_stream", None)
+        if thought_stream is not None:
+            try:
+                thought_stream.consume(message)
+            except Exception:  # noqa: BLE001
+                logger.debug(
+                    "builder_thought_stream_consume_failed event=%s",
+                    event,
+                    exc_info=True,
+                )
+
         callback = self.progress_callback
         if callback is None:
             return
-        message = {"event": event, **payload}
         try:
             callback(message)
-        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
+        except Exception:  # noqa: BLE001
             logger.debug(
                 "builder_progress_callback_failed event=%s",
                 event,
                 exc_info=True,
             )
 
+    def _emit_stream_chunk(self, phase: str, chunk: str) -> None:
+        callback = self.stream_callback
+        if callback is not None:
+            try:
+                callback(phase, chunk)
+            except Exception:  # noqa: BLE001
+                logger.debug(
+                    "builder_stream_callback_failed phase=%s",
+                    phase,
+                    exc_info=True,
+                )
+
+        thought_stream = getattr(self, "_active_thought_stream", None)
+        if thought_stream is None:
+            return
+        try:
+            thought_stream.stream_chunk(phase, chunk)
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "builder_thought_stream_chunk_failed phase=%s",
+                phase,
+                exc_info=True,
+            )
+
+    def _emit_terminal_stage(
+        self,
+        phase: str,
+        *,
+        status: str = "start",
+        detail: str = "",
+        branch_label: str = "",
+    ) -> None:
+        thought_stream = getattr(self, "_active_thought_stream", None)
+        if thought_stream is None:
+            return
+        try:
+            thought_stream.consume(
+                self._build_live_event(
+                    "phase_start" if str(status or "start") == "start" else "phase_done",
+                    phase=phase,
+                    status=status,
+                    detail=detail,
+                    branch_label=branch_label,
+                )
+            )
+        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
+            logger.debug(
+                "builder_terminal_stage_failed phase=%s status=%s",
+                phase,
+                status,
+                exc_info=True,
+            )
+
     # ------------------------------------------------------------------
     # LLM call helper (streaming si callback défini)
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Répétition token guard (léger, O(N) sur fenêtre glissante)
+    # ------------------------------------------------------------------
+
+    class _StreamRepetitionGuard:
+        """Détecte les boucles de répétition dans le flux stream LLM.
+
+        Déclenche ``StreamAbortRequest`` quand une unité de longueur L se répète
+        au moins ``_THRESHOLD`` fois consécutives en fin de buffer. Coût : O(1) par
+        chunk (scan déclenché seulement tous les ``_CHECK_EVERY`` chars).
+        """
+
+        _WINDOW: int = 600       # chars inspectés à chaque scan
+        _MIN_UNIT: int = 3       # longueur min de l'unité répétée
+        _MAX_UNIT: int = 50      # longueur max
+        _THRESHOLD: int = 5      # répétitions consécutives pour déclencher
+        _CHECK_EVERY: int = 40   # déclencher le scan tous les N chars reçus
+
+        def __init__(self) -> None:
+            self._buf: List[str] = []
+            self._buf_len: int = 0
+            self._since_check: int = 0
+            self._triggered: bool = False
+
+        def feed(self, chunk: str) -> None:
+            """Consomme un chunk. Lève ``StreamAbortRequest`` si répétition détectée."""
+            if self._triggered:
+                raise StreamAbortRequest("repetition_loop")
+            self._buf.append(chunk)
+            self._buf_len += len(chunk)
+            self._since_check += len(chunk)
+            if self._since_check >= self._CHECK_EVERY:
+                self._since_check = 0
+                tail = "".join(self._buf)[-self._WINDOW:]
+                if self._detect_repetition(tail):
+                    self._triggered = True
+                    raise StreamAbortRequest("repetition_loop")
+
+        def _detect_repetition(self, text: str) -> bool:
+            n = len(text)
+            threshold = self._THRESHOLD
+            min_u = self._MIN_UNIT
+            max_u = min(self._MAX_UNIT, n // threshold)
+            if max_u < min_u:
+                return False
+            for unit_len in range(min_u, max_u + 1):
+                needed = unit_len * threshold
+                if n < needed:
+                    continue
+                unit = text[-unit_len:]
+                region = text[-needed:]
+                # Vérifier que toute la région est une répétition de l'unité
+                if all(
+                    region[i:i + unit_len] == unit
+                    for i in range(0, needed, unit_len)
+                ):
+                    return True
+            return False
+
+    @staticmethod
+    def _make_corrective_messages(messages: List[LLMMessage]) -> List[LLMMessage]:
+        """Ajoute une instruction corrective sur le dernier message utilisateur.
+
+        Appelé quand le LLM vient de partir en boucle de répétition token.
+        """
+        if not messages:
+            return messages
+        correction = (
+            "\n\n⚠️ IMPORTANT : ta réponse précédente s'est répétée en boucle de tokens. "
+            "Recommence depuis le début. Génère une réponse COMPLÈTE et CONCISE, "
+            "sans répétition, directement au but."
+        )
+        corrected: List[LLMMessage] = list(messages)
+        for i in range(len(corrected) - 1, -1, -1):
+            if corrected[i].role == "user":
+                corrected[i] = LLMMessage(
+                    role="user",
+                    content=corrected[i].content + correction,
+                )
+                break
+        return corrected
+
 
     @staticmethod
     def _resolve_phase_client_key(phase: str) -> str:
@@ -4940,23 +5307,61 @@ class StrategyBuilder:
         if client_config is not None and route.ollama_host:
             client_config.ollama_host = route.ollama_host
 
-        def _do_call():
-            if self.stream_callback and hasattr(llm_client, "chat_stream"):
+        # Capture les référencees au moment de la définition du closure pour éviter
+        # que des threads résiduels (après timeout) écrivent dans le mauvais stream.
+        _captured_ts = getattr(self, "_active_thought_stream", None)
+        _captured_cb = self.stream_callback
+
+        # Guard de répétition : instance fraîche par appel LLM
+        _rep_guard = self._StreamRepetitionGuard()
+
+        def _do_call(
+            _msgs: Any = None,
+            _temp: Any = None,
+            _guard: "StrategyBuilder._StreamRepetitionGuard | None" = None,
+        ) -> Any:
+            msgs_ = messages if _msgs is None else _msgs
+            temp_ = temperature if _temp is None else _temp
+            guard_ = _rep_guard if _guard is None else _guard
+            if (
+                _captured_cb
+                or _captured_ts
+            ) and hasattr(llm_client, "chat_stream"):
+                def _on_chunk(c: str) -> None:
+                    if _captured_ts is not None:
+                        accepts_streaming = getattr(_captured_ts, "accepts_streaming", None)
+                        if callable(accepts_streaming) and not accepts_streaming():
+                            raise StreamAbortRequest("stale_thought_stream")
+                    guard_.feed(c)  # StreamAbortRequest propagates to chat_stream
+                    if _captured_cb is not None:
+                        try:
+                            _captured_cb(phase, c)
+                        except Exception:  # noqa: BLE001
+                            pass
+                    if _captured_ts is not None:
+                        try:
+                            _captured_ts.stream_chunk(phase, c)
+                        except Exception:  # noqa: BLE001
+                            pass
                 return llm_client.chat_stream(
-                    messages,
-                    on_chunk=lambda c: self.stream_callback(phase, c),
+                    msgs_,
+                    on_chunk=_on_chunk,
                     json_mode=json_mode,
-                    temperature=temperature,
+                    temperature=temp_,
                     max_tokens=max_tokens,
                 )
             return llm_client.chat(
-                messages,
+                msgs_,
                 json_mode=json_mode,
-                temperature=temperature,
+                temperature=temp_,
                 max_tokens=max_tokens,
             )
 
-        with _new_streamlit_aware_thread_pool(max_workers=1) as pool:
+        # pool.shutdown(wait=False) : non-bloquant même en cas de timeout de phase.
+        # Un thread résiduel (LLM encore actif) se terminera de lui-même sans
+        # bloquer l'appelant des centaines de secondes supplémentaires.
+        pool = _new_streamlit_aware_thread_pool(max_workers=1)
+        try:
             try:
                 future = pool.submit(_do_call)
             except RuntimeError as exc:
@@ -4968,30 +5373,95 @@ class StrategyBuilder:
                     raise KeyboardInterrupt() from exc
                 raise
             try:
-                return future.result(timeout=timeout_sec)
+                result = future.result(timeout=timeout_sec)
+                # Flush immédiat du buffer stream après fin de génération LLM
+                if _captured_ts is not None:
+                    try:
+                        _captured_ts.flush_stream()
+                    except Exception:  # noqa: BLE001
+                        pass
             except concurrent.futures.TimeoutError:
+                aborted_streams = self._abort_active_llm_streams()
                 logger.warning(
-                    "builder_llm_timeout phase=%s timeout=%ds",
-                    phase, timeout_sec,
+                    "builder_llm_timeout phase=%s timeout=%ds aborted_streams=%s",
+                    phase, timeout_sec, aborted_streams,
                 )
                 # Return a stub response so callers can handle gracefully
                 return SimpleNamespace(content="")
             except (ConnectionError, OSError) as exc:
+                self._abort_active_llm_streams()
                 logger.warning(
                     "builder_llm_connection_error phase=%s error=%s",
                     phase, exc,
                 )
                 return SimpleNamespace(content="")
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
+                self._abort_active_llm_streams()
                 logger.error(
                     "builder_llm_unexpected_error phase=%s error=%s",
                     phase, exc,
                     exc_info=True,
                 )
                 return SimpleNamespace(content="")
+        finally:
+            # shutdown(wait=False) : le thread LLM résiduel se terminera sans bloquer
+            pool.shutdown(wait=False)
+            if client_config is not None:
+                client_config.ollama_host = original_host
+
+        # --- Corrective kick quand le stream a été interrompu pour boucle de répétition ---
+        if result is not None and getattr(result, "aborted", False):
+            self._emit_progress(
+                "repetition_kick",
+                phase=phase,
+                status="warning",
+                message=(
+                    f"⚡ Boucle de répétition détectée ({phase}) "
+                    "— relance correctrice avec instruction explicite"
+                ),
+            )
+            logger.warning(
+                "builder_llm_repetition_kick phase=%s model=%s",
+                phase,
+                getattr(getattr(llm_client, "config", None), "model", "?"),
+            )
+            corrected_msgs = self._make_corrective_messages(messages)
+            corrective_guard = self._StreamRepetitionGuard()
+            corrective_temp = min((temperature if temperature is not None else 0.5) + 0.15, 1.0)
+            pool_kick = _new_streamlit_aware_thread_pool(max_workers=1)
+            try:
+                future_kick = pool_kick.submit(
+                    _do_call, corrected_msgs, corrective_temp, corrective_guard,
+                )
+                try:
+                    result = future_kick.result(timeout=timeout_sec)
+                    if _captured_ts is not None:
+                        try:
+                            _captured_ts.flush_stream()
+                        except Exception:  # noqa: BLE001
+                            pass
+                except concurrent.futures.TimeoutError:
+                    logger.warning(
+                        "builder_llm_kick_timeout phase=%s timeout=%ds",
+                        phase, timeout_sec,
+                    )
+                    result = SimpleNamespace(content="")
+                except (ConnectionError, OSError) as exc:
+                    logger.warning(
+                        "builder_llm_kick_connection_error phase=%s error=%s",
+                        phase, exc,
+                    )
+                    result = SimpleNamespace(content="")
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "builder_llm_kick_unexpected_error phase=%s error=%s",
+                        phase, exc,
+                    )
+                    result = SimpleNamespace(content="")
             finally:
-                if client_config is not None:
-                    client_config.ollama_host = original_host
+                pool_kick.shutdown(wait=False)
+
+        return result
 
     # ------------------------------------------------------------------
     # Session helpers
@@ -5109,7 +5579,7 @@ class StrategyBuilder:
         if self.ablation.is_enabled("indicator_ranking"):
             _inter_hist = getattr(self, "_indicator_history", {})
             _pol = getattr(self, "_indicator_policy", {})
-            from config.indicator_history import get_banned_indicators, get_recent_indicators, get_recent_families
+            from config.indicator_history import get_banned_indicators, get_recent_families, get_recent_indicators  # noqa: PLC0415,I001
             _banned = get_banned_indicators(_inter_hist, _pol) if _pol.get("enabled", True) else set()
             _inter_recent = get_recent_indicators(_inter_hist, _pol) if _pol.get("enabled", True) else []
             _prev_families = get_recent_families(_inter_hist, _pol) if _pol.get("enabled", True) else []
@@ -5198,7 +5668,7 @@ class StrategyBuilder:
                     "top_results": last_backtest_feedback.get("sweep_top_results", []),
                 }
             # Stagnation détectée : forcer le LLM à changer radicalement
-            stag = (last_iteration.phase_feedback or {}).get("stagnation", {})
+            stag = dict(last_iteration.phase_feedback or {}).get("stagnation") or {}  # type: ignore[arg-type]
             if stag.get("identical_metrics"):
                 context["stagnation_warning"] = (
                     "CRITICAL: Previous iteration produced IDENTICAL metrics. "
@@ -5417,10 +5887,11 @@ class StrategyBuilder:
         iteration_num: int,
     ) -> None:
         """Enregistre les données d'un outcome candidat dans la trace courante."""
+        _ = iteration_num
         instr = self.instrumentation
         if not instr.enabled:
             return
-        trace = instr._current_trace
+        trace = instr._current_trace  # noqa: SLF001
         if trace is None:
             return
         trace.ablation_config = dict(self.ablation.get_config())
@@ -5530,7 +6001,7 @@ class StrategyBuilder:
         if self.ablation.is_enabled("indicator_ranking"):
             _inter_hist2 = getattr(self, "_indicator_history", {})
             _pol2 = getattr(self, "_indicator_policy", {})
-            from config.indicator_history import get_banned_indicators, get_recent_indicators, get_recent_families
+            from config.indicator_history import get_banned_indicators, get_recent_families, get_recent_indicators  # noqa: PLC0415,I001
             _banned2 = get_banned_indicators(_inter_hist2, _pol2) if _pol2.get("enabled", True) else set()
             _inter_recent2 = get_recent_indicators(_inter_hist2, _pol2) if _pol2.get("enabled", True) else []
             _prev_families2 = get_recent_families(_inter_hist2, _pol2) if _pol2.get("enabled", True) else []
@@ -5572,8 +6043,8 @@ class StrategyBuilder:
             "slippage_bps": session.slippage_bps,
             "initial_capital": session.initial_capital,
             "previous_code": (
-                last_iteration.code
-                if last_iteration is not None and getattr(last_iteration, "code", "")
+                (last_iteration.code or "")
+                if last_iteration is not None
                 else ""
             ),
             # Diagnostic de l'itération précédente (injecté dans le template)
@@ -6125,6 +6596,7 @@ class StrategyBuilder:
         instead of idle. The output is injected into the analysis phase for
         better next-iteration planning.
         """
+        _ = code  # paramètre stable d'API, utilisé dans les prompts futurs
         history_lines = []
         for it in session.iterations[-3:]:
             if it.backtest_result:
@@ -6335,7 +6807,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 "__builtins__": safe_builtins,
             }
             compiled = compile(code, str(strategy_path), "exec")
-            exec(compiled, sandbox_globals, sandbox_globals)
+            exec(compiled, sandbox_globals, sandbox_globals)  # noqa: S102  # pylint: disable=exec-used
             cls = sandbox_globals.get(GENERATED_CLASS_NAME)
         else:
             spec = importlib.util.spec_from_file_location(module_name, strategy_path)
@@ -6391,8 +6863,8 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
 
         patched_required = list(inferred_tuple)
         setattr(strategy_cls, "_builder_required_indicators_auto_fixed", patched_required)
-        strategy_cls.required_indicators = property(
-            lambda self, _patched=tuple(patched_required): list(_patched)
+        strategy_cls.required_indicators = property(  # type: ignore[attr-defined]
+            lambda self, _patched=tuple(patched_required): list(_patched)  # type: ignore[return-value,misc]
         )
         return strategy_cls
 
@@ -6922,6 +7394,13 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         session.direction_constraint = _infer_direction_constraint_from_objective(
             objective
         )
+        model_name = getattr(getattr(self.llm, "config", None), "model", "?")
+        thought_stream = ThoughtStream(session_id, objective, model_name)
+        previous_thought_stream = self._active_thought_stream
+        previous_session_id = self._active_builder_session_id
+        self._active_thought_stream = thought_stream
+        self._active_builder_session_id = session_id
+
         self._emit_progress(
             "session_start",
             max_iterations=max_iterations,
@@ -6956,6 +7435,9 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 total_iterations=len(session.iterations),
                 best_sharpe=session.best_sharpe,
             )
+            self._abort_active_llm_streams()
+            self._active_builder_session_id = previous_session_id
+            self._active_thought_stream = previous_thought_stream
             return session
 
         logger.info(
@@ -6970,24 +7452,20 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             from config.indicator_history import load_history, load_policy
             self._indicator_policy = load_policy()
             self._indicator_history = load_history(self._indicator_policy) if self._indicator_policy.get("enabled", True) else {}
-        except Exception:
+        except Exception:  # noqa: BLE001
             self._indicator_history = {}
-
-        model_name = getattr(getattr(self.llm, "config", None), "model", "?")
-        thought_stream = ThoughtStream(session_id, objective, model_name)
-        run_builder_loop_v2(
-            self,
-            session=session,
-            data=data,
-            initial_capital=initial_capital,
-            thought_stream=thought_stream,
-        )
-
-        thought_stream.session_end(
-            session.status,
-            session.best_sharpe,
-            len(session.iterations),
-        )
+        try:
+            run_builder_loop_v2(
+                self,
+                session=session,
+                data=data,
+                initial_capital=initial_capital,
+                thought_stream=thought_stream,
+            )
+        finally:
+            if sys.exc_info()[0] is not None:
+                self._active_builder_session_id = previous_session_id
+                self._active_thought_stream = previous_thought_stream
 
         session.instrumentation_enabled = bool(self.instrumentation.enabled)
         session.ablation_config = dict(self.ablation.get_config())
@@ -7033,6 +7511,9 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             total_iterations=len(session.iterations),
             best_sharpe=session.best_sharpe,
         )
+        self._abort_active_llm_streams()
+        self._active_builder_session_id = previous_session_id
+        self._active_thought_stream = previous_thought_stream
 
         # Mettre à jour l'historique de diversité après la session
         try:
@@ -7056,7 +7537,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                     all_used,
                     families_used,
                 )
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.debug("indicator_history_update_failed", exc_info=True)
 
         return session
@@ -7068,7 +7549,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
     def _save_session_summary(self, session: BuilderSession) -> None:
         """Sauvegarde un résumé JSON de la session."""
         iteration_rows: List[Dict[str, Any]] = []
-        last_runtime_feedback = {
+        last_runtime_feedback: Dict[str, Any] = {
             "last_runtime_error": None,
             "last_runtime_error_iteration": None,
             "last_runtime_traceback_tail": None,

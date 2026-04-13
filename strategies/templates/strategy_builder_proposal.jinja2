@@ -150,6 +150,8 @@ Required behavior:
 {% endif %}
 
 ## HARD RULES
+- SINGLE-POSITION SIMULATOR: the engine holds at most ONE position at a time.
+  Design entries as clean triggers, not continuous conditions. A +1.0 while already long is ignored.
 - Output ONE valid JSON object only. No nested objects inside logic fields.
 - No placeholders (forbidden: "brief description", "when to BUY", "N/A").
 - used_indicators must be a non-empty list from AVAILABLE INDICATORS.

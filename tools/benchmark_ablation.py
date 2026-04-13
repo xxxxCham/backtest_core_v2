@@ -132,11 +132,11 @@ def _import_modules() -> Dict[str, Any]:
 
     try:
         from agents.strategy_builder import (
-            _inject_generate_signals_indicator_bindings,
-            _postprocess_llm_logic_block,
             _build_deterministic_fallback_code,
-            _sanitize_proposal_payload,
+            _inject_generate_signals_indicator_bindings,
             _params_only_contract_respected,
+            _postprocess_llm_logic_block,
+            _sanitize_proposal_payload,
             sanitize_objective_text,
         )
         mods["inject_bindings"] = _inject_generate_signals_indicator_bindings
@@ -202,7 +202,7 @@ def _bench_code_repair(mods: Dict[str, Any], n: int) -> Tuple[str, str]:
 def _bench_indicator_binding(mods: Dict[str, Any], n: int) -> Tuple[str, str]:
     fn = mods.get("inject_bindings")
     if not callable(fn):
-        return "indicator_binding", f"ERR: import failed"
+        return "indicator_binding", "ERR: import failed"
 
     def _fn():
         fn(_SAMPLE_CODE, ["ema", "rsi", "atr"])
@@ -451,7 +451,7 @@ def _print_table(results: Dict[str, str], *, total_s: float) -> None:
 
 
 def _run_benchmarks(n: int) -> Tuple[Dict[str, str], Dict[str, float]]:
-    print(f"\n[benchmark_ablation] Chargement modules... ", end="", flush=True)
+    print("\n[benchmark_ablation] Chargement modules... ", end="", flush=True)
     mods = _import_modules()
     print("OK")
 

@@ -72,6 +72,10 @@ BOTH MODE:
 {% endif %}
 
 ## ENGINE USAGE RULES
+- SINGLE-POSITION SIMULATOR: the engine holds at most ONE position at a time.
+  A +1.0 while already long = ignored. A -1.0 while already short = ignored.
+  Transition: +1.0 → -1.0 closes long then opens short in the same bar.
+  Design signals as clean state transitions, NOT continuous confirmation.
 - Indicators are already computed and provided in `indicators` dict.
 - Every `indicators["name"]` used in code MUST exist in required_indicators.
 - Arrays: wrap with `np.nan_to_num(...)` before comparisons.

@@ -181,7 +181,8 @@
 			"**/*.pyc": true,
 			"AGEND_HISTORY.md": true,
 			"config/strategy_catalog.json": true
-		}
+		},
+		"workbench.browser.enableChatTools": true
 	},
 	"extensions": {
 		"recommendations": [

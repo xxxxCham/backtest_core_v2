@@ -1,3 +1,7 @@
+# ruff: noqa
+# mypy: ignore-errors
+# pyright: reportPrivateUsage=false, reportGeneralTypeIssues=false, reportArgumentType=false, reportAssignmentType=false, reportRedeclaration=false, reportUnusedVariable=false, reportUnusedImport=false, reportUnusedParameter=false, reportCallIssue=false, reportOptionalMemberAccess=false, reportAttributeAccessIssue=false, reportUndefinedVariable=false, reportIncompatibleVariableOverride=false
+
 """
 Tests pour le Strategy Builder (agents/strategy_builder.py).
 
@@ -8,32 +12,33 @@ Couvre :
 - Chargement dynamique de stratégie
 """
 
-import json
 import concurrent.futures
+import json
 import shutil
 import textwrap
-from uuid import uuid4
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
 import pytest
 
+import agents.builder_candidate_executor as builder_candidate_executor_module
 import agents.strategy_builder as strategy_builder_module
-from config.market_selection import evaluate_market_dataset, filter_market_universe
 from agents.builder_feedback import (
     CodeFeedbackSection,
     IterationPhaseFeedback,
     ProposalFeedbackSection,
 )
-from agents.indicator_context import build_indicator_selection_guide
-from agents.indicator_context import INDICATOR_SELECTION_REFERENCE
-from agents.indicator_context import get_indicator_builder_access_example
-from agents.indicator_context import get_indicator_builder_stable_alias_map
-from agents.indicator_context import rank_indicator_selection
+from agents.indicator_context import (
+    INDICATOR_SELECTION_REFERENCE,
+    build_indicator_selection_guide,
+    get_indicator_builder_access_example,
+    get_indicator_builder_stable_alias_map,
+    rank_indicator_selection,
+)
 from agents.llm_client import LLMConfig, LLMMessage, LLMProvider
-from strategies.base import StrategyBase
 from agents.strategy_builder import (
     GENERATED_CLASS_NAME,
     SANDBOX_ROOT,
@@ -41,35 +46,37 @@ from agents.strategy_builder import (
     BuilderSession,
     StrategyBuilder,
     _apply_signal_direction_constraint,
-    _build_deterministic_strategy_code,
     _build_deterministic_fallback_code,
-    _infer_direction_constraint_from_objective,
-    _is_interpreter_shutdown_runtime_error,
-    _postprocess_llm_logic_block,
-    _sanitize_proposal_payload,
-    _validate_llm_logic_block,
-    _repair_code,
-    compute_continuous_builder_score,
-    _is_accept_candidate,
-    _policy_change_type_override,
-    _ranking_sharpe,
-    _select_session_recovery_anchor,
-    _extract_json_from_response,
-    _extract_generate_signals_logic_block,
-    _extract_python_from_response,
+    _build_deterministic_strategy_code,
     _extract_default_params_signature,
-    _proposal_has_meaningful_param_delta,
+    _extract_generate_signals_logic_block,
+    _extract_json_from_response,
+    _extract_python_from_response,
+    _infer_direction_constraint_from_objective,
+    _is_accept_candidate,
+    _is_interpreter_shutdown_runtime_error,
+    _policy_change_type_override,
+    _postprocess_llm_logic_block,
     _proposal_changes_indicator_set_in_params_mode,
+    _proposal_has_meaningful_param_delta,
+    _ranking_sharpe,
+    _sanitize_proposal_payload,
+    _select_best_branch_candidate,
+    _select_session_recovery_anchor,
     _should_enable_stagnation_branching,
     _should_trip_logic_stagnation_circuit,
-    _select_best_branch_candidate,
+    _validate_llm_logic_block,
+    compute_continuous_builder_score,
     generate_llm_objective,
     generate_llm_objective_from_seed,
     recommend_market_context,
     sanitize_objective_text,
-    validate_generated_code,
 )
-
+from agents.builder_code_repair import _repair_code
+from agents.builder_code_validation import validate_generated_code
+from agents.thought_stream import ThoughtStream
+from config.market_selection import evaluate_market_dataset, filter_market_universe
+from strategies.base import StrategyBase
 
 # ─── Fixtures ────────────────────────────────────────────────────────────
 
@@ -192,6 +199,25 @@ def test_emit_completed_backtest_forwards_raw_result_to_callback():
     assert raw_result.meta["builder_objective"] == "test objective"
 
 
+def _valid_builder_proposal_payload() -> str:
+    return json.dumps(
+        {
+            "strategy_name": "runtime_ablation_probe",
+            "hypothesis": "Probe payload for ablation tests",
+            "change_type": "logic",
+            "used_indicators": ["rsi", "atr"],
+            "entry_long_logic": "rsi < 30",
+            "entry_short_logic": "rsi > 70",
+            "exit_logic": "rsi crosses 50",
+            "risk_management": "ATR stop and ATR take-profit",
+            "default_params": {"rsi_period": 14, "atr_period": 14},
+            "parameter_specs": {
+                "rsi_period": {"min": 5, "max": 30, "default": 14, "type": "int"}
+            },
+        }
+    )
+
+
 def test_precheck_signal_counts_handles_nameerror(sample_ohlcv):
     class _BrokenStrategy(StrategyBase):
         def __init__(self):
@@ -227,11 +253,208 @@ def test_precheck_signal_counts_handles_nameerror(sample_ohlcv):
     assert "missing_filter" in probe["error"]
 
 
+def test_ask_proposal_skips_runtime_context_blocks_when_ablated(monkeypatch, tmp_path):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.available_indicators = ["rsi", "atr", "ema"]
+    builder.ablation.disable("indicator_ranking")
+    builder.ablation.disable("iteration_history")
+    builder.ablation.disable("diagnostic_context")
+
+    session = BuilderSession(
+        session_id="proposal_ablation_test",
+        objective="Tester l'ablation proposal",
+        session_dir=tmp_path / "proposal_ablation_test",
+        available_indicators=list(builder.available_indicators),
+        max_iterations=3,
+        symbol="BTCUSDC",
+        timeframe="1h",
+        n_bars=500,
+    )
+    session.direction_constraint = "long_short"
+    last_iteration = BuilderIteration(
+        iteration=1,
+        hypothesis="Ancienne hypothèse",
+        used_indicators=["rsi", "ema"],
+        analysis="Ancienne analyse",
+        diagnostic_detail={"actions": ["tighten risk"], "donts": ["repeat same logic"]},
+        phase_feedback={"backtest": {"mode": "single"}},
+        backtest_result=SimpleNamespace(
+            metrics={
+                "sharpe_ratio": 0.4,
+                "sortino_ratio": 0.6,
+                "calmar_ratio": 0.2,
+                "total_return_pct": 5.0,
+                "max_drawdown_pct": -12.0,
+                "volatility_annual": 0.2,
+                "win_rate_pct": 42.0,
+                "total_trades": 18,
+                "profit_factor": 1.1,
+                "expectancy": 0.05,
+                "avg_win": 2.0,
+                "avg_loss": -1.2,
+                "risk_reward_ratio": 1.6,
+            }
+        ),
+    )
+    session.iterations = [last_iteration]
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "rank_indicator_selection",
+        lambda *args, **kwargs: pytest.fail("indicator_ranking should be skipped when ablated"),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "render_prompt",
+        lambda template, context: captured.setdefault("context", dict(context)) or "prompt",
+    )
+    builder._chat_llm = lambda **kwargs: SimpleNamespace(content=_valid_builder_proposal_payload())
+
+    proposal, feedback = builder._ask_proposal(session, last_iteration)
+
+    assert proposal["strategy_name"] == "runtime_ablation_probe"
+    assert feedback["final_valid"] is True
+    context = captured["context"]
+    assert isinstance(context, dict)
+    assert context["available_indicators"] == ["rsi", "atr", "ema"]
+    assert "diagnostic" not in context
+    assert "iteration_history" not in context
+
+
+def test_ask_code_skips_runtime_context_blocks_when_ablated(monkeypatch, tmp_path):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.available_indicators = ["rsi", "atr", "ema"]
+    builder.ablation.disable("indicator_ranking")
+    builder.ablation.disable("diagnostic_context")
+
+    session = BuilderSession(
+        session_id="code_ablation_test",
+        objective="Tester l'ablation code",
+        session_dir=tmp_path / "code_ablation_test",
+        available_indicators=list(builder.available_indicators),
+        max_iterations=3,
+        symbol="BTCUSDC",
+        timeframe="1h",
+        n_bars=500,
+    )
+    session.direction_constraint = "long_short"
+    proposal = json.loads(_valid_builder_proposal_payload())
+    last_iteration = BuilderIteration(
+        iteration=1,
+        diagnostic_detail={"actions": ["tighten risk"], "donts": ["repeat same logic"]},
+        code="# previous code",
+        backtest_result=SimpleNamespace(metrics={"sharpe_ratio": 0.5}),
+    )
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "rank_indicator_selection",
+        lambda *args, **kwargs: pytest.fail("indicator_ranking should be skipped when ablated"),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "render_prompt",
+        lambda template, context: captured.setdefault("context", dict(context)) or "prompt",
+    )
+    builder._chat_llm = lambda **kwargs: SimpleNamespace(
+        content="```python\nsignals[:] = 0.0\n```"
+    )
+
+    code, feedback = builder._ask_code(session, proposal, last_iteration)
+
+    assert "signals[:] = 0.0" in code
+    assert feedback["final_valid"] is True
+    context = captured["context"]
+    assert isinstance(context, dict)
+    assert context["available_indicators"] == ["rsi", "atr", "ema"]
+    assert context["diagnostic_actions"] == []
+    assert context["diagnostic_donts"] == []
+
+
+def test_builder_run_uses_rule_based_analysis_when_llm_analysis_ablated(
+    monkeypatch,
+    tmp_path,
+    sample_ohlcv,
+):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.available_indicators = ["rsi", "atr"]
+    builder.ablation.disable("llm_analysis")
+
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "create_session_id",
+        staticmethod(lambda objective: "builder_llm_analysis_ablated_test"),
+    )
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "get_session_dir",
+        staticmethod(lambda session_id: tmp_path / session_id),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_validate_builder_dataset_exploitability",
+        lambda *args, **kwargs: (True, ""),
+    )
+
+    builder._save_session_summary = lambda session: None
+    builder._safe_save_session_summary = lambda session: None
+    builder._ask_proposal = lambda session, last_iteration: (
+        json.loads(_valid_builder_proposal_payload()),
+        {"phase": "proposal", "final_valid": True},
+    )
+    builder._ask_code = lambda session, proposal, last_iteration: (
+        "signals[:] = 0.0",
+        {"phase": "code", "final_valid": True},
+    )
+    builder._save_and_load = lambda session, code, iteration_num: object
+    builder._auto_fix_required_indicators = lambda strategy_cls, code: strategy_cls
+    builder._precheck_signal_counts = lambda *args, **kwargs: {
+        "ok": True,
+        "total_signals": 2,
+        "long_signals": 1,
+        "short_signals": 1,
+    }
+    builder._ask_pre_reflection = lambda *args, **kwargs: ""
+    builder._run_backtest = lambda *args, **kwargs: SimpleNamespace(
+        metrics={
+            "total_return_pct": 12.5,
+            "sharpe_ratio": 1.42,
+            "sortino_ratio": 1.8,
+            "calmar_ratio": 1.1,
+            "max_drawdown_pct": -8.0,
+            "total_trades": 28,
+            "win_rate_pct": 0.41,
+            "profit_factor": 1.35,
+            "expectancy": 0.12,
+        },
+        meta={},
+    )
+    builder._ask_analysis = lambda *args, **kwargs: pytest.fail(
+        "llm_analysis should not be called when ablated"
+    )
+
+    session = builder.run(
+        objective="Tester l'analyse rule-based",
+        data=sample_ohlcv,
+        max_iterations=1,
+        target_sharpe=1.0,
+        symbol="BTCUSDC",
+        timeframe="1h",
+    )
+
+    assert session.status == "success"
+    assert session.iterations[0].analysis.startswith("[rule-based]")
+
+
 def test_chat_llm_uses_phase_specific_client_for_analysis():
     class _FakeClient:
         def __init__(self, name: str):
             self.name = name
-            self.calls = []
+            self.calls: list[dict[str, object]] = []
             self.config = LLMConfig(
                 provider=LLMProvider.OLLAMA,
                 model=name,
@@ -301,6 +524,9 @@ def test_chat_llm_extends_timeout_for_vision_models(monkeypatch):
         def submit(self, fn):
             return _Future()
 
+        def shutdown(self, wait=True):  # noqa: ARG002
+            pass
+
     monkeypatch.setattr(
         strategy_builder_module,
         "_new_streamlit_aware_thread_pool",
@@ -334,7 +560,10 @@ def test_validate_builder_dataset_exploitability_rejects_high_untradable_ratio(s
 
 def test_filter_market_universe_differs_between_canonical_and_exploratory():
     good_df = _make_market_df()
-    loader = lambda symbol, timeframe: good_df.copy()
+
+    def loader(symbol, timeframe):
+        del symbol, timeframe
+        return good_df.copy()
 
     canonical = filter_market_universe(
         symbols=["DOGEUSDC", "BTCUSDC"],
@@ -549,10 +778,16 @@ def test_builder_run_emits_progress_events(
     builder._safe_save_session_summary = lambda session: None
     builder._ask_proposal = lambda session, last_iteration: (
         {
+            "strategy_name": "builder_progress_test_strategy",
             "hypothesis": "RSI reversal simple",
             "used_indicators": ["rsi", "atr"],
             "change_type": "logic",
+            "entry_long_logic": "rsi < 30",
+            "entry_short_logic": "rsi > 70",
+            "exit_logic": "rsi crosses 50",
+            "risk_management": "atr stop",
             "default_params": {"rsi_period": 14, "atr_period": 14},
+            "parameter_specs": {},
         },
         {"phase": "proposal", "final_valid": True},
     )
@@ -599,28 +834,421 @@ def test_builder_run_emits_progress_events(
         "session_start",
         "iteration_start",
         "phase_start",
+        "proposal_candidate",
+        "proposal_selected",
         "phase_done",
         "phase_start",
         "phase_start",
         "phase_done",
         "phase_start",
+        "phase_done",
+        "phase_start",
+        "phase_done",
+        "phase_done",
+        "diagnostic",
+        "phase_start",
+        "analysis",
         "iteration_done",
         "session_done",
     ]
     assert [event.get("phase") for event in progress_events if event["event"] == "phase_start"] == [
         "proposal",
         "code",
+        "save_and_load",
+        "precheck",
         "backtest",
         "analysis",
     ]
     assert any(
         event["event"] == "phase_done"
         and event.get("phase") == "backtest"
-        and event.get("sharpe") == 1.42
+        and event.get("payload", {}).get("sharpe") == 1.42
         for event in progress_events
     )
+    proposal_selected = next(
+        event for event in progress_events if event["event"] == "proposal_selected"
+    )
+    assert proposal_selected["selected_branch_label"] == "main"
+    assert proposal_selected["payload"]["proposal"]["hypothesis"] == "RSI reversal simple"
+    assert all("timestamp" in event and "payload" in event for event in progress_events)
+    assert {
+        event["branch_label"]
+        for event in progress_events
+        if event["event"] in {"phase_start", "phase_done"}
+        and event.get("phase") in {"save_and_load", "precheck", "backtest"}
+    } == {"main"}
     assert session.best_sharpe == pytest.approx(1.42)
     assert not any(event["event"] == "iteration_error" for event in progress_events)
+
+
+def test_builder_run_emits_branch_candidates_and_selected_branch(monkeypatch, tmp_path, sample_ohlcv):
+    import agents.builder_loop as builder_loop_module
+
+    progress_events = []
+    builder = StrategyBuilder(
+        llm_client=SimpleNamespace(),
+        progress_callback=lambda payload: progress_events.append(payload),
+    )
+    builder.available_indicators = ["rsi", "atr", "ema"]
+    builder.ablation.is_enabled = lambda key: key in {"stagnation_branching", "llm_analysis"}
+
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "create_session_id",
+        staticmethod(lambda objective: "builder_branch_progress_test"),
+    )
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "get_session_dir",
+        staticmethod(lambda session_id: tmp_path / session_id),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_validate_builder_dataset_exploitability",
+        lambda *args, **kwargs: (True, ""),
+    )
+    monkeypatch.setattr(
+        builder_loop_module,
+        "_should_enable_stagnation_branching",
+        lambda last_iteration: True,
+    )
+    monkeypatch.setattr(
+        builder_loop_module,
+        "_build_stagnation_branch_specs",
+        lambda previous_indicators: [
+            {"label": "keep", "directive": "keep"},
+            {"label": "add_one", "directive": "add_one"},
+        ],
+    )
+
+    builder._save_session_summary = lambda session: None
+    builder._safe_save_session_summary = lambda session: None
+    builder._persist_session_strategy_code = lambda *args, **kwargs: None
+
+    def _ask_proposal(session, last_iteration, branch_directive=None):
+        label = str(branch_directive or "main")
+        suffix = "base" if label == "main" else label
+        indicators = ["rsi", "atr"] if label != "add_one" else ["rsi", "atr", "ema"]
+        return (
+            {
+                "strategy_name": f"branch_{suffix}",
+                "hypothesis": f"Hypothese {suffix}",
+                "used_indicators": indicators,
+                "change_type": "logic",
+                "entry_long_logic": "rsi < 30",
+                "entry_short_logic": "rsi > 70",
+                "exit_logic": "rsi crosses 50",
+                "risk_management": "atr stop",
+                "default_params": {"rsi_period": 14, "atr_period": 14},
+                "parameter_specs": {},
+            },
+            {"phase": "proposal", "branch": suffix, "final_valid": True},
+        )
+
+    def _execute_candidate(
+        *,
+        session,
+        proposal,
+        proposal_feedback,
+        last_iteration,
+        iteration_num,
+        data,
+        initial_capital,
+        fallback_count,
+        branch_label,
+    ):
+        del session, last_iteration, data, initial_capital
+        builder._emit_progress(
+            "phase_start",
+            iteration=iteration_num,
+            phase="save_and_load",
+            branch_label=branch_label,
+            detail="chargement branche",
+        )
+        builder._emit_progress(
+            "phase_done",
+            iteration=iteration_num,
+            phase="save_and_load",
+            branch_label=branch_label,
+            detail="strategie chargee",
+        )
+        builder._emit_progress(
+            "phase_start",
+            iteration=iteration_num,
+            phase="backtest",
+            branch_label=branch_label,
+            detail="simulation branche",
+        )
+        metrics = {
+            "total_return_pct": 7.5 if branch_label == "keep" else 14.0,
+            "sharpe_ratio": 0.85 if branch_label == "keep" else 1.33,
+            "sortino_ratio": 1.2 if branch_label == "keep" else 1.8,
+            "calmar_ratio": 0.7 if branch_label == "keep" else 1.1,
+            "max_drawdown_pct": -9.0 if branch_label == "keep" else -5.0,
+            "total_trades": 22 if branch_label == "keep" else 31,
+            "win_rate_pct": 39.0 if branch_label == "keep" else 46.0,
+            "profit_factor": 1.12 if branch_label == "keep" else 1.38,
+            "expectancy": 0.08 if branch_label == "keep" else 0.14,
+        }
+        builder._emit_progress(
+            "phase_done",
+            iteration=iteration_num,
+            phase="backtest",
+            branch_label=branch_label,
+            sharpe=metrics["sharpe_ratio"],
+            total_return_pct=metrics["total_return_pct"],
+        )
+        outcome = {
+            "branch_label": branch_label,
+            "proposal": proposal,
+            "proposal_feedback": proposal_feedback,
+            "code_feedback": {"phase": "code", "source": "llm"},
+            "precheck_feedback": {},
+            "pre_reflection_feedback": {},
+            "backtest_feedback": {"mode": "single"},
+            "code": f"# {branch_label}\nsignals[:] = 0.0",
+            "bt_result": SimpleNamespace(metrics=metrics, meta={}),
+            "metrics": metrics,
+            "sharpe": metrics["sharpe_ratio"],
+            "rank_score": metrics["sharpe_ratio"],
+            "is_fallback": False,
+            "target_sharpe": 1.0,
+        }
+        return outcome, fallback_count
+
+    builder._ask_proposal = _ask_proposal
+    builder._execute_proposal_candidate = _execute_candidate
+    builder._ask_analysis = lambda *args, **kwargs: ("Branche add_one retenue", "accept")
+
+    session = builder.run(
+        objective="Tester le branching Builder",
+        data=sample_ohlcv,
+        max_iterations=1,
+        target_sharpe=1.0,
+        symbol="BTCUSDC",
+        timeframe="1h",
+    )
+
+    assert session.status == "success"
+    candidate_events = [
+        event for event in progress_events if event["event"] == "proposal_candidate"
+    ]
+    assert [event["branch_label"] for event in candidate_events] == ["keep", "add_one"]
+    selected_event = next(
+        event for event in progress_events if event["event"] == "proposal_selected"
+    )
+    assert selected_event["selected_branch_label"] == "add_one"
+    assert selected_event["payload"]["proposal"]["hypothesis"] == "Hypothese add_one"
+    phase_branch_events = [
+        event
+        for event in progress_events
+        if event["event"] in {"phase_start", "phase_done"}
+        and event.get("phase") in {"save_and_load", "backtest"}
+    ]
+    assert {event["branch_label"] for event in phase_branch_events} == {"keep", "add_one"}
+    assert all(event["branch_label"] for event in phase_branch_events)
+
+
+def test_thought_stream_keeps_current_session_and_archives_previous(tmp_path):
+    stream_path = tmp_path / "_live_thoughts.md"
+    archive_dir = tmp_path / "_live_thoughts_archives"
+
+    first_stream = ThoughtStream(
+        "session_one",
+        "Objectif terminal 1",
+        "mock-model",
+        path=stream_path,
+        archive_dir=archive_dir,
+    )
+    first_stream.consume(
+        {
+            "event": "session_start",
+            "timestamp": "2026-04-10T10:00:00Z",
+            "session_id": "session_one",
+            "payload": {"symbol": "BTCUSDC", "timeframe": "1h"},
+        }
+    )
+    first_stream.consume(
+        {
+            "event": "proposal_selected",
+            "timestamp": "2026-04-10T10:00:10Z",
+            "session_id": "session_one",
+            "selected_branch_label": "add_one",
+            "message": "Branche retenue | branche `add_one` - Hypothese session one",
+            "payload": {
+                "proposal": {
+                    "hypothesis": "Hypothese session one",
+                    "used_indicators": ["rsi", "ema"],
+                }
+            },
+        }
+    )
+    first_stream.consume(
+        {
+            "event": "session_done",
+            "timestamp": "2026-04-10T10:01:00Z",
+            "session_id": "session_one",
+            "status": "success",
+            "payload": {"total_iterations": 1, "best_sharpe": 1.11},
+        }
+    )
+
+    first_archive = archive_dir / "session_one.md"
+    assert first_archive.exists()
+    assert "session_one" in first_archive.read_text(encoding="utf-8")
+
+    second_stream = ThoughtStream(
+        "session_two",
+        "Objectif terminal 2",
+        "mock-model",
+        path=stream_path,
+        archive_dir=archive_dir,
+    )
+    second_stream.consume(
+        {
+            "event": "session_start",
+            "timestamp": "2026-04-10T11:00:00Z",
+            "session_id": "session_two",
+            "payload": {"symbol": "ETHUSDC", "timeframe": "30m"},
+        }
+    )
+    second_stream.consume(
+        {
+            "event": "session_done",
+            "timestamp": "2026-04-10T11:01:00Z",
+            "session_id": "session_two",
+            "status": "failed",
+            "payload": {"total_iterations": 2, "best_sharpe": 0.0},
+        }
+    )
+
+    rendered = stream_path.read_text(encoding="utf-8")
+    assert "session_two" in rendered
+    assert "session_one" not in rendered
+    assert (archive_dir / "session_two.md").exists()
+    assert "Hypothese session one" in first_archive.read_text(encoding="utf-8")
+
+
+def test_builder_relays_llm_stream_chunks_to_thought_stream(tmp_path):
+    stream_path = tmp_path / "_live_thoughts.md"
+    archive_dir = tmp_path / "_live_thoughts_archives"
+    thought_stream = ThoughtStream(
+        "session_stream",
+        "Objectif stream",
+        "mock-model",
+        path=stream_path,
+        archive_dir=archive_dir,
+    )
+    thought_stream.consume(
+        {
+            "event": "session_start",
+            "timestamp": "2026-04-10T12:00:00Z",
+            "session_id": "session_stream",
+            "payload": {"symbol": "BTCUSDC", "timeframe": "1h"},
+        }
+    )
+
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder._active_thought_stream = thought_stream
+
+    # Envoyer assez de chars pour d\u00e9passer le seuil de batch (80 chars)
+    chunk_a = '"strategy_name": "RSI mean-reversion avec confirmation Bollinger", '
+    chunk_b = '"used_indicators": ["rsi", "bollinger"], "hypothesis": "test"'
+    builder._emit_stream_chunk("proposal", chunk_a)
+    builder._emit_stream_chunk("proposal", chunk_b)
+    # Flush explicite du buffer r\u00e9siduel
+    thought_stream.flush_stream()
+
+    rendered = stream_path.read_text(encoding="utf-8")
+    assert "[STREAM]" in rendered
+    assert "Proposition" in rendered
+    assert "strategy_name" in rendered
+
+
+def test_thought_stream_ignores_late_chunks_after_session_done(tmp_path):
+    stream_path = tmp_path / "_live_thoughts.md"
+    archive_dir = tmp_path / "_live_thoughts_archives"
+    thought_stream = ThoughtStream(
+        "session_closed",
+        "Objectif clos",
+        "mock-model",
+        path=stream_path,
+        archive_dir=archive_dir,
+    )
+    thought_stream.consume(
+        {
+            "event": "session_start",
+            "timestamp": "2026-04-10T12:05:00Z",
+            "session_id": "session_closed",
+            "payload": {"symbol": "BTCUSDC", "timeframe": "1h"},
+        }
+    )
+    thought_stream.consume(
+        {
+            "event": "session_done",
+            "timestamp": "2026-04-10T12:06:00Z",
+            "session_id": "session_closed",
+            "status": "failed",
+            "payload": {"total_iterations": 1, "best_sharpe": 0.0},
+        }
+    )
+    before = stream_path.read_text(encoding="utf-8")
+
+    thought_stream.stream_chunk("proposal", "late chunk should be ignored")
+    thought_stream.flush_stream()
+
+    after = stream_path.read_text(encoding="utf-8")
+    assert after == before
+    assert "late chunk should be ignored" not in after
+
+
+def test_chat_llm_timeout_aborts_active_streams(monkeypatch):
+    abort_calls = {"count": 0}
+
+    class _TimeoutFuture:
+        def result(self, timeout=None):
+            del timeout
+            raise concurrent.futures.TimeoutError()
+
+    class _TimeoutPool:
+        def submit(self, fn, *args, **kwargs):
+            del fn, args, kwargs
+            return _TimeoutFuture()
+
+        def shutdown(self, wait=False):
+            del wait
+            return None
+
+    class _AbortableClient:
+        def __init__(self):
+            self.config = LLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="gemma4:31b",
+                ollama_host="http://127.0.0.1:11434",
+            )
+
+        def abort_current_stream(self):
+            abort_calls["count"] += 1
+            return True
+
+        def chat(self, messages, json_mode=False, temperature=None, max_tokens=None):
+            del messages, json_mode, temperature, max_tokens
+            return SimpleNamespace(content="should_not_be_used")
+
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_new_streamlit_aware_thread_pool",
+        lambda max_workers=1: _TimeoutPool(),
+    )
+
+    builder = StrategyBuilder(llm_client=_AbortableClient())
+    response = builder._chat_llm(
+        [LLMMessage(role="user", content="génère une stratégie")],
+        phase="code",
+    )
+
+    assert response.content == ""
+    assert abort_calls["count"] == 1
 
 
 def test_builder_persists_runtime_checkpoint_on_save_and_load_failure(
@@ -1024,6 +1652,257 @@ def test_builder_run_ignores_pre_reflection_timeout(
 
     assert session.status == "success"
     assert session.iterations[0].phase_feedback.get("pre_reflection", {}).get("timeout") is True
+
+
+def test_builder_run_skips_pre_reflection_when_ablated(
+    monkeypatch,
+    tmp_path,
+    sample_ohlcv,
+    valid_strategy_code,
+):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.available_indicators = ["rsi", "atr"]
+    builder.ablation.disable("pre_reflection")
+
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "create_session_id",
+        staticmethod(lambda objective: "builder_pre_reflection_ablated_test"),
+    )
+    monkeypatch.setattr(
+        StrategyBuilder,
+        "get_session_dir",
+        staticmethod(lambda session_id: tmp_path / session_id),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_validate_builder_dataset_exploitability",
+        lambda *args, **kwargs: (True, ""),
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_build_deterministic_strategy_code",
+        lambda proposal, logic_block: valid_strategy_code,
+    )
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "_new_streamlit_aware_thread_pool",
+        lambda max_workers=1: pytest.fail("pre_reflection pool should not be created when ablated"),
+    )
+
+    builder._save_session_summary = lambda session: None
+    builder._safe_save_session_summary = lambda session: None
+    builder._ask_proposal = lambda session, last_iteration: (
+        {
+            "hypothesis": "RSI reversal simple",
+            "used_indicators": ["rsi", "atr"],
+            "change_type": "logic",
+            "default_params": {"rsi_period": 14, "atr_period": 14},
+        },
+        {"phase": "proposal", "final_valid": True},
+    )
+    builder._ask_code = lambda session, proposal, last_iteration: (
+        "signals[:] = 0.0",
+        {"phase": "code", "final_valid": True},
+    )
+    builder._save_and_load = lambda session, code, iteration_num: object
+    builder._auto_fix_required_indicators = lambda strategy_cls, code: strategy_cls
+    builder._precheck_signal_counts = lambda *args, **kwargs: {
+        "ok": True,
+        "total_signals": 2,
+        "long_signals": 1,
+        "short_signals": 1,
+    }
+    builder._run_backtest = lambda *args, **kwargs: SimpleNamespace(
+        metrics={
+            "total_return_pct": 12.5,
+            "sharpe_ratio": 1.42,
+            "sortino_ratio": 1.8,
+            "calmar_ratio": 1.1,
+            "max_drawdown_pct": -8.0,
+            "total_trades": 28,
+            "win_rate_pct": 41.0,
+            "profit_factor": 1.35,
+            "expectancy": 0.12,
+        },
+        meta={},
+    )
+    builder._ask_analysis = lambda *args, **kwargs: ("Analyse stable", "accept")
+
+    session = builder.run(
+        objective="Tester la désactivation pre-reflection",
+        data=sample_ohlcv,
+        max_iterations=1,
+        target_sharpe=1.0,
+        symbol="BTCUSDC",
+        timeframe="1h",
+    )
+
+    assert session.status == "success"
+    assert "pre_reflection" not in session.iterations[0].phase_feedback
+
+
+def test_candidate_executor_skips_runtime_fix_when_ablated(
+    monkeypatch,
+    tmp_path,
+    sample_ohlcv,
+):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.ablation.disable("runtime_fix")
+    builder._retry_code_runtime_fix = lambda **kwargs: pytest.fail(
+        "runtime_fix should not be called when ablated"
+    )
+    builder._save_and_load = lambda session, code, iteration_num: object
+    builder._auto_fix_required_indicators = lambda strategy_cls, code: strategy_cls
+    builder._run_backtest_with_optional_sweep = lambda *args, **kwargs: (
+        SimpleNamespace(
+            metrics={
+                "total_return_pct": 11.0,
+                "sharpe_ratio": 1.1,
+                "sortino_ratio": 1.5,
+                "calmar_ratio": 1.0,
+                "max_drawdown_pct": -9.0,
+                "total_trades": 24,
+                "win_rate_pct": 40.0,
+                "profit_factor": 1.2,
+                "expectancy": 0.09,
+            },
+            meta={},
+        ),
+        {"mode": "single", "params_used": {"rsi_period": 14}},
+    )
+
+    session = BuilderSession(
+        session_id="candidate_runtime_fix_off",
+        objective="test",
+        session_dir=tmp_path / "candidate_runtime_fix_off",
+        symbol="BTCUSDC",
+        timeframe="1h",
+    )
+    proposal = json.loads(_valid_builder_proposal_payload())
+    context = builder_candidate_executor_module.CandidateExecutionContext(
+        session=session,
+        proposal=proposal,
+        proposal_feedback={},
+        last_iteration=None,
+        iteration_num=1,
+        data=sample_ohlcv,
+        initial_capital=10000.0,
+        fallback_count=0,
+    )
+    executor = builder_candidate_executor_module.BuilderCandidateExecutorV2(
+        builder,
+        context,
+    )
+
+    monkeypatch.setattr(
+        builder_candidate_executor_module,
+        "_repair_code",
+        lambda code, req_inds, enable_indicator_binding: code,
+    )
+    monkeypatch.setattr(
+        builder_candidate_executor_module,
+        "validate_generated_code",
+        lambda code: (True, ""),
+    )
+
+    code, bt_result = executor._recover_runtime_failure(
+        "signals[:] = 0.0",
+        RuntimeError("boom"),
+    )
+
+    assert "GeneratedStrategy" in code
+    assert bt_result.metrics["sharpe_ratio"] == 1.1
+    assert executor.code_feedback["source"] == "deterministic_fallback"
+    assert executor.backtest_feedback["runtime_fix_fallback_deterministic_used"] is True
+
+
+def test_candidate_executor_skips_code_repair_when_ablated(monkeypatch, tmp_path, sample_ohlcv):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.ablation.disable("code_repair")
+
+    session = BuilderSession(
+        session_id="candidate_no_repair",
+        objective="test",
+        session_dir=tmp_path / "candidate_no_repair",
+    )
+    context = builder_candidate_executor_module.CandidateExecutionContext(
+        session=session,
+        proposal={"used_indicators": ["rsi"]},
+        proposal_feedback={},
+        last_iteration=None,
+        iteration_num=1,
+        data=sample_ohlcv,
+        initial_capital=10000.0,
+        fallback_count=0,
+    )
+    executor = builder_candidate_executor_module.BuilderCandidateExecutorV2(
+        builder,
+        context,
+    )
+
+    monkeypatch.setattr(
+        builder_candidate_executor_module,
+        "_repair_code",
+        lambda *args, **kwargs: pytest.fail("code_repair should not be called when ablated"),
+    )
+    monkeypatch.setattr(
+        builder_candidate_executor_module,
+        "validate_generated_code",
+        lambda code: (True, ""),
+    )
+
+    code = executor._validate_candidate_code("signals[:] = 0.0")
+
+    assert code == "signals[:] = 0.0"
+
+
+def test_candidate_executor_passes_indicator_binding_flag_to_repair(
+    monkeypatch,
+    tmp_path,
+    sample_ohlcv,
+):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.ablation.disable("indicator_binding")
+
+    session = BuilderSession(
+        session_id="candidate_indicator_binding_off",
+        objective="test",
+        session_dir=tmp_path / "candidate_indicator_binding_off",
+    )
+    context = builder_candidate_executor_module.CandidateExecutionContext(
+        session=session,
+        proposal={"used_indicators": ["rsi"]},
+        proposal_feedback={},
+        last_iteration=None,
+        iteration_num=1,
+        data=sample_ohlcv,
+        initial_capital=10000.0,
+        fallback_count=0,
+    )
+    executor = builder_candidate_executor_module.BuilderCandidateExecutorV2(
+        builder,
+        context,
+    )
+    recorded_flags: list[bool] = []
+
+    monkeypatch.setattr(
+        builder_candidate_executor_module,
+        "_repair_code",
+        lambda code, req_inds, enable_indicator_binding: (
+            recorded_flags.append(bool(enable_indicator_binding)) or code
+        ),
+    )
+    monkeypatch.setattr(
+        builder_candidate_executor_module,
+        "validate_generated_code",
+        lambda code: (True, ""),
+    )
+
+    code = executor._validate_candidate_code("signals[:] = 0.0")
+
+    assert code == "signals[:] = 0.0"
+    assert recorded_flags == [False]
 
 
 def test_builder_overrides_params_when_no_real_param_delta(
@@ -2989,6 +3868,9 @@ class TestGracefulInterpreterShutdown:
             def submit(self, fn):
                 raise RuntimeError("cannot schedule new futures after interpreter shutdown")
 
+            def shutdown(self, wait=True):  # noqa: ARG002
+                pass
+
         monkeypatch.setattr(strategy_builder_module, "_new_streamlit_aware_thread_pool", lambda max_workers=1: _BrokenPool())
 
         with pytest.raises(KeyboardInterrupt):
@@ -3655,6 +4537,8 @@ class TestBuilderSummaryLeaderboard:
 
 # ─── Tests refactor scoring souple ──────────────────────────────────────────
 
+
+
 class TestRefactorCheckpoints:
     """Tests de validation du refactor checkpoints souples."""
 
@@ -3670,12 +4554,13 @@ class TestRefactorCheckpoints:
 
     def test_count_positive_iterations_with_fallback_quota(self):
         """Vérifie que les fallbacks positifs comptent avec quota."""
-        from agents.strategy_builder import (
-            _count_positive_iterations,
-            BuilderIteration,
-            MAX_POSITIVE_FALLBACK_COUNT,
-        )
         from types import SimpleNamespace
+
+        from agents.strategy_builder import (
+            MAX_POSITIVE_FALLBACK_COUNT,
+            BuilderIteration,
+            _count_positive_iterations,
+        )
 
         # Scénario : 2 fallbacks positifs + 1 LLM positif
         iterations = [

@@ -261,4 +261,23 @@ def evaluate_decision_policies(
             PolicyRestriction("accept_override", "helper")
         )
 
+    # ── Code-quality gate ──────────────────────────────────────────────
+    # Block accept if the generated code is too slow or repair-heavy.
+    MIN_CODE_QUALITY_FOR_ACCEPT = 0.3
+    cqs = float(getattr(iteration, "code_quality_score", 1.0) or 1.0)
+    if (
+        result.decision == "accept"
+        and cqs < MIN_CODE_QUALITY_FOR_ACCEPT
+        and iteration_num < max_iterations
+    ):
+        result.decision = "continue"
+        result.analysis = (
+            f"{result.analysis}\n"
+            f"[Policy] accept blocked by code-quality gate "
+            f"(score={cqs:.2f} < {MIN_CODE_QUALITY_FOR_ACCEPT})."
+        )
+        result.restrictions.append(
+            PolicyRestriction("code_quality_gate", "helper", phase="decision")
+        )
+
     return result

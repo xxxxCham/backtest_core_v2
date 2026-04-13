@@ -55,6 +55,41 @@ _NAN_TO_NUM_DICT_SCAN: re.Pattern[str] = re.compile(
     + r")['\"]"
 )
 
+# Alias courts utilisés dans les exemples d'accès Builder (bb→bollinger, kelt→keltner…).
+# Quand le LLM écrit bb.upper ou kelt.lower, step 12b doit les réécrire également.
+_DOT_ALIAS_TO_INDICATOR: Dict[str, str] = {
+    "bb": "bollinger",
+    "kelt": "keltner",
+    "dc": "donchian",
+    "adx_d": "adx",
+    "ar": "aroon",
+    "ich": "ichimoku",
+    "macd_d": "macd",
+    "psar_d": "psar",
+    "stoch": "stochastic",
+    "srsi": "stoch_rsi",
+    "st": "supertrend",
+    "vx": "vortex",
+    "pp": "pivot_points",
+    "sw": "swing",
+    "bias": "directional_bias",
+    "mk": "markov_switching",
+    "legs": "smart_legs",
+    "amp": "amplitude_hunter",
+    # fvg : alias == nom canonique, déjà couvert par la boucle canonique step 12b.
+}
+
+# Pré-scan compilé : détecte les patterns `name.subkey` qui nécessitent step 12b.
+# Couvre noms canons ET alias courts pour éviter les faux-négatifs sur code LLM "propre".
+_DOT_ACCESS_SUBKEYS: frozenset = frozenset(
+    sk for subkeys in _DICT_INDICATOR_ALLOWED_KEYS.values() for sk in subkeys
+)
+_DOT_ACCESS_NAMES: frozenset = frozenset(_DICT_INDICATOR_ALLOWED_KEYS.keys()) | frozenset(_DOT_ALIAS_TO_INDICATOR)
+_DOT_ACCESS_DICT_SCAN: re.Pattern[str] = re.compile(
+    r"\b(?:" + "|".join(re.escape(n) for n in sorted(_DOT_ACCESS_NAMES, key=len, reverse=True)) + r")\s*\."
+    r"\s*(?:" + "|".join(re.escape(s) for s in sorted(_DOT_ACCESS_SUBKEYS, key=len, reverse=True)) + r")\b"
+)
+
 
 _SEMANTIC_INDICATOR_ALIAS_HINTS = {
     "upper_bollinger": "indicators['bollinger']['upper']",
@@ -901,6 +936,129 @@ def _repair_generate_signals_body_indentation(code: str) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Auto-repair vectorisation (AST + regex) — appelé après _repair_code
+# ---------------------------------------------------------------------------
+
+class _VectorizeTransformer(ast.NodeTransformer):
+    """Remplace les opérateurs scalaires ``and``/``or`` par ``&``/``|`` sur
+    des nœuds contenant au moins une comparaison (heuristique de masque
+    vectorisé).  Les nœuds ``BoolOp(And/Or, [Compare, …])`` deviennent
+    ``BinOp(left, BitAnd/BitOr, right)``."""
+
+    def __init__(self) -> None:
+        self.fix_count: int = 0
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:  # noqa: N802
+        self.generic_visit(node)
+        if not isinstance(node.op, (ast.And, ast.Or)):
+            return node
+        has_compare = any(isinstance(v, ast.Compare) for v in node.values)
+        if not has_compare or len(node.values) < 2:
+            return node
+        bit_op_cls = ast.BitAnd if isinstance(node.op, ast.And) else ast.BitOr
+        result: ast.expr = node.values[0]
+        for val in node.values[1:]:
+            result = ast.BinOp(left=result, op=bit_op_cls(), right=val)
+            ast.copy_location(result, node)
+        self.fix_count += 1
+        return ast.fix_missing_locations(result)
+
+
+def _auto_repair_vectorize(code: str) -> Tuple[str, int]:
+    """Répare les anti-patterns de vectorisation détectables par AST et regex.
+
+    Corrections :
+    1. ``and``/``or`` sur masques vectorisés → ``&``/``|`` (AST)
+    2. ``signals.loc[mask]`` → ``signals[mask]`` (1D write/read)
+    3. ``signals.isnull()``/``notnull()`` → ``(signals == 0)``/``(signals != 0)``
+    4. ``ParameterSpec(min=`` → ``min_val=``, ``max=`` → ``max_val=``
+    5. ``np.diff(x)`` sans ``np.insert`` → ``np.insert(np.diff(x), 0, 0.0)``
+
+    Returns
+    -------
+    (repaired_code, fix_count)
+    """
+    fix_count = 0
+
+    # 1. AST : and/or → &/| sur masques vectorisés
+    try:
+        tree = ast.parse(code)
+        transformer = _VectorizeTransformer()
+        new_tree = transformer.visit(tree)
+        if transformer.fix_count > 0:
+            code = ast.unparse(new_tree)
+            fix_count += transformer.fix_count
+    except SyntaxError:
+        pass
+
+    # 2a. signals.loc[mask] = val → signals[mask] = val  (écriture 1D)
+    #     Note : le cas 2D (mask, 'long'/'short') est déjà traité par
+    #     _rewrite_signals_loc_assignments() dans _repair_code.
+    new_code, n = re.subn(
+        r"signals\.loc\[\s*([^,\]\n]+?)\s*\](\s*=)",
+        r"signals[\1]\2",
+        code,
+    )
+    if n:
+        code = new_code
+        fix_count += n
+
+    # 2b. signals.loc[mask] lecture → signals[mask]
+    new_code, n = re.subn(
+        r"signals\.loc\[\s*([^\]\n]+?)\s*\]",
+        r"signals[\1]",
+        code,
+    )
+    if n:
+        code = new_code
+        fix_count += n
+
+    # 3. signals.isnull()/isna() → (signals == 0), notnull()/notna() → (signals != 0)
+    for method, replacement in [
+        ("isnull", "(signals == 0)"),
+        ("isna", "(signals == 0)"),
+        ("notnull", "(signals != 0)"),
+        ("notna", "(signals != 0)"),
+    ]:
+        new_code, n = re.subn(
+            rf"signals\.{method}\(\s*\)",
+            replacement,
+            code,
+        )
+        if n:
+            code = new_code
+            fix_count += n
+
+    # 4. ParameterSpec(min= → min_val=, max= → max_val=, paramtype= → param_type=)
+    for old_kw, new_kw in [
+        ("min=", "min_val="),
+        ("max=", "max_val="),
+        ("paramtype=", "param_type="),
+    ]:
+        new_code, n = re.subn(
+            rf"(ParameterSpec\([^)]*?)\b{re.escape(old_kw)}",
+            rf"\1{new_kw}",
+            code,
+        )
+        if n:
+            code = new_code
+            fix_count += n
+
+    # 5. np.diff(x) → np.insert(np.diff(x), 0, 0.0) quand np.insert absent
+    if "np.diff(" in code and "np.insert" not in code and "np.concatenate" not in code:
+        new_code, n = re.subn(
+            r"np\.diff\(([^)]+)\)",
+            r"np.insert(np.diff(\1), 0, 0.0)",
+            code,
+        )
+        if n:
+            code = new_code
+            fix_count += n
+
+    return code, fix_count
+
+
 def _repair_code(code: str, required_indicators: Optional[List[str]] = None, *, enable_indicator_binding: bool = True) -> str:
     """Auto-repair des erreurs courantes du code genere par LLM.
 
@@ -1119,14 +1277,28 @@ def _repair_code(code: str, required_indicators: Optional[List[str]] = None, *, 
         code,
     )
 
-    # 12b. Notation dot : bollinger.upper → indicators['bollinger']['upper'].
-    #      Gated : code propre n'utilise pas cette notation (NameError garanti au runtime).
-    if not _structurally_sound:
+    # 12b. Notation dot : bollinger.upper / bb.upper → indicators['bollinger']['upper'].
+    #      Gated par pre-scan _DOT_ACCESS_DICT_SCAN pour éviter ~80 re.sub inutiles quand
+    #      aucun pattern dot n'est présent dans le code (chemin fréquent sur modèles capables).
+    #      IMPORTANT : ne plus gater sur `_structurally_sound` — un LLM peut générer du code
+    #      syntaxiquement propre (parse OK) mais utiliser `bb.upper` ou `bollinger.upper` qui
+    #      produisent un AttributeError silencieux au runtime (dict n'a pas .upper/.lower).
+    if not _structurally_sound or _DOT_ACCESS_DICT_SCAN.search(code):
         for dict_ind, subkeys in _DICT_INDICATOR_ALLOWED_KEYS.items():
             for subkey in subkeys:
                 code = re.sub(
                     rf"\b{re.escape(dict_ind)}\s*\.\s*{re.escape(subkey)}\b",
                     f"indicators['{dict_ind}']['{subkey}']",
+                    code,
+                    flags=re.IGNORECASE,
+                )
+        # Aliases courts : bb.upper → indicators['bollinger']['upper'], kelt.lower → …
+        for alias, indicator_name in _DOT_ALIAS_TO_INDICATOR.items():
+            _alias_subkeys = _DICT_INDICATOR_ALLOWED_KEYS.get(indicator_name, set())
+            for subkey in _alias_subkeys:
+                code = re.sub(
+                    rf"\b{re.escape(alias)}\s*\.\s*{re.escape(subkey)}\b",
+                    f"indicators['{indicator_name}']['{subkey}']",
                     code,
                     flags=re.IGNORECASE,
                 )

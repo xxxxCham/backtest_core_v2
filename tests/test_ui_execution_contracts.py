@@ -1,41 +1,60 @@
 from __future__ import annotations
 
-from contextlib import nullcontext
-from datetime import datetime, timedelta, timezone
 import json
 import os
+from contextlib import nullcontext
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
-import ui.builder_view as builder_view_module
-import ui.components.agent_timeline as agent_timeline_module
-import ui.components.monitor as monitor_module
+import agents.llm_client as llm_client_module
 import agents.model_config as model_config_module
 import agents.ollama_manager as ollama_manager_module
 import backtest.worker as worker_module
-import streamlit as st
-import ui.emergency_stop as emergency_stop_module
+import ui.builder_view as builder_view_module
+import ui.components.agent_timeline as agent_timeline_module
+import ui.components.model_selector as model_selector_module
+import ui.components.monitor as monitor_module
 import ui.components.sweep_monitor as sweep_monitor_module
 import ui.components.validation_viewer as validation_viewer_module
+import ui.emergency_stop as emergency_stop_module
+import ui.exec_tabs as exec_tabs_module
+import ui.helpers as helpers_module
+import ui.main as main_module
+import ui.sidebar as sidebar_module
+from agents.llm_router import build_phase1_topology
 from backtest.engine import BacktestEngine
 from backtest.worker import init_worker_with_dataframe, run_backtest_worker
-import ui.helpers as helpers_module
-import ui.exec_tabs as exec_tabs_module
-import ui.sidebar as sidebar_module
+from ui.builder_view import (
+    _choose_autonomous_objective_mode,
+    _classify_autonomous_failure_origin,
+    _find_first_valid_builder_market,
+    _format_builder_live_event_line,
+    _get_autonomous_recap_status_badge,
+    _get_builder_code_provenance_badge,
+    _has_builder_market_df,
+    _history_best_sharpe,
+    _pick_market_for_objective,
+    _plan_autonomous_recovery,
+    _resolve_requested_model,
+    _sanitize_builder_stream_text,
+    _select_autonomous_market_for_session,
+)
+from ui.components.strategy_catalog_panel import _catalog_postfilter_fields
 from ui.exec_tabs import _get_phase1_topology_from_session, _prime_multiselect_state
 from ui.helpers import (
+    _build_saved_run_label,
     compute_period_days,
     format_pnl_with_daily,
     get_partial_result_notice,
     mark_result_as_partial,
     safe_run_backtest,
-    _build_saved_run_label,
 )
-from agents.llm_router import build_phase1_topology
 from ui.main import (
     _build_multi_sweep_grid_entry,
     _build_param_combo_iter,
@@ -43,22 +62,6 @@ from ui.main import (
     _run_grid_sequential,
     render_main,
 )
-from ui.builder_view import (
-    _get_autonomous_recap_status_badge,
-    _get_builder_code_provenance_badge,
-    _history_best_sharpe,
-    _choose_autonomous_objective_mode,
-    _classify_autonomous_failure_origin,
-    _find_first_valid_builder_market,
-    _has_builder_market_df,
-    _pick_market_for_objective,
-    _plan_autonomous_recovery,
-    _resolve_requested_model,
-    _select_autonomous_market_for_session,
-    _sanitize_builder_stream_text,
-)
-import ui.components.model_selector as model_selector_module
-import ui.main as main_module
 from ui.results_hub import (
     _add_pnl_per_day,
     _build_catalog_replay_request,
@@ -69,7 +72,6 @@ from ui.results_hub import (
     _normalize_graduation_candidate_df,
     _safe_read_csv,
 )
-from ui.components.strategy_catalog_panel import _catalog_postfilter_fields
 from ui.sidebar import _apply_catalog_replay_request_to_state, _apply_config_guard, _resolve_default_cpu_workers
 from ui.state import (
     BUILDER_EXECUTION_MODE_DUAL_LANE,
@@ -213,6 +215,86 @@ def _sample_sidebar_state(**overrides) -> SidebarState:
     }
     payload.update(overrides)
     return SidebarState(**payload)
+
+
+def _patch_autonomous_builder_shell(monkeypatch) -> None:
+    monkeypatch.setattr(builder_view_module, "_inject_builder_view_styles", lambda: None)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_builder_mode_hero",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_builder_runtime_notes",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_builder_live_thoughts_panel",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_autonomous_recap",
+        lambda history, supervisor: None,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_autonomous_supervisor_state",
+        lambda: {"history": [], "supervisor": {}},
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_autonomous_runtime_state",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_save_autonomous_supervisor_state",
+        lambda history, supervisor: None,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_mark_builder_autonomous_runtime_started",
+        lambda **kwargs: {},
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_heartbeat_builder_autonomous_runtime",
+        lambda **kwargs: {},
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "mark_builder_autonomous_runtime_stopped",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_resolve_single_llm_runtime_route",
+        lambda ollama_host, topology: (str(ollama_host), "GPU-0"),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "create_llm_client",
+        lambda config: SimpleNamespace(config=config),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "generate_llm_objective",
+        lambda *args, **kwargs: "Construire une stratégie robuste",
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_validate_builder_market_dataset",
+        lambda **kwargs: (True, ""),
+    )
+    monkeypatch.setattr(builder_view_module, "show_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "warning", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "info", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "error", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda *args, **kwargs: None)
 
 
 def test_build_param_combo_iter_applies_max_runs_limit():
@@ -551,6 +633,43 @@ def test_sanitize_builder_stream_text_extracts_useful_code_for_code_phase():
     assert "Okay, I need to" not in cleaned
 
 
+def test_format_builder_live_event_line_marks_selected_branch():
+    line = _format_builder_live_event_line(
+        {
+            "event": "proposal_selected",
+            "selected_branch_label": "add_one",
+            "message": "Branche retenue | branche `add_one` - Hypothese finale",
+            "payload": {
+                "proposal": {
+                    "hypothesis": "Hypothese finale",
+                    "used_indicators": ["rsi", "ema"],
+                }
+            },
+        }
+    )
+
+    assert "[add_one]" in line
+    assert "Branche retenue" in line
+    assert "Hypothese finale" in line
+
+
+def test_format_builder_live_event_line_uses_backtest_metrics_from_canonical_payload():
+    line = _format_builder_live_event_line(
+        {
+            "event": "phase_done",
+            "phase": "backtest",
+            "branch_label": "keep",
+            "message": "Backtest termine",
+            "payload": {
+                "sharpe": 1.234,
+                "total_return_pct": 12.5,
+            },
+        }
+    )
+
+    assert line == "[keep] Backtest: Sharpe 1.234 | Return +12.50%"
+
+
 def test_resolve_requested_model_refuses_silent_fallback_when_absent():
     resolved, note, found = _resolve_requested_model(
         "deepseek-r1:32b",
@@ -578,7 +697,7 @@ def test_ensure_ollama_running_reports_empty_inventory(monkeypatch):
     assert "aucun modele detecte" in msg
 
 
-def test_ensure_ollama_running_uses_current_store_and_clears_gpu_pinning_on_default_host(
+def test_ensure_ollama_running_uses_current_store_and_pins_explicit_gpu_on_default_host(
     monkeypatch,
 ):
     ollama_manager_module._OWNED_OLLAMA_PROCESSES.clear()
@@ -625,8 +744,8 @@ def test_ensure_ollama_running_uses_current_store_and_clears_gpu_pinning_on_defa
 
     env = captured["kwargs"]["env"]
     assert env["OLLAMA_MODELS"] == r"C:\AI\ollama\models"
-    assert "CUDA_VISIBLE_DEVICES" not in env
-    assert "GPU_DEVICE_ORDINAL" not in env
+    assert env["CUDA_VISIBLE_DEVICES"] == "0"
+    assert env["GPU_DEVICE_ORDINAL"] == "0"
 
 
 def test_ensure_ollama_running_pins_gpu_for_dedicated_host(monkeypatch):
@@ -677,6 +796,40 @@ def test_ensure_ollama_running_pins_gpu_for_dedicated_host(monkeypatch):
     assert env["GPU_DEVICE_ORDINAL"] == "1"
 
 
+def test_discover_gpu_inventory_prefers_nvidia_smi_indices_over_windows_wmi(monkeypatch):
+    exec_tabs_module._discover_gpu_inventory.clear()
+    calls: list[str] = []
+
+    def _run_stub(args, **kwargs):
+        calls.append(str(args[0]))
+        if args[0] == "nvidia-smi":
+            return SimpleNamespace(
+                stdout=(
+                    "0, NVIDIA GeForce RTX 5080, 16303\n"
+                    "1, NVIDIA GeForce RTX 3060 Ti, 8192\n"
+                )
+            )
+        if args[0] == "powershell":
+            return SimpleNamespace(
+                stdout=(
+                    '[{"Name":"AMD Radeon(TM) Graphics","AdapterRAM":2147483648},'
+                    '{"Name":"NVIDIA GeForce RTX 3060 Ti","AdapterRAM":4293918720},'
+                    '{"Name":"NVIDIA GeForce RTX 5080","AdapterRAM":4293918720}]'
+                )
+            )
+        raise AssertionError(f"unexpected command: {args}")
+
+    monkeypatch.setattr(exec_tabs_module.os, "name", "nt", raising=False)
+    monkeypatch.setattr(exec_tabs_module.subprocess, "run", _run_stub)
+
+    inventory = exec_tabs_module._discover_gpu_inventory()
+
+    assert [item["id"] for item in inventory] == ["GPU-0", "GPU-1"]
+    assert inventory[0]["name"] == "NVIDIA GeForce RTX 5080"
+    assert inventory[0]["memory_bytes"] == 16303 * 1024 * 1024
+    assert "powershell" not in calls
+
+
 def test_prepare_builder_llm_passes_normalized_host_to_ollama_manager(monkeypatch):
     st.session_state.clear()
     captured: dict[str, object] = {}
@@ -698,6 +851,23 @@ def test_prepare_builder_llm_passes_normalized_host_to_ollama_manager(monkeypatc
             json=lambda: {"models": [{"name": "qwen2.5:14b"}]},
         ),
     )
+    monkeypatch.setattr(
+        builder_view_module,
+        "probe_model_runtime_acceptance",
+        lambda *args, **kwargs: {
+            "requested_model": "qwen2.5:14b",
+            "resolved_model": "qwen2.5:14b",
+            "ollama_host": "http://127.0.0.1:11434",
+            "host_reachable": True,
+            "present_in_tags": True,
+            "accepted": True,
+            "status": "accepted",
+            "message": "ok",
+            "tags_status_code": 200,
+            "runtime_status_code": 200,
+            "runtime_error_body": "",
+        },
+    )
 
     ok, msg, resolved_model = builder_view_module._prepare_builder_llm(
         model="qwen2.5:14b",
@@ -710,7 +880,73 @@ def test_prepare_builder_llm_passes_normalized_host_to_ollama_manager(monkeypatc
     assert ok is True
     assert resolved_model == "qwen2.5:14b"
     assert captured["host"] == "http://127.0.0.1:11434"
-    assert st.session_state["builder_runtime_acceptance_probe"]["status"] == "local_model_visible"
+    assert st.session_state["builder_runtime_acceptance_probe"]["status"] == "accepted"
+
+
+def test_prepare_builder_llm_rejects_local_model_when_runtime_probe_times_out_without_preload(monkeypatch):
+    st.session_state.clear()
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "ensure_ollama_running",
+        lambda ollama_host=None: (True, "ok"),
+    )
+    monkeypatch.setattr(
+        builder_view_module.httpx,
+        "get",
+        lambda url, timeout=0: SimpleNamespace(
+            status_code=200,
+            content=b'{"models":[{"name":"qwen3.5:35b"}]}',
+            json=lambda: {"models": [{"name": "qwen3.5:35b"}]},
+        ),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "probe_model_runtime_acceptance",
+        lambda *args, **kwargs: {
+            "requested_model": "qwen3.5:35b",
+            "resolved_model": "qwen3.5:35b",
+            "ollama_host": "http://127.0.0.1:11434",
+            "host_reachable": True,
+            "present_in_tags": True,
+            "accepted": False,
+            "status": "runtime_timeout",
+            "message": "L'hôte http://127.0.0.1:11434 est joignable, mais le probe runtime sur `qwen3.5:35b` a expiré.",
+            "tags_status_code": 200,
+            "runtime_status_code": None,
+            "runtime_error_body": "",
+        },
+    )
+
+    ok, msg, resolved_model = builder_view_module._prepare_builder_llm(
+        model="qwen3.5:35b",
+        ollama_host="127.0.0.1:11434",
+        preload_model=False,
+        keep_alive_minutes=20,
+        auto_start_ollama=True,
+    )
+
+    assert ok is False
+    assert resolved_model == "qwen3.5:35b"
+    assert "probe runtime" in msg
+    assert st.session_state["builder_runtime_acceptance_probe"]["status"] == "runtime_timeout"
+
+
+def test_resolve_single_llm_runtime_route_uses_topology_gpu_target():
+    topology = build_phase1_topology(
+        primary_host="http://127.0.0.1:11434",
+        control_host="http://127.0.0.1:22434",
+        primary_gpu_target="GPU-1",
+        control_gpu_target="GPU-0",
+    )
+
+    host, gpu_target = builder_view_module._resolve_single_llm_runtime_route(
+        "http://127.0.0.1:11434",
+        topology.to_dict(),
+    )
+
+    assert host == "http://127.0.0.1:11434"
+    assert gpu_target == "GPU-1"
 
 
 def test_probe_model_runtime_acceptance_classifies_exact_name_rejected_by_host(monkeypatch):
@@ -875,6 +1111,37 @@ def test_prepare_builder_llm_resilient_falls_back_to_lazy_load(monkeypatch):
     assert calls[0]["preload_model"] is True
     assert calls[1]["preload_model"] is False
     assert calls[1]["model"] == "acereason-nemotron:14b-q5_k_m"
+
+
+def test_ollama_client_chat_includes_keep_alive_payload(monkeypatch):
+    client = llm_client_module.create_llm_client(
+        llm_client_module.LLMConfig(
+            provider=llm_client_module.LLMProvider.OLLAMA,
+            model="qwen3-coder:30b",
+            ollama_host="http://127.0.0.1:11434",
+            keep_alive="45m",
+        )
+    )
+    sent: dict[str, object] = {}
+
+    def _fake_post(url, json=None, timeout=None):
+        sent["url"] = url
+        sent["payload"] = dict(json or {})
+        return SimpleNamespace(
+            status_code=200,
+            raise_for_status=lambda: None,
+            json=lambda: {"message": {"content": "ok"}},
+        )
+
+    monkeypatch.setattr(client._http_client, "post", _fake_post)
+
+    response = client.chat(
+        [llm_client_module.LLMMessage(role="user", content="hello")]
+    )
+
+    assert response.content == "ok"
+    assert str(sent["url"]).endswith("/api/chat")
+    assert sent["payload"]["keep_alive"] == "45m"
 
 
 def test_prepare_multi_llm_role_runtime_with_failover_uses_next_candidate(monkeypatch):
@@ -1109,6 +1376,114 @@ def test_render_builder_view_autonomous_idle_skips_probe_and_runtime_prepare(
     assert st.session_state["is_running"] is False
 
 
+def test_render_builder_view_autonomous_passes_unload_preference_to_session(
+    monkeypatch,
+):
+    st.session_state.clear()
+    st.session_state["is_running"] = True
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_autonomous=True,
+        builder_auto_market_pick=False,
+        builder_unload_after_run=False,
+        builder_auto_pause=0,
+        symbol="BTCUSDT",
+        timeframe="1h",
+        available_tokens=["BTCUSDT"],
+        available_timeframes=["1h"],
+    )
+    sample_df = _sample_ohlcv()
+    run_calls: list[dict[str, object]] = []
+
+    _patch_autonomous_builder_shell(monkeypatch)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_prepare_builder_llm_resilient",
+        lambda **kwargs: (True, "runtime prêt", "qwen3-coder:30b", False),
+    )
+
+    def _run_stub(**kwargs):
+        run_calls.append(dict(kwargs))
+        st.session_state["is_running"] = False
+        return SimpleNamespace(
+            status="success",
+            best_sharpe=1.0,
+            iterations=[],
+            session_id="manual-autonomous-test",
+            start_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+
+    monkeypatch.setattr(builder_view_module, "_run_single_builder_session", _run_stub)
+
+    builder_view_module.render_builder_view(
+        state=state,
+        df=sample_df,
+        status_container=nullcontext(),
+    )
+
+    assert len(run_calls) == 1
+    assert run_calls[0]["unload_after_run"] is False
+
+
+def test_render_builder_view_autonomous_repreloads_after_unloaded_session(
+    monkeypatch,
+):
+    st.session_state.clear()
+    st.session_state["is_running"] = True
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_autonomous=True,
+        builder_auto_market_pick=False,
+        builder_unload_after_run=True,
+        builder_auto_pause=0,
+        symbol="BTCUSDT",
+        timeframe="1h",
+        available_tokens=["BTCUSDT"],
+        available_timeframes=["1h"],
+    )
+    sample_df = _sample_ohlcv()
+    prepare_calls: list[dict[str, object]] = []
+    session_counter = {"count": 0}
+
+    _patch_autonomous_builder_shell(monkeypatch)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_prepare_builder_llm_resilient",
+        lambda **kwargs: (True, "runtime prêt", "qwen3-coder:30b", False),
+    )
+
+    def _prepare_stub(**kwargs):
+        prepare_calls.append(dict(kwargs))
+        return True, "session prête", str(kwargs.get("model") or "qwen3-coder:30b")
+
+    def _run_stub(**kwargs):
+        session_counter["count"] += 1
+        if session_counter["count"] >= 2:
+            st.session_state["is_running"] = False
+        return SimpleNamespace(
+            status="success",
+            best_sharpe=1.0,
+            iterations=[],
+            session_id=f"autonomous-session-{session_counter['count']}",
+            start_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+
+    monkeypatch.setattr(builder_view_module, "_prepare_builder_llm", _prepare_stub)
+    monkeypatch.setattr(builder_view_module, "_run_single_builder_session", _run_stub)
+
+    builder_view_module.render_builder_view(
+        state=state,
+        df=sample_df,
+        status_container=nullcontext(),
+    )
+
+    assert session_counter["count"] == 2
+    assert len(prepare_calls) == 1
+    assert prepare_calls[0]["preload_model"] is True
+
+
 def test_cleanup_all_models_uses_ps_not_tags(monkeypatch):
     requested_urls: list[str] = []
     unloaded: list[str] = []
@@ -1299,7 +1674,7 @@ def test_get_model_details_does_not_guess_remote_gpu_fit(monkeypatch):
         },
     )
     monkeypatch.setattr(model_selector_module, "get_model_by_id", lambda model_name: {})
-    monkeypatch.setattr(model_selector_module, "_get_total_vram_gb", lambda: 24.0)
+    monkeypatch.setattr(model_selector_module, "_get_max_gpu_vram_gb", lambda: 24.0)
 
     remote = model_selector_module.get_model_details(
         "qwen2.5:14b",
@@ -1945,6 +2320,99 @@ def test_render_autonomous_recap_recovers_empty_entry_from_disk(tmp_path, monkey
     assert any("22:52:41" in html for html in rendered_html)
     assert download_payloads
     assert session_dir.name in str(download_payloads[0])
+
+
+def test_load_builder_live_thoughts_preview_tails_file(tmp_path):
+    stream_file = tmp_path / "_live_thoughts.md"
+    stream_file.write_text(
+        "\n".join(f"line {idx}" for idx in range(1, 11)),
+        encoding="utf-8",
+    )
+
+    preview, truncated = builder_view_module._load_builder_live_thoughts_preview(
+        stream_file,
+        tail_lines=4,
+        max_chars=1000,
+    )
+
+    assert truncated is True
+    preview_lines = preview.splitlines()
+    assert preview_lines[0] == "…(truncated)…"
+    assert preview_lines[1:] == ["line 7", "line 8", "line 9", "line 10"]
+
+
+def test_render_autonomous_recap_wraps_heavy_sections_in_tabs_and_expanders(monkeypatch, tmp_path):
+    st.session_state.clear()
+    captured = {"tabs": [], "expanders": [], "code": []}
+    stream_file = tmp_path / "_live_thoughts.md"
+    stream_file.write_text("[STREAM] CODE Generation de code\npayload", encoding="utf-8")
+
+    monkeypatch.setattr(builder_view_module, "STREAM_FILE", stream_file)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_save_autonomous_supervisor_state",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "download_button", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "code",
+        lambda text, **kwargs: captured["code"].append(str(text)),
+    )
+
+    class _DummyContext:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "tabs",
+        lambda labels: captured["tabs"].append(list(labels)) or [_DummyContext() for _ in labels],
+    )
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "expander",
+        lambda label, **kwargs: captured["expanders"].append(str(label)) or _DummyContext(),
+    )
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "columns",
+        lambda *args, **kwargs: (_DummyContext(), _DummyContext()),
+    )
+    monkeypatch.setattr(builder_view_module.st, "button", lambda *args, **kwargs: False)
+
+    history = [
+        {
+            "session_num": 12,
+            "objective": "Objectif 12",
+            "source_label": "LLM",
+            "status": "success",
+            "best_score": 12.0,
+            "best_sharpe": 1.05,
+            "best_return": 8.4,
+            "best_max_dd": -4.0,
+            "best_trades": 18,
+            "duration": 9.0,
+            "symbol": "BTCUSDC",
+            "timeframe": "1h",
+        }
+    ]
+
+    builder_view_module._render_autonomous_recap(history, {})
+
+    assert captured["tabs"][0] == ["Overview", "History Table (1)", "Live Thought"]
+    assert "Open history table (1 sessions)" in captured["expanders"]
+    assert "Open live thought stream" in captured["expanders"]
+    assert any("Get-Content" in text for text in captured["code"])
+    assert any("Generation de code" in text for text in captured["code"])
 
 
 def test_recover_autonomous_history_from_disk_reports_changed_when_entry_rehydrated(tmp_path, monkeypatch):
@@ -2849,6 +3317,46 @@ def test_render_main_auto_resume_ignores_same_process_runtime_when_already_runni
     assert "_builder_autonomous_toggle_sync" not in st.session_state
 
 
+def test_render_main_preserves_builder_launch_pending_until_builder_view_runs(monkeypatch):
+    st.session_state.clear()
+    st.session_state["is_running"] = True
+    st.session_state["builder_launch_pending"] = True
+    st.session_state["ohlcv_df"] = _sample_ohlcv()
+    st.session_state["ohlcv_status_msg"] = ""
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_autonomous=False,
+        builder_objective="Lancement protégé",
+    )
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "should_auto_resume_builder_autonomous",
+        lambda current_state: (False, {}),
+    )
+    monkeypatch.setattr(main_module, "validate_all_params", lambda params: (True, []))
+    monkeypatch.setattr(main_module, "show_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        main_module,
+        "_render_builder_view_safe",
+        lambda state, df, status_container: captured.update(
+            {
+                "mode": state.optimization_mode,
+                "running": st.session_state.get("is_running"),
+                "pending": st.session_state.get("builder_launch_pending", False),
+            }
+        ),
+    )
+
+    render_main(state, False, nullcontext())
+
+    assert captured["mode"] == "🏗️ Strategy Builder"
+    assert captured["running"] is True
+    assert captured["pending"] is False
+
+
 def test_restore_builder_autonomous_ui_state_from_runtime_rehydrates_builder_mode(
     monkeypatch,
 ):
@@ -3727,6 +4235,33 @@ def test_apply_catalog_replay_request_to_state_sets_sidebar_inputs():
     assert "run_123" in msg
 
 
+def test_queue_main_run_action_applies_pending_config_and_arms_builder(monkeypatch):
+    st.session_state.clear()
+    draft_state = _sample_sidebar_state(optimization_mode="🏗️ Strategy Builder")
+    reset_calls: list[str] = []
+
+    st.session_state["config_pending_changes"] = True
+    st.session_state["draft_sidebar_state"] = draft_state
+    st.session_state["draft_config_signature"] = "draft-builder"
+    st.session_state["stop_requested"] = True
+
+    monkeypatch.setattr(
+        main_module,
+        "_reset_builder_launch_state",
+        lambda: reset_calls.append("reset"),
+    )
+
+    main_module._queue_main_run_action("🏗️ Strategy Builder")
+
+    assert st.session_state["applied_sidebar_state"] is draft_state
+    assert st.session_state["applied_config_signature"] == "draft-builder"
+    assert st.session_state["config_pending_changes"] is False
+    assert st.session_state["stop_requested"] is False
+    assert st.session_state["run_backtest_requested"] is True
+    assert st.session_state["is_running"] is True
+    assert reset_calls == ["reset"]
+
+
 def test_app_exec_modes_render_without_activation_buttons():
     at = AppTest.from_file("ui/app.py")
     at.session_state["optimization_mode"] = "Backtest Simple"
@@ -3757,6 +4292,101 @@ def test_app_builder_mode_is_directly_rendered_from_mode_selection():
     )
     assert all(radio.label != "Mode d'exécution" for radio in at.radio)
     assert at.session_state["optimization_mode"] == "🏗️ Strategy Builder"
+
+
+def test_app_builder_main_run_button_launches_on_first_click(monkeypatch):
+    calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "restore_builder_autonomous_ui_state_from_runtime",
+        lambda: (False, {}),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "should_auto_resume_builder_autonomous",
+        lambda current_state: (False, {}),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "render_builder_view",
+        lambda state, df, status_container: calls.append(
+            {
+                "mode": state.optimization_mode,
+                "autonomous": state.builder_autonomous,
+                "objective": state.builder_objective,
+            }
+        ),
+    )
+
+    at = AppTest.from_file("ui/app.py")
+    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
+    at.session_state["builder_autonomous"] = False
+    at.session_state["builder_objective"] = "Construire une stratégie de test"
+
+    at.run(timeout=60)
+
+    assert calls == []
+
+    next(
+        button for button in at.button if button.label == "🏗️ Lancer le Builder"
+    ).click().run(timeout=60)
+
+    assert len(calls) == 1
+    assert calls[0]["mode"] == "🏗️ Strategy Builder"
+    assert calls[0]["autonomous"] is False
+    assert calls[0]["objective"] == "Construire une stratégie de test"
+    assert at.session_state["is_running"] is True
+    assert at.session_state["run_backtest_requested"] is False
+
+
+def test_render_builder_view_manual_session_releases_running_flag(monkeypatch):
+    st.session_state.clear()
+    st.session_state["is_running"] = True
+
+    sample_df = _sample_ohlcv()
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_autonomous=False,
+        builder_auto_market_pick=False,
+        builder_objective="Construire une stratégie robuste",
+        builder_unload_after_run=False,
+    )
+    fake_session = SimpleNamespace(status="success", best_sharpe=1.234, iterations=[])
+
+    monkeypatch.setattr(builder_view_module, "_inject_builder_view_styles", lambda: None)
+    monkeypatch.setattr(builder_view_module, "_render_builder_mode_hero", lambda **kwargs: None)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_builder_live_thoughts_panel",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_resolve_single_llm_runtime_route",
+        lambda ollama_host, topology: (str(ollama_host), "GPU-0"),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_validate_builder_market_dataset",
+        lambda **kwargs: (True, ""),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_run_single_builder_session",
+        lambda **kwargs: fake_session,
+    )
+    monkeypatch.setattr(builder_view_module, "show_status", lambda *args, **kwargs: None)
+
+    builder_view_module.render_builder_view(
+        state=state,
+        df=sample_df,
+        status_container=nullcontext(),
+    )
+
+    assert st.session_state["is_running"] is False
+    assert st.session_state["builder_session"] is fake_session
+    assert st.session_state["builder_last_objective"] == "Construire une stratégie robuste"
 
 
 def test_app_builder_expert_mode_shows_only_expert_controls():
@@ -4514,6 +5144,33 @@ def test_resolve_builder_flow_analysis_preferences_prefers_widget_and_disabled_s
     assert resolved["builder_flow_analysis_ablation"]["code_repair"] is True
     assert resolved["builder_flow_analysis_ablation"]["precheck"] is False
     assert resolved["builder_flow_analysis_ablation"]["runtime_fix"] is False
+
+
+def test_builder_flow_analysis_presets_include_local_stable():
+    label, disabled_steps = exec_tabs_module._BUILDER_FLOW_ANALYSIS_PRESETS["local_stable"]
+
+    assert label == "🪶 Local stable"
+    assert "llm_analysis" in disabled_steps
+    assert "pre_reflection" in disabled_steps
+    assert "stagnation_branching" in disabled_steps
+    assert "code_repair" not in disabled_steps
+
+
+def test_builder_flow_analysis_presets_keep_fast_and_debug_runtime_targets():
+    fast_label, fast_disabled = exec_tabs_module._BUILDER_FLOW_ANALYSIS_PRESETS["fast"]
+    debug_label, debug_disabled = exec_tabs_module._BUILDER_FLOW_ANALYSIS_PRESETS["debug"]
+
+    assert fast_label == "⚡ Analyse rapide"
+    assert fast_disabled == [
+        "llm_analysis",
+        "indicator_ranking",
+        "iteration_history",
+        "diagnostic_context",
+    ]
+    assert debug_label == "🧪 Debug pipeline"
+    assert "runtime_fix" in debug_disabled
+    assert "code_repair" in debug_disabled
+    assert "indicator_binding" in debug_disabled
 
 
 def test_sync_builder_multi_llm_profile_role_pools_hydrates_and_clears_session_state():

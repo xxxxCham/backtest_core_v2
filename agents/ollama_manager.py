@@ -21,7 +21,7 @@ Skip-if: Vous utilisez seulement OpenAI.
 """
 
 from __future__ import annotations
-
+# pylint: disable=broad-except
 # pylint: disable=logging-fstring-interpolation
 import atexit
 import os
@@ -72,6 +72,7 @@ class _OwnedOllamaProcess:
     process: subprocess.Popen
     started_at: float = field(default_factory=time.time)
     windows_job_bound: bool = False
+    visible_devices: Optional[str] = None
 
 
 _OWNED_OLLAMA_PROCESSES: dict[str, _OwnedOllamaProcess] = {}
@@ -377,23 +378,9 @@ def _resolve_visible_devices_for_host(
     ollama_host: Optional[str],
     gpu_target: Optional[str] = None,
 ) -> Optional[str]:
-    """Résout un pinning GPU uniquement pour des endpoints dédiés.
-
-    Sur l'endpoint local partagé par défaut (`127.0.0.1:11434`), Ollama doit
-    voir l'ensemble des GPUs pour pouvoir répartir correctement les gros
-    modèles. Le pinning explicite reste utilisé pour des hosts/ports dédiés.
-    """
+    """Résout le pinning GPU effectif demandé par le runtime appelant."""
     effective_gpu_target = _get_effective_gpu_target(gpu_target)
-    visible_devices = _gpu_target_to_visible_devices(effective_gpu_target)
-    if visible_devices is None:
-        return None
-
-    host = _get_ollama_host(ollama_host)
-    parsed = urlparse(host)
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    if _is_local_ollama_host(host) and port == 11434 and not _local_gpu_pinning_enabled():
-        return None
-    return visible_devices
+    return _gpu_target_to_visible_devices(effective_gpu_target)
 
 
 def _build_ollama_subprocess_env(
@@ -664,7 +651,7 @@ class GPUMemoryManager:
                     if m.get("name", "").startswith(self.model_name.split(":")[0]):
                         return True
             return False
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
     def unload(self, context_messages: Optional[List[dict]] = None) -> LLMMemoryState:
@@ -704,7 +691,7 @@ class GPUMemoryManager:
                             f"💾 LLM déchargé: {self.model_name} "
                             f"({state.unload_time_ms:.0f}ms) → GPU libre pour calculs"
                         )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning(f"⚠️ Échec déchargement LLM: {e}")
         else:
             if self.verbose:
@@ -774,7 +761,7 @@ class GPUMemoryManager:
                 logger.warning(f"⚠️ Échec reload LLM: status {response.status_code}")
                 return False
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(f"⚠️ Échec rechargement LLM: {e}")
             return False
 
@@ -849,12 +836,37 @@ def ensure_ollama_running(
         max_attempts=1,
     )
     normalized_host = _get_ollama_host(ollama_host)
+    requested_visible_devices = _resolve_visible_devices_for_host(
+        ollama_host,
+        gpu_target,
+    )
     if payload is not None:
-        should_restart_for_pinning = (
+        owned_record = _get_owned_ollama_process(normalized_host)
+        explicit_local_gpu_restart_allowed = (
             _is_local_ollama_host(normalized_host)
-            and _local_gpu_pinning_enabled()
-            and _local_ollama_restart_enabled()
+            and requested_visible_devices is not None
             and normalized_host not in _OLLAMA_PINNING_RESTARTED_HOSTS
+            and (
+                (
+                    owned_record is not None
+                    and owned_record.visible_devices != requested_visible_devices
+                )
+                or (
+                    owned_record is None
+                    and _local_gpu_pinning_enabled()
+                    and _local_ollama_restart_enabled()
+                )
+            )
+        )
+        should_restart_for_pinning = (
+            explicit_local_gpu_restart_allowed
+            or (
+                _is_local_ollama_host(normalized_host)
+                and requested_visible_devices is None
+                and _local_gpu_pinning_enabled()
+                and _local_ollama_restart_enabled()
+                and normalized_host not in _OLLAMA_PINNING_RESTARTED_HOSTS
+            )
         )
         if should_restart_for_pinning:
             logger.info(
@@ -887,6 +899,7 @@ def ensure_ollama_running(
     try:
         is_windows = platform.system() == "Windows"
         env = _build_ollama_subprocess_env(ollama_host, gpu_target=gpu_target)
+        visible_devices = _resolve_visible_devices_for_host(ollama_host, gpu_target)
 
         with _OWNED_OLLAMA_LOCK:
             payload, _status_code, _exc = _fetch_tags_payload(
@@ -929,6 +942,7 @@ def ensure_ollama_running(
                     host=normalized_host,
                     process=process,
                     windows_job_bound=_bind_process_to_lifecycle(process),
+                    visible_devices=visible_devices,
                 )
                 started_new_process = True
 
@@ -977,7 +991,7 @@ def ensure_ollama_running(
         if started_new_process:
             stop_owned_local_ollama_server(ollama_host=ollama_host, timeout_s=2.0)
         return False, "❌ Ollama non trouvé (vérifiez l'installation)"
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         if started_new_process:
             stop_owned_local_ollama_server(ollama_host=ollama_host, timeout_s=2.0)
         return False, f"❌ Erreur: {str(e)}"
@@ -1008,7 +1022,7 @@ def unload_model(model_name: str, ollama_host: Optional[str] = None) -> bool:
         if success:
             logger.info(f"💾 Modèle {model_name} déchargé de la mémoire")
         return success
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"⚠️ Impossible de décharger {model_name}: {e}")
         return False
 
@@ -1082,7 +1096,7 @@ def is_model_loaded_in_memory(
             preview = ", ".join(loaded_names[:3])
             return False, f"modeles actifs: {preview}"
         return False, "aucun modele actif"
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return False, f"/api/ps inaccessible: {exc}"
 
 
@@ -1115,7 +1129,7 @@ def warmup_model(
                 done_reason = str(payload.get("done_reason", "") or "").strip()
                 if done_reason:
                     detail += f", done_reason={done_reason}"
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
             return True, detail
 
@@ -1179,7 +1193,7 @@ def cleanup_all_models(ollama_host: Optional[str] = None) -> int:
 
         return count
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"⚠️ Erreur cleanup_all_models: {e}")
         return 0
 
