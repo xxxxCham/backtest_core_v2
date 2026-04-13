@@ -240,7 +240,12 @@ sandbox_strategies/
 .tmp_pytest_codex/
 .tmp_pytest_codex_run/
 .pytest_tmp_local/
+.pytest_tmp_codex/
+.pytest_tmp_indicator/
+.pytest_tmp_*/
 pytest_temp/
+.extract_frames.py
+.tmp_frames/
 
 # Environment variants (keep templates/examples under version control)
 .env.*
