@@ -246,12 +246,33 @@ def _terminate_process(proc: subprocess.Popen[Any], *, timeout_sec: float = 15.0
 
 
 def _port_is_available(port: int, *, host: str = "127.0.0.1") -> bool:
+    owner = _port_owner_info(port)
+    if owner:
+        return False
+    if _port_accepts_connection(port):
+        return False
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.bind((host, int(port)))
             return True
     except OSError:
         return False
+
+
+def _port_accepts_connection(port: int) -> bool:
+    loopback_targets = (
+        (socket.AF_INET, ("127.0.0.1", int(port))),
+        (socket.AF_INET6, ("::1", int(port), 0, 0)),
+    )
+    for family, address in loopback_targets:
+        try:
+            with socket.socket(family, socket.SOCK_STREAM) as sock:
+                sock.settimeout(0.2)
+                if sock.connect_ex(address) == 0:
+                    return True
+        except OSError:
+            continue
+    return False
 
 
 def _port_owner_info(port: int) -> Dict[str, Any]:
@@ -295,18 +316,16 @@ def _resolve_launch_plan(
     *,
     max_port_tries: int = 20,
 ) -> Tuple[str, int, str]:
+    owner = _port_owner_info(requested_port)
     if _port_is_available(requested_port):
         return "launch", requested_port, ""
-
-    owner = _port_owner_info(requested_port)
-    if _is_same_streamlit_app_owner(owner, root):
-        pid = int(owner.get("pid", 0) or 0)
-        return "reuse", requested_port, f"already_running(pid={pid})"
 
     for candidate in range(int(requested_port) + 1, int(requested_port) + max_port_tries + 1):
         if _port_is_available(candidate):
             owner_pid = int(owner.get("pid", 0) or 0)
-            reason = f"port_in_use({requested_port},pid={owner_pid or 'unknown'})"
+            same_app = _is_same_streamlit_app_owner(owner, root)
+            reason_kind = "port_in_use_by_same_app" if same_app else "port_in_use"
+            reason = f"{reason_kind}({requested_port},pid={owner_pid or 'unknown'})"
             return "launch", candidate, reason
 
     return "error", requested_port, f"no_free_port_from_{requested_port}_to_{requested_port + max_port_tries}"

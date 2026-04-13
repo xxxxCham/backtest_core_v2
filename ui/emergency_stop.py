@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import gc
 import logging
+# pylint: disable=broad-except
 from typing import Any, Callable, Dict, Iterable, Optional
 
 import httpx
@@ -51,7 +52,7 @@ def _session_contains(session_state: Optional[Any], key: str) -> bool:
         return False
     try:
         return key in session_state
-    except Exception:
+    except Exception:  # noqa: BLE001
         return hasattr(session_state, key)
 
 
@@ -61,11 +62,11 @@ def _session_set(session_state: Optional[Any], key: str, value: Any) -> None:
     try:
         session_state[key] = value
         return
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
     try:
         setattr(session_state, key, value)
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("session_state_set_failed key=%s", key, exc_info=True)
 
 
@@ -76,13 +77,13 @@ def _session_pop(session_state: Optional[Any], key: str) -> bool:
         if key in session_state:
             session_state.pop(key, None)
             return True
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
     try:
         if hasattr(session_state, key):
             delattr(session_state, key)
             return True
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.debug("session_state_pop_failed key=%s", key, exc_info=True)
     return False
 
@@ -102,13 +103,13 @@ def _normalize_ollama_hosts(ollama_hosts: Optional[Iterable[str]]) -> list[str]:
 def _list_loaded_models_for_host(ollama_host: str) -> list[str]:
     try:
         response = httpx.get(f"{ollama_host}/api/ps", timeout=3.0)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return []
     if response.status_code != 200:
         return []
     try:
         payload = response.json() if response.content else {}
-    except Exception:
+    except Exception:  # noqa: BLE001
         return []
     models = payload.get("models", []) or []
     return [
@@ -259,7 +260,7 @@ def _collect_process_memory(stats: Dict[str, Any]) -> None:
         import psutil
 
         stats["current_ram_mb"] = psutil.Process().memory_info().rss / (1024**2)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return
 
 
@@ -305,4 +306,3 @@ def execute_emergency_stop(
     _record_component(stats, "garbage_collector")
     _collect_process_memory(stats)
     return stats
-

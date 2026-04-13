@@ -83,7 +83,7 @@ def _configure_agents_logger() -> None:
         "[AGENTS] %(asctime)s | %(levelname)s | %(name)s | %(message)s",
         datefmt="%H:%M:%S",
     ))
-    handler._agents_force_stdout = True  # type: ignore[attr-defined]
+    handler._agents_force_stdout = True  # type: ignore[attr-defined]  # pylint: disable=protected-access
 
     logger.addHandler(handler)
     logger.setLevel(level)
@@ -160,8 +160,8 @@ from .strategy_builder import (  # noqa: E402
     BuilderIteration,
     BuilderSession,
     StrategyBuilder,
-    validate_generated_code,
 )
+from .builder_code_validation import validate_generated_code  # noqa: E402
 from .validator import ValidatorAgent  # noqa: E402
 
 __all__ = [

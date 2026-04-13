@@ -75,9 +75,9 @@ def _fetch_ollama_tags_with_retries(
         try:
             resp = httpx.get(url, timeout=timeout_s)
             if resp.status_code == 200:
-                return resp.json()
+                return resp.json()  # type: ignore
             last_exc = RuntimeError(f"HTTP {resp.status_code}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-except
             last_exc = exc
             if fast_fail_on_connection_refused and _is_connection_refused(exc):
                 break
@@ -1138,7 +1138,7 @@ _global_config: Optional[RoleModelConfig] = None
 
 def get_global_model_config() -> RoleModelConfig:
     """Retourne la configuration globale (singleton)."""
-    global _global_config
+    global _global_config  # noqa: PLW0603  # pylint: disable=global-statement
     if _global_config is None:
         _global_config = RoleModelConfig()
     return _global_config
@@ -1146,7 +1146,7 @@ def get_global_model_config() -> RoleModelConfig:
 
 def set_global_model_config(config: RoleModelConfig) -> None:
     """Définit la configuration globale."""
-    global _global_config
+    global _global_config  # noqa: PLW0603  # pylint: disable=global-statement
     _global_config = config
 
 

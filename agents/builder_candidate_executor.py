@@ -8,6 +8,8 @@ avoid circular imports during the initial load of `agents.strategy_builder`.
 """
 
 from __future__ import annotations
+# pylint: disable=protected-access
+# pylint: disable=broad-except
 
 import concurrent.futures
 import copy
@@ -109,6 +111,10 @@ class BuilderCandidateExecutorV2:
             code = self._resolve_candidate_code()
             self._checkpoint("code_generated", "ok")
             self.current_stage = "save_and_load"
+            self._phase_start(
+                "save_and_load",
+                detail="écriture du candidat et chargement dynamique",
+            )
             self._checkpoint("save_and_load", "start")
             strategy_cls = self.builder._save_and_load(
                 self.ctx.session,
@@ -116,12 +122,17 @@ class BuilderCandidateExecutorV2:
                 self.ctx.iteration_num,
             )
             self._checkpoint("save_and_load", "ok")
+            self._phase_done("save_and_load", status="ok", detail="stratégie chargée")
             if self.builder.ablation.is_enabled("auto_fix_indicators"):
                 strategy_cls = self.builder._auto_fix_required_indicators(
                     strategy_cls,
                     code,
                 )
             self.current_stage = "precheck"
+            self._phase_start(
+                "precheck",
+                detail="validation densité / répartition des signaux",
+            )
             self._checkpoint("precheck", "start")
             signal_probe = self.builder._precheck_signal_counts(
                 strategy_cls,
@@ -152,7 +163,7 @@ class BuilderCandidateExecutorV2:
                 self.ctx.iteration_num,
             )
             return self.outcome, self.ctx.fallback_count
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001
             failure_text = f"{type(exc).__name__}: {exc}"
             traceback_tail = _safe_format_exception(exc)
             self.outcome["error"] = failure_text
@@ -163,6 +174,12 @@ class BuilderCandidateExecutorV2:
             self.outcome["precheck_feedback"] = self.precheck_feedback
             self.outcome["pre_reflection_feedback"] = self.pre_reflection_feedback
             self.outcome["backtest_feedback"] = self.backtest_feedback
+            if self.current_stage and self.current_stage != "init":
+                self._phase_done(
+                    self.current_stage,
+                    status="error",
+                    detail=failure_text,
+                )
             self._checkpoint(
                 self.current_stage or "unknown",
                 "error",
@@ -199,6 +216,33 @@ class BuilderCandidateExecutorV2:
             precheck_feedback=self.precheck_feedback,
             backtest_feedback=self.backtest_feedback,
             extra=extra,
+        )
+
+    def _phase_start(self, phase: str, *, detail: str = "") -> None:
+        self.builder._emit_progress(
+            "phase_start",
+            iteration=self.ctx.iteration_num,
+            phase=phase,
+            branch_label=self.ctx.branch_label,
+            detail=detail,
+        )
+
+    def _phase_done(
+        self,
+        phase: str,
+        *,
+        status: str = "done",
+        detail: str = "",
+        **payload: Any,
+    ) -> None:
+        self.builder._emit_progress(
+            "phase_done",
+            iteration=self.ctx.iteration_num,
+            phase=phase,
+            branch_label=self.ctx.branch_label,
+            status=status,
+            detail=detail,
+            **payload,
         )
 
     def _apply_change_type_policy(self) -> None:
@@ -402,6 +446,11 @@ class BuilderCandidateExecutorV2:
     ) -> tuple[str, Any]:
         if not signal_probe.get("ok"):
             self.precheck_feedback["backtest_skipped"] = True
+            self._phase_done(
+                "precheck",
+                status="blocked",
+                detail="précheck bloquant: aucun signal exploitable",
+            )
             self._checkpoint(
                 "precheck",
                 "blocked",
@@ -420,6 +469,11 @@ class BuilderCandidateExecutorV2:
                     "backtest_skipped": True,
                 }
             )
+            self._phase_done(
+                "precheck",
+                status="blocked",
+                detail="précheck bloquant: densité de signaux pathologique",
+            )
             self._checkpoint(
                 "precheck",
                 "blocked",
@@ -427,34 +481,43 @@ class BuilderCandidateExecutorV2:
             )
             return code, self.builder._build_precheck_overtrading_result(signal_probe)
 
+        signal_count = int(signal_probe.get("total_signals", 0) or 0)
+        self._phase_done(
+            "precheck",
+            status="ok",
+            detail=f"{signal_count} signaux détectés avant backtest",
+        )
+
         pre_reflection_future = None
         pre_reflection_pool: Optional[
             concurrent.futures.ThreadPoolExecutor
         ] = None
         try:
-            try:
-                pre_reflection_pool = strategy_builder_module._new_streamlit_aware_thread_pool(
-                    max_workers=1
-                )
-                pre_reflection_future = pre_reflection_pool.submit(
-                    self.builder._ask_pre_reflection,
-                    self.ctx.session,
-                    self.candidate_proposal,
-                    code,
-                    self.ctx.iteration_num,
-                )
-            except (
-                ValueError,
-                KeyError,
-                RuntimeError,
-                AttributeError,
-                TypeError,
-                IndexError,
-            ):
-                pre_reflection_future = None
+            if self.builder.ablation.is_enabled("pre_reflection"):
+                try:
+                    pre_reflection_pool = strategy_builder_module._new_streamlit_aware_thread_pool(
+                        max_workers=1
+                    )
+                    pre_reflection_future = pre_reflection_pool.submit(
+                        self.builder._ask_pre_reflection,
+                        self.ctx.session,
+                        self.candidate_proposal,
+                        code,
+                        self.ctx.iteration_num,
+                    )
+                except (
+                    ValueError,
+                    KeyError,
+                    RuntimeError,
+                    AttributeError,
+                    TypeError,
+                    IndexError,
+                ):
+                    pre_reflection_future = None
 
             try:
                 self.current_stage = "backtest"
+                self._phase_start("backtest", detail="simulation de la stratégie")
                 self._checkpoint("backtest", "start")
                 bt_result = self._run_backtest(strategy_cls)
                 self._checkpoint("backtest", "ok")
@@ -516,6 +579,7 @@ class BuilderCandidateExecutorV2:
             bt_exc
         )
         self.current_stage = "runtime_fix"
+        self._phase_start("runtime_fix", detail=bt_error)
         self._checkpoint(
             "backtest",
             "error",
@@ -587,11 +651,16 @@ class BuilderCandidateExecutorV2:
                 error=retry_bt_error,
                 traceback_tail=_safe_format_exception(retry_bt_exc),
             )
+            self._phase_done(
+                "runtime_fix",
+                status="error",
+                detail=retry_bt_error,
+            )
             if used_runtime_fallback:
                 self.outcome["error"] = retry_bt_error
                 self.outcome["code_feedback"] = self.code_feedback
                 self.outcome["backtest_feedback"] = self.backtest_feedback
-                raise RuntimeError(str(self.outcome["error"]))
+                raise RuntimeError(str(self.outcome["error"])) from retry_bt_exc  # noqa: B904  # pylint: disable=raise-missing-from
 
             fallback_code = self._next_fallback_code()
             valid_fb2, fb_err2 = validate_generated_code(fallback_code)
@@ -602,7 +671,7 @@ class BuilderCandidateExecutorV2:
                 )
                 self.outcome["code_feedback"] = self.code_feedback
                 self.outcome["backtest_feedback"] = self.backtest_feedback
-                raise RuntimeError(str(self.outcome["error"]))
+                raise RuntimeError(str(self.outcome["error"])) from retry_bt_exc  # noqa: B904  # pylint: disable=raise-missing-from
             fallback_cls = self.builder._save_and_load(
                 self.ctx.session,
                 fallback_code,
@@ -613,9 +682,18 @@ class BuilderCandidateExecutorV2:
                     fallback_cls,
                     fallback_code,
                 )
+            self._phase_start(
+                "runtime_fix_fallback_backtest",
+                detail="fallback déterministe après échec du patch runtime",
+            )
             self._checkpoint("runtime_fix_fallback_backtest", "start")
             bt_result = self._run_backtest(fallback_cls)
             self._checkpoint("runtime_fix_fallback_backtest", "ok")
+            self._phase_done(
+                "runtime_fix_fallback_backtest",
+                status="ok",
+                detail="fallback runtime validé",
+            )
             retry_code = fallback_code
             self.backtest_feedback[
                 "runtime_fix_fallback_deterministic_used"
@@ -624,6 +702,7 @@ class BuilderCandidateExecutorV2:
 
         self.backtest_feedback["runtime_fix_applied"] = True
         self._checkpoint("runtime_fix", "ok")
+        self._phase_done("runtime_fix", status="ok", detail="patch runtime appliqué")
         return retry_code, bt_result
 
     def _run_backtest(self, strategy_cls: Any) -> Any:

@@ -55,6 +55,41 @@ _NAN_TO_NUM_DICT_SCAN: re.Pattern[str] = re.compile(
     + r")['\"]"
 )
 
+# Alias courts utilisés dans les exemples d'accès Builder (bb→bollinger, kelt→keltner…).
+# Quand le LLM écrit bb.upper ou kelt.lower, step 12b doit les réécrire également.
+_DOT_ALIAS_TO_INDICATOR: Dict[str, str] = {
+    "bb": "bollinger",
+    "kelt": "keltner",
+    "dc": "donchian",
+    "adx_d": "adx",
+    "ar": "aroon",
+    "ich": "ichimoku",
+    "macd_d": "macd",
+    "psar_d": "psar",
+    "stoch": "stochastic",
+    "srsi": "stoch_rsi",
+    "st": "supertrend",
+    "vx": "vortex",
+    "pp": "pivot_points",
+    "sw": "swing",
+    "bias": "directional_bias",
+    "mk": "markov_switching",
+    "legs": "smart_legs",
+    "amp": "amplitude_hunter",
+    # fvg : alias == nom canonique, déjà couvert par la boucle canonique step 12b.
+}
+
+# Pré-scan compilé : détecte les patterns `name.subkey` qui nécessitent step 12b.
+# Couvre noms canons ET alias courts pour éviter les faux-négatifs sur code LLM "propre".
+_DOT_ACCESS_SUBKEYS: frozenset = frozenset(
+    sk for subkeys in _DICT_INDICATOR_ALLOWED_KEYS.values() for sk in subkeys
+)
+_DOT_ACCESS_NAMES: frozenset = frozenset(_DICT_INDICATOR_ALLOWED_KEYS.keys()) | frozenset(_DOT_ALIAS_TO_INDICATOR)
+_DOT_ACCESS_DICT_SCAN: re.Pattern[str] = re.compile(
+    r"\b(?:" + "|".join(re.escape(n) for n in sorted(_DOT_ACCESS_NAMES, key=len, reverse=True)) + r")\s*\."
+    r"\s*(?:" + "|".join(re.escape(s) for s in sorted(_DOT_ACCESS_SUBKEYS, key=len, reverse=True)) + r")\b"
+)
+
 
 _SEMANTIC_INDICATOR_ALIAS_HINTS = {
     "upper_bollinger": "indicators['bollinger']['upper']",
@@ -1119,14 +1154,28 @@ def _repair_code(code: str, required_indicators: Optional[List[str]] = None, *, 
         code,
     )
 
-    # 12b. Notation dot : bollinger.upper → indicators['bollinger']['upper'].
-    #      Gated : code propre n'utilise pas cette notation (NameError garanti au runtime).
-    if not _structurally_sound:
+    # 12b. Notation dot : bollinger.upper / bb.upper → indicators['bollinger']['upper'].
+    #      Gated par pre-scan _DOT_ACCESS_DICT_SCAN pour éviter ~80 re.sub inutiles quand
+    #      aucun pattern dot n'est présent dans le code (chemin fréquent sur modèles capables).
+    #      IMPORTANT : ne plus gater sur `_structurally_sound` — un LLM peut générer du code
+    #      syntaxiquement propre (parse OK) mais utiliser `bb.upper` ou `bollinger.upper` qui
+    #      produisent un AttributeError silencieux au runtime (dict n'a pas .upper/.lower).
+    if not _structurally_sound or _DOT_ACCESS_DICT_SCAN.search(code):
         for dict_ind, subkeys in _DICT_INDICATOR_ALLOWED_KEYS.items():
             for subkey in subkeys:
                 code = re.sub(
                     rf"\b{re.escape(dict_ind)}\s*\.\s*{re.escape(subkey)}\b",
                     f"indicators['{dict_ind}']['{subkey}']",
+                    code,
+                    flags=re.IGNORECASE,
+                )
+        # Aliases courts : bb.upper → indicators['bollinger']['upper'], kelt.lower → …
+        for alias, indicator_name in _DOT_ALIAS_TO_INDICATOR.items():
+            _alias_subkeys = _DICT_INDICATOR_ALLOWED_KEYS.get(indicator_name, set())
+            for subkey in _alias_subkeys:
+                code = re.sub(
+                    rf"\b{re.escape(alias)}\s*\.\s*{re.escape(subkey)}\b",
+                    f"indicators['{indicator_name}']['{subkey}']",
                     code,
                     flags=re.IGNORECASE,
                 )

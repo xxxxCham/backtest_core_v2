@@ -126,7 +126,42 @@ _BUILDER_FLOW_ANALYSIS_STEP_LABELS = {
     "indicator_ranking": "Classement des indicateurs",
     "iteration_history": "Historique d'itérations",
     "diagnostic_context": "Contexte diagnostique",
+    "pre_reflection": "Pré-réflexion LLM",
     "llm_analysis": "Analyse LLM",
+}
+
+_BUILDER_FLOW_ANALYSIS_PRESETS: dict[str, tuple[str, list[str]]] = {
+    "full": (
+        "🔒 Pipeline complet",
+        [],
+    ),
+    "fast": (
+        "⚡ Analyse rapide",
+        ["llm_analysis", "indicator_ranking", "iteration_history", "diagnostic_context"],
+    ),
+    "debug": (
+        "🧪 Debug pipeline",
+        [
+            "llm_analysis",
+            "runtime_fix",
+            "code_repair",
+            "indicator_binding",
+            "indicator_ranking",
+            "iteration_history",
+            "diagnostic_context",
+        ],
+    ),
+    "local_stable": (
+        "🪶 Local stable",
+        [
+            "llm_analysis",
+            "indicator_ranking",
+            "iteration_history",
+            "diagnostic_context",
+            "stagnation_branching",
+            "pre_reflection",
+        ],
+    ),
 }
 
 def _ollama_is_available(ollama_host: str | None = None) -> bool:
@@ -1222,6 +1257,39 @@ def _summarize_topology_runtime_status(
 @st.cache_data(show_spinner=False, ttl=60)
 def _discover_gpu_inventory() -> List[Dict[str, Any]]:
     inventory: List[Dict[str, Any]] = []
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=index,name,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        for line in str(result.stdout or "").splitlines():
+            parts = [part.strip() for part in line.split(",")]
+            if len(parts) < 3:
+                continue
+            try:
+                gpu_index = int(parts[0])
+                memory_bytes = int(parts[2]) * 1024 * 1024
+            except (TypeError, ValueError):
+                continue
+            inventory.append(
+                {
+                    "id": f"GPU-{gpu_index}",
+                    "name": parts[1] or f"GPU {gpu_index}",
+                    "memory_bytes": memory_bytes,
+                }
+            )
+    except Exception as exc:
+        logger.debug("nvidia-smi GPU inventory failed: %s", exc)
+    if inventory:
+        return inventory
+
     if os.name == "nt":
         try:
             cmd = (
@@ -1254,41 +1322,9 @@ def _discover_gpu_inventory() -> List[Dict[str, Any]]:
                         }
                     )
         except Exception as exc:
-            logger.debug("pynvml GPU inventory failed: %s", exc)
+            logger.debug("powershell GPU inventory failed: %s", exc)
     if inventory:
         return inventory
-
-    try:
-        result = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=index,name,memory.total",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-        for line in str(result.stdout or "").splitlines():
-            parts = [part.strip() for part in line.split(",")]
-            if len(parts) < 3:
-                continue
-            try:
-                gpu_index = int(parts[0])
-                memory_bytes = int(parts[2]) * 1024 * 1024
-            except (TypeError, ValueError):
-                continue
-            inventory.append(
-                {
-                    "id": f"GPU-{gpu_index}",
-                    "name": parts[1] or f"GPU {gpu_index}",
-                    "memory_bytes": memory_bytes,
-                }
-            )
-    except Exception as exc:
-        logger.debug("nvidia-smi GPU inventory failed: %s", exc)
-        return []
 
     return inventory
 
@@ -2334,35 +2370,26 @@ def _render_builder_tab(state: SidebarState) -> None:
                 for step, enabled in builder_flow_analysis_ablation.items()
                 if not enabled
             ]
-            _ABLATION_PRESETS: dict[str, tuple[str, list[str]]] = {
-                "full": (
-                    "🔒 Pipeline complet",
-                    [],
-                ),
-                "fast": (
-                    "⚡ Analyse rapide",
-                    ["llm_analysis", "indicator_ranking", "iteration_history", "diagnostic_context"],
-                ),
-                "debug": (
-                    "🧪 Debug pipeline",
-                    ["llm_analysis", "runtime_fix", "code_repair", "indicator_binding",
-                     "indicator_ranking", "iteration_history", "diagnostic_context"],
-                ),
-            }
             st.caption("Presets d'ablation — benchmark mesuré localement (ms/iter) :")
-            _preset_cols = st.columns(len(_ABLATION_PRESETS))
-            for _col, (_pk, (_plabel, _pdisabled)) in zip(_preset_cols, _ABLATION_PRESETS.items()):
+            _preset_cols = st.columns(len(_BUILDER_FLOW_ANALYSIS_PRESETS))
+            for _col, (_pk, (_plabel, _pdisabled)) in zip(
+                _preset_cols,
+                _BUILDER_FLOW_ANALYSIS_PRESETS.items(),
+            ):
                 with _col:
                     if st.button(
                         _plabel,
                         key=f"ablation_preset_{_pk}",
                         use_container_width=True,
                         help={
-                            "full": "Toutes les 18 étapes actives — pipeline de production.",
+                            "full": f"Toutes les {len(builder_flow_analysis_ablation)} étapes actives — pipeline de production.",
                             "fast": "Désactive l'appel LLM analyse + classement NLP → "
                                     "économie ~1 LLM call/iter, fallback rule-based multi-critères.",
                             "debug": "Désactive steps LLM + code_repair (~22 ms) + "
                                      "indicator_binding (~2.4 ms) → pipeline léger sans Ollama.",
+                            "local_stable": "Coupe les prompts secondaires les plus verbeux "
+                                            "(analyse, historique, contexte, ranking, pré-réflexion, branching) "
+                                            "pour stabiliser les modèles locaux type Gemma.",
                         }[_pk],
                     ):
                         _valid_disabled = [

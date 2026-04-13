@@ -208,6 +208,21 @@ def compute_diagnostic(
             "Simplifier: 1 indicateur puis ajouter filtres progressivement",
         ]
         donts = ["Ne PAS interpréter Sharpe/PF avec < 5 trades"]
+    elif n > 800 and (ret < -90 or dd > 90):
+        cat, sev, ct = "signal_always_true", "critical", "logic"
+        summary = f"Densité signaux anormale ({n} trades, RUINED) — probable accès indicateur dict toujours vrai"
+        actions = [
+            "URGENT: Vérifier accès indicateurs dict — utiliser indicators['bollinger']['upper'] pas bb.upper ni bollinger.upper",
+            "URGENT: Vérifier que les conditions LONG et SHORT ne se déclenchent pas sur >25% des barres chacune",
+            "Isoler : tester une seule condition LONG sur 100 barres, vérifier que densité < 20%",
+            "Ajouter np.nan_to_num() sur TOUS les indicateurs avant comparaison",
+            "Réécrire la logique depuis zéro avec conditions explicites et sans alias bb/kelt/stoch",
+        ]
+        donts = [
+            "Ne PAS garder la même logique avec des paramètres ajustés",
+            "Ne PAS combiner LONG+SHORT dans la même expression avant d'avoir validé chacun séparément",
+            "Ne PAS utiliser bb.upper, bollinger.upper, kelt.lower — toujours indicators['nom']['subkey']",
+        ]
     elif ret < -90 or dd > 90:
         cat, sev, ct = "ruined", "critical", "logic"
         summary = f"Compte ruiné (Return {ret:.0f}%, DD {dd:.0f}%)"

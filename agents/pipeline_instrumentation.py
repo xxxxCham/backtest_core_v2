@@ -557,6 +557,7 @@ class AblationController:
         "indicator_ranking",       # rank_indicator_selection() proposal + code
         "iteration_history",       # injection historique 5 dernières itérations
         "diagnostic_context",      # injection diagnostic/actions/donts dans prompts
+        "pre_reflection",          # _ask_pre_reflection() — critique parallèle au backtest
         "llm_analysis",            # _ask_analysis() — 1 appel LLM par itération
     })
 

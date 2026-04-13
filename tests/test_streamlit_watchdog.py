@@ -97,7 +97,7 @@ def test_exit_no_restart_on_manual_stop():
     assert reason == "manual_stop"
 
 
-def test_resolve_launch_plan_reuses_existing_streamlit_app(monkeypatch):
+def test_resolve_launch_plan_switches_to_next_port_when_same_streamlit_app_already_owns_port(monkeypatch):
     monkeypatch.setattr(watchdog_module, "_port_is_available", lambda port: False)
     monkeypatch.setattr(
         watchdog_module,
@@ -114,9 +114,43 @@ def test_resolve_launch_plan_reuses_existing_streamlit_app(monkeypatch):
         8502,
     )
 
-    assert action == "reuse"
+    assert action == "error"
     assert port == 8502
-    assert reason == "already_running(pid=4242)"
+    assert reason == "no_free_port_from_8502_to_8522"
+
+
+def test_resolve_launch_plan_switches_to_next_port_when_same_streamlit_app_already_owns_port_and_next_is_free(monkeypatch):
+    monkeypatch.setattr(
+        watchdog_module,
+        "_port_is_available",
+        lambda port: port == 8503,
+    )
+    monkeypatch.setattr(
+        watchdog_module,
+        "_port_owner_info",
+        lambda port: {
+            "pid": 20664,
+            "name": "python.exe",
+            "cmdline": [
+                "python",
+                "-m",
+                "streamlit",
+                "run",
+                "ui/app.py",
+                "--server.port",
+                "8502",
+            ],
+        },
+    )
+
+    action, port, reason = watchdog_module._resolve_launch_plan(
+        Path("D:/backtest_core_v2"),
+        8502,
+    )
+
+    assert action == "launch"
+    assert port == 8503
+    assert reason == "port_in_use_by_same_app(8502,pid=20664)"
 
 
 def test_resolve_launch_plan_switches_to_next_free_port(monkeypatch):
@@ -143,6 +177,39 @@ def test_resolve_launch_plan_switches_to_next_free_port(monkeypatch):
     assert action == "launch"
     assert port == 8503
     assert reason == "port_in_use(8502,pid=9999)"
+
+
+def test_resolve_launch_plan_skips_multiple_busy_ports_until_next_free_port(monkeypatch):
+    monkeypatch.setattr(
+        watchdog_module,
+        "_port_is_available",
+        lambda port: port == 8504,
+    )
+    monkeypatch.setattr(
+        watchdog_module,
+        "_port_owner_info",
+        lambda port: {
+            "pid": 9999,
+            "name": "other.exe",
+            "cmdline": ["other.exe"],
+        },
+    )
+
+    action, port, reason = watchdog_module._resolve_launch_plan(
+        Path("D:/backtest_core_v2"),
+        8502,
+    )
+
+    assert action == "launch"
+    assert port == 8504
+    assert reason == "port_in_use(8502,pid=9999)"
+
+
+def test_port_is_available_returns_false_when_port_accepts_connection(monkeypatch):
+    monkeypatch.setattr(watchdog_module, "_port_owner_info", lambda port: {})
+    monkeypatch.setattr(watchdog_module, "_port_accepts_connection", lambda port: True)
+
+    assert watchdog_module._port_is_available(8502) is False
 
 
 def test_watchdog_script_runs_directly_from_tools_path():
