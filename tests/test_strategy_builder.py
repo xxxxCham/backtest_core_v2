@@ -16,6 +16,7 @@ import concurrent.futures
 import json
 import shutil
 import textwrap
+import unittest.mock
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -147,13 +148,14 @@ def _make_market_df(
     *,
     n_bars: int = 1600,
     start: str = "2025-01-01",
+    freq: str = "1h",
     price_scale: float = 100.0,
     volatility_sigma: float = 0.01,
     volume: float = 5000.0,
     tradable_ratio: float = 1.0,
 ) -> pd.DataFrame:
     rng = np.random.default_rng(123)
-    index = pd.date_range(start, periods=n_bars, freq="1h", tz="UTC")
+    index = pd.date_range(start, periods=n_bars, freq=freq, tz="UTC")
     returns = rng.normal(0.0, volatility_sigma, n_bars)
     close = price_scale * np.exp(np.cumsum(returns))
     open_ = close * (1.0 + rng.normal(0.0, max(volatility_sigma / 2.0, 0.001), n_bars))
@@ -672,6 +674,35 @@ def test_evaluate_market_dataset_volatility_depends_on_strategy_type():
     assert breakout_result["accepted"] is True
     assert trend_result["local_metrics"]["volatility_bucket"] == "high"
     assert breakout_result["local_metrics"]["volatility_bucket"] == "high"
+
+
+def test_evaluate_market_dataset_rejects_sparse_weekly_in_canonical_mode():
+    weekly_df = _make_market_df(
+        n_bars=350,
+        freq="1W",
+        volume=25_000.0,
+    )
+
+    result = evaluate_market_dataset(
+        weekly_df,
+        symbol="BTCUSDC",
+        timeframe="1w",
+        universe_mode="canonical",
+        purpose="builder",
+        strategy_type="breakout",
+        token_profile={
+            "volatility": "high",
+            "liquidity": "high",
+            "strategies": ["breakout", "trend"],
+        },
+    )
+
+    assert result["accepted"] is False
+    assert result["applied_criteria"]["timeframe_specific_min_segment_bars"] == 400
+    assert any(
+        "continuous segment insufficient" in reason
+        for reason in result["exclusion_reasons"]
+    )
 
 
 def test_extract_default_params_signature_reads_generated_literal(valid_strategy_code):
@@ -3405,6 +3436,30 @@ class TestMarketRecommendation:
 
 
 class TestObjectiveGenerationIndicatorSanitization:
+    def test_generate_llm_objective_preserves_explicit_indicator_block_without_padding(self):
+        llm = _DummyLLMClient(
+            (
+                "Breakout sur ADAUSDC 1w. "
+                "Indicateurs : DONCHIAN + PSAR + ATR. "
+                "Entrées : cassure validée par psar. "
+                "Sorties : invalidation de cassure. "
+                "Risk management : stop ATR."
+            )
+        )
+        objective = generate_llm_objective(
+            llm,
+            symbol=["ADAUSDC"],
+            timeframe=["1w"],
+            available_indicators=["donchian", "psar", "atr", "rsi", "bollinger", "adx"],
+        )
+
+        lower = objective.lower()
+        assert "donchian" in lower
+        assert "psar" in lower
+        assert "atr" in lower
+        assert "bollinger" not in lower
+        assert "adx" not in lower
+
     def test_generate_llm_objective_sanitizes_unavailable_indicator(self):
         llm = _DummyLLMClient(
             (
@@ -3694,9 +3749,6 @@ class TestSessionRecovery:
     def test_attempt_session_auto_reset_records_recovery_event(self, tmp_path):
         builder = StrategyBuilder.__new__(StrategyBuilder)
         checkpoint_calls: list[int] = []
-        builder._save_session_summary = lambda session: checkpoint_calls.append(
-            session.auto_reset_count
-        )
 
         session = BuilderSession(
             session_id="recovery_reset",
@@ -3710,17 +3762,21 @@ class TestSessionRecovery:
         session.iterations = [stable_best]
         session.best_iteration = stable_best
 
-        ok, anchor, consecutive_failures, fallback_count, event = (
-            builder._attempt_session_auto_reset(
-                session,
-                iteration_num=3,
-                trigger="consecutive_failures",
-                reason="3 erreurs",
-                last_iteration=None,
-                consecutive_failures=3,
-                fallback_count=1,
+        with unittest.mock.patch(
+            "agents.builder_session_io.save_session_summary",
+            side_effect=lambda s: checkpoint_calls.append(s.auto_reset_count),
+        ):
+            ok, anchor, consecutive_failures, fallback_count, event = (
+                builder._attempt_session_auto_reset(
+                    session,
+                    iteration_num=3,
+                    trigger="consecutive_failures",
+                    reason="3 erreurs",
+                    last_iteration=None,
+                    consecutive_failures=3,
+                    fallback_count=1,
+                )
             )
-        )
 
         assert ok is True
         assert anchor is stable_best
@@ -3842,6 +3898,90 @@ class TestDeterministicFallbackCode:
         assert "dc_upper" in code
         assert "dc_lower" in code
         assert "adx_threshold" in code
+
+
+def test_deterministic_proposal_fallback_prioritizes_explicit_objective_indicators():
+    fallback = strategy_builder_module._build_deterministic_proposal_fallback(
+        objective="Breakout sur ADAUSDC 1w. Indicateurs : DONCHIAN + PSAR + ATR.",
+        available_indicators=["donchian", "psar", "atr", "rsi", "bollinger", "adx"],
+    )
+
+    assert fallback["used_indicators"] == ["donchian", "psar", "atr"]
+    assert fallback["indicator_override_reason"] == ""
+
+
+def test_candidate_executor_falls_back_when_code_uses_indicator_outside_proposal(
+    monkeypatch,
+    tmp_path,
+    sample_ohlcv,
+):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    session = BuilderSession(
+        session_id="candidate_indicator_contract",
+        objective="Breakout avec RSI uniquement",
+        session_dir=tmp_path / "candidate_indicator_contract",
+    )
+    context = builder_candidate_executor_module.CandidateExecutionContext(
+        session=session,
+        proposal={
+            "strategy_name": "indicator_contract",
+            "used_indicators": ["rsi"],
+            "default_params": {"warmup": 5},
+            "parameter_specs": {},
+        },
+        proposal_feedback={},
+        last_iteration=None,
+        iteration_num=1,
+        data=sample_ohlcv,
+        initial_capital=10000.0,
+        fallback_count=0,
+    )
+    executor = builder_candidate_executor_module.BuilderCandidateExecutorV2(
+        builder,
+        context,
+    )
+
+    monkeypatch.setattr(
+        builder_candidate_executor_module,
+        "_repair_code",
+        lambda code, req_inds, enable_indicator_binding: code,
+    )
+    monkeypatch.setattr(
+        builder_candidate_executor_module,
+        "validate_generated_code",
+        lambda code: (True, ""),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_retry_code_simple",
+        lambda proposal: (
+            "```python\n"
+            "adx = np.nan_to_num(indicators['adx']['adx'])\n"
+            "signals[:] = (adx > 20).astype(float)\n"
+            "```"
+        ),
+    )
+    monkeypatch.setattr(executor, "_next_fallback_code", lambda: "fallback_code")
+
+    proposal = {
+        "strategy_name": "indicator_contract",
+        "used_indicators": ["rsi"],
+        "default_params": {"warmup": 5},
+        "parameter_specs": {},
+    }
+    drifting_code = _build_deterministic_strategy_code(
+        proposal,
+        "adx = np.nan_to_num(indicators['adx']['adx'])\n"
+        "signals[:] = (adx > 20).astype(float)\n",
+    )
+
+    code = executor._validate_candidate_code(drifting_code)
+
+    assert code == "fallback_code"
+    assert executor.code_feedback["fallback_deterministic_used"] is True
+    assert executor.code_feedback["indicator_contract_status"] == "retry"
+    assert executor.code_feedback["indicator_contract_violation"]["unexpected"] == ["adx"]
+    assert executor.code_feedback["indicator_contract_retry_violation"]["unexpected"] == ["adx"]
 
 
 class TestGracefulInterpreterShutdown:
@@ -4136,6 +4276,29 @@ class TestTemplates:
         assert "markov_switching" in result
         assert "directional_bias" in result
         assert "1 to 5 indicators" in result
+
+    def test_proposal_template_locks_explicit_objective_indicators_and_drops_canonical_example(self):
+        from utils.template import render_prompt
+
+        context = {
+            "objective": "Breakout ADAUSDC avec DONCHIAN + PSAR + ATR",
+            "available_indicators": ["donchian", "psar", "atr", "rsi", "bollinger", "adx"],
+            "available_indicator_guide": build_indicator_selection_guide(
+                ["donchian", "psar", "atr", "rsi", "bollinger", "adx"]
+            ),
+            "objective_indicators": ["donchian", "psar", "atr"],
+            "indicator_lock_mode": "semi_open",
+            "iteration": 1,
+            "max_iterations": 6,
+        }
+
+        result = render_prompt("strategy_builder_proposal.jinja2", context)
+
+        assert "OBJECTIVE INDICATOR CONTRACT" in result
+        assert "donchian, psar, atr" in result
+        assert '"used_indicators": ["rsi", "bollinger", "atr"]' not in result
+        assert '"used_indicators": ["donchian", "psar", "atr"]' in result
+        assert "indicator_override_reason" in result
 
     def test_proposal_template_explicitly_allows_indicator_add_remove_replace_on_stagnation(self):
         from utils.template import render_prompt

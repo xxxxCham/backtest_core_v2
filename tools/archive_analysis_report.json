@@ -1,0 +1,1462 @@
+{
+  "models_objectives": {
+    "models": [
+      [
+        "gemma4:26b",
+        23
+      ],
+      [
+        "acereason-nemotron:14b-q5_k_m",
+        4
+      ],
+      [
+        "gemma4:31b",
+        3
+      ],
+      [
+        "lfm2:24b",
+        3
+      ],
+      [
+        "?",
+        1
+      ],
+      [
+        "deepseek-moe-16b-local:latest",
+        1
+      ]
+    ],
+    "objective_language": {
+      "EN": 1,
+      "FR": 34
+    }
+  },
+  "hypotheses": {
+    "total_hypotheses": 572,
+    "unique_hypotheses": 223,
+    "top_50_words": [
+      [
+        "the",
+        1367
+      ],
+      [
+        "and",
+        651
+      ],
+      [
+        "trend",
+        486
+      ],
+      [
+        "volatility",
+        323
+      ],
+      [
+        "adx",
+        300
+      ],
+      [
+        "momentum",
+        297
+      ],
+      [
+        "high",
+        279
+      ],
+      [
+        "filter",
+        276
+      ],
+      [
+        "using",
+        263
+      ],
+      [
+        "price",
+        259
+      ],
+      [
+        "while",
+        236
+      ],
+      [
+        "with",
+        213
+      ],
+      [
+        "strategy",
+        196
+      ],
+      [
+        "for",
+        196
+      ],
+      [
+        "breakout",
+        194
+      ],
+      [
+        "breakouts",
+        190
+      ],
+      [
+        "volume",
+        177
+      ],
+      [
+        "when",
+        174
+      ],
+      [
+        "previous",
+        172
+      ],
+      [
+        "during",
+        172
+      ],
+      [
+        "mean",
+        169
+      ],
+      [
+        "this",
+        168
+      ],
+      [
+        "bollinger",
+        168
+      ],
+      [
+        "capture",
+        167
+      ],
+      [
+        "low",
+        159
+      ],
+      [
+        "only",
+        158
+      ],
+      [
+        "reversion",
+        140
+      ],
+      [
+        "expansion",
+        137
+      ],
+      [
+        "regimes",
+        136
+      ],
+      [
+        "regime",
+        134
+      ],
+      [
+        "fallback",
+        130
+      ],
+      [
+        "contractuel",
+        130
+      ],
+      [
+        "proposition",
+        130
+      ],
+      [
+        "générée",
+        130
+      ],
+      [
+        "automatiquement",
+        130
+      ],
+      [
+        "pour",
+        130
+      ],
+      [
+        "maintenir",
+        130
+      ],
+      [
+        "progression",
+        130
+      ],
+      [
+        "quand",
+        130
+      ],
+      [
+        "sortie",
+        130
+      ],
+      [
+        "llm",
+        130
+      ],
+      [
+        "est",
+        130
+      ],
+      [
+        "pas",
+        130
+      ],
+      [
+        "exploitable",
+        130
+      ],
+      [
+        "keltner",
+        127
+      ],
+      [
+        "ensure",
+        120
+      ],
+      [
+        "supertrend",
+        119
+      ],
+      [
+        "direction",
+        119
+      ],
+      [
+        "rsi",
+        117
+      ],
+      [
+        "strength",
+        115
+      ]
+    ],
+    "top_30_bigrams": [
+      [
+        "the previous",
+        164
+      ],
+      [
+        "fallback contractuel",
+        130
+      ],
+      [
+        "contractuel proposition",
+        130
+      ],
+      [
+        "proposition générée",
+        130
+      ],
+      [
+        "générée automatiquement",
+        130
+      ],
+      [
+        "automatiquement pour",
+        130
+      ],
+      [
+        "pour maintenir",
+        130
+      ],
+      [
+        "maintenir progression",
+        130
+      ],
+      [
+        "progression quand",
+        130
+      ],
+      [
+        "quand sortie",
+        130
+      ],
+      [
+        "sortie llm",
+        130
+      ],
+      [
+        "llm est",
+        130
+      ],
+      [
+        "est pas",
+        130
+      ],
+      [
+        "pas exploitable",
+        130
+      ],
+      [
+        "mean reversion",
+        130
+      ],
+      [
+        "trend strength",
+        80
+      ],
+      [
+        "previous strategy",
+        76
+      ],
+      [
+        "volatility expansion",
+        69
+      ],
+      [
+        "filter out",
+        67
+      ],
+      [
+        "and the",
+        66
+      ],
+      [
+        "high conviction",
+        65
+      ],
+      [
+        "low volatility",
+        61
+      ],
+      [
+        "and adx",
+        60
+      ],
+      [
+        "this redesign",
+        60
+      ],
+      [
+        "strategy failed",
+        58
+      ],
+      [
+        "adx trend",
+        57
+      ],
+      [
+        "using the",
+        57
+      ],
+      [
+        "when price",
+        56
+      ],
+      [
+        "trend following",
+        52
+      ],
+      [
+        "false signals",
+        52
+      ]
+    ],
+    "placeholder_count": 134,
+    "placeholder_samples": [
+      "Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas ex",
+      "Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas ex",
+      "Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas ex",
+      "Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas ex",
+      "Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas ex",
+      "Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas ex",
+      "Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas ex",
+      "Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas ex",
+      "Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas ex",
+      "Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas ex"
+    ]
+  },
+  "entry_logic": {
+    "total_long": 671,
+    "total_short": 619,
+    "long_indicators_freq": [
+      [
+        "close",
+        449
+      ],
+      [
+        "adx",
+        137
+      ],
+      [
+        "rsi",
+        122
+      ],
+      [
+        "adx_value",
+        99
+      ],
+      [
+        "mfi",
+        72
+      ],
+      [
+        "cci",
+        50
+      ],
+      [
+        "macd_line",
+        46
+      ],
+      [
+        "direction",
+        39
+      ],
+      [
+        "cmf",
+        33
+      ],
+      [
+        "supertrend_direction",
+        33
+      ],
+      [
+        "markov_bull_probability",
+        28
+      ],
+      [
+        "amplitude_hunter_score",
+        25
+      ],
+      [
+        "score",
+        24
+      ],
+      [
+        "vi_plus",
+        21
+      ],
+      [
+        "macd",
+        14
+      ],
+      [
+        "stoch_rsi_k",
+        14
+      ],
+      [
+        "obv",
+        14
+      ],
+      [
+        "roc",
+        14
+      ],
+      [
+        "sar",
+        12
+      ],
+      [
+        "stoch_k",
+        12
+      ]
+    ],
+    "short_indicators_freq": [
+      [
+        "close",
+        446
+      ],
+      [
+        "adx",
+        130
+      ],
+      [
+        "rsi",
+        113
+      ],
+      [
+        "adx_value",
+        99
+      ],
+      [
+        "mfi",
+        71
+      ],
+      [
+        "cci",
+        50
+      ],
+      [
+        "macd_line",
+        46
+      ],
+      [
+        "direction",
+        39
+      ],
+      [
+        "cmf",
+        33
+      ],
+      [
+        "supertrend_direction",
+        33
+      ],
+      [
+        "markov_bull_probability",
+        28
+      ],
+      [
+        "amplitude_hunter_score",
+        25
+      ],
+      [
+        "score",
+        24
+      ],
+      [
+        "vi_minus",
+        21
+      ],
+      [
+        "macd",
+        14
+      ],
+      [
+        "stoch_rsi_k",
+        14
+      ],
+      [
+        "obv",
+        14
+      ],
+      [
+        "roc",
+        14
+      ],
+      [
+        "sar",
+        12
+      ],
+      [
+        "stoch_k",
+        12
+      ]
+    ],
+    "direction_in_long": [
+      [
+        "long",
+        207
+      ],
+      [
+        "haussier",
+        130
+      ],
+      [
+        "above",
+        28
+      ],
+      [
+        "bullish",
+        5
+      ],
+      [
+        "upward",
+        1
+      ],
+      [
+        "buy",
+        1
+      ]
+    ],
+    "direction_in_short": [
+      [
+        "short",
+        146
+      ],
+      [
+        "baissier",
+        130
+      ],
+      [
+        "below",
+        19
+      ],
+      [
+        "bearish",
+        6
+      ],
+      [
+        "downward",
+        1
+      ]
+    ],
+    "sample_long": [
+      "rsi < 30",
+      "rsi < 30",
+      "close > donchian.upper AND keltner.upper > close AND adx_value > 25",
+      "close > donchian.upper AND keltner.upper > close AND adx_value > 25",
+      "close > donchian.upper AND close > ichimoku.tenkan AND keltner.upper > keltner.lower",
+      "close > donchian.upper AND close > ichimoku.tenkan AND keltner.upper > keltner.lower",
+      "close > donchian_upper AND close > keltner_upper AND adx_value > 20",
+      "close > donchian_upper AND close > keltner_upper AND adx_value > 20",
+      "close > donchian_upper AND close > ichimoku_kijun AND keltner_upper > keltner_middle AND markov_bull_probability > 0.5",
+      "close > donchian_upper AND close > ichimoku_kijun AND keltner_upper > keltner_middle AND markov_bull_probability > 0.5",
+      "close > donchian_upper AND close > keltner_middle AND adx_value > 25",
+      "close > donchian_upper AND close > keltner_middle AND adx_value > 25",
+      "close > donchian.upper AND close > keltner.middle AND adx_value > 25 AND cmf > 0",
+      "close > donchian.upper AND close > keltner.middle AND adx_value > 25 AND cmf > 0",
+      "close > donchian_upper AND close > keltner_middle AND adx_value > adx_threshold AND cmf_val > cmf_threshold"
+    ],
+    "sample_short": [
+      "rsi > 70",
+      "rsi > 70",
+      "close < donchian.lower AND keltner.lower < close AND adx_value > 25",
+      "close < donchian.lower AND keltner.lower < close AND adx_value > 25",
+      "close < donchian.lower AND close < ichimoku.tenkan AND keltner.lower < keltner.upper",
+      "close < donchian.lower AND close < ichimoku.tenkan AND keltner.lower < keltner.upper",
+      "close < donchian_lower AND close < keltner_lower AND adx_value > 20",
+      "close < donchian_lower AND close < keltner_lower AND adx_value > 20",
+      "close < donchian_lower AND close < ichimoku_kijun AND keltner_lower < keltner_middle AND markov_bull_probability < 0.5",
+      "close < donchian_lower AND close < ichimoku_kijun AND keltner_lower < keltner_middle AND markov_bull_probability < 0.5",
+      "close < donchian_lower AND close < keltner_middle AND adx_value > 25",
+      "close < donchian_lower AND close < keltner_middle AND adx_value > 25",
+      "close < donchian.lower AND close < keltner.middle AND adx_value > 25 AND cmf < 0",
+      "close < donchian.lower AND close < keltner.middle AND adx_value > 25 AND cmf < 0",
+      "close < donchian_lower AND close < keltner_middle AND adx_value > adx_threshold AND cmf_val < -cmf_threshold"
+    ]
+  },
+  "indicators_requested": {
+    "indicator_frequency": [
+      [
+        "atr",
+        543
+      ],
+      [
+        "rsi",
+        233
+      ],
+      [
+        "adx",
+        177
+      ],
+      [
+        "ema",
+        146
+      ],
+      [
+        "bollinger",
+        138
+      ],
+      [
+        "supertrend",
+        75
+      ],
+      [
+        "mfi",
+        68
+      ],
+      [
+        "donchian",
+        66
+      ],
+      [
+        "markov_switching",
+        64
+      ],
+      [
+        "macd",
+        61
+      ],
+      [
+        "keltner",
+        59
+      ],
+      [
+        "cci",
+        52
+      ],
+      [
+        "psar",
+        49
+      ],
+      [
+        "amplitude_hunter",
+        45
+      ],
+      [
+        "ichimoku",
+        42
+      ],
+      [
+        "pivot_points",
+        40
+      ],
+      [
+        "cmf",
+        39
+      ],
+      [
+        "vwap",
+        33
+      ],
+      [
+        "vortex",
+        31
+      ],
+      [
+        "stoch_rsi",
+        20
+      ],
+      [
+        "directional_bias",
+        18
+      ],
+      [
+        "stochastic",
+        14
+      ],
+      [
+        "obv",
+        14
+      ],
+      [
+        "hma",
+        14
+      ],
+      [
+        "roc",
+        14
+      ],
+      [
+        "chaikin_oscillator",
+        14
+      ],
+      [
+        "sma",
+        9
+      ],
+      [
+        "standard_deviation",
+        6
+      ],
+      [
+        "fvg",
+        6
+      ],
+      [
+        "williams_r",
+        6
+      ]
+    ]
+  },
+  "indicator_access": {
+    "dict_access_top30": [
+      [
+        "rsi",
+        183
+      ],
+      [
+        "atr",
+        120
+      ],
+      [
+        "ema",
+        105
+      ],
+      [
+        "bollinger.upper",
+        80
+      ],
+      [
+        "bollinger",
+        67
+      ],
+      [
+        "adx.adx",
+        54
+      ],
+      [
+        "bollinger.lower",
+        52
+      ],
+      [
+        "adx",
+        45
+      ],
+      [
+        "close",
+        38
+      ],
+      [
+        "bollinger.middle",
+        28
+      ],
+      [
+        "rsi.rsi",
+        24
+      ],
+      [
+        "rsi.close",
+        14
+      ],
+      [
+        "pivot_points",
+        13
+      ],
+      [
+        "swing",
+        12
+      ],
+      [
+        "rsi.roll_mean",
+        12
+      ],
+      [
+        "atr.atr_14",
+        11
+      ],
+      [
+        "ema.ema_21",
+        10
+      ],
+      [
+        "bollinger.close",
+        8
+      ],
+      [
+        "smart_legs",
+        7
+      ],
+      [
+        "atr.atr",
+        7
+      ],
+      [
+        "stochastic.stoch_k",
+        7
+      ],
+      [
+        "close.close",
+        7
+      ],
+      [
+        "pivot_points.r1",
+        6
+      ],
+      [
+        "supertrend.supertrend",
+        5
+      ],
+      [
+        "stochastic.stoch_d",
+        5
+      ],
+      [
+        "bollinger.std",
+        5
+      ],
+      [
+        "rsi.rsi_14",
+        5
+      ],
+      [
+        "macd",
+        4
+      ],
+      [
+        "directional_bias",
+        4
+      ],
+      [
+        "ema_20",
+        4
+      ]
+    ],
+    "dot_access_top30": [
+      [
+        "bollinger.upper",
+        9
+      ],
+      [
+        "bollinger.lower",
+        6
+      ],
+      [
+        "macd.macd_line",
+        4
+      ],
+      [
+        "self.adx",
+        3
+      ],
+      [
+        "bollinger.middle",
+        2
+      ],
+      [
+        "linger.lower",
+        1
+      ],
+      [
+        "df.adx",
+        1
+      ],
+      [
+        "inger.lower",
+        1
+      ],
+      [
+        "ollinger.upper",
+        1
+      ]
+    ],
+    "param_spec_samples": [
+      [
+        "float, 1.0, 3.0",
+        6
+      ],
+      [
+        "float, \"float\", 1.0, 3.0",
+        4
+      ],
+      [
+        "float, 1.5, 2.5",
+        3
+      ],
+      [
+        "type=float, default=70.0",
+        2
+      ],
+      [
+        "type=float, default=30.0",
+        2
+      ],
+      [
+        "float, 1, 1, 1, 1, 1",
+        2
+      ],
+      [
+        "int, 1, 100",
+        2
+      ],
+      [
+        "float, \"float\", 1.5, 0.1",
+        2
+      ],
+      [
+        "default=False, type=bool",
+        2
+      ],
+      [
+        "14, \"int\", 14, 1",
+        2
+      ],
+      [
+        "type=float, default=1.0, min_val=0.1, max_val=5.0",
+        1
+      ],
+      [
+        "type=float, default=2.5, min_val=0.1, max_val=10.0",
+        1
+      ],
+      [
+        "type=float, default=2.5, min_val=0.5, max_val=10.0",
+        1
+      ],
+      [
+        "type=int, default=50, min_val=1, max_val=200",
+        1
+      ],
+      [
+        "type=float, default=2.0",
+        1
+      ]
+    ]
+  },
+  "stream_leakage": {
+    "total_stream_lines": 9391,
+    "leakage_freq": [
+      [
+        "the user",
+        340
+      ],
+      [
+        "i need to",
+        139
+      ],
+      [
+        "so perhaps",
+        134
+      ],
+      [
+        "i should",
+        123
+      ],
+      [
+        "but in the",
+        95
+      ],
+      [
+        "wait, no",
+        51
+      ],
+      [
+        "let me think",
+        39
+      ],
+      [
+        "wait, maybe",
+        34
+      ],
+      [
+        "okay, i",
+        28
+      ],
+      [
+        "looking back",
+        26
+      ],
+      [
+        "first, the",
+        25
+      ],
+      [
+        "looking at",
+        24
+      ],
+      [
+        "additionally",
+        14
+      ],
+      [
+        "so in the",
+        12
+      ],
+      [
+        "for example, if",
+        10
+      ],
+      [
+        "next, the",
+        9
+      ],
+      [
+        "let me start",
+        5
+      ],
+      [
+        "now, the",
+        3
+      ],
+      [
+        "so the required",
+        3
+      ],
+      [
+        "the focus is on",
+        3
+      ],
+      [
+        "here is the",
+        3
+      ],
+      [
+        "wait no",
+        2
+      ],
+      [
+        "the strategy seems",
+        2
+      ],
+      [
+        "perhaps also",
+        2
+      ],
+      [
+        "note that this",
+        2
+      ],
+      [
+        "voici la version",
+        2
+      ],
+      [
+        "so maybe i should",
+        1
+      ],
+      [
+        "from the problem",
+        1
+      ],
+      [
+        "i don't see those",
+        1
+      ],
+      [
+        "these are just examples",
+        1
+      ]
+    ],
+    "en_leakage_samples": [
+      "here is the",
+      "let me think",
+      "for example, if",
+      "so the required",
+      "so perhaps",
+      "the focus is on",
+      "perhaps also",
+      "looking back",
+      "these are just examples",
+      "okay, i",
+      "note that this",
+      "additionally",
+      "now, the",
+      "i don't see those",
+      "wait, no",
+      "i need to",
+      "so maybe i should",
+      "so in the",
+      "the strategy seems",
+      "but in the"
+    ],
+    "fr_leakage_samples": [],
+    "natural_language_in_code_count": 3824,
+    "nl_samples": [
+      "{             \"leverage\": 1,             \"warmup\": 50,             \"stop_atr_mult",
+      "_mult\": ParameterSpec(type=float, default=1.0, min_val=0.1, max_val=5.0),",
+      "\"tp_atr_mult\": ParameterSpec(type=float, default=2.5, min_val=0.1, max_val=10.0),",
+      "\"warmup\": ParameterSpec(type=int, default=50, min_val=1, max_val=20",
+      "cross logic per rules         # Exit: close crosses bollinger.middle OR macd.macd",
+      "linger.lower AND close > ema.ema AND macd.macd_line > macd.macd_signal         long",
+      "AND close < ema.ema AND macd.macd_line < macd.macd_signal         short_entry_cond",
+      ": close crosses bollinger.middle OR macd.macd_line > macd.macd_signal         exit",
+      ", we set to 0)         # Note: The engine handles the persistence of signals, but",
+      "we define the trigger         # In this simplified logic, we treat the exit mask",
+      "array.          # To implement the 'exit' as a signal change, we must be careful",
+      "# For the purpose of this engine, we define the entry signals.",
+      "# To prevent continuous signal flickering, we only set signals on entry",
+      "# The exit logic is primarily handled via the ATR columns we write below",
+      "_mult * atr[entry_short_idx]          # The exit logic (crosses) is implemented via",
+      "the signal array          # by setting signals to 0.0 on exit bars.         # We",
+      "need to find where an active position meets an exit condition.         # Since signals",
+      "is a 1D series of 1, -1, 0, we can't easily look 'back'          # without state",
+      ", but we can define the exit triggers.                  # We will use a simple approach",
+      "\"leverage\": 1,             \"warmup\": 50,             \"adx_filter\":",
+      "25,             \"mfi_threshold_high\": 70,             \"mfi_threshold_low\": 30,",
+      "\"stop_atr_mult\": 1.5,             \"tp_atr_mult\": 2.5         }      @property",
+      "\"adx_filter\": ParameterSpec(type=float, default=25.0, min_val=0.0, max_val=100.0",
+      "),             \"mfi_threshold_high\": ParameterSpec(type=float, default=70.0, min",
+      "_val=50.0, max_val=100.0),             \"mfi_threshold_low\": ParameterSpec(type=float",
+      ", default=30.0, min_val=0.0, max_val=50.0),             \"stop_atr_mult\": Parameter",
+      "Spec(type=float, default=1.5, min_val=0.5, max_val=5.0),             \"tp_atr_mult",
+      "\": ParameterSpec(type=float, default=2.5, min_val=0.5, max_val=10.0),",
+      "\"warmup\": ParameterSpec(type=int, default=50, min_val=1, max_val=200)         }",
+      "fi > mfi_high) & (adx_val < adx_filter)          # Exit Logic: Reversion to mean"
+    ]
+  },
+  "diagnostics_decisions": {
+    "diagnostic_categories": [
+      [
+        "no_trades",
+        83
+      ],
+      [
+        "ruined",
+        55
+      ],
+      [
+        "high_drawdown",
+        48
+      ],
+      [
+        "approaching_target",
+        41
+      ],
+      [
+        "target_reached",
+        26
+      ],
+      [
+        "needs_work",
+        11
+      ],
+      [
+        "insufficient_trades",
+        7
+      ]
+    ],
+    "analysis_decisions": [],
+    "warn_count": 123,
+    "error_count": 7,
+    "fallback_count": 130,
+    "warn_samples": [
+      "[WARN] Auto-reset Builder: saturation fallback detectee, redemarrage sur une base plus saine.",
+      "[WARN] Proposition invalide apres retry contractuel - fallback deterministe",
+      "[WARN] Stagnation detectee: metriques identiques a l'iteration precedente - forcage changement radical.",
+      "[WARN] Auto-reset Builder: saturation fallback detectee, redemarrage sur une base plus saine.",
+      "[WARN] Proposition invalide apres retry contractuel - fallback deterministe",
+      "[WARN] Auto-reset Builder: saturation fallback detectee, redemarrage sur une base plus saine.",
+      "[WARN] Proposition invalide apres retry contractuel - fallback deterministe",
+      "[WARN] Auto-reset Builder: saturation fallback detectee, redemarrage sur une base plus saine.",
+      "[WARN] Proposition invalide apres retry contractuel - fallback deterministe",
+      "[WARN] Auto-reset Builder: saturation fallback detectee, redemarrage sur une base plus saine."
+    ],
+    "error_samples": [
+      "[ERROR] LOAD Sauvegarde / chargement - RuntimeError: boom load",
+      "[ERROR] Iteration 1 - Iteration 1 en erreur - RuntimeError: boom load",
+      "[ERROR] Iteration 2 - Iteration 2 en erreur - RuntimeError: Validation échouée: [AST001] Erreur de syntaxe ligne 24: ':' expected after dictionary key | retry: [CLASS001] Bloc logique LLM vide. | fallback: [AST001] Erreur de syntaxe ligne 26: ':' expected after dictionary key",
+      "[ERROR] Iteration 8 - Iteration 8 en erreur - RuntimeError: Validation échouée: [AST001] Erreur de syntaxe ligne 23: ':' expected after dictionary key | retry: [CLASS001] Bloc logique LLM vide. | fallback: [AST001] Erreur de syntaxe ligne 25: ':' expected after dictionary key",
+      "[ERROR] Iteration 9 - Iteration 9 en erreur - RuntimeError: Bloc logique LLM invalide après retry + fallback invalide: [AST001] Erreur de syntaxe ligne 24: ':' expected after dictionary key",
+      "[ERROR] Iteration 10 - Iteration 10 en erreur - RuntimeError: Validation échouée: [AST001] Erreur de syntaxe ligne 23: ':' expected after dictionary key | retry: [CLASS001] Bloc logique LLM vide. | fallback: [AST001] Erreur de syntaxe ligne 24: ':' expected after dictionary key",
+      "[ERROR] Iteration 1 - Iteration 1 en erreur - RuntimeError: deterministic_fallback ablated — no fallback allowed"
+    ],
+    "fallback_samples": [
+      "Note        : Proposition candidate | branche `main` - Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "Note        : Branche retenue | branche `main` - Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "Note        : Proposition candidate | branche `main` - Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "Note        : Branche retenue | branche `main` - Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "Note        : Proposition candidate | branche `main` - Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "Note        : Branche retenue | branche `main` - Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "Note        : Proposition candidate | branche `main` - Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "Note        : Branche retenue | branche `main` - Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "Note        : Proposition candidate | branche `main` - Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable.",
+      "Note        : Branche retenue | branche `main` - Fallback contractuel: proposition générée automatiquement pour maintenir la progression quand la sortie LLM n'est pas exploitable."
+    ]
+  },
+  "risk_management": {
+    "total_risk_entries": 573,
+    "top_words": [
+      [
+        "atr",
+        1126
+      ],
+      [
+        "take-profit",
+        554
+      ],
+      [
+        "entry",
+        553
+      ],
+      [
+        "atr-based",
+        423
+      ],
+      [
+        "stop",
+        382
+      ],
+      [
+        "below",
+        264
+      ],
+      [
+        "above",
+        264
+      ],
+      [
+        "stop-loss",
+        183
+      ],
+      [
+        "leverage",
+        134
+      ],
+      [
+        "modéré",
+        130
+      ],
+      [
+        "for",
+        58
+      ],
+      [
+        "from",
+        44
+      ],
+      [
+        "longs",
+        42
+      ],
+      [
+        "ratio",
+        12
+      ],
+      [
+        "quot",
+        12
+      ],
+      [
+        "maintain",
+        8
+      ],
+      [
+        "the",
+        6
+      ],
+      [
+        "trailing",
+        5
+      ],
+      [
+        "take",
+        5
+      ],
+      [
+        "profit",
+        5
+      ],
+      [
+        "reward-to-risk",
+        4
+      ],
+      [
+        "trending",
+        4
+      ],
+      [
+        "regime",
+        4
+      ],
+      [
+        "target",
+        4
+      ],
+      [
+        "with",
+        4
+      ],
+      [
+        "long",
+        4
+      ],
+      [
+        "risk",
+        4
+      ],
+      [
+        "trend",
+        3
+      ],
+      [
+        "set",
+        3
+      ],
+      [
+        "direction",
+        3
+      ]
+    ],
+    "atr_multipliers": [
+      [
+        "1.5x ATR",
+        157
+      ],
+      [
+        "2.4x ATR",
+        111
+      ],
+      [
+        "3x ATR",
+        64
+      ],
+      [
+        "2.5x ATR",
+        61
+      ],
+      [
+        "4.8x ATR",
+        34
+      ],
+      [
+        "2.0x ATR",
+        33
+      ],
+      [
+        "3.7x ATR",
+        32
+      ],
+      [
+        "1.4x ATR",
+        31
+      ],
+      [
+        "1.9x ATR",
+        28
+      ],
+      [
+        "1.3x ATR",
+        26
+      ]
+    ],
+    "samples": [
+      "atr stop",
+      "atr stop",
+      "ATR-based: stop-loss at 1.7x ATR below entry, take-profit at 3.7x ATR above entry",
+      "ATR-based: stop-loss at 1.7x ATR below entry, take-profit at 3.7x ATR above entry",
+      "ATR-based: stop at 1.7x ATR below entry, take-profit at 3.7x ATR above entry",
+      "ATR-based: stop at 1.7x ATR below entry, take-profit at 3.7x ATR above entry",
+      "ATR-based: stop at 1.7x ATR from entry, take-profit at 3.7x ATR from entry",
+      "ATR-based: stop at 1.7x ATR from entry, take-profit at 3.7x ATR from entry",
+      "ATR-based: stop at 1.7x ATR below entry, take-profit at 3.7x ATR above entry",
+      "ATR-based: stop at 1.7x ATR below entry, take-profit at 3.7x ATR above entry",
+      "ATR-based: stop-loss at 1.7x ATR, take-profit at 3.7x ATR",
+      "ATR-based: stop-loss at 1.7x ATR, take-profit at 3.7x ATR",
+      "ATR-based: stop at 1.7x ATR below entry, take-profit at 3.7x ATR above entry",
+      "ATR-based: stop at 1.7x ATR below entry, take-profit at 3.7x ATR above entry",
+      "ATR-based: stop-loss at 1.7x ATR, take-profit at 3.7x ATR"
+    ]
+  },
+  "repetition": {
+    "total_repetition_events": 28,
+    "by_model": [
+      [
+        "lfm2:24b",
+        3
+      ],
+      [
+        "deepseek-moe-16b-local:latest",
+        1
+      ]
+    ],
+    "samples": [
+      {
+        "file": "20260413_002130_strat_gie_sur_solusdc_30m_generate_a_tra.md",
+        "line": "[INFO] ⚡ Boucle de répétition détectée (code) — relance correctrice avec instruction explicite"
+      },
+      {
+        "file": "20260413_002130_strat_gie_sur_solusdc_30m_generate_a_tra.md",
+        "line": "[INFO] ⚡ Boucle de répétition détectée (retry_code) — relance correctrice avec instruction explicite"
+      },
+      {
+        "file": "20260413_002130_strat_gie_sur_solusdc_30m_generate_a_tra.md",
+        "line": "[INFO] ⚡ Boucle de répétition détectée (code) — relance correctrice avec instruction explicite"
+      },
+      {
+        "file": "20260413_002130_strat_gie_sur_solusdc_30m_generate_a_tra.md",
+        "line": "[INFO] ⚡ Boucle de répétition détectée (retry_code) — relance correctrice avec instruction explicite"
+      },
+      {
+        "file": "20260413_205942_strat_gie_sur_ltcusdc_1w_acheter_lors_de.md",
+        "line": "[INFO] ⚡ Boucle de répétition détectée (code) — relance correctrice avec instruction explicite"
+      },
+      {
+        "file": "20260413_205942_strat_gie_sur_ltcusdc_1w_acheter_lors_de.md",
+        "line": "[INFO] ⚡ Boucle de répétition détectée (code) — relance correctrice avec instruction explicite"
+      },
+      {
+        "file": "20260413_205942_strat_gie_sur_ltcusdc_1w_acheter_lors_de.md",
+        "line": "[INFO] ⚡ Boucle de répétition détectée (retry_code) — relance correctrice avec instruction explicite"
+      },
+      {
+        "file": "20260413_205942_strat_gie_sur_ltcusdc_1w_acheter_lors_de.md",
+        "line": "[INFO] ⚡ Boucle de répétition détectée (retry_code) — relance correctrice avec instruction explicite"
+      },
+      {
+        "file": "20260413_205942_strat_gie_sur_ltcusdc_1w_acheter_lors_de.md",
+        "line": "[INFO] ⚡ Boucle de répétition détectée (retry_code) — relance correctrice avec instruction explicite"
+      },
+      {
+        "file": "20260413_205942_strat_gie_sur_ltcusdc_1w_acheter_lors_de.md",
+        "line": "[INFO] ⚡ Boucle de répétition détectée (code) — relance correctrice avec instruction explicite"
+      }
+    ]
+  }
+}

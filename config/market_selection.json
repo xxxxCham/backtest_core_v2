@@ -60,6 +60,9 @@
     "local_filters": {
       "min_segment_bars_floor": 300,
       "canonical_segment_days_multiplier": 1.0,
+      "canonical_min_segment_bars_by_timeframe": {
+        "1w": 400
+      },
       "min_listing_age_days": 45,
       "min_tradable_ratio_hard": 0.75,
       "min_tradable_ratio_canonical": 0.9,

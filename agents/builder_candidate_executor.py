@@ -23,22 +23,26 @@ import pandas as pd
 import agents.strategy_builder as strategy_builder_module
 from agents.builder_code_repair import _auto_repair_vectorize, _repair_code
 from agents.builder_code_validation import validate_generated_code
+from agents.builder_diagnostics import (
+    _metric_float,
+    _telemetry_score_from_metrics,
+    compute_builder_telemetry_score,
+)
+from agents.builder_proposal_helpers import (
+    _normalize_change_type,
+    _params_only_contract_respected,
+    _proposal_changes_indicator_set_in_params_mode,
+    _proposal_has_meaningful_param_delta,
+    _rewrite_default_params_from_proposal,
+)
 from agents.builder_state import BuilderIteration, BuilderSession
+from agents.builder_text_utils import _safe_format_exception
 from agents.strategy_builder import (
     _build_deterministic_fallback_code,
     _extract_generate_signals_logic_block,
     _extract_python_from_response,
-    _metric_float,
-    _normalize_change_type,
-    _params_only_contract_respected,
     _postprocess_llm_logic_block,
-    _proposal_changes_indicator_set_in_params_mode,
-    _proposal_has_meaningful_param_delta,
-    _rewrite_default_params_from_proposal,
-    _safe_format_exception,
-    _telemetry_score_from_metrics,
     _validate_llm_logic_block,
-    compute_builder_telemetry_score,
 )
 
 
@@ -407,7 +411,7 @@ class BuilderCandidateExecutorV2:
             self.code_feedback["vectorize_fixes"] = vectorize_fixes
         is_valid, error_msg = validate_generated_code(repaired_code)
         if is_valid:
-            return repaired_code
+            return self._enforce_indicator_contract(repaired_code, allow_retry=True)
 
         self.code_feedback["validation_error"] = error_msg
         retry_logic_raw = self.builder._retry_code_simple(self.candidate_proposal)
@@ -432,7 +436,7 @@ class BuilderCandidateExecutorV2:
             is_valid_retry, retry_error = validate_generated_code(retry_code)
 
         if is_valid_retry:
-            return retry_code
+            return self._enforce_indicator_contract(retry_code, allow_retry=False)
 
         self.code_feedback["validation_error_retry"] = retry_error
         fallback_code = self._next_fallback_code()
@@ -444,6 +448,67 @@ class BuilderCandidateExecutorV2:
             )
             self.outcome["code_feedback"] = self.code_feedback
             raise RuntimeError(str(self.outcome["error"]))
+        self.code_feedback["fallback_deterministic_used"] = True
+        self.code_feedback["source"] = "deterministic_fallback"
+        self.code_feedback["fallback_variant"] = self.ctx.fallback_count - 1
+        return fallback_code
+
+    def _enforce_indicator_contract(self, code: str, *, allow_retry: bool) -> str:
+        if not self.req_inds:
+            return code
+
+        inferred = strategy_builder_module._infer_required_indicator_names_from_code(
+            code,
+            self.req_inds,
+        )
+        unexpected = [ind for ind in inferred if ind not in self.req_inds]
+        if not unexpected:
+            return code
+
+        self.code_feedback["indicator_contract_violation"] = {
+            "declared": list(self.req_inds),
+            "inferred": list(inferred),
+            "unexpected": list(unexpected),
+        }
+        self.code_feedback["indicator_contract_status"] = "retry" if allow_retry else "fallback"
+
+        if allow_retry:
+            retry_logic_raw = self.builder._retry_code_simple(self.candidate_proposal)
+            retry_logic = _extract_python_from_response(retry_logic_raw)
+            if self.builder.ablation.is_enabled("postprocess_logic"):
+                retry_logic = _postprocess_llm_logic_block(retry_logic, self.req_inds)
+            logic_ok, logic_err = _validate_llm_logic_block(retry_logic)
+            if logic_ok:
+                retry_code = strategy_builder_module._build_deterministic_strategy_code(
+                    self.candidate_proposal,
+                    retry_logic,
+                )
+                retry_code = _repair_code(
+                    retry_code,
+                    self.req_inds,
+                    enable_indicator_binding=self.builder.ablation.is_enabled("indicator_binding"),
+                )
+                valid_retry, retry_error = validate_generated_code(retry_code)
+                if valid_retry:
+                    retry_inferred = strategy_builder_module._infer_required_indicator_names_from_code(
+                        retry_code,
+                        self.req_inds,
+                    )
+                    retry_unexpected = [ind for ind in retry_inferred if ind not in self.req_inds]
+                    if not retry_unexpected:
+                        self.code_feedback["indicator_contract_retry_used"] = True
+                        return retry_code
+                    self.code_feedback["indicator_contract_retry_violation"] = {
+                        "declared": list(self.req_inds),
+                        "inferred": list(retry_inferred),
+                        "unexpected": list(retry_unexpected),
+                    }
+                else:
+                    self.code_feedback["indicator_contract_retry_validation_error"] = retry_error
+            else:
+                self.code_feedback["indicator_contract_retry_logic_error"] = logic_err
+
+        fallback_code = self._next_fallback_code()
         self.code_feedback["fallback_deterministic_used"] = True
         self.code_feedback["source"] = "deterministic_fallback"
         self.code_feedback["fallback_variant"] = self.ctx.fallback_count - 1

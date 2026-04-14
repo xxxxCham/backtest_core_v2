@@ -1,16 +1,12 @@
 """
 Module-ID: agents.builder_diagnostics
 
-Purpose: Fonctions de diagnostic déterministe extraites de strategy_builder.py.
-         Helpers de métriques et compute_diagnostic() pour classifier les résultats
-         de backtest et guider les itérations du StrategyBuilder.
+Purpose: Fonctions de diagnostic déterministe et scoring Builder, extraites
+         de strategy_builder.py. Source de vérité unique pour les helpers de
+         métriques, le score de télémétrie, les critères d'acceptation et
+         compute_diagnostic().
 
 Role in pipeline: diagnostic / scoring
-
-Key components: _metric_float, _is_ruined_metrics, _ranking_sharpe,
-                _metrics_fingerprint, _is_accept_candidate,
-                _is_positive_progress_iteration, _count_positive_iterations,
-                _required_positive_count_for_iteration, compute_diagnostic
 
 Dependencies: agents.builder_constants
 
@@ -21,16 +17,25 @@ Skip-if: Vous ne touchez pas à la boucle itérative du builder.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from agents.builder_constants import (
-    MIN_TRADES_FOR_ACCEPT,
     MAX_DRAWDOWN_PCT_FOR_ACCEPT,
+    MAX_POSITIVE_FALLBACK_COUNT,
+    MIN_PROFIT_FACTOR_FOR_ACCEPT,
     MIN_RETURN_PCT_FOR_ACCEPT,
+    MIN_TRADES_FOR_ACCEPT,
     MIN_TRADES_FOR_POSITIVE_PROGRESS,
     POSITIVE_PROGRESS_GATE_CHECKPOINTS,
 )
 
+if TYPE_CHECKING:
+    from agents.builder_state import BuilderIteration
+
+
+# ---------------------------------------------------------------------------
+# Helpers de métriques
+# ---------------------------------------------------------------------------
 
 def _metric_float(metrics: Dict[str, Any], key: str, default: float = 0.0) -> float:
     """Lecture float robuste d'une métrique sans écraser les zéros valides."""
@@ -39,7 +44,7 @@ def _metric_float(metrics: Dict[str, Any], key: str, default: float = 0.0) -> fl
         return float(default)
     try:
         return float(value)
-    except Exception:
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
         return float(default)
 
 
@@ -51,15 +56,150 @@ def _is_ruined_metrics(metrics: Dict[str, Any]) -> bool:
     return account_ruined or ret <= -90.0 or max_dd >= 90.0
 
 
-def _ranking_sharpe(metrics: Dict[str, Any]) -> float:
-    """Sharpe de ranking, pénalisé pour éviter de promouvoir des runs invalides."""
-    sharpe = _metric_float(metrics, "sharpe_ratio", float("-inf"))
+def _clamp(value: float, min_value: float, max_value: float) -> float:
+    return max(min_value, min(max_value, value))
+
+
+# ---------------------------------------------------------------------------
+# Score de télémétrie Builder
+# ---------------------------------------------------------------------------
+
+def compute_builder_telemetry_score(
+    metrics: Dict[str, Any],
+    *,
+    target_sharpe: float = 1.0,
+) -> Dict[str, Any]:
+    """Score composite de télémétrie Builder.
+
+    Ce score reste purement informatif: il n'oriente plus l'acceptation, la
+    promotion d'itération ni le routing des modèles. Il sert uniquement à
+    l'observabilité et au diagnostic.
+    """
+    sharpe = _metric_float(metrics, "sharpe_ratio", 0.0)
+    ret = _metric_float(metrics, "total_return_pct", 0.0)
+    max_dd = abs(_metric_float(metrics, "max_drawdown_pct", 0.0))
+    profit_factor = _metric_float(metrics, "profit_factor", 1.0)
     trades = int(metrics.get("total_trades", 0) or 0)
-    if _is_ruined_metrics(metrics):
-        return -20.0
-    if trades <= 0:
-        return min(sharpe, -5.0)
-    return sharpe
+    win_rate = _metric_float(metrics, "win_rate_pct", 35.0)
+    ruined = _is_ruined_metrics(metrics)
+
+    target = max(float(target_sharpe or 1.0), 0.5)
+
+    components = {
+        "sharpe": _clamp(sharpe / target, -1.5, 2.0) * 28.0,
+        "return": _clamp(ret / 20.0, -1.5, 2.0) * 22.0,
+        "profit_factor": _clamp((profit_factor - 1.0) / 0.35, -1.5, 2.0) * 16.0,
+        "trades_confidence": _clamp(trades / 60.0, 0.0, 1.0) * 10.0,
+        "win_rate": _clamp((win_rate - 35.0) / 20.0, -1.0, 1.5) * 6.0,
+    }
+
+    drawdown_excess_pct = max(0.0, max_dd - MAX_DRAWDOWN_PCT_FOR_ACCEPT)
+    penalties = {
+        "drawdown_pressure": _clamp((max_dd - 20.0) / 30.0, 0.0, 2.0) * 20.0,
+        "drawdown_excess": _clamp(drawdown_excess_pct / 12.0, 0.0, 2.0) * 10.0,
+        "insufficient_trades": 8.0 if trades < MIN_TRADES_FOR_ACCEPT else 0.0,
+        "non_positive_return": 12.0 if ret <= 0.0 else 0.0,
+        "ruined": 80.0 if ruined else 0.0,
+    }
+
+    raw_total = float(sum(components.values()) - sum(penalties.values()))
+    score = _clamp(raw_total, -100.0, 100.0)
+
+    return {
+        "score": score,
+        "components": components,
+        "penalties": penalties,
+        "drawdown_excess_pct": drawdown_excess_pct,
+        "ruined": ruined,
+    }
+
+
+def compute_continuous_builder_score(
+    metrics: Dict[str, Any],
+    *,
+    target_sharpe: float = 1.0,
+) -> Dict[str, Any]:
+    """Alias de compatibilité vers ``compute_builder_telemetry_score()``."""
+    return compute_builder_telemetry_score(
+        metrics,
+        target_sharpe=target_sharpe,
+    )
+
+
+def _telemetry_score_from_metrics(
+    metrics: Dict[str, Any],
+    *,
+    target_sharpe: float = 1.0,
+) -> float:
+    """Score composite de télémétrie dérivé des métriques brutes."""
+    return float(
+        compute_builder_telemetry_score(
+            metrics,
+            target_sharpe=target_sharpe,
+        ).get("score", -100.0)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ranking et sélection d'itérations
+# ---------------------------------------------------------------------------
+
+def _ranking_sharpe(
+    metrics: Dict[str, Any],
+    *,
+    target_sharpe: float = 1.0,
+) -> float:
+    """Alias de compatibilité vers ``_telemetry_score_from_metrics()``."""
+    return _telemetry_score_from_metrics(
+        metrics,
+        target_sharpe=target_sharpe,
+    )
+
+
+def _builder_iteration_selection_key(
+    metrics: Dict[str, Any],
+    *,
+    is_fallback: bool = False,
+    target_sharpe: float = 1.0,
+) -> tuple[Any, ...]:
+    """Clé lexicographique explicite pour comparer deux runs Builder.
+
+    Priorités, de la plus importante à la moins importante :
+    1. run non-fallback
+    2. métriques non ruinées
+    3. rendement positif
+    4. profit factor acceptable
+    5. nombre minimum de trades atteint
+    6. target Sharpe atteinte
+    7. Sharpe plus élevé
+    8. rendement plus élevé
+    9. profit factor plus élevé
+    10. drawdown plus faible
+    11. plus de trades
+    12. meilleur win rate
+    """
+    sharpe = _metric_float(metrics, "sharpe_ratio", float("-inf"))
+    ret = _metric_float(metrics, "total_return_pct", float("-inf"))
+    max_dd = abs(_metric_float(metrics, "max_drawdown_pct", float("inf")))
+    profit_factor = _metric_float(metrics, "profit_factor", 0.0)
+    trades = int(metrics.get("total_trades", 0) or 0)
+    win_rate = _metric_float(metrics, "win_rate_pct", 0.0)
+    ruined = _is_ruined_metrics(metrics)
+
+    return (
+        0 if is_fallback else 1,
+        0 if ruined else 1,
+        1 if ret > MIN_RETURN_PCT_FOR_ACCEPT else 0,
+        1 if profit_factor >= MIN_PROFIT_FACTOR_FOR_ACCEPT else 0,
+        1 if trades >= MIN_TRADES_FOR_ACCEPT else 0,
+        1 if sharpe >= target_sharpe else 0,
+        sharpe,
+        ret,
+        profit_factor,
+        -max_dd,
+        trades,
+        win_rate,
+    )
 
 
 def _metrics_fingerprint(metrics: Dict[str, Any]) -> str:
@@ -72,6 +212,10 @@ def _metrics_fingerprint(metrics: Dict[str, Any]) -> str:
     return "|".join(parts)
 
 
+# ---------------------------------------------------------------------------
+# Critères d'acceptation et progression
+# ---------------------------------------------------------------------------
+
 def _is_accept_candidate(
     metrics: Dict[str, Any],
     *,
@@ -82,6 +226,7 @@ def _is_accept_candidate(
     trades = int(metrics.get("total_trades", 0) or 0)
     ret = _metric_float(metrics, "total_return_pct", 0.0)
     max_dd = abs(_metric_float(metrics, "max_drawdown_pct", 0.0))
+    profit_factor = _metric_float(metrics, "profit_factor", MIN_PROFIT_FACTOR_FOR_ACCEPT)
 
     if _is_ruined_metrics(metrics):
         return False, "ruined_metrics"
@@ -91,8 +236,10 @@ def _is_accept_candidate(
         return False, "target_sharpe_not_reached"
     if ret <= MIN_RETURN_PCT_FOR_ACCEPT:
         return False, "non_positive_return"
-    if max_dd > MAX_DRAWDOWN_PCT_FOR_ACCEPT:
-        return False, "drawdown_too_high"
+    if profit_factor < MIN_PROFIT_FACTOR_FOR_ACCEPT:
+        return False, "profit_factor_too_low"
+    if max_dd > (MAX_DRAWDOWN_PCT_FOR_ACCEPT + 25.0):
+        return False, "drawdown_extreme"
     return True, "ok"
 
 
@@ -105,21 +252,31 @@ def _is_positive_progress_iteration(metrics: Dict[str, Any]) -> bool:
     return ret > 0.0 and trades >= MIN_TRADES_FOR_POSITIVE_PROGRESS
 
 
-def _count_positive_iterations(iterations: List[Any]) -> int:
+def _count_positive_iterations(iterations: "List[BuilderIteration]") -> int:
     """Compte les itérations backtestées positives dans l'historique de session.
 
-    Fallback iterations (deterministic code) are excluded: they don't
-    represent genuine LLM progress.
+    Fallback iterations with positive metrics are counted towards the quota,
+    but limited to MAX_POSITIVE_FALLBACK_COUNT to prevent accepting
+    sessions with only deterministic logic.
     """
     count = 0
+    fallback_positive_count = 0
+
     for it in iterations:
         if it.backtest_result is None:
             continue
-        if it.is_fallback:
-            continue
+
         metrics = it.backtest_result.metrics or {}
-        if _is_positive_progress_iteration(metrics):
-            count += 1
+        is_positive = _is_positive_progress_iteration(metrics)
+
+        if it.is_fallback:
+            if is_positive and fallback_positive_count < MAX_POSITIVE_FALLBACK_COUNT:
+                count += 1
+                fallback_positive_count += 1
+        else:
+            if is_positive:
+                count += 1
+
     return count
 
 
@@ -127,6 +284,10 @@ def _required_positive_count_for_iteration(iteration_index: int) -> int:
     """Retourne le quota de runs positifs requis au checkpoint courant."""
     return int(POSITIVE_PROGRESS_GATE_CHECKPOINTS.get(iteration_index, 0) or 0)
 
+
+# ---------------------------------------------------------------------------
+# Diagnostic déterministe
+# ---------------------------------------------------------------------------
 
 def compute_diagnostic(
     metrics: Dict[str, Any],
@@ -183,6 +344,10 @@ def compute_diagnostic(
             "detail": f"WR {wr:.1f}%, Trades {n}, AvgW/L {avg_w:.2f}/{avg_l:.2f}",
         },
     }
+    telemetry_score = compute_builder_telemetry_score(
+        metrics,
+        target_sharpe=target_sharpe,
+    )
 
     # --- Catégorie principale (par gravité décroissante) ---
     if n == 0:
@@ -376,4 +541,16 @@ def compute_diagnostic(
         "trend": trend,
         "trend_detail": trend_detail,
         "score_card": sc,
+        "telemetry_score": round(float(telemetry_score.get("score", 0.0)), 2),
+        "continuous_score": round(float(telemetry_score.get("score", 0.0)), 2),
+        "telemetry_breakdown": {
+            "components": telemetry_score.get("components", {}),
+            "penalties": telemetry_score.get("penalties", {}),
+            "drawdown_excess_pct": telemetry_score.get("drawdown_excess_pct", 0.0),
+        },
+        "score_breakdown": {
+            "components": telemetry_score.get("components", {}),
+            "penalties": telemetry_score.get("penalties", {}),
+            "drawdown_excess_pct": telemetry_score.get("drawdown_excess_pct", 0.0),
+        },
     }

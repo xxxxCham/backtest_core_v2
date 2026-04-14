@@ -10,7 +10,16 @@ import random
 import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from agents.builder_ast_utils import _extract_json_from_response
+from agents.builder_objective_parser import (
+    _canonicalize_indicator_name,
+    _extract_objective_indicator_names,
+    _looks_like_prompt_instruction_leakage,
+    sanitize_objective_text,
+)
+from agents.builder_text_utils import _normalize_llm_text
 from agents.llm_client import LLMMessage
+from agents.strategy_builder import _build_deterministic_fallback_code
 from config.market_selection import (
     get_strategy_requirements,
     infer_strategy_type,
@@ -18,14 +27,6 @@ from config.market_selection import (
 )
 from indicators.registry import list_indicators
 from utils.observability import get_obs_logger
-from agents.strategy_builder import (
-    _build_deterministic_fallback_code,
-    _canonicalize_indicator_name,
-    _extract_json_from_response,
-    _looks_like_prompt_instruction_leakage,
-    _normalize_llm_text,
-    sanitize_objective_text,
-)
 
 logger = get_obs_logger(__name__)
 
@@ -283,17 +284,19 @@ def _sanitize_objective_indicators_section(
     raw_block = str(match.group(2) or "")
     suffix = str(match.group(3) or "")
 
-    extracted = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", raw_block)
-    selected: List[str] = []
-    for token in extracted:
-        normalized = _canonicalize_indicator_name(token, known=allowed_set)
-        if normalized and normalized not in selected:
-            selected.append(normalized)
+    selected = _extract_objective_indicator_names(
+        raw_block,
+        available_indicators=available_indicators,
+    )
 
-    if "atr" in allowed_set and "atr" not in selected:
-        selected.append("atr")
+    if not selected:
+        extracted = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", raw_block)
+        for token in extracted:
+            normalized = _canonicalize_indicator_name(token, known=allowed_set)
+            if normalized and normalized not in selected:
+                selected.append(normalized)
 
-    if len(selected) < 2:
+    if not selected:
         for candidate in preferred_fallback:
             if candidate not in selected:
                 selected.append(candidate)
@@ -334,7 +337,7 @@ def _sanitize_objective_indicator_candidates(
         if normalized and normalized not in selected:
             selected.append(normalized)
 
-    if len(selected) < 2:
+    if not selected:
         preferred = [
             name
             for name in ("ema", "rsi", "bollinger", "macd", "stochastic", "adx", "atr")
@@ -865,181 +868,110 @@ def generate_llm_objective_from_seed(
     return objective
 
 
-def recommend_market_context(
-    llm_client: Any,
+def _unique_non_empty(values: List[str], *, upper: bool = False) -> List[str]:
+    out: List[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        val = str(raw or "").strip()
+        if not val:
+            continue
+        if upper:
+            val = val.upper()
+        if val in seen:
+            continue
+        seen.add(val)
+        out.append(val)
+    return out
+
+
+def _find_objective_market_hints(
+    objective_text: str,
     *,
-    objective: str,
-    candidate_symbols: List[str],
-    candidate_timeframes: List[str],
-    default_symbol: str = "BTCUSDC",
-    default_timeframe: str = "1h",
-    stream_callback: Optional[Callable[[str, str], None]] = None,
-    recent_markets: Optional[List[Tuple[str, str]]] = None,
-) -> Dict[str, Any]:
-    """Recommande un couple (symbol, timeframe) adapté à un objectif Builder.
+    allowed_symbols: List[str],
+    allowed_timeframes: List[str],
+) -> Tuple[Optional[str], Optional[str]]:
+    """Extrait les indices explicites symbol/timeframe présents dans l'objectif."""
+    text = sanitize_objective_text(objective_text)
+    if not text:
+        return None, None
 
-    Le choix est strictement borné à l'univers fourni (`candidate_symbols`,
-    `candidate_timeframes`). En cas de réponse invalide du LLM, un fallback
-    robuste est appliqué.
-    """
+    text_upper = text.upper()
 
-    def _unique_non_empty(values: List[str], *, upper: bool = False) -> List[str]:
-        out: List[str] = []
-        seen: set[str] = set()
-        for raw in values:
-            val = str(raw or "").strip()
-            if not val:
-                continue
-            if upper:
-                val = val.upper()
-            if val in seen:
-                continue
-            seen.add(val)
-            out.append(val)
-        return out
-
-    def _find_objective_market_hints(
-        objective_text: str,
-        *,
-        allowed_symbols: List[str],
-        allowed_timeframes: List[str],
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """Extrait les indices explicites symbol/timeframe présents dans l'objectif."""
-        text = sanitize_objective_text(objective_text)
-        if not text:
-            return None, None
-
-        text_upper = text.upper()
-
-        symbol_hits: List[Tuple[int, str]] = []
-        for symbol in allowed_symbols:
-            match = re.search(
-                rf"(?<![A-Z0-9]){re.escape(symbol)}(?![A-Z0-9])",
-                text_upper,
-            )
-            if match:
-                symbol_hits.append((match.start(), symbol))
-
-        timeframe_hits: List[Tuple[int, str]] = []
-        for timeframe in allowed_timeframes:
-            tf = str(timeframe or "").strip()
-            if not tf:
-                continue
-            if re.fullmatch(r"\d+[mhdwM]", tf):
-                match = re.search(
-                    rf"(?<![A-Za-z0-9]){re.escape(tf[:-1])}\s*{re.escape(tf[-1])}(?![A-Za-z0-9])",
-                    text,
-                    flags=re.IGNORECASE,
-                )
-            else:
-                match = re.search(
-                    rf"(?<![A-Za-z0-9]){re.escape(tf)}(?![A-Za-z0-9])",
-                    text,
-                    flags=re.IGNORECASE,
-                )
-            if match:
-                timeframe_hits.append((match.start(), tf))
-
-        hinted_symbol = min(symbol_hits, key=lambda x: x[0])[1] if symbol_hits else None
-        hinted_timeframe = (
-            min(timeframe_hits, key=lambda x: x[0])[1]
-            if timeframe_hits else None
+    symbol_hits: List[Tuple[int, str]] = []
+    for symbol in allowed_symbols:
+        match = re.search(
+            rf"(?<![A-Z0-9]){re.escape(symbol)}(?![A-Z0-9])",
+            text_upper,
         )
-        return hinted_symbol, hinted_timeframe
+        if match:
+            symbol_hits.append((match.start(), symbol))
 
-    symbol_re = re.compile(r"^[A-Za-z0-9_.-]{2,24}$")
-    timeframe_re = re.compile(r"^\d+[mhdwM]$")
+    timeframe_hits: List[Tuple[int, str]] = []
+    for timeframe in allowed_timeframes:
+        tf = str(timeframe or "").strip()
+        if not tf:
+            continue
+        if re.fullmatch(r"\d+[mhdwM]", tf):
+            match = re.search(
+                rf"(?<![A-Za-z0-9]){re.escape(tf[:-1])}\s*{re.escape(tf[-1])}(?![A-Za-z0-9])",
+                text,
+                flags=re.IGNORECASE,
+            )
+        else:
+            match = re.search(
+                rf"(?<![A-Za-z0-9]){re.escape(tf)}(?![A-Za-z0-9])",
+                text,
+                flags=re.IGNORECASE,
+            )
+        if match:
+            timeframe_hits.append((match.start(), tf))
 
-    # Universe-first: don't inject default symbol/timeframe when a valid universe exists.
-    symbols = _unique_non_empty(candidate_symbols, upper=True)
-    if not symbols:
-        symbols = _unique_non_empty([default_symbol or "BTCUSDC"], upper=True)
-    symbols = [s for s in symbols if symbol_re.match(s)]
-
-    timeframes = _unique_non_empty(candidate_timeframes, upper=False)
-    if not timeframes:
-        timeframes = _unique_non_empty([default_timeframe or "1h"], upper=False)
-    timeframes = [tf for tf in timeframes if timeframe_re.match(tf)]
-
-    # Fallback contractuel: prioriser le couple par défaut quand il est valide.
-    # Utilisé pour les cas "réponse LLM invalide / hors univers" afin de garder
-    # un comportement déterministe et prévisible côté tests et UI.
-    strict_fallback_symbol = (
-        str(default_symbol).strip().upper()
-        if str(default_symbol).strip().upper() in symbols
-        else (symbols[0] if symbols else "BTCUSDC")
+    hinted_symbol = min(symbol_hits, key=lambda x: x[0])[1] if symbol_hits else None
+    hinted_timeframe = (
+        min(timeframe_hits, key=lambda x: x[0])[1]
+        if timeframe_hits else None
     )
-    strict_fallback_timeframe = (
-        str(default_timeframe).strip()
-        if str(default_timeframe).strip() in timeframes
-        else (timeframes[0] if timeframes else "1h")
-    )
+    return hinted_symbol, hinted_timeframe
 
-    # Fallback initial (sera recalculé après détection du type de stratégie)
-    _initial_fallback_symbol = (
-        str(default_symbol).strip().upper()
-        if str(default_symbol).strip().upper() in symbols
-        else (random.choice(symbols) if symbols else "BTCUSDC")
-    )
-    _initial_fallback_timeframe = (
-        str(default_timeframe).strip()
-        if str(default_timeframe).strip() in timeframes
-        else (random.choice(timeframes) if timeframes else "1h")
-    )
 
-    if not symbols or not timeframes:
-        return {
-            "symbol": strict_fallback_symbol,
-            "timeframe": strict_fallback_timeframe,
-            "confidence": 0.0,
-            "reason": "Univers marché incomplet, fallback par défaut.",
-            "source": "fallback_no_candidates",
-        }
-
-    clean_objective = sanitize_objective_text(objective)
-    if not clean_objective:
-        clean_objective = str(objective or "").strip()
-
-    # Détecter le type de stratégie AVANT d'extraire les hints
-    # (car si type détecté, on ignore les hints pour privilégier le tri intelligent)
+def _rank_and_select_market_candidates(
+    *,
+    clean_objective: str,
+    symbols: List[str],
+    timeframes: List[str],
+    recent_markets: Optional[List[Tuple[str, str]]],
+    _initial_fallback_symbol: str,
+    _initial_fallback_timeframe: str,
+) -> Dict[str, Any]:
+    """Phases 4-10 : détection type stratégie, ranking, hints, fallbacks, diversité."""
     detected_strategy_type = infer_strategy_type(objective=clean_objective)
     if detected_strategy_type == "unknown":
         detected_strategy_type = None
 
-    # Trier les tokens selon le type de stratégie détecté
     ranked_symbols: List[str] = []
     if detected_strategy_type:
-        # Mélange d'abord les candidats pour randomiser les égalités de score.
-        # rank_tokens_for_strategy est stable: à score égal, l'ordre d'entrée est conservé.
         symbols_for_ranking = symbols.copy()
         random.shuffle(symbols_for_ranking)
         ranked_symbols = rank_tokens_for_strategy(symbols_for_ranking, detected_strategy_type)
-        # Anti-biais de position: l'ordre envoyé au LLM est volontairement mélangé.
-        # Le ranking reste conservé pour le fallback deterministic.
         shuffled_symbols = ranked_symbols.copy()
         random.shuffle(shuffled_symbols)
         logger.info(
             "Market selection: strategy_type=%s, ranked_tokens=%s, prompt_tokens_shuffled=YES",
             detected_strategy_type,
-            ", ".join(ranked_symbols[:5]),  # Log top 5 ranking brut
+            ", ".join(ranked_symbols[:5]),
         )
     else:
-        # Fallback : shuffle aléatoire si type non détecté
         shuffled_symbols = symbols.copy()
         random.shuffle(shuffled_symbols)
         logger.info("Market selection: strategy_type=UNKNOWN, tokens=shuffled")
 
-    # Mélanger les timeframes (pas de tri spécifique)
     shuffled_timeframes = timeframes.copy()
     random.shuffle(shuffled_timeframes)
 
-    # Extraction des hints : SEULEMENT si aucun type de stratégie détecté
-    # Si type détecté, on ignore les hints du catalogue pour privilégier le tri intelligent
-    hinted_symbol = None
-    hinted_timeframe = None
+    hinted_symbol: Optional[str] = None
+    hinted_timeframe: Optional[str] = None
 
     if not detected_strategy_type:
-        # Pas de type détecté : extraire les hints pour guider le LLM
         hinted_symbol, hinted_timeframe = _find_objective_market_hints(
             clean_objective,
             allowed_symbols=symbols,
@@ -1048,13 +980,12 @@ def recommend_market_context(
         logger.info(
             "Market selection: strategy_type=NONE → using hints, symbol=%s, timeframe=%s",
             hinted_symbol or "NONE",
-            hinted_timeframe or "NONE"
+            hinted_timeframe or "NONE",
         )
     else:
-        # Type détecté : IGNORER les hints hardcodés pour privilégier le tri intelligent
         logger.info(
             "Market selection: strategy_type=%s → IGNORING hints from objective (prioritize intelligent ranking)",
-            detected_strategy_type
+            detected_strategy_type,
         )
 
     recent_symbol_set = {
@@ -1063,11 +994,9 @@ def recommend_market_context(
         if str(s or "").strip()
     }
 
-    # Fallback intelligent : éviter le biais top-1 quand plusieurs candidats sont valides.
     if hinted_symbol and hinted_symbol in symbols:
         fallback_symbol = hinted_symbol
     else:
-        # Si stratégie détectée, piocher dans un pool top-N pour réduire le biais "toujours le même token".
         if detected_strategy_type and ranked_symbols:
             fallback_pool = ranked_symbols[: min(5, len(ranked_symbols))]
             non_recent_pool = [s for s in fallback_pool if s not in recent_symbol_set]
@@ -1079,12 +1008,10 @@ def recommend_market_context(
                 shuffled_symbols[0] if shuffled_symbols else _initial_fallback_symbol
             )
 
-    # Fallback timeframe : prioriser TF recommandés / hints / diversité.
     if detected_strategy_type:
         try:
             reqs = get_strategy_requirements(detected_strategy_type)
             recommended_tfs = reqs.get("timeframes", ["1h"])
-            # Choisir un TF recommandé disponible, sans biais de position dans la liste.
             recommended_available = [tf for tf in recommended_tfs if tf in timeframes]
             if recommended_available:
                 fallback_timeframe = random.choice(recommended_available)
@@ -1107,16 +1034,15 @@ def recommend_market_context(
         "Market selection: fallback=%s %s (source=%s)",
         fallback_symbol,
         fallback_timeframe,
-        "strategy_optimized" if detected_strategy_type else "default"
+        "strategy_optimized" if detected_strategy_type else "default",
     )
 
-    # Validation diversité : désactiver si trop peu d'alternatives
     diversity_instruction = ""
     if recent_markets:
         from config.market_selection import get_diversity_min_alternatives
 
         available_combos = [(s, tf) for s in symbols for tf in timeframes]
-        recent_window = recent_markets[-6:]  # Fenêtre de diversité (6 derniers)
+        recent_window = recent_markets[-6:]
         unused_combos = [c for c in available_combos if c not in recent_window]
         min_alts = get_diversity_min_alternatives()
 
@@ -1126,7 +1052,6 @@ def recommend_market_context(
                 f"\n- DÉJÀ UTILISÉS récemment : {recent_str}. "
                 "Tu DOIS choisir un couple DIFFÉRENT. Varie tokens ET timeframes."
             )
-            # Log structuré : diversité activée
             logger.info(
                 "Market selection: diversity=ACTIVE, excluded_count=%d, alternatives=%d, recent=%s",
                 len(recent_window),
@@ -1134,7 +1059,6 @@ def recommend_market_context(
                 recent_str,
             )
         else:
-            # Diversité désactivée : univers trop restreint
             logger.warning(
                 "Market selection: diversity=DISABLED, reason=Univers restreint (%d alternatives < %d min), "
                 "recent_count=%d",
@@ -1142,27 +1066,22 @@ def recommend_market_context(
                 min_alts,
                 len(recent_window),
             )
-            diversity_instruction = ""  # Pas de contrainte
 
     objective_hint_instruction = ""
     hint_lines: List[str] = []
 
-    # Détection conflit hints vs diversité
     if hinted_symbol and hinted_timeframe and recent_markets:
         hinted_combo = (hinted_symbol, hinted_timeframe)
         recent_window = recent_markets[-6:]
         if hinted_combo in recent_window:
-            # Conflict detection done in strategy recommendation logic
             logger.warning(
                 "Market selection: CONFLICT hints vs diversity, hinted=%s %s (already in recent_markets), "
                 "priority=diversity → hints IGNORED",
-                hinted_symbol, hinted_timeframe
+                hinted_symbol, hinted_timeframe,
             )
-            # Annuler les hints (priorité à la diversité)
             hinted_symbol = None
             hinted_timeframe = None
 
-    # Construction des instructions hints (si pas de conflit)
     if hinted_symbol:
         hint_lines.append(
             f"- L'objectif mentionne le symbole `{hinted_symbol}` : "
@@ -1176,8 +1095,6 @@ def recommend_market_context(
 
     if hint_lines:
         objective_hint_instruction = "\n" + "\n".join(hint_lines)
-
-        # Log structuré : hints détectés (si pas de conflit)
         from config.market_selection import get_hints_confidence_boost
         boost = get_hints_confidence_boost()
         logger.info(
@@ -1187,85 +1104,37 @@ def recommend_market_context(
             boost if (hinted_symbol or hinted_timeframe) else 0.0,
         )
 
-    system_msg = LLMMessage(
-        role="system",
-        content=(
-            "Tu es un analyste quant. Choisis UN seul couple symbole/timeframe "
-            "le plus pertinent pour l'objectif. Réponds en JSON strict uniquement."
-        ),
-    )
-    # Enrichissement : recommandations TF/token basées sur type de stratégie détecté
-    strategy_hints = ""
-    try:
-        if detected_strategy_type:
-            reqs = get_strategy_requirements(detected_strategy_type)
-            recommended_tfs = reqs.get("timeframes", ["1h"])
+    return {
+        "detected_strategy_type": detected_strategy_type,
+        "ranked_symbols": ranked_symbols,
+        "shuffled_symbols": shuffled_symbols,
+        "shuffled_timeframes": shuffled_timeframes,
+        "hinted_symbol": hinted_symbol,
+        "hinted_timeframe": hinted_timeframe,
+        "fallback_symbol": fallback_symbol,
+        "fallback_timeframe": fallback_timeframe,
+        "diversity_instruction": diversity_instruction,
+        "objective_hint_instruction": objective_hint_instruction,
+    }
 
-            # Extraire top 5 tokens recommandés (déjà triés par rank_tokens_for_strategy)
-            top_tokens = shuffled_symbols[:5]
 
-            strategy_hints = (
-                f"\n📊 RECOMMANDATION STRATÉGIE: **{detected_strategy_type.replace('_', ' ').title()}** détecté\n"
-                f"  → TFs optimaux: {', '.join(recommended_tfs[:3])}\n"
-                f"  → Tokens candidats pertinents (ordre mélangé): {', '.join(top_tokens)}\n"
-                "  → IMPORTANT: Ne choisis PAS automatiquement le premier token de la liste.\n"
-                "    Évalue l'adéquation avec l'objectif + la diversité récente.\n"
-            )
-    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-        pass  # Si détection échoue, continuer sans hints
-
-    user_msg = LLMMessage(
-        role="user",
-        content=(
-            "Objectif:\n"
-            f"{clean_objective}\n\n"
-            "Contraintes:\n"
-            f"- symbol MUST be one of: {', '.join(shuffled_symbols)}\n"
-            f"- timeframe MUST be one of: {', '.join(shuffled_timeframes)}\n"
-            "- Anti-biais de position: ne sélectionne PAS automatiquement le premier élément des listes.\n"
-            "- Si plusieurs choix sont valides, privilégie un couple moins récent (diversité).\n"
-            f"{strategy_hints}"
-            f"{objective_hint_instruction}\n"
-            "- Retourne un JSON strict, sans markdown:\n"
-            '{"symbol":"...","timeframe":"...","confidence":0.0,"reason":"..."}\n'
-            f"- confidence doit être entre 0 et 1.{diversity_instruction}"
-        ),
-    )
-
-    try:
-        if stream_callback and hasattr(llm_client, "chat_stream"):
-            raw = llm_client.chat_stream(
-                [system_msg, user_msg],
-                on_chunk=lambda c: stream_callback("market_pick", c),
-                max_tokens=180,
-            )
-        else:
-            raw = llm_client.chat([system_msg, user_msg], max_tokens=180)
-        # Extraire .content si LLMResponse, sinon str()
-        raw_text = str(getattr(raw, "content", raw) or "").strip()
-    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as exc:
-        logger.warning("recommend_market_context: fallback exception=%s", exc)
-        return {
-            "symbol": fallback_symbol,
-            "timeframe": fallback_timeframe,
-            "confidence": 0.0,
-            "reason": f"Échec appel LLM ({exc}). Fallback appliqué.",
-            "source": "fallback_exception",
-        }
-
-    payload = _extract_json_from_response(raw_text)
-    symbol = str(payload.get("symbol", "")).strip().upper()
-    timeframe = str(payload.get("timeframe", "")).strip()
-
-    try:
-        confidence = float(payload.get("confidence", 0.5))
-    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-        confidence = 0.5
-    confidence = max(0.0, min(1.0, confidence))
-
-    reason = str(payload.get("reason", "") or "").strip()
-
-    source = "llm"
+def _finalize_market_result(
+    *,
+    symbol: str,
+    timeframe: str,
+    confidence: float,
+    reason: str,
+    source: str,
+    payload: Dict[str, Any],
+    symbols: List[str],
+    timeframes: List[str],
+    strict_fallback_symbol: str,
+    strict_fallback_timeframe: str,
+    recent_markets: Optional[List[Tuple[str, str]]],
+    hinted_symbol: Optional[str],
+    hinted_timeframe: Optional[str],
+) -> Dict[str, Any]:
+    """Phases 13-16 : validation univers, override diversité, bonus hints, finalisation."""
     if symbol not in symbols:
         source = "fallback_out_of_universe"
         symbol = strict_fallback_symbol
@@ -1280,7 +1149,7 @@ def recommend_market_context(
         confidence = 0.0
         if not reason:
             reason = "Réponse LLM non parseable en JSON. Fallback appliqué."
-    # Évite de rester figé sur le même couple déjà utilisé récemment.
+
     if recent_markets:
         recent_order = [
             (str(s or "").upper(), str(tf or "").strip())
@@ -1295,7 +1164,6 @@ def recommend_market_context(
             alternatives = [p for p in all_pairs if p not in recent_pairs]
             candidate_pool = alternatives
 
-            # Si tout l'univers a déjà été vu, forcer une rotation sur le moins récent.
             if not candidate_pool:
                 last_seen: Dict[Tuple[str, str], int] = {p: -1 for p in all_pairs}
                 for idx, pair in enumerate(recent_order):
@@ -1333,8 +1201,6 @@ def recommend_market_context(
                         f"({selected_pair[0]} {selected_pair[1]})."
                     )
 
-    # Bonus léger si le LLM choisit spontanément les hints de l'objectif,
-    # sans les forcer pour préserver la diversité multi-market.
     hint_matches: List[str] = []
     if hinted_symbol and symbol == hinted_symbol:
         hint_matches.append(f"symbol={hinted_symbol}")
@@ -1364,6 +1230,185 @@ def recommend_market_context(
         "reason": reason,
         "source": source,
     }
+
+
+def recommend_market_context(
+    llm_client: Any,
+    *,
+    objective: str,
+    candidate_symbols: List[str],
+    candidate_timeframes: List[str],
+    default_symbol: str = "BTCUSDC",
+    default_timeframe: str = "1h",
+    stream_callback: Optional[Callable[[str, str], None]] = None,
+    recent_markets: Optional[List[Tuple[str, str]]] = None,
+) -> Dict[str, Any]:
+    """Recommande un couple (symbol, timeframe) adapté à un objectif Builder.
+
+    Le choix est strictement borné à l'univers fourni (`candidate_symbols`,
+    `candidate_timeframes`). En cas de réponse invalide du LLM, un fallback
+    robuste est appliqué.
+    """
+
+    # --- Phase 1-3 : normaliser univers + fallbacks --- #
+    symbol_re = re.compile(r"^[A-Za-z0-9_.-]{2,24}$")
+    timeframe_re = re.compile(r"^\d+[mhdwM]$")
+
+    symbols = _unique_non_empty(candidate_symbols, upper=True)
+    if not symbols:
+        symbols = _unique_non_empty([default_symbol or "BTCUSDC"], upper=True)
+    symbols = [s for s in symbols if symbol_re.match(s)]
+
+    timeframes = _unique_non_empty(candidate_timeframes, upper=False)
+    if not timeframes:
+        timeframes = _unique_non_empty([default_timeframe or "1h"], upper=False)
+    timeframes = [tf for tf in timeframes if timeframe_re.match(tf)]
+
+    strict_fallback_symbol = (
+        str(default_symbol).strip().upper()
+        if str(default_symbol).strip().upper() in symbols
+        else (symbols[0] if symbols else "BTCUSDC")
+    )
+    strict_fallback_timeframe = (
+        str(default_timeframe).strip()
+        if str(default_timeframe).strip() in timeframes
+        else (timeframes[0] if timeframes else "1h")
+    )
+
+    _initial_fallback_symbol = (
+        str(default_symbol).strip().upper()
+        if str(default_symbol).strip().upper() in symbols
+        else (random.choice(symbols) if symbols else "BTCUSDC")
+    )
+    _initial_fallback_timeframe = (
+        str(default_timeframe).strip()
+        if str(default_timeframe).strip() in timeframes
+        else (random.choice(timeframes) if timeframes else "1h")
+    )
+
+    if not symbols or not timeframes:
+        return {
+            "symbol": strict_fallback_symbol,
+            "timeframe": strict_fallback_timeframe,
+            "confidence": 0.0,
+            "reason": "Univers marché incomplet, fallback par défaut.",
+            "source": "fallback_no_candidates",
+        }
+
+    clean_objective = sanitize_objective_text(objective)
+    if not clean_objective:
+        clean_objective = str(objective or "").strip()
+
+    # --- Phases 4-10 : candidats, ranking, hints, diversité --- #
+    ctx = _rank_and_select_market_candidates(
+        clean_objective=clean_objective,
+        symbols=symbols,
+        timeframes=timeframes,
+        recent_markets=recent_markets,
+        _initial_fallback_symbol=_initial_fallback_symbol,
+        _initial_fallback_timeframe=_initial_fallback_timeframe,
+    )
+    detected_strategy_type = ctx["detected_strategy_type"]
+    shuffled_symbols: List[str] = ctx["shuffled_symbols"]
+    shuffled_timeframes: List[str] = ctx["shuffled_timeframes"]
+    hinted_symbol: Optional[str] = ctx["hinted_symbol"]
+    hinted_timeframe: Optional[str] = ctx["hinted_timeframe"]
+    fallback_symbol: str = ctx["fallback_symbol"]
+    fallback_timeframe: str = ctx["fallback_timeframe"]
+    diversity_instruction: str = ctx["diversity_instruction"]
+    objective_hint_instruction: str = ctx["objective_hint_instruction"]
+
+    # --- Phase 11 : prompt LLM --- #
+    system_msg = LLMMessage(
+        role="system",
+        content=(
+            "Tu es un analyste quant. Choisis UN seul couple symbole/timeframe "
+            "le plus pertinent pour l'objectif. Réponds en JSON strict uniquement."
+        ),
+    )
+    strategy_hints = ""
+    try:
+        if detected_strategy_type:
+            reqs = get_strategy_requirements(detected_strategy_type)
+            recommended_tfs = reqs.get("timeframes", ["1h"])
+            top_tokens = shuffled_symbols[:5]
+            strategy_hints = (
+                f"\n📊 RECOMMANDATION STRATÉGIE: **{detected_strategy_type.replace('_', ' ').title()}** détecté\n"
+                f"  → TFs optimaux: {', '.join(recommended_tfs[:3])}\n"
+                f"  → Tokens candidats pertinents (ordre mélangé): {', '.join(top_tokens)}\n"
+                "  → IMPORTANT: Ne choisis PAS automatiquement le premier token de la liste.\n"
+                "    Évalue l'adéquation avec l'objectif + la diversité récente.\n"
+            )
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
+        pass  # Si détection échoue, continuer sans hints
+
+    user_msg = LLMMessage(
+        role="user",
+        content=(
+            "Objectif:\n"
+            f"{clean_objective}\n\n"
+            "Contraintes:\n"
+            f"- symbol MUST be one of: {', '.join(shuffled_symbols)}\n"
+            f"- timeframe MUST be one of: {', '.join(shuffled_timeframes)}\n"
+            "- Anti-biais de position: ne sélectionne PAS automatiquement le premier élément des listes.\n"
+            "- Si plusieurs choix sont valides, privilégie un couple moins récent (diversité).\n"
+            f"{strategy_hints}"
+            f"{objective_hint_instruction}\n"
+            "- Retourne un JSON strict, sans markdown:\n"
+            '{"symbol":"...","timeframe":"...","confidence":0.0,"reason":"..."}\n'
+            f"- confidence doit être entre 0 et 1.{diversity_instruction}"
+        ),
+    )
+
+    # --- Phase 12 : appel LLM --- #
+    try:
+        if stream_callback and hasattr(llm_client, "chat_stream"):
+            raw = llm_client.chat_stream(
+                [system_msg, user_msg],
+                on_chunk=lambda c: stream_callback("market_pick", c),
+                max_tokens=180,
+            )
+        else:
+            raw = llm_client.chat([system_msg, user_msg], max_tokens=180)
+        raw_text = str(getattr(raw, "content", raw) or "").strip()
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as exc:
+        logger.warning("recommend_market_context: fallback exception=%s", exc)
+        return {
+            "symbol": fallback_symbol,
+            "timeframe": fallback_timeframe,
+            "confidence": 0.0,
+            "reason": f"Échec appel LLM ({exc}). Fallback appliqué.",
+            "source": "fallback_exception",
+        }
+
+    payload = _extract_json_from_response(raw_text)
+    symbol = str(payload.get("symbol", "")).strip().upper()
+    timeframe = str(payload.get("timeframe", "")).strip()
+
+    try:
+        confidence = float(payload.get("confidence", 0.5))
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
+        confidence = 0.5
+    confidence = max(0.0, min(1.0, confidence))
+
+    reason = str(payload.get("reason", "") or "").strip()
+
+    # --- Phases 13-16 : validation, override diversité, bonus hints, finalisation --- #
+    return _finalize_market_result(
+        symbol=symbol,
+        timeframe=timeframe,
+        confidence=confidence,
+        reason=reason,
+        source="llm",
+        payload=payload,
+        symbols=symbols,
+        timeframes=timeframes,
+        strict_fallback_symbol=strict_fallback_symbol,
+        strict_fallback_timeframe=strict_fallback_timeframe,
+        recent_markets=recent_markets,
+        hinted_symbol=hinted_symbol,
+        hinted_timeframe=hinted_timeframe,
+    )
 
 
 # ---------------------------------------------------------------------------

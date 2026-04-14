@@ -1364,8 +1364,25 @@ def _render_charts(df: pd.DataFrame) -> None:
 
 
 def _get_numeric_column_config() -> Dict[str, Any]:
-    """Configuration des colonnes numériques pour tri correct dans st.dataframe."""
+    """Configuration des colonnes pour un tableau dense et lisible dans st.dataframe."""
     return {
+        "type": st.column_config.TextColumn("Type", width="small"),
+        "id": st.column_config.TextColumn("Id", width="small"),
+        "run_id": st.column_config.TextColumn("Run", width="small"),
+        "path": st.column_config.TextColumn("Path", width="medium"),
+        "storage_path": st.column_config.TextColumn("Storage", width="medium"),
+        "timestamp": st.column_config.TextColumn("Timestamp", width="medium"),
+        "mode": st.column_config.TextColumn("Mode", width="small"),
+        "status": st.column_config.TextColumn("Status", width="small"),
+        "strategy": st.column_config.TextColumn("Strategy", width="large"),
+        "symbol": st.column_config.TextColumn("Symbol", width="small"),
+        "timeframe": st.column_config.TextColumn("TF", width="small"),
+        "period_start": st.column_config.TextColumn("Début", width="medium"),
+        "period_end": st.column_config.TextColumn("Fin", width="medium"),
+        "artifact_type": st.column_config.TextColumn("Artefact", width="small"),
+        "category": st.column_config.TextColumn("Catégorie", width="small"),
+        "catalog_category": st.column_config.TextColumn("Catégorie cat.", width="small"),
+        "catalog_status": st.column_config.TextColumn("Statut cat.", width="small"),
         "open_folder": st.column_config.LinkColumn("Dossier", display_text="📂 Ouvrir"),
         "total_pnl": st.column_config.NumberColumn("PnL ($)", format="$%.2f"),
         "pnl_per_day": st.column_config.NumberColumn("PnL/jour ($)", format="$%.2f"),

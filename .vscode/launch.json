@@ -20,23 +20,6 @@
       }
     },
     {
-      "name": "Streamlit UI (main.py - NON FONCTIONNEL)",
-      "type": "python",
-      "request": "launch",
-      "module": "streamlit",
-      "args": [
-        "run",
-        "ui/main.py",
-        "--server.headless=false"
-      ],
-      "console": "integratedTerminal",
-      "justMyCode": false,
-      "envFile": "${workspaceFolder}\\.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}"
-      }
-    },
-    {
       "name": "Python: Test actuel",
       "type": "python",
       "request": "launch",

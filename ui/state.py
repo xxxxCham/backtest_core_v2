@@ -56,8 +56,177 @@ BUILDER_EXECUTION_MODE_OPTIONS = (
     BUILDER_EXECUTION_MODE_EXPERT,
     BUILDER_EXECUTION_MODE_DUAL_LANE,
 )
+BUILDER_OPTIMIZATION_MODE = "🏗️ Strategy Builder"
 BUILDER_UNIVERSE_MODE_CANONICAL = UNIVERSE_MODE_CANONICAL
 BUILDER_UNIVERSE_MODE_OPTIONS = UNIVERSE_MODE_OPTIONS
+_BUILDER_LAUNCH_STATE_KEYS = (
+    "_builder_auto_bootstrap_symbol",
+    "_builder_auto_bootstrap_timeframe",
+    "_builder_startup_symbol",
+    "_builder_startup_timeframe",
+    "_builder_tf_usage",
+    "builder_launch_pending",
+)
+_BUILDER_RUNTIME_STATE_KEYS = (
+    "builder_session",
+    "builder_runtime_diagnostic",
+    "builder_autonomous_history",
+    "builder_autonomous_supervisor",
+    "_builder_objective_input_sync",
+    "_builder_multi_llm_profile_sync",
+    "_builder_multi_llm_profile_saved_notice",
+) + _BUILDER_LAUNCH_STATE_KEYS
+_UI_EXECUTION_STATE_DEFAULTS = {
+    "is_running": False,
+    "stop_requested": False,
+    "run_backtest_requested": False,
+    "load_ohlcv_requested": False,
+}
+
+
+def _state_get(container: Any, key: str, default: Any = None) -> Any:
+    getter = getattr(container, "get", None)
+    if callable(getter):
+        try:
+            return getter(key, default)
+        except TypeError:
+            pass
+    try:
+        return container[key]
+    except Exception:
+        return getattr(container, key, default)
+
+
+def _state_contains(container: Any, key: str) -> bool:
+    try:
+        return key in container
+    except Exception:
+        return hasattr(container, key)
+
+
+def _state_set(container: Any, key: str, value: Any) -> None:
+    try:
+        container[key] = value
+        return
+    except Exception:
+        setattr(container, key, value)
+
+
+def _state_pop(container: Any, key: str, default: Any = None) -> Any:
+    popper = getattr(container, "pop", None)
+    if callable(popper):
+        try:
+            return popper(key, default)
+        except TypeError:
+            pass
+    if hasattr(container, key):
+        value = getattr(container, key)
+        try:
+            delattr(container, key)
+        except Exception:
+            return value
+        return value
+    return default
+
+
+def is_builder_optimization_mode(source: Any, fallback: str = "") -> bool:
+    if isinstance(source, dict):
+        mode = source.get("optimization_mode", fallback)
+    else:
+        mode = getattr(source, "optimization_mode", fallback)
+    return str(mode or "").strip() == BUILDER_OPTIMIZATION_MODE
+
+
+def has_pending_builder_launch(session_state: Any) -> bool:
+    return bool(_state_get(session_state, "builder_launch_pending", False))
+
+
+def should_preserve_builder_launch(source: Any, session_state: Any) -> bool:
+    return is_builder_optimization_mode(source) and has_pending_builder_launch(
+        session_state
+    )
+
+
+def clear_builder_launch_state(session_state: Any) -> None:
+    for key in _BUILDER_LAUNCH_STATE_KEYS:
+        _state_pop(session_state, key, None)
+
+
+def clear_builder_runtime_state(session_state: Any) -> None:
+    for key in _BUILDER_RUNTIME_STATE_KEYS:
+        _state_pop(session_state, key, None)
+
+
+def consume_builder_launch_pending(session_state: Any) -> None:
+    _state_pop(session_state, "builder_launch_pending", None)
+
+
+def clear_execution_state(
+    session_state: Any,
+    *,
+    clear_stop_requested: bool = True,
+    clear_builder_launch: bool = False,
+) -> None:
+    _state_set(session_state, "is_running", False)
+    _state_set(session_state, "run_backtest_requested", False)
+    if clear_stop_requested:
+        _state_set(session_state, "stop_requested", False)
+    if clear_builder_launch:
+        clear_builder_launch_state(session_state)
+
+
+def ensure_ui_execution_state_defaults(session_state: Any) -> None:
+    for key, value in _UI_EXECUTION_STATE_DEFAULTS.items():
+        if not _state_contains(session_state, key):
+            _state_set(session_state, key, value)
+
+
+def consume_ui_run_request(session_state: Any) -> bool:
+    requested = bool(_state_get(session_state, "run_backtest_requested", False))
+    if requested:
+        _state_set(session_state, "run_backtest_requested", False)
+    return requested
+
+
+def arm_ui_load_request(session_state: Any) -> None:
+    _state_set(session_state, "stop_requested", False)
+    _state_set(session_state, "load_ohlcv_requested", True)
+
+
+def arm_ui_run_request(session_state: Any, *, builder_mode: bool = False) -> None:
+    if builder_mode:
+        clear_builder_launch_state(session_state)
+        _state_set(session_state, "builder_launch_pending", True)
+    _state_set(session_state, "stop_requested", False)
+    _state_set(session_state, "run_backtest_requested", True)
+    _state_set(session_state, "is_running", True)
+
+
+def mark_ui_run_started(session_state: Any) -> None:
+    _state_set(session_state, "is_running", True)
+    _state_set(session_state, "stop_requested", False)
+
+
+def mark_ui_stop_requested(session_state: Any) -> None:
+    _state_set(session_state, "stop_requested", True)
+    _state_set(session_state, "is_running", False)
+    _state_set(session_state, "run_backtest_requested", False)
+    _state_set(session_state, "load_ohlcv_requested", False)
+
+
+def persist_run_winner(
+    session_state: Any,
+    result: Any,
+    params: Any,
+    metrics: Any,
+    origin: str,
+    meta: Any,
+) -> None:
+    _state_set(session_state, "last_run_result", result)
+    _state_set(session_state, "last_winner_params", params)
+    _state_set(session_state, "last_winner_metrics", metrics)
+    _state_set(session_state, "last_winner_origin", origin)
+    _state_set(session_state, "last_winner_meta", meta)
 
 
 def _coerce_bool(value: Any, default: bool) -> bool:

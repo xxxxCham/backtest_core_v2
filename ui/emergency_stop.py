@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import gc
 import logging
+
 # pylint: disable=broad-except
 from typing import Any, Callable, Dict, Iterable, Optional
 
@@ -31,6 +32,7 @@ import httpx
 
 from agents.ollama_manager import cleanup_all_models, stop_local_ollama_server
 from ui.cache_manager import clear_data_cache
+from ui.state import mark_ui_stop_requested
 
 logger = logging.getLogger(__name__)
 
@@ -130,10 +132,7 @@ def _record_error(stats: Dict[str, Any], error: str) -> None:
 
 
 def _mark_stop_requested(session_state: Optional[Any], stats: Dict[str, Any]) -> None:
-    _session_set(session_state, "stop_requested", True)
-    _session_set(session_state, "is_running", False)
-    _session_set(session_state, "run_backtest_requested", False)
-    _session_set(session_state, "load_ohlcv_requested", False)
+    mark_ui_stop_requested(session_state)
     _record_component(stats, "session_flags")
 
 

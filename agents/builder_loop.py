@@ -22,29 +22,35 @@ from agents.builder_policy import (
     evaluate_decision_policies,
     evaluate_positive_progress_gate,
 )
-from agents.builder_state import BuilderIteration
-from agents.strategy_builder import (
+from agents.builder_constants import (
     MAX_CONSECUTIVE_FAILURES,
     MAX_DETERMINISTIC_FALLBACKS,
+)
+from agents.builder_diagnostics import (
     _builder_iteration_selection_key,
-    _build_deterministic_proposal_fallback,
-    _build_stagnation_branch_specs,
     _is_accept_candidate,
-    _is_invalid_proposal,
     _metric_float,
     _metrics_fingerprint,
-    _normalize_change_type,
-    _policy_change_type_override,
-    _previous_iteration_indicators,
-    _proposal_issues,
-    _safe_format_exception,
-    _sanitize_proposal_payload,
-    _select_best_branch_candidate,
-    _should_enable_stagnation_branching,
     compute_builder_telemetry_score,
     compute_diagnostic,
-    logger,
 )
+from agents.builder_policy_helpers import (
+    _build_stagnation_branch_specs,
+    _policy_change_type_override,
+    _previous_iteration_indicators,
+    _select_best_branch_candidate,
+    _should_enable_stagnation_branching,
+)
+from agents.builder_proposal_helpers import (
+    _build_deterministic_proposal_fallback,
+    _is_invalid_proposal,
+    _normalize_change_type,
+    _proposal_issues,
+    _sanitize_proposal_payload,
+)
+from agents.builder_state import BuilderIteration
+from agents.builder_text_utils import _safe_format_exception
+from agents.strategy_builder import logger
 
 
 def _record_policy_restrictions(

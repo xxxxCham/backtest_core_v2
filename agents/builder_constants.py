@@ -28,15 +28,29 @@ MAX_CONSECUTIVE_FAILURES = 3
 MIN_CODE_LINES = 10
 # Nombre max de tentatives de réalignement quand le LLM répond hors phase
 MAX_PHASE_REALIGN_ATTEMPTS = 2
+
+# Exceptions AST récupérables (partagées entre builder_ast_utils et strategy_builder)
+_AST_PARSE_RECOVERABLE_EXCEPTIONS = (
+    SyntaxError,
+    ValueError,
+    KeyError,
+    RuntimeError,
+    AttributeError,
+    TypeError,
+    IndexError,
+)
 # Nombre mini d'itérations backtestées avant d'autoriser un arrêt LLM "stop"
-MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP = 3
+MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP = 5
 # Checkpoints de progression positive pour arrêter tôt les sessions peu prometteuses
-POSITIVE_PROGRESS_GATE_CHECKPOINTS: Dict[int, int] = {3: 1, 6: 2}
+POSITIVE_PROGRESS_GATE_CHECKPOINTS: Dict[int, int] = {6: 1, 9: 2}
 MIN_TRADES_FOR_POSITIVE_PROGRESS = 1
+# Quota max de fallbacks positifs comptabilisés dans la progression
+MAX_POSITIVE_FALLBACK_COUNT = 1
 # Nombre mini de trades pour accepter une stratégie en cours d'optimisation
-MIN_TRADES_FOR_ACCEPT = 10
-MAX_DRAWDOWN_PCT_FOR_ACCEPT = 60.0
+MIN_TRADES_FOR_ACCEPT = 20
+MAX_DRAWDOWN_PCT_FOR_ACCEPT = 35.0
 MIN_RETURN_PCT_FOR_ACCEPT = 0.0
+MIN_PROFIT_FACTOR_FOR_ACCEPT = 1.05
 # Nombre max de fallbacks déterministes avant arrêt de la session
 MAX_DETERMINISTIC_FALLBACKS = 4
 PROPOSAL_REALIGN_ATTEMPTS = 1
@@ -193,6 +207,7 @@ _PROPOSAL_PLACEHOLDER_VALUES = {
     "",
     "-",
     "—",
+    # EN
     "n/a",
     "na",
     "none",
@@ -202,6 +217,21 @@ _PROPOSAL_PLACEHOLDER_VALUES = {
     "when to buy",
     "when to sell",
     "when to close",
+    # FR
+    "aucun",
+    "aucune",
+    "néant",
+    "sans objet",
+    "non applicable",
+    "description brève",
+    "brève description",
+    "ce que vous attendez de ce changement et pourquoi",
+    "quand acheter",
+    "quand vendre",
+    "quand clôturer",
+    "condition d'achat",
+    "condition de vente",
+    "condition de sortie",
 }
 
 _BUILDER_PROPOSAL_REQUIRED_KEYS = {

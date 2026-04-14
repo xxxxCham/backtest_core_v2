@@ -81,10 +81,6 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-module = ["tests.test_strategy_builder"]
-ignore_errors = true
-
 [tool.ruff]
 line-length = 120
 target-version = "py310"
@@ -93,9 +89,23 @@ src = ["."]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 ignore = [
-    "E501",  # Line too long (handled by formatter)
-    "E402",  # Module level import not at top of file
+    "E501",   # line too long (géré par black)
+    "E402",   # module level import not at top (bootstrap GPU intentionnel)
+    "F401",   # imported but unused (faux positifs sur __init__.py)
 ]
+exclude = [
+    ".venv",
+    "__pycache__",
+    "backtest_results",
+    "catalog/generated",
+    "docs",
+    "labs",
+    "examples",
+]
+
+[[tool.mypy.overrides]]
+module = ["tests.test_strategy_builder"]
+ignore_errors = true
 
 [tool.ruff.lint.per-file-ignores]
 "tests/test_strategy_builder.py" = ["E", "F", "W"]

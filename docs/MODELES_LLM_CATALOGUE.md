@@ -1,15 +1,15 @@
 # Catalogue des modèles LLM — Backtest Core v2
 
-> Généré le 28/03/2026  
-> Score **Builder** = aptitude estimée pour l'usage en mode Strategy Builder (raisonnement, génération de stratégie, feedback structuré, suivi d'itérations).  
-> Échelle : de 0 % (inutilisable) à 100 % (idéal).  
+> Généré le 28/03/2026
+> Score **Builder** = aptitude estimée pour l'usage en mode Strategy Builder (raisonnement, génération de stratégie, feedback structuré, suivi d'itérations).
+> Échelle : de 0 % (inutilisable) à 100 % (idéal).
 > ☁️ = modèle cloud-only (consomme des crédits Ollama) · 💻 = modèle téléchargeable en local
 
 ---
 
 ## ☁️ Modèles Cloud-Only (19)
 
-> Ces modèles ne sont **pas téléchargeables**. Chaque appel consomme des crédits Ollama.  
+> Ces modèles ne sont **pas téléchargeables**. Chaque appel consomme des crédits Ollama.
 > Utiliser en priorité pour les tâches critiques ou les audits finaux.
 
 | Modèle | Paramètres | Catégorie | Score Builder | Commentaire |
@@ -38,7 +38,7 @@
 
 ## 💻 Modèles Locaux (45)
 
-> Ces modèles sont **téléchargeables sur votre machine**.  
+> Ces modèles sont **téléchargeables sur votre machine**.
 > Ceux marqués `⚠️ >50 B` requièrent une **approbation manuelle** dans le Builder (RAM/VRAM importante).
 
 ### Modèles lourds (≥ 30 B paramètres)

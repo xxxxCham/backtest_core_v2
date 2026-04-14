@@ -84,7 +84,16 @@ from ui.helpers import (
     validate_all_params,
 )
 from ui.sidebar import apply_pending_sidebar_config, get_run_label_for_mode
-from ui.state import SidebarState
+from ui.state import (
+    SidebarState,
+    BUILDER_OPTIMIZATION_MODE,
+    clear_execution_state,
+    consume_ui_run_request,
+    ensure_ui_execution_state_defaults,
+    mark_ui_run_started,
+    persist_run_winner,
+    should_preserve_builder_launch,
+)
 from utils.run_tracker import RunSignature, get_global_tracker
 
 
@@ -702,7 +711,7 @@ def _execute_clean_stop(state: SidebarState) -> None:
     )
 
     if (
-        state.optimization_mode == "🏗️ Strategy Builder"
+        state.optimization_mode == BUILDER_OPTIMIZATION_MODE
         or bool(st.session_state.get("builder_autonomous", False))
     ):
         try:
@@ -764,7 +773,7 @@ def _execute_clean_stop(state: SidebarState) -> None:
 
 def _process_load_request(state: SidebarState) -> None:
     is_builder_autonomous = (
-        state.optimization_mode == "🏗️ Strategy Builder"
+        state.optimization_mode == BUILDER_OPTIMIZATION_MODE
         and bool(state.builder_autonomous)
     )
     if is_builder_autonomous and (not state.symbol or not state.timeframe):
@@ -813,7 +822,7 @@ def _queue_main_run_action(fallback_optimization_mode: str = "") -> None:
     optimization_mode = str(
         st.session_state.get("optimization_mode", fallback_optimization_mode) or ""
     )
-    if optimization_mode == "🏗️ Strategy Builder":
+    if optimization_mode == BUILDER_OPTIMIZATION_MODE:
         _reset_builder_launch_state()
         st.session_state["builder_launch_pending"] = True
 
@@ -913,16 +922,11 @@ Le système de granularité limite le nombre de valeurs testables.
 """
     )
 
-    if "is_running" not in st.session_state:
-        st.session_state.is_running = False
-    if "stop_requested" not in st.session_state:
-        st.session_state.stop_requested = False
+    ensure_ui_execution_state_defaults(st.session_state)
 
     st.markdown("---")
 
-    run_requested = bool(st.session_state.get("run_backtest_requested", False))
-    if run_requested:
-        st.session_state.run_backtest_requested = False
+    run_requested = consume_ui_run_request(st.session_state)
 
     return run_requested, status_container
 
@@ -997,10 +1001,1342 @@ def _render_builder_view_safe(
                 error=f"{type(exc).__name__}: {exc}",
             )
         except Exception:
-            pass
+            logging.getLogger(__name__).warning("mark_builder_autonomous_runtime_stopped failed", exc_info=True)
         with status_container:
             show_status("error", f"Erreur Builder UI: {exc}")
             st.code(traceback.format_exc())
+
+
+def _abort_main_run(
+    status_container: Any,
+    msg: str,
+    *,
+    level: str = "error",
+    live_status: Any = None,
+    tb: bool = False,
+) -> None:
+    """Point de sortie unique pour les aborts de run dans render_main et ses extractions."""
+    if live_status is not None:
+        try:
+            live_status.update(label=f"❌ {msg}", state="error")
+        except Exception:
+            pass
+    with status_container:
+        show_status(level, msg)
+        if tb:
+            st.code(traceback.format_exc())
+    clear_execution_state(st.session_state)
+    st.stop()
+
+
+def _run_grid_search_mode(
+    *,
+    df,
+    engine,
+    state,
+    status_container,
+    strategy_key,
+    params,
+    param_ranges,
+    symbol,
+    timeframe,
+    debug_enabled,
+    n_workers,
+    max_combos,
+    resolve_workers,
+    resolve_threads,
+    format_combo_limit,
+    attach_wfa_metrics,
+):
+    """Grid search optimization — extracted from render_main."""
+    # Alias closures to their original names used throughout the body
+    _resolve_workers = resolve_workers
+    _resolve_threads = resolve_threads
+    _format_combo_limit = format_combo_limit
+    _attach_wfa_metrics = attach_wfa_metrics
+
+    n_workers_effective = _resolve_workers(n_workers)
+    # Lire threads depuis UI ou fallback env
+    try:
+        worker_thread_limit = int(st.session_state.get(
+            "grid_worker_threads",
+            int(os.environ.get("BACKTEST_WORKER_THREADS", "1"))))
+    except (TypeError, ValueError):
+        worker_thread_limit = 1
+    worker_thread_limit = _resolve_threads(worker_thread_limit)
+    _apply_thread_limit(worker_thread_limit, label="main")
+
+    with st.spinner("📊 Génération de la grille..."):
+        try:
+            param_names = list(param_ranges.keys())
+            param_values_lists: List[List[Any]] = []
+
+            if param_names:
+                for pname in param_names:
+                    r = param_ranges[pname]
+                    pmin = r.get("min") if isinstance(r, dict) else None
+                    _raw_values = r.get("values") if isinstance(r, dict) else None
+                    if _raw_values is None:
+                        pmin, pmax, step = r["min"], r["max"], r["step"]
+
+                        if isinstance(pmin, int) and isinstance(step, int):
+                            built: List[Any] = list(range(int(pmin), int(pmax) + 1, int(step)))
+                        else:
+                            _arr = np.arange(float(pmin), float(pmax) + float(step) / 2, float(step))  # type: ignore[arg-type]
+                            built = [round(float(v), 2) for v in _arr if v <= pmax]
+
+                        values_for_param: List[Any] = built
+                    else:
+                        if isinstance(_raw_values, (list, tuple)):
+                            values_for_param = list(_raw_values)
+                        else:
+                            values_for_param = [_raw_values]
+
+                    if not values_for_param:
+                        values_for_param = [pmin]
+
+                    param_values_lists.append(values_for_param)
+
+                total_combinations = max(
+                    1, math.prod(len(values) for values in param_values_lists)
+                )
+                combo_iter = (
+                    {**params, **dict(zip(param_names, combo))}
+                    for combo in product(*param_values_lists)
+                )
+            else:
+                total_combinations = 1
+                combo_iter = iter([params.copy()])  # type: ignore[assignment]
+
+            total_runs = total_combinations
+
+            if total_runs < total_combinations:
+                show_status(
+                    "info",
+                    f"Grille: {total_runs:,} / {total_combinations:,} combinaisons ({n_workers_effective} workers × {worker_thread_limit} threads)",
+                )
+            else:
+                show_status("info", f"Grille: {total_runs:,} combinaisons ({n_workers_effective} workers × {worker_thread_limit} threads)")
+
+        except Exception as exc:
+            show_status("error", f"Échec génération grille: {exc}")
+            clear_execution_state(st.session_state)
+            st.stop()
+
+    # ✅ CRITIQUE: Définir fast_metrics ICI pour qu'il soit accessible aux fonctions imbriquées
+    # Déterminer si on utilise les métriques rapides (sweeps >500 runs)
+    try:
+        fast_threshold = int(os.getenv("BACKTEST_SWEEP_FAST_METRICS_THRESHOLD", "500"))
+    except (TypeError, ValueError):
+        fast_threshold = 500
+    fast_metrics = total_runs >= fast_threshold
+
+    results_list = []
+    param_combos_map = {}
+
+    monitor = ProgressMonitor(total_runs=total_runs)
+    monitor_placeholder = st.empty()
+
+    sweep_monitor = SweepMonitor(
+        total_combinations=total_runs,
+        objectives=["total_pnl", "theoretical_pnl", "sharpe_ratio", "total_return_pct", "max_drawdown"],
+        top_k=15,
+    )
+    sweep_monitor.start()
+    sweep_placeholder = st.empty()
+
+    logger = logging.getLogger(__name__)
+    error_counts: Dict[str, int] = {}
+    error_logged: set[str] = set()
+    try:
+        error_log_limit = int(os.environ.get("BACKTEST_SWEEP_ERROR_LOG_LIMIT", "3"))
+    except (TypeError, ValueError):
+        error_log_limit = 3
+
+    st.markdown("### 📊 Progression en temps réel")
+    render_progress_monitor(monitor, monitor_placeholder)
+
+    def _normalize_param_combo(param_combo: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            k: float(v) if hasattr(v, "item") else v for k, v in param_combo.items()
+        }
+
+    def _params_to_str(param_combo: Dict[str, Any]) -> str:
+        return str(_normalize_param_combo(param_combo))
+
+    def run_single_backtest(param_combo: Dict[str, Any]):
+        try:
+            # ✅ CRITIQUE: Utiliser fast_metrics pour sweeps séquentiels aussi
+            result_i, msg_i = safe_run_backtest(
+                engine,
+                df,
+                strategy_key,
+                param_combo,
+                symbol,
+                timeframe,
+                silent_mode=not debug_enabled,
+                fast_metrics=fast_metrics,  # ✅ Activer métriques rapides
+            )
+
+            params_str = _params_to_str(param_combo)
+
+            if result_i:
+                m = result_i.metrics
+                # Log des clés disponibles si debug activé
+                if debug_enabled and not m:
+                    logger.warning("Metrics vides pour params=%s", params_str)
+                return {
+                    "params": params_str,
+                    "params_dict": param_combo,
+                    "total_pnl": m.get("total_pnl", 0.0),
+                    "theoretical_pnl": m.get("theoretical_pnl", 0.0),
+                    "sharpe": m.get("sharpe_ratio", 0.0),
+                    "max_dd": m.get("max_drawdown_pct", m.get("max_drawdown", 0.0)),
+                    "win_rate": m.get("win_rate", 0.0),
+                    "trades": m.get("total_trades", 0),
+                    "profit_factor": m.get("profit_factor", 0.0),
+                }
+            return {
+                "params": params_str,
+                "params_dict": param_combo,
+                "error": msg_i,
+            }
+        except Exception as exc:
+            params_str = _params_to_str(param_combo)
+            # Log complet de l'erreur avec traceback
+            if debug_enabled:
+                logger.error("Backtest error params=%s: %s", params_str, traceback.format_exc())
+            return {
+                "params": params_str,
+                "params_dict": param_combo,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+    def record_sweep_result(
+        result: Dict[str, Any],
+        fallback_params: Dict[str, Any],
+    ) -> str:
+        param_combo_result = result.get("params_dict") or fallback_params
+        params_str = result.get("params") or _params_to_str(param_combo_result)
+        result["params"] = params_str
+        param_combos_map[params_str] = param_combo_result
+
+        if "error" not in result:
+            metrics = {
+                "sharpe_ratio": result.get("sharpe", 0.0),
+                "total_pnl": result.get("total_pnl", 0.0),
+                "theoretical_pnl": result.get("theoretical_pnl", 0.0),
+                "total_return_pct": result.get("total_pnl", 0.0) / state.initial_capital * 100 if state.initial_capital else 0.0,
+                "max_drawdown": abs(result.get("max_dd", 0.0)),
+                "win_rate": result.get("win_rate", 0.0),
+                "total_trades": result.get("trades", 0),
+                "profit_factor": result.get("profit_factor", 0.0),
+                "consecutive_losses_max": result.get("consecutive_losses_max", 0),
+                "avg_win_loss_ratio": result.get("avg_win_loss_ratio", 0.0),
+                "robustness_score": result.get("robustness_score", 0.0),
+            }
+            sweep_monitor.update(params=param_combo_result, metrics=metrics)
+        else:
+            error_msg = str(result.get("error") or "Erreur inconnue")
+            error_counts[error_msg] = error_counts.get(error_msg, 0) + 1
+            if len(error_logged) < error_log_limit and error_msg not in error_logged:
+                logger.error("Sweep error sample: %s", error_msg)
+                error_logged.add(error_msg)
+            sweep_monitor.update(params=param_combo_result, metrics={}, error=True)
+
+        result_clean = {k: v for k, v in result.items() if k != "params_dict"}
+        results_list.append(result_clean)
+        return params_str
+
+    completed_params = set()
+    completed = 0
+    last_render_time = time.perf_counter()
+    start_time = time.perf_counter()
+    from utils.sweep_diagnostics import SweepDiagnostics
+    diag = SweepDiagnostics(run_id=f"grid_{strategy_key}")
+
+    def run_sequential_combos(combo_source, key_prefix: str) -> None:
+        _ = key_prefix  # paramètre stable d'API
+        nonlocal completed, last_render_time
+        for param_combo in combo_source:
+            params_str = _params_to_str(param_combo)
+            if params_str in completed_params:
+                continue
+
+            completed += 1
+            monitor.runs_completed = completed
+
+            result = run_single_backtest(param_combo)
+            params_str = record_sweep_result(result, param_combo)
+            completed_params.add(params_str)
+
+            current_time = time.perf_counter()
+            # ⚡ AFFICHAGE MINIMAL: Désactivation render_sweep_progress pendant le sweep (économie CPU/WebSocket)
+            # Les graphiques temps réel consomment énormément de ressources (Plotly + HTML + WebSocket)
+            # On garde juste une progression textuelle, l'affichage complet sera fait à la fin
+            if completed % 1000 == 0 or current_time - last_render_time >= 30.0:
+                with sweep_placeholder.container():
+                    progress_pct = (completed / total_runs * 100) if total_runs > 0 else 0
+                    elapsed = time.perf_counter() - start_time
+                    rate = completed / elapsed if elapsed > 0 else 0
+                    remaining = (total_runs - completed) / rate if rate > 0 else 0
+
+                    # Barre de progression simple (pas d'HTML custom lourd)
+                    st.progress(progress_pct / 100.0)
+                    st.text(f"⚡ {completed:,}/{total_runs:,} runs ({progress_pct:.1f}%) | {rate:.1f} bt/s | ETA: {int(remaining//60)}m{int(remaining % 60)}s")
+
+                    # Afficher uniquement le meilleur PnL (pas de graphiques ni tableaux)
+                    if hasattr(sweep_monitor, '_results') and sweep_monitor._results:
+                        best_result = max(sweep_monitor._results, key=lambda r: r.metrics.get("total_pnl", float("-inf")))
+                        best_pnl = best_result.metrics.get("total_pnl", 0)
+                        pnl_color = "green" if best_pnl > 0 else "red"
+                        st.markdown(f"💰 **Meilleur PnL**: :{pnl_color}[**${best_pnl:+,.2f}**]")
+
+                last_render_time = current_time
+                time.sleep(0.01)
+
+    if n_workers_effective > 1:
+        os.environ.setdefault("BACKTEST_INDICATOR_DISK_CACHE", "0")
+
+    if n_workers_effective > 1 and total_runs > 1:
+        from concurrent.futures import (
+            FIRST_COMPLETED,
+            ProcessPoolExecutor,
+            TimeoutError as FutureTimeoutError,
+            wait,
+        )
+
+        try:
+            from concurrent.futures import BrokenProcessPool  # type: ignore[attr-defined]
+        except ImportError:  # pragma: no cover - fallback for older runtimes
+            BrokenProcessPool = RuntimeError
+
+        diag.log_pool_start(n_workers_effective, worker_thread_limit, total_runs)
+
+        logger = logging.getLogger(__name__)
+        stall_timeout_sec = float(os.getenv("BACKTEST_SWEEP_STALL_SEC", "60"))
+        stall_startup_sec = float(os.getenv("BACKTEST_SWEEP_STALL_STARTUP_SEC", "180"))
+        # ✅ FIX #1: Augmenter max_inflight pour alimenter tous les workers
+        # Avant: n_workers × 2 = 48 tâches pour 24 workers (workers idle 50% du temps)
+        # Après: n_workers × 8 = 192 tâches pour 24 workers (workers toujours alimentés)
+        max_inflight = max(1, min(total_runs, n_workers_effective * 8))
+        pending = {}
+        failed_pending: List[Any] = []
+        pool_failed = False
+        pool_fail_reason = None
+        pool_error: Exception | None = None
+        pool_start_time = time.perf_counter()
+        last_completion_time = time.perf_counter()
+        recent_durations_sec: deque = deque(maxlen=20)
+        pickle_error_count = 0  # Compteur d'erreurs de pickling
+        combo_counter = 0  # Compteur pour diagnostics
+
+        # Import de l'initializer optimisé qui charge le DataFrame une seule fois par worker
+        from backtest.worker import init_worker_with_dataframe
+
+        # ✅ FIX #5: Définir executor AVANT submit_next() pour éviter closure sur variable non définie
+        executor = ProcessPoolExecutor(
+            max_workers=n_workers_effective,
+            initializer=init_worker_with_dataframe,
+            initargs=(
+                df,  # DataFrame chargé UNE SEULE FOIS par worker
+                strategy_key,
+                symbol,
+                timeframe,
+                state.initial_capital,
+                debug_enabled,
+                worker_thread_limit,
+                fast_metrics,  # ✅ CRITIQUE: Activer métriques rapides pour sweeps
+                False,         # is_path (DataFrame fourni directement, pas un chemin)
+            ),
+        )
+
+        # ✅ FIX #5 (suite): Définir submit_next() APRÈS executor
+        def submit_next() -> bool:
+            nonlocal combo_counter
+            try:
+                param_combo = next(combo_iter)
+            except StopIteration:
+                return False
+            combo_counter += 1
+            diag.log_submit(combo_counter, param_combo)
+            submit_ts = time.perf_counter()
+            future = executor.submit(_isolated_worker, param_combo)
+            pending[future] = (param_combo, submit_ts)
+            return True
+
+        try:
+            for _ in range(max_inflight):
+                if not submit_next():
+                    break
+
+            while pending:
+                # ✅ FIX #2: Réduire timeout de 0.5s à 0.05s (10× plus rapide)
+                # Avant: Latence de 500ms entre chaque vérification
+                # Après: Latence de 50ms (workers alimentés 10× plus vite)
+                done, _ = wait(pending, timeout=0.05, return_when=FIRST_COMPLETED)
+                if not done:
+                    now = time.perf_counter()
+                    if completed == 0:
+                        stall_threshold_sec = stall_startup_sec
+                        stalled = (now - pool_start_time) >= stall_threshold_sec
+                    else:
+                        avg_duration = (
+                            sum(recent_durations_sec) / len(recent_durations_sec)
+                            if recent_durations_sec else 0.0
+                        )
+                        stall_threshold_sec = max(
+                            stall_timeout_sec,
+                            avg_duration * 3 if avg_duration > 0 else stall_timeout_sec,
+                        )
+                        stalled = (now - last_completion_time) >= stall_threshold_sec
+
+                    if stalled:
+                        pool_failed = True
+                        pool_fail_reason = "stall"
+                        pool_error = TimeoutError(
+                            f"Aucune completion depuis {stall_threshold_sec:.0f}s"
+                        )
+                        diag.log_stall(stall_threshold_sec, len(pending))
+                        logger.error(
+                            "Sweep multiprocess bloque depuis %ss, bascule sequentielle.",
+                            int(stall_threshold_sec),
+                        )
+                        break
+                    continue
+
+                for future in done:
+                    param_combo, submit_ts = pending.pop(future)
+                    result = None
+                    should_record = True
+
+                    try:
+                        # Timeout 300s pour éviter freeze si Windows interrupt (Task Manager, focus change, etc.)
+                        result = future.result(timeout=300)
+                        duration_ms = (time.perf_counter() - submit_ts) * 1000
+                        recent_durations_sec.append(duration_ms / 1000.0)
+
+                        # Log completion
+                        combo_idx = combo_counter - len(pending) - len(failed_pending)
+                        diag.log_completion(combo_idx, param_combo, result, duration_ms)
+
+                        # Détecter erreur de pickling dans le résultat
+                        if isinstance(result, dict) and result.get("error", ""):
+                            error_msg = str(result.get("error", ""))
+                            if "pickle" in error_msg.lower() or "not the same object" in error_msg:
+                                pickle_error_count += 1
+                                if pickle_error_count >= 10:
+                                    pool_failed = True
+                                    pool_fail_reason = "pickle"
+                                    pool_error = RuntimeError(
+                                        "Erreur de pickling détectée - Streamlit a rechargé le module. "
+                                        "Relancez le sweep après le rechargement."
+                                    )
+                                    logger.error(
+                                        "Erreur de pickling répétée (%d fois), arrêt du sweep.",
+                                        pickle_error_count,
+                                    )
+                                    failed_pending.append(param_combo)
+                                    should_record = False
+                                    break
+
+                    except BrokenProcessPool as exc:
+                        combo_idx = combo_counter - len(pending) - len(failed_pending)
+                        diag.log_pool_broken("BrokenProcessPool", exc)
+                        pool_failed = True
+                        pool_fail_reason = "broken"
+                        pool_error = exc
+                        failed_pending.append(param_combo)
+                        should_record = False
+
+                        break
+
+                    except FutureTimeoutError:
+                        # Worker timeout (>300s) - probablement bloqué par interruption Windows
+                        combo_idx = combo_counter - len(pending) - len(failed_pending)
+                        diag.log_timeout(combo_idx, param_combo, 300)
+                        logger.warning("Worker timeout (>300s) combo: %s", param_combo)
+                        result = {
+                            "params": _params_to_str(param_combo),
+                            "params_dict": param_combo,
+                            "error": "Worker timeout (>300s, probablement bloqué par interruption Windows)",
+                        }
+                        # should_record reste True - on enregistre le timeout comme erreur
+
+                    except Exception as exc:
+                        combo_idx = combo_counter - len(pending) - len(failed_pending)
+                        diag.log_future_exception(combo_idx, param_combo, exc)
+                        error_str = f"{type(exc).__name__}: {exc}"
+                        # Détecter erreur de pickling dans l'exception
+                        if "pickle" in error_str.lower() or "not the same object" in error_str:
+                            pickle_error_count += 1
+                            if pickle_error_count >= 10:
+                                pool_failed = True
+                                pool_fail_reason = "pickle"
+                                pool_error = RuntimeError(
+                                    "Erreur de pickling - le module a été rechargé pendant le sweep."
+                                )
+                                failed_pending.append(param_combo)
+                                should_record = False
+                                break
+                        result = {
+                            "params": _params_to_str(param_combo),
+                            "params_dict": param_combo,
+                            "error": error_str,
+                        }
+                        # should_record reste True - on enregistre l'erreur
+
+                    # Enregistrer le résultat (sauf si break anticipé)
+                    if should_record and result is not None:
+                        completed += 1
+                        monitor.runs_completed = completed
+                        params_str = record_sweep_result(result, param_combo)
+                        completed_params.add(params_str)
+                        last_completion_time = time.perf_counter()
+
+                    # ⚡ CRITIQUE: Soumettre la combinaison suivante UNE SEULE FOIS après traitement complet
+                    # (sauf si pool_failed ou break - dans ce cas on sort de la boucle de toute façon)
+                    if not pool_failed:
+                        submit_next()
+
+                    current_time = time.perf_counter()
+                    # ⚡ AFFICHAGE MINIMAL: Désactivation render_sweep_progress pendant le sweep (économie CPU/WebSocket)
+                    # Les graphiques temps réel consomment énormément de ressources (Plotly + HTML + WebSocket)
+                    # On garde juste une progression textuelle, l'affichage complet sera fait à la fin
+                    if completed % 1000 == 0 or current_time - last_render_time >= 30.0:
+                        with sweep_placeholder.container():
+                            progress_pct = (completed / total_runs * 100) if total_runs > 0 else 0
+                            elapsed = time.perf_counter() - start_time
+                            rate = completed / elapsed if elapsed > 0 else 0
+                            remaining = (total_runs - completed) / rate if rate > 0 else 0
+
+                            # Barre de progression simple (pas d'HTML custom lourd)
+                            st.progress(progress_pct / 100.0)
+                            st.text(f"⚡ {completed:,}/{total_runs:,} runs ({progress_pct:.1f}%) | {rate:.1f} bt/s | ETA: {int(remaining//60)}m{int(remaining % 60)}s")
+
+                            # Afficher uniquement le meilleur PnL (pas de graphiques ni tableaux)
+                            if hasattr(sweep_monitor, '_results') and sweep_monitor._results:
+                                best_result = max(sweep_monitor._results, key=lambda r: r.metrics.get("total_pnl", float("-inf")))
+                                best_pnl = best_result.metrics.get("total_pnl", 0)
+                                pnl_color = "green" if best_pnl > 0 else "red"
+                                st.markdown(f"💰 **Meilleur PnL**: :{pnl_color}[**${best_pnl:+,.2f}**]")
+
+                        last_render_time = current_time
+                        time.sleep(0.01)
+
+                if pool_failed:
+                    diag.log_pool_broken(pool_fail_reason or "unknown", pool_error)  # type: ignore[arg-type]
+                    break
+        finally:
+            diag.log_pool_shutdown(success=not pool_failed)
+            try:
+                executor.shutdown(
+                    wait=not pool_failed,
+                    cancel_futures=pool_failed,
+                )
+            except Exception:
+                logger.exception("Erreur shutdown ProcessPoolExecutor")
+
+        if pool_failed:
+            with status_container:
+                if pool_fail_reason == "pickle":
+                    show_status(
+                        "error",
+                        "⚠️ Erreur de pickling: le module a été rechargé par Streamlit pendant le sweep. "
+                        "Relancez le sweep - il reprendra depuis les combinaisons non testées.",
+                    )
+                else:
+                    show_status(
+                        "warning",
+                        "Pool multiprocess interrompu, reprise en mode séquentiel.",
+                    )
+                if pool_error:
+                    st.caption(f"Détails: {pool_error}")
+
+            pending_combos = failed_pending + [item[0] for item in pending.values()]
+            if pool_fail_reason == "stall" and pending_combos:
+                logger.warning(
+                    "Stall détecté: %d combinaisons en attente seront relancées en séquentiel.",
+                    len(pending_combos),
+                )
+
+            diag.log_sequential_fallback(pool_fail_reason, len(pending_combos))
+            fallback_iter = chain(pending_combos, combo_iter)
+            run_sequential_combos(fallback_iter, "sweep_fallback")
+    else:
+        run_sequential_combos(combo_iter, "sweep_sequential")
+
+    render_progress_monitor(monitor, monitor_placeholder)
+    sweep_placeholder.empty()
+    with sweep_placeholder.container():
+        render_sweep_progress(
+            sweep_monitor,
+            key="sweep_final",
+            show_top_results=True,
+            show_evolution=True,
+        )
+
+    st.markdown("---")
+    st.markdown("### 🎯 Résumé de l'Optimisation")
+    render_sweep_summary(sweep_monitor, key="sweep_summary")
+
+    # Finalize diagnostics
+    diag.log_final_summary()
+    st.caption(f"📋 Logs diagnostiques: `{diag.log_file}`")
+
+    monitor_placeholder.empty()
+    sweep_placeholder.empty()
+
+    with status_container:
+        show_status("success", f"Optimisation: {len(results_list)} tests")
+
+    results_df = pd.DataFrame(results_list)
+
+    if "trades" in results_df.columns:
+        logger = logging.getLogger(__name__)
+        logger.info("=" * 80)
+        logger.info("🔍 DEBUG GRID SEARCH - Analyse de la colonne 'trades'")
+        logger.info("   Type: %s", results_df["trades"].dtype)
+        logger.info("   Shape: %s", results_df["trades"].shape)
+        logger.info(
+            "   Premières valeurs: %s",
+            results_df["trades"].head(10).tolist(),
+        )
+        logger.info(
+            "   Stats: min=%s, max=%s, mean=%.2f",
+            results_df["trades"].min(),
+            results_df["trades"].max(),
+            results_df["trades"].mean(),
+        )
+
+        trades_values = results_df["trades"].values
+        fractional = [
+            x for x in trades_values if isinstance(x, float) and not x.is_integer()
+        ]
+        if fractional:
+            logger.warning(
+                "   ⚠️  %s valeurs fractionnaires détectées: %s",
+                len(fractional),
+                fractional[:5],
+            )
+        else:
+            logger.info("   ✅ Toutes les valeurs sont des entiers")
+        logger.info("=" * 80)
+
+    error_items = []
+    if error_counts:
+        total_errors = sum(error_counts.values())
+        with st.expander("❌ Erreurs (extraits)", expanded=True):
+            st.caption(
+                f"{total_errors} erreurs detectees. "
+                "Consultez le terminal pour les premiers messages."
+            )
+            error_items = sorted(
+                error_counts.items(), key=lambda item: item[1], reverse=True
+            )
+            error_df = pd.DataFrame(
+                [
+                    {"error": msg, "count": count}
+                    for msg, count in error_items[:10]
+                ]
+            )
+            st.dataframe(error_df, use_container_width=True)
+
+    error_column = results_df.get("error")
+    if error_column is not None:
+        valid_results = results_df[error_column.isna()]
+    else:
+        valid_results = results_df
+
+    if not valid_results.empty:
+        valid_results = valid_results.sort_values("sharpe", ascending=False)
+
+        st.subheader("🏆 Top 10 Combinaisons")
+
+        with st.expander("🔍 Debug Info - Types de données"):
+            st.text(f"Nombre de résultats: {len(valid_results)}")
+            st.text("Types des colonnes:")
+            st.text(str(valid_results.dtypes))
+            if "trades" in valid_results.columns:
+                st.text("\nStatistiques 'trades':")
+                st.text(f"  Type: {valid_results['trades'].dtype}")
+                st.text(f"  Min: {valid_results['trades'].min()}")
+                st.text(f"  Max: {valid_results['trades'].max()}")
+                st.text(
+                    f"  Mean: {valid_results['trades'].mean():.2f}"
+                )
+
+        st.dataframe(valid_results.head(10), use_container_width=True)
+
+        best = valid_results.iloc[0]
+        st.info(f"🥇 Meilleure: {best['params']}")
+
+        best_params = param_combos_map.get(best["params"], {})
+        result, _ = safe_run_backtest(
+            engine,
+            df,
+            strategy_key,
+            best_params,
+            symbol,
+            timeframe,
+            silent_mode=not debug_enabled,
+        )
+        if result is not None:
+            result, _, wfa_msg = _attach_wfa_metrics(result, df, best_params)
+            if wfa_msg:
+                show_status("info", wfa_msg)
+            persist_run_winner(
+                st.session_state,
+                result=result,
+                params=best_params,
+                metrics=result.metrics,
+                origin="grid",
+                meta=result.meta,
+            )
+            _maybe_auto_save_run(result)
+    else:
+        show_status("error", "Aucun résultat valide")
+        # Afficher diagnostic détaillé
+        st.markdown("### 🔍 Diagnostic")
+        st.warning(
+            f"Sur {len(results_list)} combinaisons évaluées, "
+            f"toutes ont échoué."
+        )
+        if error_items:
+            top_error, top_count = error_items[0]
+            st.error(
+                f"**Erreur principale** ({top_count} occurrences sur {sum(error_counts.values())} erreurs):"
+            )
+            st.code(top_error, language="text")
+        elif results_list:
+            # Extraire les erreurs du DataFrame si error_counts vide
+            errors_in_results = [
+                r.get("error") for r in results_list if r.get("error")
+            ]
+            if errors_in_results:
+                st.error("**Première erreur détectée:**")
+                st.code(errors_in_results[0], language="text")
+                if len(errors_in_results) > 1:
+                    st.caption(f"+ {len(errors_in_results)-1} autres erreurs similaires")
+            else:
+                st.info(
+                    "Aucune erreur explicite, mais les résultats sont invalides. "
+                    "Vérifiez que les données OHLCV sont chargées et valides."
+                )
+        clear_execution_state(st.session_state)
+        st.stop()
+
+
+
+
+def _run_llm_optimization_mode(
+    *,
+    df,
+    engine,
+    state,
+    status_container,
+    strategy_key,
+    params,
+    symbol,
+    timeframe,
+    debug_enabled,
+    n_workers,
+    max_combos,
+    llm_config,
+    llm_model,
+    llm_max_iterations,
+    llm_use_multi_agent,
+    llm_use_walk_forward,
+    llm_unload_during_backtest,
+    llm_compare_enabled,
+    llm_compare_auto_run,
+    llm_compare_strategies,
+    llm_compare_tokens,
+    llm_compare_timeframes,
+    llm_compare_metric,
+    llm_compare_aggregate,
+    llm_compare_max_runs,
+    llm_compare_use_preset,
+    llm_compare_generate_report,
+    resolve_workers,
+    format_combo_limit,
+    prepare_market_df,
+    attach_wfa_metrics,
+):
+    """LLM optimization mode — extracted from render_main."""
+    # Alias closures to their original names used throughout the body
+    _resolve_workers = resolve_workers
+    _format_combo_limit = format_combo_limit
+    _prepare_market_df = prepare_market_df
+    _attach_wfa_metrics = attach_wfa_metrics
+
+    if not LLM_AVAILABLE:
+        show_status("error", "Module agents LLM non disponible")
+        st.code(LLM_IMPORT_ERROR)
+        clear_execution_state(st.session_state)
+        st.stop()
+
+    if llm_config is None:
+        show_status("error", "Configuration LLM incomplète")
+        st.info("Configurez le provider LLM dans la sidebar")
+        clear_execution_state(st.session_state)
+        st.stop()
+
+    session_id = generate_session_id()  # type: ignore[misc]
+    orchestration_logger = OrchestrationLogger(session_id=session_id)  # type: ignore[misc]
+
+    try:
+        param_bounds = get_strategy_param_bounds(strategy_key)  # type: ignore[misc]
+        if not param_bounds:
+            param_bounds = {}
+            for pname in params.keys():
+                if pname in PARAM_CONSTRAINTS:
+                    c = PARAM_CONSTRAINTS[pname]
+                    param_bounds[pname] = (c["min"], c["max"])
+    except Exception as exc:
+        show_status("warning", f"Bornes par défaut utilisées: {exc}")
+        param_bounds = {}
+        for pname in params.keys():
+            if pname in PARAM_CONSTRAINTS:
+                c = PARAM_CONSTRAINTS[pname]
+                param_bounds[pname] = (c["min"], c["max"])
+
+    try:
+        full_param_space = get_strategy_param_space(strategy_key, include_step=True)  # type: ignore[misc]
+        llm_space_stats = compute_search_space_stats(full_param_space)  # type: ignore[misc]
+    except Exception:
+        llm_space_stats = None
+
+    max_iterations = min(llm_max_iterations, max_combos)
+
+    comparison_summary: List[Dict[str, Any]] = []
+    should_run_comparison = llm_compare_enabled and (
+        llm_compare_auto_run or st.session_state.get("llm_compare_run_now", False)
+    )
+    if should_run_comparison:
+        st.subheader("Comparaison multi-strategies")
+        if not llm_compare_strategies:
+            st.warning("Aucune strategie selectionnee pour la comparaison.")
+        elif not llm_compare_tokens or not llm_compare_timeframes:
+            st.warning("Selectionnez au moins un token et un timeframe.")
+        else:
+            start_str = str(state.start_date) if state.start_date else None
+            end_str = str(state.end_date) if state.end_date else None
+            progress_bar = st.progress(0)
+            comparison_results: List[Dict[str, Any]] = []
+            comparison_errors: List[str] = []
+            data_cache: Dict[tuple[str, str], pd.DataFrame] = {}
+
+            for token in llm_compare_tokens:
+                for tf in llm_compare_timeframes:
+                    df_cmp, msg = safe_load_data(token, tf, start_str, end_str)
+                    if df_cmp is None:
+                        comparison_errors.append(f"{token}/{tf}: {msg}")
+                    else:
+                        df_cmp, _ = _prepare_market_df(
+                            df_cmp,
+                            symbol_value=token,
+                            timeframe_value=tf,
+                            show_ui=False,
+                        )
+                        data_cache[(token, tf)] = df_cmp
+
+            valid_pairs = list(data_cache.keys())
+            total_runs = len(valid_pairs) * len(llm_compare_strategies)
+            total_runs = max(0, min(total_runs, llm_compare_max_runs))
+            run_index = 0
+
+            with st.spinner("Comparaison en cours..."):
+                for strategy_name_cmp in llm_compare_strategies:
+                    params_cmp = build_strategy_params_for_comparison(
+                        strategy_name_cmp,
+                        use_preset=llm_compare_use_preset,
+                    )
+                    for token, tf in valid_pairs:
+                        if run_index >= total_runs:
+                            break
+                        df_cmp = data_cache[(token, tf)]
+                        result_cmp, status = safe_run_backtest(
+                            engine,
+                            df_cmp,
+                            strategy_name_cmp,
+                            params_cmp,
+                            token,
+                            tf,
+                            silent_mode=not debug_enabled,
+                        )
+                        if result_cmp is None:
+                            comparison_errors.append(
+                                f"{strategy_name_cmp} {token}/{tf}: {status}"
+                            )
+                        else:
+                            comparison_results.append(
+                                {
+                                    "strategy": strategy_name_cmp,
+                                    "symbol": token,
+                                    "timeframe": tf,
+                                    "metrics": result_cmp.metrics,
+                                    "trades": len(result_cmp.trades),
+                                }
+                            )
+                        run_index += 1
+                        if total_runs > 0:
+                            progress_bar.progress(run_index / total_runs)
+                    if run_index >= total_runs:
+                        break
+
+            if comparison_errors:
+                st.warning(
+                    "Comparaison: "
+                    + "; ".join(comparison_errors[:8])
+                    + (" ..." if len(comparison_errors) > 8 else "")
+                )
+
+            if comparison_results:
+                comparison_summary = summarize_comparison_results(
+                    comparison_results,
+                    aggregate=llm_compare_aggregate,
+                    primary_metric=llm_compare_metric,
+                    expected_runs=len(valid_pairs),
+                )
+                st.caption(
+                    f"Runs effectues: {len(comparison_results)} / {total_runs}"
+                )
+                st.dataframe(pd.DataFrame(comparison_summary), use_container_width=True)
+
+                chart_rows = []
+                for row in comparison_summary:
+                    chart_rows.append(
+                        {
+                            "name": row["strategy"],
+                            "metrics": {
+                                llm_compare_metric: row.get(llm_compare_metric)
+                            },
+                        }
+                    )
+                render_comparison_chart(
+                    chart_rows,
+                    metric=llm_compare_metric,
+                    title="Comparaison agregree",
+                    key="llm_strategy_comparison",
+                )
+
+                if llm_compare_generate_report:
+                    try:
+                        llm_client = create_llm_client(llm_config)  # type: ignore[misc]
+                        if not llm_client.is_available():
+                            st.warning("LLM indisponible pour la justification.")
+                        else:
+                            summary_lines = [
+                                "strategy | runs | sharpe | return_pct | max_drawdown | win_rate"
+                            ]
+                            for row in comparison_summary:
+                                summary_lines.append(
+                                    f"{row.get('strategy')} | "
+                                    f"{row.get('runs')} | "
+                                    f"{row.get('sharpe_ratio', float('nan')):.2f} | "
+                                    f"{row.get('total_return_pct', float('nan')):.2f} | "
+                                    f"{row.get('max_drawdown', float('nan')):.2f} | "
+                                    f"{row.get('win_rate', float('nan')):.1f}"
+                                )
+
+                            system_prompt = (
+                                "You are a senior quantitative strategist. "
+                                "Compare strategy robustness across assets and timeframes."
+                            )
+                            user_message = (
+                                "Comparison scope:\n"
+                                f"- tokens: {', '.join(llm_compare_tokens)}\n"
+                                f"- timeframes: {', '.join(llm_compare_timeframes)}\n"
+                                f"- aggregation: {llm_compare_aggregate}\n"
+                                f"- primary metric: {llm_compare_metric}\n\n"
+                                "Summary table (metrics are percent where applicable):\n"
+                                + "\n".join(summary_lines)
+                                + "\n\n"
+                                "Provide:\n"
+                                "1) Ranking with short justification.\n"
+                                "2) Notes on robustness and risk.\n"
+                                "3) Which strategies deserve further optimization."
+                            )
+
+                            response = llm_client.simple_chat(
+                                user_message=user_message,
+                                system_prompt=system_prompt,
+                                temperature=0.3,
+                            )
+                            st.markdown("**Justification LLM**")
+                            st.write(response.content)
+                    except Exception as exc:
+                        st.warning(f"Justification LLM indisponible: {exc}")
+            st.session_state["llm_compare_run_now"] = False
+
+    st.subheader("🤖 Optimisation par Agents LLM")
+
+    col_info, col_timeline = st.columns([1, 2])
+
+    with col_info:
+        st.markdown(
+            f"""
+    **Stratégie:** `{strategy_key}`
+    **Paramètres initiaux:** `{params}`
+    **Max itérations:** {llm_max_iterations}
+    **Walk-Forward:** {'✅' if llm_use_walk_forward else '❌'}
+    """
+        )
+
+        st.markdown("**Bornes des paramètres:**")
+        for pname, (pmin, pmax) in param_bounds.items():
+            st.caption(f"• {pname}: [{pmin}, {pmax}]")
+
+        if llm_space_stats:
+            st.markdown("---")
+            if llm_space_stats.is_continuous:
+                st.info("ℹ️ **Espace continu** : exploration adaptative par LLM")
+            else:
+                st.caption(
+                    "📊 Espace discret estimé: "
+                    f"~{llm_space_stats.total_combinations:,} combinaisons"
+                )
+                st.caption("_(Le LLM explore de façon intelligente sans énumérer)_")
+
+    col_timeline.empty()
+
+    strategist = None
+    executor = None
+    orchestrator = None
+
+    run_tracker = get_global_tracker()
+    data_identifier = (
+        f"df_{len(df)}rows_{df.index[0]}_{df.index[-1]}"
+        if len(df) > 0
+        else "empty_df"
+    )
+    run_signature = RunSignature(
+        strategy_name=strategy_key,
+        data_path=data_identifier,
+        initial_params=params,
+        llm_model=llm_model,
+        mode="multi_agents" if llm_use_multi_agent else "autonomous",
+        session_id=session_id,
+    )
+
+    # Enregistrer le run (pour statistiques) sans bloquer l'exécution
+    # Note: Le tracking des duplications durant la session est géré par session_param_tracker
+    run_tracker.register(run_signature)
+
+    with st.spinner("🔌 Connexion au LLM..."):
+        try:
+            if llm_use_multi_agent:
+                live_events_placeholder = st.empty()
+                live_viewer = LiveOrchestrationViewer(  # type: ignore[misc]
+                    container_key="live_orch_viewer_multi"
+                )
+
+                def on_orchestration_event(entry):
+                    live_viewer.add_event(entry)
+                    live_viewer.render(live_events_placeholder, show_header=True)
+
+                orchestration_logger.set_on_event_callback(on_orchestration_event)
+
+                n_workers_effective = _resolve_workers(n_workers)
+                orchestrator = create_orchestrator_with_backtest(  # type: ignore[misc]
+                    llm_config=llm_config,
+                    strategy_name=strategy_key,
+                    data=df,
+                    initial_params=params,
+                    data_symbol=symbol,
+                    data_timeframe=timeframe,
+                    role_model_config=state.role_model_config,
+                    llm_topology_config=state.llm_topology_config,
+                    use_walk_forward=llm_use_walk_forward,
+                    orchestration_logger=orchestration_logger,
+                    session_id=session_id,
+                    n_workers=n_workers_effective,
+                    max_iterations=max_iterations,
+                    initial_capital=state.initial_capital,
+                    config=engine.config,
+                )
+                show_status(
+                    "success",
+                    "Connexion LLM établie (mode multi-agents)",
+                )
+            else:
+                strategist, executor = create_optimizer_from_engine(  # type: ignore[misc]
+                    llm_config=llm_config,
+                    strategy_name=strategy_key,
+                    data=df,
+                    initial_capital=state.initial_capital,
+                    use_walk_forward=llm_use_walk_forward,
+                    verbose=True,
+                    unload_llm_during_backtest=llm_unload_during_backtest,
+                    orchestration_logger=orchestration_logger,
+                )
+                show_status("success", "Connexion LLM établie")
+        except Exception as exc:
+            show_status("error", f"Echec connexion LLM: {exc}")
+            st.code(traceback.format_exc())
+            clear_execution_state(st.session_state)
+            st.stop()
+
+    if llm_use_multi_agent:
+        st.markdown("---")
+        st.markdown("### Progression multi-agents")
+        n_workers_effective = _resolve_workers(n_workers)
+        st.caption(
+            f"Limite: {_format_combo_limit(max_combos)} backtests max, "
+            f"{n_workers_effective} workers, {max_iterations} iterations max"
+        )
+
+        if orchestrator is None:
+            show_status("error", "Orchestrator non initialise")
+            clear_execution_state(st.session_state)
+            st.stop()
+
+        try:
+            with st.spinner("Optimisation multi-agents en cours..."):
+                orchestrator_result = orchestrator.run()
+
+            try:
+                orchestration_logger.save_to_jsonl()
+            except Exception:
+                pass
+
+            if orchestrator_result.errors:
+                st.warning(
+                    f"Orchestration errors: {len(orchestrator_result.errors)}"
+                )
+            if orchestrator_result.warnings:
+                st.warning(
+                    f"Orchestration warnings: {len(orchestrator_result.warnings)}"
+                )
+
+            if orchestrator_result.success:
+                st.success("Optimisation multi-agents terminee")
+            else:
+                st.warning(
+                    "Optimisation multi-agents terminee "
+                    f"(decision: {orchestrator_result.decision})"
+                )
+
+            if orchestrator_result.final_params:
+                st.subheader("Resultat multi-agents")
+                st.json(orchestrator_result.final_params)
+            else:
+                st.warning("Aucun parametre final retourne")
+
+            if orchestrator_result.final_metrics:
+                metrics = orchestrator_result.final_metrics
+                col_a, col_b, col_c = st.columns(3)
+                with col_a:
+                    st.metric("Sharpe", f"{metrics.sharpe_ratio:.3f}")
+                with col_b:
+                    st.metric("Return", f"{metrics.total_return:.2%}")
+                with col_c:
+                    st.metric("Max Drawdown", f"{metrics.max_drawdown:.2%}")
+
+            if orchestrator_result.iteration_history:
+                st.markdown("---")
+                st.dataframe(
+                    pd.DataFrame(orchestrator_result.iteration_history),
+                    use_container_width=True,
+                )
+
+            best_params = orchestrator_result.final_params or {}
+            if best_params:
+                result, _ = safe_run_backtest(
+                    engine,
+                    df,
+                    strategy_key,
+                    best_params,
+                    symbol,
+                    timeframe,
+                    silent_mode=not debug_enabled,
+                )
+                if result is not None:
+                    result, _, wfa_msg = _attach_wfa_metrics(result, df, best_params)
+                    if wfa_msg:
+                        show_status("info", wfa_msg)
+                    persist_run_winner(
+                        st.session_state,
+                        result=result,
+                        params=best_params,
+                        metrics=result.metrics,
+                        origin="llm",
+                        meta=result.meta,
+                    )
+                    _maybe_auto_save_run(result)
+        except Exception as exc:
+            show_status("error", f"Erreur optimisation multi-agents: {exc}")
+            st.code(traceback.format_exc())
+            clear_execution_state(st.session_state)
+            st.stop()
+    else:
+        st.markdown("---")
+        st.markdown("### 📊 Progression de l'optimisation LLM")
+
+        live_status = st.status(
+            "🚀 Démarrage de l'optimisation...",
+            expanded=True,
+        )
+        live_events_placeholder = st.empty()
+        orchestration_placeholder = st.empty()
+
+        max_iterations = min(llm_max_iterations, max_combos)
+
+        live_viewer = LiveOrchestrationViewer(  # type: ignore[misc]
+            container_key="live_orch_viewer"
+        )
+
+        def on_orchestration_event(entry):  # noqa: F811  # pylint: disable=function-redefined
+            live_viewer.add_event(entry)
+            live_viewer.render(live_events_placeholder, show_header=True)
+
+        orchestration_logger.set_on_event_callback(on_orchestration_event)
+
+        n_workers_effective = _resolve_workers(n_workers)
+        st.caption(
+            "🔧 Limite: "
+            f"{_format_combo_limit(max_combos)} backtests max, {n_workers_effective} workers, "
+            f"{max_iterations} itérations max"
+        )
+
+        try:
+            with live_status:
+                st.write("🤖 **Agent LLM actif** - Optimisation autonome")
+                st.write(
+                    f"📊 Stratégie: `{strategy_key}` | Modèle: `{llm_model}`"
+                )
+
+                session = strategist.optimize(  # type: ignore[union-attr]
+                    executor=executor,
+                    initial_params=params,
+                    param_bounds=param_bounds,
+                    max_iterations=max_iterations,
+                    min_sharpe=-5.0,
+                    max_drawdown=0.50,
+                )
+
+                live_status.update(
+                    label=(
+                        "✅ Optimisation terminée en "
+                        f"{session.current_iteration} itérations"
+                    ),
+                    state="complete",
+                    expanded=False,
+                )
+
+            st.success(
+                f"✅ Optimisation terminée en {session.current_iteration} itérations"
+            )
+
+            with st.expander("📝 Historique des itérations", expanded=True):
+                for i, exp in enumerate(session.all_results):
+                    icon = "🟢" if exp.sharpe_ratio > 0 else "🔴"
+                    col_it1, col_it2, col_it3 = st.columns([2, 1, 1])
+                    with col_it1:
+                        st.markdown(f"**Itération {i+1}** {icon}")
+                        st.caption(
+                            f"Params: `{exp.request.parameters}`"
+                        )
+                    with col_it2:
+                        st.metric("Sharpe", f"{exp.sharpe_ratio:.3f}")
+                    with col_it3:
+                        st.metric("Return", f"{exp.total_return:.2%}")
+
+            try:
+                orchestration_logger.save_to_jsonl()
+            except Exception:
+                logging.getLogger(__name__).warning("orchestration_logger.save_to_jsonl failed", exc_info=True)
+
+            with orchestration_placeholder:
+                st.markdown("---")
+
+                tab_simple, tab_deep = st.tabs(
+                    ["📋 Logs d'orchestration", "🔍 Deep Trace (avancé)"]
+                )
+
+                with tab_simple:
+                    render_full_orchestration_viewer(  # type: ignore[misc]
+                        orchestration_logger=orchestration_logger,
+                        max_entries=50,
+                    )
+
+                with tab_deep:
+                    if LLM_AVAILABLE:
+                        render_deep_trace_viewer(  # type: ignore[misc]
+                            logger=orchestration_logger
+                        )
+                    else:
+                        st.warning(
+                            "Module LLM non disponible pour Deep Trace avancé"
+                        )
+
+            st.markdown("---")
+            st.subheader("🏆 Résultat de l'optimisation LLM")
+
+            col_best, col_improve = st.columns(2)
+
+            with col_best:
+                st.markdown("**Meilleurs paramètres trouvés:**")
+                st.json(session.best_result.request.parameters)
+
+                st.metric(
+                    "Meilleur Sharpe",
+                    f"{session.best_result.sharpe_ratio:.3f}",
+                )
+                st.metric(
+                    "Return",
+                    f"{session.best_result.total_return:.2%}",
+                )
+
+            with col_improve:
+                if session.all_results:
+                    initial_sharpe = session.all_results[0].sharpe_ratio
+                    best_sharpe = session.best_result.sharpe_ratio
+                    improvement = (
+                        (best_sharpe - initial_sharpe) / abs(initial_sharpe) * 100
+                    ) if initial_sharpe != 0 else 0
+
+                    st.metric(
+                        "Amélioration Sharpe",
+                        f"{improvement:+.1f}%",
+                        delta=f"{best_sharpe - initial_sharpe:+.3f}",
+                    )
+                    st.metric("Itérations utilisées", session.current_iteration)
+
+                    if session.final_reasoning:
+                        st.info(f"🛑 Arrêt: {session.final_reasoning}")
+
+            best_params = session.best_result.request.parameters
+            result, _ = safe_run_backtest(
+                engine,
+                df,
+                strategy_key,
+                best_params,
+                symbol,
+                timeframe,
+                silent_mode=not debug_enabled,
+            )
+            if result is not None:
+                result, _, wfa_msg = _attach_wfa_metrics(result, df, best_params)
+                if wfa_msg:
+                    show_status("info", wfa_msg)
+                persist_run_winner(
+                    st.session_state,
+                    result=result,
+                    params=best_params,
+                    metrics=result.metrics,
+                    origin="llm",
+                    meta=result.meta,
+                )
+                _maybe_auto_save_run(result)
+
+        except Exception as exc:
+            live_status.update(label=f"❌ Erreur: {exc}", state="error")
+            show_status("error", f"Erreur optimisation LLM: {exc}")
+            st.code(traceback.format_exc())
+            clear_execution_state(st.session_state)
+            st.stop()
 
 
 def render_main(
@@ -1010,11 +2346,7 @@ def render_main(
 ) -> None:
     # Guard against stale lock states after an upstream interruption (sidebar/import errors).
     if st.session_state.get("is_running", False) and not run_button:
-        preserve_builder_launch = (
-            str(getattr(state, "optimization_mode", "") or "") == "🏗️ Strategy Builder"
-            and bool(st.session_state.get("builder_launch_pending", False))
-        )
-        if not preserve_builder_launch:
+        if not should_preserve_builder_launch(state, st.session_state):
             st.session_state.is_running = False
 
     result = st.session_state.get("last_run_result")
@@ -1165,7 +2497,7 @@ def render_main(
             f"anti_overfit={anti_overfit_score:.2f}"
         )
 
-    if not run_button and optimization_mode == "🏗️ Strategy Builder":
+    if not run_button and optimization_mode == BUILDER_OPTIMIZATION_MODE:
         from ui.builder_view import (
             restore_builder_autonomous_ui_state_from_runtime,
             should_auto_resume_builder_autonomous,
@@ -1184,28 +2516,27 @@ def render_main(
                 try:
                     state.builder_autonomous = True
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).warning("failed to set builder_autonomous on state", exc_info=True)
             run_button = True
             st.session_state["is_running"] = True
             st.session_state["builder_autonomous"] = True
 
     if (
         not run_button
-        and optimization_mode == "🏗️ Strategy Builder"
+        and optimization_mode == BUILDER_OPTIMIZATION_MODE
         and bool(st.session_state.get("builder_launch_pending", False))
         and bool(st.session_state.get("is_running", False))
     ):
         run_button = True
 
     if run_button:
-        st.session_state.is_running = True
-        st.session_state.stop_requested = False
+        mark_ui_run_started(st.session_state)
         winner_params = None
         winner_metrics = None
         winner_origin = None
         winner_meta = None
 
-        if optimization_mode != "🏗️ Strategy Builder":
+        if optimization_mode != BUILDER_OPTIMIZATION_MODE:
             is_valid, errors = validate_all_params(params)
 
             if not is_valid:
@@ -1213,7 +2544,7 @@ def render_main(
                     show_status("error", "Paramètres invalides")
                     for err in errors:
                         st.error(f"  • {err}")
-                st.session_state.is_running = False
+                clear_execution_state(st.session_state)
                 st.stop()
 
         is_multi_sweep = (len(state.symbols) > 1 or len(state.timeframes) > 1)
@@ -1428,10 +2759,10 @@ def render_main(
                 else:
                     st.warning("Aucun sweep réussi.")
 
-            st.session_state.is_running = False
+            clear_execution_state(st.session_state)
             return
 
-        if optimization_mode == "🏗️ Strategy Builder":
+        if optimization_mode == BUILDER_OPTIMIZATION_MODE:
             from ui.builder_view import (
                 should_auto_resume_builder_autonomous,
             )
@@ -1474,7 +2805,7 @@ def render_main(
                         st.info(f"💡 Vérifiez les fichiers dans `{data_dir_hint}`")
                     else:
                         st.info("💡 Vérifiez la configuration de vos chemins de données.")
-                st.session_state.is_running = False
+                clear_execution_state(st.session_state)
                 st.stop()
 
             if df is not None:
@@ -1512,7 +2843,7 @@ def render_main(
             if result is None:
                 with status_container:
                     show_status("error", f"Échec backtest: {result_msg}")
-                st.session_state.is_running = False
+                clear_execution_state(st.session_state)
                 st.stop()
 
             with status_container:
@@ -1521,1262 +2852,61 @@ def render_main(
             if wfa_msg:
                 with status_container:
                     show_status("info", wfa_msg)
-            winner_params = result.meta.get("params", params)
-            winner_metrics = result.metrics
-            winner_origin = "backtest"
-            winner_meta = result.meta
-            st.session_state["last_run_result"] = result
-            st.session_state["last_winner_params"] = winner_params
-            st.session_state["last_winner_metrics"] = winner_metrics
-            st.session_state["last_winner_origin"] = winner_origin
-            st.session_state["last_winner_meta"] = winner_meta
+            persist_run_winner(
+                st.session_state,
+                result=result,
+                params=result.meta.get("params", params),
+                metrics=result.metrics,
+                origin="backtest",
+                meta=result.meta,
+            )
             _maybe_auto_save_run(result)
 
         elif optimization_mode == "Grille de Paramètres":
-            n_workers_effective = _resolve_workers(n_workers)
-            # Lire threads depuis UI ou fallback env
-            try:
-                worker_thread_limit = int(st.session_state.get(
-                    "grid_worker_threads",
-                    int(os.environ.get("BACKTEST_WORKER_THREADS", "1"))))
-            except (TypeError, ValueError):
-                worker_thread_limit = 1
-            worker_thread_limit = _resolve_threads(worker_thread_limit)
-            _apply_thread_limit(worker_thread_limit, label="main")
-
-            with st.spinner("📊 Génération de la grille..."):
-                try:
-                    param_names = list(param_ranges.keys())
-                    param_values_lists: List[List[Any]] = []
-
-                    if param_names:
-                        for pname in param_names:
-                            r = param_ranges[pname]
-                            pmin = r.get("min") if isinstance(r, dict) else None
-                            _raw_values = r.get("values") if isinstance(r, dict) else None
-                            if _raw_values is None:
-                                pmin, pmax, step = r["min"], r["max"], r["step"]
-
-                                if isinstance(pmin, int) and isinstance(step, int):
-                                    built: List[Any] = list(range(int(pmin), int(pmax) + 1, int(step)))
-                                else:
-                                    _arr = np.arange(float(pmin), float(pmax) + float(step) / 2, float(step))  # type: ignore[arg-type]
-                                    built = [round(float(v), 2) for v in _arr if v <= pmax]
-
-                                values_for_param: List[Any] = built
-                            else:
-                                if isinstance(_raw_values, (list, tuple)):
-                                    values_for_param = list(_raw_values)
-                                else:
-                                    values_for_param = [_raw_values]
-
-                            if not values_for_param:
-                                values_for_param = [pmin]
-
-                            param_values_lists.append(values_for_param)
-
-                        total_combinations = max(
-                            1, math.prod(len(values) for values in param_values_lists)
-                        )
-                        combo_iter = (
-                            {**params, **dict(zip(param_names, combo))}
-                            for combo in product(*param_values_lists)
-                        )
-                    else:
-                        total_combinations = 1
-                        combo_iter = iter([params.copy()])  # type: ignore[assignment]
-
-                    total_runs = total_combinations
-
-                    if total_runs < total_combinations:
-                        show_status(
-                            "info",
-                            f"Grille: {total_runs:,} / {total_combinations:,} combinaisons ({n_workers_effective} workers × {worker_thread_limit} threads)",
-                        )
-                    else:
-                        show_status("info", f"Grille: {total_runs:,} combinaisons ({n_workers_effective} workers × {worker_thread_limit} threads)")
-
-                except Exception as exc:
-                    show_status("error", f"Échec génération grille: {exc}")
-                    st.session_state.is_running = False
-                    st.stop()
-
-            # ✅ CRITIQUE: Définir fast_metrics ICI pour qu'il soit accessible aux fonctions imbriquées
-            # Déterminer si on utilise les métriques rapides (sweeps >500 runs)
-            try:
-                fast_threshold = int(os.getenv("BACKTEST_SWEEP_FAST_METRICS_THRESHOLD", "500"))
-            except (TypeError, ValueError):
-                fast_threshold = 500
-            fast_metrics = total_runs >= fast_threshold
-
-            results_list = []
-            param_combos_map = {}
-
-            monitor = ProgressMonitor(total_runs=total_runs)
-            monitor_placeholder = st.empty()
-
-            sweep_monitor = SweepMonitor(
-                total_combinations=total_runs,
-                objectives=["total_pnl", "theoretical_pnl", "sharpe_ratio", "total_return_pct", "max_drawdown"],
-                top_k=15,
+            _run_grid_search_mode(
+                df=df, engine=engine, state=state,
+                status_container=status_container,
+                strategy_key=strategy_key, params=params,
+                param_ranges=param_ranges,
+                symbol=symbol, timeframe=timeframe,
+                debug_enabled=debug_enabled,
+                n_workers=n_workers, max_combos=max_combos,
+                resolve_workers=_resolve_workers,
+                resolve_threads=_resolve_threads,
+                format_combo_limit=_format_combo_limit,
+                attach_wfa_metrics=_attach_wfa_metrics,
             )
-            sweep_monitor.start()
-            sweep_placeholder = st.empty()
-
-            logger = logging.getLogger(__name__)
-            error_counts: Dict[str, int] = {}
-            error_logged: set[str] = set()
-            try:
-                error_log_limit = int(os.environ.get("BACKTEST_SWEEP_ERROR_LOG_LIMIT", "3"))
-            except (TypeError, ValueError):
-                error_log_limit = 3
-
-            st.markdown("### 📊 Progression en temps réel")
-            render_progress_monitor(monitor, monitor_placeholder)
-
-            def _normalize_param_combo(param_combo: Dict[str, Any]) -> Dict[str, Any]:
-                return {
-                    k: float(v) if hasattr(v, "item") else v for k, v in param_combo.items()
-                }
-
-            def _params_to_str(param_combo: Dict[str, Any]) -> str:
-                return str(_normalize_param_combo(param_combo))
-
-            def run_single_backtest(param_combo: Dict[str, Any]):
-                try:
-                    # ✅ CRITIQUE: Utiliser fast_metrics pour sweeps séquentiels aussi
-                    result_i, msg_i = safe_run_backtest(
-                        engine,
-                        df,
-                        strategy_key,
-                        param_combo,
-                        symbol,
-                        timeframe,
-                        silent_mode=not debug_enabled,
-                        fast_metrics=fast_metrics,  # ✅ Activer métriques rapides
-                    )
-
-                    params_str = _params_to_str(param_combo)
-
-                    if result_i:
-                        m = result_i.metrics
-                        # Log des clés disponibles si debug activé
-                        if debug_enabled and not m:
-                            logger.warning("Metrics vides pour params=%s", params_str)
-                        return {
-                            "params": params_str,
-                            "params_dict": param_combo,
-                            "total_pnl": m.get("total_pnl", 0.0),
-                            "theoretical_pnl": m.get("theoretical_pnl", 0.0),
-                            "sharpe": m.get("sharpe_ratio", 0.0),
-                            "max_dd": m.get("max_drawdown_pct", m.get("max_drawdown", 0.0)),
-                            "win_rate": m.get("win_rate", 0.0),
-                            "trades": m.get("total_trades", 0),
-                            "profit_factor": m.get("profit_factor", 0.0),
-                        }
-                    return {
-                        "params": params_str,
-                        "params_dict": param_combo,
-                        "error": msg_i,
-                    }
-                except Exception as exc:
-                    params_str = _params_to_str(param_combo)
-                    # Log complet de l'erreur avec traceback
-                    if debug_enabled:
-                        logger.error("Backtest error params=%s: %s", params_str, traceback.format_exc())
-                    return {
-                        "params": params_str,
-                        "params_dict": param_combo,
-                        "error": f"{type(exc).__name__}: {exc}",
-                    }
-
-            def record_sweep_result(
-                result: Dict[str, Any],
-                fallback_params: Dict[str, Any],
-            ) -> str:
-                param_combo_result = result.get("params_dict") or fallback_params
-                params_str = result.get("params") or _params_to_str(param_combo_result)
-                result["params"] = params_str
-                param_combos_map[params_str] = param_combo_result
-
-                if "error" not in result:
-                    metrics = {
-                        "sharpe_ratio": result.get("sharpe", 0.0),
-                        "total_pnl": result.get("total_pnl", 0.0),
-                        "theoretical_pnl": result.get("theoretical_pnl", 0.0),
-                        "total_return_pct": result.get("total_pnl", 0.0) / state.initial_capital * 100 if state.initial_capital else 0.0,
-                        "max_drawdown": abs(result.get("max_dd", 0.0)),
-                        "win_rate": result.get("win_rate", 0.0),
-                        "total_trades": result.get("trades", 0),
-                        "profit_factor": result.get("profit_factor", 0.0),
-                        "consecutive_losses_max": result.get("consecutive_losses_max", 0),
-                        "avg_win_loss_ratio": result.get("avg_win_loss_ratio", 0.0),
-                        "robustness_score": result.get("robustness_score", 0.0),
-                    }
-                    sweep_monitor.update(params=param_combo_result, metrics=metrics)
-                else:
-                    error_msg = str(result.get("error") or "Erreur inconnue")
-                    error_counts[error_msg] = error_counts.get(error_msg, 0) + 1
-                    if len(error_logged) < error_log_limit and error_msg not in error_logged:
-                        logger.error("Sweep error sample: %s", error_msg)
-                        error_logged.add(error_msg)
-                    sweep_monitor.update(params=param_combo_result, metrics={}, error=True)
-
-                result_clean = {k: v for k, v in result.items() if k != "params_dict"}
-                results_list.append(result_clean)
-                return params_str
-
-            completed_params = set()
-            completed = 0
-            last_render_time = time.perf_counter()
-            start_time = time.perf_counter()
-            from utils.sweep_diagnostics import SweepDiagnostics
-            diag = SweepDiagnostics(run_id=f"grid_{strategy_key}")
-
-            def run_sequential_combos(combo_source, key_prefix: str) -> None:
-                _ = key_prefix  # paramètre stable d'API
-                nonlocal completed, last_render_time
-                for param_combo in combo_source:
-                    params_str = _params_to_str(param_combo)
-                    if params_str in completed_params:
-                        continue
-
-                    completed += 1
-                    monitor.runs_completed = completed
-
-                    result = run_single_backtest(param_combo)
-                    params_str = record_sweep_result(result, param_combo)
-                    completed_params.add(params_str)
-
-                    current_time = time.perf_counter()
-                    # ⚡ AFFICHAGE MINIMAL: Désactivation render_sweep_progress pendant le sweep (économie CPU/WebSocket)
-                    # Les graphiques temps réel consomment énormément de ressources (Plotly + HTML + WebSocket)
-                    # On garde juste une progression textuelle, l'affichage complet sera fait à la fin
-                    if completed % 1000 == 0 or current_time - last_render_time >= 30.0:
-                        with sweep_placeholder.container():
-                            progress_pct = (completed / total_runs * 100) if total_runs > 0 else 0
-                            elapsed = time.perf_counter() - start_time
-                            rate = completed / elapsed if elapsed > 0 else 0
-                            remaining = (total_runs - completed) / rate if rate > 0 else 0
-
-                            # Barre de progression simple (pas d'HTML custom lourd)
-                            st.progress(progress_pct / 100.0)
-                            st.text(f"⚡ {completed:,}/{total_runs:,} runs ({progress_pct:.1f}%) | {rate:.1f} bt/s | ETA: {int(remaining//60)}m{int(remaining % 60)}s")
-
-                            # Afficher uniquement le meilleur PnL (pas de graphiques ni tableaux)
-                            if hasattr(sweep_monitor, '_results') and sweep_monitor._results:
-                                best_result = max(sweep_monitor._results, key=lambda r: r.metrics.get("total_pnl", float("-inf")))
-                                best_pnl = best_result.metrics.get("total_pnl", 0)
-                                pnl_color = "green" if best_pnl > 0 else "red"
-                                st.markdown(f"💰 **Meilleur PnL**: :{pnl_color}[**${best_pnl:+,.2f}**]")
-
-                        last_render_time = current_time
-                        time.sleep(0.01)
-
-            if n_workers_effective > 1:
-                os.environ.setdefault("BACKTEST_INDICATOR_DISK_CACHE", "0")
-
-            if n_workers_effective > 1 and total_runs > 1:
-                from concurrent.futures import (
-                    FIRST_COMPLETED,
-                    ProcessPoolExecutor,
-                    TimeoutError as FutureTimeoutError,
-                    wait,
-                )
-
-                try:
-                    from concurrent.futures import BrokenProcessPool  # type: ignore[attr-defined]
-                except ImportError:  # pragma: no cover - fallback for older runtimes
-                    BrokenProcessPool = RuntimeError
-
-                diag.log_pool_start(n_workers_effective, worker_thread_limit, total_runs)
-
-                logger = logging.getLogger(__name__)
-                stall_timeout_sec = float(os.getenv("BACKTEST_SWEEP_STALL_SEC", "60"))
-                stall_startup_sec = float(os.getenv("BACKTEST_SWEEP_STALL_STARTUP_SEC", "180"))
-                # ✅ FIX #1: Augmenter max_inflight pour alimenter tous les workers
-                # Avant: n_workers × 2 = 48 tâches pour 24 workers (workers idle 50% du temps)
-                # Après: n_workers × 8 = 192 tâches pour 24 workers (workers toujours alimentés)
-                max_inflight = max(1, min(total_runs, n_workers_effective * 8))
-                pending = {}
-                failed_pending: List[Any] = []
-                pool_failed = False
-                pool_fail_reason = None
-                pool_error: Exception | None = None
-                pool_start_time = time.perf_counter()
-                last_completion_time = time.perf_counter()
-                recent_durations_sec: deque = deque(maxlen=20)
-                pickle_error_count = 0  # Compteur d'erreurs de pickling
-                combo_counter = 0  # Compteur pour diagnostics
-
-                # Import de l'initializer optimisé qui charge le DataFrame une seule fois par worker
-                from backtest.worker import init_worker_with_dataframe
-
-                # ✅ FIX #5: Définir executor AVANT submit_next() pour éviter closure sur variable non définie
-                executor = ProcessPoolExecutor(
-                    max_workers=n_workers_effective,
-                    initializer=init_worker_with_dataframe,
-                    initargs=(
-                        df,  # DataFrame chargé UNE SEULE FOIS par worker
-                        strategy_key,
-                        symbol,
-                        timeframe,
-                        state.initial_capital,
-                        debug_enabled,
-                        worker_thread_limit,
-                        fast_metrics,  # ✅ CRITIQUE: Activer métriques rapides pour sweeps
-                        False,         # is_path (DataFrame fourni directement, pas un chemin)
-                    ),
-                )
-
-                # ✅ FIX #5 (suite): Définir submit_next() APRÈS executor
-                def submit_next() -> bool:
-                    nonlocal combo_counter
-                    try:
-                        param_combo = next(combo_iter)
-                    except StopIteration:
-                        return False
-                    combo_counter += 1
-                    diag.log_submit(combo_counter, param_combo)
-                    submit_ts = time.perf_counter()
-                    future = executor.submit(_isolated_worker, param_combo)
-                    pending[future] = (param_combo, submit_ts)
-                    return True
-
-                try:
-                    for _ in range(max_inflight):
-                        if not submit_next():
-                            break
-
-                    while pending:
-                        # ✅ FIX #2: Réduire timeout de 0.5s à 0.05s (10× plus rapide)
-                        # Avant: Latence de 500ms entre chaque vérification
-                        # Après: Latence de 50ms (workers alimentés 10× plus vite)
-                        done, _ = wait(pending, timeout=0.05, return_when=FIRST_COMPLETED)
-                        if not done:
-                            now = time.perf_counter()
-                            if completed == 0:
-                                stall_threshold_sec = stall_startup_sec
-                                stalled = (now - pool_start_time) >= stall_threshold_sec
-                            else:
-                                avg_duration = (
-                                    sum(recent_durations_sec) / len(recent_durations_sec)
-                                    if recent_durations_sec else 0.0
-                                )
-                                stall_threshold_sec = max(
-                                    stall_timeout_sec,
-                                    avg_duration * 3 if avg_duration > 0 else stall_timeout_sec,
-                                )
-                                stalled = (now - last_completion_time) >= stall_threshold_sec
-
-                            if stalled:
-                                pool_failed = True
-                                pool_fail_reason = "stall"
-                                pool_error = TimeoutError(
-                                    f"Aucune completion depuis {stall_threshold_sec:.0f}s"
-                                )
-                                diag.log_stall(stall_threshold_sec, len(pending))
-                                logger.error(
-                                    "Sweep multiprocess bloque depuis %ss, bascule sequentielle.",
-                                    int(stall_threshold_sec),
-                                )
-                                break
-                            continue
-
-                        for future in done:
-                            param_combo, submit_ts = pending.pop(future)
-                            result = None
-                            should_record = True
-
-                            try:
-                                # Timeout 300s pour éviter freeze si Windows interrupt (Task Manager, focus change, etc.)
-                                result = future.result(timeout=300)
-                                duration_ms = (time.perf_counter() - submit_ts) * 1000
-                                recent_durations_sec.append(duration_ms / 1000.0)
-
-                                # Log completion
-                                combo_idx = combo_counter - len(pending) - len(failed_pending)
-                                diag.log_completion(combo_idx, param_combo, result, duration_ms)
-
-                                # Détecter erreur de pickling dans le résultat
-                                if isinstance(result, dict) and result.get("error", ""):
-                                    error_msg = str(result.get("error", ""))
-                                    if "pickle" in error_msg.lower() or "not the same object" in error_msg:
-                                        pickle_error_count += 1
-                                        if pickle_error_count >= 10:
-                                            pool_failed = True
-                                            pool_fail_reason = "pickle"
-                                            pool_error = RuntimeError(
-                                                "Erreur de pickling détectée - Streamlit a rechargé le module. "
-                                                "Relancez le sweep après le rechargement."
-                                            )
-                                            logger.error(
-                                                "Erreur de pickling répétée (%d fois), arrêt du sweep.",
-                                                pickle_error_count,
-                                            )
-                                            failed_pending.append(param_combo)
-                                            should_record = False
-                                            break
-
-                            except BrokenProcessPool as exc:
-                                combo_idx = combo_counter - len(pending) - len(failed_pending)
-                                diag.log_pool_broken("BrokenProcessPool", exc)
-                                pool_failed = True
-                                pool_fail_reason = "broken"
-                                pool_error = exc
-                                failed_pending.append(param_combo)
-                                should_record = False
-
-                                break
-
-                            except FutureTimeoutError:
-                                # Worker timeout (>300s) - probablement bloqué par interruption Windows
-                                combo_idx = combo_counter - len(pending) - len(failed_pending)
-                                diag.log_timeout(combo_idx, param_combo, 300)
-                                logger.warning("Worker timeout (>300s) combo: %s", param_combo)
-                                result = {
-                                    "params": _params_to_str(param_combo),
-                                    "params_dict": param_combo,
-                                    "error": "Worker timeout (>300s, probablement bloqué par interruption Windows)",
-                                }
-                                # should_record reste True - on enregistre le timeout comme erreur
-
-                            except Exception as exc:
-                                combo_idx = combo_counter - len(pending) - len(failed_pending)
-                                diag.log_future_exception(combo_idx, param_combo, exc)
-                                error_str = f"{type(exc).__name__}: {exc}"
-                                # Détecter erreur de pickling dans l'exception
-                                if "pickle" in error_str.lower() or "not the same object" in error_str:
-                                    pickle_error_count += 1
-                                    if pickle_error_count >= 10:
-                                        pool_failed = True
-                                        pool_fail_reason = "pickle"
-                                        pool_error = RuntimeError(
-                                            "Erreur de pickling - le module a été rechargé pendant le sweep."
-                                        )
-                                        failed_pending.append(param_combo)
-                                        should_record = False
-                                        break
-                                result = {
-                                    "params": _params_to_str(param_combo),
-                                    "params_dict": param_combo,
-                                    "error": error_str,
-                                }
-                                # should_record reste True - on enregistre l'erreur
-
-                            # Enregistrer le résultat (sauf si break anticipé)
-                            if should_record and result is not None:
-                                completed += 1
-                                monitor.runs_completed = completed
-                                params_str = record_sweep_result(result, param_combo)
-                                completed_params.add(params_str)
-                                last_completion_time = time.perf_counter()
-
-                            # ⚡ CRITIQUE: Soumettre la combinaison suivante UNE SEULE FOIS après traitement complet
-                            # (sauf si pool_failed ou break - dans ce cas on sort de la boucle de toute façon)
-                            if not pool_failed:
-                                submit_next()
-
-                            current_time = time.perf_counter()
-                            # ⚡ AFFICHAGE MINIMAL: Désactivation render_sweep_progress pendant le sweep (économie CPU/WebSocket)
-                            # Les graphiques temps réel consomment énormément de ressources (Plotly + HTML + WebSocket)
-                            # On garde juste une progression textuelle, l'affichage complet sera fait à la fin
-                            if completed % 1000 == 0 or current_time - last_render_time >= 30.0:
-                                with sweep_placeholder.container():
-                                    progress_pct = (completed / total_runs * 100) if total_runs > 0 else 0
-                                    elapsed = time.perf_counter() - start_time
-                                    rate = completed / elapsed if elapsed > 0 else 0
-                                    remaining = (total_runs - completed) / rate if rate > 0 else 0
-
-                                    # Barre de progression simple (pas d'HTML custom lourd)
-                                    st.progress(progress_pct / 100.0)
-                                    st.text(f"⚡ {completed:,}/{total_runs:,} runs ({progress_pct:.1f}%) | {rate:.1f} bt/s | ETA: {int(remaining//60)}m{int(remaining % 60)}s")
-
-                                    # Afficher uniquement le meilleur PnL (pas de graphiques ni tableaux)
-                                    if hasattr(sweep_monitor, '_results') and sweep_monitor._results:
-                                        best_result = max(sweep_monitor._results, key=lambda r: r.metrics.get("total_pnl", float("-inf")))
-                                        best_pnl = best_result.metrics.get("total_pnl", 0)
-                                        pnl_color = "green" if best_pnl > 0 else "red"
-                                        st.markdown(f"💰 **Meilleur PnL**: :{pnl_color}[**${best_pnl:+,.2f}**]")
-
-                                last_render_time = current_time
-                                time.sleep(0.01)
-
-                        if pool_failed:
-                            diag.log_pool_broken(pool_fail_reason or "unknown", pool_error)  # type: ignore[arg-type]
-                            break
-                finally:
-                    diag.log_pool_shutdown(success=not pool_failed)
-                    try:
-                        executor.shutdown(
-                            wait=not pool_failed,
-                            cancel_futures=pool_failed,
-                        )
-                    except Exception:
-                        logger.exception("Erreur shutdown ProcessPoolExecutor")
-
-                if pool_failed:
-                    with status_container:
-                        if pool_fail_reason == "pickle":
-                            show_status(
-                                "error",
-                                "⚠️ Erreur de pickling: le module a été rechargé par Streamlit pendant le sweep. "
-                                "Relancez le sweep - il reprendra depuis les combinaisons non testées.",
-                            )
-                        else:
-                            show_status(
-                                "warning",
-                                "Pool multiprocess interrompu, reprise en mode séquentiel.",
-                            )
-                        if pool_error:
-                            st.caption(f"Détails: {pool_error}")
-
-                    pending_combos = failed_pending + [item[0] for item in pending.values()]
-                    if pool_fail_reason == "stall" and pending_combos:
-                        logger.warning(
-                            "Stall détecté: %d combinaisons en attente seront relancées en séquentiel.",
-                            len(pending_combos),
-                        )
-
-                    diag.log_sequential_fallback(pool_fail_reason, len(pending_combos))
-                    fallback_iter = chain(pending_combos, combo_iter)
-                    run_sequential_combos(fallback_iter, "sweep_fallback")
-            else:
-                run_sequential_combos(combo_iter, "sweep_sequential")
-
-            render_progress_monitor(monitor, monitor_placeholder)
-            sweep_placeholder.empty()
-            with sweep_placeholder.container():
-                render_sweep_progress(
-                    sweep_monitor,
-                    key="sweep_final",
-                    show_top_results=True,
-                    show_evolution=True,
-                )
-
-            st.markdown("---")
-            st.markdown("### 🎯 Résumé de l'Optimisation")
-            render_sweep_summary(sweep_monitor, key="sweep_summary")
-
-            # Finalize diagnostics
-            diag.log_final_summary()
-            st.caption(f"📋 Logs diagnostiques: `{diag.log_file}`")
-
-            monitor_placeholder.empty()
-            sweep_placeholder.empty()
-
-            with status_container:
-                show_status("success", f"Optimisation: {len(results_list)} tests")
-
-            results_df = pd.DataFrame(results_list)
-
-            if "trades" in results_df.columns:
-                logger = logging.getLogger(__name__)
-                logger.info("=" * 80)
-                logger.info("🔍 DEBUG GRID SEARCH - Analyse de la colonne 'trades'")
-                logger.info("   Type: %s", results_df["trades"].dtype)
-                logger.info("   Shape: %s", results_df["trades"].shape)
-                logger.info(
-                    "   Premières valeurs: %s",
-                    results_df["trades"].head(10).tolist(),
-                )
-                logger.info(
-                    "   Stats: min=%s, max=%s, mean=%.2f",
-                    results_df["trades"].min(),
-                    results_df["trades"].max(),
-                    results_df["trades"].mean(),
-                )
-
-                trades_values = results_df["trades"].values
-                fractional = [
-                    x for x in trades_values if isinstance(x, float) and not x.is_integer()
-                ]
-                if fractional:
-                    logger.warning(
-                        "   ⚠️  %s valeurs fractionnaires détectées: %s",
-                        len(fractional),
-                        fractional[:5],
-                    )
-                else:
-                    logger.info("   ✅ Toutes les valeurs sont des entiers")
-                logger.info("=" * 80)
-
-            error_items = []
-            if error_counts:
-                total_errors = sum(error_counts.values())
-                with st.expander("❌ Erreurs (extraits)", expanded=True):
-                    st.caption(
-                        f"{total_errors} erreurs detectees. "
-                        "Consultez le terminal pour les premiers messages."
-                    )
-                    error_items = sorted(
-                        error_counts.items(), key=lambda item: item[1], reverse=True
-                    )
-                    error_df = pd.DataFrame(
-                        [
-                            {"error": msg, "count": count}
-                            for msg, count in error_items[:10]
-                        ]
-                    )
-                    st.dataframe(error_df, use_container_width=True)
-
-            error_column = results_df.get("error")
-            if error_column is not None:
-                valid_results = results_df[error_column.isna()]
-            else:
-                valid_results = results_df
-
-            if not valid_results.empty:
-                valid_results = valid_results.sort_values("sharpe", ascending=False)
-
-                st.subheader("🏆 Top 10 Combinaisons")
-
-                with st.expander("🔍 Debug Info - Types de données"):
-                    st.text(f"Nombre de résultats: {len(valid_results)}")
-                    st.text("Types des colonnes:")
-                    st.text(str(valid_results.dtypes))
-                    if "trades" in valid_results.columns:
-                        st.text("\nStatistiques 'trades':")
-                        st.text(f"  Type: {valid_results['trades'].dtype}")
-                        st.text(f"  Min: {valid_results['trades'].min()}")
-                        st.text(f"  Max: {valid_results['trades'].max()}")
-                        st.text(
-                            f"  Mean: {valid_results['trades'].mean():.2f}"
-                        )
-
-                st.dataframe(valid_results.head(10), use_container_width=True)
-
-                best = valid_results.iloc[0]
-                st.info(f"🥇 Meilleure: {best['params']}")
-
-                best_params = param_combos_map.get(best["params"], {})
-                result, _ = safe_run_backtest(
-                    engine,
-                    df,
-                    strategy_key,
-                    best_params,
-                    symbol,
-                    timeframe,
-                    silent_mode=not debug_enabled,
-                )
-                if result is not None:
-                    result, _, wfa_msg = _attach_wfa_metrics(result, df, best_params)
-                    if wfa_msg:
-                        show_status("info", wfa_msg)
-                    winner_params = best_params
-                    winner_metrics = result.metrics
-                    winner_origin = "grid"
-                    winner_meta = result.meta
-                    st.session_state["last_run_result"] = result
-                    st.session_state["last_winner_params"] = winner_params
-                    st.session_state["last_winner_metrics"] = winner_metrics
-                    st.session_state["last_winner_origin"] = winner_origin
-                    st.session_state["last_winner_meta"] = winner_meta
-                    _maybe_auto_save_run(result)
-            else:
-                show_status("error", "Aucun résultat valide")
-                # Afficher diagnostic détaillé
-                st.markdown("### 🔍 Diagnostic")
-                st.warning(
-                    f"Sur {len(results_list)} combinaisons évaluées, "
-                    f"toutes ont échoué."
-                )
-                if error_items:
-                    top_error, top_count = error_items[0]
-                    st.error(
-                        f"**Erreur principale** ({top_count} occurrences sur {sum(error_counts.values())} erreurs):"
-                    )
-                    st.code(top_error, language="text")
-                elif results_list:
-                    # Extraire les erreurs du DataFrame si error_counts vide
-                    errors_in_results = [
-                        r.get("error") for r in results_list if r.get("error")
-                    ]
-                    if errors_in_results:
-                        st.error("**Première erreur détectée:**")
-                        st.code(errors_in_results[0], language="text")
-                        if len(errors_in_results) > 1:
-                            st.caption(f"+ {len(errors_in_results)-1} autres erreurs similaires")
-                    else:
-                        st.info(
-                            "Aucune erreur explicite, mais les résultats sont invalides. "
-                            "Vérifiez que les données OHLCV sont chargées et valides."
-                        )
-                st.session_state.is_running = False
-                st.stop()
 
         elif optimization_mode == "🤖 Optimisation LLM":
-            if not LLM_AVAILABLE:
-                show_status("error", "Module agents LLM non disponible")
-                st.code(LLM_IMPORT_ERROR)
-                st.session_state.is_running = False
-                st.stop()
-
-            if llm_config is None:
-                show_status("error", "Configuration LLM incomplète")
-                st.info("Configurez le provider LLM dans la sidebar")
-                st.session_state.is_running = False
-                st.stop()
-
-            session_id = generate_session_id()  # type: ignore[misc]
-            orchestration_logger = OrchestrationLogger(session_id=session_id)  # type: ignore[misc]
-
-            try:
-                param_bounds = get_strategy_param_bounds(strategy_key)  # type: ignore[misc]
-                if not param_bounds:
-                    param_bounds = {}
-                    for pname in params.keys():
-                        if pname in PARAM_CONSTRAINTS:
-                            c = PARAM_CONSTRAINTS[pname]
-                            param_bounds[pname] = (c["min"], c["max"])
-            except Exception as exc:
-                show_status("warning", f"Bornes par défaut utilisées: {exc}")
-                param_bounds = {}
-                for pname in params.keys():
-                    if pname in PARAM_CONSTRAINTS:
-                        c = PARAM_CONSTRAINTS[pname]
-                        param_bounds[pname] = (c["min"], c["max"])
-
-            try:
-                full_param_space = get_strategy_param_space(strategy_key, include_step=True)  # type: ignore[misc]
-                llm_space_stats = compute_search_space_stats(full_param_space)  # type: ignore[misc]
-            except Exception:
-                llm_space_stats = None
-
-            max_iterations = min(llm_max_iterations, max_combos)
-
-            comparison_summary: List[Dict[str, Any]] = []
-            should_run_comparison = llm_compare_enabled and (
-                llm_compare_auto_run or st.session_state.get("llm_compare_run_now", False)
-            )
-            if should_run_comparison:
-                st.subheader("Comparaison multi-strategies")
-                if not llm_compare_strategies:
-                    st.warning("Aucune strategie selectionnee pour la comparaison.")
-                elif not llm_compare_tokens or not llm_compare_timeframes:
-                    st.warning("Selectionnez au moins un token et un timeframe.")
-                else:
-                    start_str = str(state.start_date) if state.start_date else None
-                    end_str = str(state.end_date) if state.end_date else None
-                    progress_bar = st.progress(0)
-                    comparison_results: List[Dict[str, Any]] = []
-                    comparison_errors: List[str] = []
-                    data_cache: Dict[tuple[str, str], pd.DataFrame] = {}
-
-                    for token in llm_compare_tokens:
-                        for tf in llm_compare_timeframes:
-                            df_cmp, msg = safe_load_data(token, tf, start_str, end_str)
-                            if df_cmp is None:
-                                comparison_errors.append(f"{token}/{tf}: {msg}")
-                            else:
-                                df_cmp, _ = _prepare_market_df(
-                                    df_cmp,
-                                    symbol_value=token,
-                                    timeframe_value=tf,
-                                    show_ui=False,
-                                )
-                                data_cache[(token, tf)] = df_cmp
-
-                    valid_pairs = list(data_cache.keys())
-                    total_runs = len(valid_pairs) * len(llm_compare_strategies)
-                    total_runs = max(0, min(total_runs, llm_compare_max_runs))
-                    run_index = 0
-
-                    with st.spinner("Comparaison en cours..."):
-                        for strategy_name_cmp in llm_compare_strategies:
-                            params_cmp = build_strategy_params_for_comparison(
-                                strategy_name_cmp,
-                                use_preset=llm_compare_use_preset,
-                            )
-                            for token, tf in valid_pairs:
-                                if run_index >= total_runs:
-                                    break
-                                df_cmp = data_cache[(token, tf)]
-                                result_cmp, status = safe_run_backtest(
-                                    engine,
-                                    df_cmp,
-                                    strategy_name_cmp,
-                                    params_cmp,
-                                    token,
-                                    tf,
-                                    silent_mode=not debug_enabled,
-                                )
-                                if result_cmp is None:
-                                    comparison_errors.append(
-                                        f"{strategy_name_cmp} {token}/{tf}: {status}"
-                                    )
-                                else:
-                                    comparison_results.append(
-                                        {
-                                            "strategy": strategy_name_cmp,
-                                            "symbol": token,
-                                            "timeframe": tf,
-                                            "metrics": result_cmp.metrics,
-                                            "trades": len(result_cmp.trades),
-                                        }
-                                    )
-                                run_index += 1
-                                if total_runs > 0:
-                                    progress_bar.progress(run_index / total_runs)
-                            if run_index >= total_runs:
-                                break
-
-                    if comparison_errors:
-                        st.warning(
-                            "Comparaison: "
-                            + "; ".join(comparison_errors[:8])
-                            + (" ..." if len(comparison_errors) > 8 else "")
-                        )
-
-                    if comparison_results:
-                        comparison_summary = summarize_comparison_results(
-                            comparison_results,
-                            aggregate=llm_compare_aggregate,
-                            primary_metric=llm_compare_metric,
-                            expected_runs=len(valid_pairs),
-                        )
-                        st.caption(
-                            f"Runs effectues: {len(comparison_results)} / {total_runs}"
-                        )
-                        st.dataframe(pd.DataFrame(comparison_summary), use_container_width=True)
-
-                        chart_rows = []
-                        for row in comparison_summary:
-                            chart_rows.append(
-                                {
-                                    "name": row["strategy"],
-                                    "metrics": {
-                                        llm_compare_metric: row.get(llm_compare_metric)
-                                    },
-                                }
-                            )
-                        render_comparison_chart(
-                            chart_rows,
-                            metric=llm_compare_metric,
-                            title="Comparaison agregree",
-                            key="llm_strategy_comparison",
-                        )
-
-                        if llm_compare_generate_report:
-                            try:
-                                llm_client = create_llm_client(llm_config)  # type: ignore[misc]
-                                if not llm_client.is_available():
-                                    st.warning("LLM indisponible pour la justification.")
-                                else:
-                                    summary_lines = [
-                                        "strategy | runs | sharpe | return_pct | max_drawdown | win_rate"
-                                    ]
-                                    for row in comparison_summary:
-                                        summary_lines.append(
-                                            f"{row.get('strategy')} | "
-                                            f"{row.get('runs')} | "
-                                            f"{row.get('sharpe_ratio', float('nan')):.2f} | "
-                                            f"{row.get('total_return_pct', float('nan')):.2f} | "
-                                            f"{row.get('max_drawdown', float('nan')):.2f} | "
-                                            f"{row.get('win_rate', float('nan')):.1f}"
-                                        )
-
-                                    system_prompt = (
-                                        "You are a senior quantitative strategist. "
-                                        "Compare strategy robustness across assets and timeframes."
-                                    )
-                                    user_message = (
-                                        "Comparison scope:\n"
-                                        f"- tokens: {', '.join(llm_compare_tokens)}\n"
-                                        f"- timeframes: {', '.join(llm_compare_timeframes)}\n"
-                                        f"- aggregation: {llm_compare_aggregate}\n"
-                                        f"- primary metric: {llm_compare_metric}\n\n"
-                                        "Summary table (metrics are percent where applicable):\n"
-                                        + "\n".join(summary_lines)
-                                        + "\n\n"
-                                        "Provide:\n"
-                                        "1) Ranking with short justification.\n"
-                                        "2) Notes on robustness and risk.\n"
-                                        "3) Which strategies deserve further optimization."
-                                    )
-
-                                    response = llm_client.simple_chat(
-                                        user_message=user_message,
-                                        system_prompt=system_prompt,
-                                        temperature=0.3,
-                                    )
-                                    st.markdown("**Justification LLM**")
-                                    st.write(response.content)
-                            except Exception as exc:
-                                st.warning(f"Justification LLM indisponible: {exc}")
-                    st.session_state["llm_compare_run_now"] = False
-
-            st.subheader("🤖 Optimisation par Agents LLM")
-
-            col_info, col_timeline = st.columns([1, 2])
-
-            with col_info:
-                st.markdown(
-                    f"""
-            **Stratégie:** `{strategy_key}`
-            **Paramètres initiaux:** `{params}`
-            **Max itérations:** {llm_max_iterations}
-            **Walk-Forward:** {'✅' if llm_use_walk_forward else '❌'}
-            """
-                )
-
-                st.markdown("**Bornes des paramètres:**")
-                for pname, (pmin, pmax) in param_bounds.items():
-                    st.caption(f"• {pname}: [{pmin}, {pmax}]")
-
-                if llm_space_stats:
-                    st.markdown("---")
-                    if llm_space_stats.is_continuous:
-                        st.info("ℹ️ **Espace continu** : exploration adaptative par LLM")
-                    else:
-                        st.caption(
-                            "📊 Espace discret estimé: "
-                            f"~{llm_space_stats.total_combinations:,} combinaisons"
-                        )
-                        st.caption("_(Le LLM explore de façon intelligente sans énumérer)_")
-
-            col_timeline.empty()
-
-            strategist = None
-            executor = None
-            orchestrator = None
-
-            run_tracker = get_global_tracker()
-            data_identifier = (
-                f"df_{len(df)}rows_{df.index[0]}_{df.index[-1]}"
-                if len(df) > 0
-                else "empty_df"
-            )
-            run_signature = RunSignature(
-                strategy_name=strategy_key,
-                data_path=data_identifier,
-                initial_params=params,
-                llm_model=llm_model,
-                mode="multi_agents" if llm_use_multi_agent else "autonomous",
-                session_id=session_id,
+            _run_llm_optimization_mode(
+                df=df, engine=engine, state=state,
+                status_container=status_container,
+                strategy_key=strategy_key, params=params,
+                symbol=symbol, timeframe=timeframe,
+                debug_enabled=debug_enabled,
+                n_workers=n_workers, max_combos=max_combos,
+                llm_config=llm_config, llm_model=llm_model,
+                llm_max_iterations=llm_max_iterations,
+                llm_use_multi_agent=llm_use_multi_agent,
+                llm_use_walk_forward=llm_use_walk_forward,
+                llm_unload_during_backtest=llm_unload_during_backtest,
+                llm_compare_enabled=llm_compare_enabled,
+                llm_compare_auto_run=llm_compare_auto_run,
+                llm_compare_strategies=llm_compare_strategies,
+                llm_compare_tokens=llm_compare_tokens,
+                llm_compare_timeframes=llm_compare_timeframes,
+                llm_compare_metric=llm_compare_metric,
+                llm_compare_aggregate=llm_compare_aggregate,
+                llm_compare_max_runs=llm_compare_max_runs,
+                llm_compare_use_preset=llm_compare_use_preset,
+                llm_compare_generate_report=llm_compare_generate_report,
+                resolve_workers=_resolve_workers,
+                format_combo_limit=_format_combo_limit,
+                prepare_market_df=_prepare_market_df,
+                attach_wfa_metrics=_attach_wfa_metrics,
             )
 
-            # Enregistrer le run (pour statistiques) sans bloquer l'exécution
-            # Note: Le tracking des duplications durant la session est géré par session_param_tracker
-            run_tracker.register(run_signature)
-
-            with st.spinner("🔌 Connexion au LLM..."):
-                try:
-                    if llm_use_multi_agent:
-                        live_events_placeholder = st.empty()
-                        live_viewer = LiveOrchestrationViewer(  # type: ignore[misc]
-                            container_key="live_orch_viewer_multi"
-                        )
-
-                        def on_orchestration_event(entry):
-                            live_viewer.add_event(entry)
-                            live_viewer.render(live_events_placeholder, show_header=True)
-
-                        orchestration_logger.set_on_event_callback(on_orchestration_event)
-
-                        n_workers_effective = _resolve_workers(n_workers)
-                        orchestrator = create_orchestrator_with_backtest(  # type: ignore[misc]
-                            llm_config=llm_config,
-                            strategy_name=strategy_key,
-                            data=df,
-                            initial_params=params,
-                            data_symbol=symbol,
-                            data_timeframe=timeframe,
-                            role_model_config=state.role_model_config,
-                            llm_topology_config=state.llm_topology_config,
-                            use_walk_forward=llm_use_walk_forward,
-                            orchestration_logger=orchestration_logger,
-                            session_id=session_id,
-                            n_workers=n_workers_effective,
-                            max_iterations=max_iterations,
-                            initial_capital=state.initial_capital,
-                            config=engine.config,
-                        )
-                        show_status(
-                            "success",
-                            "Connexion LLM établie (mode multi-agents)",
-                        )
-                    else:
-                        strategist, executor = create_optimizer_from_engine(  # type: ignore[misc]
-                            llm_config=llm_config,
-                            strategy_name=strategy_key,
-                            data=df,
-                            initial_capital=state.initial_capital,
-                            use_walk_forward=llm_use_walk_forward,
-                            verbose=True,
-                            unload_llm_during_backtest=llm_unload_during_backtest,
-                            orchestration_logger=orchestration_logger,
-                        )
-                        show_status("success", "Connexion LLM établie")
-                except Exception as exc:
-                    show_status("error", f"Echec connexion LLM: {exc}")
-                    st.code(traceback.format_exc())
-                    st.session_state.is_running = False
-                    st.stop()
-
-            if llm_use_multi_agent:
-                st.markdown("---")
-                st.markdown("### Progression multi-agents")
-                n_workers_effective = _resolve_workers(n_workers)
-                st.caption(
-                    f"Limite: {_format_combo_limit(max_combos)} backtests max, "
-                    f"{n_workers_effective} workers, {max_iterations} iterations max"
-                )
-
-                if orchestrator is None:
-                    show_status("error", "Orchestrator non initialise")
-                    st.session_state.is_running = False
-                    st.stop()
-
-                try:
-                    with st.spinner("Optimisation multi-agents en cours..."):
-                        orchestrator_result = orchestrator.run()
-
-                    try:
-                        orchestration_logger.save_to_jsonl()
-                    except Exception:
-                        pass
-
-                    if orchestrator_result.errors:
-                        st.warning(
-                            f"Orchestration errors: {len(orchestrator_result.errors)}"
-                        )
-                    if orchestrator_result.warnings:
-                        st.warning(
-                            f"Orchestration warnings: {len(orchestrator_result.warnings)}"
-                        )
-
-                    if orchestrator_result.success:
-                        st.success("Optimisation multi-agents terminee")
-                    else:
-                        st.warning(
-                            "Optimisation multi-agents terminee "
-                            f"(decision: {orchestrator_result.decision})"
-                        )
-
-                    if orchestrator_result.final_params:
-                        st.subheader("Resultat multi-agents")
-                        st.json(orchestrator_result.final_params)
-                    else:
-                        st.warning("Aucun parametre final retourne")
-
-                    if orchestrator_result.final_metrics:
-                        metrics = orchestrator_result.final_metrics
-                        col_a, col_b, col_c = st.columns(3)
-                        with col_a:
-                            st.metric("Sharpe", f"{metrics.sharpe_ratio:.3f}")
-                        with col_b:
-                            st.metric("Return", f"{metrics.total_return:.2%}")
-                        with col_c:
-                            st.metric("Max Drawdown", f"{metrics.max_drawdown:.2%}")
-
-                    if orchestrator_result.iteration_history:
-                        st.markdown("---")
-                        st.dataframe(
-                            pd.DataFrame(orchestrator_result.iteration_history),
-                            use_container_width=True,
-                        )
-
-                    best_params = orchestrator_result.final_params or {}
-                    if best_params:
-                        result, _ = safe_run_backtest(
-                            engine,
-                            df,
-                            strategy_key,
-                            best_params,
-                            symbol,
-                            timeframe,
-                            silent_mode=not debug_enabled,
-                        )
-                        if result is not None:
-                            result, _, wfa_msg = _attach_wfa_metrics(result, df, best_params)
-                            if wfa_msg:
-                                show_status("info", wfa_msg)
-                            winner_params = best_params
-                            winner_metrics = result.metrics
-                            winner_origin = "llm"
-                            winner_meta = result.meta
-                            st.session_state["last_run_result"] = result
-                            st.session_state["last_winner_params"] = winner_params
-                            st.session_state["last_winner_metrics"] = winner_metrics
-                            st.session_state["last_winner_origin"] = winner_origin
-                            st.session_state["last_winner_meta"] = winner_meta
-                            _maybe_auto_save_run(result)
-                except Exception as exc:
-                    show_status("error", f"Erreur optimisation multi-agents: {exc}")
-                    st.code(traceback.format_exc())
-                    st.session_state.is_running = False
-                    st.stop()
-            else:
-                st.markdown("---")
-                st.markdown("### 📊 Progression de l'optimisation LLM")
-
-                live_status = st.status(
-                    "🚀 Démarrage de l'optimisation...",
-                    expanded=True,
-                )
-                live_events_placeholder = st.empty()
-                orchestration_placeholder = st.empty()
-
-                max_iterations = min(llm_max_iterations, max_combos)
-
-                live_viewer = LiveOrchestrationViewer(  # type: ignore[misc]
-                    container_key="live_orch_viewer"
-                )
-
-                def on_orchestration_event(entry):  # noqa: F811  # pylint: disable=function-redefined
-                    live_viewer.add_event(entry)
-                    live_viewer.render(live_events_placeholder, show_header=True)
-
-                orchestration_logger.set_on_event_callback(on_orchestration_event)
-
-                n_workers_effective = _resolve_workers(n_workers)
-                st.caption(
-                    "🔧 Limite: "
-                    f"{_format_combo_limit(max_combos)} backtests max, {n_workers_effective} workers, "
-                    f"{max_iterations} itérations max"
-                )
-
-                try:
-                    with live_status:
-                        st.write("🤖 **Agent LLM actif** - Optimisation autonome")
-                        st.write(
-                            f"📊 Stratégie: `{strategy_key}` | Modèle: `{llm_model}`"
-                        )
-
-                        session = strategist.optimize(  # type: ignore[union-attr]
-                            executor=executor,
-                            initial_params=params,
-                            param_bounds=param_bounds,
-                            max_iterations=max_iterations,
-                            min_sharpe=-5.0,
-                            max_drawdown=0.50,
-                        )
-
-                        live_status.update(
-                            label=(
-                                "✅ Optimisation terminée en "
-                                f"{session.current_iteration} itérations"
-                            ),
-                            state="complete",
-                            expanded=False,
-                        )
-
-                    st.success(
-                        f"✅ Optimisation terminée en {session.current_iteration} itérations"
-                    )
-
-                    with st.expander("📝 Historique des itérations", expanded=True):
-                        for i, exp in enumerate(session.all_results):
-                            icon = "🟢" if exp.sharpe_ratio > 0 else "🔴"
-                            col_it1, col_it2, col_it3 = st.columns([2, 1, 1])
-                            with col_it1:
-                                st.markdown(f"**Itération {i+1}** {icon}")
-                                st.caption(
-                                    f"Params: `{exp.request.parameters}`"
-                                )
-                            with col_it2:
-                                st.metric("Sharpe", f"{exp.sharpe_ratio:.3f}")
-                            with col_it3:
-                                st.metric("Return", f"{exp.total_return:.2%}")
-
-                    try:
-                        orchestration_logger.save_to_jsonl()
-                    except Exception:
-                        pass
-
-                    with orchestration_placeholder:
-                        st.markdown("---")
-
-                        tab_simple, tab_deep = st.tabs(
-                            ["📋 Logs d'orchestration", "🔍 Deep Trace (avancé)"]
-                        )
-
-                        with tab_simple:
-                            render_full_orchestration_viewer(  # type: ignore[misc]
-                                orchestration_logger=orchestration_logger,
-                                max_entries=50,
-                            )
-
-                        with tab_deep:
-                            if LLM_AVAILABLE:
-                                render_deep_trace_viewer(  # type: ignore[misc]
-                                    logger=orchestration_logger
-                                )
-                            else:
-                                st.warning(
-                                    "Module LLM non disponible pour Deep Trace avancé"
-                                )
-
-                    st.markdown("---")
-                    st.subheader("🏆 Résultat de l'optimisation LLM")
-
-                    col_best, col_improve = st.columns(2)
-
-                    with col_best:
-                        st.markdown("**Meilleurs paramètres trouvés:**")
-                        st.json(session.best_result.request.parameters)
-
-                        st.metric(
-                            "Meilleur Sharpe",
-                            f"{session.best_result.sharpe_ratio:.3f}",
-                        )
-                        st.metric(
-                            "Return",
-                            f"{session.best_result.total_return:.2%}",
-                        )
-
-                    with col_improve:
-                        if session.all_results:
-                            initial_sharpe = session.all_results[0].sharpe_ratio
-                            best_sharpe = session.best_result.sharpe_ratio
-                            improvement = (
-                                (best_sharpe - initial_sharpe) / abs(initial_sharpe) * 100
-                            ) if initial_sharpe != 0 else 0
-
-                            st.metric(
-                                "Amélioration Sharpe",
-                                f"{improvement:+.1f}%",
-                                delta=f"{best_sharpe - initial_sharpe:+.3f}",
-                            )
-                            st.metric("Itérations utilisées", session.current_iteration)
-
-                            if session.final_reasoning:
-                                st.info(f"🛑 Arrêt: {session.final_reasoning}")
-
-                    best_params = session.best_result.request.parameters
-                    result, _ = safe_run_backtest(
-                        engine,
-                        df,
-                        strategy_key,
-                        best_params,
-                        symbol,
-                        timeframe,
-                        silent_mode=not debug_enabled,
-                    )
-                    if result is not None:
-                        result, _, wfa_msg = _attach_wfa_metrics(result, df, best_params)
-                        if wfa_msg:
-                            show_status("info", wfa_msg)
-                        winner_params = best_params
-                        winner_metrics = result.metrics
-                        winner_origin = "llm"
-                        winner_meta = result.meta
-                        st.session_state["last_run_result"] = result
-                        st.session_state["last_winner_params"] = winner_params
-                        st.session_state["last_winner_metrics"] = winner_metrics
-                        st.session_state["last_winner_origin"] = winner_origin
-                        st.session_state["last_winner_meta"] = winner_meta
-                        _maybe_auto_save_run(result)
-
-                except Exception as exc:
-                    live_status.update(label=f"❌ Erreur: {exc}", state="error")
-                    show_status("error", f"Erreur optimisation LLM: {exc}")
-                    st.code(traceback.format_exc())
-                    st.session_state.is_running = False
-                    st.stop()
-
-        elif optimization_mode == "🏗️ Strategy Builder":
+        elif optimization_mode == BUILDER_OPTIMIZATION_MODE:
             _render_builder_view_safe(
                 state=state,
                 df=df,
@@ -2785,7 +2915,7 @@ def render_main(
 
         else:
             show_status("error", f"Mode non reconnu: {optimization_mode}")
-            st.session_state.is_running = False
+            clear_execution_state(st.session_state)
             st.stop()
 
-    st.session_state.is_running = False
+    clear_execution_state(st.session_state)

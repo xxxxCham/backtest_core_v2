@@ -57,6 +57,43 @@ def _run_streamlit_page_script_once(
     return streamlit_calls, render_calls
 
 
+def test_app_css_uses_full_width_layout_and_keeps_sidebar_controls_interactive() -> None:
+    content = (REPO_ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+
+    assert "max-width: 1520px;" not in content
+    assert "max-width: none;" in content
+    assert 'transform: translateX(0) !important;' not in content
+    assert 'pointer-events: none !important;' not in content
+    assert 'button[kind="header"]' in content
+
+
+@pytest.mark.parametrize(
+    "relative_page_path",
+    [
+        "ui/pages/results_store_page.py",
+        "ui/pages/model_stats_page.py",
+        "ui/pages/range_editor_page.py",
+    ],
+)
+def test_page_navigation_css_does_not_force_sidebar_open(relative_page_path: str) -> None:
+    content = (REPO_ROOT / relative_page_path).read_text(encoding="utf-8")
+
+    assert 'transform: translateX(0) !important;' not in content
+    assert 'pointer-events: none !important;' not in content
+    assert 'button[kind="header"]' in content
+
+
+def test_results_hub_is_only_exposed_via_dedicated_results_store_page() -> None:
+    main_results_view = (REPO_ROOT / "ui" / "results.py").read_text(encoding="utf-8")
+    dedicated_results_page = (REPO_ROOT / "ui" / "results_store_view.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Hub résultats, sauvegardes et catalogue" not in main_results_view
+    assert "render_results_hub" not in main_results_view
+    assert "render_results_hub(embedded=True)" in dedicated_results_page
+
+
 def test_collect_builder_sessions_reads_summary_and_latest_strategy(tmp_path: Path) -> None:
     builder_root = tmp_path / "_builder_sessions"
     session_dir = builder_root / "session_alpha"

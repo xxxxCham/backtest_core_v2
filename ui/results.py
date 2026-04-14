@@ -22,7 +22,6 @@ Skip-if: Pas de résultats à afficher
 
 from __future__ import annotations
 
-import traceback
 from typing import Optional
 
 import pandas as pd
@@ -43,7 +42,6 @@ from ui.helpers import (
     get_partial_result_notice,
 )
 from ui.log_taps import BestPnlTracker
-from ui.results_hub import render_results_hub
 from ui.state import SidebarState
 
 
@@ -390,16 +388,6 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
 
     else:
         render_home(state)
-
-    st.markdown("---")
-    with st.expander("📚 Hub résultats, sauvegardes et catalogue", expanded=False):
-        try:
-            render_results_hub(embedded=True)
-        except Exception as exc:
-            st.warning(f"Hub résultats temporairement indisponible: {exc}")
-            if bool(st.session_state.get("debug_mode", False)):
-                st.code(traceback.format_exc())
-
 
 def render_home(state: SidebarState) -> None:
     st.write("👆 Configurez dans la sidebar puis cliquez sur **🚀 Lancer le Backtest**")

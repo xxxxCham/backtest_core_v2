@@ -76,6 +76,11 @@ _DOT_ALIAS_TO_INDICATOR: Dict[str, str] = {
     "mk": "markov_switching",
     "legs": "smart_legs",
     "amp": "amplitude_hunter",
+    # Alias tronqués observés dans les archives live (LLM coupe les noms longs)
+    "linger": "bollinger",
+    "ollinger": "bollinger",
+    "inger": "bollinger",
+    "olinger": "bollinger",
     # fvg : alias == nom canonique, déjà couvert par la boucle canonique step 12b.
 }
 
@@ -124,6 +129,26 @@ _INDICATOR_ACCESS_REWRITE_HINTS = {
     "rsi_data": "indicators['rsi']",
     "atr_14": "indicators['atr']",
     "volume_osc": "indicators['volume_oscillator']",
+    # Archives live : LLM confond paramètres et indicateurs, ou utilise des noms de variables
+    "ema_fast": "indicators['ema']",
+    "ema_slow": "indicators['ema']",
+    "adx_val": "indicators['adx']",
+    "adx_value": "indicators['adx']",
+    "rsi_value": "indicators['rsi']",
+    "mfi_val": "indicators['mfi']",
+    "mfi_value": "indicators['mfi']",
+    "cci_val": "indicators['cci']",
+    "cci_value": "indicators['cci']",
+    "cmf_val": "indicators['cmf']",
+    "atr_val": "indicators['atr']",
+    "atr_value": "indicators['atr']",
+    "macd_line": "indicators['macd']['macd_line']",
+    "macd_signal": "indicators['macd']['signal_line']",
+    "macd_histogram": "indicators['macd']['histogram']",
+    "swing_high": "indicators['swing']['swing_high']",
+    "swing_low": "indicators['swing']['swing_low']",
+    "smart_leg_bullish": "indicators['smart_legs']['smart_leg_bullish']",
+    "smart_leg_bearish": "indicators['smart_legs']['smart_leg_bearish']",
 }
 
 
@@ -135,6 +160,25 @@ _PARAM_ACCESS_REWRITE_HINTS = {
     "tp_atr_mult": "params.get('tp_atr_mult', 3.0)",
     "sl_factor": "params.get('stop_atr_mult', 1.5)",
     "tp_factor": "params.get('tp_atr_mult', 3.0)",
+    # Archives live : LLM utilise des noms de paramètres comme variables nues
+    "adx_threshold": "params.get('adx_threshold', 25)",
+    "adx_filter": "params.get('adx_filter', 25)",
+    "adx_min": "params.get('adx_min', 20)",
+    "mfi_threshold_high": "params.get('mfi_threshold_high', 70)",
+    "mfi_threshold_low": "params.get('mfi_threshold_low', 30)",
+    "mfi_high": "params.get('mfi_threshold_high', 70)",
+    "mfi_low": "params.get('mfi_threshold_low', 30)",
+    "sl_mult": "params.get('stop_atr_mult', 1.5)",
+    "tp_mult": "params.get('tp_atr_mult', 3.0)",
+    "atr_stop_mult": "params.get('stop_atr_mult', 1.5)",
+    "atr_tp_mult": "params.get('tp_atr_mult', 3.0)",
+    "cmf_threshold": "params.get('cmf_threshold', 0.0)",
+    "bias_min": "params.get('bias_min', 0.5)",
+    "trend_filter": "params.get('trend_filter', 0.3)",
+    "rsi_overbought": "params.get('rsi_overbought', 70)",
+    "rsi_oversold": "params.get('rsi_oversold', 30)",
+    "rsi_period": "params.get('rsi_period', 14)",
+    "bias_strength_filter": "params.get('bias_strength_filter', 0.5)",
 }
 
 
@@ -160,7 +204,25 @@ _PYTHONISH_LINE_RE = re.compile(
 
 
 _NATURAL_LANGUAGE_LINE_RE = re.compile(
-    r"^\s*(voici|here(?: is)?|sure|corrected code|explication|explanation|note|remarque|analyse|analysis|résumé|resume|stratégie|strategy)\b",
+    r"^\s*("
+    # --- FR existants + nouveaux ---
+    r"voici|voici le code|voici la version|code corrig[ée]|code modifi[ée]|"
+    r"corrig[ée]|correction|ci-dessous|ci-dessus|modifi[ée]|changement|ajout|"
+    r"suggestion|proposition|en r[ée]sum[ée]|en bref|"
+    r"explication|remarque|analyse|analysis|r[ée]sum[ée]|strat[ée]gie|"
+    # --- EN existants ---
+    r"here(?:'s|\s+is)?|sure|corrected code|explanation|note|strategy|"
+    # --- EN reasoning-chain (real archives: 3824 NL lines) ---
+    r"the user|i need to|so perhaps|i should|but in the|"
+    r"wait[,.]?\s*(?:no|maybe)|let me (?:think|start)|okay[,.]?\s*i|"
+    r"looking (?:back|at)|first[,.]?\s*(?:the|i)|now[,.]?\s*(?:the|i|let)|"
+    r"next[,.]?\s*(?:the|i)|additionally|these are just|"
+    r"perhaps also|note that this|the (?:strategy|focus)|so the required|"
+    r"so maybe i should|so in the|for example[,.]?\s*if|"
+    r"but let me|i have included|i don'?t see|"
+    r"from the problem|the (?:required|sample|above)|in the (?:sample|example)|"
+    r"so required|so maybe|the focus is"
+    r")\b",
     re.IGNORECASE,
 )
 

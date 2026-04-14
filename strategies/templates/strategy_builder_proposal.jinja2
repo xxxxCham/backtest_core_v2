@@ -8,6 +8,8 @@ Do NOT output markdown outside the requested JSON.
 ## OBJECTIVE
 {{ objective }}
 
+{% set schema_indicators = objective_indicators[:3] if objective_indicators else available_indicators[:3] %}
+
 ## ITERATION {{ iteration }} / {{ max_iterations }}
 
 {% if direction_constraint == "long_only" %}
@@ -45,6 +47,15 @@ Do NOT output markdown outside the requested JSON.
 {% for line in available_indicator_guide %}
 {{ line }}
 {% endfor %}
+{% endif %}
+
+{% if objective_indicators %}
+## OBJECTIVE INDICATOR CONTRACT
+- Objective explicitly names: {{ objective_indicators|join(", ") }}
+- indicator_lock_mode={{ indicator_lock_mode or "semi_open" }}
+- Start from exactly this indicator set by default.
+- Semi-open exception: if change_type is `logic` or `both`, you may either add exactly one indicator OR replace exactly one indicator.
+- If you use the semi-open exception, include `indicator_override_reason` and explain the single change clearly.
 {% endif %}
 
 {% if 'markov_switching' in available_indicators or 'directional_bias' in available_indicators %}
@@ -166,6 +177,10 @@ Required behavior:
 - entry_long_logic, entry_short_logic, exit_logic MUST be plain strings (one sentence each).
   NEVER nest JSON objects, "logic_expression" keys, or "indicators" arrays inside them.
 - Keep it simple: usually 1 to 5 indicators. One clear entry rule, one clear exit rule.
+{% if objective_indicators %}
+- Because the objective explicitly names indicators, do NOT drift to a default RSI/Bollinger/ATR/ADX template.
+- `used_indicators` should match the objective set unless you take the documented semi-open exception.
+{% endif %}
 {% if direction_constraint == "long_only" %}
 - Objective is LONG ONLY: entry_short_logic MUST be "".
 {% elif direction_constraint == "short_only" %}
@@ -180,41 +195,42 @@ BAD exit_logic (duplicated logic_expression — FORBIDDEN):
 BAD entry_long_logic (vague placeholder — FORBIDDEN):
   "entry_long_logic": "when price breaks above resistance"
 BAD hypothesis (describes WHAT not WHY — FORBIDDEN):
-  "hypothesis": "Use RSI and Bollinger bands"
+  "hypothesis": "Use some classic indicators"
 
 GOOD exit_logic (plain string — CORRECT):
-  "exit_logic": "close crosses below donchian middle band OR adx < 25"
+  "exit_logic": "close invalidates the selected trigger or the confirmation filter turns off"
 GOOD entry_long_logic (concrete boolean condition — CORRECT):
-  "entry_long_logic": "close > bollinger.upper AND rsi > 50 AND adx > 25"
+  "entry_long_logic": "price confirms the primary trigger and the confirmation indicator agrees"
 GOOD hypothesis (explains WHY — CORRECT):
-  "hypothesis": "Bollinger breakout with ADX trend filter reduces false signals in ranging markets"
+  "hypothesis": "The explicit objective indicator set should isolate the target setup while ATR exits cap volatility risk"
 
 ## REQUIRED JSON SCHEMA
 {
   "strategy_name": "snake_case_name",
   "hypothesis": "why this should improve results (explain the edge, not just the indicators)",
   "change_type": "logic|params|both|accept",
-  "used_indicators": ["rsi", "bollinger", "atr"],
+  "used_indicators": [{% for ind in schema_indicators %}"{{ ind }}"{% if not loop.last %}, {% endif %}{% endfor %}],
+  "indicator_override_reason": "optional: explain the single allowed add/replace if you deviate from explicit objective indicators",
   "indicator_params": {
-    "rsi": {"period": 14},
-    "bollinger": {"period": 20, "std_dev": 2},
-    "atr": {"period": 14}
+{% if schema_indicators %}
+{% for ind in schema_indicators %}
+    "{{ ind }}": {"period": 14}{% if not loop.last %},{% endif %}
+{% endfor %}
+{% else %}
+    "indicator_a": {"period": 14}
+{% endif %}
   },
-  "entry_long_logic": "close > bollinger.upper AND rsi > 50 AND adx > 25",
-  "entry_short_logic": "close < bollinger.lower AND rsi < 50 AND adx > 25",
-  "exit_logic": "close crosses bollinger.middle OR adx < 20",
+  "entry_long_logic": "explicit long condition using the selected indicators only",
+  "entry_short_logic": "explicit short condition using the selected indicators only",
+  "exit_logic": "explicit exit condition using the selected indicators only",
   "risk_management": "ATR-based: stop at 1.5x ATR below entry, take-profit at 3x ATR above entry",
   "default_params": {
     "leverage": 1,
-    "rsi_period": 14,
-    "rsi_oversold": 30,
-    "rsi_overbought": 70,
     "stop_atr_mult": 1.5,
     "tp_atr_mult": 3.0,
     "warmup": 50
   },
   "parameter_specs": {
-    "rsi_period": {"min": 5, "max": 50, "default": 14, "type": "int"},
     "stop_atr_mult": {"min": 0.5, "max": 4.0, "default": 1.5, "type": "float"}
   }
 }

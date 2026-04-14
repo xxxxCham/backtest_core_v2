@@ -83,6 +83,8 @@ class BuilderSession:
     slippage_bps: float = 5.0
     initial_capital: float = 10000.0
     direction_constraint: str = "long_short"
+    objective_indicators: List[str] = field(default_factory=list)
+    indicator_lock_mode: str = ""
     universe_mode: str = "canonical"
     universe_purpose: str = "builder"
     universe_strategy_type: str = ""

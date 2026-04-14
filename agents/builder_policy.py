@@ -13,16 +13,20 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
-from agents.builder_state import BuilderIteration, BuilderSession
-from agents.strategy_builder import (
+from agents.builder_constants import (
     MAX_POSITIVE_FALLBACK_COUNT,
     MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP,
+)
+from agents.builder_diagnostics import (
     _count_positive_iterations,
     _is_accept_candidate,
     _is_positive_progress_iteration,
     _required_positive_count_for_iteration,
+)
+from agents.builder_policy_helpers import (
     _should_trip_logic_stagnation_circuit,
 )
+from agents.builder_state import BuilderIteration, BuilderSession
 
 
 @dataclass

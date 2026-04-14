@@ -6,9 +6,11 @@ from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import numpy as np
 import pandas as pd
+import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
@@ -16,6 +18,7 @@ import agents.llm_client as llm_client_module
 import agents.model_config as model_config_module
 import agents.ollama_manager as ollama_manager_module
 import backtest.worker as worker_module
+import ui.app as app_module
 import ui.builder_view as builder_view_module
 import ui.components.agent_timeline as agent_timeline_module
 import ui.components.model_selector as model_selector_module
@@ -86,14 +89,16 @@ from ui.state import (
 )
 
 
-def _sample_ohlcv(n_bars: int = 400) -> pd.DataFrame:
+def _sample_ohlcv(n_bars: int = 400, freq: str = "1h", sigma: float = 0.8) -> pd.DataFrame:
     rng = np.random.default_rng(42)
-    index = pd.date_range("2025-01-01", periods=n_bars, freq="1h", tz="UTC")
-    close = 100 + np.cumsum(rng.normal(0.0, 0.8, n_bars))
-    open_ = close + rng.normal(0.0, 0.2, n_bars)
-    high = np.maximum(open_, close) + 0.5
-    low = np.minimum(open_, close) - 0.5
-    volume = rng.integers(1_000, 5_000, n_bars)
+    index = pd.date_range("2025-01-01", periods=n_bars, freq=freq, tz="UTC")
+    close = 100 + np.cumsum(rng.normal(0.0, sigma, n_bars))
+    open_ = close + rng.normal(0.0, max(0.1, sigma * 0.25), n_bars)
+    high = np.maximum(open_, close) + max(0.5, sigma)
+    low = np.minimum(open_, close) - max(0.5, sigma)
+    volume_low = 2_000 if sigma >= 1.0 else 1_000
+    volume_high = 8_000 if sigma >= 1.0 else 5_000
+    volume = rng.integers(volume_low, volume_high, n_bars)
     return pd.DataFrame(
         {
             "open": open_,
@@ -3895,6 +3900,67 @@ def test_pick_market_for_objective_rejects_loaded_dataset_with_high_untradable_r
     assert pick["fallback_timeframe"] == "1h"
 
 
+def test_pick_market_for_objective_rejects_sparse_weekly_and_falls_back_to_valid_market(monkeypatch):
+    st.session_state.clear()
+    weekly_df = _sample_ohlcv(350, freq="1W")
+    weekly_df["_tradable"] = True
+    valid_4h_df = _sample_ohlcv(600, freq="4h", sigma=1.5)
+    valid_4h_df["_tradable"] = True
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        available_tokens=["BTCUSDC"],
+        available_timeframes=["1w", "4h"],
+    )
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_builder_market_candidates",
+        lambda current_state, current_symbol, current_timeframe: (
+            ["BTCUSDC"],
+            ["1w", "4h"],
+        ),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "recommend_market_context",
+        lambda *args, **kwargs: {
+            "symbol": "BTCUSDC",
+            "timeframe": "1w",
+            "confidence": 0.84,
+            "reason": "Weekly breakout",
+            "source": "llm",
+        },
+    )
+
+    def _mock_load_builder_market_data(*, state, symbol, timeframe, fallback_df, allow_current_fallback=True):
+        if (symbol, timeframe) == ("BTCUSDC", "1w"):
+            return weekly_df, None, "loaded"
+        if (symbol, timeframe) == ("BTCUSDC", "4h"):
+            return valid_4h_df, None, "loaded"
+        return None, "📁 Fichier non trouvé", "load_error"
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_builder_market_data",
+        _mock_load_builder_market_data,
+    )
+
+    symbol, timeframe, df, pick = _pick_market_for_objective(
+        state=state,
+        objective="Breakout canonique sur BTCUSDC avec DONCHIAN + ATR",
+        llm_client=object(),
+        default_symbol="BTCUSDC",
+        default_timeframe="4h",
+        fallback_df=None,
+    )
+
+    assert (symbol, timeframe) == ("BTCUSDC", "4h")
+    assert _has_builder_market_df(df)
+    assert "continuous segment insufficient" in str(pick["load_error"]).lower()
+    assert pick["fallback_symbol"] == "BTCUSDC"
+    assert pick["fallback_timeframe"] == "4h"
+
+
 def test_run_backtest_worker_fast_sweep_returns_explicit_error():
     init_worker_with_dataframe(
         _sample_ohlcv(),
@@ -4235,21 +4301,16 @@ def test_apply_catalog_replay_request_to_state_sets_sidebar_inputs():
     assert "run_123" in msg
 
 
-def test_queue_main_run_action_applies_pending_config_and_arms_builder(monkeypatch):
+def test_queue_main_run_action_applies_pending_config_and_arms_builder():
     st.session_state.clear()
     draft_state = _sample_sidebar_state(optimization_mode="🏗️ Strategy Builder")
-    reset_calls: list[str] = []
 
     st.session_state["config_pending_changes"] = True
     st.session_state["draft_sidebar_state"] = draft_state
     st.session_state["draft_config_signature"] = "draft-builder"
     st.session_state["stop_requested"] = True
-
-    monkeypatch.setattr(
-        main_module,
-        "_reset_builder_launch_state",
-        lambda: reset_calls.append("reset"),
-    )
+    st.session_state["_builder_startup_symbol"] = "ETHUSDC"
+    st.session_state["_builder_tf_usage"] = {"1h": 2}
 
     main_module._queue_main_run_action("🏗️ Strategy Builder")
 
@@ -4259,7 +4320,180 @@ def test_queue_main_run_action_applies_pending_config_and_arms_builder(monkeypat
     assert st.session_state["stop_requested"] is False
     assert st.session_state["run_backtest_requested"] is True
     assert st.session_state["is_running"] is True
-    assert reset_calls == ["reset"]
+    assert st.session_state["builder_launch_pending"] is True
+    assert "_builder_startup_symbol" not in st.session_state
+    assert "_builder_tf_usage" not in st.session_state
+
+
+def test_queue_main_load_action_clears_stop_and_arms_load_request():
+    st.session_state.clear()
+    st.session_state["stop_requested"] = True
+
+    main_module._queue_main_load_action()
+
+    assert st.session_state["stop_requested"] is False
+    assert st.session_state["load_ohlcv_requested"] is True
+
+
+def test_render_controls_initializes_and_consumes_run_request(monkeypatch):
+    st.session_state.clear()
+    st.session_state["run_backtest_requested"] = True
+
+    monkeypatch.setattr(main_module.st, "title", lambda *args, **kwargs: None)
+    monkeypatch.setattr(main_module.st, "container", lambda: nullcontext())
+    monkeypatch.setattr(main_module.st, "markdown", lambda *args, **kwargs: None)
+
+    run_requested, _status_container = main_module.render_controls()
+
+    assert run_requested is True
+    assert st.session_state["run_backtest_requested"] is False
+    assert st.session_state["is_running"] is False
+    assert st.session_state["stop_requested"] is False
+    assert st.session_state["load_ohlcv_requested"] is False
+
+
+def test_app_clear_execution_lock_clears_builder_launch_metadata():
+    st.session_state.clear()
+    st.session_state["is_running"] = True
+    st.session_state["run_backtest_requested"] = True
+    st.session_state["stop_requested"] = True
+    st.session_state["builder_launch_pending"] = True
+    st.session_state["_builder_startup_symbol"] = "ETHUSDC"
+    st.session_state["_builder_tf_usage"] = {"1h": 1}
+
+    app_module._clear_execution_lock()
+
+    assert st.session_state["is_running"] is False
+    assert st.session_state["run_backtest_requested"] is False
+    assert st.session_state["stop_requested"] is False
+    assert "builder_launch_pending" not in st.session_state
+    assert "_builder_startup_symbol" not in st.session_state
+    assert "_builder_tf_usage" not in st.session_state
+
+
+def test_render_main_invalid_backtest_params_release_execution_lock(monkeypatch):
+    st.session_state.clear()
+
+    state = _sample_sidebar_state(optimization_mode="Backtest Simple")
+
+    monkeypatch.setattr(main_module, "validate_all_params", lambda params: (False, ["invalid"]))
+    monkeypatch.setattr(main_module, "show_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        main_module.st,
+        "stop",
+        lambda: (_ for _ in ()).throw(RuntimeError("streamlit-stop")),
+    )
+
+    with pytest.raises(RuntimeError, match="streamlit-stop"):
+        render_main(state, True, nullcontext())
+
+    assert st.session_state["is_running"] is False
+
+
+def test_render_main_llm_unavailable_releases_execution_lock(monkeypatch):
+    st.session_state.clear()
+    st.session_state["ohlcv_df"] = _sample_ohlcv()
+    st.session_state["ohlcv_status_msg"] = "ready"
+
+    state = _sample_sidebar_state(
+        optimization_mode="🤖 Optimisation LLM",
+        symbol="BTCUSDT",
+        timeframe="1h",
+        llm_config={"provider": "ollama"},
+        strategy_key="ema_cross",
+        params={"fast_period": 12, "slow_period": 26},
+    )
+    captured: dict[str, object] = {"statuses": []}
+
+    monkeypatch.setattr(main_module, "LLM_AVAILABLE", False)
+    monkeypatch.setattr(main_module, "LLM_IMPORT_ERROR", "llm import trace")
+    monkeypatch.setattr(main_module, "validate_all_params", lambda params: (True, []))
+    monkeypatch.setattr(
+        main_module,
+        "show_status",
+        lambda tone, message: cast(list[tuple[str, str]], captured["statuses"]).append((tone, message)),
+    )
+    monkeypatch.setattr(st, "code", lambda value, **kwargs: captured.setdefault("code", value))
+    monkeypatch.setattr(
+        main_module.st,
+        "stop",
+        lambda: (_ for _ in ()).throw(RuntimeError("streamlit-stop")),
+    )
+
+    with pytest.raises(RuntimeError, match="streamlit-stop"):
+        render_main(state, True, nullcontext())
+
+    assert ("error", "Module agents LLM non disponible") in cast(
+        list[tuple[str, str]],
+        captured["statuses"],
+    )
+    assert captured["code"] == "llm import trace"
+    assert st.session_state["is_running"] is False
+
+
+def test_render_main_llm_connection_failure_releases_execution_lock(monkeypatch):
+    st.session_state.clear()
+    st.session_state["ohlcv_df"] = _sample_ohlcv()
+    st.session_state["ohlcv_status_msg"] = "ready"
+
+    state = _sample_sidebar_state(
+        optimization_mode="🤖 Optimisation LLM",
+        symbol="BTCUSDT",
+        timeframe="1h",
+        llm_config={"provider": "ollama"},
+        llm_use_multi_agent=False,
+        llm_model="qwen3:14b",
+        strategy_key="ema_cross",
+        params={"fast_period": 12, "slow_period": 26},
+    )
+    captured: dict[str, object] = {"statuses": []}
+
+    monkeypatch.setattr(main_module, "LLM_AVAILABLE", True)
+    monkeypatch.setattr(main_module, "validate_all_params", lambda params: (True, []))
+    monkeypatch.setattr(main_module, "get_strategy_param_bounds", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        main_module,
+        "get_strategy_param_space",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        main_module,
+        "compute_search_space_stats",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "get_global_tracker",
+        lambda: SimpleNamespace(register=lambda _signature: None),
+    )
+    monkeypatch.setattr(main_module, "generate_session_id", lambda: "session-test")
+    monkeypatch.setattr(main_module.st, "spinner", lambda *args, **kwargs: nullcontext())
+    monkeypatch.setattr(
+        main_module,
+        "show_status",
+        lambda tone, message: cast(list[tuple[str, str]], captured["statuses"]).append((tone, message)),
+    )
+    monkeypatch.setattr(st, "code", lambda value, **kwargs: captured.setdefault("code", value))
+    monkeypatch.setattr(
+        main_module,
+        "create_optimizer_from_engine",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("connect boom")),
+    )
+    monkeypatch.setattr(
+        main_module.st,
+        "stop",
+        lambda: (_ for _ in ()).throw(RuntimeError("streamlit-stop")),
+    )
+
+    with pytest.raises(RuntimeError, match="streamlit-stop"):
+        render_main(state, True, nullcontext())
+
+    assert ("error", "Echec connexion LLM: connect boom") in cast(
+        list[tuple[str, str]],
+        captured["statuses"],
+    )
+    assert "connect boom" in str(captured["code"])
+    assert st.session_state["is_running"] is False
 
 
 def test_app_exec_modes_render_without_activation_buttons():

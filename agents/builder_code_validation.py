@@ -13,7 +13,25 @@ from typing import Any, Dict, List, Optional
 
 from indicators.registry import list_indicators
 
-GENERATED_CLASS_NAME = "BuilderGeneratedStrategy"
+from agents.builder_ast_utils import (
+    _collect_bound_names,
+    _collect_indicator_names,
+    _collect_indicator_names_in_class,
+    _collect_module_level_bound_names,
+    _collect_name_load_store_sets,
+    _const_value,
+    _indicator_name_from_get_call,
+    _indicator_name_from_subscript,
+    _is_np_nan_to_num_call,
+    _is_numeric_nonbool_constant,
+    _is_params_get_call,
+    _is_params_subscript,
+    _is_scalar_cast_call,
+    _iter_child_nodes_excluding_nested_scopes,
+    _iter_generated_class_methods,
+    _iter_generate_signals_functions,
+)
+from agents.builder_constants import GENERATED_CLASS_NAME
 
 
 ERR_CLASS = "CLASS001"
@@ -194,119 +212,6 @@ def _is_allowed_import(module_name: str) -> bool:
     return root in {"typing", "numpy", "pandas", "strategies", "utils"}
 
 
-def _collect_module_level_bound_names(tree: ast.AST) -> set[str]:
-    """Collecte les noms disponibles au scope module pour éviter les faux NameError."""
-    bound: set[str] = set()
-
-    for node in getattr(tree, "body", []) or []:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            bound.add(node.name)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                bound.add(alias.asname or alias.name.split(".")[0])
-        elif isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                bound.add(alias.asname or alias.name.split(".")[0])
-        elif isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    bound.add(target.id)
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            bound.add(node.target.id)
-
-    return bound
-
-
-def _iter_child_nodes_excluding_nested_scopes(node: ast.AST) -> Any:
-    """Itère récursivement sur les noeuds en excluant les scopes imbriqués.
-
-    Objectif: analyser les Name Load/Store d'une méthode sans descendre dans
-    des `def`/`class` internes (closures), qui ont leurs propres variables.
-    """
-    stack = list(ast.iter_child_nodes(node))
-    while stack:
-        cur = stack.pop()
-        yield cur
-        if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
-            continue
-        stack.extend(ast.iter_child_nodes(cur))
-
-
-def _collect_name_load_store_sets(fn: ast.AST) -> tuple[set[str], set[str]]:
-    """Collecte les noms utilisés (Load) et assignés (Store/Del) dans un noeud.
-
-    Ne descend pas dans les scopes imbriqués (closures) pour éviter les faux
-    positifs sur les variables capturées.
-    """
-    load: set[str] = set()
-    store: set[str] = set()
-    for node in _iter_child_nodes_excluding_nested_scopes(fn):
-        if isinstance(node, ast.Name):
-            if isinstance(node.ctx, ast.Load):
-                load.add(node.id)
-            elif isinstance(node.ctx, (ast.Store, ast.Del)):
-                store.add(node.id)
-    return load, store
-
-
-def _collect_bound_names(fn: ast.AST) -> set[str]:
-    """Collecte les noms localement définis dans une fonction/méthode."""
-    bound: set[str] = set()
-
-    args = getattr(getattr(fn, "args", None), "args", []) or []
-    bound.update(arg.arg for arg in args if getattr(arg, "arg", None))
-    kwonlyargs = getattr(getattr(fn, "args", None), "kwonlyargs", []) or []
-    bound.update(arg.arg for arg in kwonlyargs if getattr(arg, "arg", None))
-
-    _load_names, store_names = _collect_name_load_store_sets(fn)
-    bound.update(store_names)
-
-    for node in ast.walk(fn):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            bound.add(node.name)
-        elif isinstance(node, ast.ExceptHandler) and isinstance(node.name, str):
-            bound.add(node.name)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                bound.add(alias.asname or alias.name.split(".")[0])
-        elif isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                bound.add(alias.asname or alias.name.split(".")[0])
-
-    return bound
-
-
-def _collect_indicator_names(tree: ast.AST) -> set[str]:
-    """Collecte les noms d'indicateurs référencés dans generate_signals."""
-    names: set[str] = set()
-    for fn in _iter_generate_signals_functions(tree):
-        for node in ast.walk(fn):
-            sub = _indicator_name_from_subscript(node)
-            if sub:
-                names.add(sub)
-            got = _indicator_name_from_get_call(node)
-            if got:
-                names.add(got)
-    return names
-
-
-def _collect_indicator_names_in_class(tree: ast.AST) -> set[str]:
-    """Collecte les indicateurs référencés dans toute la classe générée."""
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
-            continue
-        for sub in ast.walk(node):
-            sub_name = _indicator_name_from_subscript(sub)
-            if sub_name:
-                names.add(sub_name)
-            get_name = _indicator_name_from_get_call(sub)
-            if get_name:
-                names.add(get_name)
-        break
-    return names
-
-
 def _get_known_indicator_names() -> set[str]:
     """Retourne les noms d'indicateurs du registre, en minuscules."""
     try:
@@ -317,65 +222,6 @@ def _get_known_indicator_names() -> set[str]:
         }
     except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
         return set(_DICT_INDICATOR_NAMES)
-
-
-def _iter_generate_signals_functions(tree: ast.AST) -> List[ast.FunctionDef]:
-    """Extrait les méthodes generate_signals de BuilderGeneratedStrategy."""
-    out: List[ast.FunctionDef] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and node.name == GENERATED_CLASS_NAME:
-            for item in node.body:
-                if isinstance(item, ast.FunctionDef) and item.name == "generate_signals":
-                    out.append(item)
-    return out
-
-
-def _const_value(node: ast.AST) -> Any:
-    """Extrait une valeur constante AST (str/int/float) si possible."""
-    if isinstance(node, ast.Constant):
-        return node.value
-    if isinstance(node, ast.Str):  # pragma: no cover - compat py<3.8
-        return node.s
-    return None
-
-
-def _indicator_name_from_subscript(node: ast.AST) -> Optional[str]:
-    """Retourne le nom d'indicateur pour indicators['name']."""
-    if not isinstance(node, ast.Subscript):
-        return None
-    if not isinstance(node.value, ast.Name) or node.value.id != "indicators":
-        return None
-    key = _const_value(node.slice)
-    if isinstance(key, str):
-        return key
-    return None
-
-
-def _indicator_name_from_get_call(node: ast.AST) -> Optional[str]:
-    """Retourne le nom d'indicateur pour indicators.get('name', ...)."""
-    if not isinstance(node, ast.Call):
-        return None
-    if not isinstance(node.func, ast.Attribute) or node.func.attr != "get":
-        return None
-    if not isinstance(node.func.value, ast.Name) or node.func.value.id != "indicators":
-        return None
-    if not node.args:
-        return None
-    key = _const_value(node.args[0])
-    if isinstance(key, str):
-        return key
-    return None
-
-
-def _is_np_nan_to_num_call(node: ast.AST) -> bool:
-    """Vérifie si le noeud est un appel np.nan_to_num(...)."""
-    return (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "np"
-        and node.func.attr == "nan_to_num"
-    )
 
 
 def _extract_required_indicators_from_ast(tree: ast.AST) -> set[str]:
@@ -425,42 +271,6 @@ def _has_warmup_guard(tree: ast.AST) -> bool:
                 if isinstance(sl, ast.Slice) and sl.lower is None and sl.upper is not None:
                     return True
     return False
-
-
-def _is_params_get_call(node: ast.AST) -> bool:
-    """Vérifie si le noeud est un appel params.get(...)."""
-    return (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "params"
-        and node.func.attr == "get"
-    )
-
-
-def _is_params_subscript(node: ast.AST) -> bool:
-    """Vérifie si le noeud est params['x']."""
-    return (
-        isinstance(node, ast.Subscript)
-        and isinstance(node.value, ast.Name)
-        and node.value.id == "params"
-    )
-
-
-def _is_scalar_cast_call(node: ast.AST) -> bool:
-    """Vérifie si le noeud est un cast scalaire (float/int/bool)."""
-    return (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in {"float", "int", "bool"}
-    )
-
-
-def _is_numeric_nonbool_constant(node: ast.AST) -> bool:
-    """True si le noeud est une constante numérique non-bool."""
-    if not isinstance(node, ast.Constant):
-        return False
-    return isinstance(node.value, (int, float)) and not isinstance(node.value, bool)
 
 
 def _dict_indicator_key_is_valid(indicator_name: str, key: Any) -> bool:
@@ -1121,140 +931,116 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
         )
 
     # 3c. default_params doit retourner un dict concret (pas une variable globale implicite)
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
+    for item in _iter_generated_class_methods(tree):
+        if item.name != "default_params":
             continue
-        for item in node.body:
-            if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        arg_names = {a.arg for a in item.args.args}
+        arg_names.update(a.arg for a in item.args.kwonlyargs)
+        _, store_names = _collect_name_load_store_sets(item)
+        for sub in ast.walk(item):
+            if not isinstance(sub, ast.Return):
                 continue
-            if item.name != "default_params":
-                continue
-            arg_names = {a.arg for a in item.args.args}
-            arg_names.update(a.arg for a in item.args.kwonlyargs)
-            _, store_names = _collect_name_load_store_sets(item)
-            for sub in ast.walk(item):
-                if not isinstance(sub, ast.Return):
-                    continue
-                if isinstance(sub.value, ast.Name):
-                    name_id = sub.value.id
-                    if name_id not in arg_names and name_id not in store_names:
-                        return (
-                            False,
-                            _err(
-                                ERR_PARAM,
-                                "default_params invalide: `return "
-                                f"{name_id}` référence un nom non défini. "
-                                "Retourner un dict explicite (ex: {'leverage': 1, ...}) "
-                                "ou un attribut `self.<...>`."
-                            ),
-                        )
-        break
-
-    # 3d. NameError probable: variables coeur utilisées sans définition
-    #     (fréquent quand le LLM renomme l'argument `df` mais garde `df[...]` dans le corps)
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
-            continue
-        for item in node.body:
-            if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            arg_names = {a.arg for a in item.args.args}
-            arg_names.update(a.arg for a in item.args.kwonlyargs)
-            load_names, store_names = _collect_name_load_store_sets(item)
-            core_names: tuple[str, ...] = ("df", "indicators", "params")
-            if item.name == "generate_signals":
-                core_names: tuple[str, ...] = ("df", "indicators", "params", "warmup")
-            for core in core_names:
-                if core in load_names and core not in arg_names and core not in store_names:
+            if isinstance(sub.value, ast.Name):
+                name_id = sub.value.id
+                if name_id not in arg_names and name_id not in store_names:
                     return (
                         False,
                         _err(
-                            ERR_CLASS,
-                            f"NameError probable: `{core}` utilisé dans `{item.name}` "
-                            "mais non défini (paramètre manquant ou variable non assignée).",
+                            ERR_PARAM,
+                            "default_params invalide: `return "
+                            f"{name_id}` référence un nom non défini. "
+                            "Retourner un dict explicite (ex: {'leverage': 1, ...}) "
+                            "ou un attribut `self.<...>`."
                         ),
                     )
-        break
+
+    # 3d. NameError probable: variables coeur utilisées sans définition
+    #     (fréquent quand le LLM renomme l'argument `df` mais garde `df[...]` dans le corps)
+    for item in _iter_generated_class_methods(tree):
+        arg_names = {a.arg for a in item.args.args}
+        arg_names.update(a.arg for a in item.args.kwonlyargs)
+        load_names, store_names = _collect_name_load_store_sets(item)
+        core_names: tuple[str, ...] = ("df", "indicators", "params")
+        if item.name == "generate_signals":
+            core_names: tuple[str, ...] = ("df", "indicators", "params", "warmup")
+        for core in core_names:
+            if core in load_names and core not in arg_names and core not in store_names:
+                return (
+                    False,
+                    _err(
+                        ERR_CLASS,
+                        f"NameError probable: `{core}` utilisé dans `{item.name}` "
+                        "mais non défini (paramètre manquant ou variable non assignée).",
+                    ),
+                )
 
     # 3e. NameError probable: indicateur enregistré utilisé comme variable nue
     #     sans alias local explicite depuis indicators['...'].
     known_indicator_names = _get_known_indicator_names()
     if known_indicator_names:
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
+        for item in _iter_generated_class_methods(tree):
+            if item.name != "generate_signals":
                 continue
-            for item in node.body:
-                if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    continue
-                if item.name != "generate_signals":
-                    continue
-                arg_names = {a.arg for a in item.args.args}
-                arg_names.update(a.arg for a in item.args.kwonlyargs)
-                load_names, _store_names = _collect_name_load_store_sets(item)
-                bound_names = _collect_bound_names(item)
-                missing_indicators = sorted(
-                    {
-                        name
-                        for name in load_names
-                        if name in known_indicator_names
-                        and name not in arg_names
-                        and name not in bound_names
-                    }
+            arg_names = {a.arg for a in item.args.args}
+            arg_names.update(a.arg for a in item.args.kwonlyargs)
+            load_names, _store_names = _collect_name_load_store_sets(item)
+            bound_names = _collect_bound_names(item)
+            missing_indicators = sorted(
+                {
+                    name
+                    for name in load_names
+                    if name in known_indicator_names
+                    and name not in arg_names
+                    and name not in bound_names
+                }
+            )
+            if missing_indicators:
+                indicator_name = missing_indicators[0]
+                return (
+                    False,
+                    _err(
+                        ERR_IND,
+                        "NameError probable: indicateur "
+                        f"`{indicator_name}` utilisé comme variable nue dans "
+                        "`generate_signals` sans alias local. "
+                        f"{_indicator_access_hint(indicator_name)}",
+                    ),
                 )
-                if missing_indicators:
-                    indicator_name = missing_indicators[0]
-                    return (
-                        False,
-                        _err(
-                            ERR_IND,
-                            "NameError probable: indicateur "
-                            f"`{indicator_name}` utilisé comme variable nue dans "
-                            "`generate_signals` sans alias local. "
-                            f"{_indicator_access_hint(indicator_name)}",
-                        ),
-                    )
-            break
 
     # 3e-bis. Variables libres / placeholders explicites dans les méthodes.
     module_bound_names = _collect_module_level_bound_names(tree)
     builtin_names = set(dir(builtins))
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
-            continue
-        for item in node.body:
-            if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            for sub in ast.walk(item):
-                if isinstance(sub, ast.Constant) and sub.value is Ellipsis:
-                    return (
-                        False,
-                        _err(
-                            ERR_AST,
-                            f"Placeholder `...` interdit dans `{item.name}`. "
-                            "Fournir une logique complète.",
-                        ),
-                    )
-            load_names, _store_names = _collect_name_load_store_sets(item)
-            bound_names = _collect_bound_names(item)
-            allowed_names = bound_names | module_bound_names | builtin_names
-            missing_names = sorted(
-                {
-                    name
-                    for name in load_names
-                    if name not in allowed_names and not name.startswith("__")
-                }
-            )
-            if missing_names:
-                missing_name = missing_names[0]
+    for item in _iter_generated_class_methods(tree):
+        for sub in ast.walk(item):
+            if isinstance(sub, ast.Constant) and sub.value is Ellipsis:
                 return (
                     False,
                     _err(
-                        ERR_CLASS,
-                        f"NameError probable: `{missing_name}` utilisé dans "
-                        f"`{item.name}` sans définition locale.",
+                        ERR_AST,
+                        f"Placeholder `...` interdit dans `{item.name}`. "
+                        "Fournir une logique complète.",
                     ),
                 )
-        break
+        load_names, _store_names = _collect_name_load_store_sets(item)
+        bound_names = _collect_bound_names(item)
+        allowed_names = bound_names | module_bound_names | builtin_names
+        missing_names = sorted(
+            {
+                name
+                for name in load_names
+                if name not in allowed_names and not name.startswith("__")
+            }
+        )
+        if missing_names:
+            missing_name = missing_names[0]
+            return (
+                False,
+                _err(
+                    ERR_CLASS,
+                    f"NameError probable: `{missing_name}` utilisé dans "
+                    f"`{item.name}` sans définition locale.",
+                ),
+            )
 
     # 3f. Verrouillage required_indicators: lecture seule (pas d'assignation)
     for node in ast.walk(tree):
@@ -1277,29 +1063,23 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
                 )
 
     # 3f-bis. Éviter l'écrasement des aliases d'import numpy/pandas.
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
-            continue
-        for item in node.body:
-            if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+    for item in _iter_generated_class_methods(tree):
+        for sub in ast.walk(item):
+            if isinstance(sub, ast.Assign):
+                targets = sub.targets
+            elif isinstance(sub, ast.AnnAssign):
+                targets = [sub.target]
+            elif isinstance(sub, ast.AugAssign):
+                targets = [sub.target]
+            else:
                 continue
-            for sub in ast.walk(item):
-                if isinstance(sub, ast.Assign):
-                    targets = sub.targets
-                elif isinstance(sub, ast.AnnAssign):
-                    targets = [sub.target]
-                elif isinstance(sub, ast.AugAssign):
-                    targets = [sub.target]
-                else:
-                    continue
-                for target in targets:
-                    if isinstance(target, ast.Name) and target.id in {"np", "pd"}:
-                        return False, _err(
-                            ERR_CLASS,
-                            f"Alias réservé `{target.id}` écrasé dans `{item.name}`. "
-                            f"Ne jamais réassigner `{target.id}`.",
-                        )
-        break
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id in {"np", "pd"}:
+                    return False, _err(
+                        ERR_CLASS,
+                        f"Alias réservé `{target.id}` écrasé dans `{item.name}`. "
+                        f"Ne jamais réassigner `{target.id}`.",
+                    )
 
     # 3g. Écriture df limitée aux colonnes SL/TP autorisées
     ohlcv_cols = {"open", "high", "low", "close", "volume"}

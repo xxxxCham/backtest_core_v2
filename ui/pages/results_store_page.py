@@ -19,44 +19,35 @@ def _render_page_navigation() -> None:
 header[data-testid="stHeader"] {
     background: transparent !important;
 }
-[data-testid="stSidebar"] > div:first-child {
-    width: 22rem !important;
-}
+[data-testid="stSidebar"] button[kind="header"],
+[data-testid="stSidebar"] button[kind="headerNoPadding"],
 [data-testid="collapsedControl"] {
     display: flex !important;
     visibility: visible !important;
     opacity: 1 !important;
-    position: fixed !important;
-    top: 0.7rem;
-    left: 0.7rem;
-    z-index: 100000 !important;
+    pointer-events: auto !important;
+    align-items: center !important;
+    justify-content: center !important;
     border-radius: 12px !important;
     background: rgba(15, 23, 42, 0.92) !important;
     border: 1px solid rgba(96, 165, 250, 0.35) !important;
     box-shadow: 0 10px 24px rgba(2, 8, 23, 0.30) !important;
 }
+[data-testid="stSidebar"] button[kind="header"],
+[data-testid="stSidebar"] button[kind="headerNoPadding"] {
+    min-width: 2.35rem !important;
+    min-height: 2.35rem !important;
+}
+[data-testid="collapsedControl"] {
+    position: fixed !important;
+    top: 0.7rem;
+    left: 0.7rem;
+    z-index: 100000 !important;
+}
+[data-testid="stSidebar"] button[kind="header"] svg,
+[data-testid="stSidebar"] button[kind="headerNoPadding"] svg,
 [data-testid="collapsedControl"] svg {
     fill: #dbeafe !important;
-}
-@media (min-width: 1100px) {
-    [data-testid="stSidebar"][aria-expanded="false"] {
-        min-width: 22rem !important;
-        max-width: 22rem !important;
-        transform: translateX(0) !important;
-        margin-left: 0 !important;
-        box-shadow: 8px 0 30px rgba(2, 8, 23, 0.22) !important;
-    }
-    [data-testid="stSidebar"][aria-expanded="false"] > div:first-child,
-    [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"] {
-        width: 22rem !important;
-        min-width: 22rem !important;
-        visibility: visible !important;
-        display: block !important;
-    }
-    [data-testid="collapsedControl"] {
-        opacity: 0 !important;
-        pointer-events: none !important;
-    }
 }
 [data-testid="stToolbar"],
 [data-testid="stDecoration"],

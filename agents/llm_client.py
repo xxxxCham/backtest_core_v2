@@ -70,6 +70,9 @@ class LLMConfig:
     num_ctx: Optional[int] = None
     top_p: float = 0.9
 
+    # Ollama keep_alive (ex: "20m", "0m" pour décharger immédiatement)
+    keep_alive: Optional[str] = None
+
     # Retry/timeout
     # Note: 600s (10min) par défaut pour supporter les modèles de raisonnement
     # (deepseek-r1, qwq, etc.) qui peuvent prendre 5-10 minutes
@@ -367,6 +370,8 @@ class OllamaClient(LLMClient):
             ),
         }
 
+        if self.config.keep_alive is not None:
+            payload["keep_alive"] = self.config.keep_alive
         if json_mode:
             payload["format"] = "json"
 
@@ -481,6 +486,8 @@ class OllamaClient(LLMClient):
             ),
         }
 
+        if self.config.keep_alive is not None:
+            payload["keep_alive"] = self.config.keep_alive
         if json_mode:
             payload["format"] = "json"
 
@@ -597,6 +604,8 @@ class OllamaClient(LLMClient):
                 max_tokens=max_tokens,
             ),
         }
+        if self.config.keep_alive is not None:
+            payload["keep_alive"] = self.config.keep_alive
         if json_mode:
             payload["format"] = "json"
 

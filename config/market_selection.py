@@ -64,6 +64,9 @@ _DEFAULT_UNIVERSE_CONFIG: Dict[str, Any] = {
     "local_filters": {
         "min_segment_bars_floor": 300,
         "canonical_segment_days_multiplier": 1.0,
+        "canonical_min_segment_bars_by_timeframe": {
+            "1w": 400,
+        },
         "min_listing_age_days": 45,
         "min_tradable_ratio_hard": 0.75,
         "min_tradable_ratio_canonical": 0.90,
@@ -590,6 +593,9 @@ def evaluate_market_dataset(
         1,
         int(_safe_float(local_filters.get("min_segment_bars_floor"), 300)),
     )
+    timeframe_segment_overrides = dict(
+        local_filters.get("canonical_min_segment_bars_by_timeframe", {}) or {}
+    )
     canonical_segment_days_multiplier = max(
         0.25,
         _safe_float(local_filters.get("canonical_segment_days_multiplier"), 1.0),
@@ -605,6 +611,15 @@ def evaluate_market_dataset(
         if normalized_mode == UNIVERSE_MODE_CANONICAL
         else min_segment_bars_floor
     )
+    timeframe_specific_min_segment_bars = max(
+        0,
+        int(_safe_float(timeframe_segment_overrides.get(normalized_timeframe), 0.0)),
+    )
+    if normalized_mode == UNIVERSE_MODE_CANONICAL and timeframe_specific_min_segment_bars > 0:
+        min_segment_bars_required = max(
+            min_segment_bars_required,
+            timeframe_specific_min_segment_bars,
+        )
     min_listing_age_days = max(
         _safe_float(local_filters.get("min_listing_age_days"), 45.0),
         float(timeframe_min_days) if normalized_mode == UNIVERSE_MODE_CANONICAL else 0.0,
@@ -636,6 +651,7 @@ def evaluate_market_dataset(
         "strategy_type": normalized_strategy,
         "canonical_tokens": get_canonical_tokens() if normalized_mode == UNIVERSE_MODE_CANONICAL else [],
         "min_segment_bars_required": min_segment_bars_required,
+        "timeframe_specific_min_segment_bars": timeframe_specific_min_segment_bars,
         "min_listing_age_days": min_listing_age_days,
         "min_tradable_ratio_hard": min_tradable_ratio_hard,
         "min_tradable_ratio_canonical": min_tradable_ratio_canonical,

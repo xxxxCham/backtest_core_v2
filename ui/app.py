@@ -38,6 +38,7 @@ load_project_env()
 import streamlit as st  # noqa: E402
 
 from ui.context import BACKEND_AVAILABLE, IMPORT_ERROR, LLM_AVAILABLE  # noqa: E402
+from ui.exec_tabs import render_exec_tabs  # noqa: E402
 from ui.log_taps import install_best_pnl_tracker  # noqa: E402
 from ui.main import (  # noqa: E402
     render_controls,
@@ -45,9 +46,9 @@ from ui.main import (  # noqa: E402
     render_primary_action_bar,
     render_setup_previews,
 )
-from ui.exec_tabs import render_exec_tabs  # noqa: E402
 from ui.results import render_results  # noqa: E402
 from ui.sidebar import render_sidebar  # noqa: E402
+from ui.state import clear_execution_state  # noqa: E402
 from utils.observability import init_logging  # noqa: E402
 
 init_logging()
@@ -76,9 +77,7 @@ def _render_workspace_navigation(active: str = "app") -> None:
 
 def _clear_execution_lock() -> None:
     """Clear UI execution lock flags to avoid stuck disabled controls."""
-    st.session_state.is_running = False
-    st.session_state.run_backtest_requested = False
-    st.session_state.stop_requested = False
+    clear_execution_state(st.session_state, clear_builder_launch=True)
 
 
 def configure_page() -> None:
@@ -100,6 +99,7 @@ def configure_page() -> None:
     --bc-text: #e5eefb;
     --bc-text-muted: #8fa8c6;
     --bc-accent: #60a5fa;
+    --bc-content-pad: clamp(0.8rem, 1vw, 1.2rem);
 }
 html, body, [data-testid="stAppViewContainer"], .stApp {
     background:
@@ -112,18 +112,16 @@ html, body, [data-testid="stAppViewContainer"], .stApp {
     background: transparent;
 }
 [data-testid="stAppViewContainer"] .block-container {
-    max-width: 1520px;
+    max-width: none;
+    width: 100%;
     padding-top: 1.15rem;
     padding-bottom: 3rem;
-    padding-left: 1.35rem;
-    padding-right: 1.35rem;
+    padding-left: var(--bc-content-pad);
+    padding-right: var(--bc-content-pad);
 }
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, rgba(7, 18, 33, 0.97), rgba(9, 20, 37, 0.98)) !important;
     border-right: 1px solid rgba(96, 165, 250, 0.12);
-}
-[data-testid="stSidebar"] > div:first-child {
-    width: 22rem !important;
 }
 [data-testid="stSidebar"] [data-testid="stSidebarContent"] {
     padding-top: 0.55rem;
@@ -222,41 +220,35 @@ div[data-testid="stCodeBlock"] {
 header[data-testid="stHeader"] {
     background: transparent !important;
 }
+[data-testid="stSidebar"] button[kind="header"],
+[data-testid="stSidebar"] button[kind="headerNoPadding"],
 [data-testid="collapsedControl"] {
     display: flex !important;
     visibility: visible !important;
     opacity: 1 !important;
-    position: fixed !important;
-    top: 0.7rem;
-    left: 0.7rem;
-    z-index: 100000 !important;
+    pointer-events: auto !important;
+    align-items: center !important;
+    justify-content: center !important;
     border-radius: 12px !important;
     background: rgba(15, 23, 42, 0.92) !important;
     border: 1px solid rgba(96, 165, 250, 0.35) !important;
     box-shadow: 0 10px 24px rgba(2, 8, 23, 0.30) !important;
 }
+[data-testid="stSidebar"] button[kind="header"],
+[data-testid="stSidebar"] button[kind="headerNoPadding"] {
+    min-width: 2.35rem !important;
+    min-height: 2.35rem !important;
+}
+[data-testid="collapsedControl"] {
+    position: fixed !important;
+    top: 0.7rem;
+    left: 0.7rem;
+    z-index: 100000 !important;
+}
+[data-testid="stSidebar"] button[kind="header"] svg,
+[data-testid="stSidebar"] button[kind="headerNoPadding"] svg,
 [data-testid="collapsedControl"] svg {
     fill: #dbeafe !important;
-}
-@media (min-width: 1100px) {
-    [data-testid="stSidebar"][aria-expanded="false"] {
-        min-width: 22rem !important;
-        max-width: 22rem !important;
-        transform: translateX(0) !important;
-        margin-left: 0 !important;
-        box-shadow: 8px 0 30px rgba(2, 8, 23, 0.22) !important;
-    }
-    [data-testid="stSidebar"][aria-expanded="false"] > div:first-child,
-    [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"] {
-        width: 22rem !important;
-        min-width: 22rem !important;
-        visibility: visible !important;
-        display: block !important;
-    }
-    [data-testid="collapsedControl"] {
-        opacity: 0 !important;
-        pointer-events: none !important;
-    }
 }
 [data-testid="stToolbar"],
 [data-testid="stDecoration"],
