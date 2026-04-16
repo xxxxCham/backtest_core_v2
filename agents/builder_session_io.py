@@ -31,6 +31,7 @@ from agents.builder_state import (
     BuilderIteration,
     BuilderSession,
     _select_session_recovery_anchor,
+    compute_session_generation_stats,
 )
 
 logger = get_obs_logger(__name__)
@@ -333,10 +334,14 @@ def save_session_summary(session: BuilderSession) -> None:
     for rank, row in enumerate(leaderboard, start=1):
         row["rank"] = rank
 
+    generation_stats = compute_session_generation_stats(session)
+
     summary = {
         "session_id": session.session_id,
         "objective": session.objective,
+        "model_name": session.model_name,
         "status": session.status,
+        "generation_stats": generation_stats,
         "best_sharpe": session.best_sharpe,
         "best_telemetry_score": session.best_score,
         "best_score": session.best_score,

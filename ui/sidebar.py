@@ -22,8 +22,8 @@ Skip-if: Logique backend pure
 
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import os
 import random
 import re
@@ -32,16 +32,19 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 import streamlit as st
 
-from agents.llm_router import (
-    LLMTopologyConfig,
-    build_phase1_topology,
-    build_single_host_topology,
-)
 from agents.llm_config import (
     DEFAULT_LLM_INFERENCE_MODE,
     normalize_llm_inference_settings,
     normalize_llm_model_inference_profiles,
 )
+from agents.llm_router import (
+    LLMTopologyConfig,
+    build_phase1_topology,
+    build_single_host_topology,
+)
+from data.loader import is_valid_timeframe
+from performance.parallel import get_recommended_worker_count
+from ui.components.strategy_catalog_panel import render_strategy_catalog_panel
 from ui.constants import (
     MODE_OPTIONS,
     build_strategy_options,
@@ -59,6 +62,7 @@ from ui.context import (
     load_strategy_version,
     resolve_latest_version,
 )
+from ui.exec_tabs import _get_phase1_topology_from_session
 from ui.helpers import (
     _data_cache_key,
     _find_saved_run_meta,
@@ -73,25 +77,24 @@ from ui.helpers import (
     validate_param,
 )
 from ui.state import (
-    BUILDER_UNIVERSE_MODE_CANONICAL,
-    BUILDER_EXECUTION_MODE_MONO,
     BUILDER_AUTO_START_OLLAMA_DEFAULT,
+    BUILDER_EXECUTION_MODE_MONO,
     BUILDER_KEEP_ALIVE_MINUTES_DEFAULT,
     BUILDER_PRELOAD_MODEL_DEFAULT,
+    BUILDER_UNIVERSE_MODE_CANONICAL,
     BUILDER_UNLOAD_AFTER_RUN_DEFAULT,
     SidebarState,
+    arm_ui_run_request,
+    clear_execution_state,
+    ensure_ui_execution_state_defaults,
     resolve_builder_dual_lane_preferences,
     resolve_builder_execution_preferences,
     resolve_builder_flow_analysis_preferences,
     resolve_builder_multi_llm_preferences,
     resolve_builder_runtime_preferences,
 )
-from ui.components.strategy_catalog_panel import render_strategy_catalog_panel
-from ui.exec_tabs import _get_phase1_topology_from_session
-from data.loader import is_valid_timeframe
 from utils.observability import is_debug_enabled, set_log_level
 from utils.parameters import normalize_param_ranges
-from performance.parallel import get_recommended_worker_count
 
 logger = logging.getLogger(__name__)
 
@@ -636,7 +639,7 @@ def _apply_catalog_replay_request_to_state(
 
     auto_run = bool(replay_request.get("auto_run", False))
     if auto_run:
-        session_state["run_backtest_requested"] = True
+        arm_ui_run_request(session_state)
 
     source_run_id = str(replay_request.get("source_run_id", "") or "").strip()
     msg = (
@@ -847,6 +850,665 @@ def get_final_market_selection(
 
     reason = "Fallback : Univers vide ou sélection UI manquante"
     return (default_symbol, default_timeframe, "fallback", reason)
+
+
+# ---------------------------------------------------------------------------
+#  Sous-fonction extraite de render_sidebar — section filtre temporel
+# ---------------------------------------------------------------------------
+
+
+def _render_sidebar_date_filter(
+    *,
+    symbols: List[str],
+    timeframes: List[str],
+    availability_result: Any,
+) -> Tuple[bool, Any, Any]:
+    """Render le filtre temporel dans la sidebar.
+
+    Retourne ``(use_date_filter, start_date, end_date)``.
+    """
+    use_date_filter = st.sidebar.checkbox(
+        "Filtrer par dates",
+        value=False,
+        help="Désactivé = utilise toutes les données disponibles (recommandé)",
+        key="use_date_filter",
+    )
+    if use_date_filter:
+        if not symbols or not timeframes:
+            st.sidebar.warning("Sélectionnez au moins un symbole et un timeframe pour activer le filtre dates.")
+            use_date_filter = False
+
+    if use_date_filter:
+        # === ANALYSE PAR CATÉGORIE DE TIMEFRAME ===
+        from data.config import analyze_by_timeframe
+
+        # Analyse par timeframe (plage commune par TF)
+        timeframe_analysis = analyze_by_timeframe(symbols, timeframes)
+
+        # Interface de sélection par timeframe
+        with st.sidebar.expander("🎯 **Analyse par Timeframe**", expanded=True):
+            if len(timeframes) > 1:
+                analysis_mode = st.radio(
+                    "Mode d'analyse",
+                    ["Période harmonisée", "Périodes indépendantes par timeframe"],
+                    help="Harmonisée = même période pour tous. Indépendantes = période optimale par timeframe",
+                )
+            else:
+                analysis_mode = "Période harmonisée"  # Auto si un seul timeframe
+
+            st.caption(
+                "Harmonisée = une seule période commune (comparaisons strictes). "
+                "Indépendantes = meilleure période par TF (comparaisons plus souples)."
+            )
+
+            available_start = None
+            available_end = None
+            default_start = None
+            default_end = None
+
+            if analysis_mode == "Période harmonisée":
+                if availability_result.has_common_range:
+                    common_start = availability_result.common_start
+                    common_end = availability_result.common_end
+                    duration = (common_end - common_start).days
+
+                    st.success(f"✅ **Période harmonisée**: {common_start.strftime('%d/%m/%Y')} → {common_end.strftime('%d/%m/%Y')} ({duration}j)")
+                    st.caption(
+                        f"💡 Plage commune stricte (max début, min fin) sur "
+                        f"{len(symbols)} token(s) × {len(timeframes)} TF(s)"
+                    )
+
+                    available_start = common_start.date()
+                    available_end = common_end.date()
+                    default_start, default_end = _get_padded_date_range(common_start, common_end)
+                else:
+                    st.warning("⚠️ Impossible de trouver une période commune (intersection vide)")
+                    default_start = pd.Timestamp("2023-01-01").date()
+                    default_end = pd.Timestamp.now().date()
+                    available_start = default_start
+                    available_end = default_end
+
+            else:
+                st.info("📊 **Périodes optimales par timeframe**:")
+
+                best_timeframe = None
+                best_score = 0.0
+                best_period_ref = None
+                fallback_timeframe = None
+                fallback_period_ref = None
+                fallback_score = 0.0
+
+                for tf, data in timeframe_analysis.items():
+                    st.write(f"**{tf}**")
+
+                    if data['optimal_periods']:
+                        best_period = data['optimal_periods'][0]
+                        start_fr = best_period.start_date.strftime("%d/%m/%Y")
+                        end_fr = best_period.end_date.strftime("%d/%m/%Y")
+                        duration = (best_period.end_date - best_period.start_date).days
+
+                        st.write(f"- 🎯 {start_fr} → {end_fr} ({duration}j)")
+                        st.caption(
+                            f"  Score: {best_period.completeness_score:.0f}%, "
+                            f"Gap toléré: {data['gap_tolerance']:.0f}%"
+                        )
+
+                        for recommendation in data['recommendations']:
+                            st.caption(f"  {recommendation}")
+
+                        combined_score = best_period.completeness_score * best_period.avg_data_density
+                        if combined_score > best_score:
+                            best_score = combined_score
+                            best_timeframe = tf
+                            best_period_ref = best_period
+                    else:
+                        fallback_period = _get_timeframe_fallback_period(data)
+                        if fallback_period:
+                            fallback_start = fallback_period["best_start"].strftime("%d/%m/%Y")
+                            fallback_end = fallback_period["best_end"].strftime("%d/%m/%Y")
+                            fallback_duration = fallback_period["best_duration_days"]
+
+                            st.write(
+                                f"- ℹ️ Référence {fallback_period['best_symbol']}: "
+                                f"{fallback_start} → {fallback_end} ({fallback_duration}j)"
+                            )
+
+                            if fallback_period["score"] > fallback_score:
+                                fallback_score = fallback_period["score"]
+                                fallback_timeframe = tf
+                                fallback_period_ref = fallback_period
+                        else:
+                            st.write("- ❌ Aucune donnée disponible")
+
+                if best_timeframe and best_period_ref:
+                    available_start = best_period_ref.start_date.date()
+                    available_end = best_period_ref.end_date.date()
+                    default_start, default_end = _get_padded_date_range(
+                        best_period_ref.start_date,
+                        best_period_ref.end_date,
+                    )
+                    st.success(f"🏆 **Défaut basé sur {best_timeframe}** (meilleur score: {best_score:.1f})")
+                elif fallback_timeframe and fallback_period_ref:
+                    fallback_start_ts = fallback_period_ref["best_start"]
+                    fallback_end_ts = fallback_period_ref["best_end"]
+                    available_start = fallback_start_ts.date()
+                    available_end = fallback_end_ts.date()
+                    default_start, default_end = _get_padded_date_range(
+                        fallback_start_ts,
+                        fallback_end_ts,
+                    )
+                    st.info(
+                        f"ℹ️ Aucun intervalle commun strict. Défaut basé sur "
+                        f"{fallback_timeframe} ({fallback_period_ref['best_symbol']})."
+                    )
+                else:
+                    st.warning("⚠️ Aucune période optimale trouvée pour les timeframes sélectionnés")
+                    default_start = pd.Timestamp("2023-01-01").date()
+                    default_end = pd.Timestamp.now().date()
+                    available_start = default_start
+                    available_end = default_end
+
+            st.markdown("---")
+            st.caption("📅 **Période d'analyse** (format: DD/MM/YYYY)")
+
+            # Auto-aligner les dates sur la plage commune si hors limites.
+            if default_start and default_end and available_start and available_end:
+                selection_key = (
+                    tuple(sorted(symbols)),
+                    tuple(sorted(timeframes)),
+                    analysis_mode,
+                )
+                if st.session_state.get("_date_range_selection_key") != selection_key:
+                    st.session_state["start_date"] = default_start
+                    st.session_state["end_date"] = default_end
+                    st.session_state["_date_range_selection_key"] = selection_key
+
+                start_state = st.session_state.get("start_date")
+                end_state = st.session_state.get("end_date")
+                if start_state and (start_state < available_start or start_state > available_end):
+                    st.session_state["start_date"] = default_start
+                if end_state and (end_state < available_start or end_state > available_end):
+                    st.session_state["end_date"] = default_end
+
+                if st.session_state.get("start_date") and st.session_state.get("end_date"):
+                    if st.session_state["start_date"] >= st.session_state["end_date"]:
+                        st.session_state["start_date"] = default_start
+                        st.session_state["end_date"] = default_end
+
+            col1, col2 = st.sidebar.columns(2)
+            with col1:
+                start_date = st.date_input(
+                    "Date début 📅",
+                    key="start_date",
+                    format="DD/MM/YYYY",
+                    help="Date de début de la période d'analyse"
+                )
+            with col2:
+                end_date = st.date_input(
+                    "Date fin 📅",
+                    key="end_date",
+                    format="DD/MM/YYYY",
+                    help="Date de fin de la période d'analyse"
+                )
+
+            # Validation que start_date < end_date
+            if start_date and end_date and start_date >= end_date:
+                st.sidebar.error("⚠️ La date de début doit être antérieure à la date de fin")
+
+            # Affichage de la durée sélectionnée
+            if start_date and end_date and start_date < end_date:
+                selected_days = (end_date - start_date).days
+                st.sidebar.caption(f"📊 Durée sélectionnée: **{selected_days} jours**")
+
+            # Validation de la période par rapport à la plage commune
+            if availability_result.has_common_range and start_date and end_date:
+                common_start = availability_result.common_start
+                common_end = availability_result.common_end
+                common_start_date = common_start.date()
+                common_end_date = common_end.date()
+
+                if analysis_mode == "Période harmonisée":
+                    if end_date < common_start_date:
+                        st.sidebar.error(
+                            f"⚠️ Période demandée ({start_date.strftime('%d/%m/%Y')} → {end_date.strftime('%d/%m/%Y')}) est AVANT "
+                            f"la plage commune ({common_start_date.strftime('%d/%m/%Y')})"
+                        )
+                    elif start_date > common_end_date:
+                        st.sidebar.error(
+                            f"⚠️ Période demandée ({start_date.strftime('%d/%m/%Y')} → {end_date.strftime('%d/%m/%Y')}) est APRÈS "
+                            f"la plage commune ({common_end_date.strftime('%d/%m/%Y')})"
+                        )
+                    elif start_date < common_start_date:
+                        st.sidebar.warning(
+                            f"⚠️ Début demandé ({start_date.strftime('%d/%m/%Y')}) est AVANT la plage commune. "
+                            f"Données réelles à partir de **{common_start_date.strftime('%d/%m/%Y')}**"
+                        )
+                    elif end_date > common_end_date:
+                        st.sidebar.warning(
+                            f"⚠️ Fin demandée ({end_date.strftime('%d/%m/%Y')}) est APRÈS la plage commune. "
+                            f"Données réelles jusqu'à **{common_end_date.strftime('%d/%m/%Y')}**"
+                        )
+                else:
+                    if start_date < common_start_date or end_date > common_end_date:
+                        st.sidebar.info(
+                            f"ℹ️ Plage commune globale: {common_start_date.strftime('%d/%m/%Y')} → {common_end_date.strftime('%d/%m/%Y')}. "
+                            "En mode indépendant, certaines combinaisons peuvent être tronquées."
+                        )
+
+            st.markdown("---")
+            with st.sidebar.expander("🔍 Analyse détaillée des données", expanded=False):
+                if availability_result.rows:
+                    df_analysis = pd.DataFrame(availability_result.rows)
+                    st.dataframe(
+                        df_analysis,
+                        width="stretch",
+                        column_config={
+                            "Token": st.column_config.TextColumn("Token", width="small"),
+                            "TF": st.column_config.TextColumn("TF", width="small"),
+                            "Début": st.column_config.TextColumn("Début", width="medium"),
+                            "Fin": st.column_config.TextColumn("Fin", width="medium"),
+                            "Jours": st.column_config.NumberColumn("Jours", width="small"),
+                            "Plage commune %": st.column_config.NumberColumn("Plage commune %", format="%.1f%%", width="small"),
+                            "Couverture %": st.column_config.NumberColumn("Couverture %", format="%.1f%%", width="small"),
+                            "Manquant %": st.column_config.NumberColumn("Manquant %", format="%.1f%%", width="small"),
+                            "Jours manquants": st.column_config.NumberColumn("Jours manquants", format="%.1f", width="small"),
+                            "Status": st.column_config.TextColumn("Status", width="small"),
+                            "Détails": st.column_config.TextColumn("Détails", width="large")
+                        }
+                    )
+
+                    total_combos = len(df_analysis)
+                    complete_combos = len(df_analysis[df_analysis["Status"] == "✅"])
+                    incomplete_combos = len(df_analysis[df_analysis["Status"] == "⚠️"])
+                    missing_combos = len(df_analysis[df_analysis["Status"] == "❌"])
+
+                    st.markdown("**Résumé qualité des données (gaps)**")
+                    st.caption(
+                        "✅ = couverture correcte (<10% de gaps) • ⚠️ = gaps significatifs • ❌ = fichier manquant."
+                    )
+                    st.markdown(
+                        f"- ✅ Complètes : {complete_combos}/{total_combos}\n"
+                        f"- ⚠️ Incomplètes : {incomplete_combos}/{total_combos}\n"
+                        f"- ❌ Manquantes : {missing_combos}/{total_combos}"
+                    )
+
+                    if hasattr(availability_result, 'optimal_periods') and availability_result.optimal_periods:
+                        st.markdown(
+                            "💡 **Conseil :** Les périodes optimales ci-dessus évitent automatiquement les zones avec trop de données manquantes."
+                        )
+    else:
+        start_date = None
+        end_date = None
+
+    return use_date_filter, start_date, end_date
+
+# ---------------------------------------------------------------------------
+#  Sous-fonction extraite de render_sidebar -- section strategie et indicateurs
+# ---------------------------------------------------------------------------
+
+
+def _render_sidebar_strategy_section(
+    *,
+    current_mode: str,
+    strategy_options,
+    symbols,
+    timeframes,
+):
+    # En mode Builder, le sélecteur de stratégie n'a pas de sens (le builder crée des stratégies)
+    if current_mode != "🏗️ Strategy Builder":
+        _sidebar_section("🎯 Stratégie")
+
+        # Mode de sélection : Classique vs Catalogue
+        strategy_selection_mode = st.sidebar.radio(
+            "Mode de sélection",
+            ["📋 Classique", "🗂️ Catalogue"],
+            key="strategy_selection_mode",
+            horizontal=True,
+            help="Classique = liste complète | Catalogue = filtré par catégories"
+        )
+
+        # Appliquer la sélection pending du catalogue (si disponible)
+        if st.session_state.get("_catalog_strategy_selection_pending"):
+            labels_to_apply = st.session_state.pop("_catalog_strategy_selection_pending", [])
+            skipped = st.session_state.pop("_catalog_strategy_selection_skipped", 0)
+            st.session_state["strategies_select"] = labels_to_apply
+            if skipped > 0:
+                st.sidebar.warning(f"⚠️ {skipped} stratégie(s) non exécutable(s) ignorée(s)")
+            if labels_to_apply:
+                st.sidebar.success(f"✅ {len(labels_to_apply)} stratégie(s) sélectionnée(s) depuis le catalogue")
+
+        if strategy_selection_mode == "📋 Classique":
+            # === MODE CLASSIQUE : MULTI-SÉLECTION STRATÉGIES (multiselect) ===
+            strategy_labels_ui = _stable_shuffled_options(
+                "_strategies_options_order_v1",
+                list(strategy_options.keys()),
+            )
+            # Streamlit: ne pas combiner `default` avec un widget piloté via `key`.
+            if "strategies_select" not in st.session_state:
+                st.session_state["strategies_select"] = []
+            strategy_names = st.sidebar.multiselect(
+                "Stratégie(s)",
+                strategy_labels_ui,
+                key="strategies_select",
+                help="Sélectionnez une ou plusieurs stratégies",
+            )
+
+            if not strategy_names:
+                st.sidebar.info("Sélectionnez au moins une stratégie pour commencer.")
+
+        else:
+            # === MODE CATALOGUE : Utilise les stratégies déjà sélectionnées ===
+            # Le catalogue gère sa propre UI en bas de page
+            strategy_names = st.session_state.get("strategies_select", [])
+
+            if strategy_names:
+                st.sidebar.success(f"✅ {len(strategy_names)} stratégie(s) du catalogue")
+                st.sidebar.caption(
+                    "💡 Utilisez le panel **Strategy Catalog** en bas de page "
+                    "pour filtrer et sélectionner vos stratégies"
+                )
+            else:
+                st.sidebar.info(
+                    "📂 Aucune stratégie sélectionnée.\n\n"
+                    "Utilisez le panel **Strategy Catalog** en bas de page "
+                    "pour sélectionner vos stratégies par catégorie."
+                )
+
+        # Info multi-stratégies si plusieurs sélections
+        if len(strategy_names) > 1:
+            st.sidebar.info(
+                f"📋 **{len(strategy_names)} stratégies sélectionnées**\n\n"
+                f"Paramètres configurables pour: **{strategy_names[0]}**\n\n"
+                f"Autres stratégies utiliseront leurs paramètres par défaut."
+            )
+
+        # Compatibilité rétro: première stratégie pour l'affichage des paramètres
+        strategy_name = strategy_names[0] if strategy_names else ""
+        strategy_key = strategy_options.get(strategy_name, "") if strategy_name else ""
+
+        # Message multi-sweep global (stratégies + tokens + timeframes)
+        if len(strategy_names) > 1 or len(symbols) > 1 or len(timeframes) > 1:
+            total_combos = len(strategy_names) * len(symbols) * len(timeframes)
+            parts = []
+            if len(strategy_names) > 1:
+                parts.append(f"{len(strategy_names)} stratégie(s)")
+            if len(symbols) > 1:
+                parts.append(f"{len(symbols)} token(s)")
+            if len(timeframes) > 1:
+                parts.append(f"{len(timeframes)} TF(s)")
+
+            if len(parts) > 1:  # Seulement si au moins 2 dimensions multiples
+                st.sidebar.success(f"🔄 **Multi-sweep total**: {' × '.join(parts)} = **{total_combos} backtests**")
+
+        strategy_info = None
+        if strategy_key:
+            st.sidebar.caption(get_strategy_description(strategy_key))
+
+            try:
+                strategy_info = get_strategy_info(strategy_key)
+
+                if strategy_info.required_indicators:
+                    indicators_list = ", ".join(
+                        [f"**{ind.upper()}**" for ind in strategy_info.required_indicators]
+                    )
+                    st.sidebar.info(f"📊 Indicateurs requis: {indicators_list}")
+                else:
+                    st.sidebar.info("📊 Indicateurs: Calculés internement")
+
+                if strategy_info.internal_indicators:
+                    internal_list = ", ".join(
+                        [f"{ind.upper()}" for ind in strategy_info.internal_indicators]
+                    )
+                    st.sidebar.caption(f"_Calculés: {internal_list}_")
+
+            except KeyError:
+                st.sidebar.warning(f"⚠️ Indicateurs non définis pour '{strategy_key}'")
+
+        _sidebar_section("📈 Indicateurs")
+        available_indicators = get_strategy_ui_indicators(strategy_key) if strategy_key else []
+        # Tous les indicateurs sont toujours affichés
+        active_indicators: List[str] = available_indicators if available_indicators else []
+
+        if available_indicators:
+            st.sidebar.caption(f"📊 {len(available_indicators)} indicateur(s) : {', '.join(available_indicators)}")
+        elif strategy_key:
+            st.sidebar.caption("Aucun indicateur disponible.")
+    else:
+        # Mode Builder : pas de sélection de stratégie (le builder les crée)
+        strategy_names = []
+        strategy_name = ""
+        strategy_key = ""
+        strategy_info = None
+        available_indicators = []
+        active_indicators = []
+
+    return strategy_names, strategy_name, strategy_key, strategy_info, available_indicators, active_indicators
+
+# ---------------------------------------------------------------------------
+#  Sous-fonction extraite de render_sidebar -- section parametres
+# ---------------------------------------------------------------------------
+
+
+def _render_sidebar_parameters_section(
+    *,
+    optimization_mode: str,
+    strategy_key: str,
+    strategy_names,
+    max_combos: int,
+):
+    param_mode = "range" if optimization_mode == "Grille de Paramètres" else "single"
+    granularity_key = "granularity_global_pct"
+    granularity_prev_key = "granularity_global_prev_pct"
+    granularity_requested_key = "granularity_global_requested_pct"
+    granularity_is_internal_update_key = "granularity_is_internal_update"
+    granularity_delta = 0.0
+    granularity_direction: Optional[str] = None
+
+    if granularity_key not in st.session_state:
+        st.session_state[granularity_key] = 0.0
+    if granularity_prev_key not in st.session_state:
+        st.session_state[granularity_prev_key] = float(st.session_state.get(granularity_key, 0.0))
+    if granularity_requested_key not in st.session_state:
+        st.session_state[granularity_requested_key] = float(st.session_state.get(granularity_key, 0.0))
+
+    current_granularity_pct = float(st.session_state.get(granularity_key, 0.0))
+    previous_granularity_pct = float(st.session_state.get(granularity_prev_key, current_granularity_pct))
+    granularity_diff = current_granularity_pct - previous_granularity_pct
+    if abs(granularity_diff) > 1e-12:
+        granularity_delta = min(abs(granularity_diff) / 100.0, 1.0)
+        granularity_direction = "increase" if granularity_diff > 0 else "decrease"
+        st.session_state[granularity_requested_key] = current_granularity_pct
+
+    params: Dict[str, Any] = {}
+    param_ranges: Dict[str, Any] = {}
+    param_specs: Dict[str, Any] = {}
+    strategy_class = get_strategy(strategy_key) if strategy_key else None
+    strategy_instance = None
+    granularity_slot = None
+
+    # En mode Builder, pas de section paramètres (le builder gère ses propres params)
+    if optimization_mode != "🏗️ Strategy Builder":
+        _sidebar_section("🔧 Paramètres")
+        granularity_slot = st.sidebar.empty()
+
+    if strategy_class:
+        temp_strategy = strategy_class()
+        strategy_instance = temp_strategy
+        param_specs = temp_strategy.parameter_specs or {}
+        label_overrides: Dict[str, str] = {}
+
+        if strategy_key == "bollinger_best_longe_3i":
+            label_overrides = {
+                "entry_level": "Entrée",
+                "tp_level": "Sortie_gagnante",
+                "sl_level": "Stop-loss",
+                "bb_std": "Bollinger_amplitude",
+                "bb_period": "Bollinger_signal",
+            }
+
+        if param_specs:
+            validation_errors = []
+
+            if (
+                param_mode == "single"
+                and granularity_direction in {"increase", "decrease"}
+                and granularity_delta > 0
+                and len(strategy_names) <= 1
+            ):
+                current_values: Dict[str, Any] = {}
+                for param_name, spec in param_specs.items():
+                    if not getattr(spec, "optimize", True):
+                        continue
+                    widget_key = f"{strategy_key}_{param_name}"
+                    if widget_key not in st.session_state:
+                        st.session_state[widget_key] = getattr(spec, "default", None)
+                    current_values[param_name] = st.session_state.get(
+                        widget_key,
+                        getattr(spec, "default", None),
+                    )
+
+                transformed_values = granularity_transform(
+                    params=current_values,
+                    param_specs=param_specs,
+                    delta=granularity_delta,
+                    direction=granularity_direction,
+                )
+                for param_name, new_value in transformed_values.items():
+                    st.session_state[f"{strategy_key}_{param_name}"] = new_value
+            elif (
+                param_mode == "range"
+                and granularity_direction in {"increase", "decrease"}
+                and granularity_delta > 0
+                and len(strategy_names) <= 1
+            ):
+                for param_name, spec in param_specs.items():
+                    if not getattr(spec, "optimize", True):
+                        continue
+
+                    min_key = f"{strategy_key}_{param_name}_min"
+                    max_key = f"{strategy_key}_{param_name}_max"
+
+                    if min_key not in st.session_state:
+                        st.session_state[min_key] = getattr(spec, "min_val", None)
+                    if max_key not in st.session_state:
+                        st.session_state[max_key] = getattr(spec, "max_val", None)
+
+                    current_min = st.session_state.get(min_key, getattr(spec, "min_val", None))
+                    current_max = st.session_state.get(max_key, getattr(spec, "max_val", None))
+                    updated_max = granularity_transform(
+                        params={param_name: current_max},
+                        param_specs={param_name: spec},
+                        delta=granularity_delta,
+                        direction=granularity_direction,
+                    ).get(param_name, current_max)
+
+                    try:
+                        if float(updated_max) < float(current_min):
+                            updated_max = current_min
+                    except (TypeError, ValueError):
+                        pass
+
+                    st.session_state[max_key] = updated_max
+
+            for param_name, spec in param_specs.items():
+                if not getattr(spec, "optimize", True):
+                    continue
+
+                if param_mode == "single":
+                    value = create_param_range_selector(
+                        param_name,
+                        strategy_key,
+                        mode="single",
+                        spec=spec,
+                        label=label_overrides.get(param_name),
+                    )
+                    if value is not None:
+                        params[param_name] = value
+
+                        is_valid, error = validate_param(param_name, value)
+                        if not is_valid:
+                            validation_errors.append(error)
+                else:
+                    range_data = create_param_range_selector(
+                        param_name,
+                        strategy_key,
+                        mode="range",
+                        spec=spec,
+                        label=label_overrides.get(param_name),
+                    )
+                    if range_data is not None:
+                        param_ranges[param_name] = range_data
+                        if spec is not None:
+                            params[param_name] = spec.default
+                        else:
+                            params[param_name] = getattr(spec, "default", params.get(param_name))
+                        logger.debug("Sidebar param range generated - %s: %s", param_name, range_data)
+
+            if validation_errors:
+                for err in validation_errors:
+                    st.sidebar.error(err)
+
+            logger.debug("Sidebar param ranges final keys: %s", list(param_ranges.keys()))
+            logger.debug(
+                "Sidebar optimizable parameter count: %s",
+                sum(1 for s in param_specs.values() if getattr(s, "optimize", True)),
+            )
+
+            normalized_ranges = param_ranges
+            range_warnings: List[str] = []
+
+            if param_mode == "range" and param_ranges:
+                try:
+                    normalized_ranges, range_warnings = normalize_param_ranges(
+                        param_specs,
+                        param_ranges,
+                    )
+                    param_ranges = normalized_ranges
+                except ValueError as exc:
+                    st.sidebar.error(f"Plage invalide: {exc}")
+
+            if range_warnings:
+                for warning in range_warnings:
+                    st.sidebar.warning(f"⚠️ {warning}")
+
+            if param_mode == "range" and param_ranges:
+                st.sidebar.markdown("---")
+                stats = compute_search_space_stats(
+                    param_ranges,
+                    max_combinations=max_combos,
+                )
+
+                if stats.is_continuous:
+                    st.sidebar.info("ℹ️ Espace continu détecté")
+                elif stats.has_overflow:
+                    st.sidebar.warning(
+                        f"⚠️ {stats.total_combinations:,} combinaisons (limite: {max_combos:,})"
+                    )
+                    st.sidebar.caption("Réduisez les plages ou augmentez le step")
+                else:
+                    st.sidebar.success(
+                        f"✅ {stats.total_combinations:,} combinaisons à tester"
+                    )
+
+                with st.sidebar.expander("📊 Détail par paramètre"):
+                    for pname, pcount in stats.per_param_counts.items():
+                        st.caption(f"• {pname}: {pcount} valeurs")
+            else:
+                st.sidebar.caption("📊 Mode simple: 1 combinaison")
+    elif strategy_key:
+        st.sidebar.error(f"Stratégie '{strategy_key}' non trouvée")
+
+    _granularity_ctx = {
+        "param_mode": param_mode,
+        "granularity_key": granularity_key,
+        "granularity_prev_key": granularity_prev_key,
+        "granularity_requested_key": granularity_requested_key,
+        "granularity_is_internal_update_key": granularity_is_internal_update_key,
+        "granularity_delta": granularity_delta,
+        "granularity_direction": granularity_direction,
+        "granularity_diff": granularity_diff,
+    }
+    return params, param_ranges, param_specs, strategy_class, strategy_instance, granularity_slot, _granularity_ctx
 
 
 def render_sidebar() -> SidebarState:
@@ -1159,278 +1821,11 @@ def render_sidebar() -> SidebarState:
             f"Ces combinaisons seront ignorées automatiquement."
         )
 
-    use_date_filter = st.sidebar.checkbox(
-        "Filtrer par dates",
-        value=False,
-        help="Désactivé = utilise toutes les données disponibles (recommandé)",
-        key="use_date_filter",
+    use_date_filter, start_date, end_date = _render_sidebar_date_filter(
+        symbols=symbols,
+        timeframes=timeframes,
+        availability_result=availability_result,
     )
-    if use_date_filter:
-        if not symbols or not timeframes:
-            st.sidebar.warning("Sélectionnez au moins un symbole et un timeframe pour activer le filtre dates.")
-            use_date_filter = False
-
-    if use_date_filter:
-        # === ANALYSE PAR CATÉGORIE DE TIMEFRAME ===
-        from data.config import analyze_by_timeframe
-
-        # Analyse par timeframe (plage commune par TF)
-        timeframe_analysis = analyze_by_timeframe(symbols, timeframes)
-
-        # Interface de sélection par timeframe
-        with st.sidebar.expander("🎯 **Analyse par Timeframe**", expanded=True):
-            if len(timeframes) > 1:
-                analysis_mode = st.radio(
-                    "Mode d'analyse",
-                    ["Période harmonisée", "Périodes indépendantes par timeframe"],
-                    help="Harmonisée = même période pour tous. Indépendantes = période optimale par timeframe",
-                )
-            else:
-                analysis_mode = "Période harmonisée"  # Auto si un seul timeframe
-
-            st.caption(
-                "Harmonisée = une seule période commune (comparaisons strictes). "
-                "Indépendantes = meilleure période par TF (comparaisons plus souples)."
-            )
-
-            available_start = None
-            available_end = None
-            default_start = None
-            default_end = None
-
-            if analysis_mode == "Période harmonisée":
-                if availability_result.has_common_range:
-                    common_start = availability_result.common_start
-                    common_end = availability_result.common_end
-                    duration = (common_end - common_start).days
-
-                    st.success(f"✅ **Période harmonisée**: {common_start.strftime('%d/%m/%Y')} → {common_end.strftime('%d/%m/%Y')} ({duration}j)")
-                    st.caption(
-                        f"💡 Plage commune stricte (max début, min fin) sur "
-                        f"{len(symbols)} token(s) × {len(timeframes)} TF(s)"
-                    )
-
-                    available_start = common_start.date()
-                    available_end = common_end.date()
-                    default_start, default_end = _get_padded_date_range(common_start, common_end)
-                else:
-                    st.warning("⚠️ Impossible de trouver une période commune (intersection vide)")
-                    default_start = pd.Timestamp("2023-01-01").date()
-                    default_end = pd.Timestamp.now().date()
-                    available_start = default_start
-                    available_end = default_end
-
-            else:
-                st.info("📊 **Périodes optimales par timeframe**:")
-
-                best_timeframe = None
-                best_score = 0.0
-                best_period_ref = None
-                fallback_timeframe = None
-                fallback_period_ref = None
-                fallback_score = 0.0
-
-                for tf, data in timeframe_analysis.items():
-                    st.write(f"**{tf}**")
-
-                    if data['optimal_periods']:
-                        best_period = data['optimal_periods'][0]
-                        start_fr = best_period.start_date.strftime("%d/%m/%Y")
-                        end_fr = best_period.end_date.strftime("%d/%m/%Y")
-                        duration = (best_period.end_date - best_period.start_date).days
-
-                        st.write(f"- 🎯 {start_fr} → {end_fr} ({duration}j)")
-                        st.caption(
-                            f"  Score: {best_period.completeness_score:.0f}%, "
-                            f"Gap toléré: {data['gap_tolerance']:.0f}%"
-                        )
-
-                        for recommendation in data['recommendations']:
-                            st.caption(f"  {recommendation}")
-
-                        combined_score = best_period.completeness_score * best_period.avg_data_density
-                        if combined_score > best_score:
-                            best_score = combined_score
-                            best_timeframe = tf
-                            best_period_ref = best_period
-                    else:
-                        fallback_period = _get_timeframe_fallback_period(data)
-                        if fallback_period:
-                            fallback_start = fallback_period["best_start"].strftime("%d/%m/%Y")
-                            fallback_end = fallback_period["best_end"].strftime("%d/%m/%Y")
-                            fallback_duration = fallback_period["best_duration_days"]
-
-                            st.write(
-                                f"- ℹ️ Référence {fallback_period['best_symbol']}: "
-                                f"{fallback_start} → {fallback_end} ({fallback_duration}j)"
-                            )
-
-                            if fallback_period["score"] > fallback_score:
-                                fallback_score = fallback_period["score"]
-                                fallback_timeframe = tf
-                                fallback_period_ref = fallback_period
-                        else:
-                            st.write("- ❌ Aucune donnée disponible")
-
-                if best_timeframe and best_period_ref:
-                    available_start = best_period_ref.start_date.date()
-                    available_end = best_period_ref.end_date.date()
-                    default_start, default_end = _get_padded_date_range(
-                        best_period_ref.start_date,
-                        best_period_ref.end_date,
-                    )
-                    st.success(f"🏆 **Défaut basé sur {best_timeframe}** (meilleur score: {best_score:.1f})")
-                elif fallback_timeframe and fallback_period_ref:
-                    fallback_start_ts = fallback_period_ref["best_start"]
-                    fallback_end_ts = fallback_period_ref["best_end"]
-                    available_start = fallback_start_ts.date()
-                    available_end = fallback_end_ts.date()
-                    default_start, default_end = _get_padded_date_range(
-                        fallback_start_ts,
-                        fallback_end_ts,
-                    )
-                    st.info(
-                        f"ℹ️ Aucun intervalle commun strict. Défaut basé sur "
-                        f"{fallback_timeframe} ({fallback_period_ref['best_symbol']})."
-                    )
-                else:
-                    st.warning("⚠️ Aucune période optimale trouvée pour les timeframes sélectionnés")
-                    default_start = pd.Timestamp("2023-01-01").date()
-                    default_end = pd.Timestamp.now().date()
-                    available_start = default_start
-                    available_end = default_end
-
-            st.markdown("---")
-            st.caption("📅 **Période d'analyse** (format: DD/MM/YYYY)")
-
-            # Auto-aligner les dates sur la plage commune si hors limites.
-            if default_start and default_end and available_start and available_end:
-                selection_key = (
-                    tuple(sorted(symbols)),
-                    tuple(sorted(timeframes)),
-                    analysis_mode,
-                )
-                if st.session_state.get("_date_range_selection_key") != selection_key:
-                    st.session_state["start_date"] = default_start
-                    st.session_state["end_date"] = default_end
-                    st.session_state["_date_range_selection_key"] = selection_key
-
-                start_state = st.session_state.get("start_date")
-                end_state = st.session_state.get("end_date")
-                if start_state and (start_state < available_start or start_state > available_end):
-                    st.session_state["start_date"] = default_start
-                if end_state and (end_state < available_start or end_state > available_end):
-                    st.session_state["end_date"] = default_end
-
-                if st.session_state.get("start_date") and st.session_state.get("end_date"):
-                    if st.session_state["start_date"] >= st.session_state["end_date"]:
-                        st.session_state["start_date"] = default_start
-                        st.session_state["end_date"] = default_end
-
-            col1, col2 = st.sidebar.columns(2)
-            with col1:
-                start_date = st.date_input(
-                    "Date début 📅",
-                    key="start_date",
-                    format="DD/MM/YYYY",
-                    help="Date de début de la période d'analyse"
-                )
-            with col2:
-                end_date = st.date_input(
-                    "Date fin 📅",
-                    key="end_date",
-                    format="DD/MM/YYYY",
-                    help="Date de fin de la période d'analyse"
-                )
-
-            # Validation que start_date < end_date
-            if start_date and end_date and start_date >= end_date:
-                st.sidebar.error("⚠️ La date de début doit être antérieure à la date de fin")
-
-            # Affichage de la durée sélectionnée
-            if start_date and end_date and start_date < end_date:
-                selected_days = (end_date - start_date).days
-                st.sidebar.caption(f"📊 Durée sélectionnée: **{selected_days} jours**")
-
-            # Validation de la période par rapport à la plage commune
-            if availability_result.has_common_range and start_date and end_date:
-                common_start = availability_result.common_start
-                common_end = availability_result.common_end
-                common_start_date = common_start.date()
-                common_end_date = common_end.date()
-
-                if analysis_mode == "Période harmonisée":
-                    if end_date < common_start_date:
-                        st.sidebar.error(
-                            f"⚠️ Période demandée ({start_date.strftime('%d/%m/%Y')} → {end_date.strftime('%d/%m/%Y')}) est AVANT "
-                            f"la plage commune ({common_start_date.strftime('%d/%m/%Y')})"
-                        )
-                    elif start_date > common_end_date:
-                        st.sidebar.error(
-                            f"⚠️ Période demandée ({start_date.strftime('%d/%m/%Y')} → {end_date.strftime('%d/%m/%Y')}) est APRÈS "
-                            f"la plage commune ({common_end_date.strftime('%d/%m/%Y')})"
-                        )
-                    elif start_date < common_start_date:
-                        st.sidebar.warning(
-                            f"⚠️ Début demandé ({start_date.strftime('%d/%m/%Y')}) est AVANT la plage commune. "
-                            f"Données réelles à partir de **{common_start_date.strftime('%d/%m/%Y')}**"
-                        )
-                    elif end_date > common_end_date:
-                        st.sidebar.warning(
-                            f"⚠️ Fin demandée ({end_date.strftime('%d/%m/%Y')}) est APRÈS la plage commune. "
-                            f"Données réelles jusqu'à **{common_end_date.strftime('%d/%m/%Y')}**"
-                        )
-                else:
-                    if start_date < common_start_date or end_date > common_end_date:
-                        st.sidebar.info(
-                            f"ℹ️ Plage commune globale: {common_start_date.strftime('%d/%m/%Y')} → {common_end_date.strftime('%d/%m/%Y')}. "
-                            "En mode indépendant, certaines combinaisons peuvent être tronquées."
-                        )
-
-            st.markdown("---")
-            with st.sidebar.expander("🔍 Analyse détaillée des données", expanded=False):
-                if availability_result.rows:
-                    df_analysis = pd.DataFrame(availability_result.rows)
-                    st.dataframe(
-                        df_analysis,
-                        width="stretch",
-                        column_config={
-                            "Token": st.column_config.TextColumn("Token", width="small"),
-                            "TF": st.column_config.TextColumn("TF", width="small"),
-                            "Début": st.column_config.TextColumn("Début", width="medium"),
-                            "Fin": st.column_config.TextColumn("Fin", width="medium"),
-                            "Jours": st.column_config.NumberColumn("Jours", width="small"),
-                            "Plage commune %": st.column_config.NumberColumn("Plage commune %", format="%.1f%%", width="small"),
-                            "Couverture %": st.column_config.NumberColumn("Couverture %", format="%.1f%%", width="small"),
-                            "Manquant %": st.column_config.NumberColumn("Manquant %", format="%.1f%%", width="small"),
-                            "Jours manquants": st.column_config.NumberColumn("Jours manquants", format="%.1f", width="small"),
-                            "Status": st.column_config.TextColumn("Status", width="small"),
-                            "Détails": st.column_config.TextColumn("Détails", width="large")
-                        }
-                    )
-
-                    total_combos = len(df_analysis)
-                    complete_combos = len(df_analysis[df_analysis["Status"] == "✅"])
-                    incomplete_combos = len(df_analysis[df_analysis["Status"] == "⚠️"])
-                    missing_combos = len(df_analysis[df_analysis["Status"] == "❌"])
-
-                    st.markdown("**Résumé qualité des données (gaps)**")
-                    st.caption(
-                        "✅ = couverture correcte (<10% de gaps) • ⚠️ = gaps significatifs • ❌ = fichier manquant."
-                    )
-                    st.markdown(
-                        f"- ✅ Complètes : {complete_combos}/{total_combos}\n"
-                        f"- ⚠️ Incomplètes : {incomplete_combos}/{total_combos}\n"
-                        f"- ❌ Manquantes : {missing_combos}/{total_combos}"
-                    )
-
-                    if hasattr(availability_result, 'optimal_periods') and availability_result.optimal_periods:
-                        st.markdown(
-                            "💡 **Conseil :** Les périodes optimales ci-dessus évitent automatiquement les zones avec trop de données manquantes."
-                        )
-    else:
-        start_date = None
-        end_date = None
 
     current_data_key = _data_cache_key(symbol, timeframe, start_date, end_date)
     if st.session_state.get("ohlcv_cache_key") != current_data_key:
@@ -1485,133 +1880,13 @@ def render_sidebar() -> SidebarState:
     # Lire le mode actif depuis session_state (défini plus bas ou lors d'un rerun précédent)
     _current_mode = st.session_state.get("optimization_mode", "Grille de Paramètres")
 
-    # En mode Builder, le sélecteur de stratégie n'a pas de sens (le builder crée des stratégies)
-    if _current_mode != "🏗️ Strategy Builder":
-        _sidebar_section("🎯 Stratégie")
-
-        # Mode de sélection : Classique vs Catalogue
-        strategy_selection_mode = st.sidebar.radio(
-            "Mode de sélection",
-            ["📋 Classique", "🗂️ Catalogue"],
-            key="strategy_selection_mode",
-            horizontal=True,
-            help="Classique = liste complète | Catalogue = filtré par catégories"
-        )
-
-        # Appliquer la sélection pending du catalogue (si disponible)
-        if st.session_state.get("_catalog_strategy_selection_pending"):
-            labels_to_apply = st.session_state.pop("_catalog_strategy_selection_pending", [])
-            skipped = st.session_state.pop("_catalog_strategy_selection_skipped", 0)
-            st.session_state["strategies_select"] = labels_to_apply
-            if skipped > 0:
-                st.sidebar.warning(f"⚠️ {skipped} stratégie(s) non exécutable(s) ignorée(s)")
-            if labels_to_apply:
-                st.sidebar.success(f"✅ {len(labels_to_apply)} stratégie(s) sélectionnée(s) depuis le catalogue")
-
-        if strategy_selection_mode == "📋 Classique":
-            # === MODE CLASSIQUE : MULTI-SÉLECTION STRATÉGIES (multiselect) ===
-            strategy_labels_ui = _stable_shuffled_options(
-                "_strategies_options_order_v1",
-                list(strategy_options.keys()),
-            )
-            # Streamlit: ne pas combiner `default` avec un widget piloté via `key`.
-            if "strategies_select" not in st.session_state:
-                st.session_state["strategies_select"] = []
-            strategy_names = st.sidebar.multiselect(
-                "Stratégie(s)",
-                strategy_labels_ui,
-                key="strategies_select",
-                help="Sélectionnez une ou plusieurs stratégies",
-            )
-
-            if not strategy_names:
-                st.sidebar.info("Sélectionnez au moins une stratégie pour commencer.")
-
-        else:
-            # === MODE CATALOGUE : Utilise les stratégies déjà sélectionnées ===
-            # Le catalogue gère sa propre UI en bas de page
-            strategy_names = st.session_state.get("strategies_select", [])
-
-            if strategy_names:
-                st.sidebar.success(f"✅ {len(strategy_names)} stratégie(s) du catalogue")
-                st.sidebar.caption(
-                    "💡 Utilisez le panel **Strategy Catalog** en bas de page "
-                    "pour filtrer et sélectionner vos stratégies"
-                )
-            else:
-                st.sidebar.info(
-                    "📂 Aucune stratégie sélectionnée.\n\n"
-                    "Utilisez le panel **Strategy Catalog** en bas de page "
-                    "pour sélectionner vos stratégies par catégorie."
-                )
-
-        # Info multi-stratégies si plusieurs sélections
-        if len(strategy_names) > 1:
-            st.sidebar.info(
-                f"📋 **{len(strategy_names)} stratégies sélectionnées**\n\n"
-                f"Paramètres configurables pour: **{strategy_names[0]}**\n\n"
-                f"Autres stratégies utiliseront leurs paramètres par défaut."
-            )
-
-        # Compatibilité rétro: première stratégie pour l'affichage des paramètres
-        strategy_name = strategy_names[0] if strategy_names else ""
-        strategy_key = strategy_options.get(strategy_name, "") if strategy_name else ""
-
-        # Message multi-sweep global (stratégies + tokens + timeframes)
-        if len(strategy_names) > 1 or len(symbols) > 1 or len(timeframes) > 1:
-            total_combos = len(strategy_names) * len(symbols) * len(timeframes)
-            parts = []
-            if len(strategy_names) > 1:
-                parts.append(f"{len(strategy_names)} stratégie(s)")
-            if len(symbols) > 1:
-                parts.append(f"{len(symbols)} token(s)")
-            if len(timeframes) > 1:
-                parts.append(f"{len(timeframes)} TF(s)")
-
-            if len(parts) > 1:  # Seulement si au moins 2 dimensions multiples
-                st.sidebar.success(f"🔄 **Multi-sweep total**: {' × '.join(parts)} = **{total_combos} backtests**")
-
-        strategy_info = None
-        if strategy_key:
-            st.sidebar.caption(get_strategy_description(strategy_key))
-
-            try:
-                strategy_info = get_strategy_info(strategy_key)
-
-                if strategy_info.required_indicators:
-                    indicators_list = ", ".join(
-                        [f"**{ind.upper()}**" for ind in strategy_info.required_indicators]
-                    )
-                    st.sidebar.info(f"📊 Indicateurs requis: {indicators_list}")
-                else:
-                    st.sidebar.info("📊 Indicateurs: Calculés internement")
-
-                if strategy_info.internal_indicators:
-                    internal_list = ", ".join(
-                        [f"{ind.upper()}" for ind in strategy_info.internal_indicators]
-                    )
-                    st.sidebar.caption(f"_Calculés: {internal_list}_")
-
-            except KeyError:
-                st.sidebar.warning(f"⚠️ Indicateurs non définis pour '{strategy_key}'")
-
-        _sidebar_section("📈 Indicateurs")
-        available_indicators = get_strategy_ui_indicators(strategy_key) if strategy_key else []
-        # Tous les indicateurs sont toujours affichés
-        active_indicators: List[str] = available_indicators if available_indicators else []
-
-        if available_indicators:
-            st.sidebar.caption(f"📊 {len(available_indicators)} indicateur(s) : {', '.join(available_indicators)}")
-        elif strategy_key:
-            st.sidebar.caption("Aucun indicateur disponible.")
-    else:
-        # Mode Builder : pas de sélection de stratégie (le builder les crée)
-        strategy_names = []
-        strategy_name = ""
-        strategy_key = ""
-        strategy_info = None
-        available_indicators = []
-        active_indicators = []
+    (strategy_names, strategy_name, strategy_key, strategy_info,
+     available_indicators, active_indicators) = _render_sidebar_strategy_section(
+        current_mode=_current_mode,
+        strategy_options=strategy_options,
+        symbols=symbols,
+        timeframes=timeframes,
+    )
 
     # (Versioned Presets moved to bottom)
 
@@ -1619,10 +1894,7 @@ def render_sidebar() -> SidebarState:
 
     if "optimization_mode" not in st.session_state:
         st.session_state.optimization_mode = "Grille de Paramètres"
-    if "run_backtest_requested" not in st.session_state:
-        st.session_state.run_backtest_requested = False
-    if "is_running" not in st.session_state:
-        st.session_state.is_running = False
+    ensure_ui_execution_state_defaults(st.session_state)
 
     if st.session_state.get("is_running", False):
         st.sidebar.warning("⏳ Exécution en cours (UI temporairement restreinte).")
@@ -1631,8 +1903,7 @@ def render_sidebar() -> SidebarState:
             key="force_unlock_ui",
             help="Réinitialise les verrous d'exécution si l'interface reste bloquée.",
         ):
-            st.session_state.is_running = False
-            st.session_state.run_backtest_requested = False
+            clear_execution_state(st.session_state)
             st.sidebar.success("UI déverrouillée.")
             st.rerun()
 
@@ -1951,207 +2222,21 @@ def render_sidebar() -> SidebarState:
     os.environ["BACKTEST_USE_GPU"] = "0"
     os.environ["BACKTEST_GPU_QUEUE_ENABLED"] = "0"
 
-    param_mode = "range" if optimization_mode == "Grille de Paramètres" else "single"
-    granularity_key = "granularity_global_pct"
-    granularity_prev_key = "granularity_global_prev_pct"
-    granularity_requested_key = "granularity_global_requested_pct"
-    granularity_is_internal_update_key = "granularity_is_internal_update"
-    granularity_delta = 0.0
-    granularity_direction: Optional[str] = None
-
-    if granularity_key not in st.session_state:
-        st.session_state[granularity_key] = 0.0
-    if granularity_prev_key not in st.session_state:
-        st.session_state[granularity_prev_key] = float(st.session_state.get(granularity_key, 0.0))
-    if granularity_requested_key not in st.session_state:
-        st.session_state[granularity_requested_key] = float(st.session_state.get(granularity_key, 0.0))
-
-    current_granularity_pct = float(st.session_state.get(granularity_key, 0.0))
-    previous_granularity_pct = float(st.session_state.get(granularity_prev_key, current_granularity_pct))
-    granularity_diff = current_granularity_pct - previous_granularity_pct
-    if abs(granularity_diff) > 1e-12:
-        granularity_delta = min(abs(granularity_diff) / 100.0, 1.0)
-        granularity_direction = "increase" if granularity_diff > 0 else "decrease"
-        st.session_state[granularity_requested_key] = current_granularity_pct
-
-    params: Dict[str, Any] = {}
-    param_ranges: Dict[str, Any] = {}
-    param_specs: Dict[str, Any] = {}
-    strategy_class = get_strategy(strategy_key) if strategy_key else None
-    strategy_instance = None
-    granularity_slot = None
-
-    # En mode Builder, pas de section paramètres (le builder gère ses propres params)
-    if optimization_mode != "🏗️ Strategy Builder":
-        _sidebar_section("🔧 Paramètres")
-        granularity_slot = st.sidebar.empty()
-
-    if strategy_class:
-        temp_strategy = strategy_class()
-        strategy_instance = temp_strategy
-        param_specs = temp_strategy.parameter_specs or {}
-        label_overrides: Dict[str, str] = {}
-
-        if strategy_key == "bollinger_best_longe_3i":
-            label_overrides = {
-                "entry_level": "Entrée",
-                "tp_level": "Sortie_gagnante",
-                "sl_level": "Stop-loss",
-                "bb_std": "Bollinger_amplitude",
-                "bb_period": "Bollinger_signal",
-            }
-
-        if param_specs:
-            validation_errors = []
-
-            if (
-                param_mode == "single"
-                and granularity_direction in {"increase", "decrease"}
-                and granularity_delta > 0
-                and len(strategy_names) <= 1
-            ):
-                current_values: Dict[str, Any] = {}
-                for param_name, spec in param_specs.items():
-                    if not getattr(spec, "optimize", True):
-                        continue
-                    widget_key = f"{strategy_key}_{param_name}"
-                    if widget_key not in st.session_state:
-                        st.session_state[widget_key] = getattr(spec, "default", None)
-                    current_values[param_name] = st.session_state.get(
-                        widget_key,
-                        getattr(spec, "default", None),
-                    )
-
-                transformed_values = granularity_transform(
-                    params=current_values,
-                    param_specs=param_specs,
-                    delta=granularity_delta,
-                    direction=granularity_direction,
-                )
-                for param_name, new_value in transformed_values.items():
-                    st.session_state[f"{strategy_key}_{param_name}"] = new_value
-            elif (
-                param_mode == "range"
-                and granularity_direction in {"increase", "decrease"}
-                and granularity_delta > 0
-                and len(strategy_names) <= 1
-            ):
-                for param_name, spec in param_specs.items():
-                    if not getattr(spec, "optimize", True):
-                        continue
-
-                    min_key = f"{strategy_key}_{param_name}_min"
-                    max_key = f"{strategy_key}_{param_name}_max"
-
-                    if min_key not in st.session_state:
-                        st.session_state[min_key] = getattr(spec, "min_val", None)
-                    if max_key not in st.session_state:
-                        st.session_state[max_key] = getattr(spec, "max_val", None)
-
-                    current_min = st.session_state.get(min_key, getattr(spec, "min_val", None))
-                    current_max = st.session_state.get(max_key, getattr(spec, "max_val", None))
-                    updated_max = granularity_transform(
-                        params={param_name: current_max},
-                        param_specs={param_name: spec},
-                        delta=granularity_delta,
-                        direction=granularity_direction,
-                    ).get(param_name, current_max)
-
-                    try:
-                        if float(updated_max) < float(current_min):
-                            updated_max = current_min
-                    except (TypeError, ValueError):
-                        pass
-
-                    st.session_state[max_key] = updated_max
-
-            for param_name, spec in param_specs.items():
-                if not getattr(spec, "optimize", True):
-                    continue
-
-                if param_mode == "single":
-                    value = create_param_range_selector(
-                        param_name,
-                        strategy_key,
-                        mode="single",
-                        spec=spec,
-                        label=label_overrides.get(param_name),
-                    )
-                    if value is not None:
-                        params[param_name] = value
-
-                        is_valid, error = validate_param(param_name, value)
-                        if not is_valid:
-                            validation_errors.append(error)
-                else:
-                    range_data = create_param_range_selector(
-                        param_name,
-                        strategy_key,
-                        mode="range",
-                        spec=spec,
-                        label=label_overrides.get(param_name),
-                    )
-                    if range_data is not None:
-                        param_ranges[param_name] = range_data
-                        if spec is not None:
-                            params[param_name] = spec.default
-                        else:
-                            params[param_name] = getattr(spec, "default", params.get(param_name))
-                        logger.debug("Sidebar param range generated - %s: %s", param_name, range_data)
-
-            if validation_errors:
-                for err in validation_errors:
-                    st.sidebar.error(err)
-
-            logger.debug("Sidebar param ranges final keys: %s", list(param_ranges.keys()))
-            logger.debug(
-                "Sidebar optimizable parameter count: %s",
-                sum(1 for s in param_specs.values() if getattr(s, "optimize", True)),
-            )
-
-            normalized_ranges = param_ranges
-            range_warnings: List[str] = []
-
-            if param_mode == "range" and param_ranges:
-                try:
-                    normalized_ranges, range_warnings = normalize_param_ranges(
-                        param_specs,
-                        param_ranges,
-                    )
-                    param_ranges = normalized_ranges
-                except ValueError as exc:
-                    st.sidebar.error(f"Plage invalide: {exc}")
-
-            if range_warnings:
-                for warning in range_warnings:
-                    st.sidebar.warning(f"⚠️ {warning}")
-
-            if param_mode == "range" and param_ranges:
-                st.sidebar.markdown("---")
-                stats = compute_search_space_stats(
-                    param_ranges,
-                    max_combinations=max_combos,
-                )
-
-                if stats.is_continuous:
-                    st.sidebar.info("ℹ️ Espace continu détecté")
-                elif stats.has_overflow:
-                    st.sidebar.warning(
-                        f"⚠️ {stats.total_combinations:,} combinaisons (limite: {max_combos:,})"
-                    )
-                    st.sidebar.caption("Réduisez les plages ou augmentez le step")
-                else:
-                    st.sidebar.success(
-                        f"✅ {stats.total_combinations:,} combinaisons à tester"
-                    )
-
-                with st.sidebar.expander("📊 Détail par paramètre"):
-                    for pname, pcount in stats.per_param_counts.items():
-                        st.caption(f"• {pname}: {pcount} valeurs")
-            else:
-                st.sidebar.caption("📊 Mode simple: 1 combinaison")
-    elif strategy_key:
-        st.sidebar.error(f"Stratégie '{strategy_key}' non trouvée")
+    (params, param_ranges, param_specs, strategy_class,
+     strategy_instance, granularity_slot, _gran_ctx) = _render_sidebar_parameters_section(
+        optimization_mode=optimization_mode,
+        strategy_key=strategy_key,
+        strategy_names=strategy_names,
+        max_combos=max_combos,
+    )
+    param_mode = _gran_ctx["param_mode"]
+    granularity_key = _gran_ctx["granularity_key"]
+    granularity_prev_key = _gran_ctx["granularity_prev_key"]
+    granularity_requested_key = _gran_ctx["granularity_requested_key"]
+    granularity_is_internal_update_key = _gran_ctx["granularity_is_internal_update_key"]
+    granularity_delta = _gran_ctx["granularity_delta"]
+    granularity_direction = _gran_ctx["granularity_direction"]
+    granularity_diff = _gran_ctx["granularity_diff"]
 
     _sidebar_section("💰 Trading")
 

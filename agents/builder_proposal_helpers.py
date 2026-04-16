@@ -17,7 +17,7 @@ import itertools
 import json
 import os
 import re
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, Union, cast
 
 import numpy as np
 import pandas as pd
@@ -708,9 +708,14 @@ def _build_deterministic_proposal_fallback(
     *,
     objective: str,
     available_indicators: List[str],
-    last_iteration: Optional["BuilderIteration"] = None,
+    last_iteration: "Union[BuilderIteration, Any, None]" = None,
+    ctx: "Optional[Any]" = None,
 ) -> Dict[str, Any]:
     """Construit une proposition contractuelle minimale quand le LLM dérape."""
+    # Accepte IterationContext ou BuilderIteration (import tardif pour éviter circularité)
+    if ctx is None:
+        from agents.builder_state import IterationContext
+        ctx = last_iteration if isinstance(last_iteration, IterationContext) else IterationContext(last_iteration)
     objective_indicators = _extract_objective_indicator_names(
         objective,
         available_indicators=available_indicators,
@@ -726,7 +731,7 @@ def _build_deterministic_proposal_fallback(
         used = preferred[:3] if len(preferred) >= 3 else (preferred or known[:2] or ["atr"])
 
     change_type = "logic"
-    if last_iteration and (last_iteration.diagnostic_category or "").strip().lower() in {"approaching_target", "stable_positive"}:
+    if ctx.is_category("approaching_target", "stable_positive"):
         change_type = "params"
 
     return {

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -80,7 +81,18 @@ from ui.state import (
     BUILDER_EXECUTION_MODE_DUAL_LANE,
     BUILDER_EXECUTION_MODE_EXPERT,
     BUILDER_EXECUTION_MODE_MONO,
+    UI_EXECUTION_PHASE_IDLE,
+    UI_EXECUTION_PHASE_LAUNCH_PENDING,
+    UI_EXECUTION_PHASE_RUNNING,
+    UI_EXECUTION_PHASE_STOPPING,
     SidebarState,
+    arm_ui_run_request,
+    clear_execution_state,
+    consume_ui_run_request,
+    ensure_ui_execution_state_defaults,
+    get_ui_execution_phase,
+    mark_ui_run_started,
+    mark_ui_stop_requested,
     resolve_builder_dual_lane_preferences,
     resolve_builder_execution_preferences,
     resolve_builder_flow_analysis_preferences,
@@ -668,11 +680,12 @@ def test_format_builder_live_event_line_uses_backtest_metrics_from_canonical_pay
             "payload": {
                 "sharpe": 1.234,
                 "total_return_pct": 12.5,
+                "total_trades": 42,
             },
         }
     )
 
-    assert line == "[keep] Backtest: Sharpe 1.234 | Return +12.50%"
+    assert line == "[keep] Backtest: Sharpe 1.234 | Return +12.50% | Trades 42"
 
 
 def test_resolve_requested_model_refuses_silent_fallback_when_absent():
@@ -1235,6 +1248,7 @@ def test_render_builder_view_marks_and_stops_autonomous_runtime_when_startup_pro
     st.session_state.clear()
     st.session_state["is_running"] = True
     events: list[tuple[str, dict[str, object]]] = []
+    recap_calls: list[tuple[list[dict[str, object]], dict[str, object]]] = []
 
     state = _sample_sidebar_state(
         optimization_mode="🏗️ Strategy Builder",
@@ -1252,6 +1266,19 @@ def test_render_builder_view_marks_and_stops_autonomous_runtime_when_startup_pro
     monkeypatch.setattr(builder_view_module.st, "info", lambda *args, **kwargs: None)
     monkeypatch.setattr(builder_view_module.st, "error", lambda *args, **kwargs: None)
     monkeypatch.setattr(builder_view_module.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_autonomous_supervisor_state",
+        lambda: {
+            "history": [{"session_num": 2999, "objective": "Historique existant"}],
+            "supervisor": {"consecutive_errors": 0},
+        },
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_autonomous_recap",
+        lambda history, supervisor: recap_calls.append((list(history), dict(supervisor))),
+    )
     monkeypatch.setattr(builder_view_module, "show_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         builder_view_module,
@@ -1295,6 +1322,155 @@ def test_render_builder_view_marks_and_stops_autonomous_runtime_when_startup_pro
     stop_payload = next(payload for name, payload in events if name == "stop")
     assert stop_payload["reason"] == "startup_market_probe_failed"
     assert st.session_state["is_running"] is False
+    assert recap_calls
+    assert recap_calls[0][0][0]["session_num"] == 2999
+
+
+def test_render_builder_view_autonomous_startup_probe_uses_filtered_universe_pairs(
+    monkeypatch,
+):
+    st.session_state.clear()
+    st.session_state["is_running"] = True
+    captured: dict[str, object] = {}
+    sample_df = _sample_ohlcv()
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_autonomous=True,
+        builder_auto_market_pick=True,
+        builder_universe_mode="canonical",
+        available_tokens=["ARUSDC", "TONUSDC", "BTCUSDC"],
+        available_timeframes=["15m", "1h"],
+        symbol="",
+        timeframe="",
+    )
+
+    _patch_autonomous_builder_shell(monkeypatch)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_autonomous_supervisor_state",
+        lambda: {
+            "history": [{"session_num": 12, "objective": "Historique existant"}],
+            "supervisor": {"consecutive_errors": 0},
+        },
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_autonomous_recap",
+        lambda history, supervisor: captured.setdefault("recap_history", list(history)),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_call_builder_market_candidates",
+        lambda *args, **kwargs: (["BTCUSDC"], ["1h"]),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_get_builder_market_universe_meta",
+        lambda: {
+            "universe_mode": "canonical",
+            "eligible_pairs": [{"symbol": "BTCUSDC", "timeframe": "1h"}],
+            "exclusion_summary": {"outside canonical universe": 2},
+        },
+    )
+
+    def _mock_find_first_valid_builder_market(**kwargs):
+        captured["symbols"] = list(kwargs.get("symbols", []))
+        captured["timeframes"] = list(kwargs.get("timeframes", []))
+        captured["preferred_pairs"] = list(kwargs.get("preferred_pairs", []))
+        return "BTCUSDC", "1h", sample_df, {"failures": []}
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_find_first_valid_builder_market",
+        _mock_find_first_valid_builder_market,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_execute_builder_autonomous_loop",
+        lambda *args, **kwargs: captured.update(
+            {
+                "autonomous_loop_called": True,
+                "recap_placeholder": kwargs.get("recap_placeholder"),
+            }
+        ),
+    )
+
+    builder_view_module.render_builder_view(
+        state=state,
+        df=None,
+        status_container=nullcontext(),
+    )
+
+    assert captured["symbols"] == ["BTCUSDC"]
+    assert captured["timeframes"] == ["1h"]
+    assert captured["preferred_pairs"] == [("BTCUSDC", "1h")]
+    assert captured["autonomous_loop_called"] is True
+
+
+def test_render_builder_view_autonomous_startup_probe_falls_back_to_discovered_data_inventory(
+    monkeypatch,
+):
+    st.session_state.clear()
+    st.session_state["is_running"] = True
+    captured: dict[str, object] = {}
+    sample_df = _sample_ohlcv()
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_autonomous=True,
+        builder_auto_market_pick=True,
+        available_tokens=[],
+        available_timeframes=[],
+        symbol="",
+        timeframe="",
+    )
+
+    _patch_autonomous_builder_shell(monkeypatch)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_autonomous_supervisor_state",
+        lambda: {
+            "history": [{"session_num": 44, "objective": "Historique existant"}],
+            "supervisor": {"consecutive_errors": 0},
+        },
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "discover_available_builder_data",
+        lambda: (["SOLUSDC", "ETHUSDC"], ["4h", "1h"]),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_call_builder_market_candidates",
+        lambda *args, **kwargs: (["SOLUSDC", "ETHUSDC"], ["4h", "1h"]),
+    )
+
+    def _mock_find_first_valid_builder_market(**kwargs):
+        captured["symbols"] = list(kwargs.get("symbols", []))
+        captured["timeframes"] = list(kwargs.get("timeframes", []))
+        return "SOLUSDC", "4h", sample_df, {"failures": []}
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_find_first_valid_builder_market",
+        _mock_find_first_valid_builder_market,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_execute_builder_autonomous_loop",
+        lambda *args, **kwargs: captured.update({"loop_called": True}),
+    )
+
+    builder_view_module.render_builder_view(
+        state=state,
+        df=None,
+        status_container=nullcontext(),
+    )
+
+    assert captured["symbols"] == ["SOLUSDC", "ETHUSDC"]
+    assert captured["timeframes"] == ["4h", "1h"]
+    assert captured["loop_called"] is True
 
 
 def test_render_builder_view_autonomous_idle_skips_probe_and_runtime_prepare(
@@ -2344,6 +2520,59 @@ def test_load_builder_live_thoughts_preview_tails_file(tmp_path):
     preview_lines = preview.splitlines()
     assert preview_lines[0] == "…(truncated)…"
     assert preview_lines[1:] == ["line 7", "line 8", "line 9", "line 10"]
+
+
+def test_render_builder_live_thoughts_panel_rerenders_placeholder_with_latest_file(
+    monkeypatch, tmp_path
+):
+    captured = {"code": [], "placeholder_renders": 0}
+    stream_file = tmp_path / "_live_thoughts.md"
+    stream_file.write_text("version 1", encoding="utf-8")
+
+    class _DummyContext:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _DummyPlaceholder:
+        def container(self):
+            captured["placeholder_renders"] += 1
+            return _DummyContext()
+
+    monkeypatch.setattr(builder_view_module, "STREAM_FILE", stream_file)
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "code",
+        lambda text, **kwargs: captured["code"].append(str(text)),
+    )
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "expander",
+        lambda *args, **kwargs: _DummyContext(),
+    )
+
+    placeholder = _DummyPlaceholder()
+    builder_view_module._render_builder_live_thoughts_panel(
+        title="Live stream",
+        expanded=False,
+        show_terminal_command=False,
+        tail_lines=20,
+        placeholder=placeholder,
+    )
+    stream_file.write_text("version 2", encoding="utf-8")
+    builder_view_module._render_builder_live_thoughts_panel(
+        title="Live stream",
+        expanded=False,
+        show_terminal_command=False,
+        tail_lines=20,
+        placeholder=placeholder,
+    )
+
+    assert captured["placeholder_renders"] == 2
+    assert captured["code"] == ["version 1", "version 2"]
 
 
 def test_render_autonomous_recap_wraps_heavy_sections_in_tabs_and_expanders(monkeypatch, tmp_path):
@@ -4298,7 +4527,45 @@ def test_apply_catalog_replay_request_to_state_sets_sidebar_inputs():
     assert session_state["initial_capital_input"] == 25000
     assert session_state["use_date_filter"] is True
     assert session_state["run_backtest_requested"] is True
+    assert session_state["is_running"] is True
+    assert get_ui_execution_phase(session_state) == UI_EXECUTION_PHASE_LAUNCH_PENDING
     assert "run_123" in msg
+
+
+def test_ui_execution_phase_machine_tracks_non_builder_transitions():
+    st.session_state.clear()
+
+    ensure_ui_execution_state_defaults(st.session_state)
+    assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_IDLE
+
+    arm_ui_run_request(st.session_state)
+    assert st.session_state["run_backtest_requested"] is True
+    assert st.session_state["is_running"] is True
+    assert st.session_state["stop_requested"] is False
+    assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_LAUNCH_PENDING
+
+    assert consume_ui_run_request(st.session_state) is True
+    assert st.session_state["run_backtest_requested"] is False
+    assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_LAUNCH_PENDING
+
+    mark_ui_run_started(st.session_state)
+    assert st.session_state["is_running"] is True
+    assert st.session_state["run_backtest_requested"] is False
+    assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_RUNNING
+
+    mark_ui_stop_requested(st.session_state)
+    assert st.session_state["is_running"] is False
+    assert st.session_state["stop_requested"] is True
+    assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_STOPPING
+
+    clear_execution_state(st.session_state, clear_stop_requested=False)
+    assert st.session_state["stop_requested"] is True
+    assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_STOPPING
+
+    clear_execution_state(st.session_state)
+    assert st.session_state["is_running"] is False
+    assert st.session_state["stop_requested"] is False
+    assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_IDLE
 
 
 def test_queue_main_run_action_applies_pending_config_and_arms_builder():
@@ -4321,6 +4588,7 @@ def test_queue_main_run_action_applies_pending_config_and_arms_builder():
     assert st.session_state["run_backtest_requested"] is True
     assert st.session_state["is_running"] is True
     assert st.session_state["builder_launch_pending"] is True
+    assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_LAUNCH_PENDING
     assert "_builder_startup_symbol" not in st.session_state
     assert "_builder_tf_usage" not in st.session_state
 
@@ -4328,11 +4596,13 @@ def test_queue_main_run_action_applies_pending_config_and_arms_builder():
 def test_queue_main_load_action_clears_stop_and_arms_load_request():
     st.session_state.clear()
     st.session_state["stop_requested"] = True
+    st.session_state["ui_execution_phase"] = UI_EXECUTION_PHASE_STOPPING
 
     main_module._queue_main_load_action()
 
     assert st.session_state["stop_requested"] is False
     assert st.session_state["load_ohlcv_requested"] is True
+    assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_IDLE
 
 
 def test_render_controls_initializes_and_consumes_run_request(monkeypatch):
@@ -4350,6 +4620,7 @@ def test_render_controls_initializes_and_consumes_run_request(monkeypatch):
     assert st.session_state["is_running"] is False
     assert st.session_state["stop_requested"] is False
     assert st.session_state["load_ohlcv_requested"] is False
+    assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_LAUNCH_PENDING
 
 
 def test_app_clear_execution_lock_clears_builder_launch_metadata():
@@ -4366,6 +4637,7 @@ def test_app_clear_execution_lock_clears_builder_launch_metadata():
     assert st.session_state["is_running"] is False
     assert st.session_state["run_backtest_requested"] is False
     assert st.session_state["stop_requested"] is False
+    assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_IDLE
     assert "builder_launch_pending" not in st.session_state
     assert "_builder_startup_symbol" not in st.session_state
     assert "_builder_tf_usage" not in st.session_state
@@ -4621,6 +4893,228 @@ def test_render_builder_view_manual_session_releases_running_flag(monkeypatch):
     assert st.session_state["is_running"] is False
     assert st.session_state["builder_session"] is fake_session
     assert st.session_state["builder_last_objective"] == "Construire une stratégie robuste"
+
+
+def test_run_single_builder_session_refreshes_live_thoughts_panel_on_progress(
+    monkeypatch, tmp_path
+):
+    st.session_state.clear()
+    stream_file = tmp_path / "_live_thoughts.md"
+    stream_file.write_text("snapshot initial", encoding="utf-8")
+    refresh_calls: list[dict[str, object]] = []
+
+    class _DummyContext:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def container(self):
+            return self
+
+        def empty(self):
+            return None
+
+    class _DummyProgress:
+        def progress(self, *args, **kwargs):
+            return None
+
+    class _FakeAblation:
+        def enable_all(self):
+            return None
+
+        def disable(self, _step):
+            return None
+
+    class _FakeBuilder:
+        def __init__(self, **kwargs):
+            self.progress_callback = kwargs["progress_callback"]
+            self.stream_callback = kwargs["stream_callback"]
+            self.instrumentation = SimpleNamespace(enabled=False)
+            self.ablation = _FakeAblation()
+
+        def run(self, **kwargs):
+            stream_file.write_text("snapshot progress", encoding="utf-8")
+            self.progress_callback(
+                {
+                    "event": "phase_start",
+                    "phase": "proposal",
+                    "iteration": 1,
+                    "payload": {"max_iterations": 1},
+                    "message": "Proposition en cours",
+                }
+            )
+            stream_file.write_text("snapshot stream", encoding="utf-8")
+            self.stream_callback("proposal", "chunk")
+            return SimpleNamespace(iterations=[], status="success")
+
+    tick = {"value": 0.0}
+
+    def _perf_counter():
+        tick["value"] += 0.5
+        return tick["value"]
+
+    monkeypatch.setattr(builder_view_module, "STREAM_FILE", stream_file)
+    monkeypatch.setattr(builder_view_module.time, "perf_counter", _perf_counter)
+    monkeypatch.setattr(builder_view_module, "StrategyBuilder", _FakeBuilder)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_builder_live_thoughts_panel",
+        lambda **kwargs: refresh_calls.append(
+            {
+                "placeholder": kwargs.get("placeholder"),
+                "title": kwargs.get("title"),
+                "text": stream_file.read_text(encoding="utf-8"),
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_sync_builder_runtime_diagnostic",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_get_builder_compatible_indicators",
+        lambda df: [],
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "render_iteration_card",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "render_session_summary",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_builder_flow_analysis_panel",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_builder_campaign_memory_card",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_multi_llm_session_analysis_panel",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "progress",
+        lambda *args, **kwargs: _DummyProgress(),
+    )
+    monkeypatch.setattr(builder_view_module.st, "empty", lambda: _DummyContext())
+    monkeypatch.setattr(builder_view_module.st, "container", lambda: _DummyContext())
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "code", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "warning", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "info", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "error", lambda *args, **kwargs: None)
+
+    live_placeholder = object()
+    session = builder_view_module._run_single_builder_session(
+        objective="Construire une stratégie robuste",
+        model="gemma4:26b",
+        ollama_host="http://127.0.0.1:11434",
+        preload_model=False,
+        keep_alive_minutes=5,
+        unload_after_run=False,
+        auto_start_ollama=False,
+        max_iterations=1,
+        target_sharpe=1.0,
+        capital=10_000.0,
+        symbol="BTCUSDC",
+        timeframe="1h",
+        fees_bps=10.0,
+        slippage_bps=5.0,
+        df=_sample_ohlcv(),
+        skip_llm_prepare=True,
+        live_thoughts_panel_placeholder=live_placeholder,
+        live_thoughts_panel_kwargs={
+            "title": "📂 Flux de pensée live (optionnel)",
+            "expanded": False,
+            "show_terminal_command": False,
+            "tail_lines": 180,
+        },
+    )
+
+    assert session.status == "success"
+    assert len(refresh_calls) >= 3
+    assert refresh_calls[0]["text"] == "snapshot initial"
+    assert any(call["text"] == "snapshot progress" for call in refresh_calls)
+    assert refresh_calls[-1]["text"] == "snapshot stream"
+    assert all(call["placeholder"] is live_placeholder for call in refresh_calls)
+
+
+def test_render_builder_view_manual_passes_live_thoughts_placeholder_to_session(
+    monkeypatch,
+):
+    st.session_state.clear()
+    st.session_state["is_running"] = True
+    sample_df = _sample_ohlcv()
+    captured: dict[str, object] = {}
+    panel_calls: list[dict[str, object]] = []
+    fake_session = SimpleNamespace(status="success", best_sharpe=1.234, iterations=[])
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_autonomous=False,
+        builder_auto_market_pick=False,
+        builder_objective="Construire une stratégie robuste",
+        builder_unload_after_run=False,
+    )
+
+    monkeypatch.setattr(builder_view_module, "_inject_builder_view_styles", lambda: None)
+    monkeypatch.setattr(builder_view_module, "_render_builder_mode_hero", lambda **kwargs: None)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_builder_live_thoughts_panel",
+        lambda **kwargs: panel_calls.append(dict(kwargs)),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_resolve_single_llm_runtime_route",
+        lambda ollama_host, topology: (str(ollama_host), "GPU-0"),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_validate_builder_market_dataset",
+        lambda **kwargs: (True, ""),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_run_single_builder_session",
+        lambda **kwargs: captured.update(
+            {
+                "placeholder": kwargs.get("live_thoughts_panel_placeholder"),
+                "panel_kwargs": dict(kwargs.get("live_thoughts_panel_kwargs") or {}),
+            }
+        )
+        or fake_session,
+    )
+    monkeypatch.setattr(builder_view_module, "show_status", lambda *args, **kwargs: None)
+
+    builder_view_module.render_builder_view(
+        state=state,
+        df=sample_df,
+        status_container=nullcontext(),
+    )
+
+    assert panel_calls
+    assert captured["placeholder"] is panel_calls[0]["placeholder"]
+    assert captured["panel_kwargs"] == {
+        "title": "📂 Flux de pensée live (optionnel)",
+        "expanded": False,
+        "show_terminal_command": True,
+        "tail_lines": 180,
+    }
 
 
 def test_app_builder_expert_mode_shows_only_expert_controls():
@@ -4994,9 +5488,10 @@ def test_execute_clean_stop_resets_runtime_and_marks_manual_stop(monkeypatch):
     main_module._execute_clean_stop(state)
 
     assert st.session_state["is_running"] is False
-    assert st.session_state["stop_requested"] is True
+    assert st.session_state["stop_requested"] is False
     assert st.session_state["run_backtest_requested"] is False
     assert st.session_state["load_ohlcv_requested"] is False
+    assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_IDLE
     assert "builder_session" not in st.session_state
     assert "builder_runtime_diagnostic" not in st.session_state
     assert "builder_autonomous_history" not in st.session_state
@@ -5009,6 +5504,79 @@ def test_execute_clean_stop_resets_runtime_and_marks_manual_stop(monkeypatch):
     assert cleanup_call["cache_callback_count"] == 3
     assert marked_stop == {"reason": "manual_stop", "manual_stop": True}
     assert st.session_state["main_action_feedback"]["tone"] == "success"
+
+
+def test_execute_clean_stop_keeps_builder_rerunnable(monkeypatch):
+    st.session_state.clear()
+    st.session_state["is_running"] = True
+    st.session_state["builder_session"] = {"session_id": "demo"}
+    st.session_state["builder_runtime_diagnostic"] = {"status": "running"}
+    st.session_state["ohlcv_df"] = _sample_ohlcv()
+    st.session_state["ohlcv_status_msg"] = ""
+
+    launched: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        emergency_stop_module,
+        "execute_emergency_stop",
+        lambda session_state=None, **kwargs: (
+            session_state.__setitem__("stop_requested", True),
+            session_state.__setitem__("is_running", False),
+            session_state.__setitem__("run_backtest_requested", False),
+            session_state.__setitem__("load_ohlcv_requested", False),
+            {
+                "components_cleaned": ["session_flags", "garbage_collector"],
+                "errors": [],
+                "ollama_unloaded": {"http://127.0.0.1:11434": 1},
+                "ollama_stopped": {"http://127.0.0.1:11434": 1},
+                "ollama_remaining": {},
+            },
+        )[-1],
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "mark_builder_autonomous_runtime_stopped",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "should_auto_resume_builder_autonomous",
+        lambda current_state: (False, {}),
+    )
+    monkeypatch.setattr(main_module, "validate_all_params", lambda params: (True, []))
+    monkeypatch.setattr(main_module, "show_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        main_module,
+        "_render_builder_view_safe",
+        lambda state, df, status_container: launched.append(
+            {
+                "mode": state.optimization_mode,
+                "objective": state.builder_objective,
+            }
+        ),
+    )
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_autonomous=False,
+        builder_objective="Relancer après cleanup",
+        builder_ollama_host="http://127.0.0.1:11434",
+    )
+
+    main_module._execute_clean_stop(state)
+    assert st.session_state["stop_requested"] is False
+    assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_IDLE
+
+    main_module._queue_main_run_action("🏗️ Strategy Builder")
+    run_requested = consume_ui_run_request(st.session_state)
+    render_main(state, run_requested, nullcontext())
+
+    assert run_requested is True
+    assert len(launched) == 1
+    assert launched[0]["mode"] == "🏗️ Strategy Builder"
+    assert launched[0]["objective"] == "Relancer après cleanup"
+    assert st.session_state["is_running"] is True
+    assert st.session_state["stop_requested"] is False
 
 
 def test_execute_emergency_stop_cleans_runtime_hosts_and_callbacks(monkeypatch):
@@ -5078,6 +5646,7 @@ def test_execute_emergency_stop_cleans_runtime_hosts_and_callbacks(monkeypatch):
     assert st.session_state["stop_requested"] is True
     assert st.session_state["run_backtest_requested"] is False
     assert st.session_state["load_ohlcv_requested"] is False
+    assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_STOPPING
     assert "last_run_result" not in st.session_state
     assert unload_calls == [
         "http://127.0.0.1:11434",
@@ -5092,6 +5661,76 @@ def test_execute_emergency_stop_cleans_runtime_hosts_and_callbacks(monkeypatch):
     assert stats["ollama_stopped"]["http://127.0.0.1:11434"] == 1
     assert stats["ollama_stopped"]["http://127.0.0.1:22434"] == 1
     assert stats["gc_collected_objects"] == 7
+
+
+def test_terminate_owned_ollama_process_terminates_child_tree(monkeypatch):
+    class _FakeTrackedProcess:
+        def __init__(self, pid: int, children=None) -> None:
+            self.pid = pid
+            self._children = list(children or [])
+            self.terminate_calls = 0
+            self.kill_calls = 0
+
+        def children(self, recursive: bool = True):
+            assert recursive is True
+            return list(self._children)
+
+        def terminate(self) -> None:
+            self.terminate_calls += 1
+
+        def kill(self) -> None:
+            self.kill_calls += 1
+
+    class _FakePopen:
+        def __init__(self, pid: int) -> None:
+            self.pid = pid
+            self._returncode = None
+
+        def poll(self):
+            return self._returncode
+
+        def wait(self, timeout: float = 0.0):
+            self._returncode = 0
+            return 0
+
+        def terminate(self) -> None:
+            self._returncode = 0
+
+        def kill(self) -> None:
+            self._returncode = 0
+
+    child_a = _FakeTrackedProcess(201)
+    child_b = _FakeTrackedProcess(202)
+    root = _FakeTrackedProcess(111, children=[child_a, child_b])
+    process = _FakePopen(111)
+
+    def _wait_procs(procs, timeout: float = 0.0):
+        process._returncode = 0
+        return list(procs), []
+
+    fake_psutil = SimpleNamespace(
+        Process=lambda pid: root,
+        wait_procs=_wait_procs,
+        Error=RuntimeError,
+    )
+    monkeypatch.setitem(sys.modules, "psutil", fake_psutil)
+
+    record = ollama_manager_module._OwnedOllamaProcess(
+        host="http://127.0.0.1:11434",
+        process=process,
+    )
+    stopped = ollama_manager_module._terminate_owned_ollama_process(
+        record,
+        timeout_s=1.0,
+    )
+
+    assert stopped == 1
+    assert root.terminate_calls == 1
+    assert child_a.terminate_calls == 1
+    assert child_b.terminate_calls == 1
+    assert root.kill_calls == 0
+    assert child_a.kill_calls == 0
+    assert child_b.kill_calls == 0
 
 
 def test_resolve_builder_runtime_preferences_reads_sidebar_state_without_reset():
@@ -5437,9 +6076,18 @@ def test_sync_builder_multi_llm_profile_role_pools_hydrates_and_clears_session_s
         "24GB_balanced"
     )
 
-    assert cleared == {}
-    assert st.session_state["builder_multi_llm_role_overrides"] == {}
-    assert st.session_state["builder_multi_llm_role_override_select_builder_llm"] == []
+    assert cleared["idea_llm"] == ["qwen2.5:32b", "gemma4:26b"]
+    assert cleared["builder_llm"] == [
+        "qwen3-30b-a3b:q4_k_m",
+        "qwen3-coder:30b",
+    ]
+    assert st.session_state["builder_multi_llm_role_overrides"]["critic_llm"] == [
+        "deepseek-r1-distill:14b"
+    ]
+    assert st.session_state["builder_multi_llm_role_override_select_builder_llm"] == [
+        "qwen3-30b-a3b:q4_k_m",
+        "qwen3-coder:30b",
+    ]
 
 
 def test_sync_builder_multi_llm_profile_role_pools_refreshes_same_profile_when_definition_changes(monkeypatch):

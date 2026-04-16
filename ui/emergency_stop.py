@@ -238,6 +238,7 @@ def _cleanup_ollama_hosts(
             continue
 
         owned_only = not bool(remaining_models)
+        stopped = 0
         try:
             stopped = int(
                 stop_local_ollama_server(
@@ -250,8 +251,26 @@ def _cleanup_ollama_hosts(
             _record_error(stats, f"stop_local_ollama_server[{host}]: {exc}")
             continue
 
+        post_stop_remaining = _list_loaded_models_for_host(host)
+        if post_stop_remaining and owned_only:
+            try:
+                stopped += int(
+                    stop_local_ollama_server(
+                        ollama_host=host,
+                        owned_only=False,
+                    )
+                    or 0
+                )
+            except Exception as exc:  # noqa: BLE001
+                _record_error(stats, f"stop_local_ollama_server_hard[{host}]: {exc}")
+            post_stop_remaining = _list_loaded_models_for_host(host)
+
         if stopped > 0:
             stopped_by_host[host] = stopped
+        if post_stop_remaining:
+            remaining_by_host[host] = post_stop_remaining
+        else:
+            remaining_by_host.pop(host, None)
 
 
 def _collect_process_memory(stats: Dict[str, Any]) -> None:

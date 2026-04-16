@@ -72,6 +72,7 @@ from agents.pipeline_instrumentation import (
 from agents.builder_state import (
     BuilderIteration,
     BuilderSession,
+    IterationContext,
     _select_session_recovery_anchor,
 )
 from config.market_selection import (
@@ -107,6 +108,7 @@ from agents.builder_constants import (  # noqa: E402
     POSITIVE_PROGRESS_GATE_CHECKPOINTS,
     _AST_PARSE_RECOVERABLE_EXCEPTIONS,
 )
+
 # -- Fonctions scoring/diagnostic re-exportées depuis builder_diagnostics --
 from agents.builder_diagnostics import (  # noqa: E402
     _builder_iteration_selection_key,
@@ -124,6 +126,7 @@ from agents.builder_diagnostics import (  # noqa: E402
     compute_continuous_builder_score,
     compute_diagnostic,
 )
+
 # -- Utilitaires AST et parsing importés depuis builder_ast_utils --
 from agents.builder_ast_utils import (  # noqa: E402
     _LOG_PREFIX_RE,
@@ -163,6 +166,7 @@ from agents.builder_ast_utils import (  # noqa: E402
     _strip_leading_list_marker,
     _strip_non_python_noise,
 )
+
 # -- Parsing d'objectifs et noms d'indicateurs depuis builder_objective_parser --
 from agents.builder_objective_parser import (  # noqa: E402
     _INDICATOR_CANONICAL_ALIASES,
@@ -175,6 +179,7 @@ from agents.builder_objective_parser import (  # noqa: E402
     _strip_objective_prompt_leakage,
     sanitize_objective_text,
 )
+
 # -- I/O de session depuis builder_session_io --
 from agents.builder_session_io import (  # noqa: E402
     _truncate_runtime_traceback_tail,
@@ -187,61 +192,61 @@ from agents.builder_session_io import (  # noqa: E402
     attempt_session_auto_reset,
     MAX_SESSION_AUTO_RESETS,
 )
+
 # -- Utilitaires texte depuis builder_text_utils --
-from agents.builder_text_utils import (  # noqa: E402, F401
-    _err as _err,
-    _format_python_dict_literal as _format_python_dict_literal,
-    _normalize_llm_text as _normalize_llm_text,
-    _looks_like_log_pollution as _looks_like_log_pollution,
-    _safe_format_exception as _safe_format_exception,
+from agents.builder_text_utils import (  # noqa: E402
+    _err,
+    _format_python_dict_literal,
+    _normalize_llm_text,
+    _looks_like_log_pollution,
+    _safe_format_exception,
 )
+
 # -- Helpers de proposition depuis builder_proposal_helpers --
-from agents.builder_proposal_helpers import (  # noqa: E402, F401
-    _BUILDER_PROPOSAL_REQUIRED_KEYS as _BUILDER_PROPOSAL_REQUIRED_KEYS,
-    _PROPOSAL_PLACEHOLDER_VALUES as _PROPOSAL_PLACEHOLDER_VALUES,
-    _build_builder_sweep_plan as _build_builder_sweep_plan,
-    _build_builder_sweep_values as _build_builder_sweep_values,
-    _build_deterministic_proposal_fallback as _build_deterministic_proposal_fallback,
-    _coerce_builder_sweep_value as _coerce_builder_sweep_value,
-    _dedupe_preserve_order as _dedupe_preserve_order,
-    _flatten_nested_logic as _flatten_nested_logic,
-    _infer_direction_constraint_from_objective as _infer_direction_constraint_from_objective,
-    _is_empty_proposal as _is_empty_proposal,
-    _is_invalid_proposal as _is_invalid_proposal,
-    _is_logic_like_change_type as _is_logic_like_change_type,
-    _is_placeholder_text as _is_placeholder_text,
-    _looks_pathological_param_name as _looks_pathological_param_name,
-    _normalize_change_type as _normalize_change_type,
-    _normalize_proposal_keys as _normalize_proposal_keys,
-    _params_only_contract_respected as _params_only_contract_respected,
-    _proposal_changes_indicator_set_in_params_mode as _proposal_changes_indicator_set_in_params_mode,
-    _proposal_error_code as _proposal_error_code,
-    _proposal_has_meaningful_param_delta as _proposal_has_meaningful_param_delta,
-    _proposal_has_placeholder_fields as _proposal_has_placeholder_fields,
-    _proposal_issues as _proposal_issues,
-    _proposal_reuses_previous_indicator_set as _proposal_reuses_previous_indicator_set,
-    _rewrite_default_params_from_proposal as _rewrite_default_params_from_proposal,
-    _sanitize_param_mapping as _sanitize_param_mapping,
-    _sanitize_proposal_payload as _sanitize_proposal_payload,
+from agents.builder_proposal_helpers import (  # noqa: E402
+    _BUILDER_PROPOSAL_REQUIRED_KEYS,
+    _PROPOSAL_PLACEHOLDER_VALUES,
+    _build_builder_sweep_plan,
+    _build_builder_sweep_values,
+    _build_deterministic_proposal_fallback,
+    _coerce_builder_sweep_value,
+    _dedupe_preserve_order,
+    _flatten_nested_logic,
+    _infer_direction_constraint_from_objective,
+    _is_empty_proposal,
+    _is_invalid_proposal,
+    _is_logic_like_change_type,
+    _is_placeholder_text,
+    _looks_pathological_param_name,
+    _normalize_change_type,
+    _normalize_proposal_keys,
+    _params_only_contract_respected,
+    _proposal_changes_indicator_set_in_params_mode,
+    _proposal_error_code,
+    _proposal_has_meaningful_param_delta,
+    _proposal_has_placeholder_fields,
+    _proposal_issues,
+    _proposal_reuses_previous_indicator_set,
+    _rewrite_default_params_from_proposal,
+    _sanitize_param_mapping,
+    _sanitize_proposal_payload,
 )
+
 # -- Helpers de politique depuis builder_policy_helpers --
-from agents.builder_policy_helpers import (  # noqa: E402, F401
-    _build_stagnation_branch_specs as _build_stagnation_branch_specs,
-    _policy_change_type_override as _policy_change_type_override,
-    _previous_iteration_indicators as _previous_iteration_indicators,
-    _requires_indicator_exploration as _requires_indicator_exploration,
-    _select_best_branch_candidate as _select_best_branch_candidate,
-    _should_enable_stagnation_branching as _should_enable_stagnation_branching,
-    _should_trip_logic_stagnation_circuit as _should_trip_logic_stagnation_circuit,
+from agents.builder_policy_helpers import (  # noqa: E402
+    _build_stagnation_branch_specs,
+    _policy_change_type_override,
+    _previous_iteration_indicators,
+    _requires_indicator_exploration,
+    _select_best_branch_candidate,
+    _should_enable_stagnation_branching,
+    _should_trip_logic_stagnation_circuit,
 )
+
 PROPOSAL_REALIGN_ATTEMPTS = 1
 MIN_BUILDER_BARS = 300
-MIN_SIGNAL_COUNT_FOR_DENSITY_PRECHECK = int(
-    os.getenv("BACKTEST_BUILDER_MIN_SIGNAL_COUNT_FOR_DENSITY_PRECHECK", "200")
-)
-MAX_SIGNAL_DENSITY_PRECHECK = float(
-    os.getenv("BACKTEST_BUILDER_MAX_SIGNAL_DENSITY_PRECHECK", "0.85")
-)
+MIN_SIGNAL_COUNT_FOR_DENSITY_PRECHECK = int(os.getenv("BACKTEST_BUILDER_MIN_SIGNAL_COUNT_FOR_DENSITY_PRECHECK", "200"))
+MAX_SIGNAL_DENSITY_PRECHECK = float(os.getenv("BACKTEST_BUILDER_MAX_SIGNAL_DENSITY_PRECHECK", "0.85"))
 MAX_REPEATED_SAME_SIGNAL_RATIO_PRECHECK = float(
     os.getenv(
         "BACKTEST_BUILDER_MAX_REPEATED_SAME_SIGNAL_RATIO_PRECHECK",
@@ -256,18 +261,10 @@ _LLM_PHASE_TIMEOUT_PROPOSAL = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_PROPOSAL",
 _LLM_PHASE_TIMEOUT_CODE = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_CODE", "180"))
 _LLM_PHASE_TIMEOUT_ANALYSIS = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_ANALYSIS", "90"))
 _LLM_PHASE_TIMEOUT_DEFAULT = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_DEFAULT", "120"))
-_LLM_PHASE_TIMEOUT_PROPOSAL_REALIGN = int(
-    os.getenv("BACKTEST_BUILDER_TIMEOUT_PROPOSAL_REALIGN", "45")
-)
-_LLM_PHASE_TIMEOUT_RETRY_PROPOSAL = int(
-    os.getenv("BACKTEST_BUILDER_TIMEOUT_RETRY_PROPOSAL", "45")
-)
-_LLM_PHASE_TIMEOUT_RETRY_CODE = int(
-    os.getenv("BACKTEST_BUILDER_TIMEOUT_RETRY_CODE", "60")
-)
-_LLM_PHASE_TIMEOUT_RETRY_CODE_RUNTIME = int(
-    os.getenv("BACKTEST_BUILDER_TIMEOUT_RETRY_CODE_RUNTIME", "90")
-)
+_LLM_PHASE_TIMEOUT_PROPOSAL_REALIGN = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_PROPOSAL_REALIGN", "45"))
+_LLM_PHASE_TIMEOUT_RETRY_PROPOSAL = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_RETRY_PROPOSAL", "45"))
+_LLM_PHASE_TIMEOUT_RETRY_CODE = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_RETRY_CODE", "60"))
+_LLM_PHASE_TIMEOUT_RETRY_CODE_RUNTIME = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_RETRY_CODE_RUNTIME", "90"))
 _LLM_PHASE_TIMEOUT_VISION_FLOOR = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_VISION_FLOOR", "300"))
 _LLM_PHASE_TIMEOUT_REASONING_PROPOSAL_FLOOR = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_REASONING_PROPOSAL_FLOOR", "300"))
 _LLM_PHASE_TIMEOUT_REASONING_CODE_FLOOR = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_REASONING_CODE_FLOOR", "420"))
@@ -283,9 +280,7 @@ _LLM_PHASE_TIMEOUTS: Dict[str, int] = {
     "pre": _LLM_PHASE_TIMEOUT_ANALYSIS,
     "pre_reflection": _LLM_PHASE_TIMEOUT_ANALYSIS,
 }
-_BUILDER_MAX_UNTRADABLE_RATIO = float(
-    os.getenv("BACKTEST_BUILDER_MAX_UNTRADABLE_RATIO", "0.25")
-)
+_BUILDER_MAX_UNTRADABLE_RATIO = float(os.getenv("BACKTEST_BUILDER_MAX_UNTRADABLE_RATIO", "0.25"))
 _BUILDER_SWEEP_MAX_COMBINATIONS = max(
     1,
     int(os.getenv("BACKTEST_BUILDER_SWEEP_MAX_COMBINATIONS", "9")),
@@ -313,10 +308,7 @@ def _is_interpreter_shutdown_runtime_error(exc: BaseException) -> bool:
     if not isinstance(exc, RuntimeError):
         return False
     message = str(exc).lower()
-    return (
-        "interpreter shutdown" in message
-        or "cannot schedule new futures after interpreter shutdown" in message
-    )
+    return "interpreter shutdown" in message or "cannot schedule new futures after interpreter shutdown" in message
 
 
 def _is_vision_model(model_name: str) -> bool:
@@ -354,9 +346,7 @@ def _resolve_builder_phase_timeout(
     base_timeout_sec: int,
     llm_client: Any,
 ) -> int:
-    model_name = str(
-        getattr(getattr(llm_client, "config", None), "model", "") or ""
-    )
+    model_name = str(getattr(getattr(llm_client, "config", None), "model", "") or "")
     timeout_sec = int(base_timeout_sec)
 
     if phase_key not in {"proposal", "code", "analysis", "pre"}:
@@ -395,8 +385,6 @@ def _normalize_builder_timeout_phase(phase: str) -> str:
     if normalized.startswith("pre_reflection"):
         return "pre_reflection"
     return normalized.split("_")[0] if normalized else ""
-
-
 
 
 def _get_streamlit_script_run_ctx() -> Any:
@@ -667,10 +655,6 @@ _BUILDER_ALLOWED_WRITE_DF_COLUMNS = {
     "tp_level",
 }
 
-def _err(code: str, message: str) -> str:
-    """Formate un message d'erreur avec code stable."""
-    return f"[{code}] {message}"
-
 
 def _safe_path_mode() -> str:
     """Retourne le mode safe-path normalisé: off|prefer|strict."""
@@ -766,8 +750,7 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
                     ):
                         return False, _err(
                             ERR_SIG,
-                            "Boucle indexée avec `signals.iloc[i]` interdite. "
-                            "Utiliser des masques vectorisés.",
+                            "Boucle indexée avec `signals.iloc[i]` interdite. Utiliser des masques vectorisés.",
                         )
 
             # Warmup checks sur assignations
@@ -778,9 +761,7 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
                         continue
 
                     # Pattern signals[...] ou signals.iloc[...]
-                    is_signals_sub = (
-                        isinstance(tgt.value, ast.Name) and tgt.value.id == "signals"
-                    )
+                    is_signals_sub = isinstance(tgt.value, ast.Name) and tgt.value.id == "signals"
                     is_signals_loc_sub = (
                         isinstance(tgt.value, ast.Attribute)
                         and tgt.value.attr == "loc"
@@ -820,8 +801,7 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
             if isinstance(node, ast.While):
                 return False, _err(
                     ERR_SIG,
-                    "Boucle `while` interdite dans generate_signals. "
-                    "Utiliser une logique vectorisée.",
+                    "Boucle `while` interdite dans generate_signals. Utiliser une logique vectorisée.",
                 )
 
     return True, ""
@@ -830,159 +810,6 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 # Validation du code généré
 # ---------------------------------------------------------------------------
-
-
-def _normalize_llm_text(value: Any, *, fallback: str = "", max_len: int = 1200) -> str:
-    """Normalise un payload LLM potentiellement structuré en texte affichable."""
-    text = ""
-    if isinstance(value, str):
-        text = value
-    elif isinstance(value, (dict, list, tuple, set)):
-        try:
-            text = json.dumps(value, ensure_ascii=False, indent=2)
-        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-            text = str(value)
-    elif value is None:
-        text = ""
-    else:
-        text = str(value)
-
-    text = text.strip()
-    if not text:
-        text = str(fallback or "").strip()
-    if not text:
-        return ""
-    if len(text) > max_len:
-        text = text[:max_len].rstrip()
-    return text
-
-
-def _looks_like_log_pollution(text: str) -> bool:
-    """Heuristique simple pour détecter un collage de logs/traceback."""
-    if not text:
-        return False
-    lower = text.lower()
-    if "traceback (most recent call last)" in lower:
-        return True
-    if "streamlitapiexception" in lower:
-        return True
-    if re.search(r"^\s*\d{2}:\d{2}:\d{2}\s*\|\s*\w+\s*\|", text, re.MULTILINE):
-        return True
-    if re.search(
-        r"^\s*\|\s*(debug|info|warning|error|critical)\s*\|",
-        text,
-        re.MULTILINE | re.IGNORECASE,
-    ):
-        return True
-    return False
-
-
-def _safe_format_exception(exc: BaseException) -> str:
-    """
-    Formate une exception sans passer par traceback.format_exc/format_exception.
-
-    Évite les crashs secondaires Python 3.12 quand le moteur de suggestion
-    d'erreur évalue des propriétés qui relèvent elles-mêmes des exceptions.
-    """
-    try:
-        tb = exc.__traceback__
-    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-        tb = None
-
-    lines: List[str] = []
-    if tb is not None:
-        try:
-            for frame in traceback.extract_tb(tb):
-                code_line = (frame.line or "").strip()
-                lines.append(
-                    f'  File "{frame.filename}", line {frame.lineno}, in {frame.name}'
-                )
-                if code_line:
-                    lines.append(f"    {code_line}")
-        except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-            lines = []
-
-    header = f"{type(exc).__name__}: {exc}"
-    if lines:
-        return (
-            "Traceback (most recent call last):\n"
-            + "\n".join(lines)
-            + f"\n{header}"
-        )
-    return header
-
-
-def _infer_direction_constraint_from_objective(objective: Any) -> str:
-    """Déduit une contrainte long-only / short-only depuis l'objectif texte."""
-    normalized = " ".join(str(objective or "").strip().lower().split())
-    if not normalized:
-        return "long_short"
-
-    long_only_markers = (
-        # EN
-        "only execute buy orders",
-        "only execute buy order",
-        "only buy orders",
-        "buy signals",
-        "buy-only",
-        "long only",
-        "long-only",
-        "only execute long orders",
-        "only execute long positions",
-        "only take long trades",
-        # FR
-        "uniquement des achats",
-        "achat seulement",
-        "achat uniquement",
-        "long seulement",
-        "long uniquement",
-        "signaux d'achat",
-        "uniquement des ordres d'achat",
-        "uniquement des positions longues",
-        "prendre uniquement des positions longues",
-        "uniquement des trades long",
-        "exécuter uniquement des ordres d'achat",
-        "positions longues uniquement",
-        "que des achats",
-        "que des longs",
-    )
-    short_only_markers = (
-        # EN
-        "only execute sell orders",
-        "only execute sell order",
-        "only sell orders",
-        "sell signals",
-        "sell-only",
-        "short only",
-        "short-only",
-        "only execute short orders",
-        "only execute short positions",
-        "only take short trades",
-        # FR
-        "uniquement des ventes",
-        "vente seulement",
-        "vente uniquement",
-        "short seulement",
-        "short uniquement",
-        "signaux de vente",
-        "uniquement des ordres de vente",
-        "uniquement des positions short",
-        "prendre uniquement des positions short",
-        "uniquement des trades short",
-        "exécuter uniquement des ordres de vente",
-        "positions short uniquement",
-        "que des ventes",
-        "que des shorts",
-    )
-
-    long_only = any(marker in normalized for marker in long_only_markers)
-    short_only = any(marker in normalized for marker in short_only_markers)
-
-    if long_only and not short_only:
-        return "long_only"
-    if short_only and not long_only:
-        return "short_only"
-    return "long_short"
 
 
 def _apply_signal_direction_constraint(
@@ -1193,7 +1020,8 @@ def _fix_class_name(code: str) -> str:
         code = re.sub(
             rf"class\s+{re.escape(old_name)}\s*\(",
             f"class {GENERATED_CLASS_NAME}(",
-            code, count=1,
+            code,
+            count=1,
         )
     return code
 
@@ -1201,11 +1029,7 @@ def _fix_class_name(code: str) -> str:
 def _get_known_indicator_names() -> set[str]:
     """Retourne les noms d'indicateurs du registre, en minuscules."""
     try:
-        return {
-            str(ind or "").strip().lower()
-            for ind in list_indicators()
-            if str(ind or "").strip()
-        }
+        return {str(ind or "").strip().lower() for ind in list_indicators() if str(ind or "").strip()}
     except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
         return set(_DICT_INDICATOR_NAMES)
 
@@ -1258,11 +1082,14 @@ def _infer_required_indicator_names_from_code(
             inferred_set.add(indicator_name)
 
     for indicator_name in sorted(known):
-        if re.search(
-            rf"\b{re.escape(indicator_name)}_(?:arr|array|data|values?)\b",
-            code,
-            flags=re.IGNORECASE,
-        ) and indicator_name not in inferred_set:
+        if (
+            re.search(
+                rf"\b{re.escape(indicator_name)}_(?:arr|array|data|values?)\b",
+                code,
+                flags=re.IGNORECASE,
+            )
+            and indicator_name not in inferred_set
+        ):
             inferred.append(indicator_name)
             inferred_set.add(indicator_name)
 
@@ -1310,9 +1137,7 @@ def _build_generate_signals_indicator_binding_lines(required_indicators: Optiona
             raw_lines = re.split(r";\s*|\n+", access_example)
             candidate_lines = [line.strip() for line in raw_lines if line.strip()]
         else:
-            candidate_lines = [
-                f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])"
-            ]
+            candidate_lines = [f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])"]
 
         for line in candidate_lines:
             normalized_line = line
@@ -1378,9 +1203,7 @@ def _build_generate_signals_indicator_binding_groups(
             raw_lines = re.split(r";\s*|\n+", access_example)
             candidate_lines = [line.strip() for line in raw_lines if line.strip()]
         else:
-            candidate_lines = [
-                f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])"
-            ]
+            candidate_lines = [f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])"]
 
         for line in candidate_lines:
             normalized_line = line
@@ -1541,9 +1364,7 @@ def _inject_generate_signals_core_param_aliases(code: str) -> str:
 
         for ohlcv_col in ("open", "high", "low", "close", "volume"):
             if ohlcv_col in load_names and ohlcv_col not in args and ohlcv_col not in store_names:
-                alias_raw.append(
-                    f"{ohlcv_col} = np.nan_to_num(df['{ohlcv_col}'].values.astype(np.float64))"
-                )
+                alias_raw.append(f"{ohlcv_col} = np.nan_to_num(df['{ohlcv_col}'].values.astype(np.float64))")
         if "price" in load_names and "price" not in args and "price" not in store_names:
             if not any(line.startswith("close = ") for line in alias_raw):
                 alias_raw.append("close = np.nan_to_num(df['close'].values.astype(np.float64))")
@@ -1615,11 +1436,7 @@ def _inject_generate_signals_indicator_aliases(code: str) -> str:
         load_names, _store_names = _collect_name_load_store_sets(fn)
         bound_names = _collect_bound_names(fn)
         missing_indicator_names = sorted(
-            {
-                name
-                for name in load_names
-                if name in known_indicators and name not in bound_names
-            }
+            {name for name in load_names if name in known_indicators and name not in bound_names}
         )
         if not missing_indicator_names:
             continue
@@ -1627,13 +1444,9 @@ def _inject_generate_signals_indicator_aliases(code: str) -> str:
         alias_raw: List[str] = []
         for indicator_name in missing_indicator_names:
             if indicator_name in _DICT_INDICATOR_NAMES:
-                alias_raw.append(
-                    f"{indicator_name} = indicators['{indicator_name}']"
-                )
+                alias_raw.append(f"{indicator_name} = indicators['{indicator_name}']")
             else:
-                alias_raw.append(
-                    f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])"
-                )
+                alias_raw.append(f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])")
 
         if fn.body:
             first_stmt = fn.body[0]
@@ -1724,12 +1537,8 @@ def _rewrite_safe_dict_indicator_comparisons(code: str) -> str:
         line = raw_line
         for indicator_name, subkey in _DICT_INDICATOR_SAFE_SCALAR_KEYS.items():
             scalar_expr = f"np.nan_to_num(indicators['{indicator_name}']['{subkey}'])"
-            indicator_expr = (
-                rf"indicators\s*\[\s*['\"]{re.escape(indicator_name)}['\"]\s*\](?!\s*\[)"
-            )
-            get_expr = (
-                rf"indicators\.get\(\s*['\"]{re.escape(indicator_name)}['\"]\s*(?:,\s*[^)]*)?\)(?!\s*\[)"
-            )
+            indicator_expr = rf"indicators\s*\[\s*['\"]{re.escape(indicator_name)}['\"]\s*\](?!\s*\[)"
+            get_expr = rf"indicators\.get\(\s*['\"]{re.escape(indicator_name)}['\"]\s*(?:,\s*[^)]*)?\)(?!\s*\[)"
             for expr in (indicator_expr, get_expr):
                 line = re.sub(
                     rf"({expr})\s*{compare_ops}",
@@ -1900,11 +1709,18 @@ def _validate_llm_logic_block(logic: str) -> tuple[bool, str]:
     if re.search(r"\.iloc\[(?!\s*:)", logic):
         return False, _err(ERR_SIG, "`.iloc[i]` interdit (accès indexé). Seul `signals.iloc[:warmup]` est autorisé.")
     if re.search(r"\bsignals\.loc\b|\bsignals\s*\.\s*notnull\s*\(", logic):
-        return False, _err(ERR_SIG, "Usage pandas direct sur `signals` interdit; utiliser des masques numpy/vectorises.")
+        return False, _err(
+            ERR_SIG, "Usage pandas direct sur `signals` interdit; utiliser des masques numpy/vectorises."
+        )
     if re.search(r"\[['\"][^'\"]*\|[^'\"]*['\"]\]", logic):
-        return False, _err(ERR_IND, "Sous-cles concatenees avec `|` interdites; acceder a une seule sous-cle a la fois.")
+        return False, _err(
+            ERR_IND, "Sous-cles concatenees avec `|` interdites; acceder a une seule sous-cle a la fois."
+        )
     if re.search(r"\bcrosses_(?:above|below|over|under)[a-z_]*\b", logic):
-        return False, _err(ERR_SIG, "Pseudo-helper `crosses_*` interdit; exprimer le croisement avec np.roll et comparaisons explicites.")
+        return False, _err(
+            ERR_SIG,
+            "Pseudo-helper `crosses_*` interdit; exprimer le croisement avec np.roll et comparaisons explicites.",
+        )
     if re.search(r"\bfor\s+\w+\s+in\s+range\s*\(", logic):
         return False, _err(ERR_SIG, "`for i in range(...)` interdit dans la logique Builder.")
     if re.search(r"\bwhile\b", logic):
@@ -1924,8 +1740,7 @@ def _looks_like_valid_python_logic(logic: str) -> bool:
     if not re.search(r"\b(if|signals|indicators|params|np\.|df\.|return|=)\b", candidate):
         return False
     wrapped = "def _tmp(df, indicators, params, signals):\n" + "\n".join(
-        f"    {line}" if line.strip() else ""
-        for line in candidate.splitlines()
+        f"    {line}" if line.strip() else "" for line in candidate.splitlines()
     )
     try:
         ast.parse(wrapped)
@@ -2000,25 +1815,14 @@ def _build_deterministic_strategy_code(
     specs_block = _format_parameter_specs_code(proposal.get("parameter_specs", {}))
     normalized_logic = textwrap.dedent(llm_logic).strip("\n")
     logic_lines = normalized_logic.splitlines() if normalized_logic else ["pass"]
-    logic_block = "\n".join(
-        f"        {line}" if line.strip() else ""
-        for line in logic_lines
-    )
+    logic_block = "\n".join(f"        {line}" if line.strip() else "" for line in logic_lines)
     indicator_binding_lines = _build_generate_signals_indicator_binding_lines(required_indicators)
-    indicator_binding_block = "".join(
-        f"        {line}\n" for line in indicator_binding_lines
-    )
+    indicator_binding_block = "".join(f"        {line}\n" for line in indicator_binding_lines)
     direction_block = ""
     if direction_constraint == "long_only":
-        direction_block = (
-            "        # Objective constraint: long-only\n"
-            "        signals[signals < 0.0] = 0.0\n"
-        )
+        direction_block = "        # Objective constraint: long-only\n        signals[signals < 0.0] = 0.0\n"
     elif direction_constraint == "short_only":
-        direction_block = (
-            "        # Objective constraint: short-only\n"
-            "        signals[signals > 0.0] = 0.0\n"
-        )
+        direction_block = "        # Objective constraint: short-only\n        signals[signals > 0.0] = 0.0\n"
 
     return (
         "from typing import Any, Dict, List\n\n"
@@ -2053,6 +1857,59 @@ def _build_deterministic_strategy_code(
     )
 
 
+# ── Blocs communs aux variantes de fallback déterministe ──
+_FB_PREAMBLE = (
+    "        stop_atr_mult = float(params.get('stop_atr_mult', 1.5))\n"
+    "        tp_atr_mult = float(params.get('tp_atr_mult', 3.0))\n"
+    "        close = np.nan_to_num(df['close'].values.astype(np.float64))\n"
+    "        if len(close) < warmup + 2:\n"
+    "            return signals\n"
+    "        atr_raw = indicators.get('atr')\n"
+    "        if isinstance(atr_raw, np.ndarray):\n"
+    "            atr = np.nan_to_num(atr_raw.astype(np.float64))\n"
+    "        else:\n"
+    "            atr = np.full(n, 0.0)\n"
+)
+
+_FB_INIT_SLTP_COLS = (
+    "        df.loc[:, 'bb_stop_long'] = np.nan\n"
+    "        df.loc[:, 'bb_tp_long'] = np.nan\n"
+    "        df.loc[:, 'bb_stop_short'] = np.nan\n"
+    "        df.loc[:, 'bb_tp_short'] = np.nan\n"
+)
+
+_FB_ENTRY_FILTER = (
+    "        long_prev = np.roll(long_cond, 1)\n"
+    "        short_prev = np.roll(short_cond, 1)\n"
+    "        long_prev[:1] = False\n"
+    "        short_prev[:1] = False\n"
+    "        long_entry = long_cond & (~long_prev)\n"
+    "        short_entry = short_cond & (~short_prev)\n"
+    "        long_entry[:warmup] = False\n"
+    "        short_entry[:warmup] = False\n"
+    "        signals[long_entry] = 1.0\n"
+    "        signals[short_entry] = -1.0\n"
+    "        df.loc[long_entry, 'bb_stop_long'] = close[long_entry] - stop_atr_mult * atr[long_entry]\n"
+    "        df.loc[long_entry, 'bb_tp_long'] = close[long_entry] + tp_atr_mult * atr[long_entry]\n"
+    "        df.loc[short_entry, 'bb_stop_short'] = close[short_entry] + stop_atr_mult * atr[short_entry]\n"
+    "        df.loc[short_entry, 'bb_tp_short'] = close[short_entry] - tp_atr_mult * atr[short_entry]\n"
+)
+
+
+def _fb_extract_indicator(name: str, kind: str = "array", fallback_val: str = "0.0") -> str:
+    """Génère le code d'extraction d'un indicateur pour le fallback déterministe."""
+    var = name.replace(".", "_")
+    if kind == "dict_field":
+        return ""  # handled inline by callers needing dict subfields
+    return (
+        f"        {var}_raw = indicators.get('{name}')\n"
+        f"        if isinstance({var}_raw, np.ndarray):\n"
+        f"            {var} = np.nan_to_num({var}_raw.astype(np.float64))\n"
+        f"        else:\n"
+        f"            {var} = np.full(n, {fallback_val})\n"
+    )
+
+
 def _build_deterministic_fallback_code(
     proposal: Dict[str, Any],
     variant: int = 0,
@@ -2075,9 +1932,7 @@ def _build_deterministic_fallback_code(
     strategy_name = strategy_name.replace('"', "").replace("'", "")
 
     used = proposal.get("used_indicators", [])
-    safe_used = _normalize_required_indicator_names(
-        cast(Optional[List[str]], used if isinstance(used, list) else None)
-    )
+    safe_used = _normalize_required_indicator_names(cast(Optional[List[str]], used if isinstance(used, list) else None))
     if len(safe_used) > 20:
         safe_used = safe_used[:20]
 
@@ -2089,9 +1944,7 @@ def _build_deterministic_fallback_code(
     default_params.setdefault("stop_atr_mult", 1.5)
     default_params.setdefault("tp_atr_mult", 3.0)
     default_params["leverage"] = 1  # Force leverage=1 (not setdefault)
-    direction_constraint = str(
-        proposal.get("direction_constraint", "long_short") or "long_short"
-    ).strip().lower()
+    direction_constraint = str(proposal.get("direction_constraint", "long_short") or "long_short").strip().lower()
 
     effective_variant = variant % 4
     if "donchian" in safe_used and "adx" in safe_used:
@@ -2106,18 +1959,7 @@ def _build_deterministic_fallback_code(
         default_params.setdefault("supertrend_multiplier", 3.0)
         default_params.setdefault("adx_period", 14)
         default_params.setdefault("adx_threshold", 20.0)
-        signals_body = (
-            "        stop_atr_mult = float(params.get('stop_atr_mult', 1.5))\n"
-            "        tp_atr_mult = float(params.get('tp_atr_mult', 3.0))\n"
-            "        adx_threshold = float(params.get('adx_threshold', 20.0))\n"
-            "        close = np.nan_to_num(df['close'].values.astype(np.float64))\n"
-            "        if len(close) < warmup + 2:\n"
-            "            return signals\n"
-            "        atr_raw = indicators.get('atr')\n"
-            "        if isinstance(atr_raw, np.ndarray):\n"
-            "            atr = np.nan_to_num(atr_raw.astype(np.float64))\n"
-            "        else:\n"
-            "            atr = np.full(n, 0.0)\n"
+        variant_extract = (
             "        st_raw = indicators.get('supertrend')\n"
             "        if isinstance(st_raw, dict):\n"
             "            direction = np.nan_to_num(st_raw.get('direction', np.zeros(n))).astype(np.float64)\n"
@@ -2128,26 +1970,17 @@ def _build_deterministic_fallback_code(
             "            adx = np.nan_to_num(adx_raw.get('adx', np.zeros(n))).astype(np.float64)\n"
             "        else:\n"
             "            adx = np.full(n, 0.0)\n"
-            "        df.loc[:, 'bb_stop_long'] = np.nan\n"
-            "        df.loc[:, 'bb_tp_long'] = np.nan\n"
-            "        df.loc[:, 'bb_stop_short'] = np.nan\n"
-            "        df.loc[:, 'bb_tp_short'] = np.nan\n"
+        )
+        variant_conditions = (
+            "        adx_threshold = float(params.get('adx_threshold', 20.0))\n"
             "        bull = direction > 0\n"
             "        bear = direction < 0\n"
             "        bull_prev = np.roll(bull, 1)\n"
             "        bear_prev = np.roll(bear, 1)\n"
             "        bull_prev[:1] = False\n"
             "        bear_prev[:1] = False\n"
-            "        long_entry = bull & (~bull_prev) & (adx >= adx_threshold)\n"
-            "        short_entry = bear & (~bear_prev) & (adx >= adx_threshold)\n"
-            "        long_entry[:warmup] = False\n"
-            "        short_entry[:warmup] = False\n"
-            "        signals[long_entry] = 1.0\n"
-            "        signals[short_entry] = -1.0\n"
-            "        df.loc[long_entry, 'bb_stop_long'] = close[long_entry] - stop_atr_mult * atr[long_entry]\n"
-            "        df.loc[long_entry, 'bb_tp_long'] = close[long_entry] + tp_atr_mult * atr[long_entry]\n"
-            "        df.loc[short_entry, 'bb_stop_short'] = close[short_entry] + stop_atr_mult * atr[short_entry]\n"
-            "        df.loc[short_entry, 'bb_tp_short'] = close[short_entry] - tp_atr_mult * atr[short_entry]\n"
+            "        long_cond = bull & (~bull_prev) & (adx >= adx_threshold)\n"
+            "        short_cond = bear & (~bear_prev) & (adx >= adx_threshold)\n"
         )
     elif effective_variant == 2:
         # ── Variante 2: momentum RSI/EMA ──
@@ -2156,48 +1989,18 @@ def _build_deterministic_fallback_code(
                 safe_used.append(needed)
         default_params.setdefault("rsi_mid", 50.0)
         default_params.setdefault("ema_period", 50)
-        signals_body = (
-            "        rsi_mid = float(params.get('rsi_mid', 50.0))\n"
-            "        stop_atr_mult = float(params.get('stop_atr_mult', 1.5))\n"
-            "        tp_atr_mult = float(params.get('tp_atr_mult', 3.0))\n"
-            "        close = np.nan_to_num(df['close'].values.astype(np.float64))\n"
-            "        if len(close) < warmup + 2:\n"
-            "            return signals\n"
-            "        atr_raw = indicators.get('atr')\n"
-            "        if isinstance(atr_raw, np.ndarray):\n"
-            "            atr = np.nan_to_num(atr_raw.astype(np.float64))\n"
-            "        else:\n"
-            "            atr = np.full(n, 0.0)\n"
-            "        rsi_raw = indicators.get('rsi')\n"
-            "        if isinstance(rsi_raw, np.ndarray):\n"
-            "            rsi = np.nan_to_num(rsi_raw.astype(np.float64))\n"
-            "        else:\n"
-            "            rsi = np.full(n, 50.0)\n"
-            "        ema_raw = indicators.get('ema')\n"
+        variant_extract = (
+            _fb_extract_indicator("rsi", fallback_val="50.0")
+            + "        ema_raw = indicators.get('ema')\n"
             "        if isinstance(ema_raw, np.ndarray):\n"
             "            ema = np.nan_to_num(ema_raw.astype(np.float64))\n"
             "        else:\n"
             "            ema = close.copy()\n"
-            "        df.loc[:, 'bb_stop_long'] = np.nan\n"
-            "        df.loc[:, 'bb_tp_long'] = np.nan\n"
-            "        df.loc[:, 'bb_stop_short'] = np.nan\n"
-            "        df.loc[:, 'bb_tp_short'] = np.nan\n"
+        )
+        variant_conditions = (
+            "        rsi_mid = float(params.get('rsi_mid', 50.0))\n"
             "        long_cond = (rsi > rsi_mid) & (close > ema)\n"
             "        short_cond = (rsi < rsi_mid) & (close < ema)\n"
-            "        long_prev = np.roll(long_cond, 1)\n"
-            "        short_prev = np.roll(short_cond, 1)\n"
-            "        long_prev[:1] = False\n"
-            "        short_prev[:1] = False\n"
-            "        long_entry = long_cond & (~long_prev)\n"
-            "        short_entry = short_cond & (~short_prev)\n"
-            "        long_entry[:warmup] = False\n"
-            "        short_entry[:warmup] = False\n"
-            "        signals[long_entry] = 1.0\n"
-            "        signals[short_entry] = -1.0\n"
-            "        df.loc[long_entry, 'bb_stop_long'] = close[long_entry] - stop_atr_mult * atr[long_entry]\n"
-            "        df.loc[long_entry, 'bb_tp_long'] = close[long_entry] + tp_atr_mult * atr[long_entry]\n"
-            "        df.loc[short_entry, 'bb_stop_short'] = close[short_entry] + stop_atr_mult * atr[short_entry]\n"
-            "        df.loc[short_entry, 'bb_tp_short'] = close[short_entry] - tp_atr_mult * atr[short_entry]\n"
         )
     elif effective_variant == 3:
         # ── Variante 3: breakout Donchian/ADX ──
@@ -2205,18 +2008,7 @@ def _build_deterministic_fallback_code(
             if needed not in safe_used:
                 safe_used.append(needed)
         default_params.setdefault("adx_threshold", 18.0)
-        signals_body = (
-            "        stop_atr_mult = float(params.get('stop_atr_mult', 1.5))\n"
-            "        tp_atr_mult = float(params.get('tp_atr_mult', 3.0))\n"
-            "        adx_threshold = float(params.get('adx_threshold', 18.0))\n"
-            "        close = np.nan_to_num(df['close'].values.astype(np.float64))\n"
-            "        if len(close) < warmup + 2:\n"
-            "            return signals\n"
-            "        atr_raw = indicators.get('atr')\n"
-            "        if isinstance(atr_raw, np.ndarray):\n"
-            "            atr = np.nan_to_num(atr_raw.astype(np.float64))\n"
-            "        else:\n"
-            "            atr = np.full(n, 0.0)\n"
+        variant_extract = (
             "        dc_raw = indicators.get('donchian')\n"
             "        if isinstance(dc_raw, dict):\n"
             "            dc_upper = np.nan_to_num(dc_raw.get('upper', np.full(n, np.inf)).astype(np.float64))\n"
@@ -2229,30 +2021,15 @@ def _build_deterministic_fallback_code(
             "            adx = np.nan_to_num(adx_raw.get('adx', np.zeros(n))).astype(np.float64)\n"
             "        else:\n"
             "            adx = np.full(n, 0.0)\n"
-            "        df.loc[:, 'bb_stop_long'] = np.nan\n"
-            "        df.loc[:, 'bb_tp_long'] = np.nan\n"
-            "        df.loc[:, 'bb_stop_short'] = np.nan\n"
-            "        df.loc[:, 'bb_tp_short'] = np.nan\n"
+        )
+        variant_conditions = (
+            "        adx_threshold = float(params.get('adx_threshold', 18.0))\n"
             "        dc_upper_prev = np.roll(dc_upper, 1)\n"
             "        dc_lower_prev = np.roll(dc_lower, 1)\n"
             "        dc_upper_prev[:1] = dc_upper[:1]\n"
             "        dc_lower_prev[:1] = dc_lower[:1]\n"
             "        long_cond = (close > dc_upper_prev) & (adx >= adx_threshold)\n"
             "        short_cond = (close < dc_lower_prev) & (adx >= adx_threshold)\n"
-            "        long_prev = np.roll(long_cond, 1)\n"
-            "        short_prev = np.roll(short_cond, 1)\n"
-            "        long_prev[:1] = False\n"
-            "        short_prev[:1] = False\n"
-            "        long_entry = long_cond & (~long_prev)\n"
-            "        short_entry = short_cond & (~short_prev)\n"
-            "        long_entry[:warmup] = False\n"
-            "        short_entry[:warmup] = False\n"
-            "        signals[long_entry] = 1.0\n"
-            "        signals[short_entry] = -1.0\n"
-            "        df.loc[long_entry, 'bb_stop_long'] = close[long_entry] - stop_atr_mult * atr[long_entry]\n"
-            "        df.loc[long_entry, 'bb_tp_long'] = close[long_entry] + tp_atr_mult * atr[long_entry]\n"
-            "        df.loc[short_entry, 'bb_stop_short'] = close[short_entry] + stop_atr_mult * atr[short_entry]\n"
-            "        df.loc[short_entry, 'bb_tp_short'] = close[short_entry] - tp_atr_mult * atr[short_entry]\n"
         )
     else:
         # ── Variante 0: mean-reversion RSI/Bollinger ──
@@ -2261,54 +2038,25 @@ def _build_deterministic_fallback_code(
                 safe_used.append(needed)
         default_params.setdefault("rsi_oversold", 30)
         default_params.setdefault("rsi_overbought", 70)
-        signals_body = (
-            "        rsi_oversold = float(params.get('rsi_oversold', 30))\n"
-            "        rsi_overbought = float(params.get('rsi_overbought', 70))\n"
-            "        stop_atr_mult = float(params.get('stop_atr_mult', 1.5))\n"
-            "        tp_atr_mult = float(params.get('tp_atr_mult', 3.0))\n"
-            "        close = np.nan_to_num(df['close'].values.astype(np.float64))\n"
-            "        if len(close) < warmup + 2:\n"
-            "            return signals\n"
-            "        atr_raw = indicators.get('atr')\n"
-            "        if isinstance(atr_raw, np.ndarray):\n"
-            "            atr = np.nan_to_num(atr_raw.astype(np.float64))\n"
-            "        else:\n"
-            "            atr = np.full(n, 0.0)\n"
-            "        rsi_raw = indicators.get('rsi')\n"
-            "        bb_raw = indicators.get('bollinger')\n"
-            "        has_rsi = isinstance(rsi_raw, np.ndarray)\n"
+        variant_extract = (
+            _fb_extract_indicator("rsi", fallback_val="50.0")
+            + "        bb_raw = indicators.get('bollinger')\n"
             "        has_bb = isinstance(bb_raw, dict)\n"
-            "        if has_rsi:\n"
-            "            rsi = np.nan_to_num(rsi_raw.astype(np.float64))\n"
-            "        else:\n"
-            "            rsi = np.full(n, 50.0)\n"
             "        if has_bb:\n"
             "            bb_lower = np.nan_to_num(bb_raw.get('lower', np.zeros(n)).astype(np.float64))\n"
             "            bb_upper = np.nan_to_num(bb_raw.get('upper', np.zeros(n)).astype(np.float64))\n"
             "        else:\n"
             "            bb_lower = np.full(n, 0.0)\n"
             "            bb_upper = np.full(n, np.inf)\n"
-            "        df.loc[:, 'bb_stop_long'] = np.nan\n"
-            "        df.loc[:, 'bb_tp_long'] = np.nan\n"
-            "        df.loc[:, 'bb_stop_short'] = np.nan\n"
-            "        df.loc[:, 'bb_tp_short'] = np.nan\n"
+        )
+        variant_conditions = (
+            "        rsi_oversold = float(params.get('rsi_oversold', 30))\n"
+            "        rsi_overbought = float(params.get('rsi_overbought', 70))\n"
             "        long_cond = (rsi < rsi_oversold) & (close <= bb_lower)\n"
             "        short_cond = (rsi > rsi_overbought) & (close >= bb_upper)\n"
-            "        long_prev = np.roll(long_cond, 1)\n"
-            "        short_prev = np.roll(short_cond, 1)\n"
-            "        long_prev[:1] = False\n"
-            "        short_prev[:1] = False\n"
-            "        long_entry = long_cond & (~long_prev)\n"
-            "        short_entry = short_cond & (~short_prev)\n"
-            "        long_entry[:warmup] = False\n"
-            "        short_entry[:warmup] = False\n"
-            "        signals[long_entry] = 1.0\n"
-            "        signals[short_entry] = -1.0\n"
-            "        df.loc[long_entry, 'bb_stop_long'] = close[long_entry] - stop_atr_mult * atr[long_entry]\n"
-            "        df.loc[long_entry, 'bb_tp_long'] = close[long_entry] + tp_atr_mult * atr[long_entry]\n"
-            "        df.loc[short_entry, 'bb_stop_short'] = close[short_entry] + stop_atr_mult * atr[short_entry]\n"
-            "        df.loc[short_entry, 'bb_tp_short'] = close[short_entry] - tp_atr_mult * atr[short_entry]\n"
         )
+
+    signals_body = _FB_PREAMBLE + variant_extract + _FB_INIT_SLTP_COLS + variant_conditions + _FB_ENTRY_FILTER
 
     # ── Partie commune: assemblage du code final ──
     default_params_literal = _format_python_dict_literal(default_params)
@@ -2317,25 +2065,15 @@ def _build_deterministic_fallback_code(
         default_params_block = f"        return {default_params_lines[0]}\n\n"
     else:
         default_params_block = "        return " + default_params_lines[0] + "\n"
-        default_params_block += "".join(
-            f"        {line}\n" for line in default_params_lines[1:]
-        )
+        default_params_block += "".join(f"        {line}\n" for line in default_params_lines[1:])
         default_params_block += "\n"
     direction_block = ""
     if direction_constraint == "long_only":
-        direction_block = (
-            "        # Objective constraint: long-only\n"
-            "        signals[signals < 0.0] = 0.0\n"
-        )
+        direction_block = "        # Objective constraint: long-only\n        signals[signals < 0.0] = 0.0\n"
     elif direction_constraint == "short_only":
-        direction_block = (
-            "        # Objective constraint: short-only\n"
-            "        signals[signals > 0.0] = 0.0\n"
-        )
+        direction_block = "        # Objective constraint: short-only\n        signals[signals > 0.0] = 0.0\n"
     indicator_binding_lines = _build_generate_signals_indicator_binding_lines(safe_used)
-    indicator_binding_block = "".join(
-        f"        {line}\n" for line in indicator_binding_lines
-    )
+    indicator_binding_block = "".join(f"        {line}\n" for line in indicator_binding_lines)
 
     return (
         "from typing import Any, Dict, List\n\n"
@@ -2345,7 +2083,7 @@ def _build_deterministic_fallback_code(
         "from strategies.base import StrategyBase\n\n\n"
         f"class {GENERATED_CLASS_NAME}(StrategyBase):\n"
         "    def __init__(self):\n"
-        f"        super().__init__(name=\"{strategy_name}\")\n\n"
+        f'        super().__init__(name="{strategy_name}")\n\n'
         "    @property\n"
         "    def required_indicators(self) -> List[str]:\n"
         f"        return {safe_used!r}\n\n"
@@ -2369,10 +2107,29 @@ def _build_deterministic_fallback_code(
 
 # Prefixes de ligne indiquant du vrai code Python (pas du texte de docstring)
 _CODE_LINE_STARTS = (
-    "def ", "class ", "@", "return ", "import ", "from ",
-    "self.", "super(", "if ", "for ", "while ", "try:", "with ",
-    "raise ", "yield ", "assert ", "pass", "break", "continue",
-    "signals", "result", "n =", "n=",
+    "def ",
+    "class ",
+    "@",
+    "return ",
+    "import ",
+    "from ",
+    "self.",
+    "super(",
+    "if ",
+    "for ",
+    "while ",
+    "try:",
+    "with ",
+    "raise ",
+    "yield ",
+    "assert ",
+    "pass",
+    "break",
+    "continue",
+    "signals",
+    "result",
+    "n =",
+    "n=",
 )
 
 
@@ -2419,619 +2176,6 @@ def _strip_docstrings(code: str) -> str:
             result.append(line)
 
     return "\n".join(result)
-
-
-def _normalize_proposal_keys(proposal: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalise les clés JSON d'une proposition LLM (case-insensitive).
-
-    Certains modèles locaux retournent des clés en casse mixte
-    (ex: ``used_indiCATORS``, ``default_PARAMS``).  Cette fonction
-    mappe chaque clé vers sa version canonique attendue.
-    """
-    if not proposal:
-        return proposal
-
-    _CANONICAL = {
-        "strategy_name": "strategy_name",
-        "hypothesis": "hypothesis",
-        "change_type": "change_type",
-        "indicator_override_reason": "indicator_override_reason",
-        "used_indicators": "used_indicators",
-        "indicator_params": "indicator_params",
-        "entry_long_logic": "entry_long_logic",
-        "entry_short_logic": "entry_short_logic",
-        "exit_logic": "exit_logic",
-        "risk_management": "risk_management",
-        "default_params": "default_params",
-        "parameter_specs": "parameter_specs",
-    }
-    # Build lowercase → canonical mapping
-    lower_map = {k.lower(): v for k, v in _CANONICAL.items()}
-
-    normalized: Dict[str, Any] = {}
-    for key, value in proposal.items():
-        canonical = lower_map.get(key.lower().replace(" ", "_"), key)
-        normalized[canonical] = value
-
-    # Canonicaliser parameter_specs et aliases de clés
-    if isinstance(normalized.get("parameter_specs"), dict):
-        normalized_specs: Dict[str, Any] = {}
-        for param_name, raw_spec in normalized["parameter_specs"].items():
-            if not isinstance(raw_spec, dict):
-                normalized_specs[param_name] = raw_spec
-                continue
-            spec_lower = {
-                str(k).strip().lower().replace(" ", "_"): v
-                for k, v in raw_spec.items()
-            }
-            normalized_specs[param_name] = {
-                "min": spec_lower.get("min", spec_lower.get("min_val", spec_lower.get("min_value"))),
-                "max": spec_lower.get("max", spec_lower.get("max_val", spec_lower.get("max_value"))),
-                "default": spec_lower.get("default"),
-                "type": spec_lower.get("type", spec_lower.get("param_type")),
-                "step": spec_lower.get("step"),
-            }
-        normalized["parameter_specs"] = normalized_specs
-
-    # Normaliser change_type (certains LLM retournent "logic|params|both")
-    if "change_type" in normalized:
-        normalized["change_type"] = _normalize_change_type(
-            normalized.get("change_type", "")
-        )
-    else:
-        normalized["change_type"] = "logic"
-
-    if "hypothesis" not in normalized:
-        normalized["hypothesis"] = ""
-
-    return normalized
-
-
-def _flatten_nested_logic(val: Any) -> str:
-    """Flatten a nested dict/list logic field into a plain string.
-
-    LLMs sometimes output structures like:
-      {"cross_any(close, donchian.middle) or adx < 25": {"description": "...", "indicators": [...]}}
-    or nested "logic_expression" keys repeated multiple times.
-    This extracts the meaningful rule as a plain string.
-    """
-    if isinstance(val, str):
-        return val
-    if isinstance(val, list):
-        return " AND ".join(str(item) for item in val if item)
-    if not isinstance(val, dict):
-        return str(val)
-
-    # Strategy 1: look for a "description" key anywhere in the nested structure
-    desc = val.get("description", "")
-    if isinstance(desc, str) and desc.strip():
-        return desc.strip()
-
-    # Strategy 2: if the dict has logic-like keys (conditions as keys), take the first one
-    # e.g. {"close > bollinger.upper AND rsi > 50": {...}}
-    for key in val:
-        if key in ("logic_expression", "indicators", "description"):
-            continue
-        # The key itself is likely the logic expression
-        inner = val[key]
-        if isinstance(inner, dict):
-            inner_desc = inner.get("description", "")
-            if isinstance(inner_desc, str) and inner_desc.strip():
-                return inner_desc.strip()
-        # Fall back to using the key as the logic string
-        return str(key).strip()
-
-    # Strategy 3: recursively flatten the first nested dict value
-    for key, inner in val.items():
-        if isinstance(inner, dict):
-            result = _flatten_nested_logic(inner)
-            if result:
-                return result
-
-    # Last resort: serialize to compact string
-    return json.dumps(val, ensure_ascii=False)[:200]
-
-
-def _looks_pathological_param_name(name: str) -> bool:
-    """Détecte les noms de paramètres manifestement dégénérés produits par un LLM."""
-    candidate = str(name or "").strip().lower()
-    if not candidate:
-        return True
-    if len(candidate) > 64:
-        return True
-    if re.search(r"([^_]+(?:_[^_]+)*)_(?:\1){1,}$", candidate):
-        return True
-    chunks = [part for part in candidate.split("_") if part]
-    if len(chunks) >= 6:
-        seen = set()
-        duplicate_count = 0
-        for chunk in chunks:
-            if chunk in seen:
-                duplicate_count += 1
-            else:
-                seen.add(chunk)
-        if duplicate_count >= 3:
-            return True
-    return False
-
-
-def _sanitize_param_mapping(raw: Any) -> Dict[str, Any]:
-    """Conserve uniquement les paramètres au nom raisonnable."""
-    if not isinstance(raw, dict):
-        return {}
-    cleaned: Dict[str, Any] = {}
-    for key, value in raw.items():
-        if not isinstance(key, str):
-            continue
-        param_name = key.strip()
-        if not param_name or _looks_pathological_param_name(param_name):
-            continue
-        cleaned[param_name] = value
-    return cleaned
-
-
-def _sanitize_proposal_payload(
-    proposal: Dict[str, Any],
-    *,
-    available_indicators: List[str],
-    objective: str = "",
-    direction_constraint: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Nettoie/sauve une proposition LLM sans relâcher le contrat final."""
-    if not isinstance(proposal, dict):
-        return {}
-
-    allowed = {
-        "strategy_name",
-        "hypothesis",
-        "change_type",
-        "indicator_override_reason",
-        "used_indicators",
-        "indicator_params",
-        "entry_long_logic",
-        "entry_short_logic",
-        "exit_logic",
-        "risk_management",
-        "default_params",
-        "parameter_specs",
-        "direction_constraint",
-    }
-    cleaned: Dict[str, Any] = {
-        k: v for k, v in proposal.items() if k in allowed
-    }
-
-    # Fallbacks champs fréquents
-    if not cleaned.get("entry_long_logic"):
-        cleaned["entry_long_logic"] = str(
-            proposal.get("long_logic")
-            or proposal.get("long_entry")
-            or proposal.get("long")
-            or ""
-        ).strip()
-    if not cleaned.get("entry_short_logic"):
-        cleaned["entry_short_logic"] = str(
-            proposal.get("short_logic")
-            or proposal.get("short_entry")
-            or proposal.get("short")
-            or ""
-        ).strip()
-    if not cleaned.get("exit_logic"):
-        cleaned["exit_logic"] = "sortie sur signal inverse"
-
-    if not cleaned.get("risk_management"):
-        risk_raw = proposal.get("risk") or proposal.get("risk_rules")
-        if isinstance(risk_raw, (dict, list)):
-            cleaned["risk_management"] = json.dumps(risk_raw, ensure_ascii=False)
-        else:
-            cleaned["risk_management"] = str(risk_raw or "ATR stop/take-profit")
-
-    # Indicateurs: normalisation + filtrage registre
-    known = {str(x or "").strip().lower() for x in available_indicators if str(x or "").strip()}
-    objective_locked_indicators = _extract_objective_indicator_names(
-        objective,
-        available_indicators=available_indicators,
-    )
-    used = cleaned.get("used_indicators", [])
-    normalized_used: List[str] = []
-    if isinstance(used, list):
-        for item in used:
-            ind = _canonicalize_indicator_name(item, known=known)
-            if ind and ind not in normalized_used:
-                normalized_used.append(ind)
-    if not normalized_used:
-        if objective_locked_indicators:
-            normalized_used = list(objective_locked_indicators)
-        else:
-            normalized_used = ["atr"] if "atr" in known else sorted(known)[:2]
-    cleaned["used_indicators"] = normalized_used
-
-    # Params sécurisés (diagnostics ruine/no-trades)
-    default_params = _sanitize_param_mapping(cleaned.get("default_params"))
-    default_params["leverage"] = min(2, max(1, int(default_params.get("leverage", 1) or 1)))
-    default_params.setdefault("stop_atr_mult", 1.5)
-    default_params.setdefault("tp_atr_mult", 3.0)
-    default_params.setdefault("warmup", 50)
-    cleaned["default_params"] = default_params
-
-    specs = _sanitize_param_mapping(cleaned.get("parameter_specs"))
-    if "leverage" not in specs:
-        specs["leverage"] = {"min": 1, "max": 2, "default": default_params["leverage"], "type": "int", "step": 1}
-    if "stop_atr_mult" not in specs:
-        specs["stop_atr_mult"] = {"min": 1.0, "max": 2.0, "default": default_params["stop_atr_mult"], "type": "float", "step": 0.1}
-    if "tp_atr_mult" not in specs:
-        specs["tp_atr_mult"] = {"min": 2.0, "max": 4.5, "default": default_params["tp_atr_mult"], "type": "float", "step": 0.1}
-    cleaned["parameter_specs"] = specs
-
-    cleaned["change_type"] = _normalize_change_type(cleaned.get("change_type", "logic"))
-    cleaned["hypothesis"] = str(cleaned.get("hypothesis", "") or "").strip()
-    if not cleaned["hypothesis"]:
-        cleaned["hypothesis"] = "Ajustement structurel basé sur le diagnostic précédent."
-    raw_override_reason = str(
-        cleaned.get("indicator_override_reason", "") or ""
-    ).strip()
-
-    cleaned["strategy_name"] = str(cleaned.get("strategy_name", "builder_strategy") or "builder_strategy").strip()
-    effective_direction = str(
-        direction_constraint or _infer_direction_constraint_from_objective(objective)
-    ).strip().lower()
-    if effective_direction not in {"long_only", "short_only", "long_short"}:
-        effective_direction = "long_short"
-    cleaned["direction_constraint"] = effective_direction
-
-    if objective_locked_indicators:
-        objective_set = set(objective_locked_indicators)
-        proposal_indicators = _normalize_required_indicator_names(
-            cast(Optional[List[str]], cleaned.get("used_indicators"))
-        )
-        added = [ind for ind in proposal_indicators if ind not in objective_set]
-        removed = [ind for ind in objective_locked_indicators if ind not in set(proposal_indicators)]
-        allows_semi_open_override = (
-            cleaned["change_type"] in {"logic", "both"}
-            and len(proposal_indicators) <= max(1, len(objective_locked_indicators) + 1)
-            and ((len(added) == 1 and len(removed) == 0) or (len(added) == 1 and len(removed) == 1))
-        )
-        if not proposal_indicators:
-            cleaned["used_indicators"] = list(objective_locked_indicators)
-            cleaned.pop("indicator_override_reason", None)
-        elif not added and not removed:
-            cleaned["used_indicators"] = proposal_indicators
-            cleaned.pop("indicator_override_reason", None)
-        elif allows_semi_open_override:
-            cleaned["used_indicators"] = proposal_indicators
-            cleaned["indicator_override_reason"] = (
-                raw_override_reason
-                or _build_indicator_override_reason(
-                    objective_locked_indicators,
-                    proposal_indicators,
-                )
-            )
-        else:
-            cleaned["used_indicators"] = list(objective_locked_indicators)
-            cleaned.pop("indicator_override_reason", None)
-    elif raw_override_reason:
-        cleaned["indicator_override_reason"] = raw_override_reason
-    else:
-        cleaned.pop("indicator_override_reason", None)
-
-    # Flatten nested JSON in logic fields: LLMs sometimes output dicts/lists
-    # instead of plain strings for entry/exit logic (e.g. nested logic_expression).
-    for key in ("entry_long_logic", "entry_short_logic", "exit_logic"):
-        val = cleaned.get(key, "")
-        if isinstance(val, dict):
-            # Extract the first key or description from the nested dict
-            val = _flatten_nested_logic(val)
-        elif isinstance(val, list):
-            # Join list items into a single string
-            val = " AND ".join(str(item) for item in val if item)
-        cleaned[key] = str(val or "").strip()
-
-    # Scrub proposal logic fields: rewrite pandas idioms into numpy/vectorized hints.
-    # This catches cases where the LLM embeds .iloc / df['signal'] / .rolling in
-    # natural-language logic descriptions, which later leak into code generation.
-    _PROPOSAL_SCRUB_PATTERNS = [
-        (re.compile(r"\.iloc\b"), " (use numpy boolean indexing)"),
-        (re.compile(r"\.loc\b"), " (use numpy boolean indexing)"),
-        (re.compile(r"\.rolling\b"), " (pre-computed by indicator)"),
-        (re.compile(r"\.shift\b"), " (use np.roll)"),
-        (re.compile(r"\.ewm\b"), " (pre-computed by indicator)"),
-        (re.compile(r"df\s*\[\s*['\"]signal['\"]\s*\]"), "signals array"),
-    ]
-    for key in ("entry_long_logic", "entry_short_logic", "exit_logic"):
-        val = cleaned.get(key, "")
-        if not isinstance(val, str):
-            continue
-        for pat, repl in _PROPOSAL_SCRUB_PATTERNS:
-            val = pat.sub(repl, val)
-        cleaned[key] = val
-
-    if effective_direction == "long_only":
-        cleaned["entry_short_logic"] = ""
-    elif effective_direction == "short_only":
-        cleaned["entry_long_logic"] = ""
-
-    return cleaned
-
-
-def _is_empty_proposal(proposal: Dict[str, Any]) -> bool:
-    """Vérifie si une proposition LLM est vide ou inutilisable."""
-    if not proposal:
-        return True
-    hyp = str(proposal.get("hypothesis", "")).strip()
-    inds = proposal.get("used_indicators", [])
-    if not hyp or hyp in ("—", "-", "N/A", ""):
-        return True
-    if not inds:
-        return True
-    return False
-
-
-def _normalize_change_type(change_type: Any) -> str:
-    """Normalise le type de changement dans {logic, params, both, accept}."""
-    raw = str(change_type or "").strip().lower()
-    if raw in {"logic", "params", "both", "accept"}:
-        return raw
-    if "param" in raw:
-        return "params"
-    if "logic" in raw:
-        return "logic"
-    if "accept" in raw:
-        return "accept"
-    return "logic"
-
-
-def _dedupe_preserve_order(values: List[Any]) -> List[Any]:
-    deduped: List[Any] = []
-    for value in values:
-        if value not in deduped:
-            deduped.append(value)
-    return deduped
-
-
-def _coerce_builder_sweep_value(value: Any, param_type: str) -> Any:
-    normalized_type = str(param_type or "").strip().lower()
-    if normalized_type == "bool":
-        return bool(value)
-    numeric = float(value)
-    if normalized_type == "int":
-        return int(round(numeric))
-    return round(numeric, 6)
-
-
-def _build_builder_sweep_values(
-    param_name: str,
-    default_value: Any,
-    spec: Dict[str, Any],
-) -> List[Any]:
-    param_type = str(spec.get("type", "") or "").strip().lower()
-    if param_name in _BUILDER_SWEEP_EXCLUDED_PARAMS:
-        return [default_value]
-
-    if param_type == "bool":
-        return _dedupe_preserve_order([bool(default_value), not bool(default_value)])
-
-    if param_type not in {"int", "float"}:
-        return [default_value]
-
-    try:
-        min_v = float(spec.get("min"))  # type: ignore[arg-type]
-        max_v = float(spec.get("max"))  # type: ignore[arg-type]
-    except (ValueError, TypeError):
-        return [default_value]
-
-    if min_v > max_v:
-        return [default_value]
-
-    try:
-        default_numeric = float(
-            default_value if default_value is not None else spec.get("default")  # type: ignore[arg-type]
-        )
-    except (ValueError, TypeError):
-        default_numeric = float(spec.get("default", min_v) or min_v)  # type: ignore[arg-type]
-
-    default_numeric = min(max(default_numeric, min_v), max_v)
-
-    step_numeric: Optional[float] = None
-    if spec.get("step") is not None:
-        try:
-            step_numeric = float(spec.get("step"))  # type: ignore[arg-type]
-        except (ValueError, TypeError):
-            step_numeric = None
-        if step_numeric is not None and step_numeric <= 0:
-            step_numeric = None
-
-    if step_numeric is not None:
-        raw_values = [
-            default_numeric,
-            max(min_v, default_numeric - step_numeric),
-            min(max_v, default_numeric + step_numeric),
-        ]
-    else:
-        raw_values = [default_numeric, min_v, max_v]
-
-    coerced = _dedupe_preserve_order(
-        [
-            _coerce_builder_sweep_value(value, param_type)
-            for value in raw_values
-        ]
-    )
-    return coerced[:3] if coerced else [default_value]
-
-
-def _build_builder_sweep_plan(proposal: Dict[str, Any]) -> Dict[str, Any]:
-    change_type = _normalize_change_type(proposal.get("change_type", "logic"))
-    if change_type == "accept":
-        return {
-            "enabled": False,
-            "reason": "accept_change_type",
-            "param_grid": [],
-            "parameter_values": {},
-            "param_names": [],
-        }
-
-    default_params = _sanitize_param_mapping(proposal.get("default_params"))
-    parameter_specs = _sanitize_param_mapping(proposal.get("parameter_specs"))
-    if not default_params or not parameter_specs:
-        return {
-            "enabled": False,
-            "reason": "missing_parameter_specs",
-            "param_grid": [],
-            "parameter_values": {},
-            "param_names": [],
-        }
-
-    sweep_candidates: List[tuple[str, List[Any]]] = []
-    for param_name, spec in parameter_specs.items():
-        if not isinstance(spec, dict):
-            continue
-        default_value = default_params.get(param_name, spec.get("default"))
-        values = _build_builder_sweep_values(param_name, default_value, spec)
-        if len(values) > 1:
-            sweep_candidates.append((param_name, values))
-
-    if not sweep_candidates:
-        return {
-            "enabled": False,
-            "reason": "single_point_only",
-            "param_grid": [],
-            "parameter_values": {},
-            "param_names": [],
-        }
-
-    selected: List[tuple[str, List[Any]]] = []
-    current_combinations = 1
-    for param_name, values in sweep_candidates[:_BUILDER_SWEEP_MAX_PARAMS]:
-        limited_values = list(values[:3])
-        while (
-            len(limited_values) > 1
-            and current_combinations * len(limited_values) > _BUILDER_SWEEP_MAX_COMBINATIONS
-        ):
-            limited_values = limited_values[:-1]
-        if len(limited_values) <= 1:
-            continue
-        selected.append((param_name, limited_values))
-        current_combinations *= len(limited_values)
-
-    if not selected:
-        return {
-            "enabled": False,
-            "reason": "max_combination_budget",
-            "param_grid": [],
-            "parameter_values": {},
-            "param_names": [],
-        }
-
-    param_names = [param_name for param_name, _ in selected]
-    parameter_values = {param_name: list(values) for param_name, values in selected}
-    param_grid: List[Dict[str, Any]] = []
-    for combo in itertools.product(*(values for _, values in selected)):
-        params = dict(default_params)
-        for param_name, value in zip(param_names, combo):
-            params[param_name] = value
-        param_grid.append(params)
-
-    return {
-        "enabled": len(param_grid) > 1,
-        "reason": "" if len(param_grid) > 1 else "single_point_only",
-        "param_grid": param_grid[:_BUILDER_SWEEP_MAX_COMBINATIONS],
-        "parameter_values": parameter_values,
-        "param_names": param_names,
-    }
-
-
-def _build_deterministic_proposal_fallback(
-    *,
-    objective: str,
-    available_indicators: List[str],
-    last_iteration: Optional["BuilderIteration"] = None,
-) -> Dict[str, Any]:
-    """Construit une proposition contractuelle minimale quand le LLM dérape."""
-    objective_indicators = _extract_objective_indicator_names(
-        objective,
-        available_indicators=available_indicators,
-    )
-    known = [x.strip().lower() for x in available_indicators if isinstance(x, str) and x.strip()]
-    if objective_indicators:
-        used = objective_indicators[:5]
-    else:
-        preferred = [
-            x for x in ["rsi", "ema", "atr", "bollinger", "supertrend", "adx", "stochastic"]
-            if x in known
-        ]
-        used = preferred[:3] if len(preferred) >= 3 else (preferred or known[:2] or ["atr"])
-
-    change_type = "logic"
-    if last_iteration and (last_iteration.diagnostic_category or "").strip().lower() in {"approaching_target", "stable_positive"}:
-        change_type = "params"
-
-    return {
-        "strategy_name": "builder_strategy",
-        "hypothesis": (
-            "Fallback contractuel: proposition générée automatiquement pour maintenir "
-            "la progression quand la sortie LLM n'est pas exploitable."
-        ),
-        "change_type": change_type,
-        "used_indicators": used,
-        "indicator_override_reason": "",
-        "entry_long_logic": "Entrée long si momentum haussier confirmé et risque contrôlé.",
-        "entry_short_logic": "Entrée short si momentum baissier confirmé et risque contrôlé.",
-        "exit_logic": "Sortie sur signal inverse ou invalidation momentum.",
-        "risk_management": "Leverage modéré, stop ATR, take-profit ATR.",
-        "default_params": {
-            "leverage": 1,
-            "stop_atr_mult": 1.5,
-            "tp_atr_mult": 3.0,
-            "warmup": 50,
-        },
-        "parameter_specs": {
-            "leverage": {"min": 1, "max": 2, "default": 1, "type": "int", "step": 1},
-            "stop_atr_mult": {"min": 1.0, "max": 2.0, "default": 1.5, "type": "float", "step": 0.1},
-            "tp_atr_mult": {"min": 2.0, "max": 4.5, "default": 3.0, "type": "float", "step": 0.1},
-        },
-    }
-
-
-def _policy_change_type_override(
-    *,
-    session: "BuilderSession",
-    last_iteration: Optional["BuilderIteration"],
-) -> Optional[str]:
-    """Force un type de modification cohérent avec le diagnostic récent.
-
-    Objectif: éviter les oscillations `both` quand le problème est clairement
-    structurel (ruined/no_trades/etc.).
-    """
-    if last_iteration is None:
-        return None
-
-    cat = str(getattr(last_iteration, "diagnostic_category", "") or "").strip().lower()
-    sev = str(
-        (getattr(last_iteration, "diagnostic_detail", {}) or {}).get("severity", "")
-    ).strip().lower()
-
-    # Pattern oscillant fréquent: ruined <-> no_trades
-    recent = [
-        str(getattr(it, "diagnostic_category", "") or "").strip().lower()
-        for it in (session.iterations[-3:] if session.iterations else [])
-        if str(getattr(it, "diagnostic_category", "") or "").strip()
-    ]
-    if len(recent) >= 2 and set(recent[-2:]).issubset({"ruined", "no_trades"}):
-        return "logic"
-
-    logic_cats = {
-        "ruined",
-        "no_trades",
-        "overtrading",
-        "wrong_direction",
-        "high_drawdown",
-        "needs_work",
-    }
-    param_cats = {"approaching_target", "marginal", "target_reached"}
-
-    if cat in logic_cats:
-        return "logic"
-    if cat in param_cats and sev in {"info", "success"}:
-        return "params"
-    return None
 
 
 def _extract_phase_feedback(
@@ -3132,298 +2276,6 @@ def _check_auto_accept(
     return None
 
 
-def _previous_iteration_indicators(
-    last_iteration: Optional["BuilderIteration"],
-) -> tuple[str, ...]:
-    """Retourne les indicateurs de l'itération précédente depuis son code validé."""
-    if last_iteration is None or not getattr(last_iteration, "code", ""):
-        return tuple()
-    return _extract_required_indicators_signature(last_iteration.code)
-
-
-def _requires_indicator_exploration(
-    last_iteration: Optional["BuilderIteration"],
-) -> bool:
-    """Indique si la prochaine proposition doit explorer de nouveaux indicateurs."""
-    if last_iteration is None:
-        return False
-
-    stag = (getattr(last_iteration, "phase_feedback", {}) or {}).get("stagnation", {})
-    if bool(stag.get("identical_metrics")):
-        return True
-
-    cat = str(getattr(last_iteration, "diagnostic_category", "") or "").strip().lower()
-    return cat in {
-        "ruined",
-        "no_trades",
-        "overtrading",
-        "wrong_direction",
-        "high_drawdown",
-        "needs_work",
-    }
-
-
-def _should_enable_stagnation_branching(
-    last_iteration: Optional["BuilderIteration"],
-) -> bool:
-    """N'ouvre des branches supplémentaires qu'après vraie stagnation."""
-    if last_iteration is None:
-        return False
-    stagnation = (getattr(last_iteration, "phase_feedback", {}) or {}).get("stagnation", {})
-    return bool(stagnation.get("identical_metrics")) and _requires_indicator_exploration(last_iteration)
-
-
-def _build_stagnation_branch_specs(
-    previous_indicators: tuple[str, ...],
-) -> List[Dict[str, str]]:
-    previous_text = ", ".join(previous_indicators) if previous_indicators else "the previous indicator set"
-    return [
-        {
-            "label": "keep",
-            "directive": (
-                "STAGNATION BRANCH: KEEP_SET. Reuse exactly the previous indicator set "
-                f"({previous_text}) but materially change the logic, filters, sequencing, or regime interpretation. "
-                "Do not add or remove indicators in this branch."
-            ),
-        },
-        {
-            "label": "add_one",
-            "directive": (
-                "STAGNATION BRANCH: ADD_ONE. Start from the previous indicator set "
-                f"({previous_text}) and add exactly one new indicator from the available list. "
-                "The added indicator must address the current failure mode."
-            ),
-        },
-        {
-            "label": "remove_or_replace",
-            "directive": (
-                "STAGNATION BRANCH: REMOVE_OR_REPLACE. Starting from the previous indicator set "
-                f"({previous_text}), either remove one weak/noisy indicator or replace one previous indicator "
-                "with a more relevant one. A smaller set is allowed if it improves clarity."
-            ),
-        },
-    ]
-
-
-def _is_logic_like_change_type(change_type: Any) -> bool:
-    return _normalize_change_type(change_type) in {"logic", "both"}
-
-
-def _should_trip_logic_stagnation_circuit(
-    last_iteration: Optional["BuilderIteration"],
-    iteration: "BuilderIteration",
-) -> bool:
-    if last_iteration is None:
-        return False
-    current_stagnation = (getattr(iteration, "phase_feedback", {}) or {}).get("stagnation", {})
-    previous_stagnation = (getattr(last_iteration, "phase_feedback", {}) or {}).get("stagnation", {})
-    if not bool(current_stagnation.get("identical_metrics")):
-        return False
-    if not bool(previous_stagnation.get("identical_metrics")):
-        return False
-    if not _is_logic_like_change_type(iteration.change_type):
-        return False
-    if not _is_logic_like_change_type(getattr(last_iteration, "change_type", "")):
-        return False
-    return True
-
-
-def _select_best_branch_candidate(
-    outcomes: List[Dict[str, Any]],
-) -> Dict[str, Any]:
-    successful = [outcome for outcome in outcomes if not outcome.get("error") and outcome.get("bt_result") is not None]
-    if not successful:
-        return outcomes[0] if outcomes else {}
-
-    branch_preference = {
-        "add_one": 2,
-        "remove_or_replace": 1,
-        "keep": 0,
-    }
-
-    def _outcome_metrics(outcome: Dict[str, Any]) -> Dict[str, Any]:
-        metrics = outcome.get("metrics")
-        if isinstance(metrics, dict):
-            return metrics
-        bt_result = outcome.get("bt_result")
-        bt_metrics = getattr(bt_result, "metrics", None)
-        return bt_metrics if isinstance(bt_metrics, dict) else {}
-
-    successful.sort(
-        key=lambda outcome: (
-            *_builder_iteration_selection_key(
-                _outcome_metrics(outcome),
-                is_fallback=bool(outcome.get("is_fallback", False)),
-                target_sharpe=float(outcome.get("target_sharpe", 1.0) or 1.0),
-            ),
-            branch_preference.get(str(outcome.get("branch_label", "")), 0),
-        ),
-        reverse=True,
-    )
-    return successful[0]
-
-
-def _proposal_reuses_previous_indicator_set(
-    proposal: Dict[str, Any],
-    previous_indicators: tuple[str, ...],
-) -> bool:
-    """Retourne True si la proposition recycle exactement le même set d'indicateurs."""
-    if not previous_indicators:
-        return False
-    current = {
-        str(ind).strip().lower()
-        for ind in proposal.get("used_indicators", [])
-        if str(ind).strip()
-    }
-    previous = {str(ind).strip().lower() for ind in previous_indicators if str(ind).strip()}
-    return bool(current) and current == previous
-
-
-def _is_placeholder_text(value: Any) -> bool:
-    """Détecte un champ placeholder/générique au lieu d'une vraie consigne."""
-    text = str(value or "").strip().lower()
-    if text in _PROPOSAL_PLACEHOLDER_VALUES:
-        return True
-    return (
-        "placeholder" in text
-        or text.startswith("example")
-        or text.startswith("exemple")
-        or "to achieve and why" in text
-    )
-
-
-def _proposal_issues(proposal: Dict[str, Any]) -> List[str]:
-    """Retourne la liste des raisons rendant une proposition invalide."""
-    issues: List[str] = []
-    if not proposal:
-        issues.append("empty_payload")
-        return issues
-
-    allowed_top_keys = {
-        "strategy_name",
-        "hypothesis",
-        "change_type",
-        "indicator_override_reason",
-        "used_indicators",
-        "indicator_params",
-        "entry_long_logic",
-        "entry_short_logic",
-        "exit_logic",
-        "risk_management",
-        "default_params",
-        "parameter_specs",
-        "direction_constraint",
-    }
-    required_top_keys = set(_BUILDER_PROPOSAL_REQUIRED_KEYS)
-
-    unknown_keys = sorted(set(proposal.keys()) - allowed_top_keys)
-    if unknown_keys:
-        issues.append("json_additional_properties_root")
-
-    missing_keys = sorted(k for k in required_top_keys if k not in proposal)
-    if missing_keys:
-        issues.append("json_missing_required")
-
-    hyp = str(proposal.get("hypothesis", "")).strip()
-    inds = proposal.get("used_indicators", [])
-    if not hyp or hyp in ("—", "-", "N/A", ""):
-        issues.append("missing_hypothesis")
-    if not isinstance(inds, list) or not inds:
-        issues.append("missing_used_indicators")
-
-    critical_fields = (
-        "hypothesis",
-        "entry_long_logic",
-        "exit_logic",
-        "risk_management",
-    )
-    for key in critical_fields:
-        if _is_placeholder_text(proposal.get(key, "")):
-            issues.append(f"placeholder_{key}")
-
-    default_params = proposal.get("default_params")
-    if default_params is not None and not isinstance(default_params, dict):
-        issues.append("default_params_not_dict")
-
-    parameter_specs = proposal.get("parameter_specs")
-    if parameter_specs is not None and not isinstance(parameter_specs, dict):
-        issues.append("parameter_specs_not_dict")
-    elif isinstance(parameter_specs, dict):
-        allowed_spec_keys = {"min", "max", "default", "type", "step"}
-        for param_name, spec in parameter_specs.items():
-            if not isinstance(spec, dict):
-                issues.append("parameter_spec_item_not_dict")
-                continue
-            extra_spec_keys = set(spec.keys()) - allowed_spec_keys
-            if extra_spec_keys:
-                issues.append("parameter_spec_additional_properties")
-            # strict minimum schema
-            for required in ("min", "max", "default", "type"):
-                if spec.get(required) is None:
-                    issues.append("parameter_spec_missing_required")
-                    break
-            ptype = str(spec.get("type", "")).strip().lower()
-            if ptype and ptype not in {"int", "float", "bool"}:
-                issues.append("parameter_spec_invalid_type")
-            try:
-                min_v = float(spec.get("min"))  # type: ignore[arg-type]
-                max_v = float(spec.get("max"))  # type: ignore[arg-type]
-                if min_v > max_v:
-                    issues.append("parameter_spec_min_gt_max")
-            except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-                issues.append("parameter_spec_non_numeric_bounds")
-            if "step" in spec and spec.get("step") is not None:
-                try:
-                    step = float(spec.get("step"))  # type: ignore[arg-type]
-                    if step <= 0:
-                        issues.append("parameter_spec_invalid_step")
-                except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-                    issues.append("parameter_spec_invalid_step")
-
-    ct = _normalize_change_type(proposal.get("change_type", "logic"))
-    if ct not in ("logic", "params", "both", "accept"):
-        issues.append("invalid_change_type")
-
-    # Dédupliquer en conservant l'ordre
-    dedup: List[str] = []
-    for issue in issues:
-        if issue not in dedup:
-            dedup.append(issue)
-    return dedup
-
-
-def _proposal_has_placeholder_fields(proposal: Dict[str, Any]) -> bool:
-    """Détecte les placeholders sur les champs critiques d'une proposition."""
-    critical_fields = (
-        "hypothesis",
-        "entry_long_logic",
-        "entry_short_logic",
-        "exit_logic",
-        "risk_management",
-    )
-    for key in critical_fields:
-        if _is_placeholder_text(proposal.get(key, "")):
-            return True
-    return False
-
-
-def _is_invalid_proposal(proposal: Dict[str, Any]) -> bool:
-    """Validation minimale d'une proposition avant phase code."""
-    return bool(_proposal_issues(proposal))
-
-
-def _proposal_error_code(issues: List[str]) -> str:
-    """Mappe les issues de proposition vers un code d'erreur stable."""
-    if not issues:
-        return ""
-    joined = "|".join(issues)
-    if "json_" in joined or "parameter_spec_" in joined:
-        return ERR_JSON
-    if "parameter" in joined or "default_params" in joined:
-        return ERR_PARAM
-    return ERR_DSL
-
-
 def _build_code_from_proposal_dsl(proposal: Dict[str, Any]) -> str:
     """Safe path déterministe JSON+DSL -> template Python.
 
@@ -3464,9 +2316,7 @@ def _coerce_and_validate_signals_runtime(signals: Any, df: pd.DataFrame) -> pd.S
 
     unique = set(np.unique(np.asarray(series.values)).tolist())  # type: ignore[call-overload]
     if not unique.issubset({-1.0, 0.0, 1.0}):
-        raise ValueError(
-            _err(ERR_SIG, f"Valeurs signaux hors contrat détectées: {sorted(unique)}")
-        )
+        raise ValueError(_err(ERR_SIG, f"Valeurs signaux hors contrat détectées: {sorted(unique)}"))
 
     return series
 
@@ -3529,103 +2379,10 @@ def _classify_raw_response(text: str) -> str:
     return "text"
 
 
-def _proposal_has_meaningful_param_delta(
-    previous_code: str,
-    proposal: Dict[str, Any],
-) -> bool:
-    """Indique si une proposition params-only change réellement default_params."""
-    previous_params = _sanitize_param_mapping(
-        _extract_default_params_signature(previous_code)
-    )
-    current_params = _sanitize_param_mapping(proposal.get("default_params"))
-    if not current_params:
-        return False
-    return current_params != previous_params
-
-
-def _proposal_changes_indicator_set_in_params_mode(
-    previous_code: str,
-    proposal: Dict[str, Any],
-) -> bool:
-    """Détecte une proposition params-only qui change en réalité les indicateurs."""
-    previous_indicators = {
-        str(ind).strip().lower()
-        for ind in _extract_required_indicators_signature(previous_code)
-        if str(ind).strip()
-    }
-    current_indicators = {
-        str(ind).strip().lower()
-        for ind in proposal.get("used_indicators", [])
-        if str(ind).strip()
-    }
-    if not previous_indicators or not current_indicators:
-        return False
-    return current_indicators != previous_indicators
-
-
-def _params_only_contract_respected(previous_code: str, new_code: str) -> tuple[bool, str]:
-    """Vérifie qu'une itération params-only n'a pas modifié la logique."""
-    prev_inds = _extract_required_indicators_signature(previous_code)
-    new_inds = _extract_required_indicators_signature(new_code)
-    if prev_inds and new_inds and prev_inds != new_inds:
-        return (
-            False,
-            f"required_indicators modifiés: avant={prev_inds} après={new_inds}",
-        )
-
-    prev_sig = _extract_generate_signals_signature(previous_code)
-    new_sig = _extract_generate_signals_signature(new_code)
-    if prev_sig and new_sig and prev_sig != new_sig:
-        return (
-            False,
-            "generate_signals modifié alors que change_type=params",
-        )
-
-    return True, ""
-
-
-def _format_python_dict_literal(data: Dict[str, Any]) -> str:
-    """Formate un dict Python de manière stable pour insertion dans le code."""
-    return pprint.pformat(data, width=88, sort_dicts=True, compact=False)
-
-
-def _rewrite_default_params_from_proposal(
-    previous_code: str,
-    proposal: Dict[str, Any],
-) -> Optional[str]:
-    """Réécrit uniquement default_params dans un code existant (mode params-only)."""
-    default_params = proposal.get("default_params")
-    if not isinstance(default_params, dict) or not default_params:
-        return None
-
-    pattern = re.compile(
-        r"(?ms)^(\s*)(def\s+default_params\s*\(\s*self\s*\)\s*(?:->\s*[^:\n]+)?\s*:)\n"
-        r".*?(?=^\1(?:def\s+|@property)|^\s*class\s+|\Z)"
-    )
-    match = pattern.search(previous_code)
-    if not match:
-        return None
-
-    indent = match.group(1)
-    def_header = match.group(2)
-    body_indent = indent + "    "
-    literal = _format_python_dict_literal(default_params)
-    literal_lines = literal.splitlines() or ["{}"]
-
-    if len(literal_lines) == 1:
-        return_stmt = f"{body_indent}return {literal_lines[0]}\n"
-    else:
-        return_stmt = f"{body_indent}return {literal_lines[0]}\n"
-        return_stmt += "".join(f"{body_indent}{line}\n" for line in literal_lines[1:])
-
-    replacement = f"{indent}{def_header}\n{return_stmt}"
-
-    patched = previous_code[:match.start()] + replacement + previous_code[match.end():]
-    return patched
-
 # ---------------------------------------------------------------------------
 # Strategy Builder
 # ---------------------------------------------------------------------------
+
 
 class StrategyBuilder:
     """
@@ -3681,6 +2438,11 @@ class StrategyBuilder:
             for key, value in dict(phase_llm_clients or {}).items()
             if str(key or "").strip() and value is not None
         }
+        self.builder_execution_mode: str = "mono_single_llm"
+        self.orchestration_mode: str = "single_llm"
+        self.multi_llm_profile: str = ""
+        self.multi_llm_role_overrides: Dict[str, Any] = {}
+        self.multi_llm_assignments: List[Dict[str, Any]] = []
         if isinstance(llm_topology_config, dict):
             llm_topology_config = LLMTopologyConfig.from_dict(llm_topology_config)
         self.llm_topology_config = llm_topology_config or build_phase1_topology(
@@ -3693,6 +2455,7 @@ class StrategyBuilder:
         # ── Politique et historique de diversité des indicateurs ──────────
         try:
             from config.indicator_history import load_policy
+
             self._indicator_policy = load_policy()
         except Exception:  # noqa: BLE001
             self._indicator_policy = {}
@@ -3769,10 +2532,8 @@ class StrategyBuilder:
     def _persist_session_strategy_code(self, session, code):
         persist_session_strategy_code(session, code)
 
-
     def _persist_runtime_checkpoint(self, session, **kwargs):
         persist_runtime_checkpoint(session, **kwargs)
-
 
     @staticmethod
     def _default_live_status(event: str) -> str:
@@ -3818,19 +2579,13 @@ class StrategyBuilder:
         iteration = int(raw_payload.pop("iteration", 0) or 0)
         phase = str(raw_payload.pop("phase", "") or "")
         branch_label = str(raw_payload.pop("branch_label", "") or "")
-        selected_branch_label = str(
-            raw_payload.pop("selected_branch_label", "") or ""
-        )
-        status = str(
-            raw_payload.pop("status", "") or self._default_live_status(event)
-        )
+        selected_branch_label = str(raw_payload.pop("selected_branch_label", "") or "")
+        status = str(raw_payload.pop("status", "") or self._default_live_status(event))
         explicit_message = str(raw_payload.pop("message", "") or "").strip()
-        session_id = str(
-            raw_payload.pop("session_id", "") or self._active_builder_session_id or ""
-        )
+        session_id = str(raw_payload.pop("session_id", "") or self._active_builder_session_id or "")
         if not session_id:
-            thought_stream = getattr(self, "_active_thought_stream", None)
-            session_id = str(getattr(thought_stream, "session_id", "") or "")
+            thought_stream = self._active_thought_stream
+            session_id = str(getattr(thought_stream, "session_id", "") or "") if thought_stream else ""
         if event == "proposal_selected" and not selected_branch_label:
             selected_branch_label = branch_label
         message = explicit_message or self._format_live_message(
@@ -3878,33 +2633,21 @@ class StrategyBuilder:
         if event == "proposal_candidate":
             proposal = dict(payload.get("proposal") or {})
             hypothesis = str(proposal.get("hypothesis", "") or "hypothese candidate")
-            return (
-                f"Proposition candidate{self._live_branch_suffix(branch_label, include_main=True)}"
-                f" - {hypothesis}"
-            )
+            return f"Proposition candidate{self._live_branch_suffix(branch_label, include_main=True)} - {hypothesis}"
         if event == "proposal_selected":
             proposal = dict(payload.get("proposal") or {})
             hypothesis = str(proposal.get("hypothesis", "") or "hypothese retenue")
             target_branch = selected_branch_label or branch_label
-            return (
-                f"Branche retenue{self._live_branch_suffix(target_branch, include_main=True)}"
-                f" - {hypothesis}"
-            )
+            return f"Branche retenue{self._live_branch_suffix(target_branch, include_main=True)} - {hypothesis}"
         if event == "phase_start":
             detail = str(payload.get("detail", "") or "").strip()
-            message = (
-                f"{self._live_phase_label(phase).capitalize()} en cours"
-                f"{self._live_branch_suffix(branch_label)}"
-            )
+            message = f"{self._live_phase_label(phase).capitalize()} en cours{self._live_branch_suffix(branch_label)}"
             if detail:
                 message += f" - {detail}"
             return message
         if event == "phase_done":
             detail = str(payload.get("detail", "") or "").strip()
-            message = (
-                f"{self._live_phase_label(phase).capitalize()} terminee"
-                f"{self._live_branch_suffix(branch_label)}"
-            )
+            message = f"{self._live_phase_label(phase).capitalize()} terminee{self._live_branch_suffix(branch_label)}"
             if phase == "backtest":
                 sharpe = payload.get("sharpe")
                 ret_pct = payload.get("total_return_pct")
@@ -3944,7 +2687,9 @@ class StrategyBuilder:
             return message
         if event == "iteration_error":
             error_text = str(payload.get("error", "") or "").strip()
-            return f"Iteration {iteration} en erreur - {error_text}" if error_text else f"Iteration {iteration} en erreur"
+            return (
+                f"Iteration {iteration} en erreur - {error_text}" if error_text else f"Iteration {iteration} en erreur"
+            )
         if event == "session_done":
             total_iterations = int(payload.get("total_iterations", 0) or 0)
             return f"Session terminee - {status} ({total_iterations} iterations)"
@@ -3954,7 +2699,7 @@ class StrategyBuilder:
         """Emet un evenement live canonique vers le terminal et l'UI."""
         message = self._build_live_event(event, **payload)
 
-        thought_stream = getattr(self, "_active_thought_stream", None)
+        thought_stream = self._active_thought_stream
         if thought_stream is not None:
             try:
                 thought_stream.consume(message)
@@ -3989,7 +2734,7 @@ class StrategyBuilder:
                     exc_info=True,
                 )
 
-        thought_stream = getattr(self, "_active_thought_stream", None)
+        thought_stream = self._active_thought_stream
         if thought_stream is None:
             return
         try:
@@ -4009,7 +2754,7 @@ class StrategyBuilder:
         detail: str = "",
         branch_label: str = "",
     ) -> None:
-        thought_stream = getattr(self, "_active_thought_stream", None)
+        thought_stream = self._active_thought_stream
         if thought_stream is None:
             return
         try:
@@ -4046,11 +2791,11 @@ class StrategyBuilder:
         chunk (scan déclenché seulement tous les ``_CHECK_EVERY`` chars).
         """
 
-        _WINDOW: int = 600       # chars inspectés à chaque scan
-        _MIN_UNIT: int = 3       # longueur min de l'unité répétée
-        _MAX_UNIT: int = 50      # longueur max
-        _THRESHOLD: int = 5      # répétitions consécutives pour déclencher
-        _CHECK_EVERY: int = 40   # déclencher le scan tous les N chars reçus
+        _WINDOW: int = 600  # chars inspectés à chaque scan
+        _MIN_UNIT: int = 3  # longueur min de l'unité répétée
+        _MAX_UNIT: int = 50  # longueur max
+        _THRESHOLD: int = 5  # répétitions consécutives pour déclencher
+        _CHECK_EVERY: int = 40  # déclencher le scan tous les N chars reçus
 
         def __init__(self) -> None:
             self._buf: List[str] = []
@@ -4067,7 +2812,7 @@ class StrategyBuilder:
             self._since_check += len(chunk)
             if self._since_check >= self._CHECK_EVERY:
                 self._since_check = 0
-                tail = "".join(self._buf)[-self._WINDOW:]
+                tail = "".join(self._buf)[-self._WINDOW :]
                 if self._detect_repetition(tail):
                     self._triggered = True
                     raise StreamAbortRequest("repetition_loop")
@@ -4086,10 +2831,7 @@ class StrategyBuilder:
                 unit = text[-unit_len:]
                 region = text[-needed:]
                 # Vérifier que toute la région est une répétition de l'unité
-                if all(
-                    region[i:i + unit_len] == unit
-                    for i in range(0, needed, unit_len)
-                ):
+                if all(region[i : i + unit_len] == unit for i in range(0, needed, unit_len)):
                     return True
             return False
 
@@ -4115,7 +2857,6 @@ class StrategyBuilder:
                 )
                 break
         return corrected
-
 
     @staticmethod
     def _resolve_phase_client_key(phase: str) -> str:
@@ -4173,14 +2914,15 @@ class StrategyBuilder:
         client_config = getattr(llm_client, "config", None)
         original_host = getattr(client_config, "ollama_host", None) if client_config else None
         route = self.llm_topology_config.resolve_builder_phase_route(
-            phase, fallback_host=original_host,
+            phase,
+            fallback_host=original_host,
         )
         if client_config is not None and route.ollama_host:
             client_config.ollama_host = route.ollama_host
 
         # Capture les référencees au moment de la définition du closure pour éviter
         # que des threads résiduels (après timeout) écrivent dans le mauvais stream.
-        _captured_ts = getattr(self, "_active_thought_stream", None)
+        _captured_ts = self._active_thought_stream
         _captured_cb = self.stream_callback
 
         # Guard de répétition : instance fraîche par appel LLM
@@ -4194,10 +2936,8 @@ class StrategyBuilder:
             msgs_ = messages if _msgs is None else _msgs
             temp_ = temperature if _temp is None else _temp
             guard_ = _rep_guard if _guard is None else _guard
-            if (
-                _captured_cb
-                or _captured_ts
-            ) and hasattr(llm_client, "chat_stream"):
+            if (_captured_cb or _captured_ts) and hasattr(llm_client, "chat_stream"):
+
                 def _on_chunk(c: str) -> None:
                     if _captured_ts is not None:
                         accepts_streaming = getattr(_captured_ts, "accepts_streaming", None)
@@ -4214,6 +2954,7 @@ class StrategyBuilder:
                             _captured_ts.stream_chunk(phase, c)
                         except Exception:  # noqa: BLE001
                             pass
+
                 return llm_client.chat_stream(
                     msgs_,
                     on_chunk=_on_chunk,
@@ -4245,7 +2986,8 @@ class StrategyBuilder:
                 if _is_interpreter_shutdown_runtime_error(exc):
                     logger.info(
                         "builder_llm_submit_aborted phase=%s label=%s reason=interpreter_shutdown",
-                        phase, label,
+                        phase,
+                        label,
                     )
                     raise KeyboardInterrupt() from exc
                 raise
@@ -4265,14 +3007,20 @@ class StrategyBuilder:
                 self._abort_active_llm_streams()
                 logger.warning(
                     "builder_llm_error phase=%s label=%s error_type=%s error=%s",
-                    phase, label, type(exc).__name__, exc,
+                    phase,
+                    label,
+                    type(exc).__name__,
+                    exc,
                 )
                 return SimpleNamespace(content="")
             except Exception as exc:  # noqa: BLE001
                 self._abort_active_llm_streams()
                 logger.error(
                     "builder_llm_unexpected_error phase=%s label=%s error=%s",
-                    phase, label, exc, exc_info=True,
+                    phase,
+                    label,
+                    exc,
+                    exc_info=True,
                 )
                 return SimpleNamespace(content="")
 
@@ -4291,8 +3039,7 @@ class StrategyBuilder:
                 phase=phase,
                 status="warning",
                 message=(
-                    f"⚡ Boucle de répétition détectée ({phase}) "
-                    "— relance correctrice avec instruction explicite"
+                    f"⚡ Boucle de répétition détectée ({phase}) — relance correctrice avec instruction explicite"
                 ),
             )
             logger.warning(
@@ -4322,19 +3069,15 @@ class StrategyBuilder:
     def create_session_id(objective: str) -> str:
         return create_session_id(objective)
 
-
     @staticmethod
     def get_session_dir(session_id: str):
         return get_session_dir(session_id)
 
-
     def _safe_save_session_summary(self, session):
         safe_save_session_summary(session)
 
-
     def _attempt_session_auto_reset(self, session, **kwargs):
         return attempt_session_auto_reset(session, **kwargs)
-
 
     # ------------------------------------------------------------------
     # Indicator ranking (shared between proposal & code phases)
@@ -4379,14 +3122,11 @@ class StrategyBuilder:
             banned_indicators=banned,
             inter_session_indicators=recent,
             inter_session_penalty=float(pol.get("previous_penalty", 0.0)),
-            inter_session_novelty_bonus=(
-                float(pol.get("novelty_bonus", 0.0)) if prefer_diversity else 0.0
-            ),
+            inter_session_novelty_bonus=(float(pol.get("novelty_bonus", 0.0)) if prefer_diversity else 0.0),
             previous_families=families,
             family_penalty=float(pol.get("family_penalty", 0.0)),
             family_bonus=float(pol.get("family_bonus", 0.0)),
         )
-
 
     # ------------------------------------------------------------------
     # LLM interactions
@@ -4403,30 +3143,22 @@ class StrategyBuilder:
         Returns:
             (proposal, feedback)
         """
-        previous_indicators = list(_previous_iteration_indicators(last_iteration))
-        diagnostic_detail = (
-            dict(last_iteration.diagnostic_detail)
-            if last_iteration is not None and last_iteration.diagnostic_detail
-            else {}
-        )
-        prefer_diversity = bool(
-            last_iteration is not None
-            and _requires_indicator_exploration(last_iteration)
-        )
+        ctx = IterationContext(last_iteration)
+        previous_indicators = list(_previous_iteration_indicators(ctx))
+        diagnostic_detail = ctx.diagnostic_detail
+        prefer_diversity = ctx.exists and _requires_indicator_exploration(ctx)
         ordered_prompt_indicators = self._rank_indicators_for_phase(
             objective=session.objective,
             diagnostic=diagnostic_detail,
             previous_indicators=previous_indicators,
-            session_seed=f"{session.session_id}:proposal:{len(session.iterations)+1}",
+            session_seed=f"{session.session_id}:proposal:{len(session.iterations) + 1}",
             prefer_diversity=prefer_diversity,
         )
 
         context = {
             "objective": session.objective,
             "available_indicators": ordered_prompt_indicators,
-            "available_indicator_guide": build_indicator_selection_guide(
-                ordered_prompt_indicators
-            ),
+            "available_indicator_guide": build_indicator_selection_guide(ordered_prompt_indicators),
             "iteration": len(session.iterations) + 1,
             "max_iterations": session.max_iterations,
             "direction_constraint": session.direction_constraint,
@@ -4443,8 +3175,8 @@ class StrategyBuilder:
             "indicator_lock_mode": str(session.indicator_lock_mode or ""),
         }
 
-        if last_iteration and last_iteration.backtest_result:
-            metrics = last_iteration.backtest_result.metrics
+        if ctx.has_backtest:
+            metrics = ctx.metrics
             context["last_metrics"] = {
                 "sharpe_ratio": metrics.get("sharpe_ratio", 0),
                 "sortino_ratio": metrics.get("sortino_ratio", 0),
@@ -4460,15 +3192,15 @@ class StrategyBuilder:
                 "avg_loss": metrics.get("avg_loss", 0),
                 "risk_reward_ratio": metrics.get("risk_reward_ratio", 0),
             }
-            context["last_code"] = last_iteration.code
-            context["last_analysis"] = last_iteration.analysis
+            context["last_code"] = ctx.code
+            context["last_analysis"] = ctx.analysis
             context["best_sharpe"] = session.best_sharpe
             if previous_indicators:
                 context["previous_indicators"] = previous_indicators
             # Diagnostic pré-calculé de la dernière itération
             if diagnostic_detail and self.ablation.is_enabled("diagnostic_context"):
                 context["diagnostic"] = diagnostic_detail
-            last_phase_feedback, last_backtest_feedback = _extract_phase_feedback(last_iteration)
+            last_backtest_feedback = ctx.backtest_feedback
             if last_backtest_feedback.get("mode") == "sweep":
                 context["last_sweep"] = {
                     "total_tested": last_backtest_feedback.get("sweep_total_tested", 0),
@@ -4478,8 +3210,7 @@ class StrategyBuilder:
                     "top_results": last_backtest_feedback.get("sweep_top_results", []),
                 }
             # Stagnation détectée : forcer le LLM à changer radicalement
-            stag = last_phase_feedback.get("stagnation") or {}
-            if stag.get("identical_metrics"):
+            if ctx.has_identical_metrics_stagnation:
                 context["stagnation_warning"] = (
                     "CRITICAL: Previous iteration produced IDENTICAL metrics. "
                     "Your changes had NO effect. You MUST change the fundamental "
@@ -4487,61 +3218,50 @@ class StrategyBuilder:
                     "or DIFFERENT strategy type (e.g. trend-following instead of "
                     "mean-reversion). Do NOT repeat the same logic with minor tweaks."
                 )
-            context["should_consider_indicator_expansion"] = _requires_indicator_exploration(
-                last_iteration
-            )
+            context["should_consider_indicator_expansion"] = _requires_indicator_exploration(ctx)
 
         if branch_directive:
             context["branch_directive"] = branch_directive
 
         if session.iterations and self.ablation.is_enabled("iteration_history"):
-            def _iteration_backtest_feedback(
-                iteration_row: BuilderIteration,
-            ) -> Dict[str, Any]:
-                raw_feedback = (
-                    iteration_row.phase_feedback.to_dict()
-                    if hasattr(iteration_row.phase_feedback, "to_dict")
-                    else (iteration_row.phase_feedback or {})
-                )
-                if not isinstance(raw_feedback, dict):
-                    return {}
-                backtest_feedback = raw_feedback.get("backtest", {})
-                return backtest_feedback if isinstance(backtest_feedback, dict) else {}
 
             history_entries: list = []
             for it in session.iterations[-5:]:
-                m = it.backtest_result.metrics if it.backtest_result else {}
-                bf = _iteration_backtest_feedback(it)
-                history_entries.append({
-                    "backtest_feedback": bf,
-                    "iteration": it.iteration,
-                    "hypothesis": it.hypothesis,
-                    "change_type": it.change_type,
-                    "diagnostic_category": it.diagnostic_category,
-                    "decision": it.decision,
-                    "indicators": list(it.used_indicators or []),
-                    "sharpe": m.get("sharpe_ratio", 0) if m else None,
-                    "return_pct": m.get("total_return_pct", 0) if m else None,
-                    "trades": m.get("total_trades", 0) if m else None,
-                    "win_rate": m.get("win_rate_pct", 0) if m else None,
-                    "max_drawdown_pct": m.get("max_drawdown_pct", 0) if m else None,
-                    "profit_factor": m.get("profit_factor", 0) if m else None,
-                    "error": it.error,
-                    "is_fallback": it.is_fallback,
-                    "evaluation_mode": bf.get("mode", ""),
-                    "sweep_total_tested": bf.get("sweep_total_tested"),
-                    "params_used": bf.get("params_used"),
-                })
+                ctx = IterationContext(it)
+                bf = ctx.backtest_feedback
+                m = ctx.metrics
+                history_entries.append(
+                    {
+                        "backtest_feedback": bf,
+                        "iteration": it.iteration,
+                        "hypothesis": it.hypothesis,
+                        "change_type": it.change_type,
+                        "diagnostic_category": it.diagnostic_category,
+                        "decision": it.decision,
+                        "indicators": ctx.used_indicators,
+                        "sharpe": m.get("sharpe_ratio", 0),
+                        "return_pct": m.get("total_return_pct", 0),
+                        "trades": m.get("total_trades", 0),
+                        "win_rate": m.get("win_rate_pct", 0),
+                        "max_drawdown_pct": m.get("max_drawdown_pct", 0),
+                        "profit_factor": m.get("profit_factor", 0),
+                        "error": it.error,
+                        "is_fallback": ctx.is_fallback,
+                        "evaluation_mode": bf.get("mode", ""),
+                        "sweep_total_tested": bf.get("sweep_total_tested"),
+                        "params_used": bf.get("params_used"),
+                    }
+                )
             context["iteration_history"] = history_entries
 
         # Fournir la meilleure config session pour ancrer le modèle
-        best_it = session.best_iteration
-        if best_it is not None and best_it.backtest_result is not None:
-            bm = best_it.backtest_result.metrics or {}
+        best_ctx = IterationContext(session.best_iteration)
+        if best_ctx.has_backtest:
+            bm = best_ctx.metrics
             context["best_so_far"] = {
-                "iteration": best_it.iteration,
-                "hypothesis": best_it.hypothesis,
-                "indicators": list(best_it.used_indicators or []),
+                "iteration": best_ctx.raw.iteration,
+                "hypothesis": best_ctx.hypothesis,
+                "indicators": best_ctx.used_indicators,
                 "sharpe": bm.get("sharpe_ratio", 0),
                 "return_pct": bm.get("total_return_pct", 0),
                 "max_drawdown_pct": bm.get("max_drawdown_pct", 0),
@@ -4587,9 +3307,7 @@ class StrategyBuilder:
         proposal, issues = _extract_and_validate(raw)
         feedback["issues"] = issues
         if not issues:
-            proposal["change_type"] = _normalize_change_type(
-                proposal.get("change_type", "logic")
-            )
+            proposal["change_type"] = _normalize_change_type(proposal.get("change_type", "logic"))
             feedback["final_kind"] = feedback["initial_kind"]
             feedback["final_valid"] = True
             return proposal, feedback
@@ -4625,9 +3343,7 @@ class StrategyBuilder:
             proposal, issues = _extract_and_validate(raw)
             feedback["issues"] = issues
             if not issues:
-                proposal["change_type"] = _normalize_change_type(
-                    proposal.get("change_type", "logic")
-                )
+                proposal["change_type"] = _normalize_change_type(proposal.get("change_type", "logic"))
                 feedback["realign_success"] = True
                 feedback["final_kind"] = _classify_raw_response(raw)
                 feedback["final_valid"] = True
@@ -4703,8 +3419,7 @@ class StrategyBuilder:
             valid_first=code_fb.get("final_valid", False),
             repair_applied=bool(code_fb.get("repair_applied")),
             fallback_used=bool(
-                code_fb.get("fallback_deterministic_used")
-                or code_fb.get("source") == "deterministic_fallback"
+                code_fb.get("fallback_deterministic_used") or code_fb.get("source") == "deterministic_fallback"
             ),
             fallback_variant=code_fb.get("fallback_variant", -1),
         )
@@ -4715,10 +3430,7 @@ class StrategyBuilder:
                 effect="helper",
                 phase="code_repair",
             )
-        if (
-            code_fb.get("fallback_deterministic_used")
-            or code_fb.get("source") == "deterministic_fallback"
-        ):
+        if code_fb.get("fallback_deterministic_used") or code_fb.get("source") == "deterministic_fallback":
             instr.record_restriction(
                 trace,
                 "deterministic_fallback",
@@ -4777,22 +3489,22 @@ class StrategyBuilder:
         Returns:
             (code, feedback)
         """
+        ctx = IterationContext(last_iteration)
         # Extraire les actions diagnostiques de la dernière itération
         diag_actions: List[str] = []
         diag_donts: List[str] = []
-        if last_iteration is not None and self.ablation.is_enabled("diagnostic_context"):
-            diag_detail = getattr(last_iteration, "diagnostic_detail", {}) or {}
-            diag_actions = diag_detail.get("actions", [])
-            diag_donts = diag_detail.get("donts", [])
+        if ctx.exists and self.ablation.is_enabled("diagnostic_context"):
+            diag_actions = ctx.diagnostic_actions
+            diag_donts = ctx.diagnostic_donts
 
         ordered_code_indicators = self._rank_indicators_for_phase(
             objective=(
                 f"{session.objective} {proposal.get('hypothesis', '')} "
                 f"{' '.join(proposal.get('used_indicators', []) or [])}"
             ),
-            diagnostic=(last_iteration.diagnostic_detail if last_iteration else {}),
+            diagnostic=ctx.diagnostic_detail,
             previous_indicators=proposal.get("used_indicators", []),
-            session_seed=f"{session.session_id}:code:{len(session.iterations)+1}",
+            session_seed=f"{session.session_id}:code:{len(session.iterations) + 1}",
             prefer_diversity=False,
         )
 
@@ -4800,9 +3512,7 @@ class StrategyBuilder:
             "objective": session.objective,
             "proposal": proposal,
             "available_indicators": ordered_code_indicators,
-            "available_indicator_guide": build_indicator_selection_guide(
-                ordered_code_indicators
-            ),
+            "available_indicator_guide": build_indicator_selection_guide(ordered_code_indicators),
             "class_name": GENERATED_CLASS_NAME,
             "direction_constraint": session.direction_constraint,
             # Contexte de marché
@@ -4812,11 +3522,7 @@ class StrategyBuilder:
             "fees_bps": session.fees_bps,
             "slippage_bps": session.slippage_bps,
             "initial_capital": session.initial_capital,
-            "previous_code": (
-                (last_iteration.code or "")
-                if last_iteration is not None
-                else ""
-            ),
+            "previous_code": ctx.code,
             # Diagnostic de l'itération précédente (injecté dans le template)
             "diagnostic_actions": diag_actions,
             "diagnostic_donts": diag_donts,
@@ -4940,9 +3646,7 @@ class StrategyBuilder:
             available_indicators=self.available_indicators,
         )
         example_indicators = (
-            objective_indicators[:3]
-            if objective_indicators
-            else list(self.available_indicators[:3] or ["atr"])
+            objective_indicators[:3] if objective_indicators else list(self.available_indicators[:3] or ["atr"])
         )
         example_indicators_json = ", ".join(f'"{ind}"' for ind in example_indicators)
         prompt = (
@@ -4969,9 +3673,7 @@ class StrategyBuilder:
         sys_msg = LLMMessage(
             role="system",
             content=(
-                "You are a quant trader. "
-                "Reply ONLY with valid JSON. No commentary. No thinking. "
-                "No placeholders."
+                "You are a quant trader. Reply ONLY with valid JSON. No commentary. No thinking. No placeholders."
             ),
         )
         user_msg = LLMMessage(role="user", content=prompt)
@@ -4983,16 +3685,13 @@ class StrategyBuilder:
             json_mode=True,
             max_tokens=4096,
         )
-        result = _normalize_proposal_keys(
-            _extract_json_from_response(response.content)
-        )
+        result = _normalize_proposal_keys(_extract_json_from_response(response.content))
         if result:
             return result
 
         # Tentative 2 : sans json_mode (certains modèles locaux échouent avec format=json)
         logger.warning(
-            "retry_proposal: json_mode a échoué, tentative sans json_mode. "
-            "Réponse brute (200 premiers chars): %.200s",
+            "retry_proposal: json_mode a échoué, tentative sans json_mode. Réponse brute (200 premiers chars): %.200s",
             response.content[:200] if response.content else "(vide)",
         )
         response = self._chat_llm(
@@ -5001,9 +3700,7 @@ class StrategyBuilder:
             json_mode=False,
             max_tokens=4096,
         )
-        return _normalize_proposal_keys(
-            _extract_json_from_response(response.content)
-        )
+        return _normalize_proposal_keys(_extract_json_from_response(response.content))
 
     def _retry_code_simple(self, proposal: Dict[str, Any]) -> str:
         """Prompt simplifié quand le LLM ne génère pas de code valide."""
@@ -5042,10 +3739,7 @@ class StrategyBuilder:
             messages=[
                 LLMMessage(
                     role="system",
-                    content=(
-                        "Generate ONLY Python code inside a ```python block. "
-                        "No explanation. No commentary."
-                    ),
+                    content=("Generate ONLY Python code inside a ```python block. No explanation. No commentary."),
                 ),
                 LLMMessage(role="user", content=prompt),
             ],
@@ -5117,8 +3811,7 @@ class StrategyBuilder:
             return _extract_python_from_response(response.content)
         except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as llm_exc:
             logger.error(
-                "retry_code_runtime_fix LLM call failed: %s\n"
-                "runtime_error=%s\nfailing_code (first 500 chars)=%.500s",
+                "retry_code_runtime_fix LLM call failed: %s\nruntime_error=%s\nfailing_code (first 500 chars)=%.500s",
                 llm_exc,
                 runtime_error,
                 failing_code,
@@ -5181,8 +3874,9 @@ class StrategyBuilder:
             lines.append("")
             lines.append("### Historique de la session")
             for prev_it in session.iterations:
-                if prev_it.backtest_result:
-                    pm = prev_it.backtest_result.metrics or {}
+                prev_ctx = IterationContext(prev_it)
+                if prev_ctx.has_backtest:
+                    pm = prev_ctx.metrics
                     ps = float(pm.get("sharpe_ratio", 0) or 0)
                     pr = float(pm.get("total_return_pct", 0) or 0)
                     pd_ = float(pm.get("max_drawdown_pct", 0) or 0)
@@ -5190,8 +3884,7 @@ class StrategyBuilder:
                     pwr = float(pm.get("win_rate_pct", 0) or 0)
                     best_mark = (
                         " ★"
-                        if session.best_iteration is not None
-                        and prev_it.iteration == session.best_iteration.iteration
+                        if session.best_iteration is not None and prev_it.iteration == session.best_iteration.iteration
                         else ""
                     )
                     lines.append(
@@ -5271,20 +3964,23 @@ class StrategyBuilder:
 
         response = self._chat_llm(
             messages=[
-                LLMMessage(role="system", content=(
-                    "Tu es un analyste quantitatif expert. "
-                    "Analyse les résultats de backtest et le diagnostic fourni. "
-                    f"Il reste {remaining} itérations disponibles. "
-                    "RÈGLE STRICTE pour 'stop': réservé uniquement quand (a) le compte est ruiné "
-                    "ET toutes les tentatives répétées échouent de la même façon depuis ≥3 itérations, "
-                    "OU (b) aucun trade n'a été généré depuis ≥3 itérations consécutives sans amélioration. "
-                    "RÈGLE 'continue': utilise 'continue' pour TOUTES les autres situations — "
-                    "résultats négatifs sur 1-2 itérations, overtrading, mauvais win rate, "
-                    "drawdown élevé — ce sont des problèmes réparables. "
-                    "RÈGLE 'accept': uniquement si Sharpe atteint la cible ET stratégie robuste (>20 trades, DD<40%). "
-                    "Ne stoppe JAMAIS après une seule itération négative. "
-                    "Sois concis. Réponds en JSON."
-                )),
+                LLMMessage(
+                    role="system",
+                    content=(
+                        "Tu es un analyste quantitatif expert. "
+                        "Analyse les résultats de backtest et le diagnostic fourni. "
+                        f"Il reste {remaining} itérations disponibles. "
+                        "RÈGLE STRICTE pour 'stop': réservé uniquement quand (a) le compte est ruiné "
+                        "ET toutes les tentatives répétées échouent de la même façon depuis ≥3 itérations, "
+                        "OU (b) aucun trade n'a été généré depuis ≥3 itérations consécutives sans amélioration. "
+                        "RÈGLE 'continue': utilise 'continue' pour TOUTES les autres situations — "
+                        "résultats négatifs sur 1-2 itérations, overtrading, mauvais win rate, "
+                        "drawdown élevé — ce sont des problèmes réparables. "
+                        "RÈGLE 'accept': uniquement si Sharpe atteint la cible ET stratégie robuste (>20 trades, DD<40%). "
+                        "Ne stoppe JAMAIS après une seule itération négative. "
+                        "Sois concis. Réponds en JSON."
+                    ),
+                ),
                 LLMMessage(role="user", content=prompt),
             ],
             phase="analysis",
@@ -5322,8 +4018,9 @@ class StrategyBuilder:
         _ = code  # paramètre stable d'API, utilisé dans les prompts futurs
         history_lines = []
         for it in session.iterations[-3:]:
-            if it.backtest_result:
-                m = it.backtest_result.metrics
+            ctx = IterationContext(it)
+            if ctx.has_backtest:
+                m = ctx.metrics
                 history_lines.append(
                     f"  iter={it.iteration} sharpe={m.get('sharpe_ratio', 0):.3f} "
                     f"trades={m.get('total_trades', 0)} "
@@ -5354,11 +4051,14 @@ class StrategyBuilder:
         try:
             response = self._chat_llm(
                 messages=[
-                    LLMMessage(role="system", content=(
-                        "You are a quant strategy critic. The backtest is still running — "
-                        "you have NOT seen results. Self-critique the strategy and prepare "
-                        "a backup plan. Be concise and concrete."
-                    )),
+                    LLMMessage(
+                        role="system",
+                        content=(
+                            "You are a quant strategy critic. The backtest is still running — "
+                            "you have NOT seen results. Self-critique the strategy and prepare "
+                            "a backup plan. Be concise and concrete."
+                        ),
+                    ),
                     LLMMessage(role="user", content=prompt),
                 ],
                 phase="pre_reflection",
@@ -5369,9 +4069,7 @@ class StrategyBuilder:
             reflection = str(parsed.get("pre_reflection", "")).strip()
             backup = str(parsed.get("backup_plan", "")).strip()
             if reflection or backup:
-                return f"[Pre-reflection] {reflection}" + (
-                    f"\n[Backup plan] {backup}" if backup else ""
-                )
+                return f"[Pre-reflection] {reflection}" + (f"\n[Backup plan] {backup}" if backup else "")
         except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as exc:
             logger.debug("pre_reflection_failed: %s", exc)
         return ""
@@ -5559,9 +4257,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
     # Core: auto-fix required_indicators from code inspection
     # ------------------------------------------------------------------
 
-    def _auto_fix_required_indicators(
-        self, strategy_cls: type, code: str
-    ) -> type:
+    def _auto_fix_required_indicators(self, strategy_cls: type, code: str) -> type:
         """Détecte les indicateurs utilisés dans le code généré et complète required_indicators.
 
         Scanne le code pour les patterns indicators["xxx"] et indicators['xxx'],
@@ -5643,15 +4339,9 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             repeated_same_nonzero = nonzero_mask & (signal_values == prev_values)
             transition_count = int(transition_nonzero.sum())
             repeated_same_count = int(repeated_same_nonzero.sum())
-            signal_density = (
-                float(total_count / bar_count) if bar_count > 0 else 0.0
-            )
-            transition_density = (
-                float(transition_count / bar_count) if bar_count > 0 else 0.0
-            )
-            repeated_same_ratio = (
-                float(repeated_same_count / total_count) if total_count > 0 else 0.0
-            )
+            signal_density = float(total_count / bar_count) if bar_count > 0 else 0.0
+            transition_density = float(transition_count / bar_count) if bar_count > 0 else 0.0
+            repeated_same_ratio = float(repeated_same_count / total_count) if total_count > 0 else 0.0
 
             return {
                 "ok": True,
@@ -5744,6 +4434,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 "repeated_same_ratio": repeated_same_ratio,
             },
         )
+
     # ------------------------------------------------------------------
     # Core: run backtest on generated strategy
     # ------------------------------------------------------------------
@@ -5863,15 +4554,11 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         raw_result = getattr(best_result, "run_result", None)
         if raw_result is not None and isinstance(getattr(raw_result, "meta", None), dict):
             raw_result.meta["builder_evaluation_mode"] = "sweep"
-            raw_result.meta["builder_sweep_total_tested"] = int(
-                len(sweep_plan.get("param_grid", []))
-            )
+            raw_result.meta["builder_sweep_total_tested"] = int(len(sweep_plan.get("param_grid", [])))
             raw_result.meta["builder_sweep_success"] = int(success_count)
             raw_result.meta["builder_sweep_failed"] = int(fail_count)
             raw_result.meta["builder_sweep_best_params"] = dict(best_params)
-            raw_result.meta["builder_sweep_parameter_values"] = dict(
-                sweep_plan.get("parameter_values", {})
-            )
+            raw_result.meta["builder_sweep_parameter_values"] = dict(sweep_plan.get("parameter_values", {}))
             raw_result.meta["params"] = dict(best_params)
 
         return best_result, {
@@ -5889,7 +4576,6 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         }
 
     def _run_backtest(
-
         self,
         strategy_cls: type,
         data: pd.DataFrame,
@@ -5920,11 +4606,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 match = re.search(r"name '([^']+)' is not defined", str(exc))
                 if match:
                     missing_name = match.group(1)
-                detail = (
-                    f"`{missing_name}` is not defined"
-                    if missing_name
-                    else str(exc)
-                )
+                detail = f"`{missing_name}` is not defined" if missing_name else str(exc)
                 raise RuntimeError(
                     "NameError in generate_signals: "
                     f"{detail}. FIX: every intermediate variable must be "
@@ -6041,10 +4723,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 len(objective),
             )
         if not objective:
-            raise ValueError(
-                "Objectif Builder vide ou invalide après nettoyage "
-                "(probable collage de logs/traceback)."
-            )
+            raise ValueError("Objectif Builder vide ou invalide après nettoyage (probable collage de logs/traceback).")
 
         session_id = self.create_session_id(objective)
         session_dir = self.get_session_dir(session_id)
@@ -6098,35 +4777,18 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 strategy_type=universe_strategy_type,
                 objective=objective,
             ),
-            universe_meta=(
-                dict(universe_meta)
-                if isinstance(universe_meta, dict)
-                else {}
-            ),
-            builder_execution_mode=str(
-                getattr(self, "builder_execution_mode", "mono_single_llm")
-                or "mono_single_llm"
-            ),
-            orchestration_mode=str(
-                getattr(self, "orchestration_mode", "single_llm")
-                or "single_llm"
-            ),
+            universe_meta=(dict(universe_meta) if isinstance(universe_meta, dict) else {}),
+            builder_execution_mode=str(self.builder_execution_mode or "mono_single_llm"),
+            orchestration_mode=str(self.orchestration_mode or "single_llm"),
             instrumentation_enabled=bool(self.instrumentation.enabled),
             ablation_config=dict(self.ablation.get_config()),
-            multi_llm_profile=str(
-                getattr(self, "multi_llm_profile", "") or ""
-            ),
-            multi_llm_role_overrides=dict(
-                getattr(self, "multi_llm_role_overrides", {}) or {}
-            ),
-            multi_llm_assignments=list(
-                getattr(self, "multi_llm_assignments", []) or []
-            ),
+            multi_llm_profile=str(self.multi_llm_profile or ""),
+            multi_llm_role_overrides=dict(self.multi_llm_role_overrides or {}),
+            multi_llm_assignments=list(self.multi_llm_assignments or []),
         )
-        session.direction_constraint = _infer_direction_constraint_from_objective(
-            objective
-        )
+        session.direction_constraint = _infer_direction_constraint_from_objective(objective)
         model_name = getattr(getattr(self.llm, "config", None), "model", "?")
+        session.model_name = model_name
         thought_stream = ThoughtStream(session_id, objective, model_name)
         previous_thought_stream = self._active_thought_stream
         previous_session_id = self._active_builder_session_id
@@ -6182,8 +4844,11 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         # Charger l'historique de diversité au début du run
         try:
             from config.indicator_history import load_history, load_policy
+
             self._indicator_policy = load_policy()
-            self._indicator_history = load_history(self._indicator_policy) if self._indicator_policy.get("enabled", True) else {}
+            self._indicator_history = (
+                load_history(self._indicator_policy) if self._indicator_policy.get("enabled", True) else {}
+            )
         except Exception:  # noqa: BLE001
             self._indicator_history = {}
         try:
@@ -6201,14 +4866,8 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
 
         session.instrumentation_enabled = bool(self.instrumentation.enabled)
         session.ablation_config = dict(self.ablation.get_config())
-        session.instrumentation_summary = (
-            self.instrumentation.session_summary()
-            if self.instrumentation.enabled
-            else {}
-        )
-        session.restriction_events = dict(
-            session.instrumentation_summary.get("restriction_events", {}) or {}
-        )
+        session.instrumentation_summary = self.instrumentation.session_summary() if self.instrumentation.enabled else {}
+        session.restriction_events = dict(session.instrumentation_summary.get("restriction_events", {}) or {})
         session.pipeline_traces_path = ""
 
         if self.instrumentation.enabled and self.instrumentation.traces:
@@ -6255,9 +4914,10 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                     infer_families_from_indicators,
                     update_history,
                 )
+
                 all_used: List[str] = []
                 for it in session.iterations:
-                    for ind in (it.used_indicators or []):
+                    for ind in it.used_indicators or []:
                         key = str(ind).strip().lower()
                         if key and key not in all_used:
                             all_used.append(key)
@@ -6282,10 +4942,10 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         save_session_summary(session)
 
 
-
 # ---------------------------------------------------------------------------
 # Générateurs d'objectifs pour le mode autonome (delegated)
 # ---------------------------------------------------------------------------
+
 
 def generate_random_objective(
     symbol: "str | List[str]" = "BTCUSDC",
@@ -6303,8 +4963,8 @@ def generate_random_objective(
 
 def generate_llm_objective(
     llm_client: Any,
-    symbol: "str | List[str]" = "BTCUSDC",
-    timeframe: "str | List[str]" = "1h",
+    symbol: "str | List[str] | None" = "BTCUSDC",
+    timeframe: "str | List[str] | None" = "1h",
     available_indicators: Optional[List[str]] = None,
     stream_callback: Optional[Callable[[str, str], None]] = None,
     recent_markets: Optional[List[Tuple[str, str]]] = None,

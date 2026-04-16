@@ -82,6 +82,17 @@ _UI_EXECUTION_STATE_DEFAULTS = {
     "run_backtest_requested": False,
     "load_ohlcv_requested": False,
 }
+UI_EXECUTION_PHASE_IDLE = "idle"
+UI_EXECUTION_PHASE_LAUNCH_PENDING = "launch_pending"
+UI_EXECUTION_PHASE_RUNNING = "running"
+UI_EXECUTION_PHASE_STOPPING = "stopping"
+_UI_EXECUTION_PHASE_KEY = "ui_execution_phase"
+_UI_EXECUTION_PHASE_OPTIONS = {
+    UI_EXECUTION_PHASE_IDLE,
+    UI_EXECUTION_PHASE_LAUNCH_PENDING,
+    UI_EXECUTION_PHASE_RUNNING,
+    UI_EXECUTION_PHASE_STOPPING,
+}
 
 
 def _state_get(container: Any, key: str, default: Any = None) -> Any:
@@ -129,6 +140,39 @@ def _state_pop(container: Any, key: str, default: Any = None) -> Any:
     return default
 
 
+def _normalize_ui_execution_phase(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in _UI_EXECUTION_PHASE_OPTIONS:
+        return normalized
+    return ""
+
+
+def _set_ui_execution_phase(session_state: Any, phase: str) -> str:
+    normalized = _normalize_ui_execution_phase(phase) or UI_EXECUTION_PHASE_IDLE
+    _state_set(session_state, _UI_EXECUTION_PHASE_KEY, normalized)
+    return normalized
+
+
+def _infer_ui_execution_phase(session_state: Any) -> str:
+    explicit = _normalize_ui_execution_phase(
+        _state_get(session_state, _UI_EXECUTION_PHASE_KEY, "")
+    )
+    if explicit:
+        return explicit
+    if bool(_state_get(session_state, "stop_requested", False)):
+        return UI_EXECUTION_PHASE_STOPPING
+    if bool(_state_get(session_state, "run_backtest_requested", False)):
+        return UI_EXECUTION_PHASE_LAUNCH_PENDING
+    if bool(_state_get(session_state, "is_running", False)):
+        return UI_EXECUTION_PHASE_RUNNING
+    return UI_EXECUTION_PHASE_IDLE
+
+
+def get_ui_execution_phase(session_state: Any) -> str:
+    phase = _infer_ui_execution_phase(session_state)
+    return _set_ui_execution_phase(session_state, phase)
+
+
 def is_builder_optimization_mode(source: Any, fallback: str = "") -> bool:
     if isinstance(source, dict):
         mode = source.get("optimization_mode", fallback)
@@ -171,6 +215,14 @@ def clear_execution_state(
     _state_set(session_state, "run_backtest_requested", False)
     if clear_stop_requested:
         _state_set(session_state, "stop_requested", False)
+        _set_ui_execution_phase(session_state, UI_EXECUTION_PHASE_IDLE)
+    else:
+        phase = (
+            UI_EXECUTION_PHASE_STOPPING
+            if bool(_state_get(session_state, "stop_requested", False))
+            else UI_EXECUTION_PHASE_IDLE
+        )
+        _set_ui_execution_phase(session_state, phase)
     if clear_builder_launch:
         clear_builder_launch_state(session_state)
 
@@ -179,18 +231,23 @@ def ensure_ui_execution_state_defaults(session_state: Any) -> None:
     for key, value in _UI_EXECUTION_STATE_DEFAULTS.items():
         if not _state_contains(session_state, key):
             _state_set(session_state, key, value)
+    get_ui_execution_phase(session_state)
 
 
 def consume_ui_run_request(session_state: Any) -> bool:
     requested = bool(_state_get(session_state, "run_backtest_requested", False))
     if requested:
+        phase = get_ui_execution_phase(session_state)
         _state_set(session_state, "run_backtest_requested", False)
+        if phase == UI_EXECUTION_PHASE_LAUNCH_PENDING:
+            _set_ui_execution_phase(session_state, UI_EXECUTION_PHASE_LAUNCH_PENDING)
     return requested
 
 
 def arm_ui_load_request(session_state: Any) -> None:
     _state_set(session_state, "stop_requested", False)
     _state_set(session_state, "load_ohlcv_requested", True)
+    _set_ui_execution_phase(session_state, UI_EXECUTION_PHASE_IDLE)
 
 
 def arm_ui_run_request(session_state: Any, *, builder_mode: bool = False) -> None:
@@ -200,11 +257,14 @@ def arm_ui_run_request(session_state: Any, *, builder_mode: bool = False) -> Non
     _state_set(session_state, "stop_requested", False)
     _state_set(session_state, "run_backtest_requested", True)
     _state_set(session_state, "is_running", True)
+    _set_ui_execution_phase(session_state, UI_EXECUTION_PHASE_LAUNCH_PENDING)
 
 
 def mark_ui_run_started(session_state: Any) -> None:
     _state_set(session_state, "is_running", True)
     _state_set(session_state, "stop_requested", False)
+    _state_set(session_state, "run_backtest_requested", False)
+    _set_ui_execution_phase(session_state, UI_EXECUTION_PHASE_RUNNING)
 
 
 def mark_ui_stop_requested(session_state: Any) -> None:
@@ -212,6 +272,7 @@ def mark_ui_stop_requested(session_state: Any) -> None:
     _state_set(session_state, "is_running", False)
     _state_set(session_state, "run_backtest_requested", False)
     _state_set(session_state, "load_ohlcv_requested", False)
+    _set_ui_execution_phase(session_state, UI_EXECUTION_PHASE_STOPPING)
 
 
 def persist_run_winner(

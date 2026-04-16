@@ -8,22 +8,16 @@ from __future__ import annotations
 
 import html
 import json
+import logging
 import os
+import re
 import subprocess
 from typing import Any, Dict, List
-
-import logging
-import re
 
 import streamlit as st
 
 logger = logging.getLogger(__name__)
 
-from backtest.result_store import get_builder_sessions_dir
-from config.market_selection import (
-    UNIVERSE_MODE_CANONICAL,
-    UNIVERSE_MODE_EXPLORATORY,
-)
 from agents.llm_config import (
     DEFAULT_LLM_INFERENCE_MODE,
     apply_llm_inference_settings,
@@ -31,22 +25,28 @@ from agents.llm_config import (
     normalize_llm_model_inference_profiles,
     resolve_llm_inference_settings,
 )
-
 from agents.llm_router import (
     LLMTopologyConfig,
     build_phase1_topology,
     build_single_host_topology,
     normalize_ollama_host,
 )
+from agents.model_config import list_cloud_only_model_names
+from backtest.result_store import get_builder_sessions_dir
+from config.market_selection import (
+    UNIVERSE_MODE_CANONICAL,
+    UNIVERSE_MODE_EXPLORATORY,
+)
+from ui.components.model_selector import render_model_selector
 from ui.constants import MODE_OPTIONS, build_strategy_options
 from ui.context import (
     KNOWN_MODELS,
     LLM_AVAILABLE,
     LLM_IMPORT_ERROR,
+    RECOMMENDED_FOR_STRATEGY,
     LLMConfig,
     LLMProvider,
     ModelCategory,
-    RECOMMENDED_FOR_STRATEGY,
     ensure_ollama_running,
     get_global_model_config,
     is_ollama_available,
@@ -54,12 +54,11 @@ from ui.context import (
     list_strategies,
     set_global_model_config,
 )
-from ui.components.model_selector import render_model_selector
 from ui.state import (
-    BUILDER_UNIVERSE_MODE_CANONICAL,
     BUILDER_EXECUTION_MODE_DUAL_LANE,
     BUILDER_EXECUTION_MODE_EXPERT,
     BUILDER_EXECUTION_MODE_MONO,
+    BUILDER_UNIVERSE_MODE_CANONICAL,
     SidebarState,
     normalize_builder_multi_llm_role_pool_overrides,
     resolve_builder_dual_lane_preferences,
@@ -67,7 +66,6 @@ from ui.state import (
     resolve_builder_flow_analysis_preferences,
     resolve_builder_runtime_preferences,
 )
-from agents.model_config import list_cloud_only_model_names
 
 try:
     from core.llm_multi import (
@@ -642,9 +640,12 @@ def _render_builder_expert_multi_role_section(
         if callable(get_profile_definition)
         else {}
     )
-    is_builtin_profile = bool(profile_payload.get("builtin", True))
     derived_from = str(profile_payload.get("derived_from", "") or "").strip()
-    profile_badge = "builtin" if is_builtin_profile else "custom"
+    profile_badge = (
+        "builtin"
+        if bool(profile_payload.get("builtin", True))
+        else "custom"
+    )
     profile_caption_parts = [f"Type: {profile_badge}"]
     if derived_from:
         profile_caption_parts.append(f"Dérivé de: {derived_from}")
@@ -732,13 +733,17 @@ def _render_builder_expert_multi_role_section(
             summary_parts.append(
                 "Sélection: " + ", ".join(selected_models)
             )
+        elif default_requested:
+            summary_parts.append(
+                f"Candidat prioritaire du profil: {default_requested}"
+            )
         else:
-            summary_parts.append("Sélection: profil par défaut")
+            summary_parts.append("Aucune présélection configurée")
         stage = str(role_detail.get("stage", "") or "").strip()
         purpose = str(role_detail.get("purpose", "") or "").strip()
         if stage or purpose:
             summary_parts.append(" | ".join(part for part in (stage, purpose) if part))
-        if default_requested:
+        if default_requested and default_requested not in list(selected_models):
             summary_parts.append(f"Profil: {default_requested}")
         st.caption(" • ".join(summary_parts))
 
@@ -801,11 +806,10 @@ def _render_builder_expert_multi_role_section(
                         )
                         st.session_state["_builder_multi_llm_close_save_toggle"] = True
                         st.rerun()
-        delete_disabled = is_builtin_profile or not selected_profile.strip()
+        delete_disabled = not selected_profile.strip()
         delete_help = (
-            "Les profils intégrés sont protégés."
-            if is_builtin_profile
-            else "Supprime la présélection personnalisée active."
+            "Supprime la présélection active. "
+            "Pour un profil intégré, la suppression modifie le catalogue local du dépôt."
         )
         if st.button(
             "Supprimer cette présélection",

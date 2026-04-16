@@ -16,12 +16,6 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from agents.builder_policy import (
-    DecisionPolicyFeedback,
-    PolicyRestriction,
-    evaluate_decision_policies,
-    evaluate_positive_progress_gate,
-)
 from agents.builder_constants import (
     MAX_CONSECUTIVE_FAILURES,
     MAX_DETERMINISTIC_FALLBACKS,
@@ -33,6 +27,12 @@ from agents.builder_diagnostics import (
     _metrics_fingerprint,
     compute_builder_telemetry_score,
     compute_diagnostic,
+)
+from agents.builder_policy import (
+    DecisionPolicyFeedback,
+    PolicyRestriction,
+    evaluate_decision_policies,
+    evaluate_positive_progress_gate,
 )
 from agents.builder_policy_helpers import (
     _build_stagnation_branch_specs,
@@ -514,6 +514,11 @@ def run_builder_loop_v2(
                 phase="backtest",
                 sharpe=bt_result.metrics.get("sharpe_ratio", 0.0),
                 total_return_pct=bt_result.metrics.get("total_return_pct", 0.0),
+                total_pnl=bt_result.metrics.get("total_pnl", 0.0),
+                total_trades=bt_result.metrics.get("total_trades", 0),
+                win_rate_pct=bt_result.metrics.get("win_rate_pct", 0.0),
+                profit_factor=bt_result.metrics.get("profit_factor", 0.0),
+                max_drawdown_pct=bt_result.metrics.get("max_drawdown_pct", 0.0),
                 evaluation_mode=(
                     iteration.phase_feedback.get("backtest", {}).get("mode", "single")
                 ),

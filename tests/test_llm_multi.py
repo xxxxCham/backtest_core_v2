@@ -1,15 +1,21 @@
 from __future__ import annotations
 
-from pathlib import Path
+import json
 import sqlite3
+from pathlib import Path
 from types import SimpleNamespace
 
+import core.llm_multi.download_manager as download_manager_module
+import core.llm_multi.model_discovery as model_discovery_module
+import core.llm_multi.session_manager as session_manager_module
+import utils.model_loader as model_loader_module
+from agents.llm_client import LLMConfig, LLMProvider
 from agents.llm_config import (
     normalize_llm_model_inference_profiles,
     resolve_llm_inference_settings,
 )
-from agents.llm_client import LLMConfig, LLMProvider
 from agents.llm_router import build_phase1_topology
+from agents.model_config import list_available_models
 from core.llm_multi.adapters.strategy_builder_adapter import summarize_builder_session
 from core.llm_multi.download_manager import plan_missing_downloads
 from core.llm_multi.model_discovery import (
@@ -18,6 +24,7 @@ from core.llm_multi.model_discovery import (
     discover_local_models,
 )
 from core.llm_multi.registry import (
+    DEFAULT_MULTI_LLM_CONFIG_PATH,
     delete_multi_llm_profile,
     get_profile_role_pools,
     get_user_multi_llm_profiles_dir,
@@ -26,12 +33,7 @@ from core.llm_multi.registry import (
     resolve_profile_assignments,
     save_multi_llm_profile,
 )
-from agents.model_config import list_available_models
 from core.llm_multi.session_manager import MultiLLMSessionManager
-import core.llm_multi.model_discovery as model_discovery_module
-import core.llm_multi.download_manager as download_manager_module
-import core.llm_multi.session_manager as session_manager_module
-import utils.model_loader as model_loader_module
 
 
 def _inventory(
@@ -333,6 +335,21 @@ def test_get_profile_role_pools_returns_gemma4_duo_role_pools():
     assert role_pools["builder_llm"] == ["gemma4:26b", "qwen3-coder:30b"]
     assert role_pools["critic_llm"][:2] == ["gemma4:31b", "gemma4:26b"]
     assert role_pools["risk_llm"][:2] == ["gemma4:31b", "gemma4:26b"]
+
+
+def test_get_profile_role_pools_falls_back_to_builtin_preferred_models_when_random_pool_missing():
+    role_pools = get_profile_role_pools("24GB_balanced")
+
+    assert role_pools["idea_llm"] == ["qwen2.5:32b", "gemma4:26b"]
+    assert role_pools["builder_llm"] == [
+        "qwen3-30b-a3b:q4_k_m",
+        "qwen3-coder:30b",
+    ]
+    assert role_pools["critic_llm"] == ["deepseek-r1-distill:14b"]
+    assert role_pools["risk_llm"] == [
+        "martain7r/finance-llama-8b:q4_k_m",
+        "fin-llama-33b:33b",
+    ]
 
 
 def test_resolve_llm_inference_settings_merges_builtin_model_profile():
@@ -677,6 +694,25 @@ def test_delete_multi_llm_profile_removes_custom_profile(tmp_path: Path):
     assert deleted is True
     assert not saved_path.exists()
     assert "Profil Temporaire" not in list_profile_names(user_profiles_dir=user_profiles_dir)
+
+
+def test_delete_multi_llm_profile_removes_builtin_profile_from_config(tmp_path: Path):
+    config_path = tmp_path / "default_profiles.json"
+    config_path.write_text(
+        DEFAULT_MULTI_LLM_CONFIG_PATH.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    deleted = delete_multi_llm_profile(
+        "24GB_balanced",
+        config_path=config_path,
+    )
+
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+
+    assert deleted is True
+    assert "24GB_balanced" not in payload["profiles"]
+    assert payload["default_profile"] != "24GB_balanced"
 
 
 def test_get_user_multi_llm_profiles_dir_resolves_relative_path_from_project_root(

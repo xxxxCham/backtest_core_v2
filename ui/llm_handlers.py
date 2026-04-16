@@ -40,7 +40,7 @@ from ui.helpers import (
     safe_load_data,
     show_status,
 )
-from ui.state import SidebarState
+from ui.state import SidebarState, clear_execution_state
 from utils.run_tracker import RunSignature, get_global_tracker
 
 
@@ -58,13 +58,13 @@ def handle_llm_optimization(
     if not LLM_AVAILABLE:
         with status_container:
             show_status("error", f"LLM non disponible: {LLM_IMPORT_ERROR}")
-        st.session_state.is_running = False
+        clear_execution_state(st.session_state)
         return
 
     if state.llm_config is None:
         with status_container:
             show_status("error", "Configuration LLM manquante")
-        st.session_state.is_running = False
+        clear_execution_state(st.session_state)
         return
 
     # Multi-sweep: récupérer les listes
@@ -517,7 +517,7 @@ def run_single_llm_optimization(
         except Exception as exc:
             with status_container:
                 show_status("error", f"Échec connexion LLM: {exc}")
-            st.session_state.is_running = False
+            clear_execution_state(st.session_state)
             return
 
     result = _run_single_llm_combo(

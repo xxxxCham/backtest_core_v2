@@ -174,13 +174,12 @@ def get_profile_role_pools(
         config_path,
         user_profiles_dir=user_profiles_dir,
     )
-    is_builtin = bool(profile_payload.get("builtin", True))
     role_pools: Dict[str, List[str]] = {}
     for role, role_payload in dict(profile_payload.get("roles", {}) or {}).items():
         normalized_pool = _normalize_saved_role_overrides(
             {role: role_payload.get("random_pool_models", [])}
         ).get(role, [])
-        if not normalized_pool and not is_builtin:
+        if not normalized_pool:
             normalized_pool = _normalize_saved_role_overrides(
                 {role: role_payload.get("preferred_models", [])}
             ).get(role, [])
@@ -267,11 +266,34 @@ def delete_multi_llm_profile(
     if not normalized_name:
         raise ValueError("Nom de présélection requis")
 
-    builtin_names = _builtin_profile_names(config_path)
+    config_file = Path(config_path or DEFAULT_MULTI_LLM_CONFIG_PATH)
+    builtin_names = _builtin_profile_names(config_file)
     if normalized_name in builtin_names:
-        raise ValueError(
-            f"Le profil '{normalized_name}' est intégré et ne peut pas être supprimé"
-        )
+        with open(config_file, encoding="utf-8") as handle:
+            payload = json.load(handle)
+
+        profiles = dict(payload.get("profiles", {}) or {})
+        if normalized_name not in profiles:
+            return False
+
+        profiles.pop(normalized_name, None)
+        payload["profiles"] = profiles
+
+        current_default = str(
+            payload.get("default_profile") or DEFAULT_MULTI_LLM_PROFILE
+        ).strip()
+        if current_default == normalized_name:
+            replacement_default = ""
+            if DEFAULT_MULTI_LLM_PROFILE in profiles:
+                replacement_default = DEFAULT_MULTI_LLM_PROFILE
+            elif profiles:
+                replacement_default = sorted(profiles.keys())[0]
+            payload["default_profile"] = replacement_default
+
+        with open(config_file, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+        return True
 
     directory = get_user_multi_llm_profiles_dir(user_profiles_dir)
     filepath = directory / f"{_sanitize_user_profile_filename(normalized_name)}.json"

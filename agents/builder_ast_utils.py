@@ -13,15 +13,14 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import re
 import textwrap
-from typing import Any, Dict, List, Optional, Tuple
-
-import logging
+from typing import Any, Dict, List, Optional
 
 from agents.builder_constants import (
-    GENERATED_CLASS_NAME,
     _AST_PARSE_RECOVERABLE_EXCEPTIONS,
+    GENERATED_CLASS_NAME,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,8 +63,6 @@ _NATURAL_LANGUAGE_LINE_RE = re.compile(
 )
 
 
-
-
 def _const_value(node: ast.AST) -> Any:
     """Extrait une valeur constante AST (str/int/float) si possible."""
     if isinstance(node, ast.Constant):
@@ -73,7 +70,6 @@ def _const_value(node: ast.AST) -> Any:
     if isinstance(node, ast.Str):  # pragma: no cover - compat py<3.8
         return node.s
     return None
-
 
 
 def _indicator_name_from_subscript(node: ast.AST) -> Optional[str]:
@@ -86,7 +82,6 @@ def _indicator_name_from_subscript(node: ast.AST) -> Optional[str]:
     if isinstance(key, str):
         return key
     return None
-
 
 
 def _indicator_name_from_get_call(node: ast.AST) -> Optional[str]:
@@ -105,7 +100,6 @@ def _indicator_name_from_get_call(node: ast.AST) -> Optional[str]:
     return None
 
 
-
 def _is_np_nan_to_num_call(node: ast.AST) -> bool:
     """Vérifie si le noeud est un appel np.nan_to_num(...)."""
     return (
@@ -115,7 +109,6 @@ def _is_np_nan_to_num_call(node: ast.AST) -> bool:
         and node.func.value.id == "np"
         and node.func.attr == "nan_to_num"
     )
-
 
 
 def _is_params_get_call(node: ast.AST) -> bool:
@@ -129,25 +122,14 @@ def _is_params_get_call(node: ast.AST) -> bool:
     )
 
 
-
 def _is_params_subscript(node: ast.AST) -> bool:
     """Vérifie si le noeud est params['x']."""
-    return (
-        isinstance(node, ast.Subscript)
-        and isinstance(node.value, ast.Name)
-        and node.value.id == "params"
-    )
-
+    return isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id == "params"
 
 
 def _is_scalar_cast_call(node: ast.AST) -> bool:
     """Vérifie si le noeud est un cast scalaire (float/int/bool)."""
-    return (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in {"float", "int", "bool"}
-    )
-
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {"float", "int", "bool"}
 
 
 def _is_numeric_nonbool_constant(node: ast.AST) -> bool:
@@ -155,7 +137,6 @@ def _is_numeric_nonbool_constant(node: ast.AST) -> bool:
     if not isinstance(node, ast.Constant):
         return False
     return isinstance(node.value, (int, float)) and not isinstance(node.value, bool)
-
 
 
 def _iter_generated_class_methods(tree: ast.AST):
@@ -171,10 +152,10 @@ def _iter_generated_class_methods(tree: ast.AST):
 def _iter_generate_signals_functions(tree: ast.AST) -> List[ast.FunctionDef]:
     """Extrait les méthodes generate_signals de BuilderGeneratedStrategy."""
     return [
-        m for m in _iter_generated_class_methods(tree)
+        m
+        for m in _iter_generated_class_methods(tree)
         if isinstance(m, ast.FunctionDef) and m.name == "generate_signals"
     ]
-
 
 
 def _iter_child_nodes_excluding_nested_scopes(node: ast.AST) -> Any:
@@ -190,7 +171,6 @@ def _iter_child_nodes_excluding_nested_scopes(node: ast.AST) -> Any:
         if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
             continue
         stack.extend(ast.iter_child_nodes(cur))
-
 
 
 def _collect_name_load_store_sets(fn: ast.AST) -> tuple[set[str], set[str]]:
@@ -210,7 +190,6 @@ def _collect_name_load_store_sets(fn: ast.AST) -> tuple[set[str], set[str]]:
     return load, store
 
 
-
 def _collect_indicator_names(tree: ast.AST) -> set[str]:
     """Collecte les noms d'indicateurs référencés dans generate_signals."""
     names: set[str] = set()
@@ -223,7 +202,6 @@ def _collect_indicator_names(tree: ast.AST) -> set[str]:
             if got:
                 names.add(got)
     return names
-
 
 
 def _collect_indicator_names_in_class(tree: ast.AST) -> set[str]:
@@ -241,7 +219,6 @@ def _collect_indicator_names_in_class(tree: ast.AST) -> set[str]:
                 names.add(get_name)
         break
     return names
-
 
 
 def _collect_bound_names(fn: ast.AST) -> set[str]:
@@ -271,7 +248,6 @@ def _collect_bound_names(fn: ast.AST) -> set[str]:
     return bound
 
 
-
 def _collect_module_level_bound_names(tree: ast.AST) -> set[str]:
     """Collecte les noms disponibles au scope module pour éviter les faux NameError."""
     bound: set[str] = set()
@@ -295,7 +271,6 @@ def _collect_module_level_bound_names(tree: ast.AST) -> set[str]:
     return bound
 
 
-
 def _normalize_required_indicator_names(required_indicators: Optional[List[str]]) -> List[str]:
     normalized: List[str] = []
     if not required_indicators:
@@ -309,7 +284,6 @@ def _normalize_required_indicator_names(required_indicators: Optional[List[str]]
     return normalized
 
 
-
 def _strip_leading_list_marker(line: str) -> str:
     """Retire `1.`/`-` au début d'une ligne en conservant l'indentation utile."""
     match = re.match(r"^(\s*)(?:[-*]|\d+[\.)])(.*)$", line)
@@ -321,20 +295,16 @@ def _strip_leading_list_marker(line: str) -> str:
     return leading_ws + remainder
 
 
-
 def _sanitize_python_list_markers(code: str) -> str:
     """Supprime les marqueurs de liste LLM devant des lignes Python valides."""
     fixed_lines: List[str] = []
     for line in str(code or "").splitlines():
         candidate = _strip_leading_list_marker(line)
-        if candidate != line and (
-            _PYTHONISH_LINE_RE.match(candidate.lstrip()) or candidate.lstrip().startswith("#")
-        ):
+        if candidate != line and (_PYTHONISH_LINE_RE.match(candidate.lstrip()) or candidate.lstrip().startswith("#")):
             fixed_lines.append(candidate)
         else:
             fixed_lines.append(line)
     return "\n".join(fixed_lines)
-
 
 
 def _drop_obvious_non_python_lines(code: str) -> str:
@@ -351,7 +321,6 @@ def _drop_obvious_non_python_lines(code: str) -> str:
             continue
         kept_lines.append(line)
     return "\n".join(kept_lines)
-
 
 
 def _balance_brackets_outside_strings(code: str) -> str:
@@ -404,7 +373,6 @@ def _balance_brackets_outside_strings(code: str) -> str:
     return "".join(output)
 
 
-
 def _strip_non_python_noise(text: str) -> str:
     """Retire le bruit fréquent des réponses LLM autour du code Python."""
     raw_lines = str(text or "").splitlines()
@@ -451,9 +419,9 @@ def _strip_non_python_noise(text: str) -> str:
     return ""
 
 
-
 def _extract_json_from_response(text: str) -> Dict[str, Any]:
     """Extrait un bloc JSON depuis une réponse LLM (gère ```json ... ```, <think>, etc.)."""
+
     def _parse_json_dict(payload: str) -> Dict[str, Any]:
         try:
             data = json.loads(payload)
@@ -461,12 +429,24 @@ def _extract_json_from_response(text: str) -> Dict[str, Any]:
             return {}
         return data if isinstance(data, dict) else {}
 
-    # Nettoyer les tags <think> des modèles de raisonnement (qwen3, deepseek-r1, alia, etc.)
+    # Nettoyer les tags <think> des modèles de raisonnement (qwen3, deepseek-r1, gemma4, etc.)
+    # Garder le contenu brut en réserve pour salvage si la réponse hors-think est vide.
+    raw_text = text
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
     text = text.strip()
 
     if not text:
+        # Salvage : tenter d'extraire du JSON depuis l'intérieur des blocs <think>
+        think_match = re.search(r"<think>(.*?)(?:</think>|$)", raw_text, re.DOTALL)
+        if think_match:
+            think_body = think_match.group(1).strip()
+            brace = re.search(r"\{.*\}", think_body, re.DOTALL)
+            if brace:
+                parsed = _parse_json_dict(brace.group(0))
+                if parsed:
+                    logger.info("extract_json: JSON salvagé depuis un bloc <think>")
+                    return parsed
         logger.warning("extract_json: réponse vide après nettoyage des tags <think>")
         return {}
 
@@ -496,19 +476,30 @@ def _extract_json_from_response(text: str) -> Dict[str, Any]:
     return {}
 
 
-
 def _extract_python_from_response(text: str) -> str:
     """Extrait un bloc Python depuis une réponse LLM."""
     # Nettoyer les tags <think> des modèles de raisonnement
+    raw_text = text
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
     text = text.strip()
+    if not text:
+        # Salvage : tenter d'extraire du Python depuis l'intérieur des blocs <think>
+        think_match = re.search(r"<think>(.*?)(?:</think>|$)", raw_text, re.DOTALL)
+        if think_match:
+            think_body = think_match.group(1)
+            code_match = re.search(r"```(?:python)?\s*\n(.*?)\n```", think_body, re.DOTALL)
+            if code_match:
+                salvaged = _strip_non_python_noise(code_match.group(1)).strip()
+                if salvaged:
+                    logger.info("extract_python: code salvagé depuis un bloc <think>")
+                    return salvaged
+        return ""
     match = re.search(r"```(?:python)?\s*\n(.*?)\n```", text, re.DOTALL)
     if match:
         return _strip_non_python_noise(match.group(1)).strip()
     # Fallback : le texte entier
     return _strip_non_python_noise(text).strip()
-
 
 
 def _salvage_complex_ast_syntax(code: str) -> str:
@@ -543,13 +534,11 @@ def _salvage_complex_ast_syntax(code: str) -> str:
     return candidate
 
 
-
 def _indicator_name_from_hint_expression(expr: str) -> Optional[str]:
     match = re.search(r"indicators\[['\"]([A-Za-z0-9_]+)['\"]\]", str(expr or ""))
     if not match:
         return None
     return str(match.group(1)).strip().lower() or None
-
 
 
 def _extract_declared_required_indicators(code: str) -> List[str]:
@@ -572,7 +561,6 @@ def _extract_declared_required_indicators(code: str) -> List[str]:
     return []
 
 
-
 def _extract_generate_signals_logic_block(code: str) -> str:
     """Extrait le bloc logique de generate_signals depuis une réponse LLM."""
     candidates: List[str] = []
@@ -587,7 +575,16 @@ def _extract_generate_signals_logic_block(code: str) -> str:
     for candidate in candidates:
         try:
             tree = ast.parse(candidate)
-        except (SyntaxError, IndentationError, ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
+        except (
+            SyntaxError,
+            IndentationError,
+            ValueError,
+            KeyError,
+            RuntimeError,
+            AttributeError,
+            TypeError,
+            IndexError,
+        ):
             continue
 
         lines = candidate.splitlines()
@@ -610,7 +607,6 @@ def _extract_generate_signals_logic_block(code: str) -> str:
                 stripped.append(line)
             return textwrap.dedent("\n".join(stripped)).strip()
     return ""
-
 
 
 def _extract_required_indicators_signature(code: str) -> tuple[str, ...]:
@@ -636,7 +632,6 @@ def _extract_required_indicators_signature(code: str) -> tuple[str, ...]:
     return tuple()
 
 
-
 def _extract_generate_signals_signature(code: str) -> str:
     """Retourne une signature AST du corps de generate_signals."""
     try:
@@ -653,7 +648,6 @@ def _extract_generate_signals_signature(code: str) -> str:
                         include_attributes=False,
                     )
     return ""
-
 
 
 def _extract_default_params_signature(code: str) -> Dict[str, Any]:
@@ -676,4 +670,3 @@ def _extract_default_params_signature(code: str) -> Dict[str, Any]:
                             if isinstance(value, dict):
                                 return value
     return {}
-

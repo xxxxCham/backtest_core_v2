@@ -21,6 +21,7 @@ Skip-if: Vous utilisez seulement OpenAI.
 """
 
 from __future__ import annotations
+
 # pylint: disable=broad-except
 # pylint: disable=logging-fstring-interpolation
 import atexit
@@ -217,10 +218,98 @@ def _bind_process_to_lifecycle(process: subprocess.Popen) -> bool:
     return True
 
 
-def _terminate_owned_ollama_process(record: _OwnedOllamaProcess, *, timeout_s: float) -> int:
-    process = record.process
-    if process.poll() is not None:
+def _terminate_process_tree(
+    process: Any,
+    *,
+    timeout_s: float,
+    force: bool = True,
+) -> int:
+    """Termine un processus et, si possible, tous ses enfants."""
+    if process is None:
         return 0
+
+    poll = getattr(process, "poll", None)
+    if callable(poll):
+        try:
+            if poll() is not None:
+                return 0
+        except Exception:
+            pass
+
+    pid_raw = getattr(process, "pid", None)
+    try:
+        pid = int(pid_raw or 0)
+    except (TypeError, ValueError):
+        pid = 0
+
+    tracked_processes: list[Any] = []
+    psutil_module: Any = None
+    if pid > 0:
+        try:
+            import psutil as psutil_module
+
+            root_process = psutil_module.Process(pid)
+            tracked_processes = list(root_process.children(recursive=True))
+            tracked_processes.append(root_process)
+        except ImportError:
+            psutil_module = None
+        except Exception:
+            tracked_processes = []
+            psutil_module = None
+
+    if tracked_processes and psutil_module is not None:
+        unique_processes: list[Any] = []
+        seen_markers: set[int] = set()
+        for tracked in tracked_processes:
+            marker_raw = getattr(tracked, "pid", None)
+            try:
+                marker = int(marker_raw)
+            except (TypeError, ValueError):
+                marker = id(tracked)
+            if marker in seen_markers:
+                continue
+            seen_markers.add(marker)
+            unique_processes.append(tracked)
+
+        for tracked in unique_processes:
+            try:
+                tracked.terminate()
+            except Exception:
+                continue
+
+        try:
+            _gone, alive = psutil_module.wait_procs(
+                unique_processes,
+                timeout=max(timeout_s, 0.5),
+            )
+        except Exception:
+            alive = []
+
+        if force and alive:
+            for tracked in alive:
+                try:
+                    tracked.kill()
+                except Exception:
+                    continue
+            try:
+                psutil_module.wait_procs(alive, timeout=1.5)
+            except Exception:
+                pass
+
+        wait = getattr(process, "wait", None)
+        if callable(wait):
+            try:
+                wait(timeout=0.2)
+            except Exception:
+                pass
+
+        poll = getattr(process, "poll", None)
+        if callable(poll):
+            try:
+                return 1 if poll() is not None else 0
+            except Exception:
+                pass
+        return 1
 
     try:
         process.terminate()
@@ -231,12 +320,18 @@ def _terminate_owned_ollama_process(record: _OwnedOllamaProcess, *, timeout_s: f
         process.wait(timeout=max(timeout_s, 0.5))
         return 1
     except subprocess.TimeoutExpired:
+        if not force:
+            return 0
         try:
             process.kill()
             process.wait(timeout=1.5)
             return 1
         except (OSError, subprocess.SubprocessError):
             return 0
+
+
+def _terminate_owned_ollama_process(record: _OwnedOllamaProcess, *, timeout_s: float) -> int:
+    return _terminate_process_tree(record.process, timeout_s=timeout_s, force=True)
 
 
 def stop_owned_local_ollama_server(
@@ -1257,26 +1352,9 @@ def stop_local_ollama_server(
     stopped = 0
     for proc in candidate_processes:
         try:
-            for child in proc.children(recursive=True):
-                try:
-                    child.terminate()
-                except (psutil.Error, OSError):
-                    continue
-            proc.terminate()
-            stopped += 1
+            stopped += _terminate_process_tree(proc, timeout_s=timeout_s, force=force)
         except (psutil.Error, OSError) as exc:
             logger.warning("⚠️ Impossible de terminer Ollama pid=%s: %s", proc.pid, exc)
-
-    gone, alive = psutil.wait_procs(candidate_processes, timeout=max(timeout_s, 0.5))
-    if force:
-        for proc in alive:
-            try:
-                proc.kill()
-            except (psutil.Error, OSError):
-                continue
-        if alive:
-            gone_after_kill, _ = psutil.wait_procs(alive, timeout=1.5)
-            stopped += len(gone_after_kill)
 
     logger.warning(
         "🪓 Arrêt dur Ollama local sur %s (port %s): %d process arrêté(s)",

@@ -43,6 +43,8 @@ from urllib.parse import urlparse
 import httpx
 import streamlit as st
 
+discover_local_models: Any
+
 from agents.llm_config import (
     apply_llm_inference_settings,
     normalize_llm_inference_settings,
@@ -75,6 +77,7 @@ if not logger.handlers:
     _handler.setFormatter(_formatter)
     logger.addHandler(_handler)
 
+from agents.builder_state import compute_session_generation_stats
 from agents.llm_client import LLMConfig, LLMProvider, create_llm_client
 from agents.llm_router import LLMTopologyConfig
 from agents.model_config import is_cloud_only_model
@@ -90,6 +93,7 @@ from agents.strategy_builder import (
     validate_builder_dataset_exploitability,
 )
 from agents.thought_stream import STREAM_FILE
+from ui.context import discover_available_data as discover_available_builder_data
 from ui.helpers import _maybe_auto_save_run, safe_load_data, show_status
 
 try:
@@ -631,12 +635,10 @@ def _format_builder_live_event_line(event_payload: Dict[str, Any]) -> str:
         hypothesis = str(proposal.get("hypothesis", "") or "hypothese retenue")
         return f"{prefix}Branche retenue: {hypothesis}"
     if event == "phase_done" and phase == "backtest":
-        sharpe = payload.get("sharpe")
-        ret_pct = payload.get("total_return_pct")
-        try:
-            return f"{prefix}Backtest: Sharpe {float(sharpe):.3f} | Return {float(ret_pct):+.2f}%"
-        except Exception:
-            pass
+        sharpe = _safe_optional_float(payload.get("sharpe"))
+        ret_pct = _safe_optional_float(payload.get("total_return_pct"))
+        if sharpe is not None and ret_pct is not None:
+            return f"{prefix}Backtest: Sharpe {sharpe:.3f} | Return {ret_pct:+.2f}%"
     if message:
         return prefix + message
     if event == "iteration_done":
@@ -657,13 +659,13 @@ def _format_builder_live_detail_lines(event_payload: Dict[str, Any]) -> List[str
         if isinstance(used, list) and used:
             details.append("Indicateurs: " + ", ".join(str(item) for item in used))
     elif event == "phase_done" and str(event_payload.get("phase", "") or "") == "backtest":
-        sharpe = payload.get("sharpe")
-        ret_pct = payload.get("total_return_pct")
-        try:
+        sharpe = _safe_optional_float(payload.get("sharpe"))
+        ret_pct = _safe_optional_float(payload.get("total_return_pct"))
+        if sharpe is not None and ret_pct is not None:
             details.append(
-                f"Backtest courant: Sharpe {float(sharpe):.3f} | Return {float(ret_pct):+.2f}%"
+                f"Backtest courant: Sharpe {sharpe:.3f} | Return {ret_pct:+.2f}%"
             )
-        except Exception:
+        else:
             logger.warning("backtest metric format failed sharpe=%s ret_pct=%s", sharpe, ret_pct)
     elif event == "iteration_error":
         error_text = str(payload.get("error", "") or "").strip()
@@ -830,7 +832,7 @@ def _sync_autonomous_state(
 
 
 def _load_autonomous_supervisor_state() -> Dict[str, Any]:
-    payload = {
+    payload: Dict[str, Any] = {
         "history": [],
         "supervisor": _default_autonomous_supervisor_state(),
     }
@@ -1052,10 +1054,8 @@ def _extract_best_return_snapshot_from_session_summary(
     for row in iterations:
         if not isinstance(row, dict):
             continue
-        current_return_raw = row.get("return_pct")
-        try:
-            current_return = float(current_return_raw)
-        except Exception:
+        current_return = _safe_optional_float(row.get("return_pct"))
+        if current_return is None:
             continue
         if best_return is None or current_return > best_return:
             best_return = current_return
@@ -1187,30 +1187,29 @@ def _extract_last_runtime_feedback_from_session_summary(
 
 
 def _extract_autonomous_session_last_runtime_feedback(session: Any) -> Dict[str, Any]:
-    iterations = getattr(session, "iterations", []) or []
-    for iteration in reversed(iterations):
-        phase_feedback = getattr(iteration, "phase_feedback", {}) or {}
-        if not isinstance(phase_feedback, dict):
-            continue
-        backtest_feedback = phase_feedback.get("backtest") or {}
-        if not isinstance(backtest_feedback, dict):
-            continue
-        runtime_error = str(backtest_feedback.get("runtime_error") or "").strip()
-        runtime_traceback_tail = str(
-            backtest_feedback.get("runtime_traceback_tail") or ""
-        ).strip()
-        if runtime_error or runtime_traceback_tail:
-            return {
-                "last_runtime_error": runtime_error or None,
-                "last_runtime_error_iteration": getattr(iteration, "iteration", None),
-                "last_runtime_traceback_tail": runtime_traceback_tail or None,
-            }
-
-    return {
+    _default = {
         "last_runtime_error": None,
         "last_runtime_error_iteration": None,
         "last_runtime_traceback_tail": None,
     }
+    for iteration in reversed(getattr(session, "iterations", None) or []):
+        bf = getattr(iteration, "phase_feedback", None)
+        if hasattr(bf, "to_dict"):
+            bf = bf.to_dict()
+        if not isinstance(bf, dict):
+            continue
+        bt = bf.get("backtest")
+        if not isinstance(bt, dict):
+            continue
+        err = str(bt.get("runtime_error") or "").strip()
+        tb = str(bt.get("runtime_traceback_tail") or "").strip()
+        if err or tb:
+            return {
+                "last_runtime_error": err or None,
+                "last_runtime_error_iteration": getattr(iteration, "iteration", None),
+                "last_runtime_traceback_tail": tb or None,
+            }
+    return _default
 
 
 def _load_builder_runtime_checkpoint(session_id: str) -> Optional[Dict[str, Any]]:
@@ -1293,6 +1292,45 @@ def _load_autonomous_session_summary(summary_path: Path) -> Optional[Dict[str, A
     return raw
 
 
+def _recover_scalar(summary: Dict, recovered: Dict, key: str, default: Any = None) -> Any:
+    """Récupère un scalaire : summary > recovered > default."""
+    return summary.get(key) or recovered.get(key) or default
+
+
+def _recover_dict_field(summary: Dict, recovered: Dict, key: str) -> Dict:
+    """Récupère un champ dict : summary > recovered > {}."""
+    val = summary.get(key)
+    if isinstance(val, dict):
+        return dict(val)
+    val = recovered.get(key)
+    return dict(val) if isinstance(val, dict) else {}
+
+
+_RECOVERY_SCALAR_DEFAULTS: Dict[str, Any] = {
+    "universe_mode": BUILDER_UNIVERSE_MODE_CANONICAL,
+    "universe_purpose": "builder_autonomous",
+    "universe_strategy_type": "",
+    "builder_execution_mode": BUILDER_EXECUTION_MODE_MONO,
+    "orchestration_mode": "single_llm",
+    "pipeline_traces_path": "",
+}
+
+_RECOVERY_DICT_FIELDS: tuple[str, ...] = (
+    "universe_meta",
+    "instrumentation_summary",
+    "multi_llm_router_decision",
+    "multi_llm_role_outputs",
+    "multi_llm_shared_memory",
+    "continuity_context",
+)
+
+_RECOVERY_RUNTIME_FEEDBACK_FIELDS: tuple[str, ...] = (
+    "last_runtime_error",
+    "last_runtime_error_iteration",
+    "last_runtime_traceback_tail",
+)
+
+
 def _build_recovered_autonomous_history_entry(
     entry: Dict[str, Any],
     summary: Dict[str, Any],
@@ -1314,99 +1352,34 @@ def _build_recovered_autonomous_history_entry(
         summary.get("best_score"),
     )
     recovered["best_score"] = recovered["best_telemetry_score"]
-    recovered["best_return"] = recovered_snapshot.get("best_return")
-    recovered["best_return_iteration"] = recovered_snapshot.get("best_return_iteration")
-    recovered["best_max_dd"] = recovered_snapshot.get("best_max_dd")
-    recovered["best_pf"] = recovered_snapshot.get("best_pf")
-    recovered["best_trades"] = recovered_snapshot.get("best_trades")
-    recovered["best_return_sharpe"] = recovered_snapshot.get("best_return_sharpe")
-    recovered["best_total_pnl"] = recovered_snapshot.get("best_total_pnl")
-    recovered["final_return"] = final_snapshot.get("final_return")
-    recovered["final_iteration"] = final_snapshot.get("final_iteration")
-    recovered["final_max_dd"] = final_snapshot.get("final_max_dd")
-    recovered["final_pf"] = final_snapshot.get("final_pf")
-    recovered["final_trades"] = final_snapshot.get("final_trades")
-    recovered["final_sharpe"] = final_snapshot.get("final_sharpe")
-    recovered["final_total_pnl"] = final_snapshot.get("final_total_pnl")
-    recovered["n_bars"] = summary.get("n_bars") or recovered.get("n_bars") or _extract_autonomous_bar_count_from_summary(summary)
-    recovered["date_range_start"] = summary.get("date_range_start") or recovered.get("date_range_start")
-    recovered["date_range_end"] = summary.get("date_range_end") or recovered.get("date_range_end")
-    recovered["initial_capital"] = summary.get("initial_capital") or recovered.get("initial_capital")
-    recovered["universe_mode"] = (
-        summary.get("universe_mode")
-        or recovered.get("universe_mode")
-        or BUILDER_UNIVERSE_MODE_CANONICAL
+    for k in ("best_return", "best_return_iteration", "best_max_dd", "best_pf",
+              "best_trades", "best_return_sharpe", "best_total_pnl"):
+        recovered[k] = recovered_snapshot.get(k)
+    for k in ("final_return", "final_iteration", "final_max_dd", "final_pf",
+              "final_trades", "final_sharpe", "final_total_pnl"):
+        recovered[k] = final_snapshot.get(k)
+
+    recovered["n_bars"] = (
+        summary.get("n_bars")
+        or recovered.get("n_bars")
+        or _extract_autonomous_bar_count_from_summary(summary)
     )
-    recovered["universe_purpose"] = (
-        summary.get("universe_purpose")
-        or recovered.get("universe_purpose")
-        or "builder_autonomous"
-    )
-    recovered["universe_strategy_type"] = (
-        summary.get("universe_strategy_type")
-        or recovered.get("universe_strategy_type")
-        or ""
-    )
-    recovered["universe_meta"] = (
-        dict(summary.get("universe_meta", {}) or {})
-        if isinstance(summary.get("universe_meta"), dict)
-        else dict(recovered.get("universe_meta", {}) or {})
-    )
-    recovered["builder_execution_mode"] = (
-        summary.get("builder_execution_mode")
-        or recovered.get("builder_execution_mode")
-        or BUILDER_EXECUTION_MODE_MONO
-    )
-    recovered["orchestration_mode"] = (
-        summary.get("orchestration_mode")
-        or recovered.get("orchestration_mode")
-        or "single_llm"
-    )
+    for k in ("date_range_start", "date_range_end", "initial_capital"):
+        recovered[k] = summary.get(k) or recovered.get(k)
+
+    for k, default in _RECOVERY_SCALAR_DEFAULTS.items():
+        recovered[k] = _recover_scalar(summary, recovered, k, default)
+
     recovered["instrumentation_enabled"] = bool(
         summary.get("instrumentation_enabled", recovered.get("instrumentation_enabled", False))
     )
-    recovered["instrumentation_summary"] = (
-        dict(summary.get("instrumentation_summary", {}) or {})
-        if isinstance(summary.get("instrumentation_summary"), dict)
-        else dict(recovered.get("instrumentation_summary", {}) or {})
-    )
-    recovered["pipeline_traces_path"] = str(
-        summary.get("pipeline_traces_path")
-        or recovered.get("pipeline_traces_path")
-        or ""
-    )
-    recovered["multi_llm_router_decision"] = (
-        dict(summary.get("multi_llm_router_decision", {}) or {})
-        if isinstance(summary.get("multi_llm_router_decision"), dict)
-        else dict(recovered.get("multi_llm_router_decision", {}) or {})
-    )
-    recovered["multi_llm_role_outputs"] = (
-        dict(summary.get("multi_llm_role_outputs", {}) or {})
-        if isinstance(summary.get("multi_llm_role_outputs"), dict)
-        else dict(recovered.get("multi_llm_role_outputs", {}) or {})
-    )
-    recovered["multi_llm_shared_memory"] = (
-        dict(summary.get("multi_llm_shared_memory", {}) or {})
-        if isinstance(summary.get("multi_llm_shared_memory"), dict)
-        else dict(recovered.get("multi_llm_shared_memory", {}) or {})
-    )
-    recovered["continuity_context"] = (
-        dict(summary.get("continuity_context", {}) or {})
-        if isinstance(summary.get("continuity_context"), dict)
-        else dict(recovered.get("continuity_context", {}) or {})
-    )
-    recovered["last_runtime_error"] = (
-        recovered.get("last_runtime_error")
-        or runtime_feedback.get("last_runtime_error")
-    )
-    recovered["last_runtime_error_iteration"] = (
-        recovered.get("last_runtime_error_iteration")
-        or runtime_feedback.get("last_runtime_error_iteration")
-    )
-    recovered["last_runtime_traceback_tail"] = (
-        recovered.get("last_runtime_traceback_tail")
-        or runtime_feedback.get("last_runtime_traceback_tail")
-    )
+
+    for k in _RECOVERY_DICT_FIELDS:
+        recovered[k] = _recover_dict_field(summary, recovered, k)
+
+    for k in _RECOVERY_RUNTIME_FEEDBACK_FIELDS:
+        recovered[k] = recovered.get(k) or runtime_feedback.get(k)
+
     recovered["recovered_from_summary"] = True
     recovered["recovered_session_status"] = summary.get("status")
     return recovered
@@ -1660,68 +1633,47 @@ def should_auto_resume_builder_autonomous(state: Any) -> tuple[bool, Dict[str, A
     return should_resume, payload
 
 
+_RESUME_UI_STATE_SCHEMA: tuple[tuple[str, type, Any], ...] = (
+    # (field_name, cast_type, default_value)
+    ("builder_execution_mode", str, "mono_single_llm"),
+    ("builder_model_single_llm", str, ""),
+    ("builder_ollama_host", str, ""),
+    ("builder_auto_pause", int, 10),
+    ("builder_auto_use_llm", bool, True),
+    ("builder_auto_market_pick", bool, False),
+    ("builder_universe_mode", str, BUILDER_UNIVERSE_MODE_CANONICAL),
+    ("builder_preload_model", bool, True),
+    ("builder_keep_alive_minutes", int, 20),
+    ("builder_unload_after_run", bool, True),
+    ("builder_auto_start_ollama", bool, True),
+    ("builder_multi_llm_enabled", bool, False),
+    ("builder_multi_llm_profile", str, ""),
+    ("builder_flow_analysis_enabled", bool, False),
+    ("builder_dual_lane_primary_model", str, ""),
+    ("builder_dual_lane_critic_model", str, ""),
+)
+
+
 def _build_builder_autonomous_resume_ui_state(state: Any) -> Dict[str, Any]:
+    result: Dict[str, Any] = {}
+    for field, cast, default in _RESUME_UI_STATE_SCHEMA:
+        raw = getattr(state, field, default)
+        result[field] = cast(raw if raw is not None else default)
+
     role_overrides = normalize_builder_multi_llm_role_pool_overrides(
         getattr(state, "builder_multi_llm_role_overrides", {}) or {}
     )
-    return {
-        "builder_execution_mode": str(
-            getattr(state, "builder_execution_mode", "mono_single_llm")
-            or "mono_single_llm"
-        ),
-        "builder_model_single_llm": str(
-            getattr(state, "builder_model_single_llm", "") or ""
-        ),
-        "builder_ollama_host": str(
-            getattr(state, "builder_ollama_host", "") or ""
-        ),
-        "builder_auto_pause": int(getattr(state, "builder_auto_pause", 10) or 10),
-        "builder_auto_use_llm": bool(getattr(state, "builder_auto_use_llm", True)),
-        "builder_auto_market_pick": bool(
-            getattr(state, "builder_auto_market_pick", False)
-        ),
-        "builder_universe_mode": str(
-            getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL)
-            or BUILDER_UNIVERSE_MODE_CANONICAL
-        ),
-        "builder_preload_model": bool(
-            getattr(state, "builder_preload_model", True)
-        ),
-        "builder_keep_alive_minutes": int(
-            getattr(state, "builder_keep_alive_minutes", 20) or 20
-        ),
-        "builder_unload_after_run": bool(
-            getattr(state, "builder_unload_after_run", True)
-        ),
-        "builder_auto_start_ollama": bool(
-            getattr(state, "builder_auto_start_ollama", True)
-        ),
-        "builder_multi_llm_enabled": bool(
-            getattr(state, "builder_multi_llm_enabled", False)
-        ),
-        "builder_multi_llm_profile": str(
-            getattr(state, "builder_multi_llm_profile", "") or ""
-        ),
-        "builder_multi_llm_role_overrides": {
-            str(role): list(models)
-            for role, models in role_overrides.items()
-            if str(role).strip() and list(models)
-        },
-        "builder_flow_analysis_enabled": bool(
-            getattr(state, "builder_flow_analysis_enabled", False)
-        ),
-        "builder_flow_analysis_ablation": (
-            dict(getattr(state, "builder_flow_analysis_ablation", {}) or {})
-            if isinstance(getattr(state, "builder_flow_analysis_ablation", {}), dict)
-            else {}
-        ),
-        "builder_dual_lane_primary_model": str(
-            getattr(state, "builder_dual_lane_primary_model", "") or ""
-        ),
-        "builder_dual_lane_critic_model": str(
-            getattr(state, "builder_dual_lane_critic_model", "") or ""
-        ),
+    result["builder_multi_llm_role_overrides"] = {
+        str(role): list(models)
+        for role, models in role_overrides.items()
+        if str(role).strip() and list(models)
     }
+
+    ablation_raw = getattr(state, "builder_flow_analysis_ablation", {})
+    result["builder_flow_analysis_ablation"] = (
+        dict(ablation_raw) if isinstance(ablation_raw, dict) else {}
+    )
+    return result
 
 
 def restore_builder_autonomous_ui_state_from_runtime() -> tuple[bool, Dict[str, Any]]:
@@ -1775,9 +1727,9 @@ def restore_builder_autonomous_ui_state_from_runtime() -> tuple[bool, Dict[str, 
     ):
         if name not in resume_ui_state:
             continue
-        value = bool(resume_ui_state.get(name))
-        st.session_state[name] = value
-        st.session_state[widget_key] = value
+        toggle_value = bool(resume_ui_state.get(name))
+        st.session_state[name] = toggle_value
+        st.session_state[widget_key] = toggle_value
 
     if "builder_keep_alive_minutes" in resume_ui_state:
         keep_alive = int(
@@ -1821,11 +1773,11 @@ def restore_builder_autonomous_ui_state_from_runtime() -> tuple[bool, Dict[str, 
         ("builder_dual_lane_primary_model", "builder_dual_lane_primary_model_select"),
         ("builder_dual_lane_critic_model", "builder_dual_lane_critic_model_select"),
     ):
-        value = str(resume_ui_state.get(name, "") or "").strip()
-        if not value:
+        selected_model = str(resume_ui_state.get(name, "") or "").strip()
+        if not selected_model:
             continue
-        st.session_state[name] = value
-        st.session_state[widget_key] = value
+        st.session_state[name] = selected_model
+        st.session_state[widget_key] = selected_model
 
     return True, payload
 
@@ -1919,13 +1871,7 @@ def _get_autonomous_recap_status_badge(entry: Dict[str, Any]) -> Dict[str, str]:
         raw_return = entry.get("best_return")
     return_pct: Optional[float] = None
 
-    try:
-        if raw_return not in (None, ""):
-            return_pct = float(raw_return)
-            if not math.isfinite(return_pct):
-                return_pct = None
-    except Exception:
-        return_pct = None
+    return_pct = _safe_optional_float(raw_return)
 
     if return_pct is not None and return_pct < 0.0:
         if status in {"failed", "max_iterations", "running", ""}:
@@ -1967,12 +1913,8 @@ def _get_autonomous_session_best_return_snapshot(session: Any) -> Dict[str, Any]
         if not isinstance(metrics, dict):
             continue
 
-        raw_return = metrics.get("total_return_pct")
-        try:
-            current_return = float(raw_return)
-        except (TypeError, ValueError):
-            continue
-        if not math.isfinite(current_return):
+        current_return = _safe_optional_float(metrics.get("total_return_pct"))
+        if current_return is None:
             continue
 
         if best_return is None or current_return > best_return:
@@ -2189,6 +2131,38 @@ def _apply_autonomous_supervisor_recovery(
     return plan
 
 
+def _render_iterations_compact_table(session: Any) -> None:
+    """Résumé compact des itérations en une seule table dans un expander fermé."""
+    iterations = getattr(session, "iterations", []) or []
+    if not iterations:
+        return
+
+    decision_icons = {"accept": "✅", "stop": "🛑"}
+    rows = []
+    for it in iterations:
+        it_num = getattr(it, "iteration", 0)
+        decision = getattr(it, "decision", "")
+        error = getattr(it, "error", None)
+        bt = getattr(it, "backtest_result", None)
+        metrics = getattr(bt, "metrics", None) if bt is not None else None
+        icon = "❌" if error else decision_icons.get(decision, "🔄")
+        row: Dict[str, Any] = {
+            "#": it_num,
+            "": icon,
+            "Sharpe": float(metrics.get("sharpe_ratio", 0) or 0) if isinstance(metrics, dict) else None,
+            "Return %": float(metrics.get("total_return_pct", 0) or 0) if isinstance(metrics, dict) else None,
+            "Max DD %": float(metrics.get("max_drawdown_pct", 0) or 0) if isinstance(metrics, dict) else None,
+            "Trades": int(metrics.get("total_trades", 0) or 0) if isinstance(metrics, dict) else None,
+            "PF": float(metrics.get("profit_factor", 0) or 0) if isinstance(metrics, dict) else None,
+            "Type": str(getattr(it, "change_type", "") or ""),
+        }
+        rows.append(row)
+
+    n = len(rows)
+    with st.expander(f"📋 Historique des itérations ({n})", expanded=False):
+        st.dataframe(rows, hide_index=True, use_container_width=True)
+
+
 def render_iteration_card(
     iteration: Any,
     *,
@@ -2311,8 +2285,14 @@ def render_session_summary(session: Any) -> None:
 
     st.markdown(f"### {icon} {label}")
     sharpe_txt = _format_optional_float(best_sharpe_raw, "{:.3f}")
+    model_name_display = str(getattr(session, "model_name", "") or "")
+    gen_stats = compute_session_generation_stats(session) if hasattr(session, "iterations") else {}
+    canonical_rate = gen_stats.get("canonical_rate")
+    canonical_pct_txt = f"{canonical_rate * 100:.0f}%" if canonical_rate is not None else "n/a"
+    model_info = f" | **Modèle:** {model_name_display}" if model_name_display else ""
     st.markdown(
         f"**Itérations:** {n_iters} | **Meilleur Sharpe:** {sharpe_txt}"
+        f"{model_info} | **LLM canonique:** {canonical_pct_txt}"
     )
 
     auto_resets = int(getattr(session, "auto_reset_count", 0) or 0)
@@ -2612,7 +2592,7 @@ def _finalize_multi_llm_session_review(
 
 
 def _resolve_builder_multi_llm_payload(source: Any) -> Dict[str, Any]:
-    payload = {
+    payload: Dict[str, Any] = {
         "builder_execution_mode": str(
             _read_builder_source_value(source, "builder_execution_mode", "") or ""
         ),
@@ -4328,6 +4308,8 @@ def _sync_builder_runtime_diagnostic(
     placeholder: Any = None,
     expanded: bool = False,
 ) -> Dict[str, Any]:
+    if manager is None:
+        return {}
     diagnostic = _build_builder_runtime_diagnostic_payload(
         manager,
         mode=mode,
@@ -4863,19 +4845,18 @@ def _run_single_builder_session(
     progress_detail_placeholder = st.empty()
     live_events_placeholder = st.empty()
     runtime_diag_placeholder = st.empty() if multi_llm_manager is not None else None
-    if multi_llm_manager is not None and runtime_diag_placeholder is not None:
-        _sync_builder_runtime_diagnostic(
-            multi_llm_manager,
-            mode="multi_llm",
-            event="session_bootstrap",
-            phase="initialisation",
-            iteration=0,
-            max_iterations=max_iterations,
-            session_label=session_label,
-            objective=objective,
-            placeholder=runtime_diag_placeholder,
-            expanded=True,
-        )
+    _sync_builder_runtime_diagnostic(
+        multi_llm_manager,
+        mode="multi_llm",
+        event="session_bootstrap",
+        phase="initialisation",
+        iteration=0,
+        max_iterations=max_iterations,
+        session_label=session_label,
+        objective=objective,
+        placeholder=runtime_diag_placeholder,
+        expanded=True,
+    )
 
     # Zone de streaming LLM
     stream_placeholder = st.empty()
@@ -5010,21 +4991,20 @@ def _run_single_builder_session(
                     st.caption("Timeline live")
                     for entry in reversed(recent_events[-6:]):
                         st.caption(entry)
-            if multi_llm_manager is not None and runtime_diag_placeholder is not None:
-                _sync_builder_runtime_diagnostic(
-                    multi_llm_manager,
-                    mode="multi_llm",
-                    event=event or "progress",
-                    phase=phase,
-                    iteration=iteration,
-                    max_iterations=max_iters,
-                    session_label=session_label,
-                    objective=objective,
-                    placeholder=runtime_diag_placeholder,
-                    expanded=True,
-                )
+            _sync_builder_runtime_diagnostic(
+                multi_llm_manager,
+                mode="multi_llm",
+                event=event or "progress",
+                phase=phase,
+                iteration=iteration,
+                max_iterations=max_iters,
+                session_label=session_label,
+                objective=objective,
+                placeholder=runtime_diag_placeholder,
+                expanded=True,
+            )
         except Exception:
-            pass
+            logger.debug("_sync_builder_runtime_diagnostic failed in progress callback", exc_info=True)
 
     def _on_llm_stream(phase: str, chunk: str) -> None:
         if phase != _stream_state["phase"]:
@@ -5044,7 +5024,7 @@ def _run_single_builder_session(
                     display = "…(tronqué)…\n" + display
                 st.code(display, language=lang)
         except Exception:
-            pass
+            logger.debug("LLM stream render failed (placeholder may be stale)", exc_info=True)
 
     llm_config = _apply_builder_keep_alive(
         apply_llm_inference_settings(
@@ -5156,39 +5136,37 @@ def _run_single_builder_session(
         )
     except KeyboardInterrupt:
         st.warning("Construction interrompue par l'utilisateur.")
-        if multi_llm_manager is not None and runtime_diag_placeholder is not None:
-            _sync_builder_runtime_diagnostic(
-                multi_llm_manager,
-                mode="multi_llm",
-                event="session_interrupted",
-                phase=str(_progress_state.get("phase", "") or "runtime"),
-                iteration=int(_progress_state.get("iteration", 0) or 0),
-                max_iterations=max_iterations,
-                status="interrupted",
-                session_label=session_label,
-                objective=objective,
-                placeholder=runtime_diag_placeholder,
-                expanded=True,
-            )
+        _sync_builder_runtime_diagnostic(
+            multi_llm_manager,
+            mode="multi_llm",
+            event="session_interrupted",
+            phase=str(_progress_state.get("phase", "") or "runtime"),
+            iteration=int(_progress_state.get("iteration", 0) or 0),
+            max_iterations=max_iterations,
+            status="interrupted",
+            session_label=session_label,
+            objective=objective,
+            placeholder=runtime_diag_placeholder,
+            expanded=True,
+        )
         _release_runtime_model()
         return None
     except Exception as exc:
         show_status("error", f"Erreur Strategy Builder: {exc}")
         st.code(traceback.format_exc())
-        if multi_llm_manager is not None and runtime_diag_placeholder is not None:
-            _sync_builder_runtime_diagnostic(
-                multi_llm_manager,
-                mode="multi_llm",
-                event="session_error",
-                phase=str(_progress_state.get("phase", "") or "runtime"),
-                iteration=int(_progress_state.get("iteration", 0) or 0),
-                max_iterations=max_iterations,
-                status="error",
-                session_label=session_label,
-                objective=objective,
-                placeholder=runtime_diag_placeholder,
-                expanded=True,
-            )
+        _sync_builder_runtime_diagnostic(
+            multi_llm_manager,
+            mode="multi_llm",
+            event="session_error",
+            phase=str(_progress_state.get("phase", "") or "runtime"),
+            iteration=int(_progress_state.get("iteration", 0) or 0),
+            max_iterations=max_iterations,
+            status="error",
+            session_label=session_label,
+            objective=objective,
+            placeholder=runtime_diag_placeholder,
+            expanded=True,
+        )
         _release_runtime_model()
         return None
     finally:
@@ -5243,31 +5221,28 @@ def _run_single_builder_session(
             )
 
     with iterations_container:
-        st.markdown("### 📋 Historique des itérations")
-        for it in session.iterations:
-            is_last = (it == session.iterations[-1])
-            render_iteration_card(it, expanded=is_last)
+        _render_iterations_compact_table(session)
 
     with summary_placeholder.container():
         st.markdown("---")
         render_session_summary(session)
-        _render_builder_flow_analysis_panel(session)
-        _render_builder_campaign_memory_card(session)
-        _render_multi_llm_session_analysis_panel(session)
+        with st.expander("🔬 Diagnostics avancés de session", expanded=False):
+            _render_builder_flow_analysis_panel(session)
+            _render_builder_campaign_memory_card(session)
+            _render_multi_llm_session_analysis_panel(session)
 
-    if multi_llm_manager is not None and runtime_diag_placeholder is not None:
-        _sync_builder_runtime_diagnostic(
-            multi_llm_manager,
-            mode="multi_llm",
-            event="session_done",
-            phase=str(_progress_state.get("phase", "") or "analysis"),
-            iteration=len(getattr(session, "iterations", []) or []),
-            max_iterations=max_iterations,
-            status=str(getattr(session, "status", "") or ""),
-            session_label=session_label,
-            objective=objective,
-            placeholder=runtime_diag_placeholder,
-            expanded=True,
+    _sync_builder_runtime_diagnostic(
+        multi_llm_manager,
+        mode="multi_llm",
+        event="session_done",
+        phase=str(_progress_state.get("phase", "") or "analysis"),
+        iteration=len(getattr(session, "iterations", []) or []),
+        max_iterations=max_iterations,
+        status=str(getattr(session, "status", "") or ""),
+        session_label=session_label,
+        objective=objective,
+        placeholder=runtime_diag_placeholder,
+        expanded=True,
         )
 
     _release_runtime_model()
@@ -5421,6 +5396,10 @@ def _render_autonomous_recap(
         started_at = _format_autonomous_session_started_at(h)
 
         source = str(h.get("source_label", "") or "-")
+        h_model = str(h.get("model_name", "") or "-")
+        h_gen_stats = h.get("generation_stats") or {}
+        h_canonical_rate = h_gen_stats.get("canonical_rate")
+        h_llm_pct = f"{h_canonical_rate * 100:.0f}%" if h_canonical_rate is not None else "n/a"
         status = h.get("status", "?")
         _bs = h.get("best_sharpe")
         _use_best = _bs is not None and _bs > 0
@@ -5451,6 +5430,8 @@ def _render_autonomous_recap(
             f"<td class='builder-autonomous-recap-num'>{_escape_autonomous_recap_cell(display_session_num)}</td>"
             f"<td>{_escape_autonomous_recap_cell(started_at)}</td>"
             f"<td>{_escape_autonomous_recap_cell(source)}</td>"
+            f"<td>{_escape_autonomous_recap_cell(h_model)}</td>"
+            f"<td class='builder-autonomous-recap-num'>{_escape_autonomous_recap_cell(h_llm_pct)}</td>"
             f"<td>{objective_html}</td>"
             f"<td>{status_html}</td>"
             f"<td class='builder-autonomous-recap-num'>{_escape_autonomous_recap_cell(_fmt_float(sharpe, '{:.3f}'))}</td>"
@@ -5476,6 +5457,8 @@ def _render_autonomous_recap(
                 "session_num": h.get("session_num"),
                 "started_at": h.get("started_at"),
                 "started_at_display": started_at,
+                "model_name": h_model,
+                "llm_canonical_pct": h_llm_pct,
                 "status": status,
                 "status_display": f"{badge['icon']} {badge['label']}",
                 "best_sharpe": h.get("best_sharpe"),
@@ -5622,6 +5605,8 @@ def _render_autonomous_recap(
       <th>Session</th>
         <th>Date/heure</th>
             <th>Generation</th>
+            <th>Modele</th>
+            <th>LLM %</th>
             <th>Objectif</th>
       <th>Statut</th>
       <th>Sharpe fin.</th>
@@ -5657,6 +5642,8 @@ def _render_autonomous_recap(
 <div class="builder-autonomous-recap-legend">
     <strong>Generation :</strong> <strong>LLM</strong> = objectif formule par le modele ;
     <strong>Fallback simple</strong> = objectif de secours produit par le runtime quand il doit repartir sans dependre du flux LLM principal.<br>
+    <strong>Modele :</strong> nom du modele LLM utilise pour la session.
+    <strong>LLM % :</strong> pourcentage d'iterations generees par le LLM (canoniques) vs fallback deterministe.<br>
     <strong>Lecture des metriques :</strong> <strong>Sharpe/Return/Max DD/Trades</strong> = metriques de la derniere iteration backtestee de la session.<br>
     <strong>Gain total EUR / EUR-j</strong> = derive du PnL final si disponible, sinon du return final applique au capital initial ;
     <strong>Jours testes</strong> = plage de donnees reelle si disponible, sinon estimation via le nombre de barres et le timeframe.
@@ -5730,25 +5717,412 @@ def _render_autonomous_recap(
         )
 
 
+# ---------------------------------------------------------------------------
+#  Sous-fonctions extraites de _execute_builder_autonomous_loop
+# ---------------------------------------------------------------------------
 
 
+def _record_autonomous_session_result(
+    *,
+    session: Any,
+    session_ctx: Dict[str, Any],
+    cfg: Dict[str, Any],
+    history: List[Dict[str, Any]],
+    supervisor: Dict[str, Any],
+    recap_placeholder: Any,
+) -> Optional[str]:
+    """Enregistre le résultat d'une session autonome et met à jour le superviseur.
+
+    Retourne ``terminal_reason`` si la boucle doit s'arrêter, sinon ``None``.
+    """
+    session_num = session_ctx["session_num"]
+    objective = session_ctx["objective"]
+    source_label = session_ctx["source_label"]
+    duration = session_ctx["duration"]
+    session_started_at = session_ctx["started_at"]
+    session_symbol = session_ctx["symbol"]
+    session_timeframe = session_ctx["timeframe"]
+    session_df = session_ctx["df"]
+    session_error_message = session_ctx.get("error_message")
+    effective_objective_mode = session_ctx["effective_objective_mode"]
+    objective_mode_policy = session_ctx["objective_mode_policy"]
+    effective_auto_market_pick = session_ctx["effective_auto_market_pick"]
+    autonomous_universe_mode = session_ctx["autonomous_universe_mode"]
+    autonomous_strategy_type = session_ctx["autonomous_strategy_type"]
+    autonomous_universe_meta = session_ctx["autonomous_universe_meta"]
+    _mlm = session_ctx["multi_llm_fields"]
+    session_model = session_ctx.get("session_model", "")
+
+    capital = cfg["capital"]
+    builder_execution_mode = cfg["builder_execution_mode"]
+    orchestration_mode = cfg["orchestration_mode"]
+    builder_flow_analysis_enabled = cfg["builder_flow_analysis_enabled"]
+
+    if session is not None:
+        best_return_snapshot = _get_autonomous_session_best_return_snapshot(session)
+        final_snapshot = _get_autonomous_session_final_snapshot(session)
+        last_runtime_feedback = _extract_autonomous_session_last_runtime_feedback(
+            session
+        )
+        best_score = getattr(session, "best_score", float("-inf"))
+        if best_score == float("-inf"):
+            best_score = None
+
+        gen_stats = compute_session_generation_stats(session)
+
+        history_entry = {
+            **_HISTORY_ENTRY_METRIC_DEFAULTS,
+            "session_num": session_num,
+            "objective": objective,
+            "source_label": source_label,
+            "model_name": getattr(session, "model_name", "") or session_model,
+            "generation_stats": gen_stats,
+            "status": session.status,
+            "best_sharpe": session.best_sharpe,
+            "best_telemetry_score": best_score,
+            "best_score": best_score,
+            "best_return": best_return_snapshot.get("best_return"),
+            "best_return_iteration": best_return_snapshot.get("best_return_iteration"),
+            "best_max_dd": best_return_snapshot.get("best_max_dd"),
+            "best_pf": best_return_snapshot.get("best_pf"),
+            "best_trades": best_return_snapshot.get("best_trades"),
+            "best_return_sharpe": best_return_snapshot.get("best_return_sharpe"),
+            "best_total_pnl": best_return_snapshot.get("best_total_pnl"),
+            "final_return": final_snapshot.get("final_return"),
+            "final_iteration": final_snapshot.get("final_iteration"),
+            "final_max_dd": final_snapshot.get("final_max_dd"),
+            "final_pf": final_snapshot.get("final_pf"),
+            "final_trades": final_snapshot.get("final_trades"),
+            "final_sharpe": final_snapshot.get("final_sharpe"),
+            "final_total_pnl": final_snapshot.get("final_total_pnl"),
+            "n_iterations": len(session.iterations),
+            "duration": duration,
+            "session_id": session.session_id,
+            "started_at": getattr(session, "start_time", session_started_at).isoformat(),
+            "finished_at": datetime.now().isoformat(),
+            "n_bars": getattr(session, "n_bars", 0),
+            "date_range_start": getattr(session, "date_range_start", ""),
+            "date_range_end": getattr(session, "date_range_end", ""),
+            "initial_capital": getattr(session, "initial_capital", capital),
+            "last_runtime_error": last_runtime_feedback.get("last_runtime_error"),
+            "last_runtime_error_iteration": last_runtime_feedback.get("last_runtime_error_iteration"),
+            "last_runtime_traceback_tail": last_runtime_feedback.get("last_runtime_traceback_tail"),
+            "symbol": session_symbol,
+            "timeframe": session_timeframe,
+            "universe_mode": str(getattr(session, "universe_mode", "") or autonomous_universe_mode),
+            "universe_purpose": str(getattr(session, "universe_purpose", "") or "builder_autonomous"),
+            "universe_strategy_type": str(
+                getattr(session, "universe_strategy_type", "") or autonomous_strategy_type
+            ),
+            "universe_meta": (
+                dict(getattr(session, "universe_meta", {}) or {})
+                if isinstance(getattr(session, "universe_meta", {}), dict)
+                else dict(autonomous_universe_meta)
+            ),
+            "source_mode": effective_objective_mode,
+            "source_reason": objective_mode_policy.get("reason", ""),
+            "auto_market_pick_used": effective_auto_market_pick,
+            "builder_execution_mode": str(
+                getattr(session, "builder_execution_mode", builder_execution_mode)
+                or builder_execution_mode
+            ),
+            "orchestration_mode": str(
+                getattr(session, "orchestration_mode", orchestration_mode)
+                or orchestration_mode
+            ),
+            "instrumentation_enabled": bool(
+                getattr(session, "instrumentation_enabled", False)
+            ),
+            "instrumentation_summary": (
+                dict(getattr(session, "instrumentation_summary", {}) or {})
+                if isinstance(getattr(session, "instrumentation_summary", {}), dict)
+                else {}
+            ),
+            "pipeline_traces_path": str(
+                getattr(session, "pipeline_traces_path", "") or ""
+            ),
+            **_mlm,
+        }
+        history.append(history_entry)
+        _sync_autonomous_state(history, supervisor, persist=False)
+        st.session_state["builder_session"] = session
+        _heartbeat_builder_autonomous_runtime(
+            last_event="session_done",
+            last_session_num=session_num,
+            last_session_id=str(session.session_id or ""),
+            last_session_status=str(session.status or ""),
+            effective_source_mode=effective_objective_mode,
+        )
+
+        if session.status == "failed":
+            supervisor["consecutive_failed_sessions"] = int(
+                supervisor.get("consecutive_failed_sessions", 0) or 0
+            ) + 1
+        else:
+            supervisor["consecutive_failed_sessions"] = 0
+            supervisor["forced_source_mode"] = ""
+            supervisor["disable_auto_market_pick_once"] = False
+    else:
+        history_entry = {
+            **_HISTORY_ENTRY_METRIC_DEFAULTS,
+            "session_num": session_num,
+            "objective": objective,
+            "source_label": source_label,
+            "model_name": session_model,
+            "generation_stats": {"total": 0, "canonical": 0, "deterministic": 0, "canonical_rate": 0.0},
+            "status": "error",
+            "n_iterations": 0,
+            "duration": duration,
+            "session_id": "",
+            "started_at": session_started_at.isoformat(),
+            "finished_at": datetime.now().isoformat(),
+            "n_bars": len(session_df) if session_df is not None else 0,
+            "date_range_start": "",
+            "date_range_end": "",
+            "initial_capital": capital,
+            "symbol": session_symbol,
+            "timeframe": session_timeframe,
+            "universe_mode": autonomous_universe_mode,
+            "universe_purpose": "builder_autonomous",
+            "universe_strategy_type": autonomous_strategy_type,
+            "universe_meta": autonomous_universe_meta,
+            "error": session_error_message,
+            "source_mode": effective_objective_mode,
+            "source_reason": objective_mode_policy.get("reason", ""),
+            "auto_market_pick_used": effective_auto_market_pick,
+            "builder_execution_mode": builder_execution_mode,
+            "orchestration_mode": orchestration_mode,
+            "instrumentation_enabled": builder_flow_analysis_enabled,
+            "instrumentation_summary": {},
+            "pipeline_traces_path": "",
+            **_mlm,
+        }
+        history_entry = _recover_autonomous_history_entry_from_disk(history_entry)
+        history.append(history_entry)
+        _sync_autonomous_state(history, supervisor, persist=False)
+        supervisor["consecutive_failed_sessions"] = int(
+            supervisor.get("consecutive_failed_sessions", 0) or 0
+        ) + 1
+        _heartbeat_builder_autonomous_runtime(
+            last_event="session_error",
+            last_session_num=session_num,
+            last_session_status="error",
+            effective_source_mode=effective_objective_mode,
+        )
+
+    _sync_autonomous_state(history, supervisor)
+
+    if int(supervisor.get("consecutive_failed_sessions", 0) or 0) >= _AUTONOMOUS_SESSION_FAILURE_RESET_THRESHOLD:
+        recovery_plan = _apply_autonomous_supervisor_recovery(
+            supervisor,
+            history,
+            origin="session_failed",
+            current_source_mode=effective_objective_mode,
+        )
+        _sync_autonomous_state(history, supervisor)
+        if recovery_plan.get("recover"):
+            st.session_state["builder_session"] = None
+            st.warning(
+                "Superviseur: trop de sessions en échec consécutives, "
+                f"reset appliqué ({recovery_plan.get('reason', 'n/a')})."
+            )
+            _heartbeat_builder_autonomous_runtime(
+                last_event="supervisor_recovery",
+                effective_source_mode=str(
+                    recovery_plan.get("force_source_mode", "") or effective_objective_mode
+                ),
+            )
+        else:
+            st.error(
+                "Superviseur autonome: budget de reset épuisé après trop "
+                "de sessions en échec."
+            )
+            return "supervisor_stop"
+
+    with recap_placeholder.container():
+        _render_autonomous_recap(history, supervisor)
+
+    return None
 
 
-def _execute_builder_autonomous_loop(
+def _handle_autonomous_loop_crash(
+    *,
+    exc: Exception,
+    exc_tb: str,
+    session_num: int,
+    session_started_at: "datetime",
+    loop_body_start: float,
+    effective_objective_mode: str,
+    cfg: Dict[str, Any],
+    multi_llm_manager: Any,
+    session_role_overrides: Dict[str, str],
+    session_model: str,
+    multi_llm_router_decision: Dict[str, Any],
+    multi_llm_role_outputs: Dict[str, Any],
+    multi_llm_shared_memory: Dict[str, Any],
+    consecutive_errors: int,
+    max_consecutive_errors: int,
+    history: List[Dict[str, Any]],
+    supervisor: Dict[str, Any],
+    recap_placeholder: Any,
     state: Any,
-    df: Any,
-    status_container: Any,
+) -> Tuple[int, Optional[str]]:
+    """Gère un crash dans la boucle autonome.
+
+    Retourne ``(consecutive_errors_mis_à_jour, terminal_reason ou None)``.
+    """
+    builder_multi_llm_enabled = cfg["builder_multi_llm_enabled"]
+    builder_multi_llm_profile = cfg["builder_multi_llm_profile"]
+    builder_multi_llm_role_overrides = cfg["builder_multi_llm_role_overrides"]
+    builder_execution_mode = cfg["builder_execution_mode"]
+    orchestration_mode = cfg["orchestration_mode"]
+    builder_flow_analysis_enabled = cfg["builder_flow_analysis_enabled"]
+    capital = cfg["capital"]
+
+    if builder_multi_llm_enabled and multi_llm_manager is not None:
+        multi_llm_shared_memory = multi_llm_manager.consume_shared_memory()
+        _release_multi_llm_runtime(multi_llm_manager)
+
+    consecutive_errors += 1
+    failure_origin = _classify_autonomous_failure_origin(exc, exc_tb)
+    supervisor["consecutive_errors"] = consecutive_errors
+    supervisor["consecutive_failed_sessions"] = int(
+        supervisor.get("consecutive_failed_sessions", 0) or 0
+    ) + 1
+    supervisor["last_error_origin"] = failure_origin
+    supervisor["last_error"] = f"{type(exc).__name__}: {exc}"
+    logger.error(
+        "Session autonome #%d CRASH (%d/%d erreurs consecutives): %s\n%s",
+        session_num, consecutive_errors, max_consecutive_errors,
+        exc, exc_tb,
+    )
+
+    history.append({
+        **_HISTORY_ENTRY_METRIC_DEFAULTS,
+        "session_num": session_num,
+        "objective": "(crash avant execution)",
+        "source_label": "Crash avant generation",
+        "status": "crash",
+        "n_iterations": 0,
+        "duration": time.perf_counter() - loop_body_start,
+        "session_id": "",
+        "started_at": session_started_at.isoformat(),
+        "finished_at": datetime.now().isoformat(),
+        "n_bars": 0,
+        "date_range_start": "",
+        "date_range_end": "",
+        "initial_capital": capital,
+        "symbol": "",
+        "timeframe": "",
+        "universe_mode": normalize_universe_mode(
+            getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+            purpose="builder_autonomous",
+        ),
+        "universe_purpose": "builder_autonomous",
+        "universe_strategy_type": "",
+        "universe_meta": {},
+        "error": f"{type(exc).__name__}: {exc}",
+        "source_mode": effective_objective_mode,
+        "source_reason": supervisor.get("last_selected_source_reason", ""),
+        "builder_execution_mode": builder_execution_mode,
+        "orchestration_mode": orchestration_mode,
+        "instrumentation_enabled": builder_flow_analysis_enabled,
+        "instrumentation_summary": {},
+        "pipeline_traces_path": "",
+        **_build_multi_llm_history_fields(
+            builder_multi_llm_enabled=builder_multi_llm_enabled,
+            builder_multi_llm_profile=builder_multi_llm_profile,
+            builder_multi_llm_role_overrides=builder_multi_llm_role_overrides,
+            session_role_overrides=session_role_overrides,
+            multi_llm_manager=multi_llm_manager,
+            session_model=session_model,
+            multi_llm_router_decision=multi_llm_router_decision,
+            multi_llm_role_outputs=multi_llm_role_outputs,
+            multi_llm_shared_memory=multi_llm_shared_memory,
+        ),
+    })
+    _sync_autonomous_state(history, supervisor)
+    terminal_error = f"{type(exc).__name__}: {exc}"
+    _heartbeat_builder_autonomous_runtime(
+        last_event="session_crash",
+        last_session_num=session_num,
+        last_session_status="crash",
+        last_error=terminal_error,
+        effective_source_mode=effective_objective_mode,
+    )
+    try:
+        with recap_placeholder.container():
+            _render_autonomous_recap(history, supervisor)
+    except Exception:
+        logger.warning("_render_autonomous_recap failed during crash handling", exc_info=True)
+
+    if failure_origin == "llm_runtime_model_name_mismatch":
+        st.error(
+            f"Session #{session_num} arrêtée: {type(exc).__name__}: {exc}"
+        )
+        st.error(
+            "Le preset multi-LLM actif ne contient aucun nom exact accepté par l'hôte Ollama courant. "
+            "Corrige les noms du preset ou change d'hôte avant de relancer."
+        )
+        return consecutive_errors, "llm_runtime_model_name_mismatch"
+
+    st.error(
+        f"Session #{session_num} crash: {type(exc).__name__}: {exc} "
+        f"-- reprise automatique ({consecutive_errors}/{max_consecutive_errors})"
+    )
+
+    if consecutive_errors >= max_consecutive_errors:
+        recovery_plan = _apply_autonomous_supervisor_recovery(
+            supervisor,
+            history,
+            origin=failure_origin,
+            current_source_mode=effective_objective_mode,
+        )
+        _sync_autonomous_state(history, supervisor)
+        if recovery_plan.get("recover"):
+            consecutive_errors = 0
+            st.session_state["builder_session"] = None
+            st.warning(
+                "Superviseur: seuil d'erreurs atteint, reset appliqué "
+                f"({recovery_plan.get('reason', 'n/a')})."
+            )
+            _heartbeat_builder_autonomous_runtime(
+                last_event="supervisor_recovery",
+                effective_source_mode=str(
+                    recovery_plan.get("force_source_mode", "") or effective_objective_mode
+                ),
+            )
+        else:
+            logger.error(
+                "Arret du mode autonome: %d erreurs consecutives",
+                max_consecutive_errors,
+            )
+            st.error(
+                f"Arret de securite: {max_consecutive_errors} erreurs consecutives. "
+                f"Verifiez les logs et relancez."
+            )
+            return consecutive_errors, "consecutive_errors_stop"
+
+    return consecutive_errors, None
+
+
+# ---------------------------------------------------------------------------
+#  Sous-fonction: initialisation runtime de la boucle autonome
+# ---------------------------------------------------------------------------
+
+def _init_autonomous_loop_runtime(
+    state,
+    df,
+    status_container,
     *,
     cfg: Dict[str, Any],
     symbol: str,
     timeframe: str,
     all_symbols: List[str],
     all_timeframes: List[str],
-    fees_bps: float,
-    slippage_bps: float,
     autonomous_resume_ui_state: Dict[str, Any],
-) -> None:
-    """Exécute la boucle autonome 24/24 du Builder."""
+) -> Optional[Dict[str, Any]]:
+    """Prepare autonomous loop runtime. Returns context dict or None on abort."""
     model = cfg["model"]
     ollama_host = cfg["ollama_host"]
     max_iterations = cfg["max_iterations"]
@@ -5782,7 +6156,6 @@ def _execute_builder_autonomous_loop(
             )
             autonomous_runtime_started = False
         clear_execution_state(st.session_state)
-
 
     # Mode AUTONOME 24/24
     # ══════════════════════════════════════════════════════════════════════
@@ -5848,8 +6221,16 @@ def _execute_builder_autonomous_loop(
                 "multi_llm_runtime_unavailable",
                 "Mode multi-LLM indisponible dans ce workspace.",
             )
-            return
-        multi_llm_inventory = discover_local_models(
+            return None
+        model_inventory_loader = discover_local_models
+        if not callable(model_inventory_loader):
+            show_status("error", "Découverte des modèles multi-LLM indisponible.")
+            _abort_autonomous_start(
+                "multi_llm_inventory_unavailable",
+                "Découverte des modèles multi-LLM indisponible.",
+            )
+            return None
+        multi_llm_inventory = model_inventory_loader(
             ollama_host=ollama_host,
             include_live_ollama=True,
         )
@@ -5882,7 +6263,7 @@ def _execute_builder_autonomous_loop(
                     "multi_llm_runtime_host_boot_failed",
                     "\n".join(messages),
                 )
-                return
+                return None
             for msg in messages:
                 st.caption(f"✅ {msg}")
         role_runtime_summary = " | ".join(
@@ -5923,7 +6304,7 @@ def _execute_builder_autonomous_loop(
                     f"sur `{builder_runtime_host}`."
                 ),
             )
-            return
+            return None
         if multi_llm_manager.missing_roles:
             st.warning(
                 "Multi-LLM partiel: roles manquants = "
@@ -5970,7 +6351,7 @@ def _execute_builder_autonomous_loop(
                     "single_llm_runtime_prepare_failed",
                     msg,
                 )
-                return
+                return None
 
     objective_indicators = _get_builder_compatible_indicators(df)
     autonomous_resume_ui_state["builder_model_single_llm"] = str(model or "")
@@ -6025,6 +6406,158 @@ def _execute_builder_autonomous_loop(
     _MAX_CONSECUTIVE_ERRORS = 5  # Arrêt de sécurité après N erreurs consécutives
     terminal_reason = "completed"
     terminal_error = ""
+
+    return {
+        "model": model,
+        "ollama_host": ollama_host,
+        "multi_llm_manager": multi_llm_manager,
+        "multi_llm_inventory": multi_llm_inventory,
+        "single_llm_runtime_prepared": single_llm_runtime_prepared,
+        "single_llm_prepared_model": single_llm_prepared_model,
+        "single_llm_prepared_host": single_llm_prepared_host,
+        "builder_runtime_host": builder_runtime_host,
+        "builder_runtime_gpu_target": builder_runtime_gpu_target,
+        "objective_indicators": objective_indicators,
+        "history": history,
+        "supervisor": supervisor,
+        "session_num": session_num,
+        "recap_placeholder": recap_placeholder,
+        "session_placeholder": session_placeholder,
+        "_consecutive_errors": _consecutive_errors,
+        "_MAX_CONSECUTIVE_ERRORS": _MAX_CONSECUTIVE_ERRORS,
+        "terminal_reason": terminal_reason,
+        "terminal_error": terminal_error,
+        "requested_objective_mode": requested_objective_mode,
+        "auto_pause": auto_pause,
+        "auto_market_pick": auto_market_pick,
+        "max_iterations": max_iterations,
+        "target_sharpe": target_sharpe,
+        "capital": capital,
+        "builder_execution_mode": builder_execution_mode,
+        "orchestration_mode": orchestration_mode,
+        "builder_multi_llm_enabled": builder_multi_llm_enabled,
+        "builder_flow_analysis_enabled": builder_flow_analysis_enabled,
+        "builder_flow_analysis_ablation": builder_flow_analysis_ablation,
+        "builder_multi_llm_profile": builder_multi_llm_profile,
+        "llm_inference_global_settings": llm_inference_global_settings,
+        "llm_inference_model_profiles": llm_inference_model_profiles,
+        "builder_multi_llm_role_overrides": builder_multi_llm_role_overrides,
+        "preload_model": preload_model,
+        "keep_alive_minutes": keep_alive_minutes,
+        "unload_after_run": unload_after_run,
+        "auto_start_ollama": auto_start_ollama,
+        "status_container": status_container,
+    }
+
+# ---------------------------------------------------------------------------
+#  Sous-fonction: finalisation de la boucle autonome
+# ---------------------------------------------------------------------------
+
+
+def _finalize_autonomous_loop(*, ctx: Dict[str, Any]) -> None:
+    """Render recap, unload model, sync state after autonomous loop ends."""
+    history = ctx["history"]
+    supervisor = ctx["supervisor"]
+    recap_placeholder = ctx["recap_placeholder"]
+    status_container = ctx["status_container"]
+    model = ctx["model"]
+    ollama_host = ctx["ollama_host"]
+    unload_after_run = ctx["unload_after_run"]
+    terminal_reason = ctx["terminal_reason"]
+    terminal_error = ctx["terminal_error"]
+
+    # ── Fin de la boucle autonome ──
+    with recap_placeholder.container():
+        _render_autonomous_recap(history, supervisor)
+
+    with status_container:
+        n = len(history)
+        best_ever = _history_best_sharpe(history)
+        show_status(
+            "success" if best_ever > 0 else "info",
+            f"Mode autonome terminé : {n} sessions | Meilleur Sharpe: {best_ever:.3f}",
+        )
+
+    if unload_after_run and terminal_reason != "manual_stop":
+        with st.spinner(f"💾 Déchargement du modèle `{model}`…"):
+            if _unload_ollama_model(model=model, ollama_host=ollama_host):
+                st.caption(f"✅ Modèle `{model}` déchargé")
+            else:
+                st.warning(f"⚠️ Impossible de décharger `{model}`")
+
+    _sync_autonomous_state(history, supervisor)
+    clear_execution_state(st.session_state)
+    mark_builder_autonomous_runtime_stopped(
+        reason=terminal_reason,
+        manual_stop=(terminal_reason == "manual_stop"),
+        error=terminal_error,
+    )
+
+
+def _execute_builder_autonomous_loop(
+    state: Any,
+    df: Any,
+    status_container: Any,
+    *,
+    cfg: Dict[str, Any],
+    symbol: str,
+    timeframe: str,
+    all_symbols: List[str],
+    all_timeframes: List[str],
+    fees_bps: float,
+    slippage_bps: float,
+    autonomous_resume_ui_state: Dict[str, Any],
+) -> None:
+    """Exécute la boucle autonome 24/24 du Builder."""
+    ctx = _init_autonomous_loop_runtime(
+        state, df, status_container,
+        cfg=cfg, symbol=symbol, timeframe=timeframe,
+        all_symbols=all_symbols, all_timeframes=all_timeframes,
+        autonomous_resume_ui_state=autonomous_resume_ui_state,
+    )
+    if ctx is None:
+        return
+
+    # Unpack runtime context
+    model = ctx["model"]
+    ollama_host = ctx["ollama_host"]
+    multi_llm_manager = ctx["multi_llm_manager"]
+    multi_llm_inventory = ctx["multi_llm_inventory"]
+    single_llm_runtime_prepared = ctx["single_llm_runtime_prepared"]
+    single_llm_prepared_model = ctx["single_llm_prepared_model"]
+    single_llm_prepared_host = ctx["single_llm_prepared_host"]
+    builder_runtime_host = ctx["builder_runtime_host"]
+    builder_runtime_gpu_target = ctx["builder_runtime_gpu_target"]
+    objective_indicators = ctx["objective_indicators"]
+    history = ctx["history"]
+    supervisor = ctx["supervisor"]
+    session_num = ctx["session_num"]
+    recap_placeholder = ctx["recap_placeholder"]
+    session_placeholder = ctx["session_placeholder"]
+    _consecutive_errors = ctx["_consecutive_errors"]
+    _MAX_CONSECUTIVE_ERRORS = ctx["_MAX_CONSECUTIVE_ERRORS"]
+    terminal_reason = ctx["terminal_reason"]
+    terminal_error = ctx["terminal_error"]
+    requested_objective_mode = ctx["requested_objective_mode"]
+    auto_pause = ctx["auto_pause"]
+    auto_market_pick = ctx["auto_market_pick"]
+    max_iterations = ctx["max_iterations"]
+    target_sharpe = ctx["target_sharpe"]
+    capital = ctx["capital"]
+    builder_execution_mode = ctx["builder_execution_mode"]
+    orchestration_mode = ctx["orchestration_mode"]
+    builder_multi_llm_enabled = ctx["builder_multi_llm_enabled"]
+    builder_flow_analysis_enabled = ctx["builder_flow_analysis_enabled"]
+    builder_flow_analysis_ablation = ctx["builder_flow_analysis_ablation"]
+    builder_multi_llm_profile = ctx["builder_multi_llm_profile"]
+    llm_inference_global_settings = ctx["llm_inference_global_settings"]
+    llm_inference_model_profiles = ctx["llm_inference_model_profiles"]
+    builder_multi_llm_role_overrides = ctx["builder_multi_llm_role_overrides"]
+    preload_model = ctx["preload_model"]
+    keep_alive_minutes = ctx["keep_alive_minutes"]
+    unload_after_run = ctx["unload_after_run"]
+    auto_start_ollama = ctx["auto_start_ollama"]
+    status_container = ctx["status_container"]
 
     while st.session_state.get("is_running", False):
         if st.session_state.get("stop_requested", False):
@@ -6591,197 +7124,47 @@ def _execute_builder_autonomous_loop(
                 single_llm_prepared_host = ""
 
             # ── Enregistrer le résultat ──
-            if session is not None:
-                best_return_snapshot = _get_autonomous_session_best_return_snapshot(session)
-                final_snapshot = _get_autonomous_session_final_snapshot(session)
-                last_runtime_feedback = _extract_autonomous_session_last_runtime_feedback(
-                    session
-                )
-                best_score = getattr(session, "best_score", float("-inf"))
-                if best_score == float("-inf"):
-                    best_score = None
-
-                _mlm = _build_multi_llm_history_fields(
-                    builder_multi_llm_enabled=builder_multi_llm_enabled,
-                    builder_multi_llm_profile=builder_multi_llm_profile,
-                    builder_multi_llm_role_overrides=builder_multi_llm_role_overrides,
-                    session_role_overrides=session_role_overrides,
-                    multi_llm_manager=multi_llm_manager,
-                    session_model=session_model,
-                    multi_llm_router_decision=multi_llm_router_decision,
-                    multi_llm_role_outputs=multi_llm_role_outputs,
-                    multi_llm_shared_memory=multi_llm_shared_memory,
-                )
-                history_entry = {
-                    **_HISTORY_ENTRY_METRIC_DEFAULTS,
-                    "session_num": session_num,
-                    "objective": objective,
-                    "source_label": source_label,
-                    "status": session.status,
-                    "best_sharpe": session.best_sharpe,
-                    "best_telemetry_score": best_score,
-                    "best_score": best_score,
-                    "best_return": best_return_snapshot.get("best_return"),
-                    "best_return_iteration": best_return_snapshot.get("best_return_iteration"),
-                    "best_max_dd": best_return_snapshot.get("best_max_dd"),
-                    "best_pf": best_return_snapshot.get("best_pf"),
-                    "best_trades": best_return_snapshot.get("best_trades"),
-                    "best_return_sharpe": best_return_snapshot.get("best_return_sharpe"),
-                    "best_total_pnl": best_return_snapshot.get("best_total_pnl"),
-                    "final_return": final_snapshot.get("final_return"),
-                    "final_iteration": final_snapshot.get("final_iteration"),
-                    "final_max_dd": final_snapshot.get("final_max_dd"),
-                    "final_pf": final_snapshot.get("final_pf"),
-                    "final_trades": final_snapshot.get("final_trades"),
-                    "final_sharpe": final_snapshot.get("final_sharpe"),
-                    "final_total_pnl": final_snapshot.get("final_total_pnl"),
-                    "n_iterations": len(session.iterations),
-                    "duration": duration,
-                    "session_id": session.session_id,
-                    "started_at": getattr(session, "start_time", session_started_at).isoformat(),
-                    "finished_at": datetime.now().isoformat(),
-                    "n_bars": getattr(session, "n_bars", 0),
-                    "date_range_start": getattr(session, "date_range_start", ""),
-                    "date_range_end": getattr(session, "date_range_end", ""),
-                    "initial_capital": getattr(session, "initial_capital", capital),
-                    "last_runtime_error": last_runtime_feedback.get("last_runtime_error"),
-                    "last_runtime_error_iteration": last_runtime_feedback.get("last_runtime_error_iteration"),
-                    "last_runtime_traceback_tail": last_runtime_feedback.get("last_runtime_traceback_tail"),
-                    "symbol": session_symbol,
-                    "timeframe": session_timeframe,
-                    "universe_mode": str(getattr(session, "universe_mode", "") or autonomous_universe_mode),
-                    "universe_purpose": str(getattr(session, "universe_purpose", "") or "builder_autonomous"),
-                    "universe_strategy_type": str(
-                        getattr(session, "universe_strategy_type", "") or autonomous_strategy_type
-                    ),
-                    "universe_meta": (
-                        dict(getattr(session, "universe_meta", {}) or {})
-                        if isinstance(getattr(session, "universe_meta", {}), dict)
-                        else dict(autonomous_universe_meta)
-                    ),
-                    "source_mode": effective_objective_mode,
-                    "source_reason": objective_mode_policy.get("reason", ""),
-                    "auto_market_pick_used": effective_auto_market_pick,
-                    "builder_execution_mode": str(
-                        getattr(session, "builder_execution_mode", builder_execution_mode)
-                        or builder_execution_mode
-                    ),
-                    "orchestration_mode": str(
-                        getattr(session, "orchestration_mode", orchestration_mode)
-                        or orchestration_mode
-                    ),
-                    "instrumentation_enabled": bool(
-                        getattr(session, "instrumentation_enabled", False)
-                    ),
-                    "instrumentation_summary": (
-                        dict(getattr(session, "instrumentation_summary", {}) or {})
-                        if isinstance(getattr(session, "instrumentation_summary", {}), dict)
-                        else {}
-                    ),
-                    "pipeline_traces_path": str(
-                        getattr(session, "pipeline_traces_path", "") or ""
-                    ),
-                    **_mlm,
-                }
-                history.append(history_entry)
-                _sync_autonomous_state(history, supervisor, persist=False)
-                st.session_state["builder_session"] = session
-                _heartbeat_builder_autonomous_runtime(
-                    last_event="session_done",
-                    last_session_num=session_num,
-                    last_session_id=str(session.session_id or ""),
-                    last_session_status=str(session.status or ""),
-                    effective_source_mode=effective_objective_mode,
-                )
-
-                if session.status == "failed":
-                    supervisor["consecutive_failed_sessions"] = int(
-                        supervisor.get("consecutive_failed_sessions", 0) or 0
-                    ) + 1
-                else:
-                    supervisor["consecutive_failed_sessions"] = 0
-                    supervisor["forced_source_mode"] = ""
-                    supervisor["disable_auto_market_pick_once"] = False
-            else:
-                history_entry = {
-                    **_HISTORY_ENTRY_METRIC_DEFAULTS,
-                    "session_num": session_num,
-                    "objective": objective,
-                    "source_label": source_label,
-                    "status": "error",
-                    "n_iterations": 0,
-                    "duration": duration,
-                    "session_id": "",
-                    "started_at": session_started_at.isoformat(),
-                    "finished_at": datetime.now().isoformat(),
-                    "n_bars": len(session_df) if session_df is not None else 0,
-                    "date_range_start": "",
-                    "date_range_end": "",
-                    "initial_capital": capital,
-                    "symbol": session_symbol,
-                    "timeframe": session_timeframe,
-                    "universe_mode": autonomous_universe_mode,
-                    "universe_purpose": "builder_autonomous",
-                    "universe_strategy_type": autonomous_strategy_type,
-                    "universe_meta": autonomous_universe_meta,
-                    "error": session_error_message,
-                    "source_mode": effective_objective_mode,
-                    "source_reason": objective_mode_policy.get("reason", ""),
-                    "auto_market_pick_used": effective_auto_market_pick,
-                    "builder_execution_mode": builder_execution_mode,
-                    "orchestration_mode": orchestration_mode,
-                    "instrumentation_enabled": builder_flow_analysis_enabled,
-                    "instrumentation_summary": {},
-                    "pipeline_traces_path": "",
-                    **_mlm,
-                }
-                history_entry = _recover_autonomous_history_entry_from_disk(history_entry)
-                history.append(history_entry)
-                _sync_autonomous_state(history, supervisor, persist=False)
-                supervisor["consecutive_failed_sessions"] = int(
-                    supervisor.get("consecutive_failed_sessions", 0) or 0
-                ) + 1
-                _heartbeat_builder_autonomous_runtime(
-                    last_event="session_error",
-                    last_session_num=session_num,
-                    last_session_status="error",
-                    effective_source_mode=effective_objective_mode,
-                )
-
-            _sync_autonomous_state(history, supervisor)
-
-            if int(supervisor.get("consecutive_failed_sessions", 0) or 0) >= _AUTONOMOUS_SESSION_FAILURE_RESET_THRESHOLD:
-                recovery_plan = _apply_autonomous_supervisor_recovery(
-                    supervisor,
-                    history,
-                    origin="session_failed",
-                    current_source_mode=effective_objective_mode,
-                )
-                _sync_autonomous_state(history, supervisor)
-                if recovery_plan.get("recover"):
-                    st.session_state["builder_session"] = None
-                    st.warning(
-                        "Superviseur: trop de sessions en échec consécutives, "
-                        f"reset appliqué ({recovery_plan.get('reason', 'n/a')})."
-                    )
-                    _heartbeat_builder_autonomous_runtime(
-                        last_event="supervisor_recovery",
-                        effective_source_mode=str(
-                            recovery_plan.get("force_source_mode", "") or effective_objective_mode
-                        ),
-                    )
-                else:
-                    st.error(
-                        "Superviseur autonome: budget de reset épuisé après trop "
-                        "de sessions en échec."
-                    )
-                    terminal_reason = "supervisor_stop"
-                    break
-
-            # ── Afficher le récap mis à jour ──
-            with recap_placeholder.container():
-                _render_autonomous_recap(history, supervisor)
-
+            _mlm = _build_multi_llm_history_fields(
+                builder_multi_llm_enabled=builder_multi_llm_enabled,
+                builder_multi_llm_profile=builder_multi_llm_profile,
+                builder_multi_llm_role_overrides=builder_multi_llm_role_overrides,
+                session_role_overrides=session_role_overrides,
+                multi_llm_manager=multi_llm_manager,
+                session_model=session_model,
+                multi_llm_router_decision=multi_llm_router_decision,
+                multi_llm_role_outputs=multi_llm_role_outputs,
+                multi_llm_shared_memory=multi_llm_shared_memory,
+            )
+            _session_ctx: Dict[str, Any] = {
+                "session_num": session_num,
+                "objective": objective,
+                "source_label": source_label,
+                "duration": duration,
+                "started_at": session_started_at,
+                "symbol": session_symbol,
+                "timeframe": session_timeframe,
+                "df": session_df,
+                "error_message": session_error_message,
+                "effective_objective_mode": effective_objective_mode,
+                "objective_mode_policy": objective_mode_policy,
+                "effective_auto_market_pick": effective_auto_market_pick,
+                "autonomous_universe_mode": autonomous_universe_mode,
+                "autonomous_strategy_type": autonomous_strategy_type,
+                "autonomous_universe_meta": autonomous_universe_meta,
+                "multi_llm_fields": _mlm,
+                "session_model": session_model,
+            }
+            _record_terminal = _record_autonomous_session_result(
+                session=session,
+                session_ctx=_session_ctx,
+                cfg=cfg,
+                history=history,
+                supervisor=supervisor,
+                recap_placeholder=recap_placeholder,
+            )
+            if _record_terminal is not None:
+                terminal_reason = _record_terminal
+                break
 
         except KeyboardInterrupt:
             if builder_multi_llm_enabled and multi_llm_manager is not None:
@@ -6791,128 +7174,32 @@ def _execute_builder_autonomous_loop(
             terminal_reason = "keyboard_interrupt"
             break
         except Exception as _loop_exc:
-            if builder_multi_llm_enabled and multi_llm_manager is not None:
-                multi_llm_shared_memory = multi_llm_manager.consume_shared_memory()
-                _release_multi_llm_runtime(multi_llm_manager)
-            _consecutive_errors += 1
             _exc_tb = traceback.format_exc()
-            failure_origin = _classify_autonomous_failure_origin(_loop_exc, _exc_tb)
-            supervisor["consecutive_errors"] = _consecutive_errors
-            supervisor["consecutive_failed_sessions"] = int(
-                supervisor.get("consecutive_failed_sessions", 0) or 0
-            ) + 1
-            supervisor["last_error_origin"] = failure_origin
-            supervisor["last_error"] = f"{type(_loop_exc).__name__}: {_loop_exc}"
-            logger.error(
-                "Session autonome #%d CRASH (%d/%d erreurs consecutives): %s\n%s",
-                session_num, _consecutive_errors, _MAX_CONSECUTIVE_ERRORS,
-                _loop_exc, _exc_tb,
+            _consecutive_errors, _crash_terminal = _handle_autonomous_loop_crash(
+                exc=_loop_exc,
+                exc_tb=_exc_tb,
+                session_num=session_num,
+                session_started_at=session_started_at,
+                loop_body_start=_loop_body_start,
+                effective_objective_mode=effective_objective_mode,
+                cfg=cfg,
+                multi_llm_manager=multi_llm_manager,
+                session_role_overrides=session_role_overrides,
+                session_model=session_model,
+                multi_llm_router_decision=multi_llm_router_decision,
+                multi_llm_role_outputs=multi_llm_role_outputs,
+                multi_llm_shared_memory=multi_llm_shared_memory,
+                consecutive_errors=_consecutive_errors,
+                max_consecutive_errors=_MAX_CONSECUTIVE_ERRORS,
+                history=history,
+                supervisor=supervisor,
+                recap_placeholder=recap_placeholder,
+                state=state,
             )
-            # Enregistrer le crash dans l'historique
-            history.append({
-                **_HISTORY_ENTRY_METRIC_DEFAULTS,
-                "session_num": session_num,
-                "objective": "(crash avant execution)",
-                "source_label": "Crash avant generation",
-                "status": "crash",
-                "n_iterations": 0,
-                "duration": time.perf_counter() - _loop_body_start,
-                "session_id": "",
-                "started_at": session_started_at.isoformat(),
-                "finished_at": datetime.now().isoformat(),
-                "n_bars": 0,
-                "date_range_start": "",
-                "date_range_end": "",
-                "initial_capital": capital,
-                "symbol": "",
-                "timeframe": "",
-                "universe_mode": normalize_universe_mode(
-                    getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
-                    purpose="builder_autonomous",
-                ),
-                "universe_purpose": "builder_autonomous",
-                "universe_strategy_type": "",
-                "universe_meta": {},
-                "error": f"{type(_loop_exc).__name__}: {_loop_exc}",
-                "source_mode": effective_objective_mode,
-                "source_reason": supervisor.get("last_selected_source_reason", ""),
-                "builder_execution_mode": builder_execution_mode,
-                "orchestration_mode": orchestration_mode,
-                "instrumentation_enabled": builder_flow_analysis_enabled,
-                "instrumentation_summary": {},
-                "pipeline_traces_path": "",
-                **_build_multi_llm_history_fields(
-                    builder_multi_llm_enabled=builder_multi_llm_enabled,
-                    builder_multi_llm_profile=builder_multi_llm_profile,
-                    builder_multi_llm_role_overrides=builder_multi_llm_role_overrides,
-                    session_role_overrides=session_role_overrides,
-                    multi_llm_manager=multi_llm_manager,
-                    session_model=session_model,
-                    multi_llm_router_decision=multi_llm_router_decision,
-                    multi_llm_role_outputs=multi_llm_role_outputs,
-                    multi_llm_shared_memory=multi_llm_shared_memory,
-                ),
-            })
-            _sync_autonomous_state(history, supervisor)
             terminal_error = f"{type(_loop_exc).__name__}: {_loop_exc}"
-            _heartbeat_builder_autonomous_runtime(
-                last_event="session_crash",
-                last_session_num=session_num,
-                last_session_status="crash",
-                last_error=terminal_error,
-                effective_source_mode=effective_objective_mode,
-            )
-            try:
-                with recap_placeholder.container():
-                    _render_autonomous_recap(history, supervisor)
-            except Exception:
-                pass
-            if failure_origin == "llm_runtime_model_name_mismatch":
-                st.error(
-                    f"Session #{session_num} arrêtée: {type(_loop_exc).__name__}: {_loop_exc}"
-                )
-                st.error(
-                    "Le preset multi-LLM actif ne contient aucun nom exact accepté par l'hôte Ollama courant. "
-                    "Corrige les noms du preset ou change d'hôte avant de relancer."
-                )
-                terminal_reason = "llm_runtime_model_name_mismatch"
+            if _crash_terminal is not None:
+                terminal_reason = _crash_terminal
                 break
-            st.error(
-                f"Session #{session_num} crash: {type(_loop_exc).__name__}: {_loop_exc} "
-                f"-- reprise automatique ({_consecutive_errors}/{_MAX_CONSECUTIVE_ERRORS})"
-            )
-            if _consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
-                recovery_plan = _apply_autonomous_supervisor_recovery(
-                    supervisor,
-                    history,
-                    origin=failure_origin,
-                    current_source_mode=effective_objective_mode,
-                )
-                _sync_autonomous_state(history, supervisor)
-                if recovery_plan.get("recover"):
-                    _consecutive_errors = 0
-                    st.session_state["builder_session"] = None
-                    st.warning(
-                        "Superviseur: seuil d'erreurs atteint, reset appliqué "
-                        f"({recovery_plan.get('reason', 'n/a')})."
-                    )
-                    _heartbeat_builder_autonomous_runtime(
-                        last_event="supervisor_recovery",
-                        effective_source_mode=str(
-                            recovery_plan.get("force_source_mode", "") or effective_objective_mode
-                        ),
-                    )
-                else:
-                    logger.error(
-                        "Arret du mode autonome: %d erreurs consecutives",
-                        _MAX_CONSECUTIVE_ERRORS,
-                    )
-                    st.error(
-                        f"Arret de securite: {_MAX_CONSECUTIVE_ERRORS} erreurs consecutives. "
-                        f"Verifiez les logs et relancez."
-                    )
-                    terminal_reason = "consecutive_errors_stop"
-                    break
         else:
             # Session OK -> reset erreurs consecutives
             _consecutive_errors = 0
@@ -6953,32 +7240,14 @@ def _execute_builder_autonomous_loop(
             supervisor["next_pause_multiplier"] = 1
             _sync_autonomous_state(history, supervisor)
 
-    # ── Fin de la boucle autonome ──
-    with recap_placeholder.container():
-        _render_autonomous_recap(history, supervisor)
+    # Finalize: recap, unload, sync
+    ctx["terminal_reason"] = terminal_reason
+    ctx["terminal_error"] = terminal_error
+    ctx["history"] = history
+    ctx["supervisor"] = supervisor
+    _finalize_autonomous_loop(ctx=ctx)
 
-    with status_container:
-        n = len(history)
-        best_ever = _history_best_sharpe(history)
-        show_status(
-            "success" if best_ever > 0 else "info",
-            f"Mode autonome terminé : {n} sessions | Meilleur Sharpe: {best_ever:.3f}",
-        )
 
-    if unload_after_run and terminal_reason != "manual_stop":
-        with st.spinner(f"💾 Déchargement du modèle `{model}`…"):
-            if _unload_ollama_model(model=model, ollama_host=ollama_host):
-                st.caption(f"✅ Modèle `{model}` déchargé")
-            else:
-                st.warning(f"⚠️ Impossible de décharger `{model}`")
-
-    _sync_autonomous_state(history, supervisor)
-    clear_execution_state(st.session_state)
-    mark_builder_autonomous_runtime_stopped(
-        reason=terminal_reason,
-        manual_stop=(terminal_reason == "manual_stop"),
-        error=terminal_error,
-    )
 def _execute_builder_manual_session(
     state: Any,
     df: Any,
@@ -7013,7 +7282,6 @@ def _execute_builder_manual_session(
     llm_inference_global_settings = cfg["llm_inference_global_settings"]
     llm_inference_model_profiles = cfg["llm_inference_model_profiles"]
     builder_multi_llm_role_overrides = cfg["builder_multi_llm_role_overrides"]
-
 
     raw_objective = str(getattr(state, "builder_objective", "") or "")
     objective = sanitize_objective_text(raw_objective)
@@ -7080,7 +7348,12 @@ def _execute_builder_manual_session(
             st.error("Mode multi-LLM indisponible dans ce workspace.")
             clear_execution_state(st.session_state)
             return
-        manual_multi_llm_inventory = discover_local_models(
+        model_inventory_loader = discover_local_models
+        if not callable(model_inventory_loader):
+            st.error("Découverte des modèles multi-LLM indisponible dans ce workspace.")
+            clear_execution_state(st.session_state)
+            return
+        manual_multi_llm_inventory = model_inventory_loader(
             ollama_host=ollama_host,
             include_live_ollama=True,
         )
@@ -7463,6 +7736,8 @@ def _execute_builder_manual_session(
         clear_execution_state(st.session_state)
 
     return
+
+
 # ---------------------------------------------------------------------------
 # Point d'entrée principal
 # ---------------------------------------------------------------------------
@@ -7541,11 +7816,37 @@ def render_builder_view(
         capital = 10000.0
 
     # Contexte de marché — si rien n'est sélectionné, on pioche parmi les tokens disponibles
-    available_tokens = list(getattr(state, "available_tokens", []) or [])
+    raw_available_tokens = list(getattr(state, "available_tokens", []) or [])
+    raw_available_tfs = list(getattr(state, "available_timeframes", []) or [])
+    available_tokens = [
+        str(token or "").strip().upper()
+        for token in raw_available_tokens
+        if str(token or "").strip()
+    ]
     available_tfs = _sanitize_builder_timeframes(
-        list(getattr(state, "available_timeframes", []) or []),
+        raw_available_tfs,
         fallback="1h",
     )
+    if (
+        (not available_tokens or not raw_available_tfs)
+        and callable(discover_available_builder_data)
+    ):
+        try:
+            discovered_tokens, discovered_tfs = discover_available_builder_data()
+        except Exception as exc:
+            logger.warning("builder data discovery fallback failed: %s", exc)
+        else:
+            if not available_tokens:
+                available_tokens = [
+                    str(token or "").strip().upper()
+                    for token in list(discovered_tokens or [])
+                    if str(token or "").strip()
+                ]
+            if not raw_available_tfs:
+                available_tfs = _sanitize_builder_timeframes(
+                    list(discovered_tfs or []),
+                    fallback="1h",
+                )
 
     _raw_symbol = (
         getattr(state, "symbol", None)
@@ -7799,24 +8100,49 @@ def render_builder_view(
         # Mode autonome: ne jamais bloquer sur une présélection UI vide ou invalide.
         requested_symbol = symbol
         requested_timeframe = timeframe
-        probe_symbols = list(all_symbols)
-        probe_timeframes = list(all_timeframes)
+        probe_symbols: List[str] = []
+        probe_timeframes: List[str] = []
         if auto_market_pick:
+            try:
+                filtered_symbols, filtered_timeframes = _call_builder_market_candidates(
+                    state,
+                    current_symbol=requested_symbol,
+                    current_timeframe=requested_timeframe,
+                    purpose="builder_autonomous_startup",
+                    fallback_df=df,
+                )
+            except Exception:
+                logger.warning(
+                    "builder startup market candidate filtering failed",
+                    exc_info=True,
+                )
+                filtered_symbols, filtered_timeframes = [], []
+            probe_symbols = list(filtered_symbols or [])
+            probe_timeframes = list(filtered_timeframes or [])
+
+        if not probe_symbols:
+            probe_symbols = list(all_symbols)
+        if not probe_timeframes:
+            probe_timeframes = list(all_timeframes)
+
+        if auto_market_pick and not probe_symbols:
             probe_symbols = _dedupe_keep_order(
-                [*probe_symbols, *available_tokens],
+                [*all_symbols, *available_tokens],
                 upper=True,
             )
-            if not user_timeframes:
-                probe_timeframes = _sanitize_builder_timeframes(
-                    _dedupe_keep_order(
-                        [*probe_timeframes, *available_tfs],
-                        upper=False,
-                    ),
-                    fallback=timeframe or "1h",
-                )
+        if auto_market_pick and not probe_timeframes and not user_timeframes:
+            probe_timeframes = _sanitize_builder_timeframes(
+                _dedupe_keep_order(
+                    [*all_timeframes, *available_tfs],
+                    upper=False,
+                ),
+                fallback=timeframe or "1h",
+            )
 
         preferred_pairs: List[Tuple[str, str]] = []
-        if requested_symbol and requested_timeframe and requested_symbol != "UNKNOWN":
+        if auto_market_pick and probe_symbols and probe_timeframes:
+            preferred_pairs.append((probe_symbols[0], probe_timeframes[0]))
+        elif requested_symbol and requested_timeframe and requested_symbol != "UNKNOWN":
             preferred_pairs.append((requested_symbol, requested_timeframe))
 
         logger.info(
@@ -7907,7 +8233,6 @@ def render_builder_view(
             slippage_bps=slippage_bps,
         )
         return
-
 
     # ══════════════════════════════════════════════════════════════════════
     # Mode AUTONOME → délégué à _execute_builder_autonomous_loop

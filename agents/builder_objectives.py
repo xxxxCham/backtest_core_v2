@@ -222,10 +222,14 @@ def generate_random_objective(
     ind3 = selected[2].upper() if len(selected) > 2 else ind1
 
     entry = random.choice(family["entry_templates"]).format(
-        ind1=ind1, ind2=ind2, ind3=ind3,
+        ind1=ind1,
+        ind2=ind2,
+        ind3=ind3,
     )
     exit_rule = random.choice(family["exit_templates"]).format(
-        ind1=ind1, ind2=ind2, ind3=ind3,
+        ind1=ind1,
+        ind2=ind2,
+        ind3=ind3,
     )
 
     # Risk management
@@ -233,7 +237,9 @@ def generate_random_objective(
     tp_mult = round(sl_mult * random.uniform(1.5, 3.0), 1)
     rr = round(tp_mult / sl_mult, 1)
     risk = random.choice(_RISK_TEMPLATES).format(
-        sl_mult=sl_mult, tp_mult=tp_mult, rr=rr,
+        sl_mult=sl_mult,
+        tp_mult=tp_mult,
+        rr=rr,
     )
     indicators_str = " + ".join(ind.upper() for ind in selected)
 
@@ -257,19 +263,13 @@ def _sanitize_objective_indicators_section(
     if not text:
         return text
 
-    allowed = [
-        str(ind or "").strip().lower()
-        for ind in (available_indicators or [])
-        if str(ind or "").strip()
-    ]
+    allowed = [str(ind or "").strip().lower() for ind in (available_indicators or []) if str(ind or "").strip()]
     if not allowed:
         return text
     allowed_set = set(allowed)
 
     preferred_fallback = [
-        name
-        for name in ("ema", "rsi", "bollinger", "macd", "stochastic", "adx", "atr")
-        if name in allowed_set
+        name for name in ("ema", "rsi", "bollinger", "macd", "stochastic", "adx", "atr") if name in allowed_set
     ]
 
     match = re.search(
@@ -316,11 +316,7 @@ def _sanitize_objective_indicator_candidates(
     available_indicators: List[str],
 ) -> List[str]:
     """Normalise une liste d'indicateurs issus d'un payload structuré."""
-    allowed = [
-        str(ind or "").strip().lower()
-        for ind in (available_indicators or [])
-        if str(ind or "").strip()
-    ]
+    allowed = [str(ind or "").strip().lower() for ind in (available_indicators or []) if str(ind or "").strip()]
     allowed_set = set(allowed)
     if not allowed_set:
         return []
@@ -461,8 +457,8 @@ def _structured_objective_to_text(
 
 def generate_llm_objective(
     llm_client: Any,
-    symbol: "str | List[str]" = "BTCUSDC",
-    timeframe: "str | List[str]" = "1h",
+    symbol: "str | List[str] | None" = "BTCUSDC",
+    timeframe: "str | List[str] | None" = "1h",
     available_indicators: Optional[List[str]] = None,
     stream_callback: Optional[Callable[[str, str], None]] = None,
     recent_markets: Optional[List[Tuple[str, str]]] = None,
@@ -482,7 +478,7 @@ def generate_llm_objective(
 
     # Normaliser en listes pour construire le prompt multi-marché.
     # IMPORTANT : si None est passé, ne pas fallback sur BTCUSDC/1h.
-    market_auto_selection = (symbol is None or timeframe is None)
+    market_auto_selection = symbol is None or timeframe is None
 
     if market_auto_selection:
         # Mode auto : le marché sera choisi plus tard via recommend_market_context.
@@ -555,16 +551,12 @@ def generate_llm_objective(
         "Reponds UNIQUEMENT avec un objet JSON valide, sans markdown ni commentaire."
     )
     if market_auto_selection:
-        market_contract = (
-            "- symbol MUST be exactly `{symbol}`.\n"
-            "- timeframe MUST be exactly `{timeframe}`.\n"
-        )
+        market_contract = "- symbol MUST be exactly `{symbol}`.\n- timeframe MUST be exactly `{timeframe}`.\n"
     else:
         allowed_symbols = ", ".join(symbols_list)
         allowed_timeframes = ", ".join(timeframes_list)
         market_contract = (
-            f"- symbol MUST be one of: {allowed_symbols}.\n"
-            f"- timeframe MUST be one of: {allowed_timeframes}.\n"
+            f"- symbol MUST be one of: {allowed_symbols}.\n- timeframe MUST be one of: {allowed_timeframes}.\n"
         )
 
     user_prompt = (
@@ -660,7 +652,8 @@ def generate_llm_objective(
                 objective = objective.replace(found_tf, replacement, 1)
                 logger.info(
                     "generate_llm_objective: TF halluciné '%s' → '%s'",
-                    found_tf, replacement,
+                    found_tf,
+                    replacement,
                 )
 
     sym_upper_set = {s.upper() for s in symbols_list}
@@ -672,12 +665,16 @@ def generate_llm_objective(
             if found_sym not in sym_upper_set:
                 replacement = random.choice(symbols_list)
                 objective = re.sub(
-                    re.escape(found_sym), replacement, objective,
-                    count=1, flags=re.IGNORECASE,
+                    re.escape(found_sym),
+                    replacement,
+                    objective,
+                    count=1,
+                    flags=re.IGNORECASE,
                 )
                 logger.info(
                     "generate_llm_objective: token halluciné '%s' → '%s'",
-                    found_sym, replacement,
+                    found_sym,
+                    replacement,
                 )
 
     objective = _sanitize_objective_indicators_section(
@@ -718,7 +715,7 @@ def generate_llm_objective_from_seed(
         )
 
     indicators_list = ", ".join(sorted(available_indicators))
-    market_auto_selection = (symbol is None or timeframe is None)
+    market_auto_selection = symbol is None or timeframe is None
 
     if market_auto_selection:
         market_instruction = (
@@ -765,10 +762,7 @@ def generate_llm_objective_from_seed(
         seed_context.append(f"Tags utiles : {', '.join(clean_tags)}")
 
     if market_auto_selection:
-        market_contract = (
-            "- symbol MUST be exactly `{symbol}`.\n"
-            "- timeframe MUST be exactly `{timeframe}`.\n"
-        )
+        market_contract = "- symbol MUST be exactly `{symbol}`.\n- timeframe MUST be exactly `{timeframe}`.\n"
     else:
         market_contract = (
             f"- symbol MUST be one of: {', '.join(symbols_list)}.\n"
@@ -857,8 +851,11 @@ def generate_llm_objective_from_seed(
         if found_sym not in sym_upper_set:
             replacement = random.choice(symbols_list)
             objective = re.sub(
-                re.escape(found_sym), replacement, objective,
-                count=1, flags=re.IGNORECASE,
+                re.escape(found_sym),
+                replacement,
+                objective,
+                count=1,
+                flags=re.IGNORECASE,
             )
 
     objective = _sanitize_objective_indicators_section(
@@ -927,10 +924,7 @@ def _find_objective_market_hints(
             timeframe_hits.append((match.start(), tf))
 
     hinted_symbol = min(symbol_hits, key=lambda x: x[0])[1] if symbol_hits else None
-    hinted_timeframe = (
-        min(timeframe_hits, key=lambda x: x[0])[1]
-        if timeframe_hits else None
-    )
+    hinted_timeframe = min(timeframe_hits, key=lambda x: x[0])[1] if timeframe_hits else None
     return hinted_symbol, hinted_timeframe
 
 
@@ -988,11 +982,7 @@ def _rank_and_select_market_candidates(
             detected_strategy_type,
         )
 
-    recent_symbol_set = {
-        str(s or "").strip().upper()
-        for s, _ in (recent_markets or [])
-        if str(s or "").strip()
-    }
+    recent_symbol_set = {str(s or "").strip().upper() for s, _ in (recent_markets or []) if str(s or "").strip()}
 
     if hinted_symbol and hinted_symbol in symbols:
         fallback_symbol = hinted_symbol
@@ -1004,9 +994,7 @@ def _rank_and_select_market_candidates(
                 fallback_pool = non_recent_pool
             fallback_symbol = random.choice(fallback_pool) if fallback_pool else ranked_symbols[0]
         else:
-            fallback_symbol = (
-                shuffled_symbols[0] if shuffled_symbols else _initial_fallback_symbol
-            )
+            fallback_symbol = shuffled_symbols[0] if shuffled_symbols else _initial_fallback_symbol
 
     if detected_strategy_type:
         try:
@@ -1016,19 +1004,13 @@ def _rank_and_select_market_candidates(
             if recommended_available:
                 fallback_timeframe = random.choice(recommended_available)
             else:
-                fallback_timeframe = (
-                    shuffled_timeframes[0] if shuffled_timeframes else _initial_fallback_timeframe
-                )
+                fallback_timeframe = shuffled_timeframes[0] if shuffled_timeframes else _initial_fallback_timeframe
         except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-            fallback_timeframe = (
-                shuffled_timeframes[0] if shuffled_timeframes else _initial_fallback_timeframe
-            )
+            fallback_timeframe = shuffled_timeframes[0] if shuffled_timeframes else _initial_fallback_timeframe
     elif hinted_timeframe and hinted_timeframe in timeframes:
         fallback_timeframe = hinted_timeframe
     else:
-        fallback_timeframe = (
-            shuffled_timeframes[0] if shuffled_timeframes else _initial_fallback_timeframe
-        )
+        fallback_timeframe = shuffled_timeframes[0] if shuffled_timeframes else _initial_fallback_timeframe
 
     logger.info(
         "Market selection: fallback=%s %s (source=%s)",
@@ -1077,7 +1059,8 @@ def _rank_and_select_market_candidates(
             logger.warning(
                 "Market selection: CONFLICT hints vs diversity, hinted=%s %s (already in recent_markets), "
                 "priority=diversity → hints IGNORED",
-                hinted_symbol, hinted_timeframe,
+                hinted_symbol,
+                hinted_timeframe,
             )
             hinted_symbol = None
             hinted_timeframe = None
@@ -1096,6 +1079,7 @@ def _rank_and_select_market_candidates(
     if hint_lines:
         objective_hint_instruction = "\n" + "\n".join(hint_lines)
         from config.market_selection import get_hints_confidence_boost
+
         boost = get_hints_confidence_boost()
         logger.info(
             "Market selection: hints_detected=YES, symbol=%s, timeframe=%s, boost=+%.2f confidence",
@@ -1191,15 +1175,9 @@ def _finalize_market_result(
                 source = f"{source}_diversity_override" if source != "llm" else "llm_diversity_override"
                 confidence = min(confidence, 0.75)
                 if reason:
-                    reason = (
-                        f"{reason} Couple récent évité automatiquement "
-                        f"({selected_pair[0]} {selected_pair[1]})."
-                    )
+                    reason = f"{reason} Couple récent évité automatiquement ({selected_pair[0]} {selected_pair[1]})."
                 else:
-                    reason = (
-                        f"Couple récent évité automatiquement "
-                        f"({selected_pair[0]} {selected_pair[1]})."
-                    )
+                    reason = f"Couple récent évité automatiquement ({selected_pair[0]} {selected_pair[1]})."
 
     hint_matches: List[str] = []
     if hinted_symbol and symbol == hinted_symbol:
@@ -1415,6 +1393,7 @@ def recommend_market_context(
 # Public wrapper – catalog integration
 # ---------------------------------------------------------------------------
 
+
 def compile_proposal_to_code(proposal: Dict[str, Any], variant: int = 0) -> str:
     """Compile un proposal JSON en code Python stratégie exécutable.
 
@@ -1440,34 +1419,19 @@ def _remove_hardcoded_tokens(text: str) -> str:
 
     # Pattern : tokens crypto (XXXXXUSDC où XXXXX = lettres/chiffres)
     # Exemples : 0GUSDC, BTCUSDC, ETHUSDC, 1000SATSUSDC, etc.
-    token_pattern = r'\b[A-Z0-9]{2,12}USDC\b'
+    token_pattern = r"\b[A-Z0-9]{2,12}USDC\b"
 
     # Remplacer "sur TOKEN en/dans/..." par "sur crypto en/dans/..."
-    text = re.sub(
-        rf'sur\s+{token_pattern}\s+(en|dans|avec|pour)',
-        r'sur crypto \1',
-        text,
-        flags=re.IGNORECASE
-    )
+    text = re.sub(rf"sur\s+{token_pattern}\s+(en|dans|avec|pour)", r"sur crypto \1", text, flags=re.IGNORECASE)
 
     # Remplacer "TOKEN en/dans" restants par "crypto en/dans"
-    text = re.sub(
-        rf'{token_pattern}\s+(en|dans)',
-        r'crypto \1',
-        text,
-        flags=re.IGNORECASE
-    )
+    text = re.sub(rf"{token_pattern}\s+(en|dans)", r"crypto \1", text, flags=re.IGNORECASE)
 
     # Filet final : remplace tout token crypto restant (ex: "sur BTCUSDC.")
-    text = re.sub(
-        token_pattern,
-        'crypto',
-        text,
-        flags=re.IGNORECASE
-    )
+    text = re.sub(token_pattern, "crypto", text, flags=re.IGNORECASE)
 
     # Nettoyer les doubles espaces
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
 
     return text
 
@@ -1487,26 +1451,15 @@ def _remove_hardcoded_timeframes(text: str) -> str:
         return text
 
     # Pattern : timeframes (1m, 5m, 15m, 30m, 1h, 4h, 1d, etc.)
-    tf_pattern = r'\b\d+[mhdwM]\b'
+    tf_pattern = r"\b\d+[mhdwM]\b"
 
     # Remplacer "en/dans [TF]" par une description générique
-    text = re.sub(
-        rf'(en|dans)\s+(les?\s+)?{tf_pattern}',
-        r'\1 timeframe adapté',
-        text,
-        flags=re.IGNORECASE
-    )
+    text = re.sub(rf"(en|dans)\s+(les?\s+)?{tf_pattern}", r"\1 timeframe adapté", text, flags=re.IGNORECASE)
 
     # Remplacer TF isolés restants
-    text = re.sub(
-        rf'\s+{tf_pattern}\b',
-        '',
-        text,
-        flags=re.IGNORECASE
-    )
+    text = re.sub(rf"\s+{tf_pattern}\b", "", text, flags=re.IGNORECASE)
 
     # Nettoyer les doubles espaces
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
 
     return text
-

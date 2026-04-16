@@ -14,6 +14,7 @@ Skip-if: Vous n'utilisez pas le Strategy Builder.
 
 from __future__ import annotations
 
+import math
 import shutil
 import threading
 from dataclasses import dataclass, field
@@ -25,10 +26,6 @@ from backtest.result_store import get_builder_sessions_dir
 
 STREAM_FILE = get_builder_sessions_dir() / "_live_thoughts.md"
 STREAM_ARCHIVE_DIR = get_builder_sessions_dir() / "_live_thoughts_archives"
-
-# Nombre de caractères accumulés avant d'écrire une ligne dans le flux terminal.
-# Réduit le bruit (1 ligne/80 chars au lieu de 1 ligne/token) tout en restant live.
-_STREAM_BATCH_CHARS: int = 80
 
 _LIVE_STREAM_LABELS = {
     "proposal": ("IDEA", "Proposition"),
@@ -109,7 +106,7 @@ class ThoughtStream:
         self._archived = False
         self._stream_closed = False
         self._stream_phase = ""
-        self._stream_buffer = ""  # Buffer pour regrouper les tokens avant écriture
+        self._stream_char_count = 0
 
     def consume(self, event: BuilderLiveEvent | Mapping[str, Any]) -> None:
         payload = event.to_dict() if isinstance(event, BuilderLiveEvent) else dict(event or {})
@@ -133,7 +130,7 @@ class ThoughtStream:
             with self._lock:
                 self._stream_closed = True
                 self._stream_phase = ""
-                self._stream_buffer = ""
+                self._stream_char_count = 0
             self._archive_current_session()
 
     # ------------------------------------------------------------------ #
@@ -196,10 +193,11 @@ class ThoughtStream:
         )
 
     def stream_chunk(self, phase: str, chunk: str) -> None:
-        """Accumule les tokens LLM et écrit une ligne tous les _STREAM_BATCH_CHARS chars.
+        """Accumule les tokens LLM sans verbatim dans le flux canonique.
 
-        Préférer un flux groupé (80 chars/ligne) plutôt qu'une écriture fichier
-        par token pour réduire le bruit et rendre le terminal lisible en live.
+        `_live_thoughts.md` doit rester lisible au `Tail 80` et afficher les
+        événements Builder importants. Le verbatim brut du modèle est donc
+        masqué ici pour éviter de noyer les résultats de backtest.
         """
         text = str(chunk or "")
         if not text:
@@ -215,16 +213,14 @@ class ThoughtStream:
                 self._flush_stream_buffer_no_lock()
                 self._stream_phase = phase_name
                 phase_icon, phase_label = _stream_phase_label(phase_name)
-                self._append(f"[STREAM] {phase_icon} {phase_label} — démarrage du flux\n")
+                self._append(
+                    f"[STREAM] {phase_icon} {phase_label} — flux LLM en cours "
+                    "(verbatim masque dans le flux canonique)\n"
+                )
             elif not self._stream_phase:
                 self._stream_phase = phase_name
 
-            # Accumulation dans le buffer
-            self._stream_buffer += text
-
-            # Écriture quand le buffer atteint le seuil
-            if len(self._stream_buffer) >= _STREAM_BATCH_CHARS:
-                self._flush_stream_buffer_no_lock()
+            self._stream_char_count += len(text)
 
     def flush_stream(self) -> None:
         """Flush public : appelé après la fin d'un appel LLM pour écrire le buffer résiduel."""
@@ -245,18 +241,20 @@ class ThoughtStream:
             self._archived = False
             self._stream_closed = False
             self._stream_phase = ""
-            self._stream_buffer = ""
+            self._stream_char_count = 0
             self._overwrite(self._render_header(event))
 
     def _flush_stream_buffer_no_lock(self) -> None:
-        """Flush le buffer stream vers le fichier. A appeler avec self._lock déjà tenu."""
-        buf = self._stream_buffer.strip()
-        self._stream_buffer = ""
-        if not buf:
+        """Flush la synthèse stream vers le fichier. A appeler lock tenu."""
+        char_count = int(self._stream_char_count or 0)
+        self._stream_char_count = 0
+        if char_count <= 0:
             return
         phase_icon, phase_label = _stream_phase_label(self._stream_phase)
-        preview = _trunc(buf, max_len=200)
-        self._append(f"[STREAM] {phase_icon} {phase_label} - {preview}\n")
+        self._append(
+            f"[STREAM] {phase_icon} {phase_label} - "
+            f"{char_count} caracteres recus (verbatim masque dans le flux canonique)\n"
+        )
 
     def _archive_current_session(self) -> None:
         with self._lock:
@@ -341,15 +339,7 @@ class ThoughtStream:
                 line += f" - {_trunc(message, max_len=220)}"
             line += "\n"
             if event_name == "phase_done" and phase == "backtest":
-                sharpe = payload.get("sharpe")
-                ret_pct = payload.get("total_return_pct")
-                try:
-                    line += (
-                        f"    RESULTATS : Sharpe {float(sharpe):.3f} | "
-                        f"Return {float(ret_pct):+.2f}%\n"
-                    )
-                except Exception:
-                    pass
+                line += _format_backtest_summary_block(payload)
             return line
         if event_name == "diagnostic":
             diagnostic = dict(payload.get("diagnostic") or {})
@@ -489,6 +479,65 @@ def _branch_suffix(branch_label: str, *, include_main: bool = False) -> str:
     if cleaned == "main" and not include_main:
         return ""
     return f" | branche `{cleaned}`"
+
+
+def _format_backtest_summary_block(payload: Mapping[str, Any]) -> str:
+    def _float_text(value: Any, fmt: str, *, absolute: bool = False) -> str:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return ""
+        if absolute:
+            numeric = abs(numeric)
+        if math.isfinite(numeric):
+            return format(numeric, fmt)
+        if math.isinf(numeric):
+            return "inf" if numeric > 0 else "-inf"
+        return ""
+
+    def _int_text(value: Any) -> str:
+        try:
+            return f"{int(value):d}"
+        except (TypeError, ValueError):
+            return ""
+
+    result_parts: list[str] = []
+    trade_parts: list[str] = []
+
+    sharpe_text = _float_text(payload.get("sharpe"), ".3f")
+    if sharpe_text:
+        result_parts.append(f"Sharpe {sharpe_text}")
+
+    return_text = _float_text(payload.get("total_return_pct"), "+.2f")
+    if return_text:
+        result_parts.append(f"Return {return_text}%")
+
+    pnl_text = _float_text(payload.get("total_pnl"), "+,.2f")
+    if pnl_text:
+        result_parts.append(f"PnL ${pnl_text}")
+
+    trades_text = _int_text(payload.get("total_trades"))
+    if trades_text:
+        trade_parts.append(f"Trades {trades_text}")
+
+    win_rate_text = _float_text(payload.get("win_rate_pct"), ".1f")
+    if win_rate_text:
+        trade_parts.append(f"Win rate {win_rate_text}%")
+
+    profit_factor_text = _float_text(payload.get("profit_factor"), ".2f")
+    if profit_factor_text:
+        trade_parts.append(f"PF {profit_factor_text}")
+
+    dd_text = _float_text(payload.get("max_drawdown_pct"), ".2f", absolute=True)
+    if dd_text:
+        trade_parts.append(f"Max DD {dd_text}%")
+
+    lines: list[str] = []
+    if result_parts:
+        lines.append("    RESULTATS : " + " | ".join(result_parts))
+    if trade_parts:
+        lines.append("    TRADES    : " + " | ".join(trade_parts))
+    return "".join(f"{line}\n" for line in lines)
 
 
 def _format_datetime(value: Any) -> str:

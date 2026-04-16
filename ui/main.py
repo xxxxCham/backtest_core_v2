@@ -87,12 +87,19 @@ from ui.sidebar import apply_pending_sidebar_config, get_run_label_for_mode
 from ui.state import (
     SidebarState,
     BUILDER_OPTIMIZATION_MODE,
+    arm_ui_load_request,
+    arm_ui_run_request,
+    clear_builder_launch_state as _clear_builder_launch_state,
+    clear_builder_runtime_state as _clear_builder_runtime_state,
     clear_execution_state,
     consume_ui_run_request,
     ensure_ui_execution_state_defaults,
+    get_ui_execution_phase,
     mark_ui_run_started,
     persist_run_winner,
     should_preserve_builder_launch,
+    UI_EXECUTION_PHASE_LAUNCH_PENDING,
+    UI_EXECUTION_PHASE_RUNNING,
 )
 from utils.run_tracker import RunSignature, get_global_tracker
 
@@ -238,6 +245,7 @@ def _estimate_grid_size(param_ranges: Dict[str, Any]) -> int:
             total *= max(1, int(count))
         except Exception:
             total *= 1
+            logger.debug("param range parsing error in _compute_grid_total", exc_info=True)
     return max(1, int(total))
 
 
@@ -663,36 +671,11 @@ def _collect_runtime_cleanup_hosts(state: SidebarState) -> List[str]:
 
 
 def _reset_builder_runtime_state() -> None:
-    keys_to_clear = (
-        "builder_session",
-        "builder_runtime_diagnostic",
-        "builder_autonomous_history",
-        "builder_autonomous_supervisor",
-        "_builder_auto_bootstrap_symbol",
-        "_builder_auto_bootstrap_timeframe",
-        "_builder_startup_symbol",
-        "_builder_startup_timeframe",
-        "_builder_tf_usage",
-        "_builder_objective_input_sync",
-        "_builder_multi_llm_profile_sync",
-        "_builder_multi_llm_profile_saved_notice",
-        "builder_launch_pending",
-    )
-    for key in keys_to_clear:
-        st.session_state.pop(key, None)
+    _clear_builder_runtime_state(st.session_state)
 
 
 def _reset_builder_launch_state() -> None:
-    keys_to_clear = (
-        "_builder_auto_bootstrap_symbol",
-        "_builder_auto_bootstrap_timeframe",
-        "_builder_startup_symbol",
-        "_builder_startup_timeframe",
-        "_builder_tf_usage",
-        "builder_launch_pending",
-    )
-    for key in keys_to_clear:
-        st.session_state.pop(key, None)
+    _clear_builder_launch_state(st.session_state)
 
 
 def _execute_clean_stop(state: SidebarState) -> None:
@@ -725,7 +708,7 @@ def _execute_clean_stop(state: SidebarState) -> None:
             )
 
     _reset_builder_runtime_state()
-    st.session_state["is_running"] = False
+    clear_execution_state(st.session_state, clear_builder_launch=True)
 
     cleaned_components = len(cleanup_stats.get("components_cleaned", []))
     error_count = len(cleanup_stats.get("errors", []))
@@ -811,8 +794,7 @@ def _process_load_request(state: SidebarState) -> None:
 def _queue_main_load_action() -> None:
     if bool(st.session_state.get("config_pending_changes", False)):
         apply_pending_sidebar_config()
-    st.session_state["stop_requested"] = False
-    st.session_state["load_ohlcv_requested"] = True
+    arm_ui_load_request(st.session_state)
 
 
 def _queue_main_run_action(fallback_optimization_mode: str = "") -> None:
@@ -822,13 +804,10 @@ def _queue_main_run_action(fallback_optimization_mode: str = "") -> None:
     optimization_mode = str(
         st.session_state.get("optimization_mode", fallback_optimization_mode) or ""
     )
-    if optimization_mode == BUILDER_OPTIMIZATION_MODE:
-        _reset_builder_launch_state()
-        st.session_state["builder_launch_pending"] = True
-
-    st.session_state["stop_requested"] = False
-    st.session_state["run_backtest_requested"] = True
-    st.session_state["is_running"] = True
+    arm_ui_run_request(
+        st.session_state,
+        builder_mode=optimization_mode == BUILDER_OPTIMIZATION_MODE,
+    )
 
 
 def render_primary_action_bar(state: SidebarState) -> None:
@@ -992,8 +971,7 @@ def _render_builder_view_safe(
             exc,
             traceback.format_exc(),
         )
-        st.session_state.is_running = False
-        st.session_state.run_backtest_requested = False
+        clear_execution_state(st.session_state)
         try:
             mark_builder_autonomous_runtime_stopped(
                 reason="builder_view_crash",
@@ -1014,6 +992,7 @@ def _abort_main_run(
     level: str = "error",
     live_status: Any = None,
     tb: bool = False,
+    extra: Any = None,
 ) -> None:
     """Point de sortie unique pour les aborts de run dans render_main et ses extractions."""
     if live_status is not None:
@@ -1023,10 +1002,43 @@ def _abort_main_run(
             pass
     with status_container:
         show_status(level, msg)
+        if extra is not None:
+            extra()
         if tb:
             st.code(traceback.format_exc())
     clear_execution_state(st.session_state)
     st.stop()
+
+
+def _finalize_run_result(
+    result: Any,
+    df: Any,
+    params: Dict[str, Any],
+    origin: str,
+    *,
+    attach_wfa: Any,
+    status_container: Any | None = None,
+) -> None:
+    """Bloc commun de finalisation après un backtest réussi.
+
+    Enchaîne WFA metrics → persist_run_winner → auto-save.
+    """
+    result, _, wfa_msg = attach_wfa(result, df, params)
+    if wfa_msg:
+        if status_container is not None:
+            with status_container:
+                show_status("info", wfa_msg)
+        else:
+            show_status("info", wfa_msg)
+    persist_run_winner(
+        st.session_state,
+        result=result,
+        params=params,
+        metrics=result.metrics,
+        origin=origin,
+        meta=result.meta,
+    )
+    _maybe_auto_save_run(result)
 
 
 def _run_grid_search_mode(
@@ -1119,9 +1131,7 @@ def _run_grid_search_mode(
                 show_status("info", f"Grille: {total_runs:,} combinaisons ({n_workers_effective} workers × {worker_thread_limit} threads)")
 
         except Exception as exc:
-            show_status("error", f"Échec génération grille: {exc}")
-            clear_execution_state(st.session_state)
-            st.stop()
+            _abort_main_run(status_container, f"Échec génération grille: {exc}")
 
     # ✅ CRITIQUE: Définir fast_metrics ICI pour qu'il soit accessible aux fonctions imbriquées
     # Déterminer si on utilise les métriques rapides (sweeps >500 runs)
@@ -1682,49 +1692,36 @@ def _run_grid_search_mode(
             silent_mode=not debug_enabled,
         )
         if result is not None:
-            result, _, wfa_msg = _attach_wfa_metrics(result, df, best_params)
-            if wfa_msg:
-                show_status("info", wfa_msg)
-            persist_run_winner(
-                st.session_state,
-                result=result,
-                params=best_params,
-                metrics=result.metrics,
-                origin="grid",
-                meta=result.meta,
-            )
-            _maybe_auto_save_run(result)
+            _finalize_run_result(result, df, best_params, "grid", attach_wfa=_attach_wfa_metrics)
     else:
-        show_status("error", "Aucun résultat valide")
-        # Afficher diagnostic détaillé
-        st.markdown("### 🔍 Diagnostic")
-        st.warning(
-            f"Sur {len(results_list)} combinaisons évaluées, "
-            f"toutes ont échoué."
-        )
-        if error_items:
-            top_error, top_count = error_items[0]
-            st.error(
-                f"**Erreur principale** ({top_count} occurrences sur {sum(error_counts.values())} erreurs):"
+        def _grid_diagnostic():
+            st.markdown("### 🔍 Diagnostic")
+            st.warning(
+                f"Sur {len(results_list)} combinaisons évaluées, "
+                f"toutes ont échoué."
             )
-            st.code(top_error, language="text")
-        elif results_list:
-            # Extraire les erreurs du DataFrame si error_counts vide
-            errors_in_results = [
-                r.get("error") for r in results_list if r.get("error")
-            ]
-            if errors_in_results:
-                st.error("**Première erreur détectée:**")
-                st.code(errors_in_results[0], language="text")
-                if len(errors_in_results) > 1:
-                    st.caption(f"+ {len(errors_in_results)-1} autres erreurs similaires")
-            else:
-                st.info(
-                    "Aucune erreur explicite, mais les résultats sont invalides. "
-                    "Vérifiez que les données OHLCV sont chargées et valides."
+            if error_items:
+                top_error, top_count = error_items[0]
+                st.error(
+                    f"**Erreur principale** ({top_count} occurrences sur {sum(error_counts.values())} erreurs):"
                 )
-        clear_execution_state(st.session_state)
-        st.stop()
+                st.code(top_error, language="text")
+            elif results_list:
+                errors_in_results = [
+                    r.get("error") for r in results_list if r.get("error")
+                ]
+                if errors_in_results:
+                    st.error("**Première erreur détectée:**")
+                    st.code(errors_in_results[0], language="text")
+                    if len(errors_in_results) > 1:
+                        st.caption(f"+ {len(errors_in_results)-1} autres erreurs similaires")
+                else:
+                    st.info(
+                        "Aucune erreur explicite, mais les résultats sont invalides. "
+                        "Vérifiez que les données OHLCV sont chargées et valides."
+                    )
+
+        _abort_main_run(status_container, "Aucun résultat valide", extra=_grid_diagnostic)
 
 
 
@@ -1771,16 +1768,16 @@ def _run_llm_optimization_mode(
     _attach_wfa_metrics = attach_wfa_metrics
 
     if not LLM_AVAILABLE:
-        show_status("error", "Module agents LLM non disponible")
-        st.code(LLM_IMPORT_ERROR)
-        clear_execution_state(st.session_state)
-        st.stop()
+        _abort_main_run(
+            status_container, "Module agents LLM non disponible",
+            extra=lambda: st.code(LLM_IMPORT_ERROR),
+        )
 
     if llm_config is None:
-        show_status("error", "Configuration LLM incomplète")
-        st.info("Configurez le provider LLM dans la sidebar")
-        clear_execution_state(st.session_state)
-        st.stop()
+        _abort_main_run(
+            status_container, "Configuration LLM incomplète",
+            extra=lambda: st.info("Configurez le provider LLM dans la sidebar"),
+        )
 
     session_id = generate_session_id()  # type: ignore[misc]
     orchestration_logger = OrchestrationLogger(session_id=session_id)  # type: ignore[misc]
@@ -2073,10 +2070,7 @@ def _run_llm_optimization_mode(
                 )
                 show_status("success", "Connexion LLM établie")
         except Exception as exc:
-            show_status("error", f"Echec connexion LLM: {exc}")
-            st.code(traceback.format_exc())
-            clear_execution_state(st.session_state)
-            st.stop()
+            _abort_main_run(status_container, f"Echec connexion LLM: {exc}", tb=True)
 
     if llm_use_multi_agent:
         st.markdown("---")
@@ -2088,9 +2082,7 @@ def _run_llm_optimization_mode(
         )
 
         if orchestrator is None:
-            show_status("error", "Orchestrator non initialise")
-            clear_execution_state(st.session_state)
-            st.stop()
+            _abort_main_run(status_container, "Orchestrator non initialise")
 
         try:
             with st.spinner("Optimisation multi-agents en cours..."):
@@ -2099,7 +2091,7 @@ def _run_llm_optimization_mode(
             try:
                 orchestration_logger.save_to_jsonl()
             except Exception:
-                pass
+                logger.warning("orchestration_logger.save_to_jsonl() failed — diagnostic data lost", exc_info=True)
 
             if orchestrator_result.errors:
                 st.warning(
@@ -2153,23 +2145,9 @@ def _run_llm_optimization_mode(
                     silent_mode=not debug_enabled,
                 )
                 if result is not None:
-                    result, _, wfa_msg = _attach_wfa_metrics(result, df, best_params)
-                    if wfa_msg:
-                        show_status("info", wfa_msg)
-                    persist_run_winner(
-                        st.session_state,
-                        result=result,
-                        params=best_params,
-                        metrics=result.metrics,
-                        origin="llm",
-                        meta=result.meta,
-                    )
-                    _maybe_auto_save_run(result)
+                    _finalize_run_result(result, df, best_params, "llm", attach_wfa=_attach_wfa_metrics)
         except Exception as exc:
-            show_status("error", f"Erreur optimisation multi-agents: {exc}")
-            st.code(traceback.format_exc())
-            clear_execution_state(st.session_state)
-            st.stop()
+            _abort_main_run(status_container, f"Erreur optimisation multi-agents: {exc}", tb=True)
     else:
         st.markdown("---")
         st.markdown("### 📊 Progression de l'optimisation LLM")
@@ -2318,25 +2296,13 @@ def _run_llm_optimization_mode(
                 silent_mode=not debug_enabled,
             )
             if result is not None:
-                result, _, wfa_msg = _attach_wfa_metrics(result, df, best_params)
-                if wfa_msg:
-                    show_status("info", wfa_msg)
-                persist_run_winner(
-                    st.session_state,
-                    result=result,
-                    params=best_params,
-                    metrics=result.metrics,
-                    origin="llm",
-                    meta=result.meta,
-                )
-                _maybe_auto_save_run(result)
+                _finalize_run_result(result, df, best_params, "llm", attach_wfa=_attach_wfa_metrics)
 
         except Exception as exc:
-            live_status.update(label=f"❌ Erreur: {exc}", state="error")
-            show_status("error", f"Erreur optimisation LLM: {exc}")
-            st.code(traceback.format_exc())
-            clear_execution_state(st.session_state)
-            st.stop()
+            _abort_main_run(
+                status_container, f"Erreur optimisation LLM: {exc}",
+                live_status=live_status, tb=True,
+            )
 
 
 def render_main(
@@ -2345,15 +2311,13 @@ def render_main(
     status_container: Any,
 ) -> None:
     # Guard against stale lock states after an upstream interruption (sidebar/import errors).
-    if st.session_state.get("is_running", False) and not run_button:
+    execution_phase = get_ui_execution_phase(st.session_state)
+    if (
+        execution_phase in {UI_EXECUTION_PHASE_LAUNCH_PENDING, UI_EXECUTION_PHASE_RUNNING}
+        and not run_button
+    ):
         if not should_preserve_builder_launch(state, st.session_state):
-            st.session_state.is_running = False
-
-    result = st.session_state.get("last_run_result")
-    winner_params = st.session_state.get("last_winner_params")
-    winner_metrics = st.session_state.get("last_winner_metrics")
-    winner_origin = st.session_state.get("last_winner_origin")
-    winner_meta = st.session_state.get("last_winner_meta")
+            clear_execution_state(st.session_state)
 
     params = state.params
     param_ranges = state.param_ranges
@@ -2518,7 +2482,7 @@ def render_main(
                 except Exception:
                     logging.getLogger(__name__).warning("failed to set builder_autonomous on state", exc_info=True)
             run_button = True
-            st.session_state["is_running"] = True
+            mark_ui_run_started(st.session_state)
             st.session_state["builder_autonomous"] = True
 
     if (
@@ -2531,21 +2495,15 @@ def render_main(
 
     if run_button:
         mark_ui_run_started(st.session_state)
-        winner_params = None
-        winner_metrics = None
-        winner_origin = None
-        winner_meta = None
 
         if optimization_mode != BUILDER_OPTIMIZATION_MODE:
             is_valid, errors = validate_all_params(params)
 
             if not is_valid:
-                with status_container:
-                    show_status("error", "Paramètres invalides")
-                    for err in errors:
-                        st.error(f"  • {err}")
-                clear_execution_state(st.session_state)
-                st.stop()
+                _abort_main_run(
+                    status_container, "Paramètres invalides",
+                    extra=lambda: [st.error(f"  • {e}") for e in errors],
+                )
 
         is_multi_sweep = (len(state.symbols) > 1 or len(state.timeframes) > 1)
         if is_multi_sweep and optimization_mode in ("Backtest Simple", "Grille de Paramètres"):
@@ -2769,7 +2727,7 @@ def render_main(
 
             resume_autonomous, _runtime_state = should_auto_resume_builder_autonomous(state)
             if resume_autonomous and not st.session_state.get("is_running", False):
-                st.session_state["is_running"] = True
+                mark_ui_run_started(st.session_state)
 
             st.session_state.pop("builder_launch_pending", None)
             _render_builder_view_safe(
@@ -2799,14 +2757,15 @@ def render_main(
                     data_dir_hint = str(_get_data_dir())
                 except Exception:
                     data_dir_hint = None
-                with status_container:
-                    show_status("error", f"Échec chargement: {data_msg}")
-                    if data_dir_hint:
-                        st.info(f"💡 Vérifiez les fichiers dans `{data_dir_hint}`")
-                    else:
-                        st.info("💡 Vérifiez la configuration de vos chemins de données.")
-                clear_execution_state(st.session_state)
-                st.stop()
+                _data_hint = data_dir_hint
+                _abort_main_run(
+                    status_container, f"Échec chargement: {data_msg}",
+                    extra=lambda: st.info(
+                        f"💡 Vérifiez les fichiers dans `{_data_hint}`"
+                        if _data_hint
+                        else "💡 Vérifiez la configuration de vos chemins de données."
+                    ),
+                )
 
             if df is not None:
                 df, stabilization_info = _prepare_market_df(
@@ -2841,26 +2800,14 @@ def render_main(
                 )
 
             if result is None:
-                with status_container:
-                    show_status("error", f"Échec backtest: {result_msg}")
-                clear_execution_state(st.session_state)
-                st.stop()
+                _abort_main_run(status_container, f"Échec backtest: {result_msg}")
 
             with status_container:
                 show_status("success", f"Backtest terminé: {result_msg}")
-            result, _, wfa_msg = _attach_wfa_metrics(result, df, params)
-            if wfa_msg:
-                with status_container:
-                    show_status("info", wfa_msg)
-            persist_run_winner(
-                st.session_state,
-                result=result,
-                params=result.meta.get("params", params),
-                metrics=result.metrics,
-                origin="backtest",
-                meta=result.meta,
+            _finalize_run_result(
+                result, df, result.meta.get("params", params), "backtest",
+                attach_wfa=_attach_wfa_metrics, status_container=status_container,
             )
-            _maybe_auto_save_run(result)
 
         elif optimization_mode == "Grille de Paramètres":
             _run_grid_search_mode(
@@ -2914,8 +2861,6 @@ def render_main(
             )
 
         else:
-            show_status("error", f"Mode non reconnu: {optimization_mode}")
-            clear_execution_state(st.session_state)
-            st.stop()
+            _abort_main_run(status_container, f"Mode non reconnu: {optimization_mode}")
 
     clear_execution_state(st.session_state)

@@ -13,7 +13,7 @@ Dependencies: agents.builder_ast_utils, agents.builder_diagnostics,
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from agents.builder_ast_utils import (
     _extract_required_indicators_signature,
@@ -27,47 +27,48 @@ from agents.builder_proposal_helpers import (
 )
 
 if TYPE_CHECKING:
-    from agents.builder_state import BuilderIteration, BuilderSession
+    from agents.builder_state import BuilderIteration, BuilderSession, IterationContext
 
 
 # ---------------------------------------------------------------------------
 # Policy overrides
 # ---------------------------------------------------------------------------
 
+def _to_ctx(
+    arg: "Union[BuilderIteration, IterationContext, None]",
+) -> "IterationContext":
+    """Coerce un BuilderIteration ou None en IterationContext (import tardif)."""
+    from agents.builder_state import IterationContext
+    if isinstance(arg, IterationContext):
+        return arg
+    return IterationContext(arg)
+
+
 def _policy_change_type_override(
     *,
     session: "BuilderSession",
-    last_iteration: Optional["BuilderIteration"],
+    last_iteration: "Union[BuilderIteration, IterationContext, None]" = None,
+    ctx: "Optional[IterationContext]" = None,
 ) -> Optional[str]:
-    """Force un type de modification cohérent avec le diagnostic récent.
-
-    Objectif: éviter les oscillations `both` quand le problème est clairement
-    structurel (ruined/no_trades/etc.).
-    """
-    if last_iteration is None:
+    """Force un type de modification cohérent avec le diagnostic récent."""
+    c = ctx if ctx is not None else _to_ctx(last_iteration)
+    if not c.exists:
         return None
 
-    cat = str(getattr(last_iteration, "diagnostic_category", "") or "").strip().lower()
-    sev = str(
-        (getattr(last_iteration, "diagnostic_detail", {}) or {}).get("severity", "")
-    ).strip().lower()
+    cat = c.diagnostic_category
+    sev = c.diagnostic_severity
 
-    # Pattern oscillant fréquent: ruined <-> no_trades
     recent = [
-        str(getattr(it, "diagnostic_category", "") or "").strip().lower()
+        _to_ctx(it).diagnostic_category
         for it in (session.iterations[-3:] if session.iterations else [])
-        if str(getattr(it, "diagnostic_category", "") or "").strip()
+        if _to_ctx(it).diagnostic_category
     ]
     if len(recent) >= 2 and set(recent[-2:]).issubset({"ruined", "no_trades"}):
         return "logic"
 
     logic_cats = {
-        "ruined",
-        "no_trades",
-        "overtrading",
-        "wrong_direction",
-        "high_drawdown",
-        "needs_work",
+        "ruined", "no_trades", "overtrading",
+        "wrong_direction", "high_drawdown", "needs_work",
     }
     param_cats = {"approaching_target", "marginal", "target_reached"}
 
@@ -83,34 +84,32 @@ def _policy_change_type_override(
 # ---------------------------------------------------------------------------
 
 def _previous_iteration_indicators(
-    last_iteration: Optional["BuilderIteration"],
+    last_iteration: "Union[BuilderIteration, IterationContext, None]" = None,
+    *,
+    ctx: "Optional[IterationContext]" = None,
 ) -> tuple[str, ...]:
     """Retourne les indicateurs de l'itération précédente depuis son code validé."""
-    if last_iteration is None or not getattr(last_iteration, "code", ""):
+    c = ctx if ctx is not None else _to_ctx(last_iteration)
+    if not c.code:
         return tuple()
-    return _extract_required_indicators_signature(last_iteration.code)
+    return _extract_required_indicators_signature(c.code)
 
 
 def _requires_indicator_exploration(
-    last_iteration: Optional["BuilderIteration"],
+    last_iteration: "Union[BuilderIteration, IterationContext, None]" = None,
+    *,
+    ctx: "Optional[IterationContext]" = None,
 ) -> bool:
     """Indique si la prochaine proposition doit explorer de nouveaux indicateurs."""
-    if last_iteration is None:
+    c = ctx if ctx is not None else _to_ctx(last_iteration)
+    if not c.exists:
         return False
-
-    stag = (getattr(last_iteration, "phase_feedback", {}) or {}).get("stagnation", {})
-    if bool(stag.get("identical_metrics")):
+    if c.has_identical_metrics_stagnation:
         return True
-
-    cat = str(getattr(last_iteration, "diagnostic_category", "") or "").strip().lower()
-    return cat in {
-        "ruined",
-        "no_trades",
-        "overtrading",
-        "wrong_direction",
-        "high_drawdown",
-        "needs_work",
-    }
+    return c.is_category(
+        "ruined", "no_trades", "overtrading",
+        "wrong_direction", "high_drawdown", "needs_work",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -118,13 +117,15 @@ def _requires_indicator_exploration(
 # ---------------------------------------------------------------------------
 
 def _should_enable_stagnation_branching(
-    last_iteration: Optional["BuilderIteration"],
+    last_iteration: "Union[BuilderIteration, IterationContext, None]" = None,
+    *,
+    ctx: "Optional[IterationContext]" = None,
 ) -> bool:
     """N'ouvre des branches supplémentaires qu'après vraie stagnation."""
-    if last_iteration is None:
+    c = ctx if ctx is not None else _to_ctx(last_iteration)
+    if not c.exists:
         return False
-    stagnation = (getattr(last_iteration, "phase_feedback", {}) or {}).get("stagnation", {})
-    return bool(stagnation.get("identical_metrics")) and _requires_indicator_exploration(last_iteration)
+    return c.has_identical_metrics_stagnation and _requires_indicator_exploration(ctx=c)
 
 
 def _build_stagnation_branch_specs(
@@ -164,20 +165,20 @@ def _build_stagnation_branch_specs(
 # ---------------------------------------------------------------------------
 
 def _should_trip_logic_stagnation_circuit(
-    last_iteration: Optional["BuilderIteration"],
+    last_iteration: "Union[BuilderIteration, IterationContext, None]",
     iteration: "BuilderIteration",
 ) -> bool:
-    if last_iteration is None:
+    prev = _to_ctx(last_iteration)
+    if not prev.exists:
         return False
-    current_stagnation = (getattr(iteration, "phase_feedback", {}) or {}).get("stagnation", {})
-    previous_stagnation = (getattr(last_iteration, "phase_feedback", {}) or {}).get("stagnation", {})
-    if not bool(current_stagnation.get("identical_metrics")):
+    cur = _to_ctx(iteration)
+    if not cur.has_identical_metrics_stagnation:
         return False
-    if not bool(previous_stagnation.get("identical_metrics")):
+    if not prev.has_identical_metrics_stagnation:
         return False
     if not _is_logic_like_change_type(iteration.change_type):
         return False
-    if not _is_logic_like_change_type(getattr(last_iteration, "change_type", "")):
+    if not _is_logic_like_change_type(prev.change_type):
         return False
     return True
 

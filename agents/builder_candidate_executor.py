@@ -8,9 +8,9 @@ avoid circular imports during the initial load of `agents.strategy_builder`.
 """
 
 from __future__ import annotations
+
 # pylint: disable=protected-access
 # pylint: disable=broad-except
-
 import concurrent.futures
 import copy
 import time as _time
@@ -57,6 +57,22 @@ class CandidateExecutionContext:
     initial_capital: float
     fallback_count: int
     branch_label: str = "main"
+
+
+@dataclass
+class CodeAttempt:
+    code: str = ""
+    logic: str = ""
+    logic_error: str = ""
+    validation_error: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.code) and not self.logic_error and not self.validation_error
+
+    @property
+    def error(self) -> str:
+        return str(self.validation_error or self.logic_error or "").strip()
 
 
 class BuilderCandidateExecutorV2:
@@ -351,117 +367,165 @@ class BuilderCandidateExecutorV2:
 
         return self._validate_candidate_code(code)
 
-    def _build_code_from_llm_response(self, raw_code: str) -> str:
-        if self.code_feedback.get("source") == "params_patch":
-            return raw_code
-
-        logic_block = _extract_generate_signals_logic_block(raw_code)
+    def _extract_logic_attempt(
+        self,
+        raw_code: str,
+        *,
+        prefer_generate_signals_block: bool = False,
+    ) -> CodeAttempt:
+        logic_block = (
+            _extract_generate_signals_logic_block(raw_code)
+            if prefer_generate_signals_block
+            else ""
+        )
         if not logic_block.strip():
             logic_block = _extract_python_from_response(raw_code)
         if self.builder.ablation.is_enabled("postprocess_logic"):
             logic_block = _postprocess_llm_logic_block(logic_block, self.req_inds)
         logic_ok, logic_err = _validate_llm_logic_block(logic_block)
-        if logic_ok:
-            return strategy_builder_module._build_deterministic_strategy_code(
-                self.candidate_proposal,
-                logic_block,
-            )
+        return CodeAttempt(
+            logic=logic_block,
+            logic_error="" if logic_ok else str(logic_err or "invalid_logic"),
+        )
 
-        self.code_feedback["validation_error"] = logic_err
+    def _build_code_attempt_from_logic(
+        self,
+        attempt: CodeAttempt,
+        *,
+        repair_and_validate: bool,
+    ) -> CodeAttempt:
+        if attempt.logic_error:
+            return attempt
+        attempt.code = strategy_builder_module._build_deterministic_strategy_code(
+            self.candidate_proposal,
+            attempt.logic,
+        )
+        if not repair_and_validate:
+            return attempt
+        attempt.code = self._repair_candidate_code(attempt.code)
+        is_valid, validation_error = validate_generated_code(attempt.code)
+        if not is_valid:
+            attempt.validation_error = str(validation_error or "invalid_code")
+        return attempt
+
+    def _retry_code_attempt(self, *, repair_and_validate: bool) -> CodeAttempt:
         retry_logic_raw = self.builder._retry_code_simple(self.candidate_proposal)
-        retry_logic = _extract_python_from_response(retry_logic_raw)
-        if self.builder.ablation.is_enabled("postprocess_logic"):
-            retry_logic = _postprocess_llm_logic_block(retry_logic, self.req_inds)
-        retry_ok, retry_err = _validate_llm_logic_block(retry_logic)
-        if retry_ok:
-            self.code_feedback["logic_retry_used"] = True
-            return strategy_builder_module._build_deterministic_strategy_code(
-                self.candidate_proposal,
-                retry_logic,
-            )
+        attempt = self._extract_logic_attempt(retry_logic_raw)
+        return self._build_code_attempt_from_logic(
+            attempt,
+            repair_and_validate=repair_and_validate,
+        )
 
-        self.code_feedback["validation_error_retry"] = retry_err
-        fallback_code = self._next_fallback_code()
-        is_valid_fb, error_msg_fb = validate_generated_code(fallback_code)
-        if not is_valid_fb:
-            self.outcome["error"] = (
-                "Bloc logique LLM invalide après retry + fallback invalide: "
-                f"{error_msg_fb or retry_err}"
-            )
-            self.outcome["code_feedback"] = self.code_feedback
-            raise RuntimeError(str(self.outcome["error"]))
-        self.code_feedback["fallback_deterministic_used"] = True
-        self.code_feedback["source"] = "deterministic_fallback"
-        self.code_feedback["fallback_variant"] = self.ctx.fallback_count - 1
-        return fallback_code
-
-    def _validate_candidate_code(self, code: str) -> str:
+    def _repair_candidate_code(self, code: str) -> str:
         repaired_code = (
             _repair_code(
                 code,
                 self.req_inds,
-                enable_indicator_binding=self.builder.ablation.is_enabled("indicator_binding"),
+                enable_indicator_binding=self.builder.ablation.is_enabled(
+                    "indicator_binding"
+                ),
             )
             if self.builder.ablation.is_enabled("code_repair")
             else code
         )
-        # Auto-repair vectorisation (and/or→&/|, signals.loc, isnull, ParameterSpec, np.diff)
         repaired_code, vectorize_fixes = _auto_repair_vectorize(repaired_code)
         if vectorize_fixes:
             self.code_feedback["vectorize_fixes"] = vectorize_fixes
+        return repaired_code
+
+    def _validated_deterministic_fallback(
+        self,
+        *,
+        invalid_fallback_error: str,
+        mark_code_fallback: bool = True,
+        runtime_feedback_key: Optional[str] = None,
+    ) -> str:
+        fallback_code = self._next_fallback_code()
+        is_valid_fb, fallback_error = validate_generated_code(fallback_code)
+        if not is_valid_fb:
+            self.outcome["error"] = invalid_fallback_error.replace(
+                "{fallback_error}",
+                str(fallback_error or "invalid_fallback"),
+            )
+            self.outcome["code_feedback"] = self.code_feedback
+            self.outcome["backtest_feedback"] = self.backtest_feedback
+            raise RuntimeError(str(self.outcome["error"]))
+        self.code_feedback["source"] = "deterministic_fallback"
+        self.code_feedback["fallback_variant"] = self.ctx.fallback_count - 1
+        if mark_code_fallback:
+            self.code_feedback["fallback_deterministic_used"] = True
+        if runtime_feedback_key:
+            self.backtest_feedback[runtime_feedback_key] = True
+        return fallback_code
+
+    def _infer_indicator_contract_gap(
+        self,
+        code: str,
+    ) -> tuple[List[str], List[str]]:
+        inferred = list(
+            strategy_builder_module._infer_required_indicator_names_from_code(
+                code,
+                self.req_inds,
+            )
+        )
+        unexpected = [ind for ind in inferred if ind not in self.req_inds]
+        return inferred, unexpected
+
+    def _build_code_from_llm_response(self, raw_code: str) -> str:
+        if self.code_feedback.get("source") == "params_patch":
+            return raw_code
+
+        first_attempt = self._build_code_attempt_from_logic(
+            self._extract_logic_attempt(
+                raw_code,
+                prefer_generate_signals_block=True,
+            ),
+            repair_and_validate=False,
+        )
+        if first_attempt.ok:
+            return first_attempt.code
+
+        self.code_feedback["validation_error"] = first_attempt.error
+        retry_attempt = self._retry_code_attempt(repair_and_validate=False)
+        if retry_attempt.ok:
+            self.code_feedback["logic_retry_used"] = True
+            return retry_attempt.code
+
+        self.code_feedback["validation_error_retry"] = retry_attempt.error
+        return self._validated_deterministic_fallback(
+            invalid_fallback_error=(
+                "Bloc logique LLM invalide après retry + fallback invalide: "
+                f"{retry_attempt.error or first_attempt.error} | {{fallback_error}}"
+            ),
+        )
+
+    def _validate_candidate_code(self, code: str) -> str:
+        repaired_code = self._repair_candidate_code(code)
         is_valid, error_msg = validate_generated_code(repaired_code)
         if is_valid:
             return self._enforce_indicator_contract(repaired_code, allow_retry=True)
 
         self.code_feedback["validation_error"] = error_msg
-        retry_logic_raw = self.builder._retry_code_simple(self.candidate_proposal)
-        retry_logic = _extract_python_from_response(retry_logic_raw)
-        if self.builder.ablation.is_enabled("postprocess_logic"):
-            retry_logic = _postprocess_llm_logic_block(retry_logic, self.req_inds)
-        logic_ok, logic_err = _validate_llm_logic_block(retry_logic)
-        if not logic_ok:
-            retry_code = ""
-            is_valid_retry = False
-            retry_error = logic_err
-        else:
-            retry_code = strategy_builder_module._build_deterministic_strategy_code(
-                self.candidate_proposal,
-                retry_logic,
+        retry_attempt = self._retry_code_attempt(repair_and_validate=True)
+        if retry_attempt.ok:
+            return self._enforce_indicator_contract(
+                retry_attempt.code,
+                allow_retry=False,
             )
-            retry_code = _repair_code(
-                retry_code,
-                self.req_inds,
-                enable_indicator_binding=self.builder.ablation.is_enabled("indicator_binding"),
-            )
-            is_valid_retry, retry_error = validate_generated_code(retry_code)
 
-        if is_valid_retry:
-            return self._enforce_indicator_contract(retry_code, allow_retry=False)
-
-        self.code_feedback["validation_error_retry"] = retry_error
-        fallback_code = self._next_fallback_code()
-        is_valid_fb, error_msg_fb = validate_generated_code(fallback_code)
-        if not is_valid_fb:
-            self.outcome["error"] = (
-                f"Validation échouée: {error_msg} | retry: {retry_error} | "
-                f"fallback: {error_msg_fb}"
-            )
-            self.outcome["code_feedback"] = self.code_feedback
-            raise RuntimeError(str(self.outcome["error"]))
-        self.code_feedback["fallback_deterministic_used"] = True
-        self.code_feedback["source"] = "deterministic_fallback"
-        self.code_feedback["fallback_variant"] = self.ctx.fallback_count - 1
-        return fallback_code
+        self.code_feedback["validation_error_retry"] = retry_attempt.error
+        return self._validated_deterministic_fallback(
+            invalid_fallback_error=(
+                f"Validation échouée: {error_msg} | retry: {retry_attempt.error} | "
+                "fallback: {fallback_error}"
+            ),
+        )
 
     def _enforce_indicator_contract(self, code: str, *, allow_retry: bool) -> str:
         if not self.req_inds:
             return code
 
-        inferred = strategy_builder_module._infer_required_indicator_names_from_code(
-            code,
-            self.req_inds,
-        )
-        unexpected = [ind for ind in inferred if ind not in self.req_inds]
+        inferred, unexpected = self._infer_indicator_contract_gap(code)
         if not unexpected:
             return code
 
@@ -473,46 +537,33 @@ class BuilderCandidateExecutorV2:
         self.code_feedback["indicator_contract_status"] = "retry" if allow_retry else "fallback"
 
         if allow_retry:
-            retry_logic_raw = self.builder._retry_code_simple(self.candidate_proposal)
-            retry_logic = _extract_python_from_response(retry_logic_raw)
-            if self.builder.ablation.is_enabled("postprocess_logic"):
-                retry_logic = _postprocess_llm_logic_block(retry_logic, self.req_inds)
-            logic_ok, logic_err = _validate_llm_logic_block(retry_logic)
-            if logic_ok:
-                retry_code = strategy_builder_module._build_deterministic_strategy_code(
-                    self.candidate_proposal,
-                    retry_logic,
+            retry_attempt = self._retry_code_attempt(repair_and_validate=True)
+            if retry_attempt.ok:
+                retry_inferred, retry_unexpected = self._infer_indicator_contract_gap(
+                    retry_attempt.code
                 )
-                retry_code = _repair_code(
-                    retry_code,
-                    self.req_inds,
-                    enable_indicator_binding=self.builder.ablation.is_enabled("indicator_binding"),
+                if not retry_unexpected:
+                    self.code_feedback["indicator_contract_retry_used"] = True
+                    return retry_attempt.code
+                self.code_feedback["indicator_contract_retry_violation"] = {
+                    "declared": list(self.req_inds),
+                    "inferred": list(retry_inferred),
+                    "unexpected": list(retry_unexpected),
+                }
+            elif retry_attempt.validation_error:
+                self.code_feedback["indicator_contract_retry_validation_error"] = (
+                    retry_attempt.validation_error
                 )
-                valid_retry, retry_error = validate_generated_code(retry_code)
-                if valid_retry:
-                    retry_inferred = strategy_builder_module._infer_required_indicator_names_from_code(
-                        retry_code,
-                        self.req_inds,
-                    )
-                    retry_unexpected = [ind for ind in retry_inferred if ind not in self.req_inds]
-                    if not retry_unexpected:
-                        self.code_feedback["indicator_contract_retry_used"] = True
-                        return retry_code
-                    self.code_feedback["indicator_contract_retry_violation"] = {
-                        "declared": list(self.req_inds),
-                        "inferred": list(retry_inferred),
-                        "unexpected": list(retry_unexpected),
-                    }
-                else:
-                    self.code_feedback["indicator_contract_retry_validation_error"] = retry_error
             else:
-                self.code_feedback["indicator_contract_retry_logic_error"] = logic_err
+                self.code_feedback["indicator_contract_retry_logic_error"] = (
+                    retry_attempt.logic_error
+                )
 
-        fallback_code = self._next_fallback_code()
-        self.code_feedback["fallback_deterministic_used"] = True
-        self.code_feedback["source"] = "deterministic_fallback"
-        self.code_feedback["fallback_variant"] = self.ctx.fallback_count - 1
-        return fallback_code
+        return self._validated_deterministic_fallback(
+            invalid_fallback_error=(
+                "Indicator contract fallback invalide: {fallback_error}"
+            ),
+        )
 
     def _execute_backtest_pipeline(
         self,
@@ -681,22 +732,15 @@ class BuilderCandidateExecutorV2:
         used_runtime_fallback = False
         if not valid_retry:
             self.backtest_feedback["runtime_fix_validation_error"] = retry_err
-            fallback_code = self._next_fallback_code()
-            valid_fb, fb_err = validate_generated_code(fallback_code)
-            if not valid_fb:
-                self.outcome["error"] = (
+            retry_code = self._validated_deterministic_fallback(
+                invalid_fallback_error=(
                     "Runtime-fix invalide et fallback déterministe invalide: "
-                    f"{retry_err} | {fb_err}"
-                )
-                self.outcome["code_feedback"] = self.code_feedback
-                self.outcome["backtest_feedback"] = self.backtest_feedback
-                raise RuntimeError(str(self.outcome["error"]))
-            retry_code = fallback_code
+                    f"{retry_err} | {{fallback_error}}"
+                ),
+                mark_code_fallback=False,
+                runtime_feedback_key="runtime_fix_fallback_deterministic_used",
+            )
             used_runtime_fallback = True
-            self.backtest_feedback[
-                "runtime_fix_fallback_deterministic_used"
-            ] = True
-            self.code_feedback["source"] = "deterministic_fallback"
 
         retry_cls = self.builder._save_and_load(
             self.ctx.session,
@@ -738,16 +782,14 @@ class BuilderCandidateExecutorV2:
                 self.outcome["backtest_feedback"] = self.backtest_feedback
                 raise RuntimeError(str(self.outcome["error"])) from retry_bt_exc  # noqa: B904  # pylint: disable=raise-missing-from
 
-            fallback_code = self._next_fallback_code()
-            valid_fb2, fb_err2 = validate_generated_code(fallback_code)
-            if not valid_fb2:
-                self.outcome["error"] = (
+            fallback_code = self._validated_deterministic_fallback(
+                invalid_fallback_error=(
                     "Runtime-fix backtest failed and deterministic fallback is "
-                    f"invalid: {fb_err2}"
-                )
-                self.outcome["code_feedback"] = self.code_feedback
-                self.outcome["backtest_feedback"] = self.backtest_feedback
-                raise RuntimeError(str(self.outcome["error"])) from retry_bt_exc  # noqa: B904  # pylint: disable=raise-missing-from
+                    "invalid: {fallback_error}"
+                ),
+                mark_code_fallback=False,
+                runtime_feedback_key="runtime_fix_fallback_deterministic_used",
+            )
             fallback_cls = self.builder._save_and_load(
                 self.ctx.session,
                 fallback_code,
@@ -771,10 +813,6 @@ class BuilderCandidateExecutorV2:
                 detail="fallback runtime validé",
             )
             retry_code = fallback_code
-            self.backtest_feedback[
-                "runtime_fix_fallback_deterministic_used"
-            ] = True
-            self.code_feedback["source"] = "deterministic_fallback"
 
         self.backtest_feedback["runtime_fix_applied"] = True
         self._checkpoint("runtime_fix", "ok")

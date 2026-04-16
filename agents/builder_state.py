@@ -50,6 +50,122 @@ class BuilderIteration:
         super().__setattr__(name, value)
 
 
+class IterationContext:
+    """Wrapper null-safe autour de BuilderIteration.
+
+    Élimine les 30+ guards ``if last_iteration is None`` dispersés dans le
+    codebase.  Toutes les propriétés retournent une valeur sûre (jamais None)
+    pour que les appelants n'aient plus besoin de vérifier.
+    """
+
+    __slots__ = ("_it",)
+
+    def __init__(self, iteration: Optional[BuilderIteration] = None) -> None:
+        self._it = iteration
+
+    # --- Existence -----------------------------------------------------------
+    @property
+    def exists(self) -> bool:
+        """True si une itération réelle est encapsulée."""
+        return self._it is not None
+
+    @property
+    def raw(self) -> Optional[BuilderIteration]:
+        """Accès direct (pour les rares cas où l'objet brut est nécessaire)."""
+        return self._it
+
+    # --- Propriétés null-safe ------------------------------------------------
+    @property
+    def code(self) -> str:
+        return self._it.code if self._it and self._it.code else ""
+
+    @property
+    def analysis(self) -> str:
+        return self._it.analysis if self._it else ""
+
+    @property
+    def hypothesis(self) -> str:
+        return self._it.hypothesis if self._it else ""
+
+    @property
+    def change_type(self) -> str:
+        return self._it.change_type if self._it else ""
+
+    @property
+    def diagnostic_category(self) -> str:
+        return (self._it.diagnostic_category or "").strip().lower() if self._it else ""
+
+    @property
+    def diagnostic_detail(self) -> Dict[str, Any]:
+        if self._it and self._it.diagnostic_detail:
+            return dict(self._it.diagnostic_detail)
+        return {}
+
+    @property
+    def diagnostic_severity(self) -> str:
+        return str(self.diagnostic_detail.get("severity", "")).strip().lower()
+
+    @property
+    def diagnostic_actions(self) -> List[str]:
+        return self.diagnostic_detail.get("actions", [])
+
+    @property
+    def diagnostic_donts(self) -> List[str]:
+        return self.diagnostic_detail.get("donts", [])
+
+    @property
+    def used_indicators(self) -> List[str]:
+        if self._it and self._it.used_indicators:
+            return list(self._it.used_indicators)
+        return []
+
+    @property
+    def is_fallback(self) -> bool:
+        return bool(self._it.is_fallback) if self._it else False
+
+    # --- Backtest ------------------------------------------------------------
+    @property
+    def has_backtest(self) -> bool:
+        return self._it is not None and self._it.backtest_result is not None
+
+    @property
+    def metrics(self) -> Dict[str, Any]:
+        if self.has_backtest:
+            m = self._it.backtest_result.metrics  # type: ignore[union-attr]
+            return m if isinstance(m, dict) else {}
+        return {}
+
+    # --- Phase feedback ------------------------------------------------------
+    @property
+    def phase_feedback_dict(self) -> Dict[str, Any]:
+        if self._it is None:
+            return {}
+        raw = self._it.phase_feedback
+        d = raw.to_dict() if hasattr(raw, "to_dict") else (raw or {})
+        return d if isinstance(d, dict) else {}
+
+    @property
+    def backtest_feedback(self) -> Dict[str, Any]:
+        bf = self.phase_feedback_dict.get("backtest", {})
+        return bf if isinstance(bf, dict) else {}
+
+    @property
+    def stagnation(self) -> Dict[str, Any]:
+        s = self.phase_feedback_dict.get("stagnation", {})
+        return s if isinstance(s, dict) else {}
+
+    @property
+    def has_identical_metrics_stagnation(self) -> bool:
+        return bool(self.stagnation.get("identical_metrics"))
+
+    # --- Raccourcis combinés -------------------------------------------------
+    def metric(self, key: str, default: float = 0.0) -> float:
+        return float(self.metrics.get(key, default) or default)
+
+    def is_category(self, *cats: str) -> bool:
+        return self.diagnostic_category in cats
+
+
 @dataclass
 class BuilderSession:
     """Session complète de construction de stratégie."""
@@ -96,6 +212,7 @@ class BuilderSession:
     ablation_config: Dict[str, bool] = field(default_factory=dict)
     pipeline_traces_path: str = ""
     restriction_events: Dict[str, int] = field(default_factory=dict)
+    model_name: str = ""
     multi_llm_profile: str = ""
     multi_llm_role_overrides: Dict[str, Any] = field(default_factory=dict)
     multi_llm_assignments: List[Dict[str, Any]] = field(default_factory=list)
@@ -116,6 +233,26 @@ def _iteration_is_recovery_anchor(
     if iteration.is_fallback and not allow_fallback:
         return False
     return True
+
+
+def compute_session_generation_stats(session: BuilderSession) -> Dict[str, Any]:
+    """Calcule les statistiques canonique vs déterministe d'une session.
+
+    Retourne un dict avec ``total``, ``canonical`` (LLM),
+    ``deterministic`` (fallback), ``canonical_rate`` (0.0–1.0).
+    """
+    iterations = session.iterations or []
+    total = len(iterations)
+    if total == 0:
+        return {"total": 0, "canonical": 0, "deterministic": 0, "canonical_rate": 0.0}
+    deterministic = sum(1 for it in iterations if it.is_fallback)
+    canonical = total - deterministic
+    return {
+        "total": total,
+        "canonical": canonical,
+        "deterministic": deterministic,
+        "canonical_rate": canonical / total,
+    }
 
 
 def _select_session_recovery_anchor(

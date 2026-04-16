@@ -1193,7 +1193,52 @@ def test_builder_relays_llm_stream_chunks_to_thought_stream(tmp_path):
     rendered = stream_path.read_text(encoding="utf-8")
     assert "[STREAM]" in rendered
     assert "Proposition" in rendered
-    assert "strategy_name" in rendered
+    assert "verbatim masque dans le flux canonique" in rendered
+    assert "strategy_name" not in rendered
+
+
+def test_thought_stream_backtest_phase_done_renders_trade_metrics(tmp_path):
+    stream_path = tmp_path / "_live_thoughts.md"
+    archive_dir = tmp_path / "_live_thoughts_archives"
+    thought_stream = ThoughtStream(
+        "session_metrics",
+        "Objectif metrics",
+        "mock-model",
+        path=stream_path,
+        archive_dir=archive_dir,
+    )
+    thought_stream.consume(
+        {
+            "event": "session_start",
+            "timestamp": "2026-04-15T12:00:00Z",
+            "session_id": "session_metrics",
+            "payload": {"symbol": "BTCUSDC", "timeframe": "1h"},
+        }
+    )
+    thought_stream.consume(
+        {
+            "event": "phase_done",
+            "timestamp": "2026-04-15T12:00:30Z",
+            "session_id": "session_metrics",
+            "phase": "backtest",
+            "status": "ok",
+            "message": "resume backtest courant",
+            "payload": {
+                "detail": "resume backtest courant",
+                "sharpe": 1.234,
+                "total_return_pct": 12.5,
+                "total_pnl": 1250.0,
+                "total_trades": 42,
+                "win_rate_pct": 38.1,
+                "profit_factor": 1.27,
+                "max_drawdown_pct": -8.5,
+            },
+        }
+    )
+
+    rendered = stream_path.read_text(encoding="utf-8")
+    assert "RESULTATS : Sharpe 1.234 | Return +12.50% | PnL $+1,250.00" in rendered
+    assert "TRADES    : Trades 42 | Win rate 38.1% | PF 1.27 | Max DD 8.50%" in rendered
 
 
 def test_thought_stream_ignores_late_chunks_after_session_done(tmp_path):
@@ -3992,6 +4037,7 @@ class TestGracefulInterpreterShutdown:
     def test_chat_llm_requalifies_interpreter_shutdown_as_keyboard_interrupt(self, monkeypatch):
         builder = StrategyBuilder.__new__(StrategyBuilder)
         builder.stream_callback = None
+        builder._active_thought_stream = None
         builder.phase_llm_clients = {}
         builder.llm = SimpleNamespace(config=SimpleNamespace(ollama_host=None))
         builder.llm_topology_config = SimpleNamespace(
@@ -4754,4 +4800,44 @@ class TestRefactorCheckpoints:
         # 1 fallback (quota max 1) + 1 LLM = 2 positifs
         assert count == 2
         assert MAX_POSITIVE_FALLBACK_COUNT == 1
+
+
+def test_compute_session_generation_stats_returns_correct_rates():
+    """compute_session_generation_stats retourne les bons compteurs et taux."""
+    from agents.builder_state import BuilderSession, BuilderIteration, compute_session_generation_stats
+
+    session = BuilderSession(session_id="gen-stats-test", objective="test", session_dir=Path("/tmp"))
+    session.iterations = [
+        BuilderIteration(iteration=1, is_fallback=False),
+        BuilderIteration(iteration=2, is_fallback=True),
+        BuilderIteration(iteration=3, is_fallback=False),
+        BuilderIteration(iteration=4, is_fallback=False),
+        BuilderIteration(iteration=5, is_fallback=True),
+    ]
+    stats = compute_session_generation_stats(session)
+    assert stats["total"] == 5
+    assert stats["canonical"] == 3
+    assert stats["deterministic"] == 2
+    assert abs(stats["canonical_rate"] - 0.6) < 1e-9
+
+
+def test_compute_session_generation_stats_empty_session():
+    """compute_session_generation_stats retourne 0 pour une session vide."""
+    from agents.builder_state import BuilderSession, compute_session_generation_stats
+
+    session = BuilderSession(session_id="empty-gen", objective="test", session_dir=Path("/tmp"))
+    session.iterations = []
+    stats = compute_session_generation_stats(session)
+    assert stats["total"] == 0
+    assert stats["canonical_rate"] == 0.0
+
+
+def test_builder_session_has_model_name_field():
+    """BuilderSession expose un champ model_name."""
+    from agents.builder_state import BuilderSession
+
+    session = BuilderSession(session_id="model-name-test", objective="test", session_dir=Path("/tmp"))
+    assert session.model_name == ""
+    session.model_name = "gemma4:26b"
+    assert session.model_name == "gemma4:26b"
 

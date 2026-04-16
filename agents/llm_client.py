@@ -73,6 +73,10 @@ class LLMConfig:
     # Ollama keep_alive (ex: "20m", "0m" pour décharger immédiatement)
     keep_alive: Optional[str] = None
 
+    # Désactiver le mode "thinking" des modèles (gemma4, qwen3, etc.)
+    # False = pas de <think> tags, None = laisser le modèle décider
+    think: Optional[bool] = False
+
     # Retry/timeout
     # Note: 600s (10min) par défaut pour supporter les modèles de raisonnement
     # (deepseek-r1, qwq, etc.) qui peuvent prendre 5-10 minutes
@@ -372,6 +376,8 @@ class OllamaClient(LLMClient):
 
         if self.config.keep_alive is not None:
             payload["keep_alive"] = self.config.keep_alive
+        if self.config.think is not None:
+            payload["think"] = self.config.think
         if json_mode:
             payload["format"] = "json"
 
@@ -488,6 +494,8 @@ class OllamaClient(LLMClient):
 
         if self.config.keep_alive is not None:
             payload["keep_alive"] = self.config.keep_alive
+        if self.config.think is not None:
+            payload["think"] = self.config.think
         if json_mode:
             payload["format"] = "json"
 
@@ -606,6 +614,8 @@ class OllamaClient(LLMClient):
         }
         if self.config.keep_alive is not None:
             payload["keep_alive"] = self.config.keep_alive
+        if self.config.think is not None:
+            payload["think"] = self.config.think
         if json_mode:
             payload["format"] = "json"
 
