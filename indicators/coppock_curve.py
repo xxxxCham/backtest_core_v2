@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.coppock_curve
+"""Module-ID: indicators.coppock_curve
 
 Purpose: Coppock Curve.
 """
@@ -51,4 +50,4 @@ register_indicator(
 )
 
 
-__all__ = ["coppock_curve", "calculate_coppock_curve", "CoppockCurveSettings"]
+__all__ = ["CoppockCurveSettings", "calculate_coppock_curve", "coppock_curve"]

@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.__init__
+"""Module-ID: utils.__init__
 
 Purpose: Package utils - exports config, log, visualization, observability.
 
@@ -32,12 +31,12 @@ from .visualization import (
 )
 
 __all__ = [
-    "get_logger",
-    "Config",
-    "plot_trades",
-    "plot_equity_curve",
-    "plot_drawdown",
-    "visualize_backtest",
-    "load_and_visualize",
     "PLOTLY_AVAILABLE",
+    "Config",
+    "get_logger",
+    "load_and_visualize",
+    "plot_drawdown",
+    "plot_equity_curve",
+    "plot_trades",
+    "visualize_backtest",
 ]

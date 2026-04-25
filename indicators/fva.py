@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.fva
+"""Module-ID: indicators.fva
 
 Purpose: Detection Fair Value Areas (FVA) - zones d'equilibre/consolidation.
 
@@ -24,8 +23,7 @@ from .registry import register_indicator
 
 
 def calculate_fva(df: pd.DataFrame, **params) -> np.ndarray:
-    """
-    Detecte les Fair Value Areas (zones de consolidation).
+    """Detecte les Fair Value Areas (zones de consolidation).
 
     Definition SIMPLIFIEE:
         FVA[i] = True si la bougie i est completement dans le range de i-1
@@ -37,28 +35,29 @@ def calculate_fva(df: pd.DataFrame, **params) -> np.ndarray:
 
     Returns:
         Boolean array (True aux positions de FVA)
+
     """
-    highs = df['high'].values
-    lows = df['low'].values
+    highs = df["high"].values
+    lows = df["low"].values
     n = len(df)
 
     fva = np.zeros(n, dtype=bool)
 
     for i in range(1, n):
         # Bar actuelle completement dans le range de la bar precedente
-        if highs[i] < highs[i-1] and lows[i] > lows[i-1]:
+        if highs[i] < highs[i - 1] and lows[i] > lows[i - 1]:
             fva[i] = True
 
     return fva
 
 
 register_indicator(
-    name='fva',
+    name="fva",
     function=calculate_fva,
     settings_class=None,
-    required_columns=('high', 'low'),
-    description='Fair Value Area - inside bar consolidation pattern',
+    required_columns=("high", "low"),
+    description="Fair Value Area - inside bar consolidation pattern",
 )
 
 
-__all__ = ['calculate_fva']
+__all__ = ["calculate_fva"]

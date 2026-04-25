@@ -1,12 +1,11 @@
-"""
-Backtest Core - Performance Calculator
+"""Backtest Core - Performance Calculator
 ======================================
 
 Calcul des métriques de performance standard et avancées.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -62,9 +61,9 @@ class PerformanceMetrics:
     expectancy: float
 
     # Métriques Tier S (optionnelles)
-    tier_s: Optional[TierSMetrics] = None
+    tier_s: TierSMetrics | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "total_pnl": self.total_pnl,
@@ -88,16 +87,15 @@ class PerformanceMetrics:
             "calmar_ratio": self.calmar_ratio,
             "risk_reward_ratio": self.risk_reward_ratio,
             "expectancy": self.expectancy,
-            "tier_s": self.tier_s.to_dict() if self.tier_s else None
+            "tier_s": self.tier_s.to_dict() if self.tier_s else None,
         }
 
 
 def equity_curve(
     returns: pd.Series,
-    initial_capital: float = 10000.0
+    initial_capital: float = 10000.0,
 ) -> pd.Series:
-    """
-    Calcule la courbe d'équité à partir des rendements.
+    """Calcule la courbe d'équité à partir des rendements.
 
     Args:
         returns: Série de rendements (fractionnaires)
@@ -105,6 +103,7 @@ def equity_curve(
 
     Returns:
         Série d'équité
+
     """
     if returns.empty:
         return pd.Series([], dtype=np.float64)
@@ -121,8 +120,7 @@ def equity_curve(
 
 
 def drawdown_series(equity: pd.Series) -> pd.Series:
-    """
-    Calcule la série de drawdown.
+    """Calcule la série de drawdown.
 
     Args:
         equity: Courbe d'équité
@@ -132,6 +130,7 @@ def drawdown_series(equity: pd.Series) -> pd.Series:
 
     Note:
         Version optimisée Numba (100× plus rapide que pandas.expanding().max())
+
     """
     if equity.empty:
         return pd.Series([], dtype=np.float64)
@@ -143,11 +142,11 @@ def drawdown_series(equity: pd.Series) -> pd.Series:
 
 
 def max_drawdown(equity: pd.Series) -> float:
-    """
-    Calcule le drawdown maximum.
+    """Calcule le drawdown maximum.
 
     Note:
         Version optimisée Numba (100× plus rapide)
+
     """
     if equity.empty:
         return 0.0
@@ -159,13 +158,13 @@ def max_drawdown(equity: pd.Series) -> float:
 def detect_liquidation(
     equity: pd.Series,
     initial_capital: float = 10000.0,
-) -> Dict[str, Any]:
-    """
-    Détecte la ruine du compte (equity <= 0) et calcule drawdown brut.
+) -> dict[str, Any]:
+    """Détecte la ruine du compte (equity <= 0) et calcule drawdown brut.
 
     Returns:
         Dict avec account_ruined, ruin_time, min_equity,
         max_drawdown_pct_raw, max_drawdown_pct_capped
+
     """
     if equity is None or equity.empty:
         return {
@@ -203,23 +202,20 @@ def detect_liquidation(
     }
 
 
-
-
 def sharpe_ratio(
     returns: pd.Series,
     risk_free: float = 0.0,
     periods_per_year: int = 252,  # Jours de trading par defaut
     method: str = "daily_resample",  # "standard", "trading_days" ou "daily_resample"
-    equity: Optional[pd.Series] = None  # Necessaire pour daily_resample
+    equity: pd.Series | None = None,  # Necessaire pour daily_resample
 ) -> float:
-    '''
-    Calcule le ratio de Sharpe annualise.
+    """Calcule le ratio de Sharpe annualise.
 
     Pour limiter les biais des equity curves "sparse", la methode daily_resample
     peut resampler l'equity en quotidien avant de calculer les rendements.
     Des gardes supplmentaires evitent les valeurs aberrantes lorsque seules
     quelques trades non nuls sont disponibles.
-    '''
+    """
     returns_series = returns.copy() if isinstance(returns, pd.Series) else pd.Series(returns)
     if returns_series.empty:
         return 0.0
@@ -232,7 +228,7 @@ def sharpe_ratio(
             logger.warning("equity.index n'est pas DatetimeIndex, fallback sur standard")
             method = "standard"
         else:
-            equity_daily = equity.resample('D').last().dropna()
+            equity_daily = equity.resample("D").last().dropna()
             if len(equity_daily) >= 2:
                 returns_series = equity_daily.pct_change().dropna()
                 periods_per_year = 252  # Annualisation coherente avec des returns quotidiens
@@ -243,14 +239,10 @@ def sharpe_ratio(
                 )
             method = "standard"
 
-    returns_clean = (
-        pd.Series(returns_series, dtype=np.float64)
-        .replace([np.inf, -np.inf], np.nan)
-        .dropna()
-    )
+    returns_clean = pd.Series(returns_series, dtype=np.float64).replace([np.inf, -np.inf], np.nan).dropna()
 
     MIN_SAMPLES_FOR_SHARPE = 3  # Minimum pour un std ddof=1 un minimum de stabilite
-    MIN_NON_ZERO_RETURNS = 3    # Eviter ratios irreels avec 1-2 trades
+    MIN_NON_ZERO_RETURNS = 3  # Eviter ratios irreels avec 1-2 trades
     if len(returns_clean) < MIN_SAMPLES_FOR_SHARPE:
         logger.debug(
             "sharpe_ratio_insufficient_samples samples=%s < min=%s, returning 0.0",
@@ -323,10 +315,9 @@ def sortino_ratio(
     risk_free: float = 0.0,
     periods_per_year: int = 252,
     method: str = "daily_resample",
-    equity: Optional[pd.Series] = None
+    equity: pd.Series | None = None,
 ) -> float:
-    """
-    Calcule le ratio de Sortino (ne pénalise que la volatilité baissière).
+    """Calcule le ratio de Sortino (ne pénalise que la volatilité baissière).
 
     Args:
         returns: Série de rendements
@@ -337,6 +328,7 @@ def sortino_ratio(
 
     Returns:
         Ratio de Sortino annualisé
+
     """
     if returns.empty:
         return 0.0
@@ -346,18 +338,17 @@ def sortino_ratio(
         if equity is None or equity.empty:
             logger.warning("daily_resample nécessite equity, fallback sur standard")
             method = "standard"
+        elif not isinstance(equity.index, pd.DatetimeIndex):
+            logger.warning("equity.index n'est pas DatetimeIndex, fallback sur standard")
+            method = "standard"
         else:
-            if not isinstance(equity.index, pd.DatetimeIndex):
-                logger.warning("equity.index n'est pas DatetimeIndex, fallback sur standard")
-                method = "standard"
-            else:
-                equity_daily = equity.resample('D').last().dropna()
-                if len(equity_daily) < 2:
-                    return 0.0
-                returns = equity_daily.pct_change().dropna()
-                method = "standard"
-                # ⚠️ IMPORTANT: Après resample quotidien, forcer periods_per_year = 252 (jours de trading)
-                periods_per_year = 252
+            equity_daily = equity.resample("D").last().dropna()
+            if len(equity_daily) < 2:
+                return 0.0
+            returns = equity_daily.pct_change().dropna()
+            method = "standard"
+            # ⚠️ IMPORTANT: Après resample quotidien, forcer periods_per_year = 252 (jours de trading)
+            periods_per_year = 252
 
     returns_clean = returns.dropna()
     if returns_clean.empty:
@@ -389,9 +380,7 @@ def sortino_ratio(
 
 
 def profit_factor(trades_df: pd.DataFrame) -> float:
-    """
-    Calcule le profit factor (gains bruts / pertes brutes).
-    """
+    """Calcule le profit factor (gains bruts / pertes brutes)."""
     if trades_df.empty or "pnl" not in trades_df.columns:
         return 0.0
 
@@ -429,10 +418,9 @@ def calculate_metrics(
     periods_per_year: int = 252,  # Jours de trading par défaut
     include_tier_s: bool = False,
     sharpe_method: str = "daily_resample",  # "standard", "trading_days" ou "daily_resample"
-    benchmark_prices: Optional[pd.Series] = None,
-) -> Dict[str, Any]:
-    """
-    Calcule toutes les métriques de performance.
+    benchmark_prices: pd.Series | None = None,
+) -> dict[str, Any]:
+    """Calcule toutes les métriques de performance.
 
     Args:
         equity: Courbe d'équité
@@ -455,6 +443,7 @@ def calculate_metrics(
           (jours de trading), indépendamment du timeframe des données
         - La méthode "daily_resample" évite les biais liés aux equity "sparse"
           (qui ne changent qu'aux trades, créant beaucoup de returns nuls)
+
     """
     metrics = {}
 
@@ -483,7 +472,9 @@ def calculate_metrics(
     metrics["total_pnl"] = total_pnl
     metrics["total_return_pct"] = total_return_pct
     metrics["annualized_return"] = annualized_return
-    metrics["benchmark_return_pct"] = benchmark_buy_hold_return_pct(benchmark_prices) if benchmark_prices is not None else 0.0
+    metrics["benchmark_return_pct"] = (
+        benchmark_buy_hold_return_pct(benchmark_prices) if benchmark_prices is not None else 0.0
+    )
     metrics["alpha_simple_pct"] = metrics["total_return_pct"] - metrics["benchmark_return_pct"]
 
     # === Métriques de risque ===
@@ -491,13 +482,13 @@ def calculate_metrics(
         returns,
         periods_per_year=periods_per_year,
         method=sharpe_method,
-        equity=equity  # Passer equity pour daily_resample
+        equity=equity,  # Passer equity pour daily_resample
     )
     metrics["sortino_ratio"] = sortino_ratio(
         returns,
         periods_per_year=periods_per_year,
         method=sharpe_method,
-        equity=equity  # Passer equity pour daily_resample
+        equity=equity,  # Passer equity pour daily_resample
     )
     # Plafonner le drawdown à -100% (ruine totale maximum)
     # Un drawdown de -925% n'a pas de sens, ça indique probablement une equity négative
@@ -540,8 +531,7 @@ def calculate_metrics(
                     dd_periods.append(last_ts - start_ts)
 
                 metrics["max_drawdown_duration_days"] = (
-                    max((p.total_seconds() / 86400 for p in dd_periods))
-                    if dd_periods else 0.0
+                    max(p.total_seconds() / 86400 for p in dd_periods) if dd_periods else 0.0
                 )
             else:
                 in_dd = dd < 0
@@ -631,7 +621,7 @@ def calculate_metrics(
             equity=equity,
             trades_pnl=trades_pnl,
             initial_capital=initial_capital,
-            periods_per_year=periods_per_year
+            periods_per_year=periods_per_year,
         )
         metrics["tier_s"] = tier_s_metrics.to_dict()
         # Ajouter les métriques clés au niveau supérieur
@@ -649,25 +639,22 @@ def calculate_metrics(
 
 
 class PerformanceCalculator:
-    """
-    Calculateur de performance avec API orientée objet.
-    """
+    """Calculateur de performance avec API orientée objet."""
 
     def __init__(self, initial_capital: float = 10000.0, include_tier_s: bool = False):
         self.initial_capital = initial_capital
         self.include_tier_s = include_tier_s
-        self._last_metrics: Optional[Dict[str, Any]] = None
-        self._last_tier_s: Optional[TierSMetrics] = None
+        self._last_metrics: dict[str, Any] | None = None
+        self._last_tier_s: TierSMetrics | None = None
 
     def summarize(
         self,
         returns: pd.Series,
         trades_df: pd.DataFrame,
         periods_per_year: int = 252,
-        sharpe_method: str = "daily_resample"
-    ) -> Dict[str, Any]:
-        """
-        Calcule un résumé complet des performances.
+        sharpe_method: str = "daily_resample",
+    ) -> dict[str, Any]:
+        """Calcule un résumé complet des performances.
 
         Args:
             returns: Série de rendements
@@ -677,6 +664,7 @@ class PerformanceCalculator:
 
         Returns:
             Dict des métriques calculées
+
         """
         # Calculer l'équité
         eq = equity_curve(returns, self.initial_capital)
@@ -689,7 +677,7 @@ class PerformanceCalculator:
             initial_capital=self.initial_capital,
             periods_per_year=periods_per_year,
             include_tier_s=self.include_tier_s,
-            sharpe_method=sharpe_method
+            sharpe_method=sharpe_method,
         )
 
         self._last_metrics = metrics
@@ -702,15 +690,13 @@ class PerformanceCalculator:
                 equity=eq,
                 trades_pnl=trades_pnl,
                 initial_capital=self.initial_capital,
-                periods_per_year=periods_per_year
+                periods_per_year=periods_per_year,
             )
 
         return metrics
 
-    def format_report(self, metrics: Optional[Dict[str, Any]] = None) -> str:
-        """
-        Formate un rapport lisible des métriques.
-        """
+    def format_report(self, metrics: dict[str, Any] | None = None) -> str:
+        """Formate un rapport lisible des métriques."""
         if metrics is None:
             metrics = self._last_metrics
         if metrics is None:
@@ -754,11 +740,11 @@ __all__ = [
     "calculate_metrics",
     "calculate_tier_s_metrics",
     "detect_liquidation",
-    "equity_curve",
     "drawdown_series",
+    "equity_curve",
+    "format_tier_s_report",
     "max_drawdown",
+    "profit_factor",
     "sharpe_ratio",
     "sortino_ratio",
-    "profit_factor",
-    "format_tier_s_report",
 ]

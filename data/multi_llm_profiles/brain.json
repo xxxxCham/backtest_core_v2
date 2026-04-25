@@ -3,24 +3,12 @@
   "description": "Preset utilisateur derive de 24GB_balanced via la configuration Expert Multi-Role.",
   "derived_from": "24GB_balanced",
   "roles": {
-    "idea_llm": {
-      "backend": "ollama",
-      "preferred_models": [
-        "acereason-nemotron:14b-q5_k_m"
-      ],
-      "fallback_models": [
-        "deepseek-moe-16b-local",
-        "mistral:7b-instruct"
-      ],
-      "required": true,
-      "description": "Creates diverse but testable strategy objectives.",
-      "random_pool_models": [
-        "acereason-nemotron:14b-q5_k_m"
-      ]
-    },
     "builder_llm": {
       "backend": "ollama",
       "preferred_models": [
+        "gpt-oss:20b"
+      ],
+      "random_pool_models": [
         "gpt-oss:20b"
       ],
       "fallback_models": [
@@ -28,51 +16,33 @@
         "gpt-oss:20b"
       ],
       "required": true,
-      "description": "Writes or adjusts builder code and configs.",
-      "random_pool_models": [
-        "gpt-oss:20b"
-      ]
+      "description": "Ecrit et ajuste la strategie."
     },
-    "critic_llm": {
+    "supervisor_llm": {
       "backend": "ollama",
       "preferred_models": [
-        "deepseek-v3.1"
+        "acereason-nemotron:14b-q5_k_m",
+        "deepseek-v3.1",
+        "gpt-oss:120b",
+        "nemotron-orchestrator-8b",
+        "mistral:7b-instruct"
       ],
-      "fallback_models": [
-        "deepseek-r1:32b",
-        "qwq:32b"
-      ],
-      "required": true,
-      "description": "Challenges robustness and overfitting risk.",
       "random_pool_models": [
-        "deepseek-v3.1"
-      ]
-    },
-    "risk_llm": {
-      "backend": "ollama",
-      "preferred_models": [
-        "gpt-oss:120b"
-      ],
-      "fallback_models": [
-        "deepseek-r1-distill:14b"
-      ],
-      "required": true,
-      "description": "Flags fragile or unsafe trading behavior.",
-      "random_pool_models": [
-        "gpt-oss:120b"
-      ]
-    },
-    "execution_router_llm": {
-      "backend": "ollama",
-      "preferred_models": [
+        "acereason-nemotron:14b-q5_k_m",
+        "deepseek-v3.1",
+        "gpt-oss:120b",
         "nemotron-orchestrator-8b",
         "mistral:7b-instruct"
       ],
       "fallback_models": [
-        "deepseek-moe-16b-local"
+        "deepseek-moe-16b-local",
+        "mistral:7b-instruct",
+        "deepseek-r1:32b",
+        "qwq:32b",
+        "deepseek-r1-distill:14b"
       ],
-      "required": false,
-      "description": "Legacy LLM router kept for audit only; the simple multi-LLM mode now uses a deterministic local router."
+      "required": true,
+      "description": "Fusionne generation objectif, critique, risque et decision de boucle."
     }
   },
   "updated_at": "2026-03-28T00:00:00Z",

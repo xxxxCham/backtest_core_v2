@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any
 
 from utils.observability import get_obs_logger
 
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
 logger = get_obs_logger(__name__)
 
 
-def handle_critique(orch: "Orchestrator") -> None:
+def handle_critique(orch: Orchestrator) -> None:
     """Handle CRITIQUE state - Execute Critic agent."""
     orch._log_event("phase_start", phase="CRITIQUE")
     logger.info("Phase CRITIQUE: Exécution Agent Critic")
@@ -88,15 +89,15 @@ def handle_critique(orch: "Orchestrator") -> None:
     orch.state_machine.transition_to(AgentState.VALIDATE)
 
 
-def test_proposals(orch: "Orchestrator") -> None:
+def test_proposals(orch: Orchestrator) -> None:
     """Test approved proposals via backtest."""
     proposals = list(orch.context.strategist_proposals or [])
     if not proposals:
         return
 
     def _eval_one(
-        proposal: Dict[str, Any],
-    ) -> tuple[Dict[str, Any], Optional[MetricsSnapshot]]:
+        proposal: dict[str, Any],
+    ) -> tuple[dict[str, Any], MetricsSnapshot | None]:
         params = proposal.get("parameters", {})
         if not params:
             return proposal, None

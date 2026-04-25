@@ -1,20 +1,18 @@
-"""
-Module-ID: catalog.ranges_loader
+"""Module-ID: catalog.ranges_loader
 
 Purpose: Bridge entre indicator_ranges.toml et ParameterSpec pour les param_packs.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
+from catalog.models import ParamDef, ParamPack
 from utils.indicator_ranges import load_indicator_ranges
 from utils.parameters import ParameterSpec
 
-from catalog.models import ParamDef, ParamPack
 
-
-def _param_type_from_def(pdef: ParamDef, toml_spec: Dict[str, Any] | None = None) -> str:
+def _param_type_from_def(pdef: ParamDef, toml_spec: dict[str, Any] | None = None) -> str:
     """Infère le type du paramètre depuis la définition ou le TOML."""
     if pdef.dist in ("int_uniform",):
         return "int"
@@ -33,8 +31,7 @@ def _param_type_from_def(pdef: ParamDef, toml_spec: Dict[str, Any] | None = None
 
 
 def resolve_param_def(name: str, pdef: ParamDef) -> ParameterSpec:
-    """
-    Résout un ParamDef en ParameterSpec concret.
+    """Résout un ParamDef en ParameterSpec concret.
 
     Si source="toml", charge les bornes depuis indicator_ranges.toml.
     Sinon, utilise les valeurs min/max/step directes.
@@ -46,7 +43,7 @@ def resolve_param_def(name: str, pdef: ParamDef) -> ParameterSpec:
 
         if not toml_spec:
             raise ValueError(
-                f"Paramètre TOML introuvable : {pdef.indicator}.{pdef.param}"
+                f"Paramètre TOML introuvable : {pdef.indicator}.{pdef.param}",
             )
 
         min_val = float(toml_spec.get("min", 0))
@@ -67,7 +64,7 @@ def resolve_param_def(name: str, pdef: ParamDef) -> ParameterSpec:
     # Source directe (min/max/step explicites)
     if pdef.min is None or pdef.max is None:
         raise ValueError(
-            f"ParamDef '{name}' sans source TOML doit avoir min et max."
+            f"ParamDef '{name}' sans source TOML doit avoir min et max.",
         )
 
     ptype = _param_type_from_def(pdef)
@@ -81,9 +78,9 @@ def resolve_param_def(name: str, pdef: ParamDef) -> ParameterSpec:
     )
 
 
-def resolve_param_defs(param_pack: ParamPack) -> Dict[str, ParameterSpec]:
+def resolve_param_defs(param_pack: ParamPack) -> dict[str, ParameterSpec]:
     """Résout tous les ParamDef d'un ParamPack en ParameterSpec."""
-    specs: Dict[str, ParameterSpec] = {}
+    specs: dict[str, ParameterSpec] = {}
     for name, pdef in param_pack.param_defs.items():
         specs[name] = resolve_param_def(name, pdef)
     return specs

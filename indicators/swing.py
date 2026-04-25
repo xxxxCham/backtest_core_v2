@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.swing
+"""Module-ID: indicators.swing
 
 Purpose: Detection swing highs/lows (fractals) - COMPARAISON ADJACENTE UNIQUEMENT.
 
@@ -19,8 +18,6 @@ Conventions: SwingHigh[i] = (high[i] > high[i-1] AND high[i] > high[i+1])
 CRITICAL: NE PAS utiliser de lookback variable - c'est une erreur conceptuelle.
 """
 
-from typing import Dict
-
 import numpy as np
 import pandas as pd
 
@@ -28,8 +25,7 @@ from .registry import register_indicator
 
 
 def calculate_swing_high(df: pd.DataFrame, **params) -> np.ndarray:
-    """
-    Detecte les swing highs (fractals haussiers).
+    """Detecte les swing highs (fractals haussiers).
 
     Definition STRICTE:
         swing_high[i] = True si high[i] > high[i-1] ET high[i] > high[i+1]
@@ -40,22 +36,22 @@ def calculate_swing_high(df: pd.DataFrame, **params) -> np.ndarray:
 
     Returns:
         Boolean array (True aux positions de swing high)
+
     """
-    highs = df['high'].values
+    highs = df["high"].values
     n = len(highs)
     swing = np.zeros(n, dtype=bool)
 
     # CORRECTIF: Comparaison ADJACENTE uniquement
     for i in range(1, n - 1):
-        if highs[i] > highs[i-1] and highs[i] > highs[i+1]:
+        if highs[i] > highs[i - 1] and highs[i] > highs[i + 1]:
             swing[i] = True
 
     return swing
 
 
 def calculate_swing_low(df: pd.DataFrame, **params) -> np.ndarray:
-    """
-    Detecte les swing lows (fractals baissiers).
+    """Detecte les swing lows (fractals baissiers).
 
     Definition STRICTE:
         swing_low[i] = True si low[i] < low[i-1] ET low[i] < low[i+1]
@@ -66,39 +62,40 @@ def calculate_swing_low(df: pd.DataFrame, **params) -> np.ndarray:
 
     Returns:
         Boolean array (True aux positions de swing low)
+
     """
-    lows = df['low'].values
+    lows = df["low"].values
     n = len(lows)
     swing = np.zeros(n, dtype=bool)
 
     # CORRECTIF: Comparaison ADJACENTE uniquement
     for i in range(1, n - 1):
-        if lows[i] < lows[i-1] and lows[i] < lows[i+1]:
+        if lows[i] < lows[i - 1] and lows[i] < lows[i + 1]:
             swing[i] = True
 
     return swing
 
 
-def swing(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
-    """
-    Wrapper retournant les deux types de swings.
+def swing(df: pd.DataFrame, **params) -> dict[str, np.ndarray]:
+    """Wrapper retournant les deux types de swings.
 
     Returns:
         Dict avec 'swing_high' et 'swing_low' (boolean arrays)
+
     """
     return {
-        'swing_high': calculate_swing_high(df, **params),
-        'swing_low': calculate_swing_low(df, **params)
+        "swing_high": calculate_swing_high(df, **params),
+        "swing_low": calculate_swing_low(df, **params),
     }
 
 
 register_indicator(
-    name='swing',
+    name="swing",
     function=swing,
     settings_class=None,
-    required_columns=('high', 'low'),
-    description='Swing highs/lows - local fractal structure detection',
+    required_columns=("high", "low"),
+    description="Swing highs/lows - local fractal structure detection",
 )
 
 
-__all__ = ['calculate_swing_high', 'calculate_swing_low', 'swing']
+__all__ = ["calculate_swing_high", "calculate_swing_low", "swing"]

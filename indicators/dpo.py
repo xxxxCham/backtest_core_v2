@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.dpo
+"""Module-ID: indicators.dpo
 
 Purpose: Detrended Price Oscillator (DPO).
 """
@@ -39,4 +38,4 @@ register_indicator(
 )
 
 
-__all__ = ["dpo", "calculate_dpo", "DPOSettings"]
+__all__ = ["DPOSettings", "calculate_dpo", "dpo"]

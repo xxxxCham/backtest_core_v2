@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.standard_deviation
+"""Module-ID: indicators.standard_deviation
 
 Purpose: Écart-type roulant d'une série de prix - mesure volatilité.
 
@@ -44,8 +43,7 @@ def standard_deviation(
     period: int = 20,
     settings: StandardDeviationSettings | None = None,
 ) -> np.ndarray:
-    """
-    Compute rolling standard deviation.
+    """Compute rolling standard deviation.
 
     Args:
         close: Price series
@@ -54,6 +52,7 @@ def standard_deviation(
 
     Returns:
         Rolling standard deviation values
+
     """
     if settings is not None:
         period = settings.period
@@ -67,8 +66,7 @@ def standard_deviation(
 
 
 def calculate_standard_deviation(df: pd.DataFrame, **params) -> np.ndarray:
-    """
-    Wrapper for registry calculation.
+    """Wrapper for registry calculation.
 
     Params:
         period: Rolling window length (default: 20)
@@ -89,7 +87,7 @@ register_indicator(
 
 
 __all__ = [
-    "standard_deviation",
-    "calculate_standard_deviation",
     "StandardDeviationSettings",
+    "calculate_standard_deviation",
+    "standard_deviation",
 ]

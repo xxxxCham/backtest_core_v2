@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict
+from typing import Any
 
 
-def _extract_json_object(text: str) -> Dict[str, Any]:
+def _extract_json_object(text: str) -> dict[str, Any]:
     raw = str(text or "").strip()
     if not raw:
         return {}
@@ -33,7 +33,7 @@ def normalize_router_action(value: str) -> str:
     return "iterate"
 
 
-def parse_router_decision(text: str) -> Dict[str, Any]:
+def parse_router_decision(text: str) -> dict[str, Any]:
     payload = _extract_json_object(text)
     if payload:
         action = normalize_router_action(payload.get("action", "iterate"))
@@ -54,11 +54,11 @@ def parse_router_decision(text: str) -> Dict[str, Any]:
 def deterministic_router_decision(
     *,
     session_status: str,
-    metrics: Dict[str, Any],
+    metrics: dict[str, Any],
     target_sharpe: float,
     critic_summary: str = "",
     risk_summary: str = "",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     sharpe = float(metrics.get("sharpe_ratio", 0.0) or 0.0)
     trades = int(metrics.get("total_trades", 0) or 0)
     drawdown = float(metrics.get("max_drawdown_pct", 0.0) or 0.0)

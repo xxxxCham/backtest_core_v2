@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.psar
+"""Module-ID: indicators.psar
 
 Purpose: Indicateur Parabolic SAR - suivi tendance + stop-loss dynamique.
 
@@ -20,8 +19,6 @@ Read-if: Modification AF init/max, logique SAR update.
 Skip-if: Vous utilisez juste calculate_indicator('psar').
 """
 
-from typing import Dict, Tuple
-
 import numpy as np
 import pandas as pd
 
@@ -34,10 +31,9 @@ def parabolic_sar(
     close: pd.Series,
     af_start: float = 0.02,
     af_increment: float = 0.02,
-    af_max: float = 0.20
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Calcule le Parabolic SAR.
+    af_max: float = 0.20,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Calcule le Parabolic SAR.
 
     Args:
         high: Série des prix hauts
@@ -51,6 +47,7 @@ def parabolic_sar(
         Tuple (sar_values, trend_direction)
         - sar_values: Array des valeurs SAR
         - trend_direction: 1 = haussier, -1 = baissier
+
     """
     high_arr = np.asarray(high, dtype=np.float64)
     low_arr = np.asarray(low, dtype=np.float64)
@@ -78,12 +75,12 @@ def parabolic_sar(
 
     for i in range(1, n):
         # Calculer le SAR pour cette période
-        if trend[i-1] == 1:  # Tendance haussière
+        if trend[i - 1] == 1:  # Tendance haussière
             # SAR ne peut pas être au-dessus des deux derniers bas
-            sar[i] = sar[i-1] + af * (ep - sar[i-1])
-            sar[i] = min(sar[i], low_arr[i-1])
+            sar[i] = sar[i - 1] + af * (ep - sar[i - 1])
+            sar[i] = min(sar[i], low_arr[i - 1])
             if i >= 2:
-                sar[i] = min(sar[i], low_arr[i-2])
+                sar[i] = min(sar[i], low_arr[i - 2])
 
             # Vérifier le retournement
             if low_arr[i] < sar[i]:
@@ -101,10 +98,10 @@ def parabolic_sar(
 
         else:  # Tendance baissière
             # SAR ne peut pas être en-dessous des deux derniers hauts
-            sar[i] = sar[i-1] + af * (ep - sar[i-1])
-            sar[i] = max(sar[i], high_arr[i-1])
+            sar[i] = sar[i - 1] + af * (ep - sar[i - 1])
+            sar[i] = max(sar[i], high_arr[i - 1])
             if i >= 2:
-                sar[i] = max(sar[i], high_arr[i-2])
+                sar[i] = max(sar[i], high_arr[i - 2])
 
             # Vérifier le retournement
             if high_arr[i] > sar[i]:
@@ -129,10 +126,9 @@ def psar_signal(
     close: pd.Series,
     af_start: float = 0.02,
     af_increment: float = 0.02,
-    af_max: float = 0.20
+    af_max: float = 0.20,
 ) -> np.ndarray:
-    """
-    Génère des signaux de trading basés sur le Parabolic SAR.
+    """Génère des signaux de trading basés sur le Parabolic SAR.
 
     Signaux:
     - Long (1): SAR passe en-dessous du prix (début tendance haussière)
@@ -141,6 +137,7 @@ def psar_signal(
 
     Returns:
         Array de signaux (-1, 0, 1)
+
     """
     sar, trend = parabolic_sar(high, low, close, af_start, af_increment, af_max)
 
@@ -149,15 +146,15 @@ def psar_signal(
 
     # Détecter les changements de tendance
     for i in range(1, n):
-        if np.isnan(trend[i]) or np.isnan(trend[i-1]):
+        if np.isnan(trend[i]) or np.isnan(trend[i - 1]):
             continue
 
         # Passage de baissier à haussier
-        if trend[i-1] == -1 and trend[i] == 1:
+        if trend[i - 1] == -1 and trend[i] == 1:
             signals[i] = 1
 
         # Passage de haussier à baissier
-        elif trend[i-1] == 1 and trend[i] == -1:
+        elif trend[i - 1] == 1 and trend[i] == -1:
             signals[i] = -1
 
     return signals
@@ -170,10 +167,9 @@ def psar_stop_loss(
     position: int,
     af_start: float = 0.02,
     af_increment: float = 0.02,
-    af_max: float = 0.20
+    af_max: float = 0.20,
 ) -> np.ndarray:
-    """
-    Utilise le PSAR comme niveau de stop-loss dynamique.
+    """Utilise le PSAR comme niveau de stop-loss dynamique.
 
     Args:
         high, low, close: Séries de prix
@@ -182,6 +178,7 @@ def psar_stop_loss(
 
     Returns:
         Array des niveaux de stop-loss
+
     """
     sar, trend = parabolic_sar(high, low, close, af_start, af_increment, af_max)
 
@@ -197,9 +194,8 @@ def psar_stop_loss(
     return stop
 
 
-def calculate_psar(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
-    """
-    Fonction wrapper pour le registre d'indicateurs.
+def calculate_psar(df: pd.DataFrame, **params) -> dict[str, np.ndarray]:
+    """Fonction wrapper pour le registre d'indicateurs.
 
     Args:
         df: DataFrame avec colonnes high, low, close
@@ -210,25 +206,34 @@ def calculate_psar(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
 
     Returns:
         Dict avec sar, trend, signal
+
     """
     af_start = params.get("af_start", 0.02)
     af_increment = params.get("af_increment", 0.02)
     af_max = params.get("af_max", 0.20)
 
     sar, trend = parabolic_sar(
-        df["high"], df["low"], df["close"],
-        af_start, af_increment, af_max
+        df["high"],
+        df["low"],
+        df["close"],
+        af_start,
+        af_increment,
+        af_max,
     )
 
     signal = psar_signal(
-        df["high"], df["low"], df["close"],
-        af_start, af_increment, af_max
+        df["high"],
+        df["low"],
+        df["close"],
+        af_start,
+        af_increment,
+        af_max,
     )
 
     return {
         "sar": sar,
         "trend": trend,
-        "signal": signal
+        "signal": signal,
     }
 
 
@@ -237,13 +242,13 @@ register_indicator(
     "psar",
     calculate_psar,
     required_columns=("high", "low", "close"),
-    description="Parabolic SAR - Indicateur de suivi de tendance"
+    description="Parabolic SAR - Indicateur de suivi de tendance",
 )
 
 
 __all__ = [
+    "calculate_psar",
     "parabolic_sar",
     "psar_signal",
     "psar_stop_loss",
-    "calculate_psar",
 ]

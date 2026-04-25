@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.results_hub
+"""Module-ID: ui.results_hub
 
 Purpose: Vue centralisee des resultats (backtests, sweeps, grids, runs LLM).
 
@@ -23,12 +22,13 @@ Skip-if: Vous utilisez seulement ui.results.
 from __future__ import annotations
 
 import json
+import logging
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +37,12 @@ import streamlit as st
 
 try:
     import plotly.express as px
+
     PLOTLY_AVAILABLE = True
 except ImportError:
     PLOTLY_AVAILABLE = False
 
-from backtest.result_store import get_results_root_dir, get_saved_runs_dir
+from backtest.result_store import get_builder_sessions_dir, get_results_root_dir, get_saved_runs_dir
 from backtest.storage import ResultStorage
 from catalog.strategy_catalog import CATEGORY_ORDER, list_entries, upsert_from_saved_run
 from ui.helpers import coerce_metric_float, compute_period_days, format_pnl_with_daily
@@ -50,9 +51,18 @@ from utils.run_tracker import RunTracker
 RESULTS_DIR = get_results_root_dir()
 RUNS_DIR = get_saved_runs_dir()
 GRADUATION_RESULTS_DIR = Path("catalog/graduation_results")
+FULL_GRADUATION_PROGRESS_FILENAME = "graduation_full_progress.json"
+FULL_GRADUATION_LOG_FILENAME = "graduation_full_run.log"
+POSITIVE_IMPORTS_PROGRESS_FILENAME = "positive_imports_progress.json"
+POSITIVE_IMPORTS_LOG_FILENAME = "positive_imports_run.log"
+
+CHART_MODE_COLUMNS = "Colonnes"
+CHART_MODE_POINTS = "Points"
+GRADUATION_PREVIEW_LIMIT = 12
+GRADUATION_PHASE_FOCUS_AUTO = "Auto"
 
 
-_CATALOG_CSV_DTYPE: Dict[str, str] = {
+_CATALOG_CSV_DTYPE: dict[str, str] = {
     "run_id": "str",
     "strategy": "str",
     "symbol": "str",
@@ -65,7 +75,7 @@ _CATALOG_CSV_DTYPE: Dict[str, str] = {
 }
 
 
-def _safe_read_csv(path: Path, dtype: Optional[Dict[str, str]] = None) -> pd.DataFrame:
+def _safe_read_csv(path: Path, dtype: dict[str, str] | None = None) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
     try:
@@ -75,7 +85,7 @@ def _safe_read_csv(path: Path, dtype: Optional[Dict[str, str]] = None) -> pd.Dat
         return pd.DataFrame()
 
 
-def _to_float(value: Any) -> Optional[float]:
+def _to_float(value: Any) -> float | None:
     try:
         if value is None or value == "":
             return None
@@ -84,7 +94,7 @@ def _to_float(value: Any) -> Optional[float]:
         return None
 
 
-def _to_int(value: Any) -> Optional[int]:
+def _to_int(value: Any) -> int | None:
     try:
         if value is None or value == "":
             return None
@@ -122,11 +132,26 @@ def _as_listish(value: Any) -> list[str]:
     return [str(value).strip()] if str(value).strip() else []
 
 
+def _clean_text_token(value: Any) -> str:
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+    return str(value).strip()
+
+
 def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
     df = df.copy()
+
+    for text_col in ("phase", "decision", "source_kind"):
+        if text_col in df.columns:
+            df[text_col] = df[text_col].apply(_clean_text_token)
 
     context_col_map = {
         "configured_contexts": "configured_context_count",
@@ -140,16 +165,19 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
             numeric_counts = pd.to_numeric(df[count_col], errors="coerce")
             missing_mask = numeric_counts.isna()
             if missing_mask.any():
-                df.loc[missing_mask, count_col] = df.loc[missing_mask, source_col].apply(lambda value: len(_as_listish(value)))
+                df.loc[missing_mask, count_col] = df.loc[missing_mask, source_col].apply(
+                    lambda value: len(_as_listish(value)),
+                )
         else:
             df[count_col] = df[source_col].apply(lambda value: len(_as_listish(value)))
 
     if "tested_timeframes" in df.columns and "timeframes_tested" not in df.columns:
         df["timeframes_tested"] = df["tested_timeframes"].apply(
-            lambda value: ",".join(sorted(_as_listish(value)))
+            lambda value: ",".join(sorted(_as_listish(value))),
         )
 
     if "benchmark_results" in df.columns:
+
         def _benchmark_names(value: Any) -> list[str]:
             if isinstance(value, dict):
                 return sorted(str(name).strip() for name in value.keys() if str(name).strip())
@@ -177,6 +205,7 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
             df["tested_tokens"] = df["benchmark_results"].apply(lambda value: ",".join(_benchmark_tokens(value)))
 
     if "benchmark_consensus" in df.columns:
+
         def _consensus_value(value: Any, key: str, default: Any = None) -> Any:
             if isinstance(value, dict):
                 return value.get(key, default)
@@ -184,15 +213,15 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
 
         if "required_benchmark_name" not in df.columns:
             df["required_benchmark_name"] = df["benchmark_consensus"].apply(
-                lambda value: str(_consensus_value(value, "required_benchmark_name", "") or "").strip()
+                lambda value: str(_consensus_value(value, "required_benchmark_name", "") or "").strip(),
             )
         if "required_benchmark_passed" not in df.columns:
             df["required_benchmark_passed"] = df["benchmark_consensus"].apply(
-                lambda value: bool(_consensus_value(value, "required_passed", False))
+                lambda value: bool(_consensus_value(value, "required_passed", False)),
             )
         if "passed_benchmark_names" not in df.columns:
             df["passed_benchmark_names"] = df["benchmark_consensus"].apply(
-                lambda value: ",".join(sorted(_as_listish(_consensus_value(value, "benchmarks_passed", []))))
+                lambda value: ",".join(sorted(_as_listish(_consensus_value(value, "benchmarks_passed", [])))),
             )
         if "benchmark_pass_summary" not in df.columns:
             df["benchmark_pass_summary"] = df["benchmark_consensus"].apply(
@@ -201,9 +230,10 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
                     f"{int(_consensus_value(value, 'benchmarks_total', 0) or 0)}"
                     if int(_consensus_value(value, "benchmarks_total", 0) or 0) > 0
                     else ""
-                )
+                ),
             )
         if "contradiction_state" not in df.columns:
+
             def _state(value: Any) -> str:
                 if not isinstance(value, dict):
                     return ""
@@ -212,9 +242,11 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
                 if bool(value.get("contradicted")):
                     return "contradicted"
                 return "failed"
+
             df["contradiction_state"] = df["benchmark_consensus"].apply(_state)
 
     if "multi_ctx_results" in df.columns:
+
         def _ctx_metric(value: Any, key: str) -> int:
             if isinstance(value, dict):
                 try:
@@ -226,7 +258,9 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
         if "passed_context_count" not in df.columns:
             df["passed_context_count"] = df["multi_ctx_results"].apply(lambda value: _ctx_metric(value, "passed_count"))
         if "total_context_count" not in df.columns:
-            df["total_context_count"] = df["multi_ctx_results"].apply(lambda value: _ctx_metric(value, "total_contexts"))
+            df["total_context_count"] = df["multi_ctx_results"].apply(
+                lambda value: _ctx_metric(value, "total_contexts"),
+            )
         if "context_pass_summary" not in df.columns:
             df["context_pass_summary"] = df.apply(
                 lambda row: (
@@ -249,9 +283,13 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
         "loaded_context_count",
         "missing_context_count",
         "configured_benchmark_count",
+        "configured_benchmark_slot_count",
+        "loaded_benchmark_slot_count",
+        "excluded_context_count",
         "passed_context_count",
         "total_context_count",
         "coverage_pct",
+        "benchmark_slot_coverage_pct",
         "sweep_robustness_pct",
         "wfa_stability",
         "wfa_avg_test_return_pct",
@@ -289,7 +327,7 @@ def _load_positive_import_report() -> tuple[dict[str, Any], pd.DataFrame]:
 
 
 def _load_progress_payload(filename: str) -> dict[str, Any]:
-    path = Path("catalog/graduation_results") / filename
+    path = GRADUATION_RESULTS_DIR / filename
     if not path.exists():
         return {}
     try:
@@ -301,7 +339,7 @@ def _load_progress_payload(filename: str) -> dict[str, Any]:
 
 
 def _load_log_tail(filename: str, *, max_lines: int = 25) -> str:
-    path = Path("catalog/graduation_results") / filename
+    path = GRADUATION_RESULTS_DIR / filename
     if not path.exists():
         return ""
     try:
@@ -311,7 +349,100 @@ def _load_log_tail(filename: str, *, max_lines: int = 25) -> str:
     return "\n".join(lines[-max_lines:])
 
 
-def _progress_age_seconds(updated_at: str) -> Optional[float]:
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return default
+    except Exception:
+        pass
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return default
+
+
+def _phase_processed_counts(stats: dict[str, Any], total_candidates: int) -> dict[str, int]:
+    return {
+        "P2": _safe_int(stats.get("p2_processed"), total_candidates),
+        "P3": _safe_int(stats.get("p3_processed"), _safe_int(stats.get("p2_survivors"))),
+        "P4": _safe_int(stats.get("p4_processed"), _safe_int(stats.get("p3_survivors"))),
+        "P5": _safe_int(stats.get("p5_processed"), _safe_int(stats.get("p4_survivors"))),
+        "P6": _safe_int(stats.get("p6_processed"), _safe_int(stats.get("p5_survivors"))),
+    }
+
+
+def _phase_survivor_counts(stats: dict[str, Any]) -> dict[str, int]:
+    return {
+        "P2": _safe_int(stats.get("p2_survivors")),
+        "P3": _safe_int(stats.get("p3_survivors")),
+        "P4": _safe_int(stats.get("p4_survivors")),
+        "P5": _safe_int(stats.get("p5_survivors")),
+        "P6": _safe_int(stats.get("p6_promoted")),
+    }
+
+
+def _phase_distribution_counts(payload: dict[str, Any], df: pd.DataFrame | None = None) -> dict[str, int]:
+    raw = payload.get("by_phase")
+    counts: dict[str, int] = {}
+    if isinstance(raw, dict) and raw:
+        for key, value in raw.items():
+            label = _clean_text_token(key).upper()
+            if not label:
+                continue
+            counts[label] = _safe_int(value)
+    elif df is not None and not df.empty and "phase" in df.columns:
+        grouped = (
+            df["phase"]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .str.upper()
+            .value_counts()
+            .to_dict()
+        )
+        counts = {str(key): _safe_int(value) for key, value in grouped.items()}
+    for phase in ("P2", "P3", "P4", "P5", "P6"):
+        counts.setdefault(phase, 0)
+    return counts
+
+
+def _format_phase_counts(prefix: str, counts: dict[str, int]) -> str:
+    parts = [f"{phase}={counts.get(phase, 0)}" for phase in ("P2", "P3", "P4", "P5", "P6")]
+    return f"{prefix}: " + " • ".join(parts)
+
+
+def _resolve_completed_phase(
+    payload: dict[str, Any],
+    processed_counts: dict[str, int],
+    phase_distribution: dict[str, int],
+) -> str:
+    current_phase = _clean_text_token(payload.get("current_phase")).upper() or "?"
+    if _clean_text_token(payload.get("status")).lower() != "completed":
+        return current_phase
+    for phase in ("P6", "P5", "P4", "P3", "P2"):
+        if processed_counts.get(phase, 0) > 0 or phase_distribution.get(phase, 0) > 0:
+            return phase
+    return current_phase
+
+
+def _resolve_progress_ratio(
+    payload: dict[str, Any],
+    display_phase: str,
+    processed_counts: dict[str, int],
+) -> tuple[int, int]:
+    index = _safe_int(payload.get("current_index"))
+    total = _safe_int(payload.get("current_total"))
+    if _clean_text_token(payload.get("status")).lower() == "completed" and total == 0:
+        total = processed_counts.get(display_phase, 0)
+        if index == 0:
+            index = total
+    return index, total
+
+
+def _progress_age_seconds(updated_at: str) -> float | None:
     if not updated_at:
         return None
     try:
@@ -323,7 +454,432 @@ def _progress_age_seconds(updated_at: str) -> Optional[float]:
     return (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds()
 
 
-def _render_progress_section(*, title: str, payload: dict[str, Any], log_filename: str) -> None:
+def _is_pid_running(pid: Any) -> bool:
+    try:
+        resolved = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if resolved <= 0:
+        return False
+    try:
+        os.kill(resolved, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _background_progress_is_active(payload: dict[str, Any]) -> bool:
+    status = str(payload.get("status") or "").strip().lower()
+    if status not in {"starting", "running"}:
+        return False
+    if _is_pid_running(payload.get("pid")):
+        return True
+    age_seconds = _progress_age_seconds(str(payload.get("updated_at") or ""))
+    return bool(age_seconds is not None and age_seconds < 15 and not payload.get("pid"))
+
+
+def _truncate_rejection_reason(value: Any, *, max_len: int = 140) -> str:
+    text = _clean_text_token(value)
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1].rstrip() + "…"
+
+
+def _build_phase_timeline_html(*, current_phase: str, status: str) -> str:
+    phase_labels = {
+        "P2": "Sandbox",
+        "P3": "Consensus benchmarks",
+        "P4": "Test de sensibilité",
+        "P5": "Walk-forward",
+        "P6": "Promotion",
+    }
+    ordered = ("P2", "P3", "P4", "P5", "P6")
+    current = _clean_text_token(current_phase).upper()
+    current_index = ordered.index(current) if current in ordered else -1
+    completed = _clean_text_token(status).lower() == "completed"
+    blocks: list[str] = ["<div class='bc-grad-timeline'>"]
+    for idx, phase in enumerate(ordered):
+        classes = ["bc-grad-step"]
+        if completed or (current_index >= 0 and idx < current_index):
+            classes.append("is-done")
+        if current_index >= 0 and idx == current_index and not completed:
+            classes.append("is-active")
+        label = phase_labels[phase]
+        blocks.append(
+            f"<div class='{' '.join(classes)}'><span class='bc-grad-phase'>{phase}</span>"
+            f"<span class='bc-grad-label'>{label}</span></div>",
+        )
+    blocks.append("</div>")
+    return "".join(blocks)
+
+
+def _build_candidate_report_summary(
+    payload: dict[str, Any],
+    df: pd.DataFrame,
+) -> dict[str, Any]:
+    stats = dict(payload.get("stats") or {})
+    total_candidates = _safe_int(payload.get("total_candidates"), _safe_int(stats.get("p1_candidates")))
+    processed_counts = _phase_processed_counts(stats, total_candidates)
+    survivor_counts = _phase_survivor_counts(stats)
+    phase_distribution = _phase_distribution_counts(payload, df)
+    final_phase = "P1"
+    explicit_processed_counts = {
+        "P2": _safe_int(stats.get("p2_processed")),
+        "P3": _safe_int(stats.get("p3_processed")),
+        "P4": _safe_int(stats.get("p4_processed")),
+        "P5": _safe_int(stats.get("p5_processed")),
+        "P6": _safe_int(stats.get("p6_processed")),
+    }
+    for phase in ("P6", "P5", "P4", "P3", "P2"):
+        if phase_distribution.get(phase, 0) > 0 or explicit_processed_counts.get(phase, 0) > 0:
+            final_phase = phase
+            break
+
+    dominant_decision = ""
+    if not df.empty and "decision" in df.columns:
+        decisions = (
+            df["decision"].dropna().astype(str).str.strip()
+        )
+        if not decisions.empty:
+            dominant_decision = str(decisions.value_counts().idxmax())
+
+    return {
+        "total_candidates": total_candidates,
+        "processed_counts": processed_counts,
+        "survivor_counts": survivor_counts,
+        "phase_distribution": phase_distribution,
+        "final_phase": final_phase,
+        "dominant_decision": dominant_decision,
+        "catalog_synced": _safe_int(stats.get("catalog_synced")),
+    }
+
+
+def _resolve_candidate_phase_focus_default(summary: dict[str, Any], df: pd.DataFrame) -> str:
+    phase_distribution = dict(summary.get("phase_distribution") or {})
+    available = set()
+    if not df.empty and "phase" in df.columns:
+        available = {
+            str(value).strip().upper()
+            for value in df["phase"].dropna().astype(str).tolist()
+            if str(value).strip()
+        }
+    for phase in ("P6", "P5", "P4", "P3", "P2"):
+        if phase_distribution.get(phase, 0) > 0 and (not available or phase in available):
+            return phase
+    final_phase = _clean_text_token(summary.get("final_phase")).upper()
+    if final_phase and (not available or final_phase in available):
+        return final_phase
+    return sorted(available)[-1] if available else "Toutes"
+
+
+def _resolve_candidate_phase_filter(
+    requested_focus: str,
+    *,
+    summary: dict[str, Any],
+    available_phases: list[str],
+    df: pd.DataFrame,
+) -> str:
+    normalized = _clean_text_token(requested_focus)
+    if not normalized or normalized == GRADUATION_PHASE_FOCUS_AUTO:
+        return _resolve_candidate_phase_focus_default(summary, df)
+    if normalized in available_phases:
+        return normalized
+    return _resolve_candidate_phase_focus_default(summary, df)
+
+
+def _build_phase_rejection_breakdown(df: pd.DataFrame, phase: str) -> pd.DataFrame:
+    if df.empty or "phase" not in df.columns:
+        return pd.DataFrame(columns=["reason", "count"])
+    filtered = df[df["phase"].astype(str).str.upper() == str(phase or "").upper()].copy()
+    if filtered.empty or "rejection_reason" not in filtered.columns:
+        return pd.DataFrame(columns=["reason", "count"])
+
+    counts: dict[str, int] = {}
+    for raw_reason in filtered["rejection_reason"].fillna("").astype(str):
+        lowered = raw_reason.lower()
+        matched = False
+        if "overfitting" in lowered:
+            counts["Overfitting WFA excessif"] = counts.get("Overfitting WFA excessif", 0) + 1
+            matched = True
+        if "avg_test_sharpe" in lowered or "test_sharpe" in lowered:
+            counts["Sharpe test WFA insuffisant"] = counts.get("Sharpe test WFA insuffisant", 0) + 1
+            matched = True
+        if "instable" in lowered or "stability" in lowered:
+            counts["WFA instable"] = counts.get("WFA instable", 0) + 1
+            matched = True
+        if not matched:
+            label = _truncate_rejection_reason(raw_reason, max_len=60) or "Autre"
+            counts[label] = counts.get(label, 0) + 1
+    if not counts:
+        return pd.DataFrame(columns=["reason", "count"])
+    return pd.DataFrame(
+        [{"reason": reason, "count": count} for reason, count in counts.items()],
+    ).sort_values(["count", "reason"], ascending=[False, True], ignore_index=True)
+
+
+def _build_p3_rejection_breakdown(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or "phase" not in df.columns:
+        return pd.DataFrame(columns=["reason", "count"])
+    filtered = df[df["phase"].astype(str).str.upper() == "P3"].copy()
+    if filtered.empty or "rejection_reason" not in filtered.columns:
+        return pd.DataFrame(columns=["reason", "count"])
+
+    counts: dict[str, int] = {}
+    for raw_reason in filtered["rejection_reason"].fillna("").astype(str):
+        lowered = raw_reason.lower()
+        if "required_benchmark_failed" in lowered or "benchmarks=" in lowered:
+            counts["Consensus benchmarks insuffisant"] = counts.get("Consensus benchmarks insuffisant", 0) + 1
+        if "coverage=" in lowered:
+            counts["Couverture éligible insuffisante"] = counts.get("Couverture éligible insuffisante", 0) + 1
+    if not counts:
+        return pd.DataFrame(columns=["reason", "count"])
+    return pd.DataFrame(
+        [{"reason": reason, "count": count} for reason, count in counts.items()],
+    ).sort_values(["count", "reason"], ascending=[False, True], ignore_index=True)
+
+
+def _build_p3_required_benchmark_breakdown(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or "phase" not in df.columns or "required_benchmark_name" not in df.columns:
+        return pd.DataFrame(columns=["benchmark", "count"])
+    filtered = df[df["phase"].astype(str).str.upper() == "P3"].copy()
+    if "required_benchmark_passed" in filtered.columns:
+        filtered = filtered[filtered["required_benchmark_passed"] != True]  # noqa: E712
+    benchmarks = (
+        filtered["required_benchmark_name"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
+    benchmarks = benchmarks[benchmarks != ""]
+    if benchmarks.empty:
+        return pd.DataFrame(columns=["benchmark", "count"])
+    return (
+        benchmarks.value_counts()
+        .rename_axis("benchmark")
+        .reset_index(name="count")
+    )
+
+
+def _build_p3_diagnostic_summary(payload: dict[str, Any], df: pd.DataFrame) -> dict[str, Any]:
+    stats = dict(payload.get("stats") or {})
+    filtered = df[df["phase"].astype(str).str.upper() == "P3"].copy() if not df.empty and "phase" in df.columns else df
+    row = filtered.iloc[0].to_dict() if isinstance(filtered, pd.DataFrame) and not filtered.empty else {}
+    p3_processed = _safe_int(stats.get("p3_processed"))
+    p3_survivors = _safe_int(stats.get("p3_survivors"))
+    configured_context_count = _safe_int(row.get("configured_context_count"))
+    eligible_context_count = _safe_int(row.get("eligible_context_count"))
+    loaded_context_count = _safe_int(row.get("loaded_context_count"))
+    excluded_context_count = _safe_int(row.get("excluded_context_count"))
+    configured_benchmark_slot_count = _safe_int(row.get("configured_benchmark_slot_count"))
+    loaded_benchmark_slot_count = _safe_int(row.get("loaded_benchmark_slot_count"))
+    eligible_coverage_pct = coerce_metric_float(row.get("coverage_pct"))
+    configured_unique_coverage_pct = coerce_metric_float(
+        row.get("configured_unique_coverage_pct", row.get("benchmark_slot_coverage_pct")),
+    )
+    benchmark_slot_coverage_pct = coerce_metric_float(row.get("benchmark_slot_coverage_pct"))
+    return {
+        "available": bool(p3_processed or (isinstance(filtered, pd.DataFrame) and not filtered.empty)),
+        "p3_processed": p3_processed,
+        "p3_survivors": p3_survivors,
+        "configured_context_count": configured_context_count,
+        "eligible_context_count": eligible_context_count,
+        "loaded_context_count": loaded_context_count,
+        "excluded_context_count": excluded_context_count,
+        "configured_benchmark_slot_count": configured_benchmark_slot_count,
+        "loaded_benchmark_slot_count": loaded_benchmark_slot_count,
+        "eligible_coverage_pct": eligible_coverage_pct,
+        "configured_unique_coverage_pct": configured_unique_coverage_pct,
+        "benchmark_slot_coverage_pct": benchmark_slot_coverage_pct,
+        "no_survivor": bool(p3_processed > 0 and p3_survivors == 0),
+    }
+
+
+def _format_p3_zero_survivor_message(summary: dict[str, Any], reason_df: pd.DataFrame) -> str:
+    headline = (
+        f"Aucun candidat ne passe P3 sur {int(summary.get('p3_processed', 0) or 0)} candidat(s) traité(s)."
+    )
+    details = [
+        f"Ctx configurés={int(summary.get('configured_context_count', 0) or 0)}",
+        f"Ctx éligibles={int(summary.get('eligible_context_count', 0) or 0)}",
+        f"Ctx chargés={int(summary.get('loaded_context_count', 0) or 0)}",
+    ]
+    coverage = summary.get("eligible_coverage_pct")
+    if coverage is not None:
+        details.append(f"Couverture éligible={float(coverage):.1f}%")
+    cfg_cov = summary.get("configured_unique_coverage_pct")
+    if cfg_cov is not None:
+        details.append(f"Couverture configurée={float(cfg_cov):.1f}%")
+    top_reasons = []
+    if isinstance(reason_df, pd.DataFrame) and not reason_df.empty:
+        top_reasons = [
+            f"{row['reason']} ({int(row['count'])})"
+            for _, row in reason_df.head(3).iterrows()
+        ]
+    suffix = f" Causes dominantes: {', '.join(top_reasons)}." if top_reasons else ""
+    return f"{headline} {' | '.join(details)}.{suffix}"
+
+
+def _build_phase_focus_preview_df(df: pd.DataFrame, phase: str) -> pd.DataFrame:
+    if df.empty or "phase" not in df.columns:
+        return pd.DataFrame()
+    filtered = df[df["phase"].astype(str).str.upper() == str(phase or "").upper()].copy()
+    if filtered.empty:
+        return filtered
+    sort_col = "best_return_pct" if "best_return_pct" in filtered.columns else None
+    if sort_col:
+        filtered = filtered.sort_values(sort_col, ascending=False, na_position="last")
+    if "rejection_reason" in filtered.columns:
+        filtered["rejection_reason"] = filtered["rejection_reason"].apply(_truncate_rejection_reason)
+    common_cols = ["strategy_name", "session_id", "source_symbol", "source_timeframe", "phase", "decision"]
+    phase_specific_cols = {
+        "P4": ["sweep_robustness_pct", "best_max_drawdown_pct", "best_return_pct", "rejection_reason"],
+        "P5": [
+            "wfa_stability",
+            "wfa_avg_test_return_pct",
+            "wfa_avg_test_sharpe",
+            "wfa_overfitting_ratio",
+            "rejection_reason",
+        ],
+    }
+    preferred_cols = common_cols + phase_specific_cols.get(str(phase or "").upper(), ["best_return_pct", "rejection_reason"])
+    visible_cols = [col for col in preferred_cols if col in filtered.columns]
+    return filtered[visible_cols].head(GRADUATION_PREVIEW_LIMIT).reset_index(drop=True)
+
+
+def _build_candidate_preview_df(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return pd.DataFrame()
+    filtered = df.copy()
+    if "best_return_pct" in filtered.columns:
+        filtered = filtered.sort_values("best_return_pct", ascending=False, na_position="last")
+    if "rejection_reason" in filtered.columns:
+        filtered["rejection_reason"] = filtered["rejection_reason"].apply(_truncate_rejection_reason)
+    preferred_cols = [
+        "strategy_name",
+        "session_id",
+        "source_symbol",
+        "source_timeframe",
+        "phase",
+        "decision",
+        "best_return_pct",
+        "best_sharpe",
+        "best_trades",
+        "benchmark_pass_summary",
+        "context_pass_summary",
+        "required_benchmark_name",
+        "rejection_reason",
+    ]
+    visible_cols = [col for col in preferred_cols if col in filtered.columns]
+    return filtered[visible_cols].head(GRADUATION_PREVIEW_LIMIT).reset_index(drop=True)
+
+
+def _resolve_graduation_strategy_folder(row: dict[str, Any]) -> Path | None:
+    builder_root = get_builder_sessions_dir()
+    strategy_file = _clean_text_token(row.get("strategy_file"))
+    session_id = _clean_text_token(row.get("session_id"))
+    if strategy_file:
+        candidate_path = Path(strategy_file)
+        if not candidate_path.is_absolute():
+            candidate_path = builder_root / candidate_path
+        if candidate_path.exists():
+            return candidate_path.parent
+    if session_id:
+        session_dir = builder_root / session_id
+        if session_dir.exists():
+            return session_dir
+    return None
+
+
+def _resolve_strategy_catalog_source_folder(row: Mapping[str, Any]) -> Path | None:
+    builder_session_id = _clean_text_token(row.get("builder_session_id"))
+    if builder_session_id:
+        session_dir = Path(get_builder_sessions_dir()) / builder_session_id
+        if session_dir.exists():
+            return session_dir
+
+    strategy_file = _clean_text_token(row.get("strategy_file"))
+    if strategy_file:
+        candidate_path = Path(strategy_file)
+        if not candidate_path.is_absolute():
+            candidate_path = Path.cwd() / candidate_path
+        if candidate_path.exists():
+            return candidate_path.parent
+
+    source_path = _clean_text_token(row.get("source_path"))
+    if not source_path:
+        return None
+
+    candidate_path = Path(source_path)
+    if candidate_path.is_absolute() and candidate_path.exists():
+        return candidate_path if candidate_path.is_dir() else candidate_path.parent
+
+    for root in (Path.cwd(), RESULTS_DIR, RUNS_DIR):
+        resolved = root / candidate_path
+        if resolved.exists():
+            return resolved if resolved.is_dir() else resolved.parent
+    return None
+
+
+def _decorate_strategy_catalog_links(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+    decorated = df.copy()
+
+    def _link_for_row(row: pd.Series) -> str:
+        strategy_name = _clean_text_token(row.get("strategy")) or _clean_text_token(row.get("entry_id")) or "candidate"
+        folder = _resolve_strategy_catalog_source_folder(row.to_dict())
+        if folder is None:
+            return strategy_name
+        return f"{folder.resolve().as_uri()}#{strategy_name}"
+
+    decorated["strategy_name_link"] = decorated.apply(_link_for_row, axis=1)
+    return decorated
+
+
+def _decorate_graduation_strategy_links(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+    decorated = df.copy()
+
+    def _link_for_row(row: pd.Series) -> str:
+        strategy_name = _clean_text_token(row.get("strategy_name")) or _clean_text_token(row.get("session_id")) or "candidate"
+        folder = _resolve_graduation_strategy_folder(row.to_dict())
+        if folder is None:
+            return strategy_name
+        return f"{folder.resolve().as_uri()}#{strategy_name}"
+
+    decorated["strategy_name_link"] = decorated.apply(_link_for_row, axis=1)
+    return decorated
+
+
+def _render_phase_diagnostic_panel(*, phase: str, summary: dict[str, Any], df: pd.DataFrame) -> None:
+    preview_df = _build_phase_focus_preview_df(df, phase)
+    preview_df = _decorate_graduation_strategy_links(preview_df)
+    if "strategy_name_link" in preview_df.columns and "strategy_name" in preview_df.columns:
+        preview_df = preview_df.drop(columns=["strategy_name"])
+    metric_cols = st.columns(3)
+    metric_cols[0].metric(f"{phase} traités", int((summary.get("processed_counts") or {}).get(phase, 0) or 0))
+    metric_cols[1].metric(f"{phase} survivants", int((summary.get("survivor_counts") or {}).get(phase, 0) or 0))
+    metric_cols[2].metric("Phase finale", str(summary.get("final_phase") or "-"))
+    if preview_df.empty:
+        st.caption(f"Aucun candidat à afficher pour {phase}.")
+        return
+    column_config = _get_numeric_column_config()
+    st.dataframe(preview_df, width="stretch", hide_index=True, column_config=column_config)
+
+
+def _render_progress_section(
+    *,
+    title: str,
+    payload: dict[str, Any],
+    log_filename: str,
+    report_payload: dict[str, Any] | None = None,
+    report_df: pd.DataFrame | None = None,
+) -> None:
     st.markdown(f"### {title}")
     if not payload:
         st.write("ℹ️ Aucun état d'exécution en cours.")
@@ -331,19 +887,26 @@ def _render_progress_section(*, title: str, payload: dict[str, Any], log_filenam
 
     stats = payload.get("stats") or {}
     candidate = payload.get("current_candidate") or {}
+    total_candidates = _safe_int(stats.get("p1_candidates"), _safe_int(stats.get("import_candidates")))
+    processed_counts = _phase_processed_counts(stats, total_candidates)
+    survivor_counts = _phase_survivor_counts(stats)
+    phase_distribution = _phase_distribution_counts(report_payload or {}, report_df)
+    display_phase = _resolve_completed_phase(payload, processed_counts, phase_distribution)
+    progress_index, progress_total = _resolve_progress_ratio(payload, display_phase, processed_counts)
     age_seconds = _progress_age_seconds(str(payload.get("updated_at") or ""))
     age_label = ""
     if age_seconds is not None:
         age_label = f"{int(age_seconds)}s"
 
-    cols = st.columns(7)
+    cols = st.columns(8)
     cols[0].metric("Statut", str(payload.get("status") or "?"))
-    cols[1].metric("Phase", str(payload.get("current_phase") or "?"))
-    cols[2].metric("Avancement", f"{payload.get('current_index', 0)}/{payload.get('current_total', 0)}")
-    cols[3].metric("P2", int(stats.get("p2_survivors", 0)))
-    cols[4].metric("P3", int(stats.get("p3_survivors", 0)))
-    cols[5].metric("P4", int(stats.get("p4_survivors", 0)))
-    cols[6].metric("P5", int(stats.get("p5_survivors", 0)))
+    cols[1].metric("Phase", display_phase)
+    cols[2].metric("Avancement", f"{progress_index}/{progress_total}")
+    cols[3].metric("Traités P2", processed_counts.get("P2", 0))
+    cols[4].metric("Traités P3", processed_counts.get("P3", 0))
+    cols[5].metric("Traités P4", processed_counts.get("P4", 0))
+    cols[6].metric("Traités P5", processed_counts.get("P5", 0))
+    cols[7].metric("P6 promues", survivor_counts.get("P6", 0))
 
     strategy_label = str(candidate.get("strategy_name") or candidate.get("session_id") or "").strip()
     if strategy_label:
@@ -360,6 +923,8 @@ def _render_progress_section(*, title: str, payload: dict[str, Any], log_filenam
     updated_at = str(payload.get("updated_at") or "").strip()
     if updated_at:
         st.caption(f"Dernière mise à jour: {updated_at} UTC" + (f" ({age_label})" if age_label else ""))
+    st.caption(_format_phase_counts("Survivants", survivor_counts))
+    st.caption(_format_phase_counts("Phase finale des candidats", phase_distribution))
 
     if payload.get("status") == "running" and age_seconds is not None and age_seconds > 180:
         st.warning("Le run est marqué `running` mais la progression n'a pas bougé depuis plus de 3 minutes.")
@@ -377,9 +942,20 @@ def _render_progress_section(*, title: str, payload: dict[str, Any], log_filenam
         st.json(payload)
 
 
-def _start_background_graduation_job(*, args: list[str], log_filename: str) -> tuple[bool, str]:
-    output_dir = Path("catalog/graduation_results")
+def _start_background_graduation_job(
+    *,
+    args: list[str],
+    log_filename: str,
+    progress_filename: str | None = None,
+) -> tuple[bool, str]:
+    output_dir = GRADUATION_RESULTS_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
+    if progress_filename:
+        existing_progress = _load_progress_payload(progress_filename)
+        if existing_progress and _background_progress_is_active(existing_progress):
+            existing_pid = existing_progress.get("pid")
+            pid_suffix = f" (PID {existing_pid})" if existing_pid else ""
+            return False, f"Un run est déjà actif{pid_suffix}. Rafraîchissez la page pour suivre sa progression."
     log_path = output_dir / log_filename
     command = [sys.executable, "-m", "catalog.graduation", *args]
     try:
@@ -408,24 +984,40 @@ def _render_candidate_report_section(
         return
 
     stats = payload.get("stats") or {}
+    total_candidates = _safe_int(payload.get("total_candidates"), _safe_int(stats.get("p1_candidates")))
+    processed_counts = _phase_processed_counts(stats, total_candidates)
+    survivor_counts = _phase_survivor_counts(stats)
+    phase_distribution = _phase_distribution_counts(payload, df)
     metric_cols = st.columns(8)
     metric_cols[0].metric("Rapport", payload.get("phase", "?"))
     metric_cols[1].metric("Candidats", int(payload.get("total_candidates", 0)))
-    metric_cols[2].metric("P2", int(stats.get("p2_survivors", 0)))
-    metric_cols[3].metric("P3", int(stats.get("p3_survivors", 0)))
-    metric_cols[4].metric("P4", int(stats.get("p4_survivors", 0)))
-    metric_cols[5].metric("P5", int(stats.get("p5_survivors", 0)))
-    metric_cols[6].metric("P6", int(stats.get("p6_promoted", 0)))
+    metric_cols[2].metric("Traités P2", processed_counts.get("P2", 0))
+    metric_cols[3].metric("Traités P3", processed_counts.get("P3", 0))
+    metric_cols[4].metric("Traités P4", processed_counts.get("P4", 0))
+    metric_cols[5].metric("Traités P5", processed_counts.get("P5", 0))
+    metric_cols[6].metric("P6 promues", survivor_counts.get("P6", 0))
     metric_cols[7].metric("Sync", int(stats.get("catalog_synced", 0)))
     st.caption(f"Source: {payload.get('_report_path', '')}")
+    st.caption(_format_phase_counts("Survivants", survivor_counts))
+    st.caption(_format_phase_counts("Phase finale des candidats", phase_distribution))
 
     if df.empty:
         st.write("ℹ️ Le rapport est présent mais ne contient aucun candidat.")
         return
 
-    phase_options = ["Toutes"] + sorted(df["phase"].dropna().astype(str).unique().tolist()) if "phase" in df.columns else ["Toutes"]
-    decision_options = ["Toutes"] + sorted(df["decision"].dropna().astype(str).unique().tolist()) if "decision" in df.columns else ["Toutes"]
-    source_options = ["Toutes"] + sorted(df["source_kind"].dropna().astype(str).unique().tolist()) if "source_kind" in df.columns else ["Toutes"]
+    phase_options = (
+        ["Toutes"] + sorted(df["phase"].dropna().astype(str).unique().tolist()) if "phase" in df.columns else ["Toutes"]
+    )
+    decision_options = (
+        ["Toutes"] + sorted(df["decision"].dropna().astype(str).unique().tolist())
+        if "decision" in df.columns
+        else ["Toutes"]
+    )
+    source_options = (
+        ["Toutes"] + sorted(df["source_kind"].dropna().astype(str).unique().tolist())
+        if "source_kind" in df.columns
+        else ["Toutes"]
+    )
 
     filter_cols = st.columns(3)
     phase_filter = filter_cols[0].selectbox("Phase", phase_options, key=f"{key_prefix}_phase_filter")
@@ -465,6 +1057,7 @@ def _render_candidate_report_section(
         "configured_context_count",
         "loaded_context_count",
         "missing_context_count",
+        "benchmark_slot_coverage_pct",
         "tested_benchmark_names",
         "tested_tokens",
         "timeframes_tested",
@@ -478,7 +1071,18 @@ def _render_candidate_report_section(
         "catalog_entry_id",
     ]
     visible_cols = [col for col in preferred_cols if col in filtered.columns]
-    st.dataframe(filtered[visible_cols], width="stretch", hide_index=True)
+    st.caption(f"Lignes visibles: {len(filtered)}/{len(df)}")
+    preview_df = _decorate_graduation_strategy_links(filtered[visible_cols])
+    if "strategy_name_link" in preview_df.columns and "strategy_name" in preview_df.columns:
+        preview_df = preview_df.drop(columns=["strategy_name"])
+        visible_cols = ["strategy_name_link", *[col for col in visible_cols if col != "strategy_name"]]
+        preview_df = preview_df[[col for col in visible_cols if col in preview_df.columns]]
+    st.dataframe(
+        preview_df,
+        width="stretch",
+        hide_index=True,
+        column_config=_get_numeric_column_config(),
+    )
 
     if filtered.empty:
         return
@@ -512,16 +1116,29 @@ def _render_candidate_report_section(
 def _render_graduation_tab() -> None:
     st.caption("Lecture du pipeline sandbox → graduation depuis `catalog/graduation_results`.")
 
-    control_col_a, control_col_b, control_col_c, control_col_d, control_col_e, control_col_f = st.columns([1, 1, 1, 1, 1.2, 0.8])
+    control_col_a, control_col_b, control_col_c, control_col_d, control_col_e, control_col_f, control_col_g = st.columns(
+        [1, 1, 1, 1, 1.1, 1.2, 0.8],
+    )
     sync_catalog = control_col_e.checkbox(
         "Synchroniser le strategy catalog",
         value=True,
         key="graduation_sync_catalog",
     )
-    if control_col_f.button("Rafraîchir", key="graduation_refresh", use_container_width=True):
+    include_legacy_artifact_roots = control_col_f.checkbox(
+        "Inclure roots legacy",
+        value=False,
+        key="graduation_include_legacy_roots",
+        help="N'ajoute les racines legacy codées en dur à l'import positif que si cette option est cochée.",
+    )
+    if control_col_g.button("Rafraîchir", key="graduation_refresh", use_container_width=True):
         st.rerun()
     if control_col_a.button("Scanner P1", key="graduation_run_p1", use_container_width=True):
-        from catalog.graduation import GraduationConfig, save_graduation_report, scan_sandbox, sync_graduation_to_catalog
+        from catalog.graduation import (
+            GraduationConfig,
+            save_graduation_report,
+            scan_sandbox,
+            sync_graduation_to_catalog,
+        )
 
         with st.spinner("Scan P1 en cours..."):
             config = GraduationConfig(sync_catalog=sync_catalog)
@@ -533,25 +1150,23 @@ def _render_graduation_tab() -> None:
                 phase="P1_repechage",
                 filename="graduation_p1.json",
             )
-        st.session_state["graduation_status_msg"] = (
-            f"P1 terminé: {len(candidates)} candidat(s)"
-            + (f", {len(synced)} sync catalogue" if sync_catalog else "")
+        st.session_state["graduation_status_msg"] = f"P1 terminé: {len(candidates)} candidat(s)" + (
+            f", {len(synced)} sync catalogue" if sync_catalog else ""
         )
+        st.session_state["graduation_status_error"] = False
         st.rerun()
 
     if control_col_b.button("Lancer P1→P6", key="graduation_run_full", type="primary", use_container_width=True):
-        from catalog.graduation import GraduationConfig, run_full_graduation
-
-        with st.spinner("Pipeline de graduation en cours..."):
-            result = run_full_graduation(GraduationConfig(sync_catalog=sync_catalog))
-        stats = result.get("stats") or {}
-        st.session_state["graduation_status_msg"] = (
-            f"Pipeline terminé: P1={stats.get('p1_candidates', 0)}, "
-            f"P2={stats.get('p2_survivors', 0)}, P3={stats.get('p3_survivors', 0)}, "
-            f"P4={stats.get('p4_survivors', 0)}, P5={stats.get('p5_survivors', 0)}, "
-            f"P6={stats.get('p6_promoted', 0)}"
-            + (f", sync={stats.get('catalog_synced', 0)}" if sync_catalog else "")
+        args = ["--full"]
+        if sync_catalog:
+            args.append("--sync-catalog")
+        ok, message = _start_background_graduation_job(
+            args=args,
+            log_filename=FULL_GRADUATION_LOG_FILENAME,
+            progress_filename=FULL_GRADUATION_PROGRESS_FILENAME,
         )
+        st.session_state["graduation_status_msg"] = message
+        st.session_state["graduation_status_error"] = not ok
         st.rerun()
 
     if control_col_c.button(
@@ -562,13 +1177,19 @@ def _render_graduation_tab() -> None:
         from catalog.graduation import GraduationConfig, import_positive_artifacts_to_catalog
 
         with st.spinner("Import des artefacts positifs en cours..."):
-            report = import_positive_artifacts_to_catalog(GraduationConfig(sync_catalog=sync_catalog))
+            report = import_positive_artifacts_to_catalog(
+                GraduationConfig(
+                    sync_catalog=sync_catalog,
+                    include_legacy_artifact_roots=include_legacy_artifact_roots,
+                ),
+            )
         stats = report.get("stats") or {}
         st.session_state["graduation_status_msg"] = (
             f"Import positifs terminé: {stats.get('catalog_entries_touched', 0)} entrée(s), "
             f"{stats.get('builder_sessions_copied', 0)} session(s) copiée(s), "
             f"{stats.get('duplicates_skipped', 0)} doublon(s) ignoré(s)"
         )
+        st.session_state["graduation_status_error"] = False
         st.rerun()
 
     if control_col_d.button(
@@ -582,13 +1203,11 @@ def _render_graduation_tab() -> None:
             args.append("--sync-catalog")
         ok, message = _start_background_graduation_job(
             args=args,
-            log_filename="positive_imports_run.log",
+            log_filename=POSITIVE_IMPORTS_LOG_FILENAME,
+            progress_filename=POSITIVE_IMPORTS_PROGRESS_FILENAME,
         )
         st.session_state["graduation_status_msg"] = message
-        if not ok:
-            st.session_state["graduation_status_error"] = True
-        else:
-            st.session_state["graduation_status_error"] = False
+        st.session_state["graduation_status_error"] = not ok
         st.rerun()
 
     status_msg = st.session_state.get("graduation_status_msg")
@@ -600,14 +1219,23 @@ def _render_graduation_tab() -> None:
 
     sandbox_payload, sandbox_df = _load_graduation_report()
     positive_payload, positive_df = _load_positive_import_report()
-    positive_progress = _load_progress_payload("positive_imports_progress.json")
-    if not sandbox_payload and not positive_payload and not positive_progress:
+    full_progress = _load_progress_payload(FULL_GRADUATION_PROGRESS_FILENAME)
+    positive_progress = _load_progress_payload(POSITIVE_IMPORTS_PROGRESS_FILENAME)
+    if not sandbox_payload and not positive_payload and not full_progress and not positive_progress:
         st.write(
             "ℹ️ Aucun rapport de graduation trouvé. Exécutez `python -m catalog.graduation --full`, "
             "`python -m catalog.graduation --import-positive-artifacts` ou "
-            "`python -m catalog.graduation --positive-import-full`."
+            "`python -m catalog.graduation --positive-import-full`.",
         )
         return
+
+    if full_progress:
+        _render_progress_section(
+            title="État du pipeline sandbox P1→P6",
+            payload=full_progress,
+            log_filename=FULL_GRADUATION_LOG_FILENAME,
+        )
+        st.markdown("---")
 
     _render_candidate_report_section(
         title="Pipeline Sandbox",
@@ -619,7 +1247,7 @@ def _render_graduation_tab() -> None:
     _render_progress_section(
         title="État du traitement des artefacts positifs",
         payload=positive_progress,
-        log_filename="positive_imports_run.log",
+        log_filename=POSITIVE_IMPORTS_LOG_FILENAME,
     )
     st.markdown("---")
     _render_candidate_report_section(
@@ -732,7 +1360,7 @@ def _row_metric_value(row: pd.Series, key: str) -> Any:
     return ""
 
 
-def _load_catalogs(refresh: bool = False) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def _load_catalogs(refresh: bool = False) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     if refresh:
         if RESULTS_DIR.exists():
             storage = ResultStorage(storage_dir=RESULTS_DIR, auto_save=False)
@@ -773,6 +1401,102 @@ def _load_catalogs(refresh: bool = False) -> Tuple[pd.DataFrame, pd.DataFrame, p
     return backtest_overview, unified_overview, runs_overview
 
 
+def _load_builder_store_payload() -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    try:
+        from ui.results_store_view import (
+            _load_builder_catalog_reconciliation,
+            _load_builder_iterations_df,
+            _load_builder_sessions_df,
+        )
+    except Exception as exc:
+        logger.warning("Failed to import builder store helpers in results_hub: %s", exc)
+        return pd.DataFrame(), pd.DataFrame(), {}
+
+    builder_root = Path(get_builder_sessions_dir())
+    try:
+        builder_df = _load_builder_sessions_df(str(builder_root))
+    except Exception as exc:
+        logger.warning("Failed to load builder sessions for results_hub: %s", exc)
+        builder_df = pd.DataFrame()
+
+    try:
+        builder_iterations_df = _load_builder_iterations_df(str(builder_root))
+    except Exception as exc:
+        logger.warning("Failed to load builder iterations for results_hub: %s", exc)
+        builder_iterations_df = pd.DataFrame()
+
+    try:
+        builder_catalog_audit = _load_builder_catalog_reconciliation(str(builder_root), str(RESULTS_DIR))
+    except Exception as exc:
+        logger.warning("Failed to audit builder/catalog reconciliation in results_hub: %s", exc)
+        builder_catalog_audit = {}
+
+    return builder_df, builder_iterations_df, builder_catalog_audit
+
+
+def _render_builder_sessions_tab(
+    builder_df: pd.DataFrame,
+    builder_iterations_df: pd.DataFrame,
+    builder_catalog_audit: dict[str, Any],
+) -> None:
+    try:
+        from ui.results_store_view import _render_builder_tab
+    except Exception as exc:
+        logger.warning("Failed to import builder tab renderer in results_hub: %s", exc)
+        if builder_df.empty:
+            st.info("Aucune session Builder detectee dans le store externe.")
+            return
+        display_cols = [
+            column
+            for column in [
+                "session_id",
+                "status",
+                "best_return_pct",
+                "positive_iterations",
+                "best_sharpe",
+                "total_iterations",
+                "strategy_versions",
+                "last_modified",
+                "objective_excerpt",
+            ]
+            if column in builder_df.columns
+        ]
+        st.dataframe(builder_df[display_cols], width="stretch", hide_index=True)
+        return
+
+    _render_builder_tab(builder_df, builder_iterations_df, RESULTS_DIR, builder_catalog_audit)
+
+
+def _render_builder_iterations_tab(builder_iterations_df: pd.DataFrame) -> None:
+    try:
+        from ui.results_store_view import _render_builder_iterations_tab as _render_results_store_builder_iterations_tab
+    except Exception as exc:
+        logger.warning("Failed to import builder iterations renderer in results_hub: %s", exc)
+        if builder_iterations_df.empty:
+            st.info("Aucune itération Builder détectée dans le store externe.")
+            return
+        display_cols = [
+            column
+            for column in [
+                "session_id",
+                "iteration",
+                "leaderboard_rank",
+                "return_pct",
+                "sharpe",
+                "profit_factor",
+                "trades",
+                "diagnostic_category",
+                "params_used_preview",
+                "objective_excerpt",
+            ]
+            if column in builder_iterations_df.columns
+        ]
+        st.dataframe(builder_iterations_df[display_cols], width="stretch", hide_index=True)
+        return
+
+    _render_results_store_builder_iterations_tab(builder_iterations_df, RESULTS_DIR)
+
+
 def _path_to_uri(path: Path) -> str:
     try:
         return path.resolve().as_uri()
@@ -785,9 +1509,11 @@ def _add_open_links_backtest(df: pd.DataFrame) -> pd.DataFrame:
         return df
     df = df.copy()
     df["open_folder"] = df["path"].apply(
-        lambda value: ""
-        if value is None or (isinstance(value, float) and pd.isna(value)) or value == ""
-        else _path_to_uri(RESULTS_DIR / str(value))
+        lambda value: (
+            ""
+            if value is None or (isinstance(value, float) and pd.isna(value)) or value == ""
+            else _path_to_uri(RESULTS_DIR / str(value))
+        ),
     )
     return df
 
@@ -797,9 +1523,11 @@ def _add_open_links_unified(df: pd.DataFrame) -> pd.DataFrame:
         return df
     df = df.copy()
     df["open_folder"] = df["path"].apply(
-        lambda value: ""
-        if value is None or (isinstance(value, float) and pd.isna(value)) or value == ""
-        else _path_to_uri(RESULTS_DIR / str(value))
+        lambda value: (
+            ""
+            if value is None or (isinstance(value, float) and pd.isna(value)) or value == ""
+            else _path_to_uri(RESULTS_DIR / str(value))
+        ),
     )
     return df
 
@@ -845,7 +1573,7 @@ def _add_pnl_per_day(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _metric_from_snapshot(snapshot: Dict[str, Any], *keys: str) -> Any:
+def _metric_from_snapshot(snapshot: dict[str, Any], *keys: str) -> Any:
     if not isinstance(snapshot, dict):
         return None
     for key in keys:
@@ -855,7 +1583,7 @@ def _metric_from_snapshot(snapshot: Dict[str, Any], *keys: str) -> Any:
     return None
 
 
-def _meta_first_present(meta: Dict[str, Any], *keys: str) -> Any:
+def _meta_first_present(meta: dict[str, Any], *keys: str) -> Any:
     if not isinstance(meta, dict):
         return None
     for key in keys:
@@ -868,7 +1596,7 @@ def _meta_first_present(meta: Dict[str, Any], *keys: str) -> Any:
     return None
 
 
-def _extract_catalog_postfilter_fields(entry: Dict[str, Any]) -> Dict[str, Any]:
+def _extract_catalog_postfilter_fields(entry: dict[str, Any]) -> dict[str, Any]:
     metrics = entry.get("last_metrics_snapshot") or {}
     meta = entry.get("meta") or {}
     if not isinstance(meta, dict):
@@ -938,11 +1666,7 @@ def _extract_catalog_postfilter_fields(entry: Dict[str, Any]) -> Dict[str, Any]:
         required_benchmark_passed = bool(benchmark_consensus.get("required_passed", False))
         passed_benchmark_names = sorted(_as_listish(benchmark_consensus.get("benchmarks_passed", [])))
         benchmarks_total = int(benchmark_consensus.get("benchmarks_total") or 0)
-        benchmark_pass_summary = (
-            f"{len(passed_benchmark_names)}/{benchmarks_total}"
-            if benchmarks_total > 0
-            else ""
-        )
+        benchmark_pass_summary = f"{len(passed_benchmark_names)}/{benchmarks_total}" if benchmarks_total > 0 else ""
         if bool(benchmark_consensus.get("consensus_passed")):
             contradiction_state = "passed"
         elif bool(benchmark_consensus.get("contradicted")):
@@ -951,10 +1675,10 @@ def _extract_catalog_postfilter_fields(entry: Dict[str, Any]) -> Dict[str, Any]:
             contradiction_state = "failed"
 
     passed_context_count = _to_int(
-        _meta_first_present(meta, "positive_pipeline_passed_count")
+        _meta_first_present(meta, "positive_pipeline_passed_count"),
     )
     total_context_count = _to_int(
-        _meta_first_present(meta, "positive_pipeline_total_contexts")
+        _meta_first_present(meta, "positive_pipeline_total_contexts"),
     )
     if passed_context_count is None:
         passed_context_count = _to_int(_metric_from_snapshot(metrics, "multi_context_passed"))
@@ -990,7 +1714,7 @@ def _extract_catalog_postfilter_fields(entry: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _load_strategy_catalog_df() -> pd.DataFrame:
-    rows: List[Dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     for entry in list_entries(status=None):
         metrics = entry.get("last_metrics_snapshot") or {}
         meta = entry.get("meta") or {}
@@ -1000,6 +1724,9 @@ def _load_strategy_catalog_df() -> pd.DataFrame:
                 "strategy": entry.get("strategy_name"),
                 "symbol": entry.get("symbol"),
                 "timeframe": entry.get("timeframe"),
+                "builder_session_id": meta.get("builder_session_id") or meta.get("session_id"),
+                "builder_iteration": meta.get("builder_iteration") or meta.get("best_iteration"),
+                "candidate_id": meta.get("candidate_id"),
                 "category": entry.get("category"),
                 "status": entry.get("status"),
                 "source": entry.get("source"),
@@ -1007,29 +1734,73 @@ def _load_strategy_catalog_df() -> pd.DataFrame:
                 "tags": ", ".join(entry.get("tags") or []),
                 "source_run_id": meta.get("source_run_id"),
                 "source_path": meta.get("source_path"),
+                "session_dir": meta.get("session_dir"),
+                "strategy_file": meta.get("strategy_file"),
+                "source_params": meta.get("source_params") if isinstance(meta.get("source_params"), dict) else None,
                 "sharpe": _metric_from_snapshot(metrics, "sharpe_ratio", "sharpe"),
                 "return_pct": _metric_from_snapshot(metrics, "total_return_pct", "total_return"),
                 "pnl": _metric_from_snapshot(metrics, "total_pnl", "pnl"),
                 "trades": _metric_from_snapshot(metrics, "total_trades", "trades"),
                 **_extract_catalog_postfilter_fields(entry),
-            }
+            },
         )
     if not rows:
         return pd.DataFrame()
     df = pd.DataFrame(rows)
-    return _coerce_numeric(
+    df = _coerce_numeric(
         df,
         [
             "sharpe",
             "return_pct",
             "pnl",
             "trades",
+            "builder_iteration",
             "coverage_pct",
             "configured_context_count",
             "loaded_context_count",
             "missing_context_count",
         ],
     )
+    df["source_ref"] = df.apply(lambda row: _catalog_entry_source_ref(row.to_dict()), axis=1)
+    return _decorate_strategy_catalog_links(df)
+
+
+def _catalog_entry_source_ref(catalog_entry: Mapping[str, Any]) -> str:
+    source_run_id = str(catalog_entry.get("source_run_id") or "").strip()
+    if source_run_id:
+        return f"run:{source_run_id}"
+
+    builder_session_id = str(catalog_entry.get("builder_session_id") or "").strip()
+    builder_iteration = _safe_int(catalog_entry.get("builder_iteration"))
+    if builder_session_id:
+        if builder_iteration > 0:
+            return f"builder:{builder_session_id}#{builder_iteration}"
+        return f"builder:{builder_session_id}"
+
+    strategy_file = str(catalog_entry.get("strategy_file") or "").strip()
+    if strategy_file:
+        return f"file:{Path(strategy_file).name}"
+
+    entry_id = str(catalog_entry.get("entry_id") or "").strip()
+    if entry_id:
+        return f"entry:{entry_id}"
+    return ""
+
+
+def _catalog_entry_has_replay_source(catalog_entry: Mapping[str, Any]) -> bool:
+    if str(catalog_entry.get("source_run_id") or "").strip():
+        return True
+
+    params = catalog_entry.get("source_params")
+    if not isinstance(params, dict):
+        return False
+    if not params:
+        return False
+
+    strategy_key = str(catalog_entry.get("strategy") or "").strip()
+    symbol = str(catalog_entry.get("symbol") or "").strip()
+    timeframe = str(catalog_entry.get("timeframe") or "").strip()
+    return bool(strategy_key and symbol and timeframe)
 
 
 def _decorate_unified_with_catalog(
@@ -1071,6 +1842,8 @@ def _decorate_unified_with_catalog(
 
 
 def _normalize_cell(value: Any) -> Any:
+    if isinstance(value, (dict, list, tuple, set)):
+        return value
     if isinstance(value, float) and pd.isna(value):
         return None
     if pd.isna(value):
@@ -1083,8 +1856,8 @@ def _normalize_cell(value: Any) -> Any:
     return value
 
 
-def _extract_prefixed_values(row: Dict[str, Any], prefix: str) -> Dict[str, Any]:
-    values: Dict[str, Any] = {}
+def _extract_prefixed_values(row: dict[str, Any], prefix: str) -> dict[str, Any]:
+    values: dict[str, Any] = {}
     for key, value in row.items():
         if not isinstance(key, str) or not key.startswith(prefix):
             continue
@@ -1096,10 +1869,10 @@ def _extract_prefixed_values(row: Dict[str, Any], prefix: str) -> Dict[str, Any]
 
 
 def _build_run_row_replay_request(
-    source_row: Dict[str, Any],
+    source_row: dict[str, Any],
     *,
     auto_run: bool,
-) -> Tuple[Optional[Dict[str, Any]], str]:
+) -> tuple[dict[str, Any] | None, str]:
     strategy_key = str(source_row.get("strategy") or "").strip()
     symbol = str(source_row.get("symbol") or "").strip()
     timeframe = str(source_row.get("timeframe") or "").strip()
@@ -1128,27 +1901,43 @@ def _build_run_row_replay_request(
 
 
 def _build_catalog_replay_request(
-    catalog_entry: Dict[str, Any],
+    catalog_entry: dict[str, Any],
     unified_df: pd.DataFrame,
     *,
     auto_run: bool,
-) -> Tuple[Optional[Dict[str, Any]], str]:
+) -> tuple[dict[str, Any] | None, str]:
     source_run_id = str(catalog_entry.get("source_run_id") or "").strip()
-    if not source_run_id:
-        return None, "Replay impossible: source_run_id absent."
-    if unified_df.empty or "run_id" not in unified_df.columns:
-        return None, "Replay impossible: catalogue unifié indisponible."
+    if source_run_id and not unified_df.empty and "run_id" in unified_df.columns:
+        source_rows = unified_df[unified_df["run_id"].astype(str) == source_run_id]
+        if not source_rows.empty:
+            source_row = {key: _normalize_cell(value) for key, value in source_rows.iloc[0].to_dict().items()}
+            source_row["strategy"] = str(catalog_entry.get("strategy") or source_row.get("strategy") or "").strip()
+            return _build_run_row_replay_request(source_row, auto_run=auto_run)
 
-    source_rows = unified_df[unified_df["run_id"].astype(str) == source_run_id]
-    if source_rows.empty:
-        return None, f"Replay impossible: run source introuvable ({source_run_id})."
+    strategy_key = str(catalog_entry.get("strategy") or "").strip()
+    symbol = str(catalog_entry.get("symbol") or "").strip()
+    timeframe = str(catalog_entry.get("timeframe") or "").strip()
+    params = dict(catalog_entry.get("source_params") or {}) if isinstance(catalog_entry.get("source_params"), dict) else {}
+    if not strategy_key or not symbol or not timeframe or not params:
+        if source_run_id:
+            return None, f"Replay impossible: run source introuvable ({source_run_id})."
+        return None, "Replay impossible: source_run_id absent et paramètres source indisponibles."
 
-    source_row = {
-        key: _normalize_cell(value)
-        for key, value in source_rows.iloc[0].to_dict().items()
+    initial_capital = params.pop("initial_capital", None)
+    params.pop("fees_bps", None)
+    params.pop("slippage_bps", None)
+    request = {
+        "strategy_key": strategy_key,
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "params": params,
+        "initial_capital": initial_capital,
+        "source_run_id": source_run_id,
+        "auto_run": auto_run,
     }
-    source_row["strategy"] = str(catalog_entry.get("strategy") or source_row.get("strategy") or "").strip()
-    return _build_run_row_replay_request(source_row, auto_run=auto_run)
+    action_label = "relance" if auto_run else "chargement"
+    source_ref = _catalog_entry_source_ref(catalog_entry) or strategy_key
+    return request, f"Replay prêt ({action_label}) depuis {source_ref}."
 
 
 def _sort_by_metrics(df: pd.DataFrame) -> pd.DataFrame:
@@ -1167,7 +1956,8 @@ def _sort_by_metrics(df: pd.DataFrame) -> pd.DataFrame:
 def _pick_latest_from_catalogs(
     backtest_overview: pd.DataFrame,
     runs_overview: pd.DataFrame,
-) -> Optional[Dict[str, object]]:
+    builder_sessions_df: pd.DataFrame,
+) -> dict[str, Any] | None:
     candidates = []
 
     if not backtest_overview.empty:
@@ -1176,27 +1966,29 @@ def _pick_latest_from_catalogs(
         df = df.dropna(subset=["timestamp_dt"])
         if not df.empty:
             latest = df.sort_values("timestamp_dt", ascending=False).iloc[0]
-            candidates.append({
-                "source": "backtest_results",
-                "kind": latest.get("type", ""),
-                "id": latest.get("id", ""),
-                "timestamp": latest.get("timestamp", ""),
-                "strategy": latest.get("strategy", ""),
-                "symbol": latest.get("symbol", ""),
-                "timeframe": latest.get("timeframe", ""),
-                "period_start": latest.get("period_start", ""),
-                "period_end": latest.get("period_end", ""),
-                "metrics": {
-                    "total_pnl": _row_metric_value(latest, "total_pnl"),
-                    "total_return_pct": _row_metric_value(latest, "total_return_pct"),
-                    "sharpe_ratio": _row_metric_value(latest, "sharpe_ratio"),
-                    "max_drawdown_pct": _row_metric_value(latest, "max_drawdown_pct"),
-                    "win_rate_pct": _row_metric_value(latest, "win_rate_pct"),
-                    "profit_factor": _row_metric_value(latest, "profit_factor"),
+            candidates.append(
+                {
+                    "source": "backtest_results",
+                    "kind": latest.get("type", ""),
+                    "id": latest.get("id", ""),
+                    "timestamp": latest.get("timestamp", ""),
+                    "strategy": latest.get("strategy", ""),
+                    "symbol": latest.get("symbol", ""),
+                    "timeframe": latest.get("timeframe", ""),
+                    "period_start": latest.get("period_start", ""),
+                    "period_end": latest.get("period_end", ""),
+                    "metrics": {
+                        "total_pnl": _row_metric_value(latest, "total_pnl"),
+                        "total_return_pct": _row_metric_value(latest, "total_return_pct"),
+                        "sharpe_ratio": _row_metric_value(latest, "sharpe_ratio"),
+                        "max_drawdown_pct": _row_metric_value(latest, "max_drawdown_pct"),
+                        "win_rate_pct": _row_metric_value(latest, "win_rate_pct"),
+                        "profit_factor": _row_metric_value(latest, "profit_factor"),
+                    },
+                    "path": latest.get("path", ""),
+                    "timestamp_dt": latest.get("timestamp_dt"),
                 },
-                "path": latest.get("path", ""),
-                "timestamp_dt": latest.get("timestamp_dt"),
-            })
+            )
 
     if not runs_overview.empty:
         df = runs_overview.copy()
@@ -1204,32 +1996,64 @@ def _pick_latest_from_catalogs(
         df = df.dropna(subset=["timestamp_dt"])
         if not df.empty:
             latest = df.sort_values("timestamp_dt", ascending=False).iloc[0]
-            candidates.append({
-                "source": "runs",
-                "kind": latest.get("mode", ""),
-                "id": latest.get("session_id", ""),
-                "timestamp": latest.get("timestamp", ""),
-                "strategy": latest.get("strategy_name", ""),
-                "symbol": "",
-                "timeframe": "",
-                "metrics": {
-                    "total_iterations": latest.get("total_iterations", ""),
-                    "total_llm_tokens": latest.get("total_llm_tokens", ""),
-                    "total_llm_calls": latest.get("total_llm_calls", ""),
-                    "last_decision": latest.get("last_decision", ""),
+            candidates.append(
+                {
+                    "source": "runs",
+                    "kind": latest.get("mode", ""),
+                    "id": latest.get("session_id", ""),
+                    "timestamp": latest.get("timestamp", ""),
+                    "strategy": latest.get("strategy_name", ""),
+                    "symbol": "",
+                    "timeframe": "",
+                    "metrics": {
+                        "total_iterations": latest.get("total_iterations", ""),
+                        "total_llm_tokens": latest.get("total_llm_tokens", ""),
+                        "total_llm_calls": latest.get("total_llm_calls", ""),
+                        "last_decision": latest.get("last_decision", ""),
+                    },
+                    "path": latest.get("trace_path", ""),
+                    "timestamp_dt": latest.get("timestamp_dt"),
                 },
-                "path": latest.get("trace_path", ""),
-                "timestamp_dt": latest.get("timestamp_dt"),
-            })
+            )
+
+    if not builder_sessions_df.empty:
+        df = builder_sessions_df.copy()
+        df["timestamp_dt"] = pd.to_datetime(df["last_modified"], errors="coerce", utc=True)
+        df = df.dropna(subset=["timestamp_dt"])
+        if not df.empty:
+            latest = df.sort_values("timestamp_dt", ascending=False).iloc[0]
+            candidates.append(
+                {
+                    "source": "builder_sessions",
+                    "kind": "builder_session",
+                    "id": latest.get("session_id", ""),
+                    "timestamp": latest.get("last_modified", ""),
+                    "strategy": latest.get("session_id", ""),
+                    "symbol": "",
+                    "timeframe": "",
+                    "metrics": {
+                        "best_return_pct": latest.get("best_return_pct", ""),
+                        "best_sharpe": latest.get("best_sharpe", ""),
+                        "total_iterations": latest.get("total_iterations", ""),
+                        "status": latest.get("status", ""),
+                    },
+                    "path": latest.get("session_dir", ""),
+                    "timestamp_dt": latest.get("timestamp_dt"),
+                },
+            )
 
     if not candidates:
         return None
 
-    candidates.sort(key=lambda x: x.get("timestamp_dt") or pd.Timestamp.min, reverse=True)
+    candidates.sort(key=lambda x: x.get("timestamp_dt") or pd.Timestamp.min.tz_localize("UTC"), reverse=True)
     return candidates[0]
 
 
-def _render_latest_run(backtest_overview: pd.DataFrame, runs_overview: pd.DataFrame) -> None:
+def _render_latest_run(
+    backtest_overview: pd.DataFrame,
+    runs_overview: pd.DataFrame,
+    builder_sessions_df: pd.DataFrame,
+) -> None:
     st.subheader("🕒 Dernier run")
 
     session_result = st.session_state.get("last_run_result")
@@ -1258,13 +2082,13 @@ def _render_latest_run(backtest_overview: pd.DataFrame, runs_overview: pd.DataFr
         st.caption(
             f"Run: {meta.get('run_id', 'n/a')} | "
             f"{meta.get('strategy', 'n/a')} | "
-            f"{meta.get('symbol', 'n/a')}/{meta.get('timeframe', 'n/a')}"
+            f"{meta.get('symbol', 'n/a')}/{meta.get('timeframe', 'n/a')}",
         )
         if session_meta and isinstance(session_meta, dict):
             st.caption(f"Origine: {session_meta.get('run_id', 'n/a')}")
         return
 
-    latest = _pick_latest_from_catalogs(backtest_overview, runs_overview)
+    latest = _pick_latest_from_catalogs(backtest_overview, runs_overview, builder_sessions_df)
     if latest is None:
         st.write("ℹ️ Aucun run détecté pour le moment.")
         return
@@ -1290,22 +2114,37 @@ def _render_latest_run(backtest_overview: pd.DataFrame, runs_overview: pd.DataFr
         st.caption(
             f"{latest.get('kind', '')} | {latest.get('id', '')} | "
             f"{latest.get('strategy', '')} {latest.get('symbol', '')}/{latest.get('timeframe', '')} | "
-            f"{latest.get('timestamp', '')}"
+            f"{latest.get('timestamp', '')}",
         )
     else:
-        st.write(f"ℹ️ Dernier run LLM ({RUNS_DIR})")
         metrics = latest.get("metrics", {})
-        st.caption(
-            f"Mode: {latest.get('kind', '')} | Session: {latest.get('id', '')} | "
-            f"Stratégie: {latest.get('strategy', '')} | {latest.get('timestamp', '')}"
-        )
-        if metrics:
+        if latest["source"] == "builder_sessions":
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Best return", f"{coerce_metric_float(metrics.get('best_return_pct', 0)):.1f}%")
+            with col2:
+                st.metric("Best sharpe", f"{coerce_metric_float(metrics.get('best_sharpe', 0)):.2f}")
+            with col3:
+                st.metric("Itérations", f"{int(coerce_metric_float(metrics.get('total_iterations', 0))):d}")
+            with col4:
+                st.metric("Statut", str(metrics.get("status", "") or "n/a"))
             st.caption(
-                f"Iter: {metrics.get('total_iterations', 'n/a')} | "
-                f"LLM calls: {metrics.get('total_llm_calls', 'n/a')} | "
-                f"Tokens: {metrics.get('total_llm_tokens', 'n/a')} | "
-                f"Derniere decision: {metrics.get('last_decision', 'n/a')}"
+                f"Session Builder disque: {latest.get('id', '')} | "
+                f"{latest.get('timestamp', '')}",
             )
+        else:
+            st.write(f"ℹ️ Dernier run LLM ({RUNS_DIR})")
+            st.caption(
+                f"Mode: {latest.get('kind', '')} | Session: {latest.get('id', '')} | "
+                f"Stratégie: {latest.get('strategy', '')} | {latest.get('timestamp', '')}",
+            )
+            if metrics:
+                st.caption(
+                    f"Iter: {metrics.get('total_iterations', 'n/a')} | "
+                    f"LLM calls: {metrics.get('total_llm_calls', 'n/a')} | "
+                    f"Tokens: {metrics.get('total_llm_tokens', 'n/a')} | "
+                    f"Derniere decision: {metrics.get('last_decision', 'n/a')}",
+                )
 
 
 def _render_overview_filters(df: pd.DataFrame) -> pd.DataFrame:
@@ -1345,44 +2184,130 @@ def _render_charts(df: pd.DataFrame) -> None:
     if not numeric_cols:
         return
 
+    controls_col1, controls_col2 = st.columns(2)
+    with controls_col1:
+        return_chart_mode = st.radio(
+            "Graphique rendement",
+            options=[CHART_MODE_COLUMNS, CHART_MODE_POINTS],
+            index=0,
+            horizontal=True,
+            key="results_hub_return_chart_mode",
+        )
+    with controls_col2:
+        risk_chart_mode = st.radio(
+            "Graphique Sharpe / drawdown",
+            options=[CHART_MODE_POINTS, CHART_MODE_COLUMNS],
+            index=0,
+            horizontal=True,
+            key="results_hub_risk_chart_mode",
+        )
+
     if PLOTLY_AVAILABLE:
         if "total_return_pct" in df.columns:
-            fig = px.histogram(df, x="total_return_pct", nbins=30, title="Distribution Return %")
+            fig = _build_return_chart(df, return_chart_mode)
             st.plotly_chart(fig, width="stretch")
         if {"sharpe_ratio", "max_drawdown_pct"}.issubset(df.columns):
-            fig = px.scatter(
-                df,
-                x="max_drawdown_pct",
-                y="sharpe_ratio",
-                color="type" if "type" in df.columns else None,
-                title="Sharpe vs Max Drawdown",
-                hover_data=["id", "strategy", "symbol", "timeframe"],
-            )
+            fig = _build_sharpe_drawdown_chart(df, risk_chart_mode)
             st.plotly_chart(fig, width="stretch")
     else:
-        st.bar_chart(df["total_return_pct"].dropna(), height=200)
+        if "total_return_pct" in df.columns:
+            if return_chart_mode == CHART_MODE_POINTS:
+                return_chart_df = df[["total_return_pct"]].dropna().reset_index(drop=True)
+                return_chart_df["run_index"] = return_chart_df.index + 1
+                st.scatter_chart(return_chart_df, x="run_index", y="total_return_pct", height=240)
+            else:
+                st.bar_chart(df["total_return_pct"].dropna(), height=240)
+        if {"sharpe_ratio", "max_drawdown_pct"}.issubset(df.columns):
+            risk_df = df[["max_drawdown_pct", "sharpe_ratio"]].dropna()
+            if risk_chart_mode == CHART_MODE_COLUMNS:
+                st.bar_chart(risk_df.set_index("max_drawdown_pct")["sharpe_ratio"], height=260)
+            else:
+                st.scatter_chart(risk_df, x="max_drawdown_pct", y="sharpe_ratio", height=260)
 
 
-def _get_numeric_column_config() -> Dict[str, Any]:
+def _build_return_chart(df: pd.DataFrame, chart_mode: str):
+    plot_cols = ["total_return_pct"]
+    if "type" in df.columns:
+        plot_cols.append("type")
+    plot_df = df[plot_cols].dropna(subset=["total_return_pct"]).reset_index(drop=True)
+    if chart_mode == CHART_MODE_POINTS:
+        plot_df["run_index"] = plot_df.index + 1
+        return px.scatter(
+            plot_df,
+            x="run_index",
+            y="total_return_pct",
+            color="type" if "type" in plot_df.columns else None,
+            title="Distribution Return %",
+            labels={"run_index": "Run #", "total_return_pct": "total_return_pct"},
+        )
+    return px.histogram(plot_df, x="total_return_pct", nbins=30, title="Distribution Return %")
+
+
+def _build_sharpe_drawdown_chart(df: pd.DataFrame, chart_mode: str):
+    hover_cols = [col for col in ["id", "strategy", "symbol", "timeframe"] if col in df.columns]
+    plot_cols = ["max_drawdown_pct", "sharpe_ratio"] + (["type"] if "type" in df.columns else []) + hover_cols
+    plot_df = df[plot_cols].dropna(subset=["max_drawdown_pct", "sharpe_ratio"])
+    if chart_mode == CHART_MODE_COLUMNS:
+        return px.bar(
+            plot_df.sort_values("max_drawdown_pct"),
+            x="max_drawdown_pct",
+            y="sharpe_ratio",
+            color="type" if "type" in plot_df.columns else None,
+            title="Sharpe vs Max Drawdown",
+            hover_data=hover_cols,
+        )
+    return px.scatter(
+        plot_df,
+        x="max_drawdown_pct",
+        y="sharpe_ratio",
+        color="type" if "type" in plot_df.columns else None,
+        title="Sharpe vs Max Drawdown",
+        hover_data=hover_cols,
+    )
+
+
+def _get_numeric_column_config() -> dict[str, Any]:
     """Configuration des colonnes pour un tableau dense et lisible dans st.dataframe."""
     return {
+        "select": st.column_config.CheckboxColumn("Sel.", width="small"),
+        "hub_source": st.column_config.TextColumn("Source", width="medium"),
+        "hub_type": st.column_config.TextColumn("Type", width="medium"),
+        "hub_action_scope": st.column_config.TextColumn("Action", width="small"),
         "type": st.column_config.TextColumn("Type", width="small"),
         "id": st.column_config.TextColumn("Id", width="small"),
         "run_id": st.column_config.TextColumn("Run", width="small"),
+        "session_id": st.column_config.TextColumn("Session", width="medium"),
+        "entry_id": st.column_config.TextColumn("Entrée", width="medium"),
+        "candidate_id": st.column_config.TextColumn("Candidate", width="medium"),
         "path": st.column_config.TextColumn("Path", width="medium"),
         "storage_path": st.column_config.TextColumn("Storage", width="medium"),
         "timestamp": st.column_config.TextColumn("Timestamp", width="medium"),
         "mode": st.column_config.TextColumn("Mode", width="small"),
         "status": st.column_config.TextColumn("Status", width="small"),
         "strategy": st.column_config.TextColumn("Strategy", width="large"),
+        "strategy_name_link": st.column_config.LinkColumn(
+            "Stratégie",
+            width="large",
+            display_text=r".*#(.*)$",
+        ),
         "symbol": st.column_config.TextColumn("Symbol", width="small"),
         "timeframe": st.column_config.TextColumn("TF", width="small"),
+        "source_ref": st.column_config.TextColumn("Source", width="medium"),
+        "source_run_id": st.column_config.TextColumn("Run source", width="small"),
+        "replayable": st.column_config.CheckboxColumn("Replay", width="small"),
         "period_start": st.column_config.TextColumn("Début", width="medium"),
         "period_end": st.column_config.TextColumn("Fin", width="medium"),
         "artifact_type": st.column_config.TextColumn("Artefact", width="small"),
         "category": st.column_config.TextColumn("Catégorie", width="small"),
         "catalog_category": st.column_config.TextColumn("Catégorie cat.", width="small"),
         "catalog_status": st.column_config.TextColumn("Statut cat.", width="small"),
+        "phase": st.column_config.TextColumn("Phase", width="small"),
+        "decision": st.column_config.TextColumn("Décision", width="small"),
+        "benchmark_pass_summary": st.column_config.TextColumn("Benchmarks", width="small"),
+        "context_pass_summary": st.column_config.TextColumn("Contextes", width="small"),
+        "required_benchmark_name": st.column_config.TextColumn("Benchmark requis", width="medium"),
+        "contradiction_state": st.column_config.TextColumn("Consensus", width="small"),
+        "rejection_reason": st.column_config.TextColumn("Rejet / diagnostic", width="large"),
         "open_folder": st.column_config.LinkColumn("Dossier", display_text="📂 Ouvrir"),
         "total_pnl": st.column_config.NumberColumn("PnL ($)", format="$%.2f"),
         "pnl_per_day": st.column_config.NumberColumn("PnL/jour ($)", format="$%.2f"),
@@ -1394,7 +2319,7 @@ def _get_numeric_column_config() -> Dict[str, Any]:
         "max_drawdown_pct": st.column_config.NumberColumn("Max DD (%)", format="%.1f%%"),
         "win_rate_pct": st.column_config.NumberColumn("Win Rate (%)", format="%.1f%%"),
         "data_coverage_pct": st.column_config.NumberColumn("Couverture données (%)", format="%.1f%%"),
-        "catalog_coverage_pct": st.column_config.NumberColumn("Couverture bench (%)", format="%.1f%%"),
+        "catalog_coverage_pct": st.column_config.NumberColumn("Couverture validation (%)", format="%.1f%%"),
         "profit_factor": st.column_config.NumberColumn("PF", format="%.2f"),
         "total_trades": st.column_config.NumberColumn("Trades", format="%d"),
         "n_bars": st.column_config.NumberColumn("Bars", format="%d"),
@@ -1408,6 +2333,9 @@ def _get_numeric_column_config() -> Dict[str, Any]:
         "total_combinations": st.column_config.NumberColumn("Combinaisons", format="%d"),
         "max_combos": st.column_config.NumberColumn("Max combos", format="%d"),
         "n_workers": st.column_config.NumberColumn("Workers", format="%d"),
+        "iteration": st.column_config.NumberColumn("Itération", format="%d"),
+        "builder_iteration": st.column_config.NumberColumn("Iter builder", format="%d"),
+        "leaderboard_rank": st.column_config.NumberColumn("Rank", format="%d"),
         "total_iterations": st.column_config.NumberColumn("Itérations", format="%d"),
         "total_llm_tokens": st.column_config.NumberColumn("Tokens LLM", format="%d"),
         "total_llm_calls": st.column_config.NumberColumn("Appels LLM", format="%d"),
@@ -1419,15 +2347,702 @@ def _get_numeric_column_config() -> Dict[str, Any]:
         "metrics_max_drawdown_pct": st.column_config.NumberColumn("Max DD (%)", format="%.1f%%"),
         "metrics_profit_factor": st.column_config.NumberColumn("PF", format="%.2f"),
         "metrics_total_trades": st.column_config.NumberColumn("Trades", format="%d"),
+        "best_return_pct": st.column_config.NumberColumn("Best return (%)", format="%.2f%%"),
+        "best_sharpe": st.column_config.NumberColumn("Best Sharpe", format="%.2f"),
+        "best_trades": st.column_config.NumberColumn("Best trades", format="%d"),
+        "best_profit_factor": st.column_config.NumberColumn("Best PF", format="%.2f"),
+        "best_max_drawdown_pct": st.column_config.NumberColumn("Best DD (%)", format="%.1f%%"),
+        "sweep_robustness_pct": st.column_config.NumberColumn("Robustesse sweep (%)", format="%.1f%%"),
+        "wfa_stability": st.column_config.NumberColumn("WFA stabilité", format="%.2f"),
+        "wfa_avg_test_return_pct": st.column_config.NumberColumn("WFA return test (%)", format="%.2f%%"),
+        "wfa_avg_test_sharpe": st.column_config.NumberColumn("WFA Sharpe test", format="%.2f"),
+        "wfa_overfitting_ratio": st.column_config.NumberColumn("WFA overfit", format="%.2f"),
         "return_pct": st.column_config.NumberColumn("Return (%)", format="%.2f%%"),
         "sharpe": st.column_config.NumberColumn("Sharpe", format="%.2f"),
         "pnl": st.column_config.NumberColumn("PnL ($)", format="$%.2f"),
         "trades": st.column_config.NumberColumn("Trades", format="%d"),
-        "coverage_pct": st.column_config.NumberColumn("Couverture bench (%)", format="%.1f%%"),
-        "configured_context_count": st.column_config.NumberColumn("Ctx cfg", format="%d"),
-        "loaded_context_count": st.column_config.NumberColumn("Ctx chargés", format="%d"),
-        "missing_context_count": st.column_config.NumberColumn("Ctx manquants", format="%d"),
+        "params_used_preview": st.column_config.TextColumn("Params", width="large"),
+        "coverage_pct": st.column_config.NumberColumn("Couverture ctx uniques (%)", format="%.1f%%"),
+        "benchmark_slot_coverage_pct": st.column_config.NumberColumn("Couverture packs (%)", format="%.1f%%"),
+        "configured_context_count": st.column_config.NumberColumn("Ctx uniques cfg", format="%d"),
+        "loaded_context_count": st.column_config.NumberColumn("Ctx uniques chargés", format="%d"),
+        "missing_context_count": st.column_config.NumberColumn("Ctx exclus/manquants", format="%d"),
+        "_row_key": None,
+        "_row_origin": None,
+        "_origin_index": None,
     }
+
+
+_RESULTS_HUB_TABLE_COLUMNS = [
+    "select",
+    "hub_source",
+    "hub_type",
+    "run_id",
+    "id",
+    "session_id",
+    "entry_id",
+    "strategy_name_link",
+    "strategy",
+    "symbol",
+    "timeframe",
+    "status",
+    "mode",
+    "artifact_type",
+    "category",
+    "catalog_category",
+    "catalog_status",
+    "phase",
+    "decision",
+    "total_pnl",
+    "pnl_per_day",
+    "pnl_per_day_covered",
+    "total_return_pct",
+    "return_pct",
+    "best_return_pct",
+    "sharpe_ratio",
+    "sharpe",
+    "best_sharpe",
+    "max_drawdown_pct",
+    "profit_factor",
+    "best_profit_factor",
+    "total_trades",
+    "trades",
+    "best_trades",
+    "benchmark_return_pct",
+    "alpha_simple_pct",
+    "benchmark_pass_summary",
+    "context_pass_summary",
+    "required_benchmark_name",
+    "contradiction_state",
+    "coverage_pct",
+    "catalog_coverage_pct",
+    "configured_context_count",
+    "loaded_context_count",
+    "missing_context_count",
+    "sweep_robustness_pct",
+    "wfa_stability",
+    "wfa_avg_test_return_pct",
+    "wfa_avg_test_sharpe",
+    "wfa_overfitting_ratio",
+    "rejection_reason",
+    "source_ref",
+    "source_run_id",
+    "replayable",
+    "promotable",
+    "open_folder",
+    "params_used_preview",
+    "objective_excerpt",
+    "_row_key",
+    "_row_origin",
+    "_origin_index",
+]
+
+
+def _first_non_empty(row: Mapping[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = row.get(key)
+        normalized = _normalize_cell(value)
+        if normalized not in (None, ""):
+            return normalized
+    return ""
+
+
+def _canonicalize_result_metrics(row: dict[str, Any]) -> None:
+    metric_aliases = {
+        "total_pnl": ["metrics_total_pnl", "pnl"],
+        "total_return_pct": ["metrics_total_return_pct", "return_pct", "best_return_pct"],
+        "benchmark_return_pct": ["metrics_benchmark_return_pct"],
+        "alpha_simple_pct": ["metrics_alpha_simple_pct"],
+        "sharpe_ratio": ["metrics_sharpe_ratio", "sharpe", "best_sharpe"],
+        "max_drawdown_pct": ["metrics_max_drawdown_pct", "best_max_drawdown_pct"],
+        "profit_factor": ["metrics_profit_factor", "best_profit_factor"],
+        "total_trades": ["metrics_total_trades", "trades", "best_trades", "n_trades"],
+    }
+    for target, aliases in metric_aliases.items():
+        if _normalize_cell(row.get(target)) not in (None, ""):
+            continue
+        fallback = _first_non_empty(row, *aliases)
+        if fallback not in (None, ""):
+            row[target] = fallback
+
+
+def _append_hub_rows(
+    rows: list[dict[str, Any]],
+    source_df: pd.DataFrame,
+    *,
+    origin: str,
+    source_label: str,
+    type_label: str,
+    action_scope: str = "",
+) -> None:
+    if source_df.empty:
+        return
+    for idx, raw_row in enumerate(source_df.to_dict(orient="records")):
+        row = {key: _normalize_cell(value) for key, value in raw_row.items()}
+        row["_row_origin"] = origin
+        row["_origin_index"] = idx
+        row["hub_source"] = source_label
+        row["hub_type"] = str(_first_non_empty(row, "type", "artifact_type") or type_label)
+        row["hub_action_scope"] = action_scope
+        row["run_id"] = _first_non_empty(row, "run_id", "source_run_id") or row.get("run_id", "")
+        row["id"] = _first_non_empty(row, "id", "session_id", "entry_id", "candidate_id", "run_id")
+        row["strategy"] = _first_non_empty(row, "strategy", "strategy_name")
+        row["symbol"] = _first_non_empty(row, "symbol", "source_symbol")
+        row["timeframe"] = _first_non_empty(row, "timeframe", "source_timeframe")
+        row["catalog_category"] = _first_non_empty(row, "catalog_category", "category")
+        row["replayable"] = bool(row.get("replayable")) or action_scope in {"catalog_replay", "run_replay"}
+        row["promotable"] = action_scope == "run_replay"
+        _canonicalize_result_metrics(row)
+        stable_id = _first_non_empty(row, "run_id", "session_id", "entry_id", "candidate_id", "id") or idx
+        row["_row_key"] = f"{origin}:{stable_id}:{idx}"
+        rows.append(row)
+
+
+def _build_results_hub_table_df(
+    *,
+    backtest_overview: pd.DataFrame,
+    unified_overview: pd.DataFrame,
+    runs_overview: pd.DataFrame,
+    builder_sessions_df: pd.DataFrame,
+    builder_iterations_df: pd.DataFrame,
+    strategy_catalog_df: pd.DataFrame,
+    graduation_df: pd.DataFrame,
+    positive_import_df: pd.DataFrame,
+) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+
+    _append_hub_rows(
+        rows,
+        backtest_overview,
+        origin="backtest_overview",
+        source_label="Backtests / optimisations",
+        type_label="résultat",
+    )
+    _append_hub_rows(
+        rows,
+        runs_overview,
+        origin="runs_overview",
+        source_label="Runs LLM",
+        type_label="run_llm",
+    )
+    _append_hub_rows(
+        rows,
+        builder_sessions_df,
+        origin="builder_sessions",
+        source_label="Builder sessions",
+        type_label="builder_session",
+    )
+    _append_hub_rows(
+        rows,
+        builder_iterations_df,
+        origin="builder_iterations",
+        source_label="Builder iterations",
+        type_label="builder_iteration",
+    )
+    _append_hub_rows(
+        rows,
+        unified_overview,
+        origin="unified_overview",
+        source_label="Stock unifié",
+        type_label="artefact",
+        action_scope="run_replay",
+    )
+    catalog_df = strategy_catalog_df.copy()
+    if not catalog_df.empty:
+        catalog_df["replayable"] = catalog_df.apply(lambda row: _catalog_entry_has_replay_source(row.to_dict()), axis=1)
+    _append_hub_rows(
+        rows,
+        catalog_df,
+        origin="strategy_catalog",
+        source_label="Strategy catalog",
+        type_label="catalog_entry",
+        action_scope="catalog_replay",
+    )
+    graduation_linked_df = _decorate_graduation_strategy_links(graduation_df)
+    _append_hub_rows(
+        rows,
+        graduation_linked_df,
+        origin="graduation_sandbox",
+        source_label="Graduation sandbox",
+        type_label="graduation_candidate",
+    )
+    positive_linked_df = _decorate_graduation_strategy_links(positive_import_df)
+    _append_hub_rows(
+        rows,
+        positive_linked_df,
+        origin="graduation_positive",
+        source_label="Graduation positifs",
+        type_label="graduation_candidate",
+    )
+
+    if not rows:
+        return pd.DataFrame()
+
+    table_df = pd.DataFrame(rows)
+    table_df["select"] = False
+    numeric_columns = [
+        "total_pnl",
+        "pnl_per_day",
+        "pnl_per_day_covered",
+        "total_return_pct",
+        "return_pct",
+        "best_return_pct",
+        "sharpe_ratio",
+        "sharpe",
+        "best_sharpe",
+        "max_drawdown_pct",
+        "profit_factor",
+        "best_profit_factor",
+        "total_trades",
+        "trades",
+        "best_trades",
+        "benchmark_return_pct",
+        "alpha_simple_pct",
+        "coverage_pct",
+        "catalog_coverage_pct",
+        "configured_context_count",
+        "loaded_context_count",
+        "missing_context_count",
+        "sweep_robustness_pct",
+        "wfa_stability",
+        "wfa_avg_test_return_pct",
+        "wfa_avg_test_sharpe",
+        "wfa_overfitting_ratio",
+    ]
+    table_df = _coerce_numeric(table_df, numeric_columns)
+    sort_cols = [col for col in ["total_pnl", "sharpe_ratio", "total_return_pct"] if col in table_df.columns]
+    if sort_cols:
+        table_df = table_df.sort_values(sort_cols, ascending=[False] * len(sort_cols), na_position="last")
+    return table_df.reset_index(drop=True)
+
+
+def _render_results_hub_unified_filters(table_df: pd.DataFrame) -> pd.DataFrame:
+    if table_df.empty:
+        return table_df
+
+    source_options = sorted(table_df["hub_source"].dropna().astype(str).unique().tolist())
+    type_options = sorted(table_df["hub_type"].dropna().astype(str).unique().tolist())
+    strategy_options = sorted([value for value in table_df["strategy"].dropna().astype(str).unique().tolist() if value])
+    symbol_options = sorted([value for value in table_df["symbol"].dropna().astype(str).unique().tolist() if value])
+    timeframe_options = sorted([value for value in table_df["timeframe"].dropna().astype(str).unique().tolist() if value])
+    catalog_options = sorted(
+        [value for value in table_df["catalog_category"].dropna().astype(str).unique().tolist() if value],
+    )
+
+    filter_cols = st.columns(4)
+    selected_sources = filter_cols[0].multiselect(
+        "Sources",
+        options=source_options,
+        default=source_options,
+        key="results_hub_unified_sources",
+    )
+    selected_types = filter_cols[1].multiselect(
+        "Types",
+        options=type_options,
+        default=type_options,
+        key="results_hub_unified_types",
+    )
+    selected_strategies = filter_cols[2].multiselect(
+        "Stratégies",
+        options=strategy_options,
+        default=[],
+        key="results_hub_unified_strategies",
+    )
+    selected_symbols = filter_cols[3].multiselect(
+        "Symboles",
+        options=symbol_options,
+        default=[],
+        key="results_hub_unified_symbols",
+    )
+
+    filter_cols_2 = st.columns(4)
+    selected_timeframes = filter_cols_2[0].multiselect(
+        "Timeframes",
+        options=timeframe_options,
+        default=[],
+        key="results_hub_unified_timeframes",
+    )
+    selected_categories = filter_cols_2[1].multiselect(
+        "Catégories catalogue",
+        options=catalog_options,
+        default=[],
+        key="results_hub_unified_catalog_categories",
+    )
+    action_only = filter_cols_2[2].checkbox(
+        "Actionnables uniquement",
+        value=False,
+        key="results_hub_unified_action_only",
+    )
+    search_term = filter_cols_2[3].text_input(
+        "Recherche",
+        placeholder="run, session, stratégie, diagnostic...",
+        key="results_hub_unified_search",
+    ).strip()
+
+    filtered = table_df.copy()
+    if selected_sources:
+        filtered = filtered[filtered["hub_source"].astype(str).isin(selected_sources)]
+    if selected_types:
+        filtered = filtered[filtered["hub_type"].astype(str).isin(selected_types)]
+    if selected_strategies:
+        filtered = filtered[filtered["strategy"].astype(str).isin(selected_strategies)]
+    if selected_symbols:
+        filtered = filtered[filtered["symbol"].astype(str).isin(selected_symbols)]
+    if selected_timeframes:
+        filtered = filtered[filtered["timeframe"].astype(str).isin(selected_timeframes)]
+    if selected_categories:
+        filtered = filtered[filtered["catalog_category"].astype(str).isin(selected_categories)]
+    if action_only:
+        replayable = filtered.get("replayable", pd.Series(False, index=filtered.index)).fillna(False).astype(bool)
+        promotable = filtered.get("promotable", pd.Series(False, index=filtered.index)).fillna(False).astype(bool)
+        filtered = filtered[replayable | promotable]
+    if search_term:
+        lower_term = search_term.lower()
+        searchable_cols = [
+            col
+            for col in [
+                "hub_source",
+                "hub_type",
+                "run_id",
+                "id",
+                "session_id",
+                "entry_id",
+                "strategy",
+                "symbol",
+                "timeframe",
+                "status",
+                "phase",
+                "decision",
+                "rejection_reason",
+                "objective_excerpt",
+                "source_ref",
+            ]
+            if col in filtered.columns
+        ]
+        if searchable_cols:
+            mask = pd.Series(False, index=filtered.index)
+            for col in searchable_cols:
+                mask = mask | filtered[col].astype(str).str.lower().str.contains(lower_term, na=False)
+            filtered = filtered[mask]
+
+    return filtered.reset_index(drop=True)
+
+
+def _render_results_hub_summary(table_df: pd.DataFrame, filtered_df: pd.DataFrame) -> None:
+    metric_cols = st.columns(5)
+    metric_cols[0].metric("Lignes visibles", f"{len(filtered_df)}/{len(table_df)}")
+    metric_cols[1].metric(
+        "Sources",
+        int(filtered_df["hub_source"].nunique()) if "hub_source" in filtered_df.columns and not filtered_df.empty else 0,
+    )
+    metric_cols[2].metric(
+        "Replayables",
+        int(filtered_df.get("replayable", pd.Series(dtype=bool)).fillna(False).astype(bool).sum()),
+    )
+    metric_cols[3].metric(
+        "Promouvables",
+        int(filtered_df.get("promotable", pd.Series(dtype=bool)).fillna(False).astype(bool).sum()),
+    )
+    best_return = pd.to_numeric(filtered_df.get("total_return_pct", pd.Series(dtype=float)), errors="coerce").max()
+    metric_cols[4].metric("Best return", "-" if pd.isna(best_return) else f"{best_return:.2f}%")
+
+    if not filtered_df.empty and "hub_source" in filtered_df.columns:
+        source_counts = filtered_df["hub_source"].astype(str).value_counts().to_dict()
+        st.caption("Répartition visible: " + " | ".join(f"{source}: {count}" for source, count in source_counts.items()))
+
+
+def _render_results_hub_table(filtered_df: pd.DataFrame) -> pd.DataFrame:
+    if filtered_df.empty:
+        st.write("ℹ️ Aucun résultat ne correspond aux filtres.")
+        return filtered_df
+
+    display_cols = [col for col in _RESULTS_HUB_TABLE_COLUMNS if col in filtered_df.columns]
+    display_df = filtered_df[display_cols].copy()
+    if "strategy_name_link" in display_df.columns and "strategy" in display_df.columns:
+        linked_mask = display_df["strategy_name_link"].astype(str).str.contains(r"://", na=False)
+        display_df.loc[~linked_mask, "strategy_name_link"] = display_df.loc[~linked_mask, "strategy"]
+    edited = st.data_editor(
+        display_df,
+        width="stretch",
+        hide_index=True,
+        column_config=_get_numeric_column_config(),
+        disabled=[col for col in display_df.columns if col != "select"],
+        key="results_hub_unified_table",
+    )
+    if not isinstance(edited, pd.DataFrame) or "select" not in edited.columns or "_row_key" not in edited.columns:
+        return pd.DataFrame()
+    selected_keys = edited.loc[edited["select"] == True, "_row_key"].astype(str).tolist()  # noqa: E712
+    if not selected_keys:
+        return pd.DataFrame()
+    return filtered_df[filtered_df["_row_key"].astype(str).isin(selected_keys)].copy()
+
+
+def _source_rows_by_run_id(df: pd.DataFrame) -> dict[str, dict[str, Any]]:
+    if df.empty or "run_id" not in df.columns:
+        return {}
+    return {
+        str(row.get("run_id") or ""): row
+        for row in df.to_dict(orient="records")
+        if str(row.get("run_id") or "").strip()
+    }
+
+
+def _source_rows_by_entry_id(df: pd.DataFrame) -> dict[str, dict[str, Any]]:
+    if df.empty or "entry_id" not in df.columns:
+        return {}
+    return {
+        str(row.get("entry_id") or ""): row
+        for row in df.to_dict(orient="records")
+        if str(row.get("entry_id") or "").strip()
+    }
+
+
+def _render_results_hub_actions(
+    selected_df: pd.DataFrame,
+    *,
+    unified_overview: pd.DataFrame,
+    strategy_catalog_df: pd.DataFrame,
+) -> None:
+    if selected_df.empty:
+        st.caption("Sélectionnez une ou plusieurs lignes dans le tableau unique pour activer replay ou promotion.")
+        return
+
+    st.caption(f"Sélection active: {len(selected_df)} ligne(s).")
+    source_rows = _source_rows_by_run_id(unified_overview)
+    catalog_rows = _source_rows_by_entry_id(strategy_catalog_df)
+    selected_records = selected_df.to_dict(orient="records")
+
+    selected_run_rows = []
+    for row in selected_records:
+        if row.get("_row_origin") != "unified_overview":
+            continue
+        run_id = str(row.get("run_id") or "").strip()
+        source_row = source_rows.get(run_id)
+        if source_row is not None:
+            selected_run_rows.append(source_row)
+
+    selected_catalog_entry = None
+    catalog_selected = [row for row in selected_records if row.get("_row_origin") == "strategy_catalog"]
+    if len(catalog_selected) == 1:
+        selected_catalog_entry = catalog_rows.get(str(catalog_selected[0].get("entry_id") or "").strip())
+
+    target_category = st.selectbox(
+        "Cible catalogue",
+        CATEGORY_ORDER,
+        index=CATEGORY_ORDER.index("p3_benchmark_consensus"),
+        help="Utilisé par les actions de promotion depuis les lignes `Stock unifié`.",
+        key="results_hub_unified_target_category",
+    )
+
+    action_cols = st.columns(4)
+    with action_cols[0]:
+        if st.button(
+            "Précharger replay",
+            disabled=selected_catalog_entry is None,
+            use_container_width=True,
+            key="results_hub_unified_preload_replay",
+        ):
+            replay_request, replay_msg = _build_catalog_replay_request(
+                selected_catalog_entry or {},
+                unified_overview,
+                auto_run=False,
+            )
+            if replay_request is None:
+                st.warning(replay_msg)
+            else:
+                st.session_state["_catalog_replay_request"] = replay_request
+                st.session_state["saved_runs_status"] = replay_msg
+                st.rerun()
+    with action_cols[1]:
+        if st.button(
+            "Rejouer maintenant",
+            type="primary",
+            disabled=selected_catalog_entry is None,
+            use_container_width=True,
+            key="results_hub_unified_run_replay",
+        ):
+            replay_request, replay_msg = _build_catalog_replay_request(
+                selected_catalog_entry or {},
+                unified_overview,
+                auto_run=True,
+            )
+            if replay_request is None:
+                st.warning(replay_msg)
+            else:
+                st.session_state["_catalog_replay_request"] = replay_request
+                st.session_state["saved_runs_status"] = replay_msg
+                st.rerun()
+    with action_cols[2]:
+        if st.button(
+            "Promouvoir sélection",
+            disabled=not selected_run_rows,
+            use_container_width=True,
+            key="results_hub_unified_promote",
+        ):
+            promoted = 0
+            failures: list[str] = []
+            for row in selected_run_rows:
+                try:
+                    upsert_from_saved_run(row, target_category=target_category)
+                    promoted += 1
+                except Exception as exc:
+                    failures.append(f"{row.get('run_id', '?')}: {exc}")
+            if promoted:
+                st.success(f"✅ {promoted} stratégie(s) synchronisée(s) vers le catalogue.")
+            if failures:
+                st.warning(" | ".join(failures[:5]))
+            st.rerun()
+    with action_cols[3]:
+        if st.button(
+            "Promouvoir + rejouer",
+            disabled=len(selected_run_rows) != 1,
+            use_container_width=True,
+            key="results_hub_unified_promote_and_replay",
+        ):
+            selected_candidate_row = selected_run_rows[0] if selected_run_rows else None
+            if selected_candidate_row is None:
+                st.warning("Sélectionnez exactement un run source.")
+            else:
+                try:
+                    upsert_from_saved_run(selected_candidate_row, target_category=target_category)
+                    replay_request, replay_msg = _build_run_row_replay_request(
+                        selected_candidate_row,
+                        auto_run=True,
+                    )
+                except Exception as exc:
+                    replay_request = None
+                    replay_msg = str(exc)
+                if replay_request is None:
+                    st.warning(replay_msg)
+                else:
+                    st.session_state["_catalog_replay_request"] = replay_request
+                    st.session_state["saved_runs_status"] = replay_msg
+                    st.rerun()
+
+    with st.expander("Détail ligne sélectionnée", expanded=False):
+        st.json(selected_records[0] if len(selected_records) == 1 else selected_records)
+
+
+def _render_graduation_controls_and_progress(
+    *,
+    sandbox_payload: dict[str, Any],
+    sandbox_df: pd.DataFrame,
+    positive_payload: dict[str, Any],
+    positive_df: pd.DataFrame,
+) -> None:
+    st.markdown("### Filtrage intelligent des résultats")
+    control_col_a, control_col_b, control_col_c, control_col_d, control_col_e, control_col_f, control_col_g = st.columns(
+        [1, 1, 1, 1, 1.1, 1.2, 0.8],
+    )
+    sync_catalog = control_col_e.checkbox(
+        "Synchroniser le strategy catalog",
+        value=True,
+        key="graduation_sync_catalog",
+    )
+    include_legacy_artifact_roots = control_col_f.checkbox(
+        "Inclure roots legacy",
+        value=False,
+        key="graduation_include_legacy_roots",
+        help="N'ajoute les racines legacy codées en dur à l'import positif que si cette option est cochée.",
+    )
+    if control_col_g.button("Rafraîchir", key="graduation_refresh", use_container_width=True):
+        st.rerun()
+    if control_col_a.button("Scanner P1", key="graduation_run_p1", use_container_width=True):
+        from catalog.graduation import (
+            GraduationConfig,
+            save_graduation_report,
+            scan_sandbox,
+            sync_graduation_to_catalog,
+        )
+
+        with st.spinner("Scan sandbox en cours..."):
+            config = GraduationConfig(sync_catalog=sync_catalog)
+            candidates = scan_sandbox(config)
+            synced = sync_graduation_to_catalog(candidates, config) if sync_catalog else []
+            save_graduation_report(
+                candidates,
+                config,
+                synced_entries=synced,
+                filename="graduation_p1.json",
+            )
+        st.session_state["graduation_status_msg"] = f"P1 terminé: {len(candidates)} candidat(s)" + (
+            f", {len(synced)} sync catalogue" if sync_catalog else ""
+        )
+        st.session_state["graduation_status_error"] = False
+        st.rerun()
+    if control_col_b.button("Lancer P1→P6", key="graduation_run_full", type="primary", use_container_width=True):
+        args = ["--full"]
+        if sync_catalog:
+            args.append("--sync-catalog")
+        ok, message = _start_background_graduation_job(
+            args=args,
+            log_filename=FULL_GRADUATION_LOG_FILENAME,
+            progress_filename=FULL_GRADUATION_PROGRESS_FILENAME,
+        )
+        st.session_state["graduation_status_msg"] = message
+        st.session_state["graduation_status_error"] = not ok
+        st.rerun()
+    if control_col_c.button(
+        "Importer positifs",
+        key="graduation_import_positive_artifacts",
+        use_container_width=True,
+    ):
+        from catalog.graduation import GraduationConfig, import_positive_artifacts_to_catalog
+
+        with st.spinner("Import des artefacts positifs..."):
+            report = import_positive_artifacts_to_catalog(
+                GraduationConfig(
+                    sync_catalog=sync_catalog,
+                    include_legacy_artifact_roots=include_legacy_artifact_roots,
+                ),
+            )
+        stats = report.get("stats", {}) if isinstance(report, dict) else {}
+        st.session_state["graduation_status_msg"] = (
+            f"Import positifs terminé: {stats.get('catalog_entries_touched', 0)} entrée(s), "
+            f"{stats.get('catalog_new_entries', 0)} nouvelles."
+        )
+        st.session_state["graduation_status_error"] = False
+        st.rerun()
+    if control_col_d.button(
+        "Positifs P1→P6",
+        key="graduation_run_positive_imports",
+        use_container_width=True,
+    ):
+        args = ["--positive-import-full"]
+        if include_legacy_artifact_roots:
+            args.append("--include-legacy-artifact-roots")
+        if sync_catalog:
+            args.append("--sync-catalog")
+        ok, message = _start_background_graduation_job(
+            args=args,
+            log_filename=POSITIVE_IMPORTS_LOG_FILENAME,
+            progress_filename=POSITIVE_IMPORTS_PROGRESS_FILENAME,
+        )
+        st.session_state["graduation_status_msg"] = message
+        st.session_state["graduation_status_error"] = not ok
+        st.rerun()
+
+    status_msg = st.session_state.get("graduation_status_msg")
+    if status_msg:
+        if st.session_state.get("graduation_status_error"):
+            st.error(status_msg)
+        else:
+            st.success(status_msg)
+
+    _render_progress_section(
+        title="Progression sandbox P1→P6",
+        payload=_load_progress_payload(FULL_GRADUATION_PROGRESS_FILENAME),
+        log_filename=FULL_GRADUATION_LOG_FILENAME,
+        report_payload=sandbox_payload,
+        report_df=sandbox_df,
+    )
+    _render_progress_section(
+        title="Progression positifs P1→P6",
+        payload=_load_progress_payload(POSITIVE_IMPORTS_PROGRESS_FILENAME),
+        log_filename=POSITIVE_IMPORTS_LOG_FILENAME,
+        report_payload=positive_payload,
+        report_df=positive_df,
+    )
 
 
 def render_results_hub(*, embedded: bool = False) -> None:
@@ -1441,420 +3056,62 @@ def render_results_hub(*, embedded: bool = False) -> None:
         refresh = st.button("🔄 Rafraîchir catalogues")
     with col_right:
         st.caption(
-            f"Catalogues CSV non-destructifs basés sur `{RESULTS_DIR}`, `{RUNS_DIR}` et `strategy_catalog.json`."
+            "Catalogues CSV non-destructifs basés sur "
+            f"`{RESULTS_DIR}`, `{RUNS_DIR}`, `{get_builder_sessions_dir()}` et `strategy_catalog.json`.",
         )
 
     backtest_overview, unified_overview, runs_overview = _load_catalogs(refresh=refresh)
+    builder_sessions_df, builder_iterations_df, builder_catalog_audit = _load_builder_store_payload()
     backtest_overview = _add_open_links_backtest(backtest_overview)
     unified_overview = _add_open_links_unified(unified_overview)
     runs_overview = _add_open_links_runs(runs_overview)
     backtest_overview = _add_pnl_per_day(backtest_overview)
     strategy_catalog_df = _load_strategy_catalog_df()
     unified_overview = _decorate_unified_with_catalog(unified_overview, strategy_catalog_df)
+    sandbox_payload, sandbox_df = _load_graduation_report()
+    positive_payload, positive_df = _load_positive_import_report()
 
-    _render_latest_run(backtest_overview, runs_overview)
+    _render_latest_run(backtest_overview, runs_overview, builder_sessions_df)
 
     st.markdown("---")
-    st.subheader("🗂️ Catalogue global")
+    st.subheader("🗂️ Catalogue global unifié")
 
-    if backtest_overview.empty and unified_overview.empty and runs_overview.empty and strategy_catalog_df.empty:
+    if (
+        backtest_overview.empty
+        and unified_overview.empty
+        and runs_overview.empty
+        and builder_sessions_df.empty
+        and builder_iterations_df.empty
+        and strategy_catalog_df.empty
+        and sandbox_df.empty
+        and positive_df.empty
+    ):
         st.write("ℹ️ Aucun catalogue disponible. Lancez un run puis cliquez sur Rafraîchir catalogues.")
         return
 
-    # Configuration des colonnes numériques pour tri correct
-    numeric_col_config = _get_numeric_column_config()
+    table_df = _build_results_hub_table_df(
+        backtest_overview=backtest_overview,
+        unified_overview=unified_overview,
+        runs_overview=runs_overview,
+        builder_sessions_df=builder_sessions_df,
+        builder_iterations_df=builder_iterations_df,
+        strategy_catalog_df=strategy_catalog_df,
+        graduation_df=sandbox_df,
+        positive_import_df=positive_df,
+    )
+    filtered_df = _render_results_hub_unified_filters(table_df)
+    _render_results_hub_summary(table_df, filtered_df)
+    selected_df = _render_results_hub_table(filtered_df)
+    _render_results_hub_actions(
+        selected_df,
+        unified_overview=unified_overview,
+        strategy_catalog_df=strategy_catalog_df,
+    )
 
-    tabs = st.tabs([
-        "Vue d'ensemble",
-        "Backtests",
-        "Sweeps",
-        "Grids",
-        "Optuna",
-        "Runs LLM",
-        "Catégories",
-        "Comparaison",
-        "Stock unifié",
-        "Promotion / Catalogue",
-        "Graduation",
-    ])
-
-    with tabs[0]:
-        df = backtest_overview.copy()
-        if df.empty:
-            st.write("ℹ️ Aucun résultat backtest/sweep/grid.")
-        else:
-            df = _render_overview_filters(df)
-            df = _sort_by_metrics(df)
-            st.dataframe(
-                df,
-                width="stretch",
-                hide_index=True,
-                column_config=numeric_col_config,
-            )
-            _render_charts(df)
-
-    with tabs[1]:
-        df = backtest_overview[backtest_overview["type"] == "run"].copy() if not backtest_overview.empty else pd.DataFrame()
-        if df.empty:
-            st.write("ℹ️ Aucun backtest enregistré.")
-        else:
-            df = _sort_by_metrics(df)
-            st.dataframe(
-                df,
-                width="stretch",
-                hide_index=True,
-                column_config=numeric_col_config,
-            )
-
-    with tabs[2]:
-        df = backtest_overview[backtest_overview["type"] == "sweep"].copy() if not backtest_overview.empty else pd.DataFrame()
-        if df.empty:
-            st.write("ℹ️ Aucun sweep enregistré.")
-        else:
-            df = _sort_by_metrics(df)
-            st.dataframe(
-                df,
-                width="stretch",
-                hide_index=True,
-                column_config=numeric_col_config,
-            )
-
-    with tabs[3]:
-        df = backtest_overview[backtest_overview["type"] == "grid"].copy() if not backtest_overview.empty else pd.DataFrame()
-        if df.empty:
-            st.write("ℹ️ Aucun grid enregistré.")
-        else:
-            df = _sort_by_metrics(df)
-            st.dataframe(
-                df,
-                width="stretch",
-                hide_index=True,
-                column_config=numeric_col_config,
-            )
-
-    with tabs[4]:
-        df = backtest_overview[backtest_overview["type"] == "optuna"].copy() if not backtest_overview.empty else pd.DataFrame()
-        if df.empty:
-            st.write("ℹ️ Aucun Optuna enregistré.")
-        else:
-            df = _sort_by_metrics(df)
-            st.dataframe(
-                df,
-                width="stretch",
-                hide_index=True,
-                column_config=numeric_col_config,
-            )
-
-    with tabs[5]:
-        if runs_overview.empty:
-            st.write("ℹ️ Aucun run LLM enregistré.")
-        else:
-            df = runs_overview.copy()
-            df["timestamp_dt"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
-            df = df.sort_values("timestamp_dt", ascending=False, na_position="last").drop(columns=["timestamp_dt"])
-            st.dataframe(
-                df,
-                width="stretch",
-                hide_index=True,
-                column_config=numeric_col_config,
-            )
-
-    with tabs[6]:
-        if backtest_overview.empty:
-            st.write("ℹ️ Aucune donnée pour les catégories.")
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("**Par stratégie**")
-                st.dataframe(
-                    backtest_overview["strategy"].value_counts().rename_axis("strategy").reset_index(name="count"),
-                    width="stretch",
-                    hide_index=True,
-                )
-            with col2:
-                st.markdown("**Par symbole**")
-                st.dataframe(
-                    backtest_overview["symbol"].value_counts().rename_axis("symbol").reset_index(name="count"),
-                    width="stretch",
-                    hide_index=True,
-                )
-            st.markdown("**Par timeframe**")
-            st.dataframe(
-                backtest_overview["timeframe"].value_counts().rename_axis("timeframe").reset_index(name="count"),
-                width="stretch",
-                hide_index=True,
-            )
-
-    with tabs[7]:
-        df = backtest_overview[backtest_overview["type"] == "run"].copy() if not backtest_overview.empty else pd.DataFrame()
-        if df.empty:
-            st.write("ℹ️ Aucun backtest disponible pour comparaison.")
-        else:
-            df = _sort_by_metrics(df)
-            options = df["id"].dropna().unique().tolist()
-            selected = st.multiselect("Sélectionner des runs", options=options)
-            if selected:
-                selected_df = df[df["id"].isin(selected)]
-                st.dataframe(
-                    selected_df,
-                    width="stretch",
-                    hide_index=True,
-                    column_config=numeric_col_config,
-                )
-
-    with tabs[8]:
-        if unified_overview.empty:
-            st.write("ℹ️ Aucun artefact unifié disponible.")
-        else:
-            df = unified_overview.copy()
-            type_options = sorted([t for t in df.get("artifact_type", pd.Series()).dropna().unique().tolist() if t])
-            status_options = sorted([t for t in df.get("status", pd.Series()).dropna().unique().tolist() if t])
-            cat_options = sorted([t for t in df.get("catalog_category", pd.Series()).dropna().unique().tolist() if t])
-
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                selected_types = st.multiselect("Type artefact", options=type_options, default=type_options)
-            with col2:
-                selected_status = st.multiselect("Statut source", options=status_options, default=status_options)
-            with col3:
-                selected_catalog_state = st.multiselect(
-                    "État catalogue",
-                    options=cat_options,
-                    default=cat_options,
-                )
-
-            if selected_types:
-                df = df[df["artifact_type"].isin(selected_types)]
-            if selected_status:
-                df = df[df["status"].isin(selected_status)]
-            if selected_catalog_state:
-                df = df[df["catalog_category"].isin(selected_catalog_state)]
-
-            sort_cols = [c for c in ["timestamp", "metrics_total_pnl", "metrics_sharpe_ratio"] if c in df.columns]
-            if sort_cols:
-                ascending = [False] * len(sort_cols)
-                df = df.sort_values(sort_cols, ascending=ascending, na_position="last")
-
-            st.dataframe(
-                df,
-                width="stretch",
-                hide_index=True,
-                column_config=numeric_col_config,
-            )
-
-    with tabs[9]:
-        st.caption(
-            "Promouvoir = enregistrer la stratégie comme candidate de rejouage/revue "
-            "dans le strategy catalog existant, sans dupliquer le stockage de base."
-        )
-
-        if unified_overview.empty:
-            st.write("ℹ️ Aucun run sauvegardé à promouvoir.")
-        else:
-            candidates = unified_overview.copy()
-            incomplete_statuses = {"partial", "failed", "error", "stopped", "interrupted"}
-            if "status" in candidates.columns:
-                candidates = candidates[
-                    ~candidates["status"].astype(str).str.lower().isin(incomplete_statuses)
-                ]
-            candidates = candidates[candidates["strategy"].notna()]
-            candidates = candidates[candidates["symbol"].notna()]
-            candidates = candidates[candidates["timeframe"].notna()]
-
-            if candidates.empty:
-                st.write("ℹ️ Aucun candidat propre à promouvoir.")
-            else:
-                display_cols = [
-                    "run_id",
-                    "artifact_type",
-                    "strategy",
-                    "symbol",
-                    "timeframe",
-                    "mode",
-                    "status",
-                    "catalog_category",
-                    "catalog_phase",
-                    "catalog_benchmark_pass_summary",
-                    "catalog_coverage_pct",
-                    "metrics_total_return_pct",
-                    "metrics_sharpe_ratio",
-                    "metrics_total_trades",
-                ]
-                promo_df = candidates[display_cols].copy()
-                promo_df.insert(0, "select", False)
-                edited = st.data_editor(
-                    promo_df,
-                    width="stretch",
-                    hide_index=True,
-                    column_config=numeric_col_config,
-                    disabled=[c for c in promo_df.columns if c != "select"],
-                )
-
-                selected_run_ids = edited.loc[edited["select"] == True, "run_id"].tolist()  # noqa: E712
-                selected_candidate_row = None
-                if len(selected_run_ids) == 1:
-                    selected_candidate_row = next(
-                        (
-                            row
-                            for row in candidates.to_dict(orient="records")
-                            if str(row.get("run_id") or "") == str(selected_run_ids[0])
-                        ),
-                        None,
-                    )
-                target_category = st.selectbox(
-                    "Cible catalogue",
-                    CATEGORY_ORDER,
-                    index=CATEGORY_ORDER.index("p3_benchmark_consensus"),
-                    help="`p3_benchmark_consensus` est la file naturelle de rejouage/revue après import d’un run. Les paliers supérieurs restent une décision manuelle.",
-                )
-                promo_col_a, promo_col_b = st.columns(2)
-                if promo_col_a.button(
-                    "Promouvoir la sélection",
-                    disabled=not selected_run_ids,
-                    use_container_width=True,
-                ):
-                    source_rows = {
-                        str(row.get("run_id") or ""): row
-                        for row in candidates.to_dict(orient="records")
-                    }
-                    promoted = 0
-                    failures: List[str] = []
-                    for run_id in selected_run_ids:
-                        row = source_rows.get(str(run_id))
-                        if not row:
-                            failures.append(f"{run_id}: source introuvable")
-                            continue
-                        try:
-                            upsert_from_saved_run(row, target_category=target_category)
-                            promoted += 1
-                        except Exception as exc:
-                            failures.append(f"{run_id}: {exc}")
-                    if promoted:
-                        st.success(f"✅ {promoted} stratégie(s) synchronisée(s) vers le catalogue.")
-                    if failures:
-                        st.warning(" | ".join(failures[:5]))
-                    st.rerun()
-                if promo_col_b.button(
-                    "Promouvoir + rejouer",
-                    type="primary",
-                    disabled=selected_candidate_row is None,
-                    use_container_width=True,
-                ):
-                    if selected_candidate_row is None:
-                        st.warning("Sélectionnez exactement un run source.")
-                    else:
-                        try:
-                            upsert_from_saved_run(selected_candidate_row, target_category=target_category)
-                            replay_request, replay_msg = _build_run_row_replay_request(
-                                selected_candidate_row,
-                                auto_run=True,
-                            )
-                        except Exception as exc:
-                            replay_request = None
-                            replay_msg = str(exc)
-                        if replay_request is None:
-                            st.warning(replay_msg)
-                        else:
-                            st.session_state["_catalog_replay_request"] = replay_request
-                            st.session_state["saved_runs_status"] = replay_msg
-                            st.rerun()
-
-        st.markdown("### Strategy catalog")
-        if strategy_catalog_df.empty:
-            st.write("ℹ️ Le strategy catalog est vide.")
-        else:
-            strategy_catalog_df = strategy_catalog_df.sort_values(
-                ["category", "phase", "strategy", "symbol", "timeframe"],
-                ascending=[True, True, True, True, True],
-                na_position="last",
-            )
-            catalog_select_df = strategy_catalog_df.copy()
-            catalog_select_df.insert(0, "select", False)
-            catalog_select_df["replayable"] = catalog_select_df["source_run_id"].fillna("").astype(str) != ""
-            catalog_display_cols = [
-                "select",
-                "entry_id",
-                "strategy",
-                "symbol",
-                "timeframe",
-                "category",
-                "phase",
-                "decision",
-                "benchmark_pass_summary",
-                "context_pass_summary",
-                "coverage_pct",
-                "required_benchmark_name",
-                "contradiction_state",
-                "return_pct",
-                "sharpe",
-                "trades",
-                "source_run_id",
-                "replayable",
-                "status",
-                "builder_state",
-                "tags",
-            ]
-            catalog_display_cols = [col for col in catalog_display_cols if col in catalog_select_df.columns]
-            catalog_select_df = catalog_select_df[catalog_display_cols]
-            edited_catalog = st.data_editor(
-                catalog_select_df,
-                width="stretch",
-                hide_index=True,
-                column_config=numeric_col_config,
-                disabled=[c for c in catalog_select_df.columns if c != "select"],
-            )
-
-            selected_catalog_ids = edited_catalog.loc[
-                edited_catalog["select"] == True,  # noqa: E712
-                "entry_id",
-            ].tolist()
-            selected_catalog_entry = None
-            if len(selected_catalog_ids) == 1:
-                selected_catalog_entry = next(
-                    (
-                        row
-                        for row in strategy_catalog_df.to_dict(orient="records")
-                        if row.get("entry_id") == selected_catalog_ids[0]
-                    ),
-                    None,
-                )
-
-            action_col_a, action_col_b = st.columns(2)
-            with action_col_a:
-                if st.button(
-                    "Précharger replay",
-                    disabled=selected_catalog_entry is None,
-                    use_container_width=True,
-                ):
-                    replay_request, replay_msg = _build_catalog_replay_request(
-                        selected_catalog_entry or {},
-                        unified_overview,
-                        auto_run=False,
-                    )
-                    if replay_request is None:
-                        st.warning(replay_msg)
-                    else:
-                        st.session_state["_catalog_replay_request"] = replay_request
-                        st.session_state["saved_runs_status"] = replay_msg
-                        st.rerun()
-            with action_col_b:
-                if st.button(
-                    "Rejouer maintenant",
-                    type="primary",
-                    disabled=selected_catalog_entry is None,
-                    use_container_width=True,
-                ):
-                    replay_request, replay_msg = _build_catalog_replay_request(
-                        selected_catalog_entry or {},
-                        unified_overview,
-                        auto_run=True,
-                    )
-                    if replay_request is None:
-                        st.warning(replay_msg)
-                    else:
-                        st.session_state["_catalog_replay_request"] = replay_request
-                        st.session_state["saved_runs_status"] = replay_msg
-                        st.rerun()
-
-    with tabs[10]:
-        _render_graduation_tab()
+    _render_charts(filtered_df)
+    _render_graduation_controls_and_progress(
+        sandbox_payload=sandbox_payload,
+        sandbox_df=sandbox_df,
+        positive_payload=positive_payload,
+        positive_df=positive_df,
+    )

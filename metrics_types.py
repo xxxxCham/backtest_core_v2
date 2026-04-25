@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Literal, Mapping, TypedDict, Union, cast, overload
+from collections.abc import Mapping
+from typing import Any, Literal, TypedDict, Union, cast, overload
 
 Unit = Literal["pct", "frac"]
 MetricValue = Union[int, float]
@@ -79,8 +80,8 @@ def _validate_invariants(payload: Mapping[str, Any], unit: Unit) -> None:
         _validate_range(payload, "max_drawdown", -1.0, 0.0)
 
 
-def _apply_aliases(payload: Mapping[str, Any], unit: Unit) -> Dict[str, Any]:
-    normalized: Dict[str, Any] = dict(payload)
+def _apply_aliases(payload: Mapping[str, Any], unit: Unit) -> dict[str, Any]:
+    normalized: dict[str, Any] = dict(payload)
     mapping = _ALIAS_TO_PCT if unit == "pct" else _ALIAS_TO_FRAC
     for alias, canonical in mapping.items():
         if alias not in normalized:
@@ -96,19 +97,19 @@ def _apply_aliases(payload: Mapping[str, Any], unit: Unit) -> Dict[str, Any]:
 
 @overload
 def normalize_metrics(
-    payload: Mapping[str, Any], unit: Literal["pct"]
-) -> PerformanceMetricsPct:
-    ...
+    payload: Mapping[str, Any],
+    unit: Literal["pct"],
+) -> PerformanceMetricsPct: ...
 
 
 @overload
 def normalize_metrics(
-    payload: Mapping[str, Any], unit: Literal["frac"]
-) -> AgentBacktestMetricsFrac:
-    ...
+    payload: Mapping[str, Any],
+    unit: Literal["frac"],
+) -> AgentBacktestMetricsFrac: ...
 
 
-def normalize_metrics(payload: Mapping[str, Any], unit: Unit) -> Dict[str, Any]:
+def normalize_metrics(payload: Mapping[str, Any], unit: Unit) -> dict[str, Any]:
     normalized = _apply_aliases(payload, unit)
     _validate_invariants(normalized, unit)
     return normalized
@@ -116,7 +117,7 @@ def normalize_metrics(payload: Mapping[str, Any], unit: Unit) -> Dict[str, Any]:
 
 def pct_to_frac(pct_payload: Mapping[str, Any]) -> AgentBacktestMetricsFrac:
     normalized = normalize_metrics(pct_payload, "pct")
-    converted: Dict[str, Any] = dict(normalized)
+    converted: dict[str, Any] = dict(normalized)
     if "total_return_pct" in normalized:
         converted["total_return"] = normalized["total_return_pct"] / 100.0
         converted.pop("total_return_pct", None)
@@ -127,12 +128,12 @@ def pct_to_frac(pct_payload: Mapping[str, Any]) -> AgentBacktestMetricsFrac:
         converted["win_rate"] = normalized["win_rate_pct"] / 100.0
         converted.pop("win_rate_pct", None)
     _validate_invariants(converted, "frac")
-    return cast(AgentBacktestMetricsFrac, converted)
+    return cast("AgentBacktestMetricsFrac", converted)
 
 
 def frac_to_pct(frac_payload: Mapping[str, Any]) -> PerformanceMetricsPct:
     normalized = normalize_metrics(frac_payload, "frac")
-    converted: Dict[str, Any] = dict(normalized)
+    converted: dict[str, Any] = dict(normalized)
     if "total_return" in normalized:
         converted["total_return_pct"] = normalized["total_return"] * 100.0
         converted.pop("total_return", None)
@@ -143,7 +144,7 @@ def frac_to_pct(frac_payload: Mapping[str, Any]) -> PerformanceMetricsPct:
         converted["win_rate_pct"] = normalized["win_rate"] * 100.0
         converted.pop("win_rate", None)
     _validate_invariants(converted, "pct")
-    return cast(PerformanceMetricsPct, converted)
+    return cast("PerformanceMetricsPct", converted)
 
 
 __all__ = [

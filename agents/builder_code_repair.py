@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.builder_code_repair
+"""Module-ID: agents.builder_code_repair
 
 Purpose: Builder generated-code repair subsystem.
 """
@@ -9,19 +8,14 @@ from __future__ import annotations
 import ast
 import re
 import textwrap
-from typing import Dict, List, Optional, Tuple
 
-from agents.indicator_context import (
-    get_indicator_builder_access_example,
-    get_indicator_builder_stable_alias_map,
-)
 from agents.builder_code_validation import (
-    GENERATED_CLASS_NAME,
     _AST_PARSE_RECOVERABLE_EXCEPTIONS,
     _BUILDER_ALLOWED_WRITE_DF_COLUMNS,
     _DICT_INDICATOR_ALLOWED_KEYS,
     _DICT_INDICATOR_NAMES,
     _INDICATOR_ALIAS_HINTS,
+    GENERATED_CLASS_NAME,
     _collect_bound_names,
     _collect_indicator_names,
     _collect_indicator_names_in_class,
@@ -29,8 +23,12 @@ from agents.builder_code_validation import (
     _get_known_indicator_names,
     _iter_generate_signals_functions,
 )
+from agents.indicator_context import (
+    get_indicator_builder_access_example,
+    get_indicator_builder_stable_alias_map,
+)
 
-_DICT_INDICATOR_SAFE_SCALAR_KEYS: Dict[str, str] = {
+_DICT_INDICATOR_SAFE_SCALAR_KEYS: dict[str, str] = {
     "adx": "adx",
     "supertrend": "supertrend",
     "directional_bias": "net_bias",
@@ -43,7 +41,7 @@ _DICT_INDICATOR_SAFE_SCALAR_KEYS: Dict[str, str] = {
 _BARE_DICT_IND_SCAN: re.Pattern[str] = re.compile(
     r"(?<!['\"])\b(?:"
     + "|".join(re.escape(k) for k in sorted(_DICT_INDICATOR_ALLOWED_KEYS, key=len, reverse=True))
-    + r")\b"
+    + r")\b",
 )
 
 # Détecte si le code contient np.nan_to_num() appliqué à un indicateur DICT (pas un array).
@@ -52,12 +50,12 @@ _BARE_DICT_IND_SCAN: re.Pattern[str] = re.compile(
 _NAN_TO_NUM_DICT_SCAN: re.Pattern[str] = re.compile(
     r"np\.nan_to_num\(\s*(?:indicators\s*\[\s*|indicators\.get\(\s*)['\"](?:"
     + "|".join(re.escape(k) for k in sorted(_DICT_INDICATOR_NAMES, key=len, reverse=True))
-    + r")['\"]"
+    + r")['\"]",
 )
 
 # Alias courts utilisés dans les exemples d'accès Builder (bb→bollinger, kelt→keltner…).
 # Quand le LLM écrit bb.upper ou kelt.lower, step 12b doit les réécrire également.
-_DOT_ALIAS_TO_INDICATOR: Dict[str, str] = {
+_DOT_ALIAS_TO_INDICATOR: dict[str, str] = {
     "bb": "bollinger",
     "kelt": "keltner",
     "dc": "donchian",
@@ -86,13 +84,11 @@ _DOT_ALIAS_TO_INDICATOR: Dict[str, str] = {
 
 # Pré-scan compilé : détecte les patterns `name.subkey` qui nécessitent step 12b.
 # Couvre noms canons ET alias courts pour éviter les faux-négatifs sur code LLM "propre".
-_DOT_ACCESS_SUBKEYS: frozenset = frozenset(
-    sk for subkeys in _DICT_INDICATOR_ALLOWED_KEYS.values() for sk in subkeys
-)
+_DOT_ACCESS_SUBKEYS: frozenset = frozenset(sk for subkeys in _DICT_INDICATOR_ALLOWED_KEYS.values() for sk in subkeys)
 _DOT_ACCESS_NAMES: frozenset = frozenset(_DICT_INDICATOR_ALLOWED_KEYS.keys()) | frozenset(_DOT_ALIAS_TO_INDICATOR)
 _DOT_ACCESS_DICT_SCAN: re.Pattern[str] = re.compile(
     r"\b(?:" + "|".join(re.escape(n) for n in sorted(_DOT_ACCESS_NAMES, key=len, reverse=True)) + r")\s*\."
-    r"\s*(?:" + "|".join(re.escape(s) for s in sorted(_DOT_ACCESS_SUBKEYS, key=len, reverse=True)) + r")\b"
+    r"\s*(?:" + "|".join(re.escape(s) for s in sorted(_DOT_ACCESS_SUBKEYS, key=len, reverse=True)) + r")\b",
 )
 
 
@@ -228,10 +224,29 @@ _NATURAL_LANGUAGE_LINE_RE = re.compile(
 
 
 _CODE_LINE_STARTS = (
-    "def ", "class ", "@", "return ", "import ", "from ",
-    "self.", "super(", "if ", "for ", "while ", "try:", "with ",
-    "raise ", "yield ", "assert ", "pass", "break", "continue",
-    "signals", "result", "n =", "n=",
+    "def ",
+    "class ",
+    "@",
+    "return ",
+    "import ",
+    "from ",
+    "self.",
+    "super(",
+    "if ",
+    "for ",
+    "while ",
+    "try:",
+    "with ",
+    "raise ",
+    "yield ",
+    "assert ",
+    "pass",
+    "break",
+    "continue",
+    "signals",
+    "result",
+    "n =",
+    "n=",
 )
 
 
@@ -249,7 +264,7 @@ def _strip_leading_list_marker(line: str) -> str:
 def _strip_non_python_noise(text: str) -> str:
     """Retire le bruit fréquent des réponses LLM autour du code Python."""
     raw_lines = str(text or "").splitlines()
-    cleaned_lines: List[str] = []
+    cleaned_lines: list[str] = []
     seen_code = False
 
     for line in raw_lines:
@@ -294,12 +309,10 @@ def _strip_non_python_noise(text: str) -> str:
 
 def _sanitize_python_list_markers(code: str) -> str:
     """Supprime les marqueurs de liste LLM devant des lignes Python valides."""
-    fixed_lines: List[str] = []
+    fixed_lines: list[str] = []
     for line in str(code or "").splitlines():
         candidate = _strip_leading_list_marker(line)
-        if candidate != line and (
-            _PYTHONISH_LINE_RE.match(candidate.lstrip()) or candidate.lstrip().startswith("#")
-        ):
+        if candidate != line and (_PYTHONISH_LINE_RE.match(candidate.lstrip()) or candidate.lstrip().startswith("#")):
             fixed_lines.append(candidate)
         else:
             fixed_lines.append(line)
@@ -353,7 +366,7 @@ def _strip_docstrings(code: str) -> str:
 
 def _drop_obvious_non_python_lines(code: str) -> str:
     """Supprime les lignes manifestement non Python après extraction."""
-    kept_lines: List[str] = []
+    kept_lines: list[str] = []
     for line in str(code or "").splitlines():
         stripped = line.strip()
         if not stripped:
@@ -385,7 +398,8 @@ def _fix_class_name(code: str) -> str:
         code = re.sub(
             rf"class\s+{re.escape(old_name)}\s*\(",
             f"class {GENERATED_CLASS_NAME}(",
-            code, count=1,
+            code,
+            count=1,
         )
     return code
 
@@ -394,8 +408,8 @@ def _balance_brackets_outside_strings(code: str) -> str:
     """Rééquilibre prudemment les parenthèses/crochets/accolades hors chaînes."""
     open_to_close = {"(": ")", "[": "]", "{": "}"}
     closing_to_open = {")": "(", "]": "[", "}": "{"}
-    stack: List[str] = []
-    output: List[str] = []
+    stack: list[str] = []
+    output: list[str] = []
     in_single = False
     in_double = False
     escape = False
@@ -474,8 +488,8 @@ def _salvage_complex_ast_syntax(code: str) -> str:
 
 def _infer_required_indicator_names_from_code(
     code: str,
-    required_indicators: Optional[List[str]] = None,
-) -> List[str]:
+    required_indicators: list[str] | None = None,
+) -> list[str]:
     """Infère les indicateurs réellement nécessaires à partir du code et des alias connus."""
     known = _get_known_indicator_names()
     inferred = _normalize_required_indicator_names(required_indicators)
@@ -506,19 +520,22 @@ def _infer_required_indicator_names_from_code(
             inferred_set.add(indicator_name)
 
     for indicator_name in sorted(known):
-        if re.search(
-            rf"\b{re.escape(indicator_name)}_(?:arr|array|data|values?)\b",
-            code,
-            flags=re.IGNORECASE,
-        ) and indicator_name not in inferred_set:
+        if (
+            re.search(
+                rf"\b{re.escape(indicator_name)}_(?:arr|array|data|values?)\b",
+                code,
+                flags=re.IGNORECASE,
+            )
+            and indicator_name not in inferred_set
+        ):
             inferred.append(indicator_name)
             inferred_set.add(indicator_name)
 
     return inferred
 
 
-def _normalize_required_indicator_names(required_indicators: Optional[List[str]]) -> List[str]:
-    normalized: List[str] = []
+def _normalize_required_indicator_names(required_indicators: list[str] | None) -> list[str]:
+    normalized: list[str] = []
     if not required_indicators:
         return normalized
     for item in required_indicators:
@@ -531,19 +548,19 @@ def _normalize_required_indicator_names(required_indicators: Optional[List[str]]
 
 
 def _build_generate_signals_indicator_binding_groups(
-    required_indicators: Optional[List[str]],
-) -> List[Tuple[str, List[str], List[str]]]:
+    required_indicators: list[str] | None,
+) -> list[tuple[str, list[str], list[str]]]:
     """Construit les lignes de binding par indicateur en séparant base et alias.
 
     Les lignes de base extraient l'indicateur depuis `indicators[...]`.
     Les alias dérivés (`rsi_arr = rsi`, `bollinger_upper = upper`, etc.) ne sont
     sûrs que si la base est injectée au même endroit ou déjà disponible avant.
     """
-    groups: List[Tuple[str, List[str], List[str]]] = []
+    groups: list[tuple[str, list[str], list[str]]] = []
 
     for indicator_name in _normalize_required_indicator_names(required_indicators):
-        base_lines: List[str] = []
-        alias_lines: List[str] = []
+        base_lines: list[str] = []
+        alias_lines: list[str] = []
         seen_local: set[str] = set()
 
         if indicator_name in _DICT_INDICATOR_NAMES:
@@ -552,7 +569,7 @@ def _build_generate_signals_indicator_binding_groups(
             candidate_lines = [line.strip() for line in raw_lines if line.strip()]
         else:
             candidate_lines = [
-                f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])"
+                f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])",
             ]
 
         for line in candidate_lines:
@@ -576,7 +593,7 @@ def _build_generate_signals_indicator_binding_groups(
                 [
                     f"{indicator_name}_arr = {indicator_name}",
                     f"{indicator_name}_data = {indicator_name}",
-                ]
+                ],
             )
 
         groups.append((indicator_name, base_lines, alias_lines))
@@ -584,7 +601,7 @@ def _build_generate_signals_indicator_binding_groups(
     return groups
 
 
-def _indicator_name_from_hint_expression(expr: str) -> Optional[str]:
+def _indicator_name_from_hint_expression(expr: str) -> str | None:
     match = re.search(r"indicators\[['\"]([A-Za-z0-9_]+)['\"]\]", str(expr or ""))
     if not match:
         return None
@@ -593,7 +610,7 @@ def _indicator_name_from_hint_expression(expr: str) -> Optional[str]:
 
 def _inject_generate_signals_indicator_bindings(
     code: str,
-    required_indicators: Optional[List[str]] = None,
+    required_indicators: list[str] | None = None,
 ) -> str:
     """Injecte un préambule de bindings indicateurs dans generate_signals."""
     indicator_names = _infer_required_indicator_names_from_code(code, required_indicators)
@@ -614,14 +631,14 @@ def _inject_generate_signals_indicator_bindings(
         return code
 
     lines = code.split("\n")
-    insertions: List[Tuple[int, List[str]]] = []
+    insertions: list[tuple[int, list[str]]] = []
 
     for fn in fns:
         fn_start = max(0, int(fn.lineno) - 1)
         fn_end = max(fn_start, int(getattr(fn, "end_lineno", fn.lineno)))
         fn_source = "\n".join(lines[fn_start:fn_end])
 
-        binding_lines: List[str] = []
+        binding_lines: list[str] = []
         for _indicator_name, base_lines, alias_lines in binding_groups:
             existing_base = any(line in fn_source for line in base_lines)
             if existing_base:
@@ -681,30 +698,26 @@ def _inject_generate_signals_indicator_aliases(code: str) -> str:
         return code
 
     lines = code.split("\n")
-    insertions: List[Tuple[int, List[str]]] = []
+    insertions: list[tuple[int, list[str]]] = []
 
     for fn in fns:
         load_names, _store_names = _collect_name_load_store_sets(fn)
         bound_names = _collect_bound_names(fn)
         missing_indicator_names = sorted(
-            {
-                name
-                for name in load_names
-                if name in known_indicators and name not in bound_names
-            }
+            {name for name in load_names if name in known_indicators and name not in bound_names},
         )
         if not missing_indicator_names:
             continue
 
-        alias_raw: List[str] = []
+        alias_raw: list[str] = []
         for indicator_name in missing_indicator_names:
             if indicator_name in _DICT_INDICATOR_NAMES:
                 alias_raw.append(
-                    f"{indicator_name} = indicators['{indicator_name}']"
+                    f"{indicator_name} = indicators['{indicator_name}']",
                 )
             else:
                 alias_raw.append(
-                    f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])"
+                    f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])",
                 )
 
         if fn.body:
@@ -757,7 +770,7 @@ def _inject_generate_signals_core_param_aliases(code: str) -> str:
         return code
 
     lines = code.split("\n")
-    insertions: List[Tuple[int, List[str]]] = []
+    insertions: list[tuple[int, list[str]]] = []
 
     for fn in fns:
         args = [a.arg for a in fn.args.args]
@@ -767,7 +780,7 @@ def _inject_generate_signals_core_param_aliases(code: str) -> str:
         df_arg, ind_arg, params_arg = args[1], args[2], args[3]
         load_names, store_names = _collect_name_load_store_sets(fn)
 
-        alias_raw: List[str] = []
+        alias_raw: list[str] = []
         if "df" in load_names and "df" not in args and "df" not in store_names and df_arg != "df":
             alias_raw.append(f"df = {df_arg}")
         if (
@@ -794,7 +807,7 @@ def _inject_generate_signals_core_param_aliases(code: str) -> str:
         for ohlcv_col in ("open", "high", "low", "close", "volume"):
             if ohlcv_col in load_names and ohlcv_col not in args and ohlcv_col not in store_names:
                 alias_raw.append(
-                    f"{ohlcv_col} = np.nan_to_num(df['{ohlcv_col}'].values.astype(np.float64))"
+                    f"{ohlcv_col} = np.nan_to_num(df['{ohlcv_col}'].values.astype(np.float64))",
                 )
         if "price" in load_names and "price" not in args and "price" not in store_names:
             if not any(line.startswith("close = ") for line in alias_raw):
@@ -876,30 +889,22 @@ def _rewrite_invalid_indicator_accesses(text: str) -> str:
 def _rewrite_safe_dict_indicator_comparisons(code: str) -> str:
     """Réécrit quelques comparaisons directes ambiguës sur indicateurs dict quand la sous-clé sûre est connue."""
     compare_ops = r"(==|!=|>=|<=|>|<)"
-    rewritten_lines: List[str] = []
+    rewritten_lines: list[str] = []
     for raw_line in str(code or "").splitlines():
         line = raw_line
         for indicator_name, subkey in _DICT_INDICATOR_SAFE_SCALAR_KEYS.items():
             scalar_expr = f"np.nan_to_num(indicators['{indicator_name}']['{subkey}'])"
-            indicator_expr = (
-                rf"indicators\s*\[\s*['\"]{re.escape(indicator_name)}['\"]\s*\](?!\s*\[)"
-            )
-            get_expr = (
-                rf"indicators\.get\(\s*['\"]{re.escape(indicator_name)}['\"]\s*(?:,\s*[^)]*)?\)(?!\s*\[)"
-            )
+            indicator_expr = rf"indicators\s*\[\s*['\"]{re.escape(indicator_name)}['\"]\s*\](?!\s*\[)"
+            get_expr = rf"indicators\.get\(\s*['\"]{re.escape(indicator_name)}['\"]\s*(?:,\s*[^)]*)?\)(?!\s*\[)"
             for expr in (indicator_expr, get_expr):
                 line = re.sub(
                     rf"({expr})\s*{compare_ops}",
-                    lambda m, replacement=scalar_expr: (
-                        f"{replacement} {m.group(2)}"
-                    ),
+                    lambda m, replacement=scalar_expr: f"{replacement} {m.group(2)}",
                     line,
                 )
                 line = re.sub(
                     rf"{compare_ops}\s*({expr})",
-                    lambda m, replacement=scalar_expr: (
-                        f"{m.group(1)} {replacement}"
-                    ),
+                    lambda m, replacement=scalar_expr: f"{m.group(1)} {replacement}",
                     line,
                 )
         rewritten_lines.append(line)
@@ -975,13 +980,8 @@ def _repair_generate_signals_body_indentation(code: str) -> str:
             continue
 
         indent_len = len(indent)
-        is_class_or_method_boundary = (
-            indent_len <= class_indent_len
-            and (
-                stripped.startswith("def ")
-                or stripped.startswith("class ")
-                or stripped.startswith("@")
-            )
+        is_class_or_method_boundary = indent_len <= class_indent_len and (
+            stripped.startswith("def ") or stripped.startswith("class ") or stripped.startswith("@")
         )
         if is_class_or_method_boundary:
             in_generate_signals = False
@@ -1002,16 +1002,18 @@ def _repair_generate_signals_body_indentation(code: str) -> str:
 # Auto-repair vectorisation (AST + regex) — appelé après _repair_code
 # ---------------------------------------------------------------------------
 
+
 class _VectorizeTransformer(ast.NodeTransformer):
     """Remplace les opérateurs scalaires ``and``/``or`` par ``&``/``|`` sur
     des nœuds contenant au moins une comparaison (heuristique de masque
     vectorisé).  Les nœuds ``BoolOp(And/Or, [Compare, …])`` deviennent
-    ``BinOp(left, BitAnd/BitOr, right)``."""
+    ``BinOp(left, BitAnd/BitOr, right)``.
+    """
 
     def __init__(self) -> None:
         self.fix_count: int = 0
 
-    def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:  # noqa: N802
+    def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
         self.generic_visit(node)
         if not isinstance(node.op, (ast.And, ast.Or)):
             return node
@@ -1027,7 +1029,7 @@ class _VectorizeTransformer(ast.NodeTransformer):
         return ast.fix_missing_locations(result)
 
 
-def _auto_repair_vectorize(code: str) -> Tuple[str, int]:
+def _auto_repair_vectorize(code: str) -> tuple[str, int]:
     """Répare les anti-patterns de vectorisation détectables par AST et regex.
 
     Corrections :
@@ -1040,6 +1042,7 @@ def _auto_repair_vectorize(code: str) -> Tuple[str, int]:
     Returns
     -------
     (repaired_code, fix_count)
+
     """
     fix_count = 0
 
@@ -1121,7 +1124,9 @@ def _auto_repair_vectorize(code: str) -> Tuple[str, int]:
     return code, fix_count
 
 
-def _repair_code(code: str, required_indicators: Optional[List[str]] = None, *, enable_indicator_binding: bool = True) -> str:
+def _repair_code(
+    code: str, required_indicators: list[str] | None = None, *, enable_indicator_binding: bool = True,
+) -> str:
     """Auto-repair des erreurs courantes du code genere par LLM.
 
     Corrige:
@@ -1144,10 +1149,7 @@ def _repair_code(code: str, required_indicators: Optional[List[str]] = None, *, 
     first_code_idx = 0
     for idx, line in enumerate(lines):
         stripped = line.strip()
-        if stripped and (
-            stripped.startswith(("from ", "import ", "class ", "def ", "@"))
-            or stripped.startswith("#!")
-        ):
+        if stripped and (stripped.startswith(("from ", "import ", "class ", "def ", "@")) or stripped.startswith("#!")):
             first_code_idx = idx
             break
     if first_code_idx > 0:
@@ -1202,16 +1204,12 @@ def _repair_code(code: str, required_indicators: Optional[List[str]] = None, *, 
     if _NAN_TO_NUM_DICT_SCAN.search(code):
         for dict_ind in _DICT_INDICATOR_NAMES:
             code = re.sub(
-                r"np\.nan_to_num\(\s*indicators\s*\[\s*['\"]"
-                + re.escape(dict_ind)
-                + r"['\"]\s*\]\s*\)",
+                r"np\.nan_to_num\(\s*indicators\s*\[\s*['\"]" + re.escape(dict_ind) + r"['\"]\s*\]\s*\)",
                 f'indicators["{dict_ind}"]',
                 code,
             )
             code = re.sub(
-                r"np\.nan_to_num\(\s*indicators\.get\(\s*['\"]"
-                + re.escape(dict_ind)
-                + r"['\"]\s*\)\s*\)",
+                r"np\.nan_to_num\(\s*indicators\.get\(\s*['\"]" + re.escape(dict_ind) + r"['\"]\s*\)\s*\)",
                 f'indicators.get("{dict_ind}")',
                 code,
             )
@@ -1244,12 +1242,9 @@ def _repair_code(code: str, required_indicators: Optional[List[str]] = None, *, 
         )
 
         # 6. indicators['ema']['ema_XX'] → indicators['ema']
-        for arr_ind in ("ema", "rsi", "atr", "sma", "cci", "mfi",
-                        "williams_r", "momentum", "obv", "roc"):
+        for arr_ind in ("ema", "rsi", "atr", "sma", "cci", "mfi", "williams_r", "momentum", "obv", "roc"):
             code = re.sub(
-                r"indicators\s*\[\s*['\"]"
-                + re.escape(arr_ind)
-                + r"['\"]\s*\]\s*\[\s*['\"][^'\"]*['\"]\s*\]",
+                r"indicators\s*\[\s*['\"]" + re.escape(arr_ind) + r"['\"]\s*\]\s*\[\s*['\"][^'\"]*['\"]\s*\]",
                 f'indicators["{arr_ind}"]',
                 code,
             )
@@ -1388,5 +1383,3 @@ def _repair_code(code: str, required_indicators: Optional[List[str]] = None, *, 
         )
 
     return code
-
-

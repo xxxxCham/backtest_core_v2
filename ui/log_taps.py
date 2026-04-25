@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.log_taps
+"""Module-ID: ui.log_taps
 
 Purpose: Capture et suit le meilleur PnL des logs de backtest.
 
@@ -25,21 +24,19 @@ from __future__ import annotations
 import logging
 import re
 import threading
-from typing import Optional, Tuple
 
 _BEST_PNL_TRACKER = None
 
 
 class BestPnlTracker(logging.Handler):
-    """
-    Tracker du meilleur PnL de backtest (PnL total du meilleur run).
+    """Tracker du meilleur PnL de backtest (PnL total du meilleur run).
     Note: Capture le PnL TOTAL du backtest, pas le meilleur trade individuel.
     """
 
     def __init__(self) -> None:
         super().__init__(level=logging.INFO)
-        self.best_backtest_pnl: Optional[float] = None
-        self.best_run_id: Optional[str] = None
+        self.best_backtest_pnl: float | None = None
+        self.best_run_id: str | None = None
         self._lock = threading.Lock()
         self._pnl_pattern = re.compile(
             r"\bpnl\s*=\s*[^0-9-+]*([-+]?\d+(?:\.\d+)?)",
@@ -72,7 +69,7 @@ class BestPnlTracker(logging.Handler):
                 self.best_backtest_pnl = pnl
                 self.best_run_id = getattr(record, "run_id", None)
 
-    def get_best(self) -> Tuple[Optional[float], Optional[str]]:
+    def get_best(self) -> tuple[float | None, str | None]:
         with self._lock:
             return self.best_backtest_pnl, self.best_run_id
 

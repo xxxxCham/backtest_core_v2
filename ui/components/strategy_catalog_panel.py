@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.components.strategy_catalog_panel
+"""Module-ID: ui.components.strategy_catalog_panel
 
 Purpose: Strategy catalog panel (filters + multi-select + bulk move).
 """
@@ -9,7 +8,7 @@ from __future__ import annotations
 import json
 import re
 from functools import lru_cache
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -17,13 +16,12 @@ import streamlit as st
 from backtest.result_store import get_builder_sessions_dir
 from catalog.strategy_catalog import CATEGORY_ORDER, STATUS_VALUES, list_entries, move_entries
 
-
 _NOTE_ID_RE = re.compile(r"(?im)^\s*id\s*:\s*([a-z0-9_]+)\s*$")
 _NOTE_ARCHETYPE_RE = re.compile(r"(?im)^\s*archetype\s*:\s*([a-z0-9_]+)\s*$")
 
 
-def _extract_strategy_candidates(entry: Dict[str, object]) -> List[str]:
-    candidates: List[str] = []
+def _extract_strategy_candidates(entry: dict[str, object]) -> list[str]:
+    candidates: list[str] = []
 
     strategy_name = str(entry.get("strategy_name") or "").strip()
     if strategy_name:
@@ -37,21 +35,21 @@ def _extract_strategy_candidates(entry: Dict[str, object]) -> List[str]:
                 candidates.append(value)
 
     # Dédupliquer en conservant l'ordre.
-    deduped: List[str] = []
+    deduped: list[str] = []
     for value in candidates:
         if value not in deduped:
             deduped.append(value)
     return deduped
 
 
-def _resolve_strategy_key(entry: Dict[str, object], available_keys: set[str]) -> str:
+def _resolve_strategy_key(entry: dict[str, object], available_keys: set[str]) -> str:
     for candidate in _extract_strategy_candidates(entry):
         if candidate in available_keys:
             return candidate
     return ""
 
 
-def _to_float(value: Any) -> Optional[float]:
+def _to_float(value: Any) -> float | None:
     try:
         if value is None or value == "":
             return None
@@ -60,7 +58,7 @@ def _to_float(value: Any) -> Optional[float]:
         return None
 
 
-def _to_int(value: Any) -> Optional[int]:
+def _to_int(value: Any) -> int | None:
     try:
         if value is None or value == "":
             return None
@@ -69,7 +67,7 @@ def _to_int(value: Any) -> Optional[int]:
         return None
 
 
-def _first_present(mapping: Dict[str, Any], *keys: str) -> Any:
+def _first_present(mapping: dict[str, Any], *keys: str) -> Any:
     for key in keys:
         if key in mapping:
             value = mapping.get(key)
@@ -78,7 +76,7 @@ def _first_present(mapping: Dict[str, Any], *keys: str) -> Any:
     return None
 
 
-def _as_listish(value: Any) -> List[str]:
+def _as_listish(value: Any) -> list[str]:
     if value is None:
         return []
     if isinstance(value, list):
@@ -95,7 +93,7 @@ def _as_listish(value: Any) -> List[str]:
     return [str(value).strip()] if str(value).strip() else []
 
 
-def _meta_postfilter_value(meta: Dict[str, Any], *keys: str) -> Any:
+def _meta_postfilter_value(meta: dict[str, Any], *keys: str) -> Any:
     if not isinstance(meta, dict):
         return None
     for key in keys:
@@ -108,7 +106,7 @@ def _meta_postfilter_value(meta: Dict[str, Any], *keys: str) -> Any:
     return None
 
 
-def _catalog_postfilter_fields(entry: Dict[str, Any]) -> Dict[str, Any]:
+def _catalog_postfilter_fields(entry: dict[str, Any]) -> dict[str, Any]:
     meta = entry.get("meta") or {}
     metrics = entry.get("last_metrics_snapshot") or {}
     if not isinstance(meta, dict):
@@ -137,13 +135,13 @@ def _catalog_postfilter_fields(entry: Dict[str, Any]) -> Dict[str, Any]:
             contradiction_state = "failed"
 
     coverage_pct = _to_float(
-        _meta_postfilter_value(meta, "coverage_pct", "positive_pipeline_coverage_pct")
+        _meta_postfilter_value(meta, "coverage_pct", "positive_pipeline_coverage_pct"),
     )
     passed_context_count = _to_int(
-        _meta_postfilter_value(meta, "passed_context_count", "positive_pipeline_passed_count")
+        _meta_postfilter_value(meta, "passed_context_count", "positive_pipeline_passed_count"),
     )
     total_context_count = _to_int(
-        _meta_postfilter_value(meta, "total_context_count", "positive_pipeline_total_contexts")
+        _meta_postfilter_value(meta, "total_context_count", "positive_pipeline_total_contexts"),
     )
     if passed_context_count is None:
         passed_context_count = _to_int(metrics.get("multi_context_passed"))
@@ -167,7 +165,7 @@ def _catalog_postfilter_fields(entry: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @lru_cache(maxsize=512)
-def _load_builder_session_summary(session_id: str) -> Dict[str, Any]:
+def _load_builder_session_summary(session_id: str) -> dict[str, Any]:
     session_id = str(session_id or "").strip()
     if not session_id:
         return {}
@@ -183,13 +181,13 @@ def _load_builder_session_summary(session_id: str) -> Dict[str, Any]:
         return {}
 
 
-def _best_iteration_metrics(summary: Dict[str, Any]) -> Dict[str, Any]:
+def _best_iteration_metrics(summary: dict[str, Any]) -> dict[str, Any]:
     iterations = summary.get("iterations")
     if not isinstance(iterations, list):
         return {}
 
-    best: Optional[Dict[str, Any]] = None
-    best_key: Optional[tuple] = None
+    best: dict[str, Any] | None = None
+    best_key: tuple | None = None
     for item in iterations:
         if not isinstance(item, dict):
             continue
@@ -221,7 +219,7 @@ def _best_iteration_metrics(summary: Dict[str, Any]) -> Dict[str, Any]:
     return best or {}
 
 
-def _metrics_for_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+def _metrics_for_entry(entry: dict[str, Any]) -> dict[str, Any]:
     metrics = entry.get("last_metrics_snapshot") or {}
     if not isinstance(metrics, dict):
         metrics = {}
@@ -301,35 +299,23 @@ def _metrics_for_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
+def render_strategy_catalog_panel(strategy_options: dict[str, str]) -> None:
     st.markdown("---")
     st.subheader("🗂️ Strategy Catalog")
     st.caption(
-        "💡 **Filtrez et sélectionnez vos stratégies** — "
-        "Les filtres ci-dessous sont optionnels pour affiner la liste."
+        "💡 **Filtrez et sélectionnez vos stratégies** — Les filtres ci-dessous sont optionnels pour affiner la liste.",
     )
 
     entries_all = list_entries(status=None)
-    all_tags: List[str] = sorted({t for e in entries_all for t in (e.get("tags") or [])})
+    all_tags: list[str] = sorted({t for e in entries_all for t in (e.get("tags") or [])})
     all_symbols = sorted({e.get("symbol") for e in entries_all if e.get("symbol")})
     all_timeframes = sorted({e.get("timeframe") for e in entries_all if e.get("timeframe")})
-    postfilter_by_id = {
-        str(entry.get("id") or ""): _catalog_postfilter_fields(entry)
-        for entry in entries_all
-    }
+    postfilter_by_id = {str(entry.get("id") or ""): _catalog_postfilter_fields(entry) for entry in entries_all}
     all_phases = sorted(
-        {
-            fields.get("phase")
-            for fields in postfilter_by_id.values()
-            if str(fields.get("phase") or "").strip()
-        }
+        {fields.get("phase") for fields in postfilter_by_id.values() if str(fields.get("phase") or "").strip()},
     )
     all_decisions = sorted(
-        {
-            fields.get("decision")
-            for fields in postfilter_by_id.values()
-            if str(fields.get("decision") or "").strip()
-        }
+        {fields.get("decision") for fields in postfilter_by_id.values() if str(fields.get("decision") or "").strip()},
     )
 
     # Filtres principaux (catégorie + statut)
@@ -340,7 +326,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
             CATEGORY_ORDER,
             default=st.session_state.get("catalog_filter_categories", []),
             key="catalog_filter_categories",
-            help="Laissez vide pour voir toutes les catégories"
+            help="Laissez vide pour voir toutes les catégories",
         )
     with col_b:
         status = st.selectbox(
@@ -361,7 +347,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
                 all_symbols,
                 default=st.session_state.get("catalog_filter_symbols", []),
                 key="catalog_filter_symbols",
-                help="Optionnel : filtrer par token spécifique"
+                help="Optionnel : filtrer par token spécifique",
             )
         with col_d:
             st.multiselect(
@@ -369,7 +355,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
                 all_timeframes,
                 default=st.session_state.get("catalog_filter_timeframes", []),
                 key="catalog_filter_timeframes",
-                help="Optionnel : filtrer par timeframe spécifique"
+                help="Optionnel : filtrer par timeframe spécifique",
             )
 
         st.multiselect(
@@ -377,7 +363,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
             all_tags,
             default=st.session_state.get("catalog_filter_tags", []),
             key="catalog_filter_tags",
-            help="Optionnel : filtrer par tags"
+            help="Optionnel : filtrer par tags",
         )
 
         col_e, col_f = st.columns(2)
@@ -387,7 +373,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
                 all_phases,
                 default=st.session_state.get("catalog_filter_phases", []),
                 key="catalog_filter_phases",
-                help="Optionnel : filtrer par phase P2-P6"
+                help="Optionnel : filtrer par phase P2-P6",
             )
         with col_f:
             st.multiselect(
@@ -395,7 +381,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
                 all_decisions,
                 default=st.session_state.get("catalog_filter_decisions", []),
                 key="catalog_filter_decisions",
-                help="Optionnel : filtrer par verdict métier canonique"
+                help="Optionnel : filtrer par verdict métier canonique",
             )
 
     # Récupérer les valeurs des filtres depuis session_state (car définies dans l'expander)
@@ -416,14 +402,10 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
     if timeframes_filter:
         entries = [e for e in entries if e.get("timeframe") in timeframes_filter]
     if phases_filter:
-        entries = [
-            e for e in entries
-            if postfilter_by_id.get(str(e.get("id") or ""), {}).get("phase") in phases_filter
-        ]
+        entries = [e for e in entries if postfilter_by_id.get(str(e.get("id") or ""), {}).get("phase") in phases_filter]
     if decisions_filter:
         entries = [
-            e for e in entries
-            if postfilter_by_id.get(str(e.get("id") or ""), {}).get("decision") in decisions_filter
+            e for e in entries if postfilter_by_id.get(str(e.get("id") or ""), {}).get("decision") in decisions_filter
         ]
 
     if not entries:
@@ -463,7 +445,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
                 "pnl": metrics.get("pnl"),
                 "trades": metrics.get("trades"),
                 "runnable": "yes" if resolved_strategy_key else "no",
-            }
+            },
         )
 
     df = pd.DataFrame(rows)
@@ -555,7 +537,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
             CATEGORY_ORDER,
             index=0,
             key="catalog_move_target",
-            help="Déplacer les stratégies sélectionnées vers une autre catégorie"
+            help="Déplacer les stratégies sélectionnées vers une autre catégorie",
         )
     with action_col_b:
         if st.button("📦 Move", key="catalog_move_btn", disabled=not selected_ids, use_container_width=True):
@@ -569,7 +551,7 @@ def render_strategy_catalog_panel(strategy_options: Dict[str, str]) -> None:
             disabled=not selected_ids,
             type="primary",
             use_container_width=True,
-            help="Appliquer cette sélection comme stratégies actives pour le backtest"
+            help="Appliquer cette sélection comme stratégies actives pour le backtest",
         ):
             labels = []
             skipped = 0

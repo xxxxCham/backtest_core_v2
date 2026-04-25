@@ -1,33 +1,34 @@
-"""
-Utilitaires pour la gestion des workers et threads.
+"""Utilitaires pour la gestion des workers et threads.
 
 Fournit des fonctions pour l'exécution de backtests en parallèle
 et la configuration des threads dans les processus workers.
 """
+
 from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict
+from typing import Any
 
 from ui.helpers import compute_period_days_from_df, safe_run_backtest
 
 
-def run_backtest_multiprocess(args) -> Dict[str, Any]:
-    """
-    Wrapper picklable pour ProcessPoolExecutor.
+def run_backtest_multiprocess(args) -> dict[str, Any]:
+    """Wrapper picklable pour ProcessPoolExecutor.
 
     Args:
         args: tuple (param_combo, initial_capital, df, strategy_key, symbol, timeframe, debug_enabled)
 
     Returns:
         Dict avec résultats du backtest ou erreur
+
     """
     param_combo, initial_capital, df, strategy_key, symbol, timeframe, debug_enabled = args
 
     try:
         # Import local pour éviter les problèmes de pickling avec Streamlit
         from backtest.engine import BacktestEngine as _LocalBacktestEngine
+
         # Créer l'engine localement (pas picklable donc recréé dans chaque process)
         engine = _LocalBacktestEngine(initial_capital=initial_capital)
         period_days = compute_period_days_from_df(df)
@@ -43,9 +44,7 @@ def run_backtest_multiprocess(args) -> Dict[str, Any]:
             fast_metrics=True,
         )
 
-        params_native = {
-            k: float(v) if hasattr(v, "item") else v for k, v in param_combo.items()
-        }
+        params_native = {k: float(v) if hasattr(v, "item") else v for k, v in param_combo.items()}
         params_str = str(params_native)
 
         if result_i:
@@ -77,12 +76,12 @@ def run_backtest_multiprocess(args) -> Dict[str, Any]:
 
 
 def apply_thread_limit(thread_limit: int, label: str = "") -> None:
-    """
-    Applique des limites de threads pour contrôler l'utilisation CPU.
+    """Applique des limites de threads pour contrôler l'utilisation CPU.
 
     Args:
         thread_limit: Nombre max de threads
         label: Label pour le logging (optionnel)
+
     """
     if thread_limit <= 0:
         return
@@ -101,6 +100,7 @@ def apply_thread_limit(thread_limit: int, label: str = "") -> None:
 
     try:
         from threadpoolctl import threadpool_limits
+
         threadpool_limits(thread_limit)
     except Exception:
         pass
@@ -114,6 +114,7 @@ def apply_thread_limit(thread_limit: int, label: str = "") -> None:
 
     try:
         import torch
+
         torch.set_num_threads(thread_limit)
         torch.set_num_interop_threads(max(1, thread_limit // 2))
     except Exception:
@@ -125,23 +126,25 @@ def apply_thread_limit(thread_limit: int, label: str = "") -> None:
 
 
 def init_sweep_worker(thread_limit: int) -> None:
-    """
-    Initializer ProcessPoolExecutor - applique limites threads AVANT tout calcul.
+    """Initializer ProcessPoolExecutor - applique limites threads AVANT tout calcul.
 
     Args:
         thread_limit: Nombre max de threads pour ce worker
+
     """
     apply_thread_limit(thread_limit, label="worker")
 
     # Forcer avec threadpoolctl (plus efficace que les env vars seules)
     try:
         import threadpoolctl
+
         info_before = threadpoolctl.threadpool_info()
         threadpoolctl.threadpool_limits(limits=max(1, thread_limit), user_api="blas")
         info_after = threadpoolctl.threadpool_info()
 
         # Log pour debug
         import logging
+
         logger = logging.getLogger(__name__)
         num_threads_before = sum(pool.get("num_threads", 0) for pool in info_before)
         num_threads_after = sum(pool.get("num_threads", 0) for pool in info_after)

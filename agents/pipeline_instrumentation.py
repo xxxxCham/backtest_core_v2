@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.pipeline_instrumentation
+"""Module-ID: agents.pipeline_instrumentation
 
 Purpose: Instrumentation complète du pipeline Builder pour mesurer, tracer et
          analyser chaque étape de la boucle itérative (proposal → code → repair →
@@ -25,19 +24,19 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-
-
+from typing import Any
 
 # =====================================================================
 # 1. Pipeline Phase Enum
 # =====================================================================
 
+
 class PipelinePhase(str, Enum):
     """Phases mesurables du pipeline Builder."""
+
     PROPOSAL = "proposal"
     CODE_GEN = "code_gen"
     CODE_REPAIR = "code_repair"
@@ -57,17 +56,19 @@ class PipelinePhase(str, Enum):
 # 2. Phase Measurement
 # =====================================================================
 
+
 @dataclass
 class PhaseMeasurement:
     """Mesure d'une phase individuelle du pipeline."""
+
     phase: str
     started_at: float = 0.0
     duration_sec: float = 0.0
     success: bool = True
-    error: Optional[str] = None
-    input_hash: Optional[str] = None
-    output_hash: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+    input_hash: str | None = None
+    output_hash: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def failed(self) -> bool:
@@ -78,19 +79,21 @@ class PhaseMeasurement:
 # 3. Pipeline Trace (une itération complète)
 # =====================================================================
 
+
 @dataclass
 class PipelineTrace:
     """Trace complète d'une itération Builder."""
+
     iteration_num: int = 0
     session_id: str = ""
     timestamp: float = field(default_factory=time.time)
 
     # Phases mesurées
-    phases: List[PhaseMeasurement] = field(default_factory=list)
+    phases: list[PhaseMeasurement] = field(default_factory=list)
 
     # Résumé proposal
     proposal_change_type: str = ""
-    proposal_indicators: List[str] = field(default_factory=list)
+    proposal_indicators: list[str] = field(default_factory=list)
     proposal_hypothesis: str = ""
     proposal_source: str = ""  # "llm" | "deterministic_fallback"
 
@@ -104,21 +107,21 @@ class PipelineTrace:
     fallback_variant: int = -1
 
     # Résumé precheck
-    precheck_passed: Optional[bool] = None
+    precheck_passed: bool | None = None
     precheck_signal_count: int = 0
-    precheck_error: Optional[str] = None
+    precheck_error: str | None = None
 
     # Résumé backtest
     backtest_ran: bool = False
-    backtest_metrics: Dict[str, Any] = field(default_factory=dict)
+    backtest_metrics: dict[str, Any] = field(default_factory=dict)
     runtime_fix_applied: bool = False
-    runtime_error: Optional[str] = None
+    runtime_error: str | None = None
 
     # Telemetry scoring (observability only)
     continuous_score: float = 0.0
     rank_score: float = float("-inf")
-    score_components: Dict[str, float] = field(default_factory=dict)
-    score_penalties: Dict[str, float] = field(default_factory=dict)
+    score_components: dict[str, float] = field(default_factory=dict)
+    score_penalties: dict[str, float] = field(default_factory=dict)
 
     # Diagnostic
     diagnostic_category: str = ""
@@ -135,18 +138,18 @@ class PipelineTrace:
     stagnation_circuit_breaker: bool = False
     branching_enabled: bool = False
     branch_count: int = 0
-    restriction_events: List[Dict[str, Any]] = field(default_factory=list)
+    restriction_events: list[dict[str, Any]] = field(default_factory=list)
 
     # Meta
     is_fallback: bool = False
     is_best_so_far: bool = False
-    ablation_config: Dict[str, bool] = field(default_factory=dict)
+    ablation_config: dict[str, bool] = field(default_factory=dict)
     total_duration_sec: float = 0.0
 
     def add_phase(self, measurement: PhaseMeasurement) -> None:
         self.phases.append(measurement)
 
-    def get_phase(self, phase: str) -> Optional[PhaseMeasurement]:
+    def get_phase(self, phase: str) -> PhaseMeasurement | None:
         for m in self.phases:
             if m.phase == phase:
                 return m
@@ -156,10 +159,10 @@ class PipelineTrace:
         m = self.get_phase(phase)
         return m.duration_sec if m else 0.0
 
-    def failed_phases(self) -> List[str]:
+    def failed_phases(self) -> list[str]:
         return [m.phase for m in self.phases if m.failed]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["telemetry_score"] = self.continuous_score
         payload["telemetry_rank_score"] = self.rank_score
@@ -176,16 +179,15 @@ class PipelineTrace:
         return self.rank_score
 
     @property
-    def telemetry_components(self) -> Dict[str, float]:
+    def telemetry_components(self) -> dict[str, float]:
         return self.score_components
 
     @property
-    def telemetry_penalties(self) -> Dict[str, float]:
+    def telemetry_penalties(self) -> dict[str, float]:
         return self.score_penalties
 
     def metrics_fingerprint(self) -> str:
-        keys = ("total_return_pct", "max_drawdown_pct", "total_trades",
-                "win_rate_pct", "profit_factor")
+        keys = ("total_return_pct", "max_drawdown_pct", "total_trades", "win_rate_pct", "profit_factor")
         parts = []
         for k in keys:
             v = self.backtest_metrics.get(k, 0) or 0
@@ -196,6 +198,7 @@ class PipelineTrace:
 # =====================================================================
 # 4. Pipeline Instrumentation Controller
 # =====================================================================
+
 
 class PipelineInstrumentation:
     """Contrôleur d'instrumentation attachable au Builder.
@@ -214,8 +217,8 @@ class PipelineInstrumentation:
 
     def __init__(self, enabled: bool = True) -> None:
         self.enabled = enabled
-        self.traces: List[PipelineTrace] = []
-        self._current_trace: Optional[PipelineTrace] = None
+        self.traces: list[PipelineTrace] = []
+        self._current_trace: PipelineTrace | None = None
         self._session_id: str = ""
 
     def begin_iteration(
@@ -233,14 +236,13 @@ class PipelineInstrumentation:
         return trace
 
     def finalize_iteration(self, trace: PipelineTrace) -> None:
-        trace.total_duration_sec = sum(
-            m.duration_sec for m in trace.phases
-        )
+        trace.total_duration_sec = sum(m.duration_sec for m in trace.phases)
         self.traces.append(trace)
         self._current_trace = None
 
     class _PhaseMeasurer:
         """Context manager pour mesurer une phase."""
+
         def __init__(self, trace: PipelineTrace, phase: str):
             self.trace = trace
             self.measurement = PhaseMeasurement(phase=phase)
@@ -250,9 +252,7 @@ class PipelineInstrumentation:
             return self.measurement
 
         def __exit__(self, exc_type, exc_val, _exc_tb):
-            self.measurement.duration_sec = (
-                time.perf_counter() - self.measurement.started_at
-            )
+            self.measurement.duration_sec = time.perf_counter() - self.measurement.started_at
             if exc_type is not None:
                 self.measurement.success = False
                 self.measurement.error = f"{exc_type.__name__}: {exc_val}"
@@ -263,7 +263,7 @@ class PipelineInstrumentation:
         self,
         trace: PipelineTrace,
         phase: PipelinePhase,
-    ) -> "_PhaseMeasurer":
+    ) -> _PhaseMeasurer:
         return self._PhaseMeasurer(trace, phase.value)
 
     # ------------------------------------------------------------------
@@ -273,7 +273,7 @@ class PipelineInstrumentation:
     def record_proposal(
         self,
         trace: PipelineTrace,
-        proposal: Dict[str, Any],
+        proposal: dict[str, Any],
         source: str = "llm",
         duration: float = 0.0,
     ) -> None:
@@ -294,9 +294,13 @@ class PipelineInstrumentation:
     ) -> None:
         trace.code_source = source
         trace.code_lines = len(code.splitlines()) if code else 0
-        trace.code_hash = hashlib.md5(
-            code.encode("utf-8", errors="replace")
-        ).hexdigest()[:12] if code else ""
+        trace.code_hash = (
+            hashlib.md5(
+                code.encode("utf-8", errors="replace"),
+            ).hexdigest()[:12]
+            if code
+            else ""
+        )
         trace.validation_passed_first = valid_first
         trace.repair_applied = repair_applied
         trace.fallback_used = fallback_used
@@ -308,7 +312,7 @@ class PipelineInstrumentation:
         trace: PipelineTrace,
         passed: bool,
         signal_count: int = 0,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> None:
         trace.precheck_passed = passed
         trace.precheck_signal_count = signal_count
@@ -317,9 +321,9 @@ class PipelineInstrumentation:
     def record_backtest(
         self,
         trace: PipelineTrace,
-        metrics: Dict[str, Any],
+        metrics: dict[str, Any],
         runtime_fix: bool = False,
-        runtime_error: Optional[str] = None,
+        runtime_error: str | None = None,
     ) -> None:
         trace.backtest_ran = True
         trace.backtest_metrics = dict(metrics or {})
@@ -329,24 +333,24 @@ class PipelineInstrumentation:
     def record_scoring(
         self,
         trace: PipelineTrace,
-        score_payload: Dict[str, Any],
+        score_payload: dict[str, Any],
         rank_score: float,
     ) -> None:
         trace.continuous_score = float(
-            score_payload.get("score", 0.0)
+            score_payload.get("score", 0.0),
         )
         trace.rank_score = rank_score
         trace.score_components = dict(
-            score_payload.get("components", {})
+            score_payload.get("components", {}),
         )
         trace.score_penalties = dict(
-            score_payload.get("penalties", {})
+            score_payload.get("penalties", {}),
         )
 
     def record_diagnostic(
         self,
         trace: PipelineTrace,
-        diag: Dict[str, Any],
+        diag: dict[str, Any],
     ) -> None:
         trace.diagnostic_category = diag.get("category", "")
         trace.diagnostic_severity = diag.get("severity", "")
@@ -384,7 +388,7 @@ class PipelineInstrumentation:
         effect: str,
         detail: str = "",
         phase: str = "",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         trace.restriction_events.append(
             {
@@ -393,22 +397,22 @@ class PipelineInstrumentation:
                 "detail": str(detail or "").strip(),
                 "phase": str(phase or "").strip(),
                 "metadata": dict(metadata or {}),
-            }
+            },
         )
 
     # ------------------------------------------------------------------
     # Export / reporting
     # ------------------------------------------------------------------
 
-    def session_summary(self) -> Dict[str, Any]:
+    def session_summary(self) -> dict[str, Any]:
         """Résumé agrégé de toutes les itérations tracées."""
         if not self.traces:
             return {"iterations": 0}
 
         total_dur = sum(t.total_duration_sec for t in self.traces)
-        phase_totals: Dict[str, float] = {}
-        phase_counts: Dict[str, int] = {}
-        phase_errors: Dict[str, int] = {}
+        phase_totals: dict[str, float] = {}
+        phase_counts: dict[str, int] = {}
+        phase_errors: dict[str, int] = {}
         for t in self.traces:
             for m in t.phases:
                 phase_totals[m.phase] = phase_totals.get(m.phase, 0) + m.duration_sec
@@ -427,20 +431,14 @@ class PipelineInstrumentation:
             decisions[d] = decisions.get(d, 0) + 1
 
         telemetry_scores = [t.continuous_score for t in self.traces if t.backtest_ran]
-        fallback_rate = (
-            sum(1 for t in self.traces if t.fallback_used) / len(self.traces)
-            if self.traces else 0.0
-        )
-        repair_rate = (
-            sum(1 for t in self.traces if t.repair_applied) / len(self.traces)
-            if self.traces else 0.0
-        )
+        fallback_rate = sum(1 for t in self.traces if t.fallback_used) / len(self.traces) if self.traces else 0.0
+        repair_rate = sum(1 for t in self.traces if t.repair_applied) / len(self.traces) if self.traces else 0.0
         runtime_fix_count = sum(1 for t in self.traces if t.runtime_fix_applied)
         precheck_skip_count = sum(1 for t in self.traces if t.precheck_passed is False)
         decision_override_count = sum(1 for t in self.traces if t.decision_overridden)
-        restriction_counts: Dict[str, int] = {}
-        blocker_counts: Dict[str, int] = {}
-        helper_counts: Dict[str, int] = {}
+        restriction_counts: dict[str, int] = {}
+        blocker_counts: dict[str, int] = {}
+        helper_counts: dict[str, int] = {}
         for t in self.traces:
             for event in list(t.restriction_events or []):
                 kind = str(event.get("kind", "") or "").strip()
@@ -455,7 +453,7 @@ class PipelineInstrumentation:
 
         phase_avg = {
             phase: round(phase_totals[phase] / phase_counts[phase], 2)
-            for phase in phase_totals.keys()
+            for phase in phase_totals
             if phase_counts.get(phase)
         }
 
@@ -476,9 +474,7 @@ class PipelineInstrumentation:
             "decision_override_count": decision_override_count,
             "score_min": round(min(telemetry_scores), 2) if telemetry_scores else None,
             "score_max": round(max(telemetry_scores), 2) if telemetry_scores else None,
-            "score_mean": round(sum(telemetry_scores) / len(telemetry_scores), 2)
-            if telemetry_scores
-            else None,
+            "score_mean": round(sum(telemetry_scores) / len(telemetry_scores), 2) if telemetry_scores else None,
             "telemetry_score_min": round(min(telemetry_scores), 2) if telemetry_scores else None,
             "telemetry_score_max": round(max(telemetry_scores), 2) if telemetry_scores else None,
             "telemetry_score_mean": round(sum(telemetry_scores) / len(telemetry_scores), 2)
@@ -525,6 +521,7 @@ class PipelineInstrumentation:
 # 5. Ablation Controller
 # =====================================================================
 
+
 class AblationController:
     """Désactive sélectivement des étapes du pipeline Builder pour tester
     l'impact de chaque composant.
@@ -539,27 +536,29 @@ class AblationController:
     """
 
     # Étapes désactivables
-    ABLATABLE_STEPS = frozenset({
-        "code_repair",             # _repair_code()
-        "precheck",                # _precheck_signal_counts()
-        "postprocess_logic",       # _postprocess_llm_logic_block()
-        "auto_fix_indicators",     # _auto_fix_required_indicators()
-        "runtime_fix",             # _retry_code_runtime_fix()
-        "deterministic_fallback",  # _build_deterministic_fallback_code()
-        "stagnation_branching",    # branching on identical metrics
-        "positive_progress_gate",  # early stop on insufficient positives
-        "stop_override",           # policy override of LLM "stop"
-        "accept_override",         # policy override of LLM "accept"
-        "params_contract_check",   # _params_only_contract_respected()
-        "indicator_binding",       # préambule de binding indicateurs
-        "proposal_sanitize",       # _sanitize_proposal_payload()
-        "prompt_leakage_filter",   # _strip_objective_prompt_leakage()
-        "indicator_ranking",       # rank_indicator_selection() proposal + code
-        "iteration_history",       # injection historique 5 dernières itérations
-        "diagnostic_context",      # injection diagnostic/actions/donts dans prompts
-        "pre_reflection",          # _ask_pre_reflection() — critique parallèle au backtest
-        "llm_analysis",            # _ask_analysis() — 1 appel LLM par itération
-    })
+    ABLATABLE_STEPS = frozenset(
+        {
+            "code_repair",  # _repair_code()
+            "precheck",  # _precheck_signal_counts()
+            "postprocess_logic",  # _postprocess_llm_logic_block()
+            "auto_fix_indicators",  # _auto_fix_required_indicators()
+            "runtime_fix",  # _retry_code_runtime_fix()
+            "deterministic_fallback",  # _build_deterministic_fallback_code()
+            "stagnation_branching",  # branching on identical metrics
+            "positive_progress_gate",  # early stop on insufficient positives
+            "stop_override",  # policy override of LLM "stop"
+            "accept_override",  # policy override of LLM "accept"
+            "params_contract_check",  # _params_only_contract_respected()
+            "indicator_binding",  # préambule de binding indicateurs
+            "proposal_sanitize",  # _sanitize_proposal_payload()
+            "prompt_leakage_filter",  # _strip_objective_prompt_leakage()
+            "indicator_ranking",  # rank_indicator_selection() proposal + code
+            "iteration_history",  # injection historique 5 dernières itérations
+            "diagnostic_context",  # injection diagnostic/actions/donts dans prompts
+            "pre_reflection",  # _ask_pre_reflection() — critique parallèle au backtest
+            "llm_analysis",  # _ask_analysis() — 1 appel LLM par itération
+        },
+    )
 
     def __init__(self) -> None:
         self._disabled: set[str] = set()
@@ -567,8 +566,7 @@ class AblationController:
     def disable(self, step: str) -> None:
         if step not in self.ABLATABLE_STEPS:
             raise ValueError(
-                f"Step '{step}' not ablatable. Choose from: "
-                f"{sorted(self.ABLATABLE_STEPS)}"
+                f"Step '{step}' not ablatable. Choose from: {sorted(self.ABLATABLE_STEPS)}",
             )
         self._disabled.add(step)
 
@@ -587,13 +585,10 @@ class AblationController:
     def enable_all(self) -> None:
         self._disabled.clear()
 
-    def get_config(self) -> Dict[str, bool]:
-        return {
-            step: self.is_enabled(step)
-            for step in sorted(self.ABLATABLE_STEPS)
-        }
+    def get_config(self) -> dict[str, bool]:
+        return {step: self.is_enabled(step) for step in sorted(self.ABLATABLE_STEPS)}
 
-    def disabled_steps(self) -> List[str]:
+    def disabled_steps(self) -> list[str]:
         return sorted(self._disabled)
 
 
@@ -601,9 +596,11 @@ class AblationController:
 # 6. Divergence Analyzer
 # =====================================================================
 
+
 @dataclass
 class Divergence:
     """Un point de divergence entre deux traces."""
+
     phase: str
     field: str
     trace_a_value: Any
@@ -624,15 +621,23 @@ class DivergenceAnalyzer:
 
     # Champs critiques qui affectent directement le résultat
     CRITICAL_FIELDS = {
-        "code_source", "code_hash", "fallback_used",
-        "backtest_ran", "decision", "continuous_score",
+        "code_source",
+        "code_hash",
+        "fallback_used",
+        "backtest_ran",
+        "decision",
+        "continuous_score",
     }
     # Champs importants mais non fatals
     WARNING_FIELDS = {
-        "proposal_change_type", "proposal_indicators",
-        "validation_passed_first", "repair_applied",
-        "precheck_passed", "runtime_fix_applied",
-        "diagnostic_category", "decision_overridden",
+        "proposal_change_type",
+        "proposal_indicators",
+        "validation_passed_first",
+        "repair_applied",
+        "precheck_passed",
+        "runtime_fix_applied",
+        "diagnostic_category",
+        "decision_overridden",
         "stagnation_detected",
     }
 
@@ -640,9 +645,9 @@ class DivergenceAnalyzer:
         self,
         trace_a: PipelineTrace,
         trace_b: PipelineTrace,
-    ) -> List[Divergence]:
+    ) -> list[Divergence]:
         """Compare deux traces et retourne les divergences ordonnées."""
-        divergences: List[Divergence] = []
+        divergences: list[Divergence] = []
 
         # Compare les champs scalaires
         all_fields = set(self.CRITICAL_FIELDS | self.WARNING_FIELDS)
@@ -650,24 +655,27 @@ class DivergenceAnalyzer:
             val_a = getattr(trace_a, fld, None)
             val_b = getattr(trace_b, fld, None)
             if val_a != val_b:
-                severity = (
-                    "critical" if fld in self.CRITICAL_FIELDS
-                    else "warning"
+                severity = "critical" if fld in self.CRITICAL_FIELDS else "warning"
+                divergences.append(
+                    Divergence(
+                        phase=self._field_to_phase(fld),
+                        field=fld,
+                        trace_a_value=val_a,
+                        trace_b_value=val_b,
+                        severity=severity,
+                        description=self._describe_divergence(fld, val_a, val_b),
+                    ),
                 )
-                divergences.append(Divergence(
-                    phase=self._field_to_phase(fld),
-                    field=fld,
-                    trace_a_value=val_a,
-                    trace_b_value=val_b,
-                    severity=severity,
-                    description=self._describe_divergence(fld, val_a, val_b),
-                ))
 
         # Compare les métriques de backtest
         if trace_a.backtest_ran and trace_b.backtest_ran:
             metric_keys = (
-                "total_return_pct", "sharpe_ratio", "max_drawdown_pct",
-                "total_trades", "win_rate_pct", "profit_factor",
+                "total_return_pct",
+                "sharpe_ratio",
+                "max_drawdown_pct",
+                "total_trades",
+                "win_rate_pct",
+                "profit_factor",
             )
             for mk in metric_keys:
                 va = trace_a.backtest_metrics.get(mk)
@@ -679,40 +687,37 @@ class DivergenceAnalyzer:
                         diff = float("inf")
                     if diff > 1e-6:
                         severity = "critical" if mk in ("total_return_pct", "sharpe_ratio") else "warning"
-                        divergences.append(Divergence(
-                            phase="backtest",
-                            field=f"metric_{mk}",
-                            trace_a_value=va,
-                            trace_b_value=vb,
-                            severity=severity,
-                            description=(
-                                f"Metric '{mk}' differs: "
-                                f"{va} vs {vb} (delta={diff:.4f})"
+                        divergences.append(
+                            Divergence(
+                                phase="backtest",
+                                field=f"metric_{mk}",
+                                trace_a_value=va,
+                                trace_b_value=vb,
+                                severity=severity,
+                                description=(f"Metric '{mk}' differs: {va} vs {vb} (delta={diff:.4f})"),
                             ),
-                        ))
+                        )
 
         # Compare les scores
         score_diff = abs(trace_a.continuous_score - trace_b.continuous_score)
         if score_diff > 0.5:
             # Détail des composants
             for comp_key in set(
-                list(trace_a.score_components.keys())
-                + list(trace_b.score_components.keys())
+                list(trace_a.score_components.keys()) + list(trace_b.score_components.keys()),
             ):
                 ca = trace_a.score_components.get(comp_key, 0)
                 cb = trace_b.score_components.get(comp_key, 0)
                 if abs(ca - cb) > 0.1:
-                    divergences.append(Divergence(
-                        phase="scoring",
-                        field=f"score_component_{comp_key}",
-                        trace_a_value=round(ca, 3),
-                        trace_b_value=round(cb, 3),
-                        severity="info",
-                        description=(
-                            f"Score component '{comp_key}': "
-                            f"{ca:.3f} vs {cb:.3f}"
+                    divergences.append(
+                        Divergence(
+                            phase="scoring",
+                            field=f"score_component_{comp_key}",
+                            trace_a_value=round(ca, 3),
+                            trace_b_value=round(cb, 3),
+                            severity="info",
+                            description=(f"Score component '{comp_key}': {ca:.3f} vs {cb:.3f}"),
                         ),
-                    ))
+                    )
 
         # Compare phases timing (>2x différence = warning)
         phases_a = {m.phase: m for m in trace_a.phases}
@@ -723,35 +728,41 @@ class DivergenceAnalyzer:
             if ma and mb and ma.duration_sec > 0 and mb.duration_sec > 0:
                 ratio = max(ma.duration_sec, mb.duration_sec) / min(ma.duration_sec, mb.duration_sec)
                 if ratio > 2.0:
-                    divergences.append(Divergence(
-                        phase=phase_name,
-                        field="duration_sec",
-                        trace_a_value=round(ma.duration_sec, 3),
-                        trace_b_value=round(mb.duration_sec, 3),
-                        severity="info",
-                        description=(
-                            f"Phase '{phase_name}' duration ratio: {ratio:.1f}x "
-                            f"({ma.duration_sec:.2f}s vs {mb.duration_sec:.2f}s)"
+                    divergences.append(
+                        Divergence(
+                            phase=phase_name,
+                            field="duration_sec",
+                            trace_a_value=round(ma.duration_sec, 3),
+                            trace_b_value=round(mb.duration_sec, 3),
+                            severity="info",
+                            description=(
+                                f"Phase '{phase_name}' duration ratio: {ratio:.1f}x "
+                                f"({ma.duration_sec:.2f}s vs {mb.duration_sec:.2f}s)"
+                            ),
                         ),
-                    ))
+                    )
             if ma and not mb:
-                divergences.append(Divergence(
-                    phase=phase_name,
-                    field="phase_presence",
-                    trace_a_value="present",
-                    trace_b_value="absent",
-                    severity="warning",
-                    description=f"Phase '{phase_name}' only in trace A",
-                ))
+                divergences.append(
+                    Divergence(
+                        phase=phase_name,
+                        field="phase_presence",
+                        trace_a_value="present",
+                        trace_b_value="absent",
+                        severity="warning",
+                        description=f"Phase '{phase_name}' only in trace A",
+                    ),
+                )
             elif mb and not ma:
-                divergences.append(Divergence(
-                    phase=phase_name,
-                    field="phase_presence",
-                    trace_a_value="absent",
-                    trace_b_value="present",
-                    severity="warning",
-                    description=f"Phase '{phase_name}' only in trace B",
-                ))
+                divergences.append(
+                    Divergence(
+                        phase=phase_name,
+                        field="phase_presence",
+                        trace_a_value="absent",
+                        trace_b_value="present",
+                        severity="warning",
+                        description=f"Phase '{phase_name}' only in trace B",
+                    ),
+                )
 
         # Trier par sévérité
         severity_order = {"critical": 0, "warning": 1, "info": 2}
@@ -760,7 +771,7 @@ class DivergenceAnalyzer:
 
     def format_report(
         self,
-        divergences: List[Divergence],
+        divergences: list[Divergence],
         *,
         max_items: int = 50,
     ) -> str:
@@ -784,24 +795,23 @@ class DivergenceAnalyzer:
             lines.append(f"--- {sev.upper()} ({len(items)}) ---")
             for d in items:
                 lines.append(
-                    f"  [{d.phase}] {d.field}: "
-                    f"{d.trace_a_value} → {d.trace_b_value}"
+                    f"  [{d.phase}] {d.field}: {d.trace_a_value} → {d.trace_b_value}",
                 )
                 lines.append(f"    {d.description}")
             lines.append("")
 
         # Synthèse
         first_critical = next(
-            (d for d in divergences if d.severity == "critical"), None
+            (d for d in divergences if d.severity == "critical"),
+            None,
         )
         if first_critical:
             lines.append(
-                f"⚡ Point de divergence racine probable: "
-                f"[{first_critical.phase}] {first_critical.field}"
+                f"⚡ Point de divergence racine probable: [{first_critical.phase}] {first_critical.field}",
             )
         return "\n".join(lines)
 
-    def root_cause_phase(self, divergences: List[Divergence]) -> Optional[str]:
+    def root_cause_phase(self, divergences: list[Divergence]) -> str | None:
         """Identifie la phase la plus probable comme cause racine."""
         phase_order = [
             PipelinePhase.PROPOSAL.value,
@@ -852,25 +862,14 @@ class DivergenceAnalyzer:
     @staticmethod
     def _describe_divergence(field: str, val_a: Any, val_b: Any) -> str:
         descriptions = {
-            "code_source": (
-                f"Code genere par '{val_a}' vs '{val_b}' — "
-                "change le chemin complet en aval"
-            ),
-            "code_hash": (
-                "Code different — toutes les metriques aval sont potentiellement impactees"
-            ),
+            "code_source": (f"Code genere par '{val_a}' vs '{val_b}' — change le chemin complet en aval"),
+            "code_hash": ("Code different — toutes les metriques aval sont potentiellement impactees"),
             "fallback_used": (
                 "Fallback deterministe utilise dans une trace mais pas l'autre — "
                 "la qualite du code differ fondamentalement"
             ),
-            "decision": (
-                f"Decision finale '{val_a}' vs '{val_b}' — "
-                "issue de session differente"
-            ),
-            "continuous_score": (
-                f"Score de telemetrie {val_a} vs {val_b} — "
-                "ecart d'observabilite composite"
-            ),
+            "decision": (f"Decision finale '{val_a}' vs '{val_b}' — issue de session differente"),
+            "continuous_score": (f"Score de telemetrie {val_a} vs {val_b} — ecart d'observabilite composite"),
         }
         return descriptions.get(field, f"'{field}' changed: {val_a} → {val_b}")
 
@@ -878,6 +877,7 @@ class DivergenceAnalyzer:
 # =====================================================================
 # 7. Canonical Test Cases
 # =====================================================================
+
 
 @dataclass
 class CanonicalCase:
@@ -888,25 +888,26 @@ class CanonicalCase:
       B — Strategie non profitable a reparer (logic structurellement OK mais parametres faibles)
       C — Code LLM casse (syntaxe invalide, indicateurs manquants, patterns interdits)
     """
+
     case_id: str
     level: str  # "A" | "B" | "C"
     description: str
 
     # Entrées
-    proposal: Dict[str, Any]
+    proposal: dict[str, Any]
     code_snippet: str  # fragment generate_signals
-    metrics_before: Dict[str, Any]  # métriques simulées
+    metrics_before: dict[str, Any]  # métriques simulées
 
     # Expectations
     expect_code_valid: bool
     expect_repair_needed: bool
     expect_fallback: bool
-    expect_backtest_positive: Optional[bool]  # None = pas d'attente
-    expect_min_score: Optional[float]
-    expect_decision: Optional[str]  # "continue" | "accept" | "stop"
+    expect_backtest_positive: bool | None  # None = pas d'attente
+    expect_min_score: float | None
+    expect_decision: str | None  # "continue" | "accept" | "stop"
 
 
-def build_canonical_cases() -> List[CanonicalCase]:
+def build_canonical_cases() -> list[CanonicalCase]:
     """Construit la suite de cas canoniques A/B/C."""
     return [
         # --- Niveau A: stratégie simple et rentable ---
@@ -919,8 +920,11 @@ def build_canonical_cases() -> List[CanonicalCase]:
                 "used_indicators": ["ema_fast", "ema_slow", "atr"],
                 "change_type": "logic",
                 "default_params": {
-                    "fast_period": 15, "slow_period": 50,
-                    "leverage": 1, "stop_atr_mult": 2.0, "tp_atr_mult": 4.0,
+                    "fast_period": 15,
+                    "slow_period": 50,
+                    "leverage": 1,
+                    "stop_atr_mult": 2.0,
+                    "tp_atr_mult": 4.0,
                 },
             },
             code_snippet=textwrap.dedent("""\
@@ -936,9 +940,12 @@ def build_canonical_cases() -> List[CanonicalCase]:
                 signals.iloc[:warmup] = 0.0
             """),
             metrics_before={
-                "total_return_pct": 18.86, "sharpe_ratio": 1.2,
-                "max_drawdown_pct": -23.4, "total_trades": 94,
-                "win_rate_pct": 30.9, "profit_factor": 1.12,
+                "total_return_pct": 18.86,
+                "sharpe_ratio": 1.2,
+                "max_drawdown_pct": -23.4,
+                "total_trades": 94,
+                "win_rate_pct": 30.9,
+                "profit_factor": 1.12,
             },
             expect_code_valid=True,
             expect_repair_needed=False,
@@ -960,8 +967,12 @@ def build_canonical_cases() -> List[CanonicalCase]:
                 "used_indicators": ["rsi", "atr"],
                 "change_type": "params",
                 "default_params": {
-                    "rsi_period": 14, "overbought": 70, "oversold": 30,
-                    "leverage": 1, "stop_atr_mult": 1.5, "tp_atr_mult": 3.0,
+                    "rsi_period": 14,
+                    "overbought": 70,
+                    "oversold": 30,
+                    "leverage": 1,
+                    "stop_atr_mult": 1.5,
+                    "tp_atr_mult": 3.0,
                 },
             },
             code_snippet=textwrap.dedent("""\
@@ -973,9 +984,12 @@ def build_canonical_cases() -> List[CanonicalCase]:
                 signals.iloc[:warmup] = 0.0
             """),
             metrics_before={
-                "total_return_pct": 2.1, "sharpe_ratio": 0.35,
-                "max_drawdown_pct": -15.2, "total_trades": 45,
-                "win_rate_pct": 35.5, "profit_factor": 1.03,
+                "total_return_pct": 2.1,
+                "sharpe_ratio": 0.35,
+                "max_drawdown_pct": -15.2,
+                "total_trades": 45,
+                "win_rate_pct": 35.5,
+                "profit_factor": 1.03,
             },
             expect_code_valid=True,
             expect_repair_needed=False,
@@ -988,10 +1002,7 @@ def build_canonical_cases() -> List[CanonicalCase]:
         CanonicalCase(
             case_id="C1_bare_indicator_name",
             level="C",
-            description=(
-                "Code utilisant coppock_curve nu sans binding — "
-                "repair doit injecter l'alias"
-            ),
+            description=("Code utilisant coppock_curve nu sans binding — repair doit injecter l'alias"),
             proposal={
                 "hypothesis": "Coppock curve momentum filter",
                 "used_indicators": ["coppock_curve", "ema_fast"],
@@ -1015,10 +1026,7 @@ def build_canonical_cases() -> List[CanonicalCase]:
         CanonicalCase(
             case_id="C2_signals_loc_2d",
             level="C",
-            description=(
-                "Code utilisant signals.loc[mask, 'long'] = 1 — "
-                "doit etre rejete ou repare"
-            ),
+            description=("Code utilisant signals.loc[mask, 'long'] = 1 — doit etre rejete ou repare"),
             proposal={
                 "hypothesis": "Dual bollinger breakout",
                 "used_indicators": ["bollinger", "atr"],
@@ -1046,10 +1054,7 @@ def build_canonical_cases() -> List[CanonicalCase]:
         CanonicalCase(
             case_id="C3_dict_indicator_direct_compare",
             level="C",
-            description=(
-                "Code comparant indicators['adx'] > 25 directement — "
-                "indicateur dict, doit utiliser sous-cle"
-            ),
+            description=("Code comparant indicators['adx'] > 25 directement — indicateur dict, doit utiliser sous-cle"),
             proposal={
                 "hypothesis": "ADX trend filter with EMA",
                 "used_indicators": ["adx", "ema_fast", "ema_slow"],

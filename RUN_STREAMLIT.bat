@@ -212,7 +212,7 @@ echo   Flags disponibles: --clean  --clean-numba  --clean-all
 echo ========================================================================
 echo.
 
-python tools\streamlit_watchdog.py ^
+.venv\Scripts\python.exe tools\streamlit_watchdog.py ^
   --port %BACKTEST_STREAMLIT_PORT% ^
   --stale-runtime-claim-timeout-sec %BACKTEST_STREAMLIT_STALE_RUNTIME_CLAIM_TIMEOUT_SEC% ^
   --restart-delay-sec %BACKTEST_STREAMLIT_RESTART_DELAY_SEC%

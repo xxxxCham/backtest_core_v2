@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.kvo
+"""Module-ID: indicators.kvo
 
 Purpose: Klinger Volume Oscillator (KVO).
 """
@@ -33,20 +32,30 @@ def kvo(
     close_series = pd.Series(np.asarray(close, dtype=np.float64))
     volume_series = pd.Series(np.asarray(volume, dtype=np.float64))
 
+    if not (
+        len(high_series) == len(low_series) == len(close_series) == len(volume_series)
+    ):
+        raise ValueError("high, low, close and volume must have the same length")
+    if close_series.empty:
+        empty = np.array([], dtype=np.float64)
+        return {"kvo": empty, "signal": empty}
+
     dm = (high_series - low_series).replace(0.0, np.nan)
     close_diff = close_series.diff()
-    trend = pd.Series(np.where(close_diff >= 0.0, 1.0, -1.0), index=close_series.index)
-    vf = (volume_series * trend * dm / dm).fillna(0.0)
-    vf = (vf * close_diff.abs().fillna(0.0)).fillna(0.0)
+    trend = pd.Series(np.sign(close_diff.fillna(0.0)), index=close_series.index)
+    vf = (volume_series * trend * close_diff.abs().fillna(0.0)).where(dm.notna(), 0.0).fillna(0.0)
 
     short_period = max(int(short_period), 1)
     long_period = max(int(long_period), 1)
     signal_period = max(int(signal_period), 1)
 
-    kvo_line = vf.ewm(span=short_period, adjust=False).mean() - vf.ewm(
-        span=long_period,
-        adjust=False,
-    ).mean()
+    kvo_line = (
+        vf.ewm(span=short_period, adjust=False).mean()
+        - vf.ewm(
+            span=long_period,
+            adjust=False,
+        ).mean()
+    )
     signal = kvo_line.ewm(span=signal_period, adjust=False).mean()
 
     return {
@@ -76,4 +85,4 @@ register_indicator(
 )
 
 
-__all__ = ["kvo", "calculate_kvo", "KVOSettings"]
+__all__ = ["KVOSettings", "calculate_kvo", "kvo"]

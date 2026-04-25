@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.simulator
+"""Module-ID: backtest.simulator
 
 Purpose: Simuler l'exécution des trades et le calcul des courbes d'équité/rendement.
 
@@ -21,7 +20,7 @@ Skip-if: Vous ne touchez qu'aux stratégies/indicateurs.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -31,6 +30,7 @@ from utils.log import get_logger
 # Import optionnel de tqdm pour barres de progression
 try:
     from tqdm import tqdm
+
     TQDM_AVAILABLE = True
 except ImportError:
     TQDM_AVAILABLE = False
@@ -38,14 +38,14 @@ except ImportError:
     def tqdm(iterable, **kwargs):
         return iterable
 
+
 logger = get_logger(__name__)
 
 
 @dataclass
 class Trade:
-    """
-    Représentation d'un trade exécuté.
-    """
+    """Représentation d'un trade exécuté."""
+
     entry_ts: pd.Timestamp
     exit_ts: pd.Timestamp
     side: Literal["LONG", "SHORT"]
@@ -58,7 +58,7 @@ class Trade:
     leverage: float = 1.0
     fees_paid: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "entry_ts": self.entry_ts,
             "exit_ts": self.exit_ts,
@@ -70,19 +70,18 @@ class Trade:
             "return_pct": self.return_pct,
             "exit_reason": self.exit_reason,
             "leverage_used": self.leverage,
-            "fees_paid": self.fees_paid
+            "fees_paid": self.fees_paid,
         }
 
 
 def simulate_trades(
     df: pd.DataFrame,
     signals: pd.Series,
-    params: Dict[str, Any],
-    execution_engine: Optional[Any] = None,
-    show_progress: bool = False
+    params: dict[str, Any],
+    execution_engine: Any | None = None,
+    show_progress: bool = False,
 ) -> pd.DataFrame:
-    """
-    Simule l'exécution des trades basée sur les signaux.
+    """Simule l'exécution des trades basée sur les signaux.
 
     Features:
     - Gestion des positions (une seule à la fois)
@@ -107,17 +106,18 @@ def simulate_trades(
     Returns:
         DataFrame des trades avec colonnes:
         entry_ts, exit_ts, pnl, size, price_entry, price_exit, side, exit_reason, etc.
+
     """
     logger.debug("Début simulation des trades")
 
-    trades: List[Trade] = []
+    trades: list[Trade] = []
 
     # État de position
     position = 0  # 0=flat, 1=long, -1=short
     entry_price = 0.0
-    entry_time: Optional[pd.Timestamp] = None
+    entry_time: pd.Timestamp | None = None
     position_size = 0.0
-    exit_pending_reason: Optional[str] = None
+    exit_pending_reason: str | None = None
 
     # Paramètres avec défauts
     leverage = params.get("leverage", 1)
@@ -171,13 +171,17 @@ def simulate_trades(
     total_slippage_cost = 0.0
 
     # Barre de progression optionnelle
-    bar_iterator = tqdm(
-        range(n_bars),
-        desc="Simulating trades",
-        unit="bar",
-        disable=not (show_progress and TQDM_AVAILABLE),
-        leave=False
-    ) if show_progress else range(n_bars)
+    bar_iterator = (
+        tqdm(
+            range(n_bars),
+            desc="Simulating trades",
+            unit="bar",
+            disable=not (show_progress and TQDM_AVAILABLE),
+            leave=False,
+        )
+        if show_progress
+        else range(n_bars)
+    )
 
     def _init_trade_levels(bar_idx: int, pos: int) -> None:
         nonlocal stop_price, tp_price, stop_level, tp_level, use_bb_pos, has_bb_stop, has_bb_tp
@@ -227,7 +231,7 @@ def simulate_trades(
                     price=close_price,
                     side=position,
                     bar_idx=i,
-                    size=requested_size
+                    size=requested_size,
                 )
                 entry_price = exec_result.executed_price
                 filled_size = getattr(exec_result, "filled_size", requested_size)
@@ -278,20 +282,16 @@ def simulate_trades(
                                 tp_hit = True
                     else:
                         if has_bb_stop:
-                            if position == 1 and lows[i] <= stop_price:
-                                sl_hit = True
-                            elif position == -1 and highs[i] >= stop_price:
+                            if (position == 1 and lows[i] <= stop_price) or (position == -1 and highs[i] >= stop_price):
                                 sl_hit = True
                         if has_bb_tp:
-                            if position == 1 and highs[i] >= tp_price:
-                                tp_hit = True
-                            elif position == -1 and lows[i] <= tp_price:
+                            if (position == 1 and highs[i] >= tp_price) or (position == -1 and lows[i] <= tp_price):
                                 tp_hit = True
 
                     if not sl_hit and not has_bb_stop:
-                        if position == 1 and lows[i] <= entry_price * (1 - k_sl * 0.01):
-                            sl_hit = True
-                        elif position == -1 and highs[i] >= entry_price * (1 + k_sl * 0.01):
+                        if (position == 1 and lows[i] <= entry_price * (1 - k_sl * 0.01)) or (
+                            position == -1 and highs[i] >= entry_price * (1 + k_sl * 0.01)
+                        ):
                             sl_hit = True
 
                     if sl_hit:
@@ -327,7 +327,7 @@ def simulate_trades(
                         price=close_price,
                         side=-position,  # Direction opposée pour la sortie
                         bar_idx=i,
-                        size=position_size
+                        size=position_size,
                     )
                     exit_price = exec_result.executed_price
                     filled_size = getattr(exec_result, "filled_size", position_size)
@@ -377,7 +377,7 @@ def simulate_trades(
                     return_pct=net_return * 100,
                     exit_reason=exit_reason_used,
                     leverage=leverage,
-                    fees_paid=fees_paid
+                    fees_paid=fees_paid,
                 )
                 trades.append(trade)
 
@@ -407,7 +407,7 @@ def simulate_trades(
                                 price=close_price,
                                 side=position,
                                 bar_idx=i,
-                                size=requested_size
+                                size=requested_size,
                             )
                             entry_price = exec_result.executed_price
                             filled_size = getattr(exec_result, "filled_size", requested_size)
@@ -432,7 +432,7 @@ def simulate_trades(
                 price=closes[-1],
                 side=-position,
                 bar_idx=n_bars - 1,
-                size=position_size
+                size=position_size,
             )
             final_price = exec_result.executed_price
             total_spread_cost += exec_result.spread_cost
@@ -463,7 +463,7 @@ def simulate_trades(
             return_pct=net_return * 100,
             exit_reason="end_of_data",
             leverage=leverage,
-            fees_paid=position_size * entry_price * total_fees_pct
+            fees_paid=position_size * entry_price * total_fees_pct,
         )
         trades.append(trade)
 
@@ -472,10 +472,21 @@ def simulate_trades(
         trades_df = pd.DataFrame([t.to_dict() for t in trades])
     else:
         # DataFrame vide avec colonnes requises
-        trades_df = pd.DataFrame(columns=[
-            "entry_ts", "exit_ts", "pnl", "size", "price_entry", "price_exit",
-            "side", "exit_reason", "return_pct", "leverage_used", "fees_paid"
-        ])
+        trades_df = pd.DataFrame(
+            columns=[
+                "entry_ts",
+                "exit_ts",
+                "pnl",
+                "size",
+                "price_entry",
+                "price_exit",
+                "side",
+                "exit_reason",
+                "return_pct",
+                "leverage_used",
+                "fees_paid",
+            ],
+        )
 
     logger.info(f"Simulation terminée: {len(trades)} trades")
 
@@ -486,10 +497,9 @@ def calculate_equity_curve(
     df: pd.DataFrame,
     trades_df: pd.DataFrame,
     initial_capital: float = 10000.0,
-    run_id: Optional[str] = None  # Pour logging structuré
+    run_id: str | None = None,  # Pour logging structuré
 ) -> pd.Series:
-    """
-    Calcule la courbe d'équité avec mark-to-market.
+    """Calcule la courbe d'équité avec mark-to-market.
 
     IMPORTANT: Inclut le P&L non réalisé des positions ouvertes.
 
@@ -500,11 +510,12 @@ def calculate_equity_curve(
 
     Returns:
         pd.Series de l'équité avec mark-to-market
+
     """
     # EQUITY_SERIES_META - Log métadonnées courbe equity
     if run_id:
         freq_str = "unknown"
-        if hasattr(df.index, 'freq') and df.index.freq is not None:
+        if hasattr(df.index, "freq") and df.index.freq is not None:
             freq_str = str(df.index.freq)
         elif isinstance(df.index, pd.DatetimeIndex) and len(df.index) > 1:
             freq_str = pd.infer_freq(df.index) or "unknown"
@@ -512,7 +523,7 @@ def calculate_equity_curve(
         logger.info(
             f"EQUITY_SERIES_META run_id={run_id} "
             f"index_type={type(df.index).__name__} freq={freq_str} "
-            f"n_points={len(df)} initial_capital={initial_capital} currency=USD"
+            f"n_points={len(df)} initial_capital={initial_capital} currency=USD",
         )
 
     equity = pd.Series(initial_capital, index=df.index, dtype=np.float64)
@@ -522,7 +533,7 @@ def calculate_equity_curve(
             logger.info(
                 f"EQUITY_COMPLETE run_id={run_id} len={len(equity)} "
                 f"min={equity.min():.2f} max={equity.max():.2f} "
-                f"final={equity.iloc[-1]:.2f} pnl=0.00 note=no_trades"
+                f"final={equity.iloc[-1]:.2f} pnl=0.00 note=no_trades",
             )
         return equity
 
@@ -530,7 +541,7 @@ def calculate_equity_curve(
     entry_ts_series = pd.to_datetime(trades_df["entry_ts"])
     exit_ts_series = pd.to_datetime(trades_df["exit_ts"])
 
-    if hasattr(df.index, 'tz') and df.index.tz is not None:
+    if hasattr(df.index, "tz") and df.index.tz is not None:
         if entry_ts_series.dt.tz is None:
             entry_ts_series = entry_ts_series.dt.tz_localize(df.index.tz)
         elif entry_ts_series.dt.tz != df.index.tz:
@@ -542,18 +553,19 @@ def calculate_equity_curve(
             exit_ts_series = exit_ts_series.dt.tz_convert(df.index.tz)
 
     # --- Vectorized equity computation ---
-    close_prices = df['close'].values.astype(np.float64)
+    close_prices = df["close"].values.astype(np.float64)
     bar_times = df.index.values  # numpy datetime64 array
 
     # Extract trade arrays once
     entry_times = entry_ts_series.values
     exit_times = exit_ts_series.values
-    trade_pnl = trades_df['pnl'].values.astype(np.float64)
-    trade_entry_prices = trades_df['price_entry'].values.astype(np.float64)
-    trade_sizes = trades_df['size'].values.astype(np.float64)
+    trade_pnl = trades_df["pnl"].values.astype(np.float64)
+    trade_entry_prices = trades_df["price_entry"].values.astype(np.float64)
+    trade_sizes = trades_df["size"].values.astype(np.float64)
     side_mult = np.where(
-        trades_df.get('side', pd.Series('LONG', index=trades_df.index)).values == 'SHORT',
-        -1.0, 1.0,
+        trades_df.get("side", pd.Series("LONG", index=trades_df.index)).values == "SHORT",
+        -1.0,
+        1.0,
     )
 
     n_bars = len(bar_times)
@@ -567,24 +579,27 @@ def calculate_equity_curve(
     cum_pnl = np.cumsum(sorted_pnl)
 
     # Number of trades closed at or before each bar (exit_ts <= bar_time)
-    closed_counts = np.searchsorted(sorted_exit, bar_times, side='right')
+    closed_counts = np.searchsorted(sorted_exit, bar_times, side="right")
     realized_pnl = np.where(closed_counts > 0, cum_pnl[closed_counts - 1], 0.0)
 
     # Unrealized PnL: vectorized with broadcasting for reasonable trade counts
     if n_trades <= 5000:
         # Full broadcasting: (n_bars, n_trades)
-        open_mask = (entry_times[np.newaxis, :] <= bar_times[:, np.newaxis]) & \
-                    (exit_times[np.newaxis, :] > bar_times[:, np.newaxis])
-        price_diff = (close_prices[:, np.newaxis] - trade_entry_prices[np.newaxis, :]) \
-                     * trade_sizes[np.newaxis, :] * side_mult[np.newaxis, :]
+        open_mask = (entry_times[np.newaxis, :] <= bar_times[:, np.newaxis]) & (
+            exit_times[np.newaxis, :] > bar_times[:, np.newaxis]
+        )
+        price_diff = (
+            (close_prices[:, np.newaxis] - trade_entry_prices[np.newaxis, :])
+            * trade_sizes[np.newaxis, :]
+            * side_mult[np.newaxis, :]
+        )
         unrealized_pnl = np.sum(price_diff * open_mask, axis=1)
     else:
         # Fallback for very large trade counts: iterate trades, vectorize bars
         unrealized_pnl = np.zeros(n_bars, dtype=np.float64)
         for t in range(n_trades):
             mask = (bar_times >= entry_times[t]) & (bar_times < exit_times[t])
-            unrealized_pnl[mask] += (close_prices[mask] - trade_entry_prices[t]) \
-                                    * trade_sizes[t] * side_mult[t]
+            unrealized_pnl[mask] += (close_prices[mask] - trade_entry_prices[t]) * trade_sizes[t] * side_mult[t]
 
     equity_values = initial_capital + realized_pnl + unrealized_pnl
     equity = pd.Series(equity_values, index=df.index, dtype=np.float64)
@@ -601,11 +616,12 @@ def calculate_equity_curve(
                 logger.warning(
                     f"EQUITY_JUMPS run_id={run_id} n_jumps={len(abnormal_jumps)} "
                     f"max_jump={abnormal_jumps.max():.4f} "
-                    f"jump_steps={abnormal_jumps.index.tolist()[:10]}"
+                    f"jump_steps={abnormal_jumps.index.tolist()[:10]}",
                 )
 
         # Drawdown analysis
         from backtest.performance import drawdown_series, max_drawdown
+
         dd_series = drawdown_series(equity)
         max_dd = max_drawdown(equity)
 
@@ -614,45 +630,42 @@ def calculate_equity_curve(
             dd_start = str(dd_series.idxmin())
 
         logger.info(
-            f"EQUITY_DD run_id={run_id} max_dd_pct={max_dd * 100:.2f} "
-            f"dd_start={dd_start}"
+            f"EQUITY_DD run_id={run_id} max_dd_pct={max_dd * 100:.2f} dd_start={dd_start}",
         )
 
         # Réconciliation ledger
         if not trades_df.empty:
             equity_final = equity.iloc[-1]
-            pnl_total = trades_df['pnl'].sum()
+            pnl_total = trades_df["pnl"].sum()
             equity_expected = initial_capital + pnl_total
             delta = abs(equity_final - equity_expected)
 
             if delta > 0.01:  # epsilon = 1 cent
-                fees_total = trades_df.get('fees', pd.Series([0])).sum()
+                fees_total = trades_df.get("fees", pd.Series([0])).sum()
                 logger.error(
                     f"EQUITY_RECONCILE_FAIL run_id={run_id} "
                     f"equity_final={equity_final:.2f} equity_expected={equity_expected:.2f} "
                     f"delta={delta:.2f} initial_capital={initial_capital:.2f} "
-                    f"pnl_total={pnl_total:.2f} fees_total={fees_total:.2f}"
+                    f"pnl_total={pnl_total:.2f} fees_total={fees_total:.2f}",
                 )
 
         # Log final
         logger.info(
             f"EQUITY_COMPLETE run_id={run_id} len={len(equity)} "
             f"min={equity.min():.2f} max={equity.max():.2f} "
-            f"final={equity.iloc[-1]:.2f} pnl={equity.iloc[-1] - initial_capital:.2f}"
+            f"final={equity.iloc[-1]:.2f} pnl={equity.iloc[-1] - initial_capital:.2f}",
         )
 
     return equity
 
 
 def calculate_returns(equity: pd.Series) -> pd.Series:
-    """
-    Calcule les rendements périodiques à partir de la courbe d'équité.
-    """
+    """Calcule les rendements périodiques à partir de la courbe d'équité."""
     returns = equity.pct_change().fillna(0)
     return returns
 
 
-__all__ = ["simulate_trades", "Trade", "calculate_equity_curve", "calculate_returns"]
+__all__ = ["Trade", "calculate_equity_curve", "calculate_returns", "simulate_trades"]
 
 
 # Docstring update summary

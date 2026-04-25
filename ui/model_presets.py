@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.model_presets
+"""Module-ID: ui.model_presets
 
 Purpose: Gestion des presets de configuration de modèles LLM pour les agents.
 
@@ -25,7 +24,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from utils.log import get_logger
 
@@ -36,7 +35,7 @@ MODEL_PRESETS_DIR = Path("data") / "model_presets"
 
 # ===== PRESETS PRÉDÉFINIS (NON MODIFIABLES) =====
 
-BUILTIN_PRESETS: Dict[str, Dict[str, Any]] = {
+BUILTIN_PRESETS: dict[str, dict[str, Any]] = {
     "Optimal": {
         "name": "Optimal",
         "description": "Configuration optimale basée sur benchmarks Dec 2025",
@@ -44,9 +43,9 @@ BUILTIN_PRESETS: Dict[str, Dict[str, Any]] = {
             "analyst": ["qwen2.5:32b"],
             "strategist": ["lfm2:24b"],
             "critic": ["llama3.3:70b-instruct-q4_K_M"],
-            "validator": ["llama3.3:70b-instruct-q4_K_M"]
+            "validator": ["llama3.3:70b-instruct-q4_K_M"],
         },
-        "builtin": True
+        "builtin": True,
     },
     "Rapide": {
         "name": "Rapide",
@@ -55,9 +54,9 @@ BUILTIN_PRESETS: Dict[str, Dict[str, Any]] = {
             "analyst": ["gemma4:26b"],
             "strategist": ["mistral:22b"],
             "critic": ["deepseek-r1:32b"],
-            "validator": ["deepseek-r1:32b"]
+            "validator": ["deepseek-r1:32b"],
         },
-        "builtin": True
+        "builtin": True,
     },
     "Équilibré": {
         "name": "Équilibré",
@@ -66,9 +65,9 @@ BUILTIN_PRESETS: Dict[str, Dict[str, Any]] = {
             "analyst": ["qwen2.5:32b"],
             "strategist": ["lfm2:24b"],
             "critic": ["deepseek-r1:32b"],
-            "validator": ["qwq:32b"]
+            "validator": ["qwq:32b"],
         },
-        "builtin": True
+        "builtin": True,
     },
     "Gemma 4": {
         "name": "Gemma 4",
@@ -77,9 +76,9 @@ BUILTIN_PRESETS: Dict[str, Dict[str, Any]] = {
             "analyst": ["gemma4:26b"],
             "strategist": ["gemma4:26b"],
             "critic": ["gemma4:31b"],
-            "validator": ["gemma4:31b"]
+            "validator": ["gemma4:31b"],
         },
-        "builtin": True
+        "builtin": True,
     },
     "Puissant": {
         "name": "Puissant",
@@ -88,10 +87,10 @@ BUILTIN_PRESETS: Dict[str, Dict[str, Any]] = {
             "analyst": ["qwen2.5:32b"],
             "strategist": ["deepseek-r1:32b"],
             "critic": ["llama3.3:70b-instruct-q4_K_M"],
-            "validator": ["llama3.3:70b-instruct-q4_K_M"]
+            "validator": ["llama3.3:70b-instruct-q4_K_M"],
         },
-        "builtin": True
-    }
+        "builtin": True,
+    },
 }
 
 # ===== FONCTIONS PRINCIPALES =====
@@ -103,12 +102,12 @@ def get_presets_dir() -> Path:
     return MODEL_PRESETS_DIR
 
 
-def list_model_presets() -> List[Dict[str, Any]]:
-    """
-    Liste tous les presets disponibles (builtin + utilisateur).
+def list_model_presets() -> list[dict[str, Any]]:
+    """Liste tous les presets disponibles (builtin + utilisateur).
 
     Returns:
         Liste de dicts avec clés: name, description, models, builtin
+
     """
     # Presets builtin
     presets = list(BUILTIN_PRESETS.values())
@@ -117,7 +116,7 @@ def list_model_presets() -> List[Dict[str, Any]]:
     presets_dir = get_presets_dir()
     for filepath in presets_dir.glob("*.json"):
         try:
-            with open(filepath, "r", encoding="utf-8") as f:
+            with open(filepath, encoding="utf-8") as f:
                 preset = json.load(f)
                 preset["builtin"] = False
                 presets.append(preset)
@@ -127,9 +126,8 @@ def list_model_presets() -> List[Dict[str, Any]]:
     return presets
 
 
-def load_model_preset(name: str) -> Dict[str, Any]:
-    """
-    Charge un preset par son nom.
+def load_model_preset(name: str) -> dict[str, Any]:
+    """Charge un preset par son nom.
 
     Args:
         name: Nom du preset
@@ -139,6 +137,7 @@ def load_model_preset(name: str) -> Dict[str, Any]:
 
     Raises:
         ValueError: Si le preset n'existe pas
+
     """
     # Vérifier dans les builtin
     if name in BUILTIN_PRESETS:
@@ -151,15 +150,14 @@ def load_model_preset(name: str) -> Dict[str, Any]:
     if not filepath.exists():
         raise ValueError(f"Preset '{name}' introuvable")
 
-    with open(filepath, "r", encoding="utf-8") as f:
+    with open(filepath, encoding="utf-8") as f:
         preset = json.load(f)
         preset["builtin"] = False
         return preset
 
 
-def save_model_preset(name: str, models: Dict[str, List[str]]) -> None:
-    """
-    Sauvegarde un preset utilisateur.
+def save_model_preset(name: str, models: dict[str, list[str]]) -> None:
+    """Sauvegarde un preset utilisateur.
 
     Args:
         name: Nom du preset
@@ -167,6 +165,7 @@ def save_model_preset(name: str, models: Dict[str, List[str]]) -> None:
 
     Raises:
         ValueError: Si le nom est invalide ou si c'est un builtin
+
     """
     name = name.strip()
     if not name:
@@ -179,7 +178,7 @@ def save_model_preset(name: str, models: Dict[str, List[str]]) -> None:
         "name": name,
         "description": "",
         "models": models,
-        "created_at": datetime.utcnow().isoformat() + "Z"
+        "created_at": datetime.utcnow().isoformat() + "Z",
     }
 
     presets_dir = get_presets_dir()
@@ -192,8 +191,7 @@ def save_model_preset(name: str, models: Dict[str, List[str]]) -> None:
 
 
 def delete_model_preset(name: str) -> bool:
-    """
-    Supprime un preset utilisateur.
+    """Supprime un preset utilisateur.
 
     Args:
         name: Nom du preset
@@ -203,6 +201,7 @@ def delete_model_preset(name: str) -> bool:
 
     Raises:
         ValueError: Si c'est un preset builtin
+
     """
     if name in BUILTIN_PRESETS:
         raise ValueError(f"Impossible de supprimer le preset builtin '{name}'")
@@ -218,15 +217,15 @@ def delete_model_preset(name: str) -> bool:
     return False
 
 
-def get_current_config_as_dict(role_model_config) -> Dict[str, Any]:
-    """
-    Convertit la config actuelle en dict pour sauvegarde.
+def get_current_config_as_dict(role_model_config) -> dict[str, Any]:
+    """Convertit la config actuelle en dict pour sauvegarde.
 
     Args:
         role_model_config: Instance de RoleModelConfig
 
     Returns:
         Dict avec clé 'models' contenant la config de chaque rôle
+
     """
     return {
         "models": {
@@ -234,17 +233,17 @@ def get_current_config_as_dict(role_model_config) -> Dict[str, Any]:
             "strategist": role_model_config.strategist.models,
             "critic": role_model_config.critic.models,
             "validator": role_model_config.validator.models,
-        }
+        },
     }
 
 
-def apply_preset_to_config(preset: Dict[str, Any], role_model_config) -> None:
-    """
-    Applique un preset à la config globale.
+def apply_preset_to_config(preset: dict[str, Any], role_model_config) -> None:
+    """Applique un preset à la config globale.
 
     Args:
         preset: Dict du preset
         role_model_config: Instance de RoleModelConfig à modifier
+
     """
     models = preset.get("models", {})
 
@@ -258,11 +257,11 @@ def apply_preset_to_config(preset: Dict[str, Any], role_model_config) -> None:
 
 __all__ = [
     "BUILTIN_PRESETS",
+    "apply_preset_to_config",
+    "delete_model_preset",
+    "get_current_config_as_dict",
     "get_presets_dir",
     "list_model_presets",
     "load_model_preset",
     "save_model_preset",
-    "delete_model_preset",
-    "get_current_config_as_dict",
-    "apply_preset_to_config",
 ]

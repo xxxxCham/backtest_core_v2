@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.cmo
+"""Module-ID: indicators.cmo
 
 Purpose: Chande Momentum Oscillator (CMO).
 """
@@ -47,4 +46,4 @@ register_indicator(
 )
 
 
-__all__ = ["cmo", "calculate_cmo", "CMOSettings"]
+__all__ = ["CMOSettings", "calculate_cmo", "cmo"]

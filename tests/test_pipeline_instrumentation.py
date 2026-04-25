@@ -22,7 +22,6 @@ from agents.pipeline_instrumentation import (
     build_canonical_cases,
 )
 
-
 # =====================================================================
 # PipelineTrace
 # =====================================================================
@@ -92,31 +91,42 @@ class TestPipelineInstrumentation:
             time.sleep(0.01)
             m.metadata["model"] = "qwen3.5:35b"
 
-        instr.record_proposal(trace, {
-            "change_type": "logic",
-            "used_indicators": ["ema_fast", "ema_slow"],
-            "hypothesis": "test hypothesis",
-        })
+        instr.record_proposal(
+            trace,
+            {
+                "change_type": "logic",
+                "used_indicators": ["ema_fast", "ema_slow"],
+                "hypothesis": "test hypothesis",
+            },
+        )
 
         instr.record_code(
-            trace, "def generate_signals():\n  pass",
-            source="llm", valid_first=True,
+            trace,
+            "def generate_signals():\n  pass",
+            source="llm",
+            valid_first=True,
         )
 
         instr.record_precheck(trace, passed=True, signal_count=42)
 
-        instr.record_backtest(trace, {
-            "total_return_pct": 15.0,
-            "sharpe_ratio": 1.1,
-            "total_trades": 80,
-        })
+        instr.record_backtest(
+            trace,
+            {
+                "total_return_pct": 15.0,
+                "sharpe_ratio": 1.1,
+                "total_trades": 80,
+            },
+        )
 
         instr.record_scoring(
-            trace, {"score": 45.0, "components": {"return": 15}, "penalties": {}}, 1.1,
+            trace,
+            {"score": 45.0, "components": {"return": 15}, "penalties": {}},
+            1.1,
         )
 
         instr.record_diagnostic(
-            trace, {"category": "weak_efficiency", "severity": "warning", "change_type": "params"},
+            trace,
+            {"category": "weak_efficiency", "severity": "warning", "change_type": "params"},
         )
 
         instr.record_decision(trace, "continue")
@@ -189,9 +199,8 @@ class TestPipelineInstrumentation:
     def test_measure_captures_exception(self):
         instr = PipelineInstrumentation()
         t = instr.begin_iteration(1, "err-test")
-        with pytest.raises(ValueError, match="boom"):
-            with instr.measure(t, PipelinePhase.CODE_GEN):
-                raise ValueError("boom")
+        with pytest.raises(ValueError, match="boom"), instr.measure(t, PipelinePhase.CODE_GEN):
+            raise ValueError("boom")
 
         assert len(t.phases) == 1
         assert t.phases[0].success is False
@@ -468,10 +477,14 @@ class TestDivergenceAnalyzer:
     def test_format_report_with_divergences(self):
         analyzer = DivergenceAnalyzer()
         trace_a = PipelineTrace(
-            iteration_num=1, code_source="llm", decision="continue",
+            iteration_num=1,
+            code_source="llm",
+            decision="continue",
         )
         trace_b = PipelineTrace(
-            iteration_num=1, code_source="deterministic_fallback", decision="stop",
+            iteration_num=1,
+            code_source="deterministic_fallback",
+            decision="stop",
         )
         divs = analyzer.compare(trace_a, trace_b)
         report = analyzer.format_report(divs)
@@ -491,11 +504,15 @@ class TestDivergenceAnalyzer:
     def test_detects_score_component_divergence(self):
         analyzer = DivergenceAnalyzer()
         trace_a = PipelineTrace(
-            iteration_num=1, continuous_score=50.0, backtest_ran=True,
+            iteration_num=1,
+            continuous_score=50.0,
+            backtest_ran=True,
         )
         trace_a.score_components = {"return": 20.0, "risk": 15.0}
         trace_b = PipelineTrace(
-            iteration_num=1, continuous_score=10.0, backtest_ran=True,
+            iteration_num=1,
+            continuous_score=10.0,
+            backtest_ran=True,
         )
         trace_b.score_components = {"return": 5.0, "risk": 2.0}
         divs = analyzer.compare(trace_a, trace_b)
@@ -556,6 +573,7 @@ class TestCanonicalCasesAgainstRepair:
     def _try_import_repair(self):
         try:
             from agents.strategy_builder import _repair_code, validate_generated_code
+
             return _repair_code, validate_generated_code
         except ImportError:
             pytest.skip("strategy_builder not importable in test env")
@@ -603,6 +621,7 @@ def _wrap_in_strategy_class(snippet: str, proposal: dict) -> str:
     inds = proposal.get("used_indicators", [])
     params = proposal.get("default_params", {})
     import textwrap
+
     body = textwrap.indent(snippet.rstrip(), "        ")
     return textwrap.dedent(f"""\
         import numpy as np
@@ -624,8 +643,9 @@ def _wrap_in_strategy_class(snippet: str, proposal: dict) -> str:
 def _extract_bare_names(code: str) -> set:
     """Extract names used bare (not as subscript key) from code."""
     import re
+
     # Simple heuristic: find words not preceded by indicators[' or .
-    tokens = set(re.findall(r'\b([a-z_][a-z0-9_]*)\b', code))
+    tokens = set(re.findall(r"\b([a-z_][a-z0-9_]*)\b", code))
     return tokens
 
 
@@ -639,6 +659,7 @@ class TestComputeDiagnostic:
 
     def _diag(self, n, ret, dd=0.0, wr=50.0, sharpe=0.0, pf=1.0):
         from agents.builder_diagnostics import compute_diagnostic
+
         metrics = {
             "total_trades": n,
             "total_return_pct": ret,
@@ -650,7 +671,7 @@ class TestComputeDiagnostic:
         return compute_diagnostic(metrics, iteration_history=[])
 
     def test_signal_always_true_triggers_above_800_trades_ruined(self):
-        """n > 800 AND ruined → signal_always_true (pas ruined générique)."""
+        """N > 800 AND ruined → signal_always_true (pas ruined générique)."""
         diag = self._diag(n=1354, ret=-445.63, dd=95.0, wr=32.1, sharpe=-20.0, pf=0.72)
         assert diag["category"] == "signal_always_true"
         assert diag["severity"] == "critical"
@@ -659,7 +680,7 @@ class TestComputeDiagnostic:
         assert "indicators[" in hint or "dict" in hint.lower()
 
     def test_signal_always_true_boundary_exactly_800_trades(self):
-        """n == 800 (pas strictement > 800) → ruined classique, pas signal_always_true."""
+        """N == 800 (pas strictement > 800) → ruined classique, pas signal_always_true."""
         diag = self._diag(n=800, ret=-200.0, dd=99.0)
         assert diag["category"] == "ruined"
 
@@ -680,14 +701,35 @@ class TestComputeDiagnostic:
         # Doit guider l'utilisateur vers la notation correcte
         assert "bb.upper" in donts_text or "bollinger.upper" in donts_text
 
+    def test_compute_diagnostic_accepts_string_metrics_and_aliases(self):
+        """Le diagnostic doit rester stable si les métriques viennent d'un JSON permissif."""
+        from agents.builder_diagnostics import compute_diagnostic
+
+        diag = compute_diagnostic(
+            {
+                "total_trades": "1000",
+                "total_return_pct": "5.0",
+                "max_drawdown_pct": "20.0",
+                "win_rate": "28.0",
+                "sharpe_ratio": "0.3",
+                "profit_factor": "0.99",
+            },
+            iteration_history=[],
+        )
+
+        assert diag["category"] == "overtrading"
+        assert diag["severity"] == "warning"
+
 
 class TestBuilderInstrumentationWiring:
     """Vérifie que le Builder initialise et expose correctement
-    l'instrumentation et l'ablation."""
+    l'instrumentation et l'ablation.
+    """
 
     def _try_import_builder(self):
         try:
             from agents.strategy_builder import StrategyBuilder
+
             return StrategyBuilder
         except ImportError:
             pytest.skip("strategy_builder not importable in test env")

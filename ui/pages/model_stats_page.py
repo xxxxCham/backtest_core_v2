@@ -1,13 +1,15 @@
-"""
-Dedicated Streamlit page for Builder model statistics.
-"""
+"""Dedicated Streamlit page for Builder model statistics."""
 
 import sys
 from pathlib import Path
 
-import streamlit as st
-
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from utils.observability import init_logging
+
+init_logging()
+
+import streamlit as st
 
 from ui.model_stats_view import render_model_stats_page
 
@@ -122,6 +124,7 @@ def main() -> None:
     )
     _render_page_navigation()
     render_model_stats_page()
+
 
 if __name__ == "__main__":
     main()

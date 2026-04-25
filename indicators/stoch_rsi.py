@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.stoch_rsi
+"""Module-ID: indicators.stoch_rsi
 
 Purpose: Indicateur Stochastic RSI - stochastique appliqué à RSI.
 
@@ -20,8 +19,6 @@ Read-if: Modification périodes RSI/Stoch, lissages K/D.
 Skip-if: Vous utilisez juste calculate_indicator('stoch_rsi').
 """
 
-from typing import Dict, Tuple
-
 import numpy as np
 import pandas as pd
 
@@ -34,10 +31,9 @@ def stochastic_rsi(
     rsi_period: int = 14,
     stoch_period: int = 14,
     k_smooth: int = 3,
-    d_smooth: int = 3
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Calcule le Stochastic RSI (%K et %D).
+    d_smooth: int = 3,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Calcule le Stochastic RSI (%K et %D).
 
     Formule:
     1. Calculer le RSI
@@ -54,6 +50,7 @@ def stochastic_rsi(
 
     Returns:
         Tuple (%K, %D) - valeurs entre 0 et 100
+
     """
     # Calculer le RSI
     rsi_values = rsi(close, period=rsi_period)
@@ -63,7 +60,7 @@ def stochastic_rsi(
 
     # Appliquer la formule stochastique au RSI
     for i in range(stoch_period - 1, n):
-        window = rsi_values[i - stoch_period + 1:i + 1]
+        window = rsi_values[i - stoch_period + 1 : i + 1]
         valid = window[~np.isnan(window)]
 
         if len(valid) < 2:
@@ -80,7 +77,7 @@ def stochastic_rsi(
     # Calculer %K (SMA du StochRSI)
     k_line = np.full(n, np.nan)
     for i in range(k_smooth - 1, n):
-        window = stoch_rsi[i - k_smooth + 1:i + 1]
+        window = stoch_rsi[i - k_smooth + 1 : i + 1]
         valid = window[~np.isnan(window)]
         if len(valid) > 0:
             k_line[i] = np.mean(valid)
@@ -88,7 +85,7 @@ def stochastic_rsi(
     # Calculer %D (SMA de %K)
     d_line = np.full(n, np.nan)
     for i in range(d_smooth - 1, n):
-        window = k_line[i - d_smooth + 1:i + 1]
+        window = k_line[i - d_smooth + 1 : i + 1]
         valid = window[~np.isnan(window)]
         if len(valid) > 0:
             d_line[i] = np.mean(valid)
@@ -103,10 +100,9 @@ def stoch_rsi_signal(
     k_smooth: int = 3,
     d_smooth: int = 3,
     oversold: float = 20,
-    overbought: float = 80
+    overbought: float = 80,
 ) -> np.ndarray:
-    """
-    Génère des signaux de trading basés sur le Stochastic RSI.
+    """Génère des signaux de trading basés sur le Stochastic RSI.
 
     Signaux:
     - Long (1): %K croise %D vers le haut depuis zone de survente (<20)
@@ -124,6 +120,7 @@ def stoch_rsi_signal(
 
     Returns:
         Array de signaux (-1, 0, 1)
+
     """
     k_line, d_line = stochastic_rsi(close, rsi_period, stoch_period, k_smooth, d_smooth)
 
@@ -133,17 +130,17 @@ def stoch_rsi_signal(
     for i in range(1, n):
         if np.isnan(k_line[i]) or np.isnan(d_line[i]):
             continue
-        if np.isnan(k_line[i-1]) or np.isnan(d_line[i-1]):
+        if np.isnan(k_line[i - 1]) or np.isnan(d_line[i - 1]):
             continue
 
         # Croisement haussier depuis zone de survente
-        if k_line[i-1] <= d_line[i-1] and k_line[i] > d_line[i]:
-            if k_line[i-1] < oversold or d_line[i-1] < oversold:
+        if k_line[i - 1] <= d_line[i - 1] and k_line[i] > d_line[i]:
+            if k_line[i - 1] < oversold or d_line[i - 1] < oversold:
                 signals[i] = 1
 
         # Croisement baissier depuis zone de surachat
-        elif k_line[i-1] >= d_line[i-1] and k_line[i] < d_line[i]:
-            if k_line[i-1] > overbought or d_line[i-1] > overbought:
+        elif k_line[i - 1] >= d_line[i - 1] and k_line[i] < d_line[i]:
+            if k_line[i - 1] > overbought or d_line[i - 1] > overbought:
                 signals[i] = -1
 
     return signals
@@ -152,10 +149,9 @@ def stoch_rsi_signal(
 def stoch_rsi_divergence(
     close: pd.Series,
     k_line: np.ndarray,
-    lookback: int = 14
+    lookback: int = 14,
 ) -> np.ndarray:
-    """
-    Détecte les divergences entre le prix et le Stochastic RSI.
+    """Détecte les divergences entre le prix et le Stochastic RSI.
 
     Args:
         close: Série des prix de clôture
@@ -164,25 +160,25 @@ def stoch_rsi_divergence(
 
     Returns:
         1 = divergence haussière, -1 = divergence baissière, 0 = pas de divergence
+
     """
+    lookback = max(int(lookback), 1)
     close_arr = np.asarray(close, dtype=np.float64)
     n = len(close_arr)
 
     divergence = np.zeros(n)
 
     for i in range(lookback, n):
-        price_window = close_arr[i - lookback:i + 1]
-        stoch_window = k_line[i - lookback:i + 1]
+        price_window = close_arr[i - lookback : i + 1]
+        stoch_window = k_line[i - lookback : i + 1]
 
         valid_mask = ~np.isnan(stoch_window)
-        if np.sum(valid_mask) < lookback // 2:
+        if np.sum(valid_mask) < max(1, lookback // 2) or np.all(np.isnan(price_window)):
             continue
 
         # Trouver les min/max locaux
         price_min_idx = np.nanargmin(price_window)
         price_max_idx = np.nanargmax(price_window)
-        np.nanargmin(stoch_window)
-        np.nanargmax(stoch_window)
 
         # Divergence haussière: prix fait un plus bas, mais StochRSI fait un plus haut
         if price_min_idx > lookback // 2:  # Récent creux de prix
@@ -197,9 +193,8 @@ def stoch_rsi_divergence(
     return divergence
 
 
-def calculate_stoch_rsi(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
-    """
-    Fonction wrapper pour le registre d'indicateurs.
+def calculate_stoch_rsi(df: pd.DataFrame, **params) -> dict[str, np.ndarray]:
+    """Fonction wrapper pour le registre d'indicateurs.
 
     Args:
         df: DataFrame avec colonne close
@@ -213,6 +208,7 @@ def calculate_stoch_rsi(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
 
     Returns:
         Dict avec k, d, signal
+
     """
     rsi_period = params.get("rsi_period", 14)
     stoch_period = params.get("stoch_period", 14)
@@ -222,18 +218,27 @@ def calculate_stoch_rsi(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
     overbought = params.get("overbought", 80)
 
     k_line, d_line = stochastic_rsi(
-        df["close"], rsi_period, stoch_period, k_smooth, d_smooth
+        df["close"],
+        rsi_period,
+        stoch_period,
+        k_smooth,
+        d_smooth,
     )
 
     signal = stoch_rsi_signal(
-        df["close"], rsi_period, stoch_period, k_smooth, d_smooth,
-        oversold, overbought
+        df["close"],
+        rsi_period,
+        stoch_period,
+        k_smooth,
+        d_smooth,
+        oversold,
+        overbought,
     )
 
     return {
         "k": k_line,
         "d": d_line,
-        "signal": signal
+        "signal": signal,
     }
 
 
@@ -242,13 +247,13 @@ register_indicator(
     "stoch_rsi",
     calculate_stoch_rsi,
     required_columns=("close",),
-    description="Stochastic RSI - RSI avec oscillateur stochastique"
+    description="Stochastic RSI - RSI avec oscillateur stochastique",
 )
 
 
 __all__ = [
-    "stochastic_rsi",
-    "stoch_rsi_signal",
-    "stoch_rsi_divergence",
     "calculate_stoch_rsi",
+    "stoch_rsi_divergence",
+    "stoch_rsi_signal",
+    "stochastic_rsi",
 ]

@@ -3,10 +3,9 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
-
 
 EXPECTED_RUN_ARTIFACTS = ("equity", "trades", "returns")
 
@@ -62,7 +61,7 @@ def coerce_iso_timestamp(value: Any) -> str:
     return dt.isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def safe_float(value: Any) -> Optional[float]:
+def safe_float(value: Any) -> float | None:
     try:
         if value is None or value == "":
             return None
@@ -74,7 +73,7 @@ def safe_float(value: Any) -> Optional[float]:
     return number
 
 
-def safe_int(value: Any) -> Optional[int]:
+def safe_int(value: Any) -> int | None:
     try:
         if value is None or value == "":
             return None
@@ -198,10 +197,17 @@ def build_store_row_from_metadata(
         "strategy": str(_pick(meta, index_row, "strategy") or "unknown"),
         "symbol": str(_pick(meta, index_row, "symbol") or "unknown"),
         "timeframe": str(_pick(meta, index_row, "timeframe") or "unknown"),
-        "n_trades": safe_int(_pick({"n_trades": meta.get("n_trades", metrics.get("total_trades"))}, index_row, "n_trades")) or 0,
-        "total_return_pct": safe_float(_pick({"total_return_pct": metrics.get("total_return_pct")}, index_row, "total_return_pct")),
+        "n_trades": safe_int(
+            _pick({"n_trades": meta.get("n_trades", metrics.get("total_trades"))}, index_row, "n_trades"),
+        )
+        or 0,
+        "total_return_pct": safe_float(
+            _pick({"total_return_pct": metrics.get("total_return_pct")}, index_row, "total_return_pct"),
+        ),
         "sharpe_ratio": safe_float(_pick({"sharpe_ratio": metrics.get("sharpe_ratio")}, index_row, "sharpe_ratio")),
-        "max_drawdown_pct": safe_float(_pick({"max_drawdown_pct": metrics.get("max_drawdown_pct")}, index_row, "max_drawdown_pct")),
+        "max_drawdown_pct": safe_float(
+            _pick({"max_drawdown_pct": metrics.get("max_drawdown_pct")}, index_row, "max_drawdown_pct"),
+        ),
         "period_start": _pick(meta, index_row, "period_start"),
         "period_end": _pick(meta, index_row, "period_end"),
         "duration_sec": safe_float(_pick(meta, index_row, "duration_sec")) or 0.0,

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import random
 import re
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
 from agents.builder_ast_utils import _extract_json_from_response
 from agents.builder_objective_parser import (
@@ -35,7 +36,7 @@ logger = get_obs_logger(__name__)
 # ---------------------------------------------------------------------------
 
 # Groupes d'indicateurs par famille de stratégie (combinaisons cohérentes)
-_INDICATOR_FAMILIES: Dict[str, Dict[str, Any]] = {
+_INDICATOR_FAMILIES: dict[str, dict[str, Any]] = {
     "trend-following": {
         "label": "Trend-following",
         "primary": ["ema", "sma", "macd", "supertrend", "adx", "ichimoku", "vortex", "aroon"],
@@ -137,16 +138,16 @@ _RISK_TEMPLATES = [
 ]
 
 # Cache global pour éviter de répéter les mêmes indicateurs et familles
-_RECENT_INDICATORS: List[str] = []
+_RECENT_INDICATORS: list[str] = []
 _MAX_RECENT_INDICATORS = 8  # Évite de réutiliser les 8 derniers indicateurs principaux
-_RECENT_FAMILIES: List[str] = []
+_RECENT_FAMILIES: list[str] = []
 _MAX_RECENT_FAMILIES = 3  # Évite de réutiliser les 3 dernières familles
 
 
 def generate_random_objective(
-    symbol: "str | List[str]" = "BTCUSDC",
-    timeframe: "str | List[str]" = "1h",
-    available_indicators: Optional[List[str]] = None,
+    symbol: str | list[str] = "BTCUSDC",
+    timeframe: str | list[str] = "1h",
+    available_indicators: list[str] | None = None,
 ) -> str:
     """Génère un objectif de stratégie aléatoire à partir de templates.
 
@@ -158,6 +159,7 @@ def generate_random_objective(
 
     Returns:
         Objectif structuré en français prêt à être passé au StrategyBuilder.
+
     """
     global _RECENT_INDICATORS, _RECENT_FAMILIES
 
@@ -256,7 +258,7 @@ def generate_random_objective(
 
 def _sanitize_objective_indicators_section(
     objective: str,
-    available_indicators: List[str],
+    available_indicators: list[str],
 ) -> str:
     """Nettoie le bloc `Indicateurs:` pour ne garder que des noms calculables."""
     text = str(objective or "")
@@ -313,21 +315,21 @@ def _sanitize_objective_indicators_section(
 
 def _sanitize_objective_indicator_candidates(
     raw_indicators: Any,
-    available_indicators: List[str],
-) -> List[str]:
+    available_indicators: list[str],
+) -> list[str]:
     """Normalise une liste d'indicateurs issus d'un payload structuré."""
     allowed = [str(ind or "").strip().lower() for ind in (available_indicators or []) if str(ind or "").strip()]
     allowed_set = set(allowed)
     if not allowed_set:
         return []
 
-    raw_tokens: List[str] = []
+    raw_tokens: list[str] = []
     if isinstance(raw_indicators, str):
         raw_tokens = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", raw_indicators)
     elif isinstance(raw_indicators, (list, tuple, set)):
         raw_tokens = [str(item or "") for item in raw_indicators]
 
-    selected: List[str] = []
+    selected: list[str] = []
     for token in raw_tokens:
         normalized = _canonicalize_indicator_name(token, known=allowed_set)
         if normalized and normalized not in selected:
@@ -352,9 +354,9 @@ def _request_structured_objective_payload(
     *,
     system_prompt: str,
     user_prompt: str,
-    stream_callback: Optional[Callable[[str, str], None]],
+    stream_callback: Callable[[str, str], None] | None,
     max_tokens: int,
-) -> tuple[Dict[str, Any], str]:
+) -> tuple[dict[str, Any], str]:
     """Demande un handoff JSON pour la génération d'objectif."""
     messages = [
         LLMMessage(role="system", content=system_prompt),
@@ -375,11 +377,11 @@ def _request_structured_objective_payload(
 
 
 def _resolve_structured_objective_market(
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     *,
     market_auto_selection: bool,
-    symbols_list: List[str],
-    timeframes_list: List[str],
+    symbols_list: list[str],
+    timeframes_list: list[str],
 ) -> tuple[str, str]:
     if market_auto_selection:
         return "{symbol}", "{timeframe}"
@@ -400,12 +402,12 @@ def _resolve_structured_objective_market(
 
 
 def _structured_objective_to_text(
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     *,
-    available_indicators: List[str],
+    available_indicators: list[str],
     market_auto_selection: bool,
-    symbols_list: List[str],
-    timeframes_list: List[str],
+    symbols_list: list[str],
+    timeframes_list: list[str],
 ) -> str:
     """Reconstruit un objectif lisible depuis un payload JSON."""
     if not isinstance(payload, dict) or not payload:
@@ -438,7 +440,7 @@ def _structured_objective_to_text(
         available_indicators,
     )
 
-    parts: List[str] = []
+    parts: list[str] = []
     market_label = f"{symbol_value} {timeframe_value}".strip()
     parts.append(f"[{style}] sur {market_label}.")
     if indicators:
@@ -457,11 +459,11 @@ def _structured_objective_to_text(
 
 def generate_llm_objective(
     llm_client: Any,
-    symbol: "str | List[str] | None" = "BTCUSDC",
-    timeframe: "str | List[str] | None" = "1h",
-    available_indicators: Optional[List[str]] = None,
-    stream_callback: Optional[Callable[[str, str], None]] = None,
-    recent_markets: Optional[List[Tuple[str, str]]] = None,
+    symbol: str | list[str] | None = "BTCUSDC",
+    timeframe: str | list[str] | None = "1h",
+    available_indicators: list[str] | None = None,
+    stream_callback: Callable[[str, str], None] | None = None,
+    recent_markets: list[tuple[str, str]] | None = None,
 ) -> str:
     """Génère un objectif de stratégie via un appel LLM.
 
@@ -470,6 +472,7 @@ def generate_llm_objective(
 
     Returns:
         Objectif en texte libre généré par le LLM.
+
     """
     if available_indicators is None:
         available_indicators = list_indicators()
@@ -688,16 +691,16 @@ def generate_llm_objective_from_seed(
     llm_client: Any,
     *,
     seed_objective: str,
-    symbol: "str | List[str]" = "BTCUSDC",
-    timeframe: "str | List[str]" = "1h",
-    available_indicators: Optional[List[str]] = None,
+    symbol: str | list[str] = "BTCUSDC",
+    timeframe: str | list[str] = "1h",
+    available_indicators: list[str] | None = None,
     family: str = "",
     direction: str = "",
     risk_profile: str = "",
     novelty_angle: str = "",
-    tags: Optional[List[str]] = None,
-    stream_callback: Optional[Callable[[str, str], None]] = None,
-    recent_markets: Optional[List[Tuple[str, str]]] = None,
+    tags: list[str] | None = None,
+    stream_callback: Callable[[str, str], None] | None = None,
+    recent_markets: list[tuple[str, str]] | None = None,
 ) -> str:
     """Raffine une piste catalogue en objectif LLM plus adapté au setup étudié."""
     if available_indicators is None:
@@ -723,8 +726,8 @@ def generate_llm_objective_from_seed(
             "Tu DOIS utiliser exactement les placeholders `{symbol}` et `{timeframe}` dans l'objectif final.\n"
             "N'écris AUCUN token réel ni timeframe réel.\n\n"
         )
-        symbols_list: List[str] = []
-        timeframes_list: List[str] = []
+        symbols_list: list[str] = []
+        timeframes_list: list[str] = []
     else:
         symbols_list = symbol if isinstance(symbol, list) else [symbol]
         timeframes_list = timeframe if isinstance(timeframe, list) else [timeframe]
@@ -865,8 +868,8 @@ def generate_llm_objective_from_seed(
     return objective
 
 
-def _unique_non_empty(values: List[str], *, upper: bool = False) -> List[str]:
-    out: List[str] = []
+def _unique_non_empty(values: list[str], *, upper: bool = False) -> list[str]:
+    out: list[str] = []
     seen: set[str] = set()
     for raw in values:
         val = str(raw or "").strip()
@@ -884,9 +887,9 @@ def _unique_non_empty(values: List[str], *, upper: bool = False) -> List[str]:
 def _find_objective_market_hints(
     objective_text: str,
     *,
-    allowed_symbols: List[str],
-    allowed_timeframes: List[str],
-) -> Tuple[Optional[str], Optional[str]]:
+    allowed_symbols: list[str],
+    allowed_timeframes: list[str],
+) -> tuple[str | None, str | None]:
     """Extrait les indices explicites symbol/timeframe présents dans l'objectif."""
     text = sanitize_objective_text(objective_text)
     if not text:
@@ -894,7 +897,7 @@ def _find_objective_market_hints(
 
     text_upper = text.upper()
 
-    symbol_hits: List[Tuple[int, str]] = []
+    symbol_hits: list[tuple[int, str]] = []
     for symbol in allowed_symbols:
         match = re.search(
             rf"(?<![A-Z0-9]){re.escape(symbol)}(?![A-Z0-9])",
@@ -903,7 +906,7 @@ def _find_objective_market_hints(
         if match:
             symbol_hits.append((match.start(), symbol))
 
-    timeframe_hits: List[Tuple[int, str]] = []
+    timeframe_hits: list[tuple[int, str]] = []
     for timeframe in allowed_timeframes:
         tf = str(timeframe or "").strip()
         if not tf:
@@ -931,18 +934,18 @@ def _find_objective_market_hints(
 def _rank_and_select_market_candidates(
     *,
     clean_objective: str,
-    symbols: List[str],
-    timeframes: List[str],
-    recent_markets: Optional[List[Tuple[str, str]]],
+    symbols: list[str],
+    timeframes: list[str],
+    recent_markets: list[tuple[str, str]] | None,
     _initial_fallback_symbol: str,
     _initial_fallback_timeframe: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Phases 4-10 : détection type stratégie, ranking, hints, fallbacks, diversité."""
     detected_strategy_type = infer_strategy_type(objective=clean_objective)
     if detected_strategy_type == "unknown":
         detected_strategy_type = None
 
-    ranked_symbols: List[str] = []
+    ranked_symbols: list[str] = []
     if detected_strategy_type:
         symbols_for_ranking = symbols.copy()
         random.shuffle(symbols_for_ranking)
@@ -962,8 +965,8 @@ def _rank_and_select_market_candidates(
     shuffled_timeframes = timeframes.copy()
     random.shuffle(shuffled_timeframes)
 
-    hinted_symbol: Optional[str] = None
-    hinted_timeframe: Optional[str] = None
+    hinted_symbol: str | None = None
+    hinted_timeframe: str | None = None
 
     if not detected_strategy_type:
         hinted_symbol, hinted_timeframe = _find_objective_market_hints(
@@ -986,15 +989,14 @@ def _rank_and_select_market_candidates(
 
     if hinted_symbol and hinted_symbol in symbols:
         fallback_symbol = hinted_symbol
+    elif detected_strategy_type and ranked_symbols:
+        fallback_pool = ranked_symbols[: min(5, len(ranked_symbols))]
+        non_recent_pool = [s for s in fallback_pool if s not in recent_symbol_set]
+        if non_recent_pool:
+            fallback_pool = non_recent_pool
+        fallback_symbol = random.choice(fallback_pool) if fallback_pool else ranked_symbols[0]
     else:
-        if detected_strategy_type and ranked_symbols:
-            fallback_pool = ranked_symbols[: min(5, len(ranked_symbols))]
-            non_recent_pool = [s for s in fallback_pool if s not in recent_symbol_set]
-            if non_recent_pool:
-                fallback_pool = non_recent_pool
-            fallback_symbol = random.choice(fallback_pool) if fallback_pool else ranked_symbols[0]
-        else:
-            fallback_symbol = shuffled_symbols[0] if shuffled_symbols else _initial_fallback_symbol
+        fallback_symbol = shuffled_symbols[0] if shuffled_symbols else _initial_fallback_symbol
 
     if detected_strategy_type:
         try:
@@ -1050,7 +1052,7 @@ def _rank_and_select_market_candidates(
             )
 
     objective_hint_instruction = ""
-    hint_lines: List[str] = []
+    hint_lines: list[str] = []
 
     if hinted_symbol and hinted_timeframe and recent_markets:
         hinted_combo = (hinted_symbol, hinted_timeframe)
@@ -1068,12 +1070,12 @@ def _rank_and_select_market_candidates(
     if hinted_symbol:
         hint_lines.append(
             f"- L'objectif mentionne le symbole `{hinted_symbol}` : "
-            "considère-le comme une préférence, pas comme une contrainte absolue."
+            "considère-le comme une préférence, pas comme une contrainte absolue.",
         )
     if hinted_timeframe:
         hint_lines.append(
             f"- L'objectif mentionne le timeframe `{hinted_timeframe}` : "
-            "considère-le comme une préférence, pas comme une contrainte absolue."
+            "considère-le comme une préférence, pas comme une contrainte absolue.",
         )
 
     if hint_lines:
@@ -1109,15 +1111,15 @@ def _finalize_market_result(
     confidence: float,
     reason: str,
     source: str,
-    payload: Dict[str, Any],
-    symbols: List[str],
-    timeframes: List[str],
+    payload: dict[str, Any],
+    symbols: list[str],
+    timeframes: list[str],
     strict_fallback_symbol: str,
     strict_fallback_timeframe: str,
-    recent_markets: Optional[List[Tuple[str, str]]],
-    hinted_symbol: Optional[str],
-    hinted_timeframe: Optional[str],
-) -> Dict[str, Any]:
+    recent_markets: list[tuple[str, str]] | None,
+    hinted_symbol: str | None,
+    hinted_timeframe: str | None,
+) -> dict[str, Any]:
     """Phases 13-16 : validation univers, override diversité, bonus hints, finalisation."""
     if symbol not in symbols:
         source = "fallback_out_of_universe"
@@ -1149,7 +1151,7 @@ def _finalize_market_result(
             candidate_pool = alternatives
 
             if not candidate_pool:
-                last_seen: Dict[Tuple[str, str], int] = {p: -1 for p in all_pairs}
+                last_seen: dict[tuple[str, str], int] = dict.fromkeys(all_pairs, -1)
                 for idx, pair in enumerate(recent_order):
                     if pair in last_seen:
                         last_seen[pair] = idx
@@ -1179,7 +1181,7 @@ def _finalize_market_result(
                 else:
                     reason = f"Couple récent évité automatiquement ({selected_pair[0]} {selected_pair[1]})."
 
-    hint_matches: List[str] = []
+    hint_matches: list[str] = []
     if hinted_symbol and symbol == hinted_symbol:
         hint_matches.append(f"symbol={hinted_symbol}")
     if hinted_timeframe and timeframe == hinted_timeframe:
@@ -1214,20 +1216,19 @@ def recommend_market_context(
     llm_client: Any,
     *,
     objective: str,
-    candidate_symbols: List[str],
-    candidate_timeframes: List[str],
+    candidate_symbols: list[str],
+    candidate_timeframes: list[str],
     default_symbol: str = "BTCUSDC",
     default_timeframe: str = "1h",
-    stream_callback: Optional[Callable[[str, str], None]] = None,
-    recent_markets: Optional[List[Tuple[str, str]]] = None,
-) -> Dict[str, Any]:
+    stream_callback: Callable[[str, str], None] | None = None,
+    recent_markets: list[tuple[str, str]] | None = None,
+) -> dict[str, Any]:
     """Recommande un couple (symbol, timeframe) adapté à un objectif Builder.
 
     Le choix est strictement borné à l'univers fourni (`candidate_symbols`,
     `candidate_timeframes`). En cas de réponse invalide du LLM, un fallback
     robuste est appliqué.
     """
-
     # --- Phase 1-3 : normaliser univers + fallbacks --- #
     symbol_re = re.compile(r"^[A-Za-z0-9_.-]{2,24}$")
     timeframe_re = re.compile(r"^\d+[mhdwM]$")
@@ -1287,10 +1288,10 @@ def recommend_market_context(
         _initial_fallback_timeframe=_initial_fallback_timeframe,
     )
     detected_strategy_type = ctx["detected_strategy_type"]
-    shuffled_symbols: List[str] = ctx["shuffled_symbols"]
-    shuffled_timeframes: List[str] = ctx["shuffled_timeframes"]
-    hinted_symbol: Optional[str] = ctx["hinted_symbol"]
-    hinted_timeframe: Optional[str] = ctx["hinted_timeframe"]
+    shuffled_symbols: list[str] = ctx["shuffled_symbols"]
+    shuffled_timeframes: list[str] = ctx["shuffled_timeframes"]
+    hinted_symbol: str | None = ctx["hinted_symbol"]
+    hinted_timeframe: str | None = ctx["hinted_timeframe"]
     fallback_symbol: str = ctx["fallback_symbol"]
     fallback_timeframe: str = ctx["fallback_timeframe"]
     diversity_instruction: str = ctx["diversity_instruction"]
@@ -1394,7 +1395,7 @@ def recommend_market_context(
 # ---------------------------------------------------------------------------
 
 
-def compile_proposal_to_code(proposal: Dict[str, Any], variant: int = 0) -> str:
+def compile_proposal_to_code(proposal: dict[str, Any], variant: int = 0) -> str:
     """Compile un proposal JSON en code Python stratégie exécutable.
 
     Wrapper public autour de _build_deterministic_fallback_code, destiné
@@ -1404,8 +1405,7 @@ def compile_proposal_to_code(proposal: Dict[str, Any], variant: int = 0) -> str:
 
 
 def _remove_hardcoded_tokens(text: str) -> str:
-    """
-    Retire les tokens crypto hardcodés d'un objectif (ex: "0GUSDC", "BTCUSDC").
+    """Retire les tokens crypto hardcodés d'un objectif (ex: "0GUSDC", "BTCUSDC").
 
     Remplace les patterns comme:
     - "sur 0GUSDC en" → "sur crypto en"
@@ -1437,8 +1437,7 @@ def _remove_hardcoded_tokens(text: str) -> str:
 
 
 def _remove_hardcoded_timeframes(text: str) -> str:
-    """
-    Retire les timeframes hardcodés d'un objectif (ex: "1h", "30m", "5m").
+    """Retire les timeframes hardcodés d'un objectif (ex: "1h", "30m", "5m").
 
     Remplace les patterns comme:
     - "en 1h" → "en timeframe adapté"

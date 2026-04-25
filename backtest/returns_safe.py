@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.returns_safe
+"""Module-ID: backtest.returns_safe
 
 Purpose: Calcul de rendements robustes même si l'equity passe sous zéro.
 
@@ -14,21 +13,19 @@ Outputs: Série de rendements sécurisés
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 import pandas as pd
 
 
-def detect_ruin_index(equity: pd.Series) -> Optional[int]:
-    """
-    Retourne l'index (positionnel) du premier point où equity <= 0.
+def detect_ruin_index(equity: pd.Series) -> int | None:
+    """Retourne l'index (positionnel) du premier point où equity <= 0.
 
     Args:
         equity: Série d'equity
 
     Returns:
         Index (int) ou None si aucune ruine
+
     """
     if equity is None or len(equity) == 0:
         return None
@@ -48,13 +45,13 @@ def compute_returns_safe(
     initial_capital: float = 10000.0,
     method: str = "log_returns",
 ) -> pd.Series:
-    """
-    Calcule des rendements en évitant inf/NaN même si equity <= 0.
+    """Calcule des rendements en évitant inf/NaN même si equity <= 0.
 
     Methods:
         - "log_returns": log(safe_equity / safe_equity.shift(1))
         - "pnl_based": diff(equity) / initial_capital
         - "filter_until_ruin": pct_change puis NaN après ruine
+
     """
     if equity is None:
         return pd.Series([], dtype=np.float64)

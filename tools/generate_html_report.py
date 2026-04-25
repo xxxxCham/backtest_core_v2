@@ -1,15 +1,15 @@
-"""
-Module-ID: tools.generate_html_report
+"""Module-ID: tools.generate_html_report
 
 Purpose: Generate lightweight static HTML analysis reports.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 from html import escape
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any
 
 
 def _fmt_number(value: Any, *, digits: int = 2, suffix: str = "") -> str:
@@ -27,14 +27,14 @@ def _fmt_int(value: Any) -> str:
         return "-"
 
 
-def _params_preview(params: Dict[str, Any]) -> str:
+def _params_preview(params: dict[str, Any]) -> str:
     if not params:
         return "-"
     parts = [f"{key}={value}" for key, value in sorted(params.items())]
     return ", ".join(parts[:8])
 
 
-def _render_top_rows(results: list[Dict[str, Any]], top_n: int) -> str:
+def _render_top_rows(results: list[dict[str, Any]], top_n: int) -> str:
     rows = []
     for rank, result in enumerate(results[:top_n], 1):
         rows.append(
@@ -52,12 +52,12 @@ def _render_top_rows(results: list[Dict[str, Any]], top_n: int) -> str:
             f"<td>{_fmt_number(result.get('win_rate'), suffix='%')}</td>"
             f"<td>{_fmt_int(result.get('duplicate_run_count') or 1)}</td>"
             f"<td>{escape(_params_preview(result.get('params') or {}))}</td>"
-            "</tr>"
+            "</tr>",
         )
     return "\n".join(rows)
 
 
-def _render_run_rows(results: list[Dict[str, Any]], limit: int = 300) -> str:
+def _render_run_rows(results: list[dict[str, Any]], limit: int = 300) -> str:
     rows = []
     for result in results[:limit]:
         rows.append(
@@ -72,19 +72,19 @@ def _render_run_rows(results: list[Dict[str, Any]], limit: int = 300) -> str:
             f"<td>{_fmt_int(result.get('trades'))}</td>"
             f"<td>{_fmt_int(result.get('duplicate_run_count') or 1)}</td>"
             f"<td>{'yes' if result.get('account_ruined') else 'no'}</td>"
-            "</tr>"
+            "</tr>",
         )
     return "\n".join(rows)
 
 
 def generate_html_report(
-    results: Iterable[Dict[str, Any]],
+    results: Iterable[dict[str, Any]],
     output_path: Path | str,
     *,
     title: str,
     top_n: int = 100,
     filters_description: str = "",
-    csv_path: Optional[Path | str] = None,
+    csv_path: Path | str | None = None,
 ) -> Path:
     output_path = Path(output_path)
     rows = list(results)
@@ -93,10 +93,7 @@ def generate_html_report(
     ruined = sum(1 for row in rows if bool(row.get("account_ruined")))
     collapsed_runs = sum(max(int(row.get("duplicate_run_count") or 1) - 1, 0) for row in rows)
     total_pnl = sum(float(row.get("pnl") or 0) for row in rows)
-    avg_return = (
-        sum(float(row.get("return_pct") or 0) for row in rows) / len(rows)
-        if rows else 0.0
-    )
+    avg_return = sum(float(row.get("return_pct") or 0) for row in rows) / len(rows) if rows else 0.0
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -205,7 +202,7 @@ def generate_html_report(
         <div class="metric"><div class="label">Unique configs</div><div class="value">{len(rows):,}</div></div>
         <div class="metric"><div class="label">Profitable</div><div class="value">{profitable:,}</div></div>
         <div class="metric"><div class="label">Total PnL</div><div class="value">{_fmt_number(total_pnl)}</div></div>
-        <div class="metric"><div class="label">Avg Return</div><div class="value">{_fmt_number(avg_return, suffix='%')}</div></div>
+        <div class="metric"><div class="label">Avg Return</div><div class="value">{_fmt_number(avg_return, suffix="%")}</div></div>
       </div>
       <div class="meta" style="margin-top:12px;">Ruined accounts in selection: {ruined:,} | Collapsed duplicate runs: {collapsed_runs:,}</div>
     </section>
@@ -313,8 +310,8 @@ def _sort_value(value: Any) -> str:
 
 def _render_sortable_table(
     table_id: str,
-    columns: list[Dict[str, Any]],
-    rows: list[Dict[str, Any]],
+    columns: list[dict[str, Any]],
+    rows: list[dict[str, Any]],
     *,
     empty_message: str,
 ) -> str:
@@ -323,7 +320,7 @@ def _render_sortable_table(
         label = escape(str(column.get("label") or ""))
         col_type = escape(str(column.get("type") or "text"))
         header_cells.append(
-            f'<th data-type="{col_type}"><button type="button">{label}<span class="sort-indicator">↕</span></button></th>'
+            f'<th data-type="{col_type}"><button type="button">{label}<span class="sort-indicator">↕</span></button></th>',
         )
 
     body_rows = []
@@ -347,30 +344,23 @@ def _render_sortable_table(
                 if title_raw not in (None, ""):
                     title = f' title="{escape(str(title_raw))}"'
             cells.append(
-                f'<td data-sort-value="{escape(_sort_value(sort_raw))}" class="{class_name}"{title}>{rendered}</td>'
+                f'<td data-sort-value="{escape(_sort_value(sort_raw))}" class="{class_name}"{title}>{rendered}</td>',
             )
         body_rows.append("<tr>" + "".join(cells) + "</tr>")
 
     if not body_rows:
         body_rows.append(
-            '<tr class="empty-row"><td colspan="{cols}">{message}</td></tr>'.format(
-                cols=len(columns),
-                message=escape(empty_message),
-            )
+            f'<tr class="empty-row"><td colspan="{len(columns)}">{escape(empty_message)}</td></tr>',
         )
 
     return (
         f'<table id="{escape(table_id)}" class="sortable-table">'
-        "<thead><tr>"
-        + "".join(header_cells)
-        + "</tr></thead><tbody>"
-        + "".join(body_rows)
-        + "</tbody></table>"
+        "<thead><tr>" + "".join(header_cells) + "</tr></thead><tbody>" + "".join(body_rows) + "</tbody></table>"
     )
 
 
 def generate_llm_benchmark_html_report(
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     output_path: Path | str,
     *,
     title: str = "LLM Token Matrix Benchmark",
@@ -383,14 +373,12 @@ def generate_llm_benchmark_html_report(
     probe_rows = list(payload.get("probe_records", []) or [])
 
     common_errors = [
-        {"error_type": key, "count": value}
-        for key, value in dict(summary.get("error_type_counts", {}) or {}).items()
+        {"error_type": key, "count": value} for key, value in dict(summary.get("error_type_counts", {}) or {}).items()
     ]
     common_errors.sort(key=lambda item: (-int(item.get("count", 0) or 0), str(item.get("error_type", ""))))
 
     missing_tokens = [
-        {"token": key, "count": value}
-        for key, value in dict(summary.get("missing_token_counts", {}) or {}).items()
+        {"token": key, "count": value} for key, value in dict(summary.get("missing_token_counts", {}) or {}).items()
     ]
     invalid_indicators = [
         {"indicator": key, "count": value}
@@ -489,7 +477,9 @@ def generate_llm_benchmark_html_report(
             "label": "Status",
             "key": "status",
             "type": "text",
-            "display": lambda value, _: f'<span class="badge status-{escape(str(value or "unknown"))}">{escape(str(value or "-"))}</span>',
+            "display": lambda value, _: (
+                f'<span class="badge status-{escape(str(value or "unknown"))}">{escape(str(value or "-"))}</span>'
+            ),
         },
         {
             "label": "Error Type",
@@ -617,7 +607,12 @@ def generate_llm_benchmark_html_report(
     ]
 
     common_error_columns = [
-        {"label": "Error Type", "key": "error_type", "type": "text", "display": lambda value, _: escape(str(value or "-"))},
+        {
+            "label": "Error Type",
+            "key": "error_type",
+            "type": "text",
+            "display": lambda value, _: escape(str(value or "-")),
+        },
         {"label": "Count", "key": "count", "type": "number", "display": lambda value, _: _fmt_int(value)},
     ]
     missing_token_columns = [
@@ -625,7 +620,12 @@ def generate_llm_benchmark_html_report(
         {"label": "Missing Count", "key": "count", "type": "number", "display": lambda value, _: _fmt_int(value)},
     ]
     invalid_indicator_columns = [
-        {"label": "Indicator", "key": "indicator", "type": "text", "display": lambda value, _: escape(str(value or "-"))},
+        {
+            "label": "Indicator",
+            "key": "indicator",
+            "type": "text",
+            "display": lambda value, _: escape(str(value or "-")),
+        },
         {"label": "Invalid Count", "key": "count", "type": "number", "display": lambda value, _: _fmt_int(value)},
     ]
 

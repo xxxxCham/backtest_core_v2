@@ -4,9 +4,7 @@ import toml
 
 
 def fix_global_config():
-    """
-    Fixes the 'general.email' error in the global Streamlit config.
-    """
+    """Fixes the 'general.email' error in the global Streamlit config."""
     home = Path.home()
     global_config_path = home / ".streamlit" / "config.toml"
 
@@ -18,7 +16,7 @@ def fix_global_config():
 
     try:
         # Read content manually to preserve comments if possible, but TOML lib is safer for structure
-        with open(global_config_path, "r", encoding="utf-8") as f:
+        with open(global_config_path, encoding="utf-8") as f:
             content = f.read()
 
         if "[general]" not in content and "email" not in content:
@@ -51,7 +49,7 @@ def fix_global_config():
         print(f"Error fixing config: {e}")
         # Fallback: Manual string replacement if TOML lib fails or isn't installed
         try:
-            with open(global_config_path, "r", encoding="utf-8") as f:
+            with open(global_config_path, encoding="utf-8") as f:
                 lines = f.readlines()
 
             new_lines = []
@@ -78,10 +76,12 @@ def fix_global_config():
         except Exception as e2:
             print(f"Fallback failed: {e2}")
 
+
 if __name__ == "__main__":
     # Ensure toml is installed (it usually is with streamlit)
     try:
         import toml
+
         fix_global_config()
     except ImportError:
         print("TOML module not found. Attempting fallback...")

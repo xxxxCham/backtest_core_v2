@@ -1,5 +1,4 @@
-"""
-Module-ID: data.__init__
+"""Module-ID: data.__init__
 
 Purpose: Package data - exports loader functions (load_ohlcv, discover_available_data).
 
@@ -22,4 +21,4 @@ Skip-if: Vous importez directement depuis data.loader.
 
 from .loader import discover_available_data, discover_data_inventory, load_ohlcv
 
-__all__ = ["load_ohlcv", "discover_available_data", "discover_data_inventory"]
+__all__ = ["discover_available_data", "discover_data_inventory", "load_ohlcv"]

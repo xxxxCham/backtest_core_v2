@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.log
+"""Module-ID: utils.log
 
 Purpose: Logging simplifié avec colorisation optionnelle (legacy).
 
@@ -22,11 +21,11 @@ Skip-if: Vous utilisez juste get_logger().
 
 import logging
 import sys
-from typing import Optional
 
 # Import optionnel de colorama pour logs colorés
 try:
     from colorama import Fore, Style, init
+
     init(autoreset=True)
     COLORAMA_AVAILABLE = True
 except ImportError:
@@ -57,22 +56,26 @@ class ColoredFormatter(logging.Formatter):
 
     def format(self, record):
         """Formate le message avec couleurs."""
+        original_levelname = record.levelname
         if COLORAMA_AVAILABLE:
             # Appliquer la couleur selon le niveau
             levelname_color = self.COLORS.get(record.levelno, "")
             record.levelname = f"{levelname_color}{record.levelname}{Style.RESET_ALL}"
-        return super().format(record)
+        try:
+            return super().format(record)
+        finally:
+            record.levelname = original_levelname
 
 
-def get_logger(name: Optional[str] = None) -> logging.Logger:
-    """
-    Obtient un logger configuré pour le module spécifié.
+def get_logger(name: str | None = None) -> logging.Logger:
+    """Obtient un logger configuré pour le module spécifié.
 
     Args:
         name: Nom du module (utilise __name__ généralement)
 
     Returns:
         Logger configuré avec format standard
+
     """
     if name is None:
         name = "backtest_core"
@@ -95,7 +98,7 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
         # Format simple et lisible avec colorisation
         formatter = ColoredFormatter(
             "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-            datefmt="%H:%M:%S"
+            datefmt="%H:%M:%S",
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
@@ -108,17 +111,17 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
 
 
 def set_level(level: str) -> None:
-    """
-    Change le niveau de log global.
+    """Change le niveau de log global.
 
     Args:
         level: 'DEBUG', 'INFO', 'WARNING', 'ERROR'
+
     """
     level_map = {
-        'DEBUG': logging.DEBUG,
-        'INFO': logging.INFO,
-        'WARNING': logging.WARNING,
-        'ERROR': logging.ERROR
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
     }
 
     log_level = level_map.get(level.upper(), logging.INFO)
@@ -130,8 +133,7 @@ def set_level(level: str) -> None:
 
 
 class CountingHandler(logging.Handler):
-    """
-    Handler qui compte les warnings et erreurs pour statistiques de run.
+    """Handler qui compte les warnings et erreurs pour statistiques de run.
 
     Usage:
         counting_handler = CountingHandler()
@@ -161,4 +163,4 @@ class CountingHandler(logging.Handler):
         self.errors = 0
 
 
-__all__ = ["get_logger", "set_level", "CountingHandler"]
+__all__ = ["CountingHandler", "get_logger", "set_level"]

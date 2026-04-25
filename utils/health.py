@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.health
+"""Module-ID: utils.health
 
 Purpose: Health Monitor - surveillance CPU/RAM/GPU/Disk avec alertes et seuils.
 
@@ -28,16 +27,18 @@ import os
 import platform
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class HealthStatus(Enum):
     """États de santé du système."""
+
     HEALTHY = "healthy"
     WARNING = "warning"
     CRITICAL = "critical"
@@ -46,6 +47,7 @@ class HealthStatus(Enum):
 
 class ResourceType(Enum):
     """Types de ressources surveillées."""
+
     CPU = "cpu"
     MEMORY = "memory"
     GPU = "gpu"
@@ -55,15 +57,16 @@ class ResourceType(Enum):
 @dataclass
 class ResourceMetrics:
     """Métriques d'une ressource."""
+
     resource_type: ResourceType
     usage_percent: float
     available: float  # En bytes ou %
-    total: float      # En bytes ou %
+    total: float  # En bytes ou %
     status: HealthStatus = HealthStatus.UNKNOWN
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "resource": self.resource_type.value,
@@ -79,6 +82,7 @@ class ResourceMetrics:
 @dataclass
 class HealthThresholds:
     """Seuils pour les alertes de santé."""
+
     # CPU
     cpu_warning: float = 80.0
     cpu_critical: float = 95.0
@@ -110,22 +114,22 @@ class HealthThresholds:
 
         if usage >= critical:
             return HealthStatus.CRITICAL
-        elif usage >= warning:
+        if usage >= warning:
             return HealthStatus.WARNING
-        else:
-            return HealthStatus.HEALTHY
+        return HealthStatus.HEALTHY
 
 
 @dataclass
 class HealthSnapshot:
     """Snapshot complet de l'état de santé."""
+
     timestamp: datetime
     overall_status: HealthStatus
-    metrics: Dict[ResourceType, ResourceMetrics]
-    alerts: List[str] = field(default_factory=list)
-    system_info: Dict[str, Any] = field(default_factory=dict)
+    metrics: dict[ResourceType, ResourceMetrics]
+    alerts: list[str] = field(default_factory=list)
+    system_info: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "timestamp": self.timestamp.isoformat(),
@@ -137,8 +141,7 @@ class HealthSnapshot:
 
 
 class HealthMonitor:
-    """
-    Moniteur de santé du système.
+    """Moniteur de santé du système.
 
     Surveille CPU, RAM, GPU et disque avec alertes configurables.
 
@@ -151,26 +154,28 @@ class HealthMonitor:
         >>> monitor.start_monitoring(interval=5.0)
         >>> # ... plus tard ...
         >>> monitor.stop_monitoring()
+
     """
 
     def __init__(
         self,
-        thresholds: Optional[HealthThresholds] = None,
-        on_alert: Optional[Callable[[str, HealthStatus], None]] = None
+        thresholds: HealthThresholds | None = None,
+        on_alert: Callable[[str, HealthStatus], None] | None = None,
     ):
-        """
-        Initialise le moniteur.
+        """Initialise le moniteur.
 
         Args:
             thresholds: Seuils d'alerte personnalisés
             on_alert: Callback appelé lors d'une alerte
+
         """
         self.thresholds = thresholds or HealthThresholds()
         self.on_alert = on_alert
 
         self._monitoring = False
-        self._monitor_thread: Optional[threading.Thread] = None
-        self._history: List[HealthSnapshot] = []
+        self._monitor_thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+        self._history: list[HealthSnapshot] = []
         self._max_history = 1000
         self._lock = threading.Lock()
 
@@ -184,6 +189,7 @@ class HealthMonitor:
         """Vérifie si psutil est disponible."""
         try:
             import psutil  # noqa: F401
+
             return True
         except ImportError:
             logger.warning("psutil non disponible - métriques CPU/RAM limitées")
@@ -198,6 +204,7 @@ class HealthMonitor:
         try:
             if self._has_psutil:
                 import psutil
+
                 usage = psutil.cpu_percent(interval=0.1)
                 freq = psutil.cpu_freq()
 
@@ -236,6 +243,7 @@ class HealthMonitor:
         try:
             if self._has_psutil:
                 import psutil
+
                 mem = psutil.virtual_memory()
 
                 usage = mem.percent
@@ -246,7 +254,7 @@ class HealthMonitor:
                     "used_gb": round(mem.used / (1024**3), 2),
                     "available_gb": round(mem.available / (1024**3), 2),
                     "total_gb": round(mem.total / (1024**3), 2),
-                    "cached_gb": round(getattr(mem, 'cached', 0) / (1024**3), 2),
+                    "cached_gb": round(getattr(mem, "cached", 0) / (1024**3), 2),
                 }
             else:
                 # Estimation basique via gc
@@ -292,6 +300,7 @@ class HealthMonitor:
         try:
             if self._has_psutil:
                 import psutil
+
                 disk = psutil.disk_usage(path)
 
                 usage = disk.percent
@@ -307,6 +316,7 @@ class HealthMonitor:
             else:
                 # Fallback basique
                 import shutil
+
                 total, used, free = shutil.disk_usage(path)
                 usage = (used / total) * 100
                 available = free
@@ -335,7 +345,7 @@ class HealthMonitor:
                 status=HealthStatus.UNKNOWN,
             )
 
-    def get_system_info(self) -> Dict[str, Any]:
+    def get_system_info(self) -> dict[str, Any]:
         """Récupère les informations système."""
         info = {
             "platform": platform.system(),
@@ -349,6 +359,7 @@ class HealthMonitor:
 
         if self._has_psutil:
             import psutil
+
             boot_time = datetime.fromtimestamp(psutil.boot_time())
             uptime = datetime.now() - boot_time
             info["uptime_hours"] = round(uptime.total_seconds() / 3600, 2)
@@ -357,11 +368,11 @@ class HealthMonitor:
         return info
 
     def check_health(self) -> HealthSnapshot:
-        """
-        Effectue un check de santé complet.
+        """Effectue un check de santé complet.
 
         Returns:
             HealthSnapshot avec toutes les métriques
+
         """
         metrics = {
             ResourceType.CPU: self.get_cpu_metrics(),
@@ -408,11 +419,11 @@ class HealthMonitor:
         with self._lock:
             self._history.append(snapshot)
             if len(self._history) > self._max_history:
-                self._history = self._history[-self._max_history:]
+                self._history = self._history[-self._max_history :]
 
         return snapshot
 
-    def get_history(self, last_n: int = 100) -> List[HealthSnapshot]:
+    def get_history(self, last_n: int = 100) -> list[HealthSnapshot]:
         """Retourne les derniers snapshots."""
         with self._lock:
             return list(self._history[-last_n:])
@@ -420,7 +431,7 @@ class HealthMonitor:
     def get_average_usage(
         self,
         resource: ResourceType,
-        duration_minutes: int = 5
+        duration_minutes: int = 5,
     ) -> float:
         """Calcule l'usage moyen sur une période."""
         cutoff = datetime.now() - timedelta(minutes=duration_minutes)
@@ -438,25 +449,27 @@ class HealthMonitor:
         return sum(recent) / len(recent)
 
     def start_monitoring(self, interval: float = 10.0) -> None:
-        """
-        Démarre la surveillance continue.
+        """Démarre la surveillance continue.
 
         Args:
             interval: Intervalle entre les checks en secondes
+
         """
         if self._monitoring:
             logger.warning("Monitoring déjà actif")
             return
 
         self._monitoring = True
+        self._stop_event.clear()
 
         def monitor_loop():
-            while self._monitoring:
+            while not self._stop_event.is_set():
                 try:
                     self.check_health()
                 except Exception as e:
                     logger.error(f"Erreur monitoring: {e}")
-                time.sleep(interval)
+                if self._stop_event.wait(interval):
+                    break
 
         self._monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
         self._monitor_thread.start()
@@ -465,6 +478,7 @@ class HealthMonitor:
     def stop_monitoring(self) -> None:
         """Arrête la surveillance continue."""
         self._monitoring = False
+        self._stop_event.set()
         if self._monitor_thread:
             self._monitor_thread.join(timeout=5.0)
             self._monitor_thread = None
@@ -479,10 +493,9 @@ class HealthMonitor:
         self,
         memory_threshold: float = 80.0,
         timeout: float = 60.0,
-        check_interval: float = 1.0
+        check_interval: float = 1.0,
     ) -> bool:
-        """
-        Attend que les ressources soient disponibles.
+        """Attend que les ressources soient disponibles.
 
         Utile avant de lancer une opération lourde.
 
@@ -493,6 +506,7 @@ class HealthMonitor:
 
         Returns:
             True si ressources disponibles, False si timeout
+
         """
         start = time.time()
 
@@ -540,7 +554,7 @@ class HealthMonitor:
 
 
 # Singleton global
-_monitor: Optional[HealthMonitor] = None
+_monitor: HealthMonitor | None = None
 
 
 def get_health_monitor() -> HealthMonitor:
@@ -562,13 +576,13 @@ def is_system_healthy() -> bool:
 
 
 __all__ = [
-    "HealthStatus",
-    "ResourceType",
-    "ResourceMetrics",
-    "HealthThresholds",
-    "HealthSnapshot",
     "HealthMonitor",
-    "get_health_monitor",
+    "HealthSnapshot",
+    "HealthStatus",
+    "HealthThresholds",
+    "ResourceMetrics",
+    "ResourceType",
     "check_system_health",
+    "get_health_monitor",
     "is_system_healthy",
 ]

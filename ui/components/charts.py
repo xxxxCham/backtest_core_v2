@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.components.charts
+"""Module-ID: ui.components.charts
 
 Purpose: Renderers Plotly/Seaborn pour UI - equity, OHLCV, comparaisons, stratégie diagrams.
 
@@ -26,7 +25,7 @@ Skip-if: Vous appelez render_equity_and_drawdown(equity, drawdown).
 # 1. IMPORTS ET CONFIGURATION GLOBALE
 # ============================================================================
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -41,6 +40,7 @@ from utils.log import get_logger
 try:
     import matplotlib.pyplot as plt
     import seaborn as sns
+
     SEABORN_AVAILABLE = True
 except ImportError:
     SEABORN_AVAILABLE = False
@@ -48,6 +48,7 @@ except ImportError:
 # Import optionnel de plotly-resampler pour downsampling intelligent
 try:
     from plotly_resampler import FigureResampler
+
     PLOTLY_RESAMPLER_AVAILABLE = True
 except ImportError:
     PLOTLY_RESAMPLER_AVAILABLE = False
@@ -70,17 +71,14 @@ COLOR_PALETTE = {
     "equity_fill": "rgba(38, 166, 154, 0.15)",
     "drawdown_line": "#ef5350",
     "drawdown_fill": "rgba(239, 83, 80, 0.3)",
-
     # Candlesticks
     "candle_up": "#26a69a",
     "candle_down": "#ef5350",
-
     # Trades
     "entry_long": "#42a5f5",
     "entry_short": "#ab47bc",
     "exit_profit": "#4caf50",
     "exit_loss": "#f44336",
-
     # Indicateurs
     "bb_mid": "#ffa726",
     "bb_bands": "#42a5f5",
@@ -100,7 +98,6 @@ COLOR_PALETTE = {
     "atr_channel_lower": "#26a69a",
     "stoch_k": "#42a5f5",
     "stoch_d": "#ffb74d",
-
     # Diagrammes de stratégies
     "price_line": "#e0e0e0",
     "stop_loss": "#ef5350",
@@ -115,7 +112,6 @@ COLOR_PALETTE = {
     "entry_level_short": "rgba(171, 71, 188, 0.9)",
     "annotation_stop": "#ef9a9a",
     "annotation_tp": "#81c784",
-
     # UI
     "text_primary": "#a8b2d1",
     "grid_color": "rgba(128,128,128,0.1)",
@@ -144,9 +140,9 @@ SEABORN_TEXT_COLOR = COLOR_PALETTE["text_primary"]
 # 3. HELPERS UTILITAIRES GÉNÉRAUX
 # ============================================================================
 
+
 def _wrap_with_resampler(fig: go.Figure, n_datapoints: int) -> go.Figure:
-    """
-    Wrap une figure Plotly avec FigureResampler si le dataset est grand.
+    """Wrap une figure Plotly avec FigureResampler si le dataset est grand.
 
     Args:
         fig: Figure Plotly originale
@@ -154,11 +150,12 @@ def _wrap_with_resampler(fig: go.Figure, n_datapoints: int) -> go.Figure:
 
     Returns:
         Figure Plotly (wrappée ou non)
+
     """
     if PLOTLY_RESAMPLER_AVAILABLE and n_datapoints > RESAMPLER_THRESHOLD:
         logger.info(
             "Dataset large (%s points) - Activation du resampler",
-            "{:,}".format(n_datapoints),
+            f"{n_datapoints:,}",
         )
         try:
             # Convertir en FigureResampler pour downsampling intelligent
@@ -173,12 +170,12 @@ def _wrap_with_resampler(fig: go.Figure, n_datapoints: int) -> go.Figure:
 
 
 def _apply_axis_interaction(fig: go.Figure, lock_x: bool = False) -> None:
-    """
-    Enable zoom on Y while keeping X interactive when needed.
+    """Enable zoom on Y while keeping X interactive when needed.
 
     Args:
         fig: Figure Plotly
         lock_x: Verrouiller l'axe X
+
     """
     fig.update_layout(dragmode="zoom")
     fig.update_xaxes(fixedrange=lock_x)
@@ -186,14 +183,14 @@ def _apply_axis_interaction(fig: go.Figure, lock_x: bool = False) -> None:
 
 
 def _normalize_trades_df(trades_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Normalize trade column names for chart rendering.
+    """Normalize trade column names for chart rendering.
 
     Args:
         trades_df: DataFrame des trades
 
     Returns:
         DataFrame avec colonnes normalisées
+
     """
     if trades_df is None or trades_df.empty:
         return trades_df
@@ -218,20 +215,21 @@ def _normalize_trades_df(trades_df: pd.DataFrame) -> pd.DataFrame:
 # 4. HELPERS DE STYLE PLOTLY
 # ============================================================================
 
+
 def _apply_chart_layout(
     fig: go.Figure,
     height: int = 450,
     y_title: str = "",
     show_rangeslider: bool = False,
 ) -> None:
-    """
-    Applique un style cohérent aux graphiques Plotly.
+    """Applique un style cohérent aux graphiques Plotly.
 
     Args:
         fig: Figure Plotly
         height: Hauteur du graphique
         y_title: Titre de l'axe Y
         show_rangeslider: Afficher le range slider en bas
+
     """
     fig.update_layout(
         height=height,
@@ -259,14 +257,14 @@ def _apply_chart_layout(
 
 
 def _get_base_layout_config(height: int = 520) -> dict:
-    """
-    Retourne la configuration de layout de base pour les sous-graphiques.
+    """Retourne la configuration de layout de base pour les sous-graphiques.
 
     Args:
         height: Hauteur du graphique
 
     Returns:
         Dict de configuration
+
     """
     return {
         "height": height,
@@ -286,11 +284,11 @@ def _get_base_layout_config(height: int = 520) -> dict:
 
 
 def _apply_dark_theme(fig: go.Figure) -> None:
-    """
-    Applique le thème sombre aux axes d'une figure.
+    """Applique le thème sombre aux axes d'une figure.
 
     Args:
         fig: Figure Plotly
+
     """
     fig.update_xaxes(showgrid=False)
     fig.update_yaxes(gridcolor=DEFAULT_GRID_COLOR)
@@ -300,9 +298,9 @@ def _apply_dark_theme(fig: go.Figure) -> None:
 # 5. HELPERS DE CALCUL POUR DIAGRAMMES
 # ============================================================================
 
+
 def _create_synthetic_price(n: int = 160, volatility: float = 2.5) -> tuple:
-    """
-    Crée un prix synthétique pour les diagrammes de stratégies.
+    """Crée un prix synthétique pour les diagrammes de stratégies.
 
     Args:
         n: Nombre de points
@@ -310,6 +308,7 @@ def _create_synthetic_price(n: int = 160, volatility: float = 2.5) -> tuple:
 
     Returns:
         Tuple (x, price, price_series)
+
     """
     np.random.seed(42)  # Reproductibilité
     x = np.arange(n)
@@ -336,10 +335,9 @@ def _calculate_bollinger(
     price_series: pd.Series,
     bb_period: int,
     bb_std: float,
-    entry_z: Optional[float] = None,
+    entry_z: float | None = None,
 ) -> dict:
-    """
-    Calcule les bandes de Bollinger.
+    """Calcule les bandes de Bollinger.
 
     Args:
         price_series: Série de prix
@@ -349,6 +347,7 @@ def _calculate_bollinger(
 
     Returns:
         Dict avec upper, lower, middle, entry_upper, entry_lower
+
     """
     middle = price_series.rolling(window=bb_period, min_periods=1).mean()
     sigma = price_series.rolling(window=bb_period, min_periods=1).std(ddof=0).fillna(0.5)
@@ -374,8 +373,7 @@ def _calculate_atr(
     atr_period: int,
     atr_percentile: float,
 ) -> tuple:
-    """
-    Calcule l'ATR (Average True Range) et son seuil de percentile.
+    """Calcule l'ATR (Average True Range) et son seuil de percentile.
 
     Args:
         price_series: Série de prix
@@ -384,6 +382,7 @@ def _calculate_atr(
 
     Returns:
         Tuple (atr_values, atr_threshold)
+
     """
     atr_values = price_series.diff().abs().rolling(window=atr_period, min_periods=1).mean()
     atr_threshold = float(np.nanpercentile(atr_values, atr_percentile))
@@ -394,18 +393,19 @@ def _calculate_atr(
 # 6. HELPERS DIAGRAMMES DE STRATÉGIES
 # ============================================================================
 
+
 def _render_bollinger_atr_diagram(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     key: str,
     n: int = 300,  # Augmenté pour mieux voir l'effet des périodes élevées
 ) -> None:
-    """
-    Diagramme pour la stratégie Bollinger ATR v1.
+    """Diagramme pour la stratégie Bollinger ATR v1.
 
     Args:
         params: Paramètres de la stratégie
         key: Clé unique Streamlit
         n: Nombre de points de données (augmenté à 300 pour périodes élevées)
+
     """
     x, price, price_series = _create_synthetic_price(n)
 
@@ -437,46 +437,65 @@ def _render_bollinger_atr_diagram(
     # Bandes de Bollinger
     fig.add_trace(
         go.Scatter(
-            x=x, y=bb["lower"], name="Bollinger bas",
+            x=x,
+            y=bb["lower"],
+            name="Bollinger bas",
             line=dict(color=COLOR_PALETTE["bollinger_low"], width=1),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=bb["upper"], name="Bollinger haut",
+            x=x,
+            y=bb["upper"],
+            name="Bollinger haut",
             line=dict(color=COLOR_PALETTE["bollinger_high"], width=1),
-            fill="tonexty", fillcolor=COLOR_PALETTE["bollinger_fill"],
+            fill="tonexty",
+            fillcolor=COLOR_PALETTE["bollinger_fill"],
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=bb["middle"], name="Bollinger milieu",
+            x=x,
+            y=bb["middle"],
+            name="Bollinger milieu",
             line=dict(color=COLOR_PALETTE["bollinger_mid"], width=1.5),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=bb["entry_upper"], name="Seuil entry_z haut",
+            x=x,
+            y=bb["entry_upper"],
+            name="Seuil entry_z haut",
             line=dict(color=COLOR_PALETTE["bb_entry_z"], width=1, dash="dot"),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=bb["entry_lower"], name="Seuil entry_z bas",
+            x=x,
+            y=bb["entry_lower"],
+            name="Seuil entry_z bas",
             line=dict(color=COLOR_PALETTE["bb_entry_z"], width=1, dash="dot"),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=price, name="Prix",
+            x=x,
+            y=price,
+            name="Prix",
             line=dict(color=COLOR_PALETTE["price_line"], width=1.5),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
 
     # Exemple d'entrée avec stop-loss
@@ -487,40 +506,57 @@ def _render_bollinger_atr_diagram(
 
     fig.add_trace(
         go.Scatter(
-            x=[entry_index], y=[entry_price],
-            mode="markers", name="Exemple entree",
+            x=[entry_index],
+            y=[entry_price],
+            mode="markers",
+            name="Exemple entree",
             marker=dict(color=COLOR_PALETTE["equity_line"], size=8),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_shape(
-        type="line", x0=entry_index, x1=entry_index,
-        y0=entry_price, y1=stop_price,
+        type="line",
+        x0=entry_index,
+        x1=entry_index,
+        y0=entry_price,
+        y1=stop_price,
         line=dict(color=COLOR_PALETTE["stop_loss"], width=2),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_annotation(
-        x=entry_index, y=stop_price,
+        x=entry_index,
+        y=stop_price,
         text=f"Stop = k_sl x ATR ({k_sl:.2f})",
-        showarrow=True, arrowhead=2, ax=20, ay=20,
+        showarrow=True,
+        arrowhead=2,
+        ax=20,
+        ay=20,
         font=dict(color=COLOR_PALETTE["annotation_stop"], size=10),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
 
     # ATR
     fig.add_trace(
         go.Scatter(
-            x=x, y=atr_values, name="ATR",
+            x=x,
+            y=atr_values,
+            name="ATR",
             line=dict(color=COLOR_PALETTE["atr_line"], width=1.5),
         ),
-        row=2, col=1,
+        row=2,
+        col=1,
     )
     fig.add_hline(
-        y=atr_threshold, line_dash="dot",
+        y=atr_threshold,
+        line_dash="dot",
         line_color=COLOR_PALETTE["atr_threshold"],
         annotation_text=f"Seuil {atr_percentile:.0f}%",
         annotation_position="top left",
-        row=2, col=1,
+        row=2,
+        col=1,
     )
 
     # Layout
@@ -531,7 +567,7 @@ def _render_bollinger_atr_diagram(
     st.plotly_chart(fig, width="stretch", key=key, config=PLOTLY_CHART_CONFIG)
     st.caption(
         f"Parametres: bb_period={bb_period}, bb_std={bb_std:.2f}, entry_z={entry_z:.2f}, "
-        f"atr_period={atr_period}, atr_percentile={atr_percentile:.0f}%, k_sl={k_sl:.2f}"
+        f"atr_period={atr_period}, atr_percentile={atr_percentile:.0f}%, k_sl={k_sl:.2f}",
     )
     st.markdown(
         "- bb_period: fenetre de moyenne pour la ligne centrale.\n"
@@ -539,22 +575,22 @@ def _render_bollinger_atr_diagram(
         "- entry_z: seuil d'entree en z-score (declenchement).\n"
         "- atr_period: fenetre ATR pour la volatilite.\n"
         "- atr_percentile: seuil de volatilite minimum.\n"
-        "- k_sl: distance du stop = k_sl x ATR."
+        "- k_sl: distance du stop = k_sl x ATR.",
     )
 
 
 def _render_bollinger_atr_v2_diagram(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     key: str,
     n: int = 300,
 ) -> None:
-    """
-    Diagramme pour la stratégie Bollinger ATR v2 (stop-loss basé sur Bollinger).
+    """Diagramme pour la stratégie Bollinger ATR v2 (stop-loss basé sur Bollinger).
 
     Args:
         params: Paramètres de la stratégie
         key: Clé unique Streamlit
         n: Nombre de points de données (augmenté à 300 pour périodes élevées)
+
     """
     x, price, price_series = _create_synthetic_price(n)
 
@@ -592,62 +628,87 @@ def _render_bollinger_atr_v2_diagram(
     # Bandes de Bollinger
     fig.add_trace(
         go.Scatter(
-            x=x, y=bb["lower"], name="Bollinger bas",
+            x=x,
+            y=bb["lower"],
+            name="Bollinger bas",
             line=dict(color=COLOR_PALETTE["bollinger_low"], width=1),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=bb["upper"], name="Bollinger haut",
+            x=x,
+            y=bb["upper"],
+            name="Bollinger haut",
             line=dict(color=COLOR_PALETTE["bollinger_high"], width=1),
-            fill="tonexty", fillcolor=COLOR_PALETTE["bollinger_fill"],
+            fill="tonexty",
+            fillcolor=COLOR_PALETTE["bollinger_fill"],
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=bb["middle"], name="Bollinger milieu",
+            x=x,
+            y=bb["middle"],
+            name="Bollinger milieu",
             line=dict(color=COLOR_PALETTE["bollinger_mid"], width=1.5),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=bb["entry_upper"], name="Seuil entry_z haut",
+            x=x,
+            y=bb["entry_upper"],
+            name="Seuil entry_z haut",
             line=dict(color=COLOR_PALETTE["bb_entry_z"], width=1, dash="dot"),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=bb["entry_lower"], name="Seuil entry_z bas",
+            x=x,
+            y=bb["entry_lower"],
+            name="Seuil entry_z bas",
             line=dict(color=COLOR_PALETTE["bb_entry_z"], width=1, dash="dot"),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
 
     # Niveaux de stop-loss
     fig.add_trace(
         go.Scatter(
-            x=x, y=stop_long, name="Stop LONG",
+            x=x,
+            y=stop_long,
+            name="Stop LONG",
             line=dict(color=COLOR_PALETTE["stop_long"], width=1.2, dash="dash"),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=stop_short, name="Stop SHORT",
+            x=x,
+            y=stop_short,
+            name="Stop SHORT",
             line=dict(color=COLOR_PALETTE["stop_short"], width=1.2, dash="dash"),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=price, name="Prix",
+            x=x,
+            y=price,
+            name="Prix",
             line=dict(color=COLOR_PALETTE["price_line"], width=1.5),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
 
     # Exemple d'entrée LONG
@@ -657,40 +718,57 @@ def _render_bollinger_atr_v2_diagram(
 
     fig.add_trace(
         go.Scatter(
-            x=[entry_index], y=[entry_price],
-            mode="markers", name="Exemple entree LONG",
+            x=[entry_index],
+            y=[entry_price],
+            mode="markers",
+            name="Exemple entree LONG",
             marker=dict(color=COLOR_PALETTE["equity_line"], size=8),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_shape(
-        type="line", x0=entry_index, x1=entry_index,
-        y0=entry_price, y1=stop_price,
+        type="line",
+        x0=entry_index,
+        x1=entry_index,
+        y0=entry_price,
+        y1=stop_price,
         line=dict(color=COLOR_PALETTE["stop_loss"], width=2),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_annotation(
-        x=entry_index, y=stop_price,
+        x=entry_index,
+        y=stop_price,
         text=f"Stop = lower - {bb_stop_factor:.1f} × (mid-low)",
-        showarrow=True, arrowhead=2, ax=-40, ay=20,
+        showarrow=True,
+        arrowhead=2,
+        ax=-40,
+        ay=20,
         font=dict(color=COLOR_PALETTE["annotation_stop"], size=10),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
 
     # ATR
     fig.add_trace(
         go.Scatter(
-            x=x, y=atr_values, name="ATR",
+            x=x,
+            y=atr_values,
+            name="ATR",
             line=dict(color=COLOR_PALETTE["atr_line"], width=1.5),
         ),
-        row=2, col=1,
+        row=2,
+        col=1,
     )
     fig.add_hline(
-        y=atr_threshold, line_dash="dot",
+        y=atr_threshold,
+        line_dash="dot",
         line_color=COLOR_PALETTE["atr_threshold"],
         annotation_text=f"Seuil {atr_percentile:.0f}%",
         annotation_position="top left",
-        row=2, col=1,
+        row=2,
+        col=1,
     )
 
     # Layout
@@ -701,29 +779,29 @@ def _render_bollinger_atr_v2_diagram(
     st.plotly_chart(fig, width="stretch", key=key, config=PLOTLY_CHART_CONFIG)
     st.caption(
         f"Parametres: bb_period={bb_period}, bb_std={bb_std:.2f}, entry_z={entry_z:.2f}, "
-        f"atr_period={atr_period}, atr_percentile={atr_percentile:.0f}%, bb_stop_factor={bb_stop_factor:.2f}"
+        f"atr_period={atr_period}, atr_percentile={atr_percentile:.0f}%, bb_stop_factor={bb_stop_factor:.2f}",
     )
     st.markdown(
         "**V2: Stop-loss basé sur les Bandes de Bollinger**\n\n"
         "- bb_stop_factor: Distance du stop depuis les bandes (0.2=proche, 2.0=loin).\n"
         "- LONG: stop = lower - bb_stop_factor × (middle - lower)\n"
         "- SHORT: stop = upper + bb_stop_factor × (upper - middle)\n"
-        "- Le stop-loss est FIXE au moment de l'entrée."
+        "- Le stop-loss est FIXE au moment de l'entrée.",
     )
 
 
 def _render_bollinger_atr_v3_diagram(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     key: str,
     n: int = 300,
 ) -> None:
-    """
-    Diagramme pour la stratégie Bollinger ATR v3 (entrées, stop et TP variables).
+    """Diagramme pour la stratégie Bollinger ATR v3 (entrées, stop et TP variables).
 
     Args:
         params: Paramètres de la stratégie
         key: Clé unique Streamlit
         n: Nombre de points de données (augmenté à 300 pour périodes élevées)
+
     """
     x, price, price_series = _create_synthetic_price(n)
 
@@ -762,50 +840,67 @@ def _render_bollinger_atr_v3_diagram(
     # Bandes de Bollinger
     fig.add_trace(
         go.Scatter(
-            x=x, y=bb["lower"], name="Bollinger bas (0%)",
+            x=x,
+            y=bb["lower"],
+            name="Bollinger bas (0%)",
             line=dict(color=COLOR_PALETTE["bollinger_low"], width=1),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=bb["upper"], name="Bollinger haut (100%)",
+            x=x,
+            y=bb["upper"],
+            name="Bollinger haut (100%)",
             line=dict(color=COLOR_PALETTE["bollinger_high"], width=1),
-            fill="tonexty", fillcolor=COLOR_PALETTE["bollinger_fill"],
+            fill="tonexty",
+            fillcolor=COLOR_PALETTE["bollinger_fill"],
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=bb["middle"], name="Bollinger milieu (50%)",
+            x=x,
+            y=bb["middle"],
+            name="Bollinger milieu (50%)",
             line=dict(color=COLOR_PALETTE["bollinger_mid"], width=1.5),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
 
     # Niveaux d'entrée
     fig.add_trace(
         go.Scatter(
-            x=x, y=entry_level_long,
-            name=f"Entrée LONG ({entry_pct_long*100:.0f}%)",
+            x=x,
+            y=entry_level_long,
+            name=f"Entrée LONG ({entry_pct_long * 100:.0f}%)",
             line=dict(color=COLOR_PALETTE["entry_level_long"], width=1.5, dash="dot"),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=entry_level_short,
-            name=f"Entrée SHORT ({entry_pct_short*100:.0f}%)",
+            x=x,
+            y=entry_level_short,
+            name=f"Entrée SHORT ({entry_pct_short * 100:.0f}%)",
             line=dict(color=COLOR_PALETTE["entry_level_short"], width=1.5, dash="dot"),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=price, name="Prix",
+            x=x,
+            y=price,
+            name="Prix",
             line=dict(color=COLOR_PALETTE["price_line"], width=1.5),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
 
     # Exemple de trade LONG
@@ -817,56 +912,78 @@ def _render_bollinger_atr_v3_diagram(
 
     fig.add_trace(
         go.Scatter(
-            x=[entry_index], y=[entry_price],
-            mode="markers", name="Exemple entree LONG",
+            x=[entry_index],
+            y=[entry_price],
+            mode="markers",
+            name="Exemple entree LONG",
             marker=dict(color=COLOR_PALETTE["equity_line"], size=8),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
 
     # Ligne Stop
     fig.add_shape(
-        type="line", x0=entry_index, x1=entry_index + 15,
-        y0=stop_price, y1=stop_price,
+        type="line",
+        x0=entry_index,
+        x1=entry_index + 15,
+        y0=stop_price,
+        y1=stop_price,
         line=dict(color=COLOR_PALETTE["stop_loss"], width=2, dash="dash"),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     # Ligne TP
     fig.add_shape(
-        type="line", x0=entry_index, x1=entry_index + 15,
-        y0=tp_price, y1=tp_price,
+        type="line",
+        x0=entry_index,
+        x1=entry_index + 15,
+        y0=tp_price,
+        y1=tp_price,
         line=dict(color=COLOR_PALETTE["take_profit"], width=2, dash="dash"),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_annotation(
-        x=entry_index + 15, y=stop_price,
-        text=f"Stop ({stop_factor*100:.0f}%)",
-        showarrow=False, xshift=45,
+        x=entry_index + 15,
+        y=stop_price,
+        text=f"Stop ({stop_factor * 100:.0f}%)",
+        showarrow=False,
+        xshift=45,
         font=dict(color=COLOR_PALETTE["annotation_stop"], size=9),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_annotation(
-        x=entry_index + 15, y=tp_price,
-        text=f"TP ({tp_factor*100:.0f}%)",
-        showarrow=False, xshift=35,
+        x=entry_index + 15,
+        y=tp_price,
+        text=f"TP ({tp_factor * 100:.0f}%)",
+        showarrow=False,
+        xshift=35,
         font=dict(color=COLOR_PALETTE["annotation_tp"], size=9),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
 
     # ATR
     fig.add_trace(
         go.Scatter(
-            x=x, y=atr_values, name="ATR",
+            x=x,
+            y=atr_values,
+            name="ATR",
             line=dict(color=COLOR_PALETTE["atr_line"], width=1.5),
         ),
-        row=2, col=1,
+        row=2,
+        col=1,
     )
     fig.add_hline(
-        y=atr_threshold, line_dash="dot",
+        y=atr_threshold,
+        line_dash="dot",
         line_color=COLOR_PALETTE["atr_threshold"],
         annotation_text=f"Seuil {atr_percentile:.0f}%",
         annotation_position="top left",
-        row=2, col=1,
+        row=2,
+        col=1,
     )
 
     # Layout
@@ -877,8 +994,8 @@ def _render_bollinger_atr_v3_diagram(
     st.plotly_chart(fig, width="stretch", key=key, config=PLOTLY_CHART_CONFIG)
     st.caption(
         f"Parametres: bb_period={bb_period}, bb_std={bb_std:.2f}, "
-        f"entry_long={entry_pct_long*100:.0f}%, entry_short={entry_pct_short*100:.0f}%, "
-        f"stop_factor={stop_factor:.2f}, tp_factor={tp_factor:.2f}"
+        f"entry_long={entry_pct_long * 100:.0f}%, entry_short={entry_pct_short * 100:.0f}%, "
+        f"stop_factor={stop_factor:.2f}, tp_factor={tp_factor:.2f}",
     )
     st.markdown(
         "**V3: Entrées, Stop et TP Variables sur Échelle Unifiée**\n\n"
@@ -888,22 +1005,22 @@ def _render_bollinger_atr_v3_diagram(
         "- **stop_factor**: Distance stop depuis entry_price (10% à 100% de distance totale)\n"
         "- **tp_factor**: Distance TP depuis entry_price (20% à 150% de distance totale)\n"
         "- **bb_std**: Amplitude des bandes (1σ à 4σ)\n\n"
-        "Formule: entry_level = lower + entry_pct × (upper - lower)"
+        "Formule: entry_level = lower + entry_pct × (upper - lower)",
     )
 
 
 def _render_ema_cross_diagram(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     key: str,
     n: int = 160,
 ) -> None:
-    """
-    Diagramme pour la stratégie EMA Cross.
+    """Diagramme pour la stratégie EMA Cross.
 
     Args:
         params: Paramètres de la stratégie
         key: Clé unique Streamlit
         n: Nombre de points de données
+
     """
     x, price, price_series = _create_synthetic_price(n)
 
@@ -926,28 +1043,36 @@ def _render_ema_cross_diagram(
 
     fig.add_trace(
         go.Scatter(
-            x=x, y=price, name="Prix",
+            x=x,
+            y=price,
+            name="Prix",
             line=dict(color=COLOR_PALETTE["price_line"], width=1.5),
-        )
+        ),
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=ema_fast, name=f"EMA rapide ({fast_period})",
+            x=x,
+            y=ema_fast,
+            name=f"EMA rapide ({fast_period})",
             line=dict(color=COLOR_PALETTE["ema_fast"], width=1.8),
-        )
+        ),
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=ema_slow, name=f"EMA lente ({slow_period})",
+            x=x,
+            y=ema_slow,
+            name=f"EMA lente ({slow_period})",
             line=dict(color=COLOR_PALETTE["ema_slow"], width=1.8),
-        )
+        ),
     )
     fig.add_trace(
         go.Scatter(
-            x=[marker_index], y=[price[marker_index]],
-            mode="markers", name="Exemple croisement",
+            x=[marker_index],
+            y=[price[marker_index]],
+            mode="markers",
+            name="Exemple croisement",
             marker=dict(color=COLOR_PALETTE["equity_line"], size=8),
-        )
+        ),
     )
 
     # Layout
@@ -969,22 +1094,22 @@ def _render_ema_cross_diagram(
     st.markdown(
         "- fast_period: vitesse de la moyenne rapide.\n"
         "- slow_period: tendance de fond (plus lente).\n"
-        "- Un signal apparait quand la rapide croise la lente."
+        "- Un signal apparait quand la rapide croise la lente.",
     )
 
 
 def _render_macd_cross_diagram(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     key: str,
     n: int = 160,
 ) -> None:
-    """
-    Diagramme pour la stratégie MACD Cross.
+    """Diagramme pour la stratégie MACD Cross.
 
     Args:
         params: Paramètres de la stratégie
         key: Clé unique Streamlit
         n: Nombre de points de données
+
     """
     x, price, price_series = _create_synthetic_price(n)
 
@@ -1011,24 +1136,33 @@ def _render_macd_cross_diagram(
 
     fig.add_trace(
         go.Scatter(
-            x=x, y=price, name="Prix",
+            x=x,
+            y=price,
+            name="Prix",
             line=dict(color=COLOR_PALETTE["price_line"], width=1.5),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=macd_line, name="MACD",
+            x=x,
+            y=macd_line,
+            name="MACD",
             line=dict(color=COLOR_PALETTE["macd_line"], width=1.6),
         ),
-        row=2, col=1,
+        row=2,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=signal_line, name="Signal",
+            x=x,
+            y=signal_line,
+            name="Signal",
             line=dict(color=COLOR_PALETTE["macd_signal"], width=1.4),
         ),
-        row=2, col=1,
+        row=2,
+        col=1,
     )
 
     # Layout
@@ -1038,29 +1172,28 @@ def _render_macd_cross_diagram(
 
     st.plotly_chart(fig, width="stretch", key=key, config=PLOTLY_CHART_CONFIG)
     st.caption(
-        f"Parametres: fast_period={fast_period}, slow_period={slow_period}, "
-        f"signal_period={signal_period}"
+        f"Parametres: fast_period={fast_period}, slow_period={slow_period}, signal_period={signal_period}",
     )
     st.markdown(
         "- fast_period: EMA rapide pour le MACD.\n"
         "- slow_period: EMA lente pour le MACD.\n"
         "- signal_period: lissage de la ligne MACD.\n"
-        "- Signal quand MACD croise la ligne signal."
+        "- Signal quand MACD croise la ligne signal.",
     )
 
 
 def _render_rsi_reversal_diagram(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     key: str,
     n: int = 160,
 ) -> None:
-    """
-    Diagramme pour la stratégie RSI Reversal.
+    """Diagramme pour la stratégie RSI Reversal.
 
     Args:
         params: Paramètres de la stratégie
         key: Clé unique Streamlit
         n: Nombre de points de données
+
     """
     x, price, price_series = _create_synthetic_price(n)
 
@@ -1090,31 +1223,41 @@ def _render_rsi_reversal_diagram(
 
     fig.add_trace(
         go.Scatter(
-            x=x, y=price, name="Prix",
+            x=x,
+            y=price,
+            name="Prix",
             line=dict(color=COLOR_PALETTE["price_line"], width=1.5),
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=rsi, name="RSI",
+            x=x,
+            y=rsi,
+            name="RSI",
             line=dict(color=COLOR_PALETTE["rsi_line"], width=1.6),
         ),
-        row=2, col=1,
+        row=2,
+        col=1,
     )
     fig.add_hline(
-        y=oversold, line_dash="dot",
+        y=oversold,
+        line_dash="dot",
         line_color=COLOR_PALETTE["rsi_oversold"],
         annotation_text="Oversold",
         annotation_position="bottom left",
-        row=2, col=1,
+        row=2,
+        col=1,
     )
     fig.add_hline(
-        y=overbought, line_dash="dot",
+        y=overbought,
+        line_dash="dot",
         line_color=COLOR_PALETTE["rsi_overbought"],
         annotation_text="Overbought",
         annotation_position="top left",
-        row=2, col=1,
+        row=2,
+        col=1,
     )
 
     # Layout
@@ -1124,27 +1267,27 @@ def _render_rsi_reversal_diagram(
 
     st.plotly_chart(fig, width="stretch", key=key, config=PLOTLY_CHART_CONFIG)
     st.caption(
-        f"Parametres: rsi_period={rsi_period}, oversold={oversold:.0f}, overbought={overbought:.0f}"
+        f"Parametres: rsi_period={rsi_period}, oversold={oversold:.0f}, overbought={overbought:.0f}",
     )
     st.markdown(
         "- rsi_period: fenetre de calcul du RSI.\n"
         "- oversold_level: seuil bas pour signal long.\n"
-        "- overbought_level: seuil haut pour signal short."
+        "- overbought_level: seuil haut pour signal short.",
     )
 
 
 def _render_atr_channel_diagram(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     key: str,
     n: int = 160,
 ) -> None:
-    """
-    Diagramme pour la stratégie ATR Channel.
+    """Diagramme pour la stratégie ATR Channel.
 
     Args:
         params: Paramètres de la stratégie
         key: Clé unique Streamlit
         n: Nombre de points de données
+
     """
     x, price, price_series = _create_synthetic_price(n)
 
@@ -1174,27 +1317,35 @@ def _render_atr_channel_diagram(
 
     fig.add_trace(
         go.Scatter(
-            x=x, y=price, name="Prix",
+            x=x,
+            y=price,
+            name="Prix",
             line=dict(color=COLOR_PALETTE["price_line"], width=1.5),
-        )
+        ),
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=upper, name="Canal haut",
+            x=x,
+            y=upper,
+            name="Canal haut",
             line=dict(color=COLOR_PALETTE["atr_channel_upper"], width=1.2),
-        )
+        ),
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=lower, name="Canal bas",
+            x=x,
+            y=lower,
+            name="Canal bas",
             line=dict(color=COLOR_PALETTE["atr_channel_lower"], width=1.2),
-        )
+        ),
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=ema_center, name="EMA centre",
+            x=x,
+            y=ema_center,
+            name="EMA centre",
             line=dict(color=COLOR_PALETTE["ema_center"], width=1.4, dash="dot"),
-        )
+        ),
     )
 
     # Layout
@@ -1214,8 +1365,7 @@ def _render_atr_channel_diagram(
     st.plotly_chart(fig, width="stretch", key=key, config=PLOTLY_CHART_CONFIG)
     st.caption(f"Parametres: atr_period={atr_period}, atr_mult={atr_mult:.2f}")
     st.markdown(
-        "- atr_period: fenetre ATR et EMA du canal.\n"
-        "- atr_mult: largeur du canal (volatilite)."
+        "- atr_period: fenetre ATR et EMA du canal.\n- atr_mult: largeur du canal (volatilite).",
     )
 
 
@@ -1223,36 +1373,37 @@ def _render_atr_channel_diagram(
 # 7. HELPERS SEABORN
 # ============================================================================
 
+
 def _apply_seaborn_dark_style(fig, ax) -> None:
-    """
-    Applique le style sombre cohérent pour les graphiques Seaborn.
+    """Applique le style sombre cohérent pour les graphiques Seaborn.
 
     Args:
         fig: Figure matplotlib
         ax: Axes matplotlib
+
     """
     fig.patch.set_facecolor(SEABORN_BG_COLOR)
     ax.set_facecolor(SEABORN_AXES_BG_COLOR)
     ax.tick_params(colors=SEABORN_TEXT_COLOR)
-    ax.spines['bottom'].set_color(SEABORN_TEXT_COLOR)
-    ax.spines['top'].set_color(SEABORN_TEXT_COLOR)
-    ax.spines['right'].set_color(SEABORN_TEXT_COLOR)
-    ax.spines['left'].set_color(SEABORN_TEXT_COLOR)
+    ax.spines["bottom"].set_color(SEABORN_TEXT_COLOR)
+    ax.spines["top"].set_color(SEABORN_TEXT_COLOR)
+    ax.spines["right"].set_color(SEABORN_TEXT_COLOR)
+    ax.spines["left"].set_color(SEABORN_TEXT_COLOR)
 
 
 # ============================================================================
 # 8. FONCTIONS PUBLIQUES - EQUITY CURVES
 # ============================================================================
 
+
 def render_equity_and_drawdown(
     equity: pd.Series,
     initial_capital: float = 10000.0,
     key: str = "equity_dd",
     height: int = 550,
-    summary_metrics: Optional[Dict[str, Any]] = None,
+    summary_metrics: dict[str, Any] | None = None,
 ) -> None:
-    """
-    Affiche la courbe d'équité et le drawdown dans un graphique à 2 panneaux.
+    """Affiche la courbe d'équité et le drawdown dans un graphique à 2 panneaux.
 
     Args:
         equity: Série pandas de l'équité
@@ -1260,6 +1411,7 @@ def render_equity_and_drawdown(
         key: Clé unique Streamlit
         height: Hauteur du graphique
         summary_metrics: Métriques résumées à afficher dans le titre/annotation
+
     """
     if equity is None or equity.empty:
         st.warning("⚠️ Aucune donnée d'équité à afficher")
@@ -1285,9 +1437,7 @@ def render_equity_and_drawdown(
         benchmark = float(summary_metrics.get("benchmark_return_pct", 0.0) or 0.0)
         strategy_ret = float(summary_metrics.get("total_return_pct", 0.0) or 0.0)
         alpha_text = (
-            f"Return stratégie: {strategy_ret:.1f}% | "
-            f"Buy & Hold: {benchmark:.1f}% | "
-            f"Alpha simple: {alpha:+.1f}%"
+            f"Return stratégie: {strategy_ret:.1f}% | Buy & Hold: {benchmark:.1f}% | Alpha simple: {alpha:+.1f}%"
         )
 
     # Graphique d'équité
@@ -1335,7 +1485,7 @@ def render_equity_and_drawdown(
     fig.update_layout(
         height=height,
         showlegend=True,
-        title=(alpha_text if alpha_text else None),
+        title=(alpha_text or None),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(l=50, r=50, t=40, b=30),
         template=DEFAULT_LAYOUT_CONFIG["template"],
@@ -1354,7 +1504,10 @@ def render_equity_and_drawdown(
     fig = _wrap_with_resampler(fig, len(equity))
 
     st.plotly_chart(
-        fig, width="stretch", key=key, config=PLOTLY_CHART_CONFIG
+        fig,
+        width="stretch",
+        key=key,
+        config=PLOTLY_CHART_CONFIG,
     )
 
 
@@ -1365,8 +1518,7 @@ def render_equity_curve(
     key: str = "equity_curve",
     height: int = 350,
 ) -> None:
-    """
-    Affiche uniquement la courbe d'équité (version simple).
+    """Affiche uniquement la courbe d'équité (version simple).
 
     Args:
         equity: Série pandas de l'équité
@@ -1374,6 +1526,7 @@ def render_equity_curve(
         title: Titre du graphique
         key: Clé unique Streamlit
         height: Hauteur du graphique
+
     """
     if equity is None or equity.empty:
         st.warning("⚠️ Aucune donnée d'équité")
@@ -1393,7 +1546,7 @@ def render_equity_curve(
             fill="tozeroy",
             fillcolor=COLOR_PALETTE["equity_fill"],
             hovertemplate="<b>%{x}</b><br>$%{y:,.2f}<extra></extra>",
-        )
+        ),
     )
 
     # Ligne du capital initial
@@ -1408,13 +1561,17 @@ def render_equity_curve(
     _apply_chart_layout(fig, height=height, y_title="Équité ($)")
     _apply_axis_interaction(fig)
     st.plotly_chart(
-        fig, width="stretch", key=key, config=PLOTLY_CHART_CONFIG
+        fig,
+        width="stretch",
+        key=key,
+        config=PLOTLY_CHART_CONFIG,
     )
 
 
 # ============================================================================
 # 9. FONCTIONS PUBLIQUES - OHLCV CHARTS
 # ============================================================================
+
 
 def render_ohlcv_with_trades(
     df: pd.DataFrame,
@@ -1423,8 +1580,7 @@ def render_ohlcv_with_trades(
     key: str = "ohlcv_trades",
     height: int = 500,
 ) -> None:
-    """
-    Affiche un graphique OHLCV avec marqueurs de trades.
+    """Affiche un graphique OHLCV avec marqueurs de trades.
 
     Args:
         df: DataFrame OHLCV avec colonnes open, high, low, close
@@ -1432,6 +1588,7 @@ def render_ohlcv_with_trades(
         title: Titre du graphique
         key: Clé unique Streamlit
         height: Hauteur du graphique
+
     """
     if df.empty:
         st.warning("⚠️ Aucune donnée OHLCV")
@@ -1460,7 +1617,7 @@ def render_ohlcv_with_trades(
             name="OHLC",
             increasing_line_color=COLOR_PALETTE["candle_up"],
             decreasing_line_color=COLOR_PALETTE["candle_down"],
-        )
+        ),
     )
 
     # Ajouter les marqueurs de trades
@@ -1469,9 +1626,13 @@ def render_ohlcv_with_trades(
         entries = trades_df[trades_df["entry_time"].notna()].copy()
         if not entries.empty:
             # Déterminer les couleurs par type de trade (LONG/SHORT)
-            entry_colors = entries.get("side", "LONG").map(
-                {"LONG": COLOR_PALETTE["entry_long"], "SHORT": COLOR_PALETTE["entry_short"]}
-            ).fillna(COLOR_PALETTE["entry_long"])
+            entry_colors = (
+                entries.get("side", "LONG")
+                .map(
+                    {"LONG": COLOR_PALETTE["entry_long"], "SHORT": COLOR_PALETTE["entry_short"]},
+                )
+                .fillna(COLOR_PALETTE["entry_long"])
+            )
 
             fig.add_trace(
                 go.Scatter(
@@ -1486,7 +1647,7 @@ def render_ohlcv_with_trades(
                         line=dict(width=1, color="white"),
                     ),
                     hovertemplate="<b>Entry</b><br>%{x}<br>$%{y:.2f}<extra></extra>",
-                )
+                ),
             )
 
         # Points de sortie
@@ -1499,7 +1660,7 @@ def render_ohlcv_with_trades(
                 pnl = trade.get("pnl", 0)
                 pnl_values.append(pnl)
                 exit_colors.append(
-                    COLOR_PALETTE["exit_profit"] if pnl > 0 else COLOR_PALETTE["exit_loss"]
+                    COLOR_PALETTE["exit_profit"] if pnl > 0 else COLOR_PALETTE["exit_loss"],
                 )
 
             fig.add_trace(
@@ -1516,28 +1677,29 @@ def render_ohlcv_with_trades(
                     ),
                     customdata=pnl_values,
                     hovertemplate="<b>Exit</b><br>%{x}<br>Prix: $%{y:.2f}<br>PNL: $%{customdata:.2f}<extra></extra>",
-                )
+                ),
             )
 
     _apply_chart_layout(fig, height=height, y_title="Prix (USD)")
     _apply_axis_interaction(fig)
     st.plotly_chart(
-        fig, width="stretch", key=key, config=PLOTLY_CHART_CONFIG
+        fig,
+        width="stretch",
+        key=key,
+        config=PLOTLY_CHART_CONFIG,
     )
 
 
 def render_ohlcv_with_trades_and_indicators(
     df: pd.DataFrame,
     trades_df: pd.DataFrame,
-    overlays: Dict[str, Any],
-    active_indicators: Optional[List[str]] = None,
+    overlays: dict[str, Any],
+    active_indicators: list[str] | None = None,
     title: str = "📈 Prix, Indicateurs et Trades",
     key: str = "ohlcv_trades_indicators",
     height: int = 650,
 ) -> None:
-    """
-    Affiche un graphique OHLCV avec indicateurs et marqueurs de trades.
-    """
+    """Affiche un graphique OHLCV avec indicateurs et marqueurs de trades."""
     if df.empty:
         st.warning("⚠️ Aucune donnée OHLCV")
         return
@@ -1760,9 +1922,13 @@ def render_ohlcv_with_trades_and_indicators(
     if not trades_df.empty and "entry_time" in trades_df.columns:
         entries = trades_df[trades_df["entry_time"].notna()].copy()
         if not entries.empty:
-            entry_colors = entries.get("side", "LONG").map(
-                {"LONG": COLOR_PALETTE["entry_long"], "SHORT": COLOR_PALETTE["entry_short"]}
-            ).fillna(COLOR_PALETTE["entry_long"])
+            entry_colors = (
+                entries.get("side", "LONG")
+                .map(
+                    {"LONG": COLOR_PALETTE["entry_long"], "SHORT": COLOR_PALETTE["entry_short"]},
+                )
+                .fillna(COLOR_PALETTE["entry_long"])
+            )
             _add_trace(
                 go.Scatter(
                     x=entries["entry_time"],
@@ -1788,7 +1954,7 @@ def render_ohlcv_with_trades_and_indicators(
                 pnl = trade.get("pnl", 0)
                 pnl_values.append(pnl)
                 exit_colors.append(
-                    COLOR_PALETTE["exit_profit"] if pnl > 0 else COLOR_PALETTE["exit_loss"]
+                    COLOR_PALETTE["exit_profit"] if pnl > 0 else COLOR_PALETTE["exit_loss"],
                 )
 
             _add_trace(
@@ -1961,7 +2127,7 @@ def render_ohlcv_with_trades_and_indicators(
                 gridcolor=DEFAULT_GRID_COLOR,
                 range=[-5, 105],  # Légère marge pour visibilité
                 row=2,
-                col=1
+                col=1,
             )
         elif has_macd:
             # MACD nécessite une échelle auto mais centrée sur 0
@@ -1971,7 +2137,7 @@ def render_ohlcv_with_trades_and_indicators(
                 zerolinecolor="rgba(255,255,255,0.3)",
                 zerolinewidth=1,
                 row=2,
-                col=1
+                col=1,
             )
         elif has_atr:
             # ATR est toujours positif, auto-scale depuis 0
@@ -1979,7 +2145,7 @@ def render_ohlcv_with_trades_and_indicators(
                 gridcolor=DEFAULT_GRID_COLOR,
                 rangemode="tozero",
                 row=2,
-                col=1
+                col=1,
             )
         else:
             # Par défaut, auto-scale normal
@@ -1991,7 +2157,10 @@ def render_ohlcv_with_trades_and_indicators(
         fig = _wrap_with_resampler(fig, len(df))
 
         st.plotly_chart(
-            fig, width="stretch", key=key, config=PLOTLY_CHART_CONFIG
+            fig,
+            width="stretch",
+            key=key,
+            config=PLOTLY_CHART_CONFIG,
         )
         return
 
@@ -2002,19 +2171,21 @@ def render_ohlcv_with_trades_and_indicators(
     fig = _wrap_with_resampler(fig, len(df))
 
     st.plotly_chart(
-        fig, width="stretch", key=key, config=PLOTLY_CHART_CONFIG
+        fig,
+        width="stretch",
+        key=key,
+        config=PLOTLY_CHART_CONFIG,
     )
 
 
 def render_ohlcv_with_indicators(
     df: pd.DataFrame,
-    indicators: Dict[str, Any],
+    indicators: dict[str, Any],
     title: str = "📊 Prix et Indicateurs",
     key: str = "ohlcv_indicators",
     height: int = 500,
 ) -> None:
-    """
-    Affiche un graphique OHLCV avec indicateurs techniques.
+    """Affiche un graphique OHLCV avec indicateurs techniques.
 
     Args:
         df: DataFrame OHLCV
@@ -2022,6 +2193,7 @@ def render_ohlcv_with_indicators(
         title: Titre du graphique
         key: Clé unique Streamlit
         height: Hauteur du graphique
+
     """
     if df.empty:
         st.warning("⚠️ Aucune donnée OHLCV")
@@ -2042,7 +2214,7 @@ def render_ohlcv_with_indicators(
             name="OHLC",
             increasing_line_color=COLOR_PALETTE["candle_up"],
             decreasing_line_color=COLOR_PALETTE["candle_down"],
-        )
+        ),
     )
 
     # Ajouter les indicateurs
@@ -2055,7 +2227,7 @@ def render_ohlcv_with_indicators(
                     y=bb["mid"],
                     name="BB Mid",
                     line=dict(color=COLOR_PALETTE["bb_mid"], width=1),
-                )
+                ),
             )
             fig.add_trace(
                 go.Scatter(
@@ -2063,7 +2235,7 @@ def render_ohlcv_with_indicators(
                     y=bb["upper"],
                     name="BB Upper",
                     line=dict(color=COLOR_PALETTE["bb_bands"], width=1, dash="dash"),
-                )
+                ),
             )
             fig.add_trace(
                 go.Scatter(
@@ -2073,13 +2245,16 @@ def render_ohlcv_with_indicators(
                     line=dict(color=COLOR_PALETTE["bb_bands"], width=1, dash="dash"),
                     fill="tonexty",
                     fillcolor=COLOR_PALETTE["bb_bands_rgba"],
-                )
+                ),
             )
 
     _apply_chart_layout(fig, height=height, y_title="Prix (USD)")
     _apply_axis_interaction(fig)
     st.plotly_chart(
-        fig, width="stretch", key=key, config=PLOTLY_CHART_CONFIG
+        fig,
+        width="stretch",
+        key=key,
+        config=PLOTLY_CHART_CONFIG,
     )
 
 
@@ -2087,15 +2262,15 @@ def render_ohlcv_with_indicators(
 # 10. FONCTIONS PUBLIQUES - COMPARISON
 # ============================================================================
 
+
 def render_comparison_chart(
-    results_list: List[Dict[str, Any]],
+    results_list: list[dict[str, Any]],
     metric: str = "sharpe_ratio",
     title: str = "📊 Comparaison des Résultats",
     key: str = "comparison",
     height: int = 400,
 ) -> None:
-    """
-    Affiche un graphique de comparaison entre plusieurs résultats.
+    """Affiche un graphique de comparaison entre plusieurs résultats.
 
     Args:
         results_list: Liste de dict avec 'name' et 'metrics'
@@ -2103,6 +2278,7 @@ def render_comparison_chart(
         title: Titre du graphique
         key: Clé unique Streamlit
         height: Hauteur du graphique
+
     """
     if not results_list:
         st.warning("⚠️ Aucun résultat à comparer")
@@ -2119,13 +2295,12 @@ def render_comparison_chart(
                 x=names,
                 y=values,
                 marker_color=[
-                    COLOR_PALETTE["equity_line"] if v > 0 else COLOR_PALETTE["drawdown_line"]
-                    for v in values
+                    COLOR_PALETTE["equity_line"] if v > 0 else COLOR_PALETTE["drawdown_line"] for v in values
                 ],
                 text=[f"{v:.2f}" for v in values],
                 textposition="outside",
-            )
-        ]
+            ),
+        ],
     )
 
     fig.update_layout(
@@ -2144,7 +2319,10 @@ def render_comparison_chart(
 
     _apply_axis_interaction(fig)
     st.plotly_chart(
-        fig, width="stretch", key=key, config=PLOTLY_CHART_CONFIG
+        fig,
+        width="stretch",
+        key=key,
+        config=PLOTLY_CHART_CONFIG,
     )
 
 
@@ -2152,13 +2330,13 @@ def render_comparison_chart(
 # 11. FONCTIONS PUBLIQUES - STRATEGY DIAGRAMS
 # ============================================================================
 
+
 def render_strategy_param_diagram(
     strategy_key: str,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     key: str = "strategy_diagram",
 ) -> None:
-    """
-    Affiche un schema explicatif des indicateurs et parametres d'une strategie.
+    """Affiche un schema explicatif des indicateurs et parametres d'une strategie.
 
     Dispatcher pour les différentes stratégies.
 
@@ -2166,6 +2344,7 @@ def render_strategy_param_diagram(
         strategy_key: Identifiant de la stratégie
         params: Paramètres de la stratégie
         key: Clé unique Streamlit
+
     """
     # Dictionnaire de mapping stratégie -> fonction de rendu
     strategy_renderers = {
@@ -2190,27 +2369,28 @@ def render_strategy_param_diagram(
 # 12. FONCTIONS PUBLIQUES - DISTRIBUTIONS
 # ============================================================================
 
+
 def render_trade_pnl_distribution(
     trades_df: pd.DataFrame,
     title: str = "📊 Distribution des P&L par Trade",
     key: str = "trade_pnl_dist",
     height: int = 400,
 ) -> None:
-    """
-    Affiche la distribution des P&L par trade avec histogramme + KDE (seaborn).
+    """Affiche la distribution des P&L par trade avec histogramme + KDE (seaborn).
 
     Args:
         trades_df: DataFrame des trades avec colonne 'pnl'
         title: Titre du graphique
         key: Clé unique Streamlit
         height: Hauteur du graphique
+
     """
     _ = key
     if not SEABORN_AVAILABLE:
         st.warning("⚠️ Seaborn non disponible - Distribution non affichée")
         return
 
-    if trades_df.empty or 'pnl' not in trades_df.columns:
+    if trades_df.empty or "pnl" not in trades_df.columns:
         st.warning("⚠️ Aucune donnée de P&L à afficher")
         return
 
@@ -2222,7 +2402,7 @@ def render_trade_pnl_distribution(
     fig, ax = plt.subplots(figsize=(10, height / 100))
 
     # Histogramme + KDE avec seaborn
-    pnl_values = trades_df['pnl'].dropna()
+    pnl_values = trades_df["pnl"].dropna()
     sns.histplot(
         pnl_values,
         kde=True,
@@ -2230,11 +2410,11 @@ def render_trade_pnl_distribution(
         edgecolor=SEABORN_EDGE_COLOR,
         alpha=0.7,
         ax=ax,
-        stat="density"
+        stat="density",
     )
 
     # Ligne verticale à zéro
-    ax.axvline(0, color='white', linestyle='--', linewidth=1, alpha=0.5)
+    ax.axvline(0, color="white", linestyle="--", linewidth=1, alpha=0.5)
 
     # Statistiques
     mean_pnl = pnl_values.mean()
@@ -2242,26 +2422,26 @@ def render_trade_pnl_distribution(
     ax.axvline(
         mean_pnl,
         color=COLOR_PALETTE["bb_mid"],
-        linestyle='-',
+        linestyle="-",
         linewidth=2,
-        label=f'Moyenne: ${mean_pnl:.2f}'
+        label=f"Moyenne: ${mean_pnl:.2f}",
     )
     ax.axvline(
         median_pnl,
         color=COLOR_PALETTE["ema_fast"],
-        linestyle='-',
+        linestyle="-",
         linewidth=2,
-        label=f'Médiane: ${median_pnl:.2f}'
+        label=f"Médiane: ${median_pnl:.2f}",
     )
 
-    ax.set_xlabel('P&L ($)', color=SEABORN_TEXT_COLOR, fontsize=11)
-    ax.set_ylabel('Densité', color=SEABORN_TEXT_COLOR, fontsize=11)
+    ax.set_xlabel("P&L ($)", color=SEABORN_TEXT_COLOR, fontsize=11)
+    ax.set_ylabel("Densité", color=SEABORN_TEXT_COLOR, fontsize=11)
     ax.set_title(title, color=SEABORN_TEXT_COLOR, fontsize=13, pad=15)
     ax.legend(
-        loc='upper right',
+        loc="upper right",
         facecolor=SEABORN_AXES_BG_COLOR,
         edgecolor=SEABORN_TEXT_COLOR,
-        labelcolor=SEABORN_TEXT_COLOR
+        labelcolor=SEABORN_TEXT_COLOR,
     )
 
     # Appliquer le style sombre
@@ -2277,14 +2457,14 @@ def render_returns_distribution(
     key: str = "returns_dist",
     height: int = 400,
 ) -> None:
-    """
-    Affiche la distribution des rendements avec histogramme + KDE (seaborn).
+    """Affiche la distribution des rendements avec histogramme + KDE (seaborn).
 
     Args:
         returns: Série des rendements
         title: Titre du graphique
         key: Clé unique Streamlit
         height: Hauteur du graphique
+
     """
     _ = key
     if not SEABORN_AVAILABLE:
@@ -2311,11 +2491,11 @@ def render_returns_distribution(
         edgecolor=SEABORN_EDGE_COLOR,
         alpha=0.7,
         ax=ax,
-        stat="density"
+        stat="density",
     )
 
     # Ligne verticale à zéro
-    ax.axvline(0, color='white', linestyle='--', linewidth=1, alpha=0.5)
+    ax.axvline(0, color="white", linestyle="--", linewidth=1, alpha=0.5)
 
     # Statistiques
     mean_ret = returns_clean.mean()
@@ -2323,33 +2503,33 @@ def render_returns_distribution(
     ax.axvline(
         mean_ret,
         color=COLOR_PALETTE["equity_line"],
-        linestyle='-',
+        linestyle="-",
         linewidth=2,
-        label=f'Moyenne: {mean_ret:.4f}'
+        label=f"Moyenne: {mean_ret:.4f}",
     )
     ax.axvline(
         mean_ret + std_ret,
         color=COLOR_PALETTE["drawdown_line"],
-        linestyle=':',
+        linestyle=":",
         linewidth=1.5,
-        label=f'+1σ: {mean_ret + std_ret:.4f}'
+        label=f"+1σ: {mean_ret + std_ret:.4f}",
     )
     ax.axvline(
         mean_ret - std_ret,
         color=COLOR_PALETTE["drawdown_line"],
-        linestyle=':',
+        linestyle=":",
         linewidth=1.5,
-        label=f'-1σ: {mean_ret - std_ret:.4f}'
+        label=f"-1σ: {mean_ret - std_ret:.4f}",
     )
 
-    ax.set_xlabel('Rendement', color=SEABORN_TEXT_COLOR, fontsize=11)
-    ax.set_ylabel('Densité', color=SEABORN_TEXT_COLOR, fontsize=11)
+    ax.set_xlabel("Rendement", color=SEABORN_TEXT_COLOR, fontsize=11)
+    ax.set_ylabel("Densité", color=SEABORN_TEXT_COLOR, fontsize=11)
     ax.set_title(title, color=SEABORN_TEXT_COLOR, fontsize=13, pad=15)
     ax.legend(
-        loc='upper right',
+        loc="upper right",
         facecolor=SEABORN_AXES_BG_COLOR,
         edgecolor=SEABORN_TEXT_COLOR,
-        labelcolor=SEABORN_TEXT_COLOR
+        labelcolor=SEABORN_TEXT_COLOR,
     )
 
     # Appliquer le style sombre
@@ -2363,20 +2543,21 @@ def render_returns_distribution(
 # 13. VISUALISATIONS MULTI-SWEEP
 # ============================================================================
 
+
 def render_multi_sweep_heatmap(
     results_df: pd.DataFrame,
     metric: str = "total_pnl",
-    title: Optional[str] = None,
-    key: Optional[str] = None,
+    title: str | None = None,
+    key: str | None = None,
 ) -> None:
-    """
-    Affiche une heatmap interactive des résultats multi-sweep.
+    """Affiche une heatmap interactive des résultats multi-sweep.
 
     Args:
         results_df: DataFrame avec colonnes strategy, symbol, timeframe, metric
         metric: Métrique à afficher (default: total_pnl)
         title: Titre optionnel
         key: Clé Streamlit optionnelle
+
     """
     import plotly.graph_objects as go
 
@@ -2399,28 +2580,30 @@ def render_multi_sweep_heatmap(
         index="strategy",
         columns="token_tf",
         values=metric,
-        aggfunc="mean"
+        aggfunc="mean",
     )
 
     # Colorscale centrée sur zéro pour PnL
-    fig = go.Figure(data=go.Heatmap(
-        z=pivot.values,
-        x=pivot.columns,
-        y=pivot.index,
-        colorscale="RdYlGn",  # Rouge négatif, vert positif
-        zmid=0,  # Centrer sur zéro
-        text=pivot.values.round(2),
-        texttemplate='%{text}',
-        textfont={"size": 10},
-        colorbar=dict(title=metric)
-    ))
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=pivot.values,
+            x=pivot.columns,
+            y=pivot.index,
+            colorscale="RdYlGn",  # Rouge négatif, vert positif
+            zmid=0,  # Centrer sur zéro
+            text=pivot.values.round(2),
+            texttemplate="%{text}",
+            textfont={"size": 10},
+            colorbar=dict(title=metric),
+        ),
+    )
 
     fig.update_layout(
         title=title or f"Heatmap {metric}",
         xaxis_title="Token × Timeframe",
         yaxis_title="Stratégie",
         height=400 + len(pivot.index) * 30,  # Hauteur adaptative
-        template="plotly_dark"
+        template="plotly_dark",
     )
 
     st.plotly_chart(fig, width="stretch", key=key)
@@ -2430,11 +2613,10 @@ def render_multi_sweep_ranking(
     results_df: pd.DataFrame,
     metric: str = "total_pnl",
     top_n: int = 20,
-    title: Optional[str] = None,
-    key: Optional[str] = None,
+    title: str | None = None,
+    key: str | None = None,
 ) -> None:
-    """
-    Affiche un classement horizontal des meilleurs résultats.
+    """Affiche un classement horizontal des meilleurs résultats.
 
     Args:
         results_df: DataFrame avec colonnes strategy, symbol, timeframe, metric
@@ -2442,6 +2624,7 @@ def render_multi_sweep_ranking(
         top_n: Nombre de résultats à afficher (default: 20)
         title: Titre optionnel
         key: Clé Streamlit optionnelle
+
     """
     import plotly.graph_objects as go
 
@@ -2467,14 +2650,10 @@ def render_multi_sweep_ranking(
         return
 
     # Créer label combiné
-    valid_df["label"] = (
-        valid_df["strategy"] + " | " +
-        valid_df["symbol"] + " " +
-        valid_df["timeframe"]
-    )
+    valid_df["label"] = valid_df["strategy"] + " | " + valid_df["symbol"] + " " + valid_df["timeframe"]
 
     # Trier (convertir en numérique si nécessaire)
-    valid_df[metric] = pd.to_numeric(valid_df[metric], errors='coerce')
+    valid_df[metric] = pd.to_numeric(valid_df[metric], errors="coerce")
 
     # Re-filtrer après conversion (éliminer les NaN créés par coerce)
     valid_df = valid_df[valid_df[metric].notna()].copy()
@@ -2488,14 +2667,16 @@ def render_multi_sweep_ranking(
     # Couleur selon signe (vert positif, rouge négatif)
     colors = ["#00e676" if val > 0 else "#ff5252" for val in sorted_df[metric]]
 
-    fig = go.Figure(data=go.Bar(
-        x=sorted_df[metric],
-        y=sorted_df["label"],
-        orientation='h',
-        marker=dict(color=colors),
-        text=sorted_df[metric].round(2),
-        textposition='auto',
-    ))
+    fig = go.Figure(
+        data=go.Bar(
+            x=sorted_df[metric],
+            y=sorted_df["label"],
+            orientation="h",
+            marker=dict(color=colors),
+            text=sorted_df[metric].round(2),
+            textposition="auto",
+        ),
+    )
 
     fig.update_layout(
         title=title or f"Top {top_n} - {metric}",
@@ -2503,7 +2684,7 @@ def render_multi_sweep_ranking(
         yaxis_title="",
         height=400 + top_n * 20,  # Hauteur adaptative
         yaxis=dict(autorange="reversed"),  # Meilleur en haut
-        template="plotly_dark"
+        template="plotly_dark",
     )
 
     st.plotly_chart(fig, width="stretch", key=key)
@@ -2512,6 +2693,7 @@ def render_multi_sweep_ranking(
 # ============================================================================
 # 15. WALK-FORWARD ANALYSIS — Visualisation folds (10/02/2026)
 # ============================================================================
+
 
 def render_walk_forward_results(summary: Any, key: str = "wfa_chart") -> None:
     """Affiche les résultats WFA avec frise + vues comparatives.
@@ -2547,7 +2729,7 @@ def render_walk_forward_results(summary: Any, key: str = "wfa_chart") -> None:
         except (TypeError, ValueError):
             return default
 
-    def _normalize_fold(fold: Any) -> Dict[str, Any]:
+    def _normalize_fold(fold: Any) -> dict[str, Any]:
         if isinstance(fold, dict):
             data = dict(fold)
         elif hasattr(fold, "to_dict"):
@@ -2612,7 +2794,7 @@ def render_walk_forward_results(summary: Any, key: str = "wfa_chart") -> None:
     mode_label = "expanding" if bool(cfg.get("expanding", False)) else "rolling"
     st.caption(
         f"Configuration WFA: {int(_safe_float(cfg.get('n_folds'), len(folds)))} folds | "
-        f"train_ratio={_safe_float(cfg.get('train_ratio'), 0.7):.0%} | mode={mode_label}"
+        f"train_ratio={_safe_float(cfg.get('train_ratio'), 0.7):.0%} | mode={mode_label}",
     )
 
     # ── Métriques globales ──────────────────────────────────────────────
@@ -2654,12 +2836,8 @@ def render_walk_forward_results(summary: Any, key: str = "wfa_chart") -> None:
             orientation="h",
             marker_color="#3b82f6",
             opacity=0.9,
-            hovertemplate=(
-                "Fold: %{y}<br>"
-                "Train start: %{base}<br>"
-                "Train bars: %{x}<extra></extra>"
-            ),
-        )
+            hovertemplate=("Fold: %{y}<br>Train start: %{base}<br>Train bars: %{x}<extra></extra>"),
+        ),
     )
     fig_timeline.add_trace(
         go.Bar(
@@ -2670,12 +2848,8 @@ def render_walk_forward_results(summary: Any, key: str = "wfa_chart") -> None:
             orientation="h",
             marker_color="#ef4444",
             opacity=0.9,
-            hovertemplate=(
-                "Fold: %{y}<br>"
-                "Test start: %{base}<br>"
-                "Test bars: %{x}<extra></extra>"
-            ),
-        )
+            hovertemplate=("Fold: %{y}<br>Test start: %{base}<br>Test bars: %{x}<extra></extra>"),
+        ),
     )
     fig_timeline.update_layout(
         title="Frise Walk-Forward — fenêtres Train/Test par fold (indices barres)",
@@ -2701,7 +2875,7 @@ def render_walk_forward_results(summary: Any, key: str = "wfa_chart") -> None:
             marker_color="#636EFA",
             text=[f"{v:.2f}" for v in train_sharpes],
             textposition="auto",
-        )
+        ),
     )
     fig_sharpe.add_trace(
         go.Bar(
@@ -2711,7 +2885,7 @@ def render_walk_forward_results(summary: Any, key: str = "wfa_chart") -> None:
             marker_color="#EF553B",
             text=[f"{v:.2f}" for v in test_sharpes],
             textposition="auto",
-        )
+        ),
     )
     fig_sharpe.update_layout(
         title="Sharpe Ratio — Train vs Test par fold",
@@ -2734,7 +2908,7 @@ def render_walk_forward_results(summary: Any, key: str = "wfa_chart") -> None:
             name="Overfitting ratio",
             line=dict(color="#f59e0b", width=2),
             marker=dict(size=8),
-        )
+        ),
     )
     fig_ratio.add_hline(y=1.0, line_dash="dot", line_color="#22c55e")
     fig_ratio.add_hline(y=2.0, line_dash="dash", line_color="#ef4444")
@@ -2759,12 +2933,10 @@ def render_walk_forward_results(summary: Any, key: str = "wfa_chart") -> None:
                 "Sharpe Train": round(f["train_sharpe"], 3),
                 "Sharpe Test": round(f["test_sharpe"], 3),
                 "Overfitting Ratio": (
-                    round(f["overfitting_ratio"], 3)
-                    if np.isfinite(f["overfitting_ratio"])
-                    else np.nan
+                    round(f["overfitting_ratio"], 3) if np.isfinite(f["overfitting_ratio"]) else np.nan
                 ),
                 "Temps (ms)": round(f["execution_time_ms"], 0),
-            }
+            },
         )
 
     st.dataframe(pd.DataFrame(rows), use_container_width=True)
@@ -2778,16 +2950,16 @@ def render_walk_forward_results(summary: Any, key: str = "wfa_chart") -> None:
 # ============================================================================
 
 __all__ = [
-    "render_equity_and_drawdown",
-    "render_ohlcv_with_trades",
-    "render_ohlcv_with_trades_and_indicators",
-    "render_ohlcv_with_indicators",
-    "render_equity_curve",
     "render_comparison_chart",
-    "render_strategy_param_diagram",
-    "render_trade_pnl_distribution",
-    "render_returns_distribution",
+    "render_equity_and_drawdown",
+    "render_equity_curve",
     "render_multi_sweep_heatmap",
     "render_multi_sweep_ranking",
+    "render_ohlcv_with_indicators",
+    "render_ohlcv_with_trades",
+    "render_ohlcv_with_trades_and_indicators",
+    "render_returns_distribution",
+    "render_strategy_param_diagram",
+    "render_trade_pnl_distribution",
     "render_walk_forward_results",
 ]

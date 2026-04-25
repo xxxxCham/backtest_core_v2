@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.chaikin_oscillator
+"""Module-ID: indicators.chaikin_oscillator
 
 Purpose: Chaikin Oscillator.
 """
@@ -32,9 +31,7 @@ def chaikin_oscillator(
     volume_series = pd.Series(np.asarray(volume, dtype=np.float64))
 
     denominator = (high_series - low_series).replace(0.0, np.nan)
-    money_flow_multiplier = (
-        ((close_series - low_series) - (high_series - close_series)) / denominator
-    ).fillna(0.0)
+    money_flow_multiplier = (((close_series - low_series) - (high_series - close_series)) / denominator).fillna(0.0)
     adl = (money_flow_multiplier * volume_series).cumsum()
 
     fast = adl.ewm(span=max(int(fast_period), 1), adjust=False).mean()
@@ -64,7 +61,7 @@ register_indicator(
 
 
 __all__ = [
-    "chaikin_oscillator",
-    "calculate_chaikin_oscillator",
     "ChaikinOscillatorSettings",
+    "calculate_chaikin_oscillator",
+    "chaikin_oscillator",
 ]

@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.fear_greed
+"""Module-ID: indicators.fear_greed
 
 Purpose: Index crypto Peur & Avidite - utilise série fournie + lissage optionnel.
 
@@ -50,8 +49,7 @@ def fear_greed_index(
     method: str = "sma",
     settings: FearGreedSettings | None = None,
 ) -> np.ndarray:
-    """
-    Return a fear/greed series with optional smoothing.
+    """Return a fear/greed series with optional smoothing.
 
     Args:
         values: Input series (0-100 index preferred)
@@ -61,6 +59,7 @@ def fear_greed_index(
 
     Returns:
         Smoothed or raw index values
+
     """
     if settings is not None:
         smooth_period = settings.smooth_period
@@ -80,8 +79,7 @@ def fear_greed_index(
 
 
 def calculate_fear_greed(df: pd.DataFrame, **params) -> np.ndarray:
-    """
-    Wrapper for registry calculation.
+    """Wrapper for registry calculation.
 
     Params:
         column: Column name to use (default: fear_greed)
@@ -109,7 +107,7 @@ register_indicator(
 
 
 __all__ = [
-    "fear_greed_index",
-    "calculate_fear_greed",
     "FearGreedSettings",
+    "calculate_fear_greed",
+    "fear_greed_index",
 ]

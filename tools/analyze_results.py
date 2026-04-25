@@ -1,5 +1,4 @@
-"""
-Module-ID: tools.analyze_results
+"""Module-ID: tools.analyze_results
 
 Purpose: Refresh lightweight analysis artifacts from backtest_results.
 """
@@ -8,9 +7,10 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import shutil
-from typing import Any, Dict, Iterable, List
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -31,6 +31,28 @@ ANALYSIS_ARTIFACT_FILENAMES = (
     "analysis_report_filtered.html",
     "analysis_top_configs.csv",
 )
+TOP_CONFIG_BASE_COLUMNS = [
+    "rank",
+    "strategy",
+    "symbol",
+    "timeframe",
+    "run_id",
+    "timestamp",
+    "status",
+    "mode",
+    "pnl",
+    "return_pct",
+    "sharpe",
+    "sortino",
+    "profit_factor",
+    "max_drawdown",
+    "trades",
+    "win_rate",
+    "account_ruined",
+    "duplicate_run_count",
+    "duplicate_run_ids",
+    "path",
+]
 
 
 def _as_float(value: Any, default: float = 0.0) -> float:
@@ -47,8 +69,8 @@ def _as_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def _clean_params(params: Dict[str, Any]) -> Dict[str, Any]:
-    cleaned: Dict[str, Any] = {}
+def _clean_params(params: dict[str, Any]) -> dict[str, Any]:
+    cleaned: dict[str, Any] = {}
     for key, value in (params or {}).items():
         if key in SYSTEM_PARAM_KEYS:
             continue
@@ -63,9 +85,9 @@ def _stable_param_value(value: Any) -> str:
         return json.dumps(str(value), ensure_ascii=False)
 
 
-def extract_all_results(results_dir: Path | None = None) -> List[Dict[str, Any]]:
+def extract_all_results(results_dir: Path | None = None) -> list[dict[str, Any]]:
     results_dir = get_results_root_dir(results_dir)
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     seen_run_ids: set[str] = set()
 
     if not results_dir.exists():
@@ -112,13 +134,13 @@ def extract_all_results(results_dir: Path | None = None) -> List[Dict[str, Any]]
                 "builder_iteration": _as_int(extra_metadata.get("builder_iteration"), default=0),
                 "params": params,
                 "path": str(metadata_path.parent),
-            }
+            },
         )
 
     return sort_results(results)
 
 
-def sort_results(results: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def sort_results(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(
         list(results),
         key=lambda item: (
@@ -133,13 +155,13 @@ def sort_results(results: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def filter_current_results(
-    results: Iterable[Dict[str, Any]],
+    results: Iterable[dict[str, Any]],
     *,
     profitable_only: bool = True,
     exclude_ruined: bool = True,
     min_trades: int = 1,
-) -> List[Dict[str, Any]]:
-    filtered: List[Dict[str, Any]] = []
+) -> list[dict[str, Any]]:
+    filtered: list[dict[str, Any]] = []
     for result in results:
         if profitable_only and _as_float(result.get("return_pct")) <= 0:
             continue
@@ -151,14 +173,11 @@ def filter_current_results(
     return sort_results(filtered)
 
 
-def deduplicate_results(results: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    grouped: Dict[tuple[Any, ...], List[Dict[str, Any]]] = {}
+def deduplicate_results(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
     for result in results:
         params_items = tuple(
-            sorted(
-                (str(key), _stable_param_value(value))
-                for key, value in (result.get("params") or {}).items()
-            )
+            sorted((str(key), _stable_param_value(value)) for key, value in (result.get("params") or {}).items()),
         )
         key = (
             result.get("strategy"),
@@ -170,7 +189,7 @@ def deduplicate_results(results: Iterable[Dict[str, Any]]) -> List[Dict[str, Any
         )
         grouped.setdefault(key, []).append(dict(result))
 
-    deduped: List[Dict[str, Any]] = []
+    deduped: list[dict[str, Any]] = []
     for duplicates in grouped.values():
         best = sort_results(duplicates)[0]
         best["duplicate_run_count"] = len(duplicates)
@@ -180,7 +199,7 @@ def deduplicate_results(results: Iterable[Dict[str, Any]]) -> List[Dict[str, Any
 
 
 def export_top_configs(
-    results: Iterable[Dict[str, Any]],
+    results: Iterable[dict[str, Any]],
     output_path: Path | None = None,
     *,
     top_n: int = 100,
@@ -191,8 +210,16 @@ def export_top_configs(
         output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    rows: List[Dict[str, Any]] = []
-    for rank, result in enumerate(sort_results(results)[:top_n], 1):
+    ranked_results = sort_results(results)[: max(int(top_n), 0)]
+    param_columns = sorted(
+        {
+            f"param_{key}"
+            for result in ranked_results
+            for key in (result.get("params") or {}).keys()
+        },
+    )
+    rows: list[dict[str, Any]] = []
+    for rank, result in enumerate(ranked_results, 1):
         row = {
             "rank": rank,
             "strategy": result.get("strategy"),
@@ -219,19 +246,19 @@ def export_top_configs(
             row[f"param_{key}"] = value
         rows.append(row)
 
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows, columns=[*TOP_CONFIG_BASE_COLUMNS, *param_columns])
     df.to_csv(output_path, index=False, encoding="utf-8")
     return output_path
 
 
-def _mirror_analysis_artifacts(source_dir: Path, mirror_dir: Path) -> List[str]:
+def _mirror_analysis_artifacts(source_dir: Path, mirror_dir: Path) -> list[str]:
     source_dir = Path(source_dir)
     mirror_dir = Path(mirror_dir)
     if source_dir.resolve() == mirror_dir.resolve():
         return []
 
     mirror_dir.mkdir(parents=True, exist_ok=True)
-    mirrored_paths: List[str] = []
+    mirrored_paths: list[str] = []
     for filename in ANALYSIS_ARTIFACT_FILENAMES:
         source_path = source_dir / filename
         if not source_path.exists():
@@ -248,7 +275,7 @@ def refresh_analysis_artifacts(
     top_n: int = 100,
     output_dir: Path | None = None,
     workspace_output_dir: Path | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     results_dir = get_results_root_dir(results_dir)
     output_dir = Path(output_dir) if output_dir is not None else get_results_analysis_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -277,9 +304,7 @@ def refresh_analysis_artifacts(
         csv_path=csv_path,
     )
     workspace_output_dir = (
-        Path(workspace_output_dir)
-        if workspace_output_dir is not None
-        else get_workspace_results_analysis_dir()
+        Path(workspace_output_dir) if workspace_output_dir is not None else get_workspace_results_analysis_dir()
     )
     mirrored_files = _mirror_analysis_artifacts(output_dir, workspace_output_dir)
 
@@ -297,9 +322,19 @@ def refresh_analysis_artifacts(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Refresh analysis artifacts from the configured backtest results store")
-    parser.add_argument("--results-dir", default="", help="Path to backtest results root (default: BACKTEST_RESULTS_DIR or backtest_results)")
-    parser.add_argument("--output-dir", default="", help="Path for generated analysis artifacts (default: configured artifacts root/_analysis)")
+    parser = argparse.ArgumentParser(
+        description="Refresh analysis artifacts from the configured backtest results store",
+    )
+    parser.add_argument(
+        "--results-dir",
+        default="",
+        help="Path to backtest results root (default: BACKTEST_RESULTS_DIR or backtest_results)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="",
+        help="Path for generated analysis artifacts (default: configured artifacts root/_analysis)",
+    )
     parser.add_argument("--top", type=int, default=100, help="Number of ranked configs to export/render")
     args = parser.parse_args()
 
@@ -307,10 +342,7 @@ def main() -> int:
     output_dir = Path(args.output_dir).expanduser() if args.output_dir else None
     stats = refresh_analysis_artifacts(results_dir, top_n=args.top, output_dir=output_dir)
     print(
-        "Analysis refreshed: "
-        f"total={stats['total_results']} "
-        f"filtered={stats['filtered_results']} "
-        f"top={stats['top_n']}"
+        f"Analysis refreshed: total={stats['total_results']} filtered={stats['filtered_results']} top={stats['top_n']}",
     )
     print(f"CSV: {stats['csv_path']}")
     print(f"HTML: {stats['html_path']}")

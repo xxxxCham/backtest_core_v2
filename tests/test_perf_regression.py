@@ -1,9 +1,9 @@
-"""
-Test de performance non-régression.
+"""Test de performance non-régression.
 
 Garantit que le système maintient >10k bt/s sur 10k barres (5k combos).
 Détecte automatiquement les régressions de performance.
 """
+
 import sys
 from pathlib import Path
 
@@ -20,8 +20,7 @@ from backtest.performance import calculate_metrics
 
 
 def test_numba_sweep_performance_no_regression():
-    """
-    Test critique: garantir >10k bt/s sur sweep Numba.
+    """Test critique: garantir >10k bt/s sur sweep Numba.
 
     Configuration:
     - 5,000 combinaisons
@@ -53,29 +52,48 @@ def test_numba_sweep_performance_no_regression():
 
     # Warm-up JIT (exclu du timing)
     _ = _sweep_boll_level_long(
-        closes[:100], highs[:100], lows[:100],
-        bb_periods[:5], bb_stds[:5], entry_levels[:5], sl_levels[:5], tp_levels[:5],
-        leverages[:5], 10000.0, 10.0, 5.0
+        closes[:100],
+        highs[:100],
+        lows[:100],
+        bb_periods[:5],
+        bb_stds[:5],
+        entry_levels[:5],
+        sl_levels[:5],
+        tp_levels[:5],
+        leverages[:5],
+        10000.0,
+        10.0,
+        5.0,
     )
 
     # Mesure performance
     start = time.perf_counter()
     pnls, sharpes, max_dds, win_rates, n_trades = _sweep_boll_level_long(
-        closes, highs, lows, bb_periods, bb_stds, entry_levels, sl_levels, tp_levels,
-        leverages, 10000.0, 10.0, 5.0
+        closes,
+        highs,
+        lows,
+        bb_periods,
+        bb_stds,
+        entry_levels,
+        sl_levels,
+        tp_levels,
+        leverages,
+        10000.0,
+        10.0,
+        5.0,
     )
     elapsed = time.perf_counter() - start
 
     throughput = n_combos / elapsed
 
     # Assertions graduelles
-    print(f"\n{'='*60}")
-    print(f"PERFORMANCE TEST RESULTS")
-    print(f"{'='*60}")
+    print(f"\n{'=' * 60}")
+    print("PERFORMANCE TEST RESULTS")
+    print(f"{'=' * 60}")
     print(f"  Throughput: {throughput:,.0f} bt/s")
     print(f"  Time:       {elapsed:.3f}s for {n_combos:,} combos")
-    print(f"  Target:     >=10,000 bt/s")
-    print(f"{'='*60}")
+    print("  Target:     >=10,000 bt/s")
+    print(f"{'=' * 60}")
 
     if throughput >= 10000:
         print("  ✅ PASS - Performance excellente")
@@ -99,26 +117,29 @@ def test_numba_sweep_performance_no_regression():
 
 
 def test_simulator_fast_no_regression():
-    """
-    Test simulateur rapide (backtest individuel).
+    """Test simulateur rapide (backtest individuel).
 
     Seuil: <0.5ms par backtest (2000+ bt/s sur séquentiel).
     """
+    import pandas as pd
+
     from backtest.engine import BacktestEngine
     from strategies.bollinger_best_longe_3i import BollingerBestLonge3iStrategy
-    import pandas as pd
 
     # Données 1000 barres
     n_bars = 1000
     np.random.seed(42)
     close = 100 * np.exp(np.cumsum(np.random.randn(n_bars) * 0.02))
-    df = pd.DataFrame({
-        'close': close,
-        'high': close * 1.01,
-        'low': close * 0.99,
-        'open': close,
-        'volume': np.random.randint(1000, 10000, n_bars)
-    }, index=pd.date_range('2020-01-01', periods=n_bars, freq='1h'))
+    df = pd.DataFrame(
+        {
+            "close": close,
+            "high": close * 1.01,
+            "low": close * 0.99,
+            "open": close,
+            "volume": np.random.randint(1000, 10000, n_bars),
+        },
+        index=pd.date_range("2020-01-01", periods=n_bars, freq="1h"),
+    )
 
     engine = BacktestEngine(initial_capital=10000.0)
     strategy = BollingerBestLonge3iStrategy()
@@ -142,17 +163,16 @@ def test_simulator_fast_no_regression():
 
     time_per_run_ms = (elapsed / n_runs) * 1000
 
-    print(f"\n{'='*60}")
-    print(f"SIMULATOR PERFORMANCE")
-    print(f"{'='*60}")
+    print(f"\n{'=' * 60}")
+    print("SIMULATOR PERFORMANCE")
+    print(f"{'=' * 60}")
     print(f"  Time/run:  {time_per_run_ms:.2f} ms")
-    print(f"  Target:    <2.0 ms (500+ bt/s séquentiel)")
-    print(f"{'='*60}")
+    print("  Target:    <2.0 ms (500+ bt/s séquentiel)")
+    print(f"{'=' * 60}")
 
     # Seuil: <2ms par run (500+ bt/s séquentiel, acceptable)
     assert time_per_run_ms < 2.0, (
-        f"Simulateur trop lent: {time_per_run_ms:.2f}ms > 2.0ms.\n"
-        f"Objectif: <2ms pour 500+ bt/s séquentiel."
+        f"Simulateur trop lent: {time_per_run_ms:.2f}ms > 2.0ms.\nObjectif: <2ms pour 500+ bt/s séquentiel."
     )
 
     if time_per_run_ms < 1.0:
@@ -165,7 +185,7 @@ def test_calculate_equity_fast_matches_reference_curve_for_numba_and_fallback(mo
     """Le chemin rapide doit rester aligné avec la sémantique mark-to-market canonique."""
     import pandas as pd
 
-    import backtest.simulator_fast as simulator_fast
+    from backtest import simulator_fast
     from backtest.simulator import calculate_equity_curve
 
     index = pd.date_range("2024-01-01", periods=8, freq="1h")
@@ -188,7 +208,7 @@ def test_calculate_equity_fast_matches_reference_curve_for_numba_and_fallback(mo
             "size": [1.0, 2.0],
             "side": ["LONG", "SHORT"],
             "pnl": [1.0, 10.0],
-        }
+        },
     )
 
     expected = calculate_equity_curve(df, trades_df, initial_capital=10_000.0)
@@ -199,6 +219,42 @@ def test_calculate_equity_fast_matches_reference_curve_for_numba_and_fallback(mo
     monkeypatch.setattr(simulator_fast, "HAS_NUMBA", False)
     actual_fallback = simulator_fast.calculate_equity_fast(df, trades_df, initial_capital=10_000.0)
     np.testing.assert_allclose(actual_fallback.values, expected.values)
+
+
+def test_simulate_trades_fast_accepts_read_only_market_buffers():
+    import pandas as pd
+
+    from backtest.simulator_fast import simulate_trades_fast
+
+    index = pd.date_range("2024-01-01", periods=8, freq="1h")
+    df = pd.DataFrame(
+        {
+            "open": [100.0, 102.0, 105.0, 103.0, 101.0, 98.0, 96.0, 99.0],
+            "high": [101.0, 103.0, 106.0, 104.0, 102.0, 99.0, 97.0, 100.0],
+            "low": [99.0, 101.0, 104.0, 102.0, 100.0, 97.0, 95.0, 98.0],
+            "close": [100.0, 102.0, 105.0, 103.0, 101.0, 98.0, 96.0, 99.0],
+            "volume": [1000.0] * 8,
+        },
+        index=index,
+    )
+    for col in ("close", "high", "low"):
+        df[col].to_numpy(copy=False).setflags(write=False)
+
+    signals = pd.Series([0.0, 1.0, 0.0, -1.0, 0.0, 1.0, 0.0, 0.0], index=index, dtype=np.float64)
+    signals.to_numpy(copy=False).setflags(write=False)
+
+    params = {
+        "initial_capital": 10_000.0,
+        "fees_bps": 10.0,
+        "slippage_bps": 5.0,
+        "leverage": 1.0,
+        "k_sl": 1.5,
+    }
+
+    trades_df = simulate_trades_fast(df, signals, params)
+
+    assert len(trades_df) >= 1
+    assert "pnl" in trades_df.columns
 
 
 def test_parallel_recommendations_scale_with_existing_ram_and_cpu_heuristics(monkeypatch):
@@ -276,22 +332,25 @@ def test_extract_strategy_params_supports_numba_sweep_families():
 
 
 def test_numba_chunk_size_prefers_single_chunk_when_buffers_fit_budget(monkeypatch):
-    import backtest.sweep_numba as sweep_numba
+    from backtest import sweep_numba
 
     monkeypatch.setattr(sweep_numba, "get_available_ram_gb", lambda: 40.0)
     monkeypatch.delenv("BACKTEST_NUMBA_SWEEP_RAM_BUDGET_GB", raising=False)
     monkeypatch.delenv("BACKTEST_NUMBA_SWEEP_MAX_CHUNK", raising=False)
     monkeypatch.delenv("BACKTEST_NUMBA_SWEEP_MIN_CHUNK", raising=False)
 
-    assert sweep_numba._get_numba_chunk_size(
-        strategy_lower="ema_cross",
-        total_combos=200_000,
-        n_bars=5_000,
-    ) == 200_000
+    assert (
+        sweep_numba._get_numba_chunk_size(
+            strategy_lower="ema_cross",
+            total_combos=200_000,
+            n_bars=5_000,
+        )
+        == 200_000
+    )
 
 
 def test_numba_thread_count_is_strategy_aware(monkeypatch):
-    import backtest.sweep_numba as sweep_numba
+    from backtest import sweep_numba
 
     monkeypatch.setattr(sweep_numba, "get_recommended_worker_count", lambda max_cap=None: 16)
 
@@ -331,7 +390,7 @@ def test_run_numba_sweep_param_arrays_match_across_chunk_sizes():
             "low": close * 0.99,
             "close": close,
             "volume": rng.integers(1_000, 10_000, n_bars),
-        }
+        },
     )
     param_grid = [
         {
@@ -389,7 +448,7 @@ def test_run_numba_sweep_emits_chunk_results_callback():
             "low": close * 0.99,
             "close": close,
             "volume": rng.integers(1_000, 10_000, n_bars),
-        }
+        },
     )
     param_grid = [
         {"fast_period": 8, "slow_period": 21},
@@ -405,7 +464,7 @@ def test_run_numba_sweep_emits_chunk_results_callback():
                 "completed": completed,
                 "total": total,
                 "best_result": best_result,
-            }
+            },
         )
 
     rows = run_numba_sweep(
@@ -459,7 +518,7 @@ def test_sweep_engine_prefers_numba_backend_for_supported_sweeps(monkeypatch):
                     "total_trades": 14,
                 },
                 "score": 1.5,
-            }
+            },
         ]
 
     monkeypatch.setattr("backtest.sweep.run_numba_sweep_items_if_supported", fake_run_numba_items)
@@ -474,7 +533,7 @@ def test_sweep_engine_prefers_numba_backend_for_supported_sweeps(monkeypatch):
                 "low": [0.9, 1.0, 1.1],
                 "close": [1.0, 1.1, 1.2],
                 "volume": [100.0, 100.0, 100.0],
-            }
+            },
         ),
         strategy="ema_cross",
         param_grid={"fast_period": [12], "slow_period": [26]},
@@ -553,7 +612,7 @@ def test_cli_sweep_executor_prefers_numba_backend_and_preserves_callbacks(monkey
             "low": [0.9, 1.0, 1.1],
             "close": [1.0, 1.1, 1.2],
             "volume": [100.0, 100.0, 100.0],
-        }
+        },
     )
 
     result = run_sweep(

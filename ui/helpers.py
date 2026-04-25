@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.helpers
+"""Module-ID: ui.helpers
 
 Purpose: Utilitaires UI - tables stratégies markdown, stat calcs, cache streamlit helpers.
 
@@ -27,9 +26,9 @@ import math
 import statistics
 import time
 import traceback
-from decimal import Decimal, ROUND_FLOOR
 from collections import deque
-from typing import Any, Dict, List, Optional, Tuple
+from decimal import ROUND_FLOOR, Decimal
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -52,7 +51,7 @@ from ui.context import (
 from utils.observability import generate_run_id, get_obs_logger
 
 
-def _coerce_period_timestamp(value: Any) -> Optional[pd.Timestamp]:
+def _coerce_period_timestamp(value: Any) -> pd.Timestamp | None:
     """Normalise une valeur de date/heure en Timestamp UTC comparable."""
     if value is None:
         return None
@@ -66,8 +65,7 @@ def _coerce_period_timestamp(value: Any) -> Optional[pd.Timestamp]:
 
 
 def compute_period_days(start_ts: Any, end_ts: Any) -> int:
-    """
-    Calcule le nombre de jours entre deux timestamps.
+    """Calcule le nombre de jours entre deux timestamps.
 
     Args:
         start_ts: Timestamp/date/string de début
@@ -75,6 +73,7 @@ def compute_period_days(start_ts: Any, end_ts: Any) -> int:
 
     Returns:
         Nombre de jours (entier)
+
     """
     start_norm = _coerce_period_timestamp(start_ts)
     end_norm = _coerce_period_timestamp(end_ts)
@@ -88,14 +87,14 @@ def compute_period_days(start_ts: Any, end_ts: Any) -> int:
 
 
 def compute_period_days_from_df(df: pd.DataFrame) -> int:
-    """
-    Calcule le nombre de jours couverts par un DataFrame OHLCV.
+    """Calcule le nombre de jours couverts par un DataFrame OHLCV.
 
     Args:
         df: DataFrame avec index datetime
 
     Returns:
         Nombre de jours (entier)
+
     """
     if df is None or df.empty:
         return 0
@@ -117,13 +116,7 @@ def coerce_metric_float(value: Any, default: float = 0.0) -> float:
         return number if math.isfinite(number) else default
 
     if isinstance(value, str):
-        cleaned = (
-            value.strip()
-            .replace("$", "")
-            .replace("%", "")
-            .replace(" ", "")
-            .replace(",", "")
-        )
+        cleaned = value.strip().replace("$", "").replace("%", "").replace(" ", "").replace(",", "")
         if not cleaned:
             return default
         try:
@@ -145,8 +138,7 @@ def format_pnl_with_daily(
     show_plus: bool = False,
     escape_markdown: bool = False,
 ) -> str:
-    """
-    Formate un PnL avec son équivalent journalier.
+    """Formate un PnL avec son équivalent journalier.
 
     Args:
         pnl: PnL total
@@ -155,6 +147,7 @@ def format_pnl_with_daily(
 
     Returns:
         Chaîne formatée "PnL (PnL/jour/day)"
+
     """
     pnl_value = coerce_metric_float(pnl, default=0.0)
     if period_days <= 0:
@@ -169,8 +162,7 @@ def format_pnl_with_daily(
 
 
 def generate_strategies_table() -> str:
-    """
-    Génère dynamiquement le tableau markdown des stratégies disponibles.
+    """Génère dynamiquement le tableau markdown des stratégies disponibles.
 
     Synchronise automatiquement avec le registre des stratégies pour éviter
     toute divergence entre la sidebar et la page principale.
@@ -194,8 +186,7 @@ def generate_strategies_table() -> str:
 
 
 class ProgressMonitor:
-    """
-    Moniteur de progression en temps réel pour les backtests.
+    """Moniteur de progression en temps réel pour les backtests.
 
     Calcule la vitesse d'exécution et estime le temps restant en utilisant
     une moyenne glissante sur les 3 dernières secondes.
@@ -208,7 +199,7 @@ class ProgressMonitor:
         self.history = deque(maxlen=3)
         self.last_update_time = self.start_time
 
-    def update(self, runs_completed: int) -> Dict[str, Any]:
+    def update(self, runs_completed: int) -> dict[str, Any]:
         self.runs_completed = runs_completed
         current_time = time.perf_counter()
 
@@ -270,8 +261,7 @@ class ProgressMonitor:
 
 
 def render_progress_monitor(monitor: ProgressMonitor, placeholder) -> None:
-    """
-    Affiche la progression du backtest avec gestion des déconnexions WebSocket.
+    """Affiche la progression du backtest avec gestion des déconnexions WebSocket.
 
     Si le client se déconnecte (page fermée/rafraîchie), les erreurs sont
     ignorées silencieusement au lieu de polluer les logs.
@@ -288,7 +278,7 @@ def render_progress_monitor(monitor: ProgressMonitor, placeholder) -> None:
                 st.metric(
                     "Progression",
                     f"{metrics['runs_completed']}/{metrics['total_runs']}",
-                    f"{metrics['progress']*100:.1f}%",
+                    f"{metrics['progress'] * 100:.1f}%",
                 )
 
             with col2:
@@ -317,10 +307,9 @@ def render_live_metrics(
     start_time: float,
     best_pnl: float = 0.0,
     best_dd: float = 0.0,
-    equity: Optional[float] = None,
+    equity: float | None = None,
 ) -> None:
-    """
-    Affichage live ultra-simple : un seul placeholder.markdown().
+    """Affichage live ultra-simple : un seul placeholder.markdown().
     Pas de container(), pas de widgets, pas de columns.
     Garantit un affichage fiable pendant les sweeps.
     """
@@ -342,7 +331,7 @@ def render_live_metrics(
         return f"{sec}s"
 
     # ━━━ Tout en un seul bloc markdown ━━━
-    if completed >= total and total > 0:
+    if completed >= total > 0:
         line1 = f"### ✅ Terminé en {_fmt(elapsed)} · ⚡ {rate:,.0f} bt/s"
     elif rate > 0:
         line1 = f"### ⏱️ {_fmt(elapsed)} écoulé · ⏳ ~{_fmt(remaining)} restant · ⚡ {rate:,.0f} bt/s"
@@ -371,7 +360,7 @@ def render_live_metrics(
         print(f"[render_live_metrics ERROR] {exc}", flush=True)
 
 
-def show_status(status_type: str, message: str, details: Optional[str] = None):
+def show_status(status_type: str, message: str, details: str | None = None):
     if status_type == "success":
         st.success(f"✅ {message}")
     elif status_type == "error":
@@ -385,7 +374,7 @@ def show_status(status_type: str, message: str, details: Optional[str] = None):
         st.info(f"ℹ️ {message}")
 
 
-def validate_param(name: str, value: Any) -> Tuple[bool, str]:
+def validate_param(name: str, value: Any) -> tuple[bool, str]:
     if name not in PARAM_CONSTRAINTS:
         return True, ""
 
@@ -400,7 +389,7 @@ def validate_param(name: str, value: Any) -> Tuple[bool, str]:
     return True, ""
 
 
-def validate_all_params(params: Dict[str, Any]) -> Tuple[bool, List[str]]:
+def validate_all_params(params: dict[str, Any]) -> tuple[bool, list[str]]:
     errors = []
 
     for name, value in params.items():
@@ -435,7 +424,7 @@ def _infer_step_decimals(step: float) -> int:
     return 0
 
 
-def _to_float(value: Any) -> Optional[float]:
+def _to_float(value: Any) -> float | None:
     if isinstance(value, bool):
         return None
     try:
@@ -444,7 +433,7 @@ def _to_float(value: Any) -> Optional[float]:
         return None
 
 
-def _normalize_ratio(value: Any, spec: Optional[ParameterSpec]) -> Optional[float]:
+def _normalize_ratio(value: Any, spec: ParameterSpec | None) -> float | None:
     if spec is None:
         return None
 
@@ -472,7 +461,7 @@ def _normalize_ratio(value: Any, spec: Optional[ParameterSpec]) -> Optional[floa
     return ratio
 
 
-def _snap_value_to_spec(value: float, spec: Optional[ParameterSpec]) -> float:
+def _snap_value_to_spec(value: float, spec: ParameterSpec | None) -> float:
     if spec is None:
         return value
 
@@ -510,13 +499,12 @@ def _snap_value_to_spec(value: float, spec: Optional[ParameterSpec]) -> float:
 
 
 def granularity_transform(
-    params: Dict[str, Any],
-    param_specs: Dict[str, ParameterSpec],
+    params: dict[str, Any],
+    param_specs: dict[str, ParameterSpec],
     delta: float,
     direction: str,
-) -> Dict[str, Any]:
-    """
-    Applique une variation de granularité globale sur des paramètres.
+) -> dict[str, Any]:
+    """Applique une variation de granularité globale sur des paramètres.
 
     Règles:
     - direction='increase': rapproche vers max
@@ -535,7 +523,7 @@ def granularity_transform(
     if direction_norm not in {"increase", "decrease"}:
         return dict(params)
 
-    transformed: Dict[str, Any] = dict(params)
+    transformed: dict[str, Any] = dict(params)
     for name, current_value in params.items():
         spec = param_specs.get(name)
         ratio = _normalize_ratio(current_value, spec)
@@ -564,11 +552,11 @@ def granularity_transform(
 
 
 def compute_global_granularity_percent(
-    all_params: Dict[str, Dict[str, Any]],
-    all_param_specs: Dict[str, Dict[str, ParameterSpec]],
-) -> Optional[float]:
+    all_params: dict[str, dict[str, Any]],
+    all_param_specs: dict[str, dict[str, ParameterSpec]],
+) -> float | None:
     """Calcule la granularité globale agrégée (moyenne des ratios normalisés) en %."""
-    ratios: List[float] = []
+    ratios: list[float] = []
     for strategy_key, params in (all_params or {}).items():
         specs = (all_param_specs or {}).get(strategy_key, {})
         if not params or not specs:
@@ -588,7 +576,7 @@ def build_param_values(
     max_v: float,
     step: float,
     is_int: bool,
-) -> List[float]:
+) -> list[float]:
     if step is None or step <= 0 or max_v < min_v:
         return [float(min_v)]
 
@@ -606,7 +594,7 @@ def build_param_values(
     decimals = _infer_step_decimals(step)
     quant = Decimal(1).scaleb(-decimals) if decimals > 0 else None
 
-    values: List[float] = []
+    values: list[float] = []
     for i in range(count):
         v = min_dec + step_dec * i
         if v > max_dec:
@@ -627,11 +615,11 @@ def create_param_range_selector(
     name: str,
     key_prefix: str = "",
     mode: str = "single",
-    spec: Optional[ParameterSpec] = None,
-    label: Optional[str] = None,
+    spec: ParameterSpec | None = None,
+    label: str | None = None,
     container: Any = None,
 ) -> Any:
-    constraints: Dict[str, Any] = {}
+    constraints: dict[str, Any] = {}
     is_int = False
     display_name = label or name
 
@@ -658,6 +646,7 @@ def create_param_range_selector(
 
     else:
         from ui.constants import PARAM_CONSTRAINTS
+
         if name not in PARAM_CONSTRAINTS:
             st.sidebar.warning(f"Paramètre {name} sans contraintes définies")
             return None
@@ -768,9 +757,10 @@ def create_constrained_slider(name: str, granularity: float, key_prefix: str = "
     return create_param_range_selector(name, key_prefix, mode="single")
 
 
-def extract_strategy_params_metadata(strategy_key: str) -> Tuple[Dict[str, ParameterSpec], Dict[str, Any], Dict[str, Any]]:
-    """
-    Extrait les métadonnées des paramètres d'une stratégie sans créer de widgets UI.
+def extract_strategy_params_metadata(
+    strategy_key: str,
+) -> tuple[dict[str, ParameterSpec], dict[str, Any], dict[str, Any]]:
+    """Extrait les métadonnées des paramètres d'une stratégie sans créer de widgets UI.
 
     Args:
         strategy_key: Clé unique de la stratégie
@@ -780,6 +770,7 @@ def extract_strategy_params_metadata(strategy_key: str) -> Tuple[Dict[str, Param
         - param_specs: Dict des ParameterSpec
         - params: Dict des valeurs par défaut
         - param_ranges: Dict vide (pour compatibilité)
+
     """
     from ui.context import get_strategy
 
@@ -800,15 +791,14 @@ def extract_strategy_params_metadata(strategy_key: str) -> Tuple[Dict[str, Param
 
 
 def render_multi_strategy_params(
-    strategy_keys: List[str],
-    strategy_names: List[str],
+    strategy_keys: list[str],
+    strategy_names: list[str],
     param_mode: str = "single",
-    existing_state: Optional[Dict[str, Dict[str, Any]]] = None,
+    existing_state: dict[str, dict[str, Any]] | None = None,
     granularity_delta: float = 0.0,
-    granularity_direction: Optional[str] = None,
-) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]]]:
-    """
-    Affiche les widgets de paramètres pour plusieurs stratégies sélectionnées.
+    granularity_direction: str | None = None,
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    """Affiche les widgets de paramètres pour plusieurs stratégies sélectionnées.
 
     Args:
         strategy_keys: Liste des clés de stratégies
@@ -818,6 +808,7 @@ def render_multi_strategy_params(
 
     Returns:
         Tuple de (all_params, all_param_ranges, all_param_specs)
+
     """
     if existing_state is None:
         existing_state = st.session_state.get("multi_strategy_params", {})
@@ -846,7 +837,7 @@ def render_multi_strategy_params(
 
         if param_mode == "single":
             # Prépare les valeurs actuelles pour une éventuelle transformation globale.
-            current_values: Dict[str, Any] = {}
+            current_values: dict[str, Any] = {}
             for param_name, spec in param_specs.items():
                 if not getattr(spec, "optimize", True):
                     continue
@@ -867,11 +858,7 @@ def render_multi_strategy_params(
                 for param_name, new_value in updated_values.items():
                     widget_key = f"strat{idx}_{strat_key}_{param_name}"
                     st.session_state[widget_key] = new_value
-        elif (
-            param_mode == "range"
-            and granularity_direction in {"increase", "decrease"}
-            and granularity_delta > 0
-        ):
+        elif param_mode == "range" and granularity_direction in {"increase", "decrease"} and granularity_delta > 0:
             # En mode range, on ajuste la borne max de chaque paramètre.
             for param_name, spec in param_specs.items():
                 if not getattr(spec, "optimize", True):
@@ -950,9 +937,9 @@ def render_multi_strategy_params(
 def safe_load_data(
     symbol: str,
     timeframe: str,
-    start: Optional[str] = None,
-    end: Optional[str] = None,
-) -> Tuple[Optional[pd.DataFrame], str]:
+    start: str | None = None,
+    end: str | None = None,
+) -> tuple[pd.DataFrame | None, str]:
     symbol = str(symbol or "").strip().upper()
     timeframe = str(timeframe or "").strip()
     if symbol in {"", "_", "UNKNOWN"} or timeframe in {"", "_"}:
@@ -981,9 +968,13 @@ def safe_load_data(
             return None, f"❌ Trop de valeurs NaN ({nan_pct:.1f}%, {nan_count}/{total_values})"
 
         # Validation cohérence OHLC
-        invalid_ohlc = ((df['high'] < df['low']) |
-                       (df['open'] < df['low']) | (df['open'] > df['high']) |
-                       (df['close'] < df['low']) | (df['close'] > df['high'])).sum()
+        invalid_ohlc = (
+            (df["high"] < df["low"])
+            | (df["open"] < df["low"])
+            | (df["open"] > df["high"])
+            | (df["close"] < df["low"])
+            | (df["close"] > df["high"])
+        ).sum()
 
         if invalid_ohlc > 0:
             return None, f"❌ Données OHLC incohérentes ({invalid_ohlc} barres)"
@@ -995,17 +986,19 @@ def safe_load_data(
 
     except FileNotFoundError:
         from data.loader import _get_data_dir
+
         data_dir = _get_data_dir()
         return None, f"📁 Fichier non trouvé: {symbol}_{timeframe} dans {data_dir}"
     except ValueError as e:
-        return None, f"📊 Erreur de données: {str(e)}"
+        return None, f"📊 Erreur de données: {e!s}"
     except pd.errors.EmptyDataError:
         return None, f"📄 Fichier vide: {symbol}_{timeframe}"
     except pd.errors.ParserError as e:
-        return None, f"🔧 Erreur format fichier: {str(e)}"
+        return None, f"🔧 Erreur format fichier: {e!s}"
     except Exception as exc:
         import traceback
-        tb_summary = traceback.format_exc().split('\n')[-3] if len(traceback.format_exc().split('\n')) > 2 else str(exc)
+
+        tb_summary = traceback.format_exc().split("\n")[-3] if len(traceback.format_exc().split("\n")) > 2 else str(exc)
         return None, f"⚠️ Erreur inattendue: {tb_summary}"
 
 
@@ -1019,9 +1012,8 @@ def apply_auto_market_stabilization_filter(
     volatility_ratio_max: float = 2.5,
     min_consecutive_bars: int = 6,
     min_bars_keep: int = 200,
-) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-    """
-    Coupe automatiquement un préfixe de marché instable (warmup/anomalies),
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Coupe automatiquement un préfixe de marché instable (warmup/anomalies),
     puis retourne le DataFrame filtré et un rapport synthétique.
 
     Le rapport contient toujours les clés attendues par l'UI:
@@ -1029,7 +1021,7 @@ def apply_auto_market_stabilization_filter(
     - cut_bars: int
     - start_ts: str
     """
-    info: Dict[str, Any] = {
+    info: dict[str, Any] = {
         "applied": False,
         "cut_bars": 0,
         "start_ts": "n/a",
@@ -1127,7 +1119,7 @@ def apply_auto_market_stabilization_filter(
                 "cut_bars": int(cut_bars),
                 "start_ts": start_ts,
                 "reason": "applied",
-            }
+            },
         )
         return filtered, info
     except Exception as exc:
@@ -1138,9 +1130,9 @@ def apply_auto_market_stabilization_filter(
 def _data_cache_key(
     symbol: str,
     timeframe: str,
-    start_date: Optional[object],
-    end_date: Optional[object],
-) -> Tuple[str, str, Optional[str], Optional[str]]:
+    start_date: object | None,
+    end_date: object | None,
+) -> tuple[str, str, str | None, str | None]:
     start_str = str(start_date) if start_date else None
     end_str = str(end_date) if end_date else None
     return (symbol, timeframe, start_str, end_str)
@@ -1149,9 +1141,9 @@ def _data_cache_key(
 def load_selected_data(
     symbol: str,
     timeframe: str,
-    start_date: Optional[object],
-    end_date: Optional[object],
-) -> Tuple[Optional[pd.DataFrame], str]:
+    start_date: object | None,
+    end_date: object | None,
+) -> tuple[pd.DataFrame | None, str]:
     from .cache_manager import cache_data, get_cached_data
 
     # Vérifier cache d'abord
@@ -1160,7 +1152,10 @@ def load_selected_data(
         # Mise à jour session state avec données cached
         st.session_state["ohlcv_df"] = cached_df
         st.session_state["ohlcv_cache_key"] = _data_cache_key(
-            symbol, timeframe, start_date, end_date
+            symbol,
+            timeframe,
+            start_date,
+            end_date,
         )
         st.session_state["ohlcv_status_msg"] = "📋 Données du cache (5min TTL)"
         return cached_df, "📋 Données du cache (5min TTL)"
@@ -1174,13 +1169,16 @@ def load_selected_data(
         cache_data(symbol, timeframe, start_date, end_date, df)
         st.session_state["ohlcv_df"] = df
         st.session_state["ohlcv_cache_key"] = _data_cache_key(
-            symbol, timeframe, start_date, end_date
+            symbol,
+            timeframe,
+            start_date,
+            end_date,
         )
         st.session_state["ohlcv_status_msg"] = msg
     return df, msg
 
 
-def _parse_run_timestamp(value: Optional[str]) -> Optional[pd.Timestamp]:
+def _parse_run_timestamp(value: str | None) -> pd.Timestamp | None:
     if not value:
         return None
     try:
@@ -1189,7 +1187,7 @@ def _parse_run_timestamp(value: Optional[str]) -> Optional[pd.Timestamp]:
         return None
 
 
-def _format_run_timestamp(value: Optional[str]) -> str:
+def _format_run_timestamp(value: str | None) -> str:
     ts = _parse_run_timestamp(value)
     if ts is None:
         return value or "n/a"
@@ -1200,7 +1198,7 @@ def _format_run_timestamp(value: Optional[str]) -> str:
     return ts.strftime("%Y-%m-%d %H:%M")
 
 
-def _format_run_period(start: Optional[str], end: Optional[str]) -> str:
+def _format_run_period(start: str | None, end: str | None) -> str:
     start_fmt = _format_run_timestamp(start)
     end_fmt = _format_run_timestamp(end)
     if start_fmt == "n/a" and end_fmt == "n/a":
@@ -1208,7 +1206,7 @@ def _format_run_period(start: Optional[str], end: Optional[str]) -> str:
     return f"{start_fmt} -> {end_fmt}"
 
 
-def _find_saved_run_meta(storage: Any, run_id: str) -> Optional[Any]:
+def _find_saved_run_meta(storage: Any, run_id: str) -> Any | None:
     for meta in storage.list_results():
         if meta.run_id == run_id:
             return meta
@@ -1235,19 +1233,16 @@ def _build_saved_run_label(meta: Any) -> str:
     builder_session_id = extra.get("builder_session_id")
     badge_prefix = f"[{' | '.join(badges)}] " if badges else ""
     session_suffix = f" | session {builder_session_id}" if builder_session_id else ""
-    return (
-        f"{badge_prefix}{meta.strategy} | {meta.symbol}/{meta.timeframe} | {period} | "
-        f"{meta.run_id}{session_suffix}"
-    )
+    return f"{badge_prefix}{meta.strategy} | {meta.symbol}/{meta.timeframe} | {period} | {meta.run_id}{session_suffix}"
 
 
 def mark_result_as_partial(
-    result: Optional[Any],
+    result: Any | None,
     *,
     reason: str,
     completed_runs: int,
     planned_runs: int,
-) -> Optional[Any]:
+) -> Any | None:
     """Marque un RunResult UI comme partiel/interrompu sans casser sa structure."""
     if result is None or not isinstance(getattr(result, "meta", None), dict):
         return result
@@ -1264,7 +1259,7 @@ def mark_result_as_partial(
     return result
 
 
-def get_partial_result_notice(result: Optional[Any]) -> Optional[str]:
+def get_partial_result_notice(result: Any | None) -> str | None:
     """Retourne un message UI si le résultat provient d'une optimisation interrompue."""
     if result is None or not isinstance(getattr(result, "meta", None), dict):
         return None
@@ -1274,14 +1269,11 @@ def get_partial_result_notice(result: Optional[Any]) -> Optional[str]:
     completed = result.meta.get("ui_completed_runs")
     planned = result.meta.get("ui_planned_runs")
     if isinstance(completed, (int, float)) and isinstance(planned, (int, float)) and planned > 0:
-        return (
-            "Résultat partiel issu d'une optimisation interrompue "
-            f"({int(completed)}/{int(planned)} tests)."
-        )
+        return f"Résultat partiel issu d'une optimisation interrompue ({int(completed)}/{int(planned)} tests)."
     return "Résultat partiel issu d'une optimisation interrompue."
 
 
-def _save_result_to_storage(storage: Any, result: Optional[Any]) -> Tuple[bool, str]:
+def _save_result_to_storage(storage: Any, result: Any | None) -> tuple[bool, str]:
     if result is None:
         return False, "No result to save."
     run_id = result.meta.get("run_id") or generate_run_id()
@@ -1295,7 +1287,7 @@ def _save_result_to_storage(storage: Any, result: Optional[Any]) -> Tuple[bool, 
     return True, f"Saved run: {saved_id}"
 
 
-def _maybe_auto_save_run(result: Optional[Any]) -> None:
+def _maybe_auto_save_run(result: Any | None) -> None:
     if result is None:
         return
     if not st.session_state.get("auto_save_final_run", False):
@@ -1319,7 +1311,7 @@ def _maybe_auto_save_run(result: Optional[Any]) -> None:
 
 
 def render_saved_runs_panel(
-    result: Optional[Any],
+    result: Any | None,
     strategy_key: str,
     symbol: str,
     timeframe: str,
@@ -1367,21 +1359,10 @@ def render_saved_runs_panel(
 
         runs = storage.list_results()
         if filter_current:
-            runs = [
-                r
-                for r in runs
-                if r.strategy == strategy_key
-                and r.symbol == symbol
-                and r.timeframe == timeframe
-            ]
+            runs = [r for r in runs if r.strategy == strategy_key and r.symbol == symbol and r.timeframe == timeframe]
         if filter_text:
             filter_l = filter_text.lower()
-            runs = [
-                r
-                for r in runs
-                if filter_l in _build_saved_run_label(r).lower()
-                or filter_l in r.run_id.lower()
-            ]
+            runs = [r for r in runs if filter_l in _build_saved_run_label(r).lower() or filter_l in r.run_id.lower()]
 
         if not runs:
             st.caption("Aucun run sauvegardé.")
@@ -1405,13 +1386,13 @@ def render_saved_runs_panel(
             )
         st.sidebar.caption(f"Period: {period_label}")
         st.sidebar.caption(
-            f"Trades: {selected_meta.n_trades} | Bars: {selected_meta.n_bars}"
+            f"Trades: {selected_meta.n_trades} | Bars: {selected_meta.n_bars}",
         )
         sharpe = selected_meta.metrics.get("sharpe_ratio", 0)
         ret_pct = selected_meta.metrics.get("total_return_pct", 0)
         max_dd = selected_meta.metrics.get("max_drawdown", 0)
         st.sidebar.caption(
-            f"Sharpe: {sharpe:.2f} | Return: {ret_pct:.1f}% | MaxDD: {max_dd:.1f}%"
+            f"Sharpe: {sharpe:.2f} | Return: {ret_pct:.1f}% | MaxDD: {max_dd:.1f}%",
         )
 
     load_data = st.sidebar.checkbox(
@@ -1429,13 +1410,13 @@ def safe_run_backtest(
     engine: Any,
     df: pd.DataFrame,
     strategy: str,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     symbol: str,
     timeframe: str,
-    run_id: Optional[str] = None,
+    run_id: str | None = None,
     silent_mode: bool = False,
     fast_metrics: bool = False,
-) -> Tuple[Optional[Any], str]:
+) -> tuple[Any | None, str]:
     run_id = run_id or generate_run_id(
         strategy=strategy,
         symbol=symbol,
@@ -1469,20 +1450,20 @@ def safe_run_backtest(
 
     except ValueError as exc:
         logger.warning("ui_backtest_validation_error error=%s", str(exc))
-        return None, f"Paramètres invalides: {str(exc)}"
+        return None, f"Paramètres invalides: {exc!s}"
     except Exception as exc:
         logger.error("ui_backtest_error error=%s", str(exc))
-        return None, f"Erreur: {str(exc)}\n{traceback.format_exc()}"
+        return None, f"Erreur: {exc!s}\n{traceback.format_exc()}"
 
 
 def safe_run_walk_forward(
     df: pd.DataFrame,
     strategy: str,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     n_folds: int = 5,
     train_ratio: float = 0.7,
     expanding: bool = False,
-) -> Tuple[Optional[Any], str]:
+) -> tuple[Any | None, str]:
     """Lance une Walk-Forward Analysis et retourne (WalkForwardSummary, message)."""
     from backtest.walk_forward import (
         WalkForwardConfig,
@@ -1515,7 +1496,7 @@ def safe_run_walk_forward(
         return None, f"Erreur WFA : {exc}"
 
 
-def _strip_global_params(params: Dict[str, Any]) -> Dict[str, Any]:
+def _strip_global_params(params: dict[str, Any]) -> dict[str, Any]:
     for key in ("fees_bps", "slippage_bps", "initial_capital"):
         params.pop(key, None)
     return params
@@ -1524,7 +1505,7 @@ def _strip_global_params(params: Dict[str, Any]) -> Dict[str, Any]:
 def build_strategy_params_for_comparison(
     strategy_key: str,
     use_preset: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     try:
         strategy_class = get_strategy(strategy_key)
     except Exception:
@@ -1540,8 +1521,8 @@ def build_strategy_params_for_comparison(
     return _strip_global_params(params)
 
 
-def _aggregate_metric(values: List[Any], method: str, higher_is_better: bool) -> float:
-    cleaned: List[float] = []
+def _aggregate_metric(values: list[Any], method: str, higher_is_better: bool) -> float:
+    cleaned: list[float] = []
     for value in values:
         try:
             val = float(value)
@@ -1562,11 +1543,11 @@ def _aggregate_metric(values: List[Any], method: str, higher_is_better: bool) ->
 
 
 def summarize_comparison_results(
-    results: List[Dict[str, Any]],
+    results: list[dict[str, Any]],
     aggregate: str,
     primary_metric: str,
     expected_runs: int,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     metric_directions = {
         "sharpe_ratio": 1,
         "total_return_pct": 1,
@@ -1583,13 +1564,13 @@ def summarize_comparison_results(
         "total_pnl",
         "trades",
     ]
-    by_strategy: Dict[str, List[Dict[str, Any]]] = {}
+    by_strategy: dict[str, list[dict[str, Any]]] = {}
     for item in results:
         by_strategy.setdefault(item["strategy"], []).append(item)
 
-    summary: List[Dict[str, Any]] = []
+    summary: list[dict[str, Any]] = []
     for strategy_key, runs in by_strategy.items():
-        row: Dict[str, Any] = {
+        row: dict[str, Any] = {
             "strategy": strategy_key,
             "runs": len(runs),
         }
@@ -1612,7 +1593,7 @@ def summarize_comparison_results(
     direction = metric_directions.get(primary_metric, 1)
     reverse = direction >= 0
 
-    def _sort_key(item: Dict[str, Any]) -> float:
+    def _sort_key(item: dict[str, Any]) -> float:
         value = item.get(primary_metric)
         if value is None or (isinstance(value, float) and math.isnan(value)):
             return float("-inf") if reverse else float("inf")
@@ -1625,9 +1606,9 @@ def summarize_comparison_results(
 def build_indicator_overlays(
     strategy_key: str,
     df: pd.DataFrame,
-    params: Dict[str, Any],
-) -> Dict[str, Any]:
-    overlays: Dict[str, Any] = {}
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    overlays: dict[str, Any] = {}
     if df is None or df.empty:
         return overlays
 
@@ -1845,7 +1826,8 @@ def build_indicator_overlays(
                 ma_series = close.ewm(span=ma_window, adjust=False).mean()
             else:
                 ma_series = close.rolling(
-                    window=ma_window, min_periods=ma_window
+                    window=ma_window,
+                    min_periods=ma_window,
                 ).mean()
             overlays["ma"] = {"center": ma_series}
 
@@ -1874,11 +1856,18 @@ def safe_copy_cleanup(logger=None) -> None:
 
 
 def run_sweep_parallel_with_callback(
-    df, strategy, param_grid, initial_capital, n_workers=None, callback=None,
-    silent_mode=True, fast_metrics=True, symbol="unknown", timeframe="unknown"  # ⚡ Performance
+    df,
+    strategy,
+    param_grid,
+    initial_capital,
+    n_workers=None,
+    callback=None,
+    silent_mode=True,
+    fast_metrics=True,
+    symbol="unknown",
+    timeframe="unknown",  # ⚡ Performance
 ):
-    """
-    Exécute un sweep en parallèle avec callback de progression temps réel.
+    """Exécute un sweep en parallèle avec callback de progression temps réel.
 
     Utilise SweepEngine moderne avec joblib/loky (plus stable que ProcessPoolExecutor).
     Support cache RAM 100k entries pour performance optimale sur gros sweeps.
@@ -1895,6 +1884,7 @@ def run_sweep_parallel_with_callback(
 
     # Réduire verbosité logs pour gros sweeps (éviter saturation terminal avec 2.4M logs)
     import logging
+
     logging.getLogger("backtest.engine").setLevel(logging.WARNING)
     logging.getLogger("backtest.sweep").setLevel(logging.INFO)
 
@@ -1907,7 +1897,7 @@ def run_sweep_parallel_with_callback(
     engine = SweepEngine(
         max_workers=n_workers,
         initial_capital=initial_capital,
-        auto_save=True
+        auto_save=True,
     )
 
     # Lancer le sweep avec SweepEngine (plus stable que ProcessPoolExecutor)
@@ -1919,7 +1909,7 @@ def run_sweep_parallel_with_callback(
             optimize_for="sharpe_ratio",
             silent_mode=silent_mode,
             fast_metrics=fast_metrics,
-            indicator_cache_config=indicator_cache_config
+            indicator_cache_config=indicator_cache_config,
         )
 
         # Formater résultats pour compatibilité avec l'UI
@@ -1936,7 +1926,7 @@ def run_sweep_parallel_with_callback(
                         "total_trades": result.metrics.total_trades,
                         "profit_factor": result.metrics.profit_factor,
                         "total_return_pct": result.metrics.total_return_pct,
-                    }
+                    },
                 }
                 results.append(formatted_result)
 
@@ -1945,7 +1935,7 @@ def run_sweep_parallel_with_callback(
                     try:
                         best_result = {
                             "result": formatted_result,
-                            "best_pnl": result.metrics.total_pnl
+                            "best_pnl": result.metrics.total_pnl,
                         }
                         callback(len(results), len(sweep_results.results), best_result)
                     except Exception:
@@ -1959,13 +1949,19 @@ def run_sweep_parallel_with_callback(
     except Exception as e:
         print(f"Erreur sweep SweepEngine: {e}")
         import traceback
+
         traceback.print_exc()
         return []
 
 
 def run_sweep_sequential_with_callback(
-    df, strategy, param_grid, initial_capital, callback=None,
-    silent_mode=True, fast_metrics=True  # ⚡ Performance
+    df,
+    strategy,
+    param_grid,
+    initial_capital,
+    callback=None,
+    silent_mode=True,
+    fast_metrics=True,  # ⚡ Performance
 ):
     """Exécute un sweep en séquentiel avec callback de progression."""
     from backtest.engine import BacktestEngine
@@ -1981,10 +1977,14 @@ def run_sweep_sequential_with_callback(
     for i, params in enumerate(param_grid):
         try:
             result, _ = safe_run_backtest(
-                engine, df, strategy, params,
-                "unknown", "unknown",  # Pas besoin de symbol/timeframe ici
+                engine,
+                df,
+                strategy,
+                params,
+                "unknown",
+                "unknown",  # Pas besoin de symbol/timeframe ici
                 silent_mode=silent_mode,
-                fast_metrics=fast_metrics
+                fast_metrics=fast_metrics,
             )
 
             if result:
@@ -2007,4 +2007,3 @@ def run_sweep_sequential_with_callback(
                 pass
 
     return results
-

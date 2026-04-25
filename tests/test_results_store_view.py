@@ -2,14 +2,20 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import runpy
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
+import pandas as pd
 import pytest
 
+import ui.results_store_view as results_store_view_module
 from ui.results_store_view import (
+    collect_builder_catalog_reconciliation,
+    collect_builder_iterations,
     collect_builder_linked_runs,
     collect_builder_sessions,
     collect_store_inventory,
@@ -21,10 +27,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def _build_fake_streamlit(call_log: list[tuple[str, tuple[object, ...], dict[str, object]]]) -> ModuleType:
     fake_streamlit = ModuleType("streamlit")
     fake_streamlit.sidebar = SimpleNamespace(
-        markdown=lambda *args, **kwargs: call_log.append(("sidebar.markdown", args, kwargs))
+        markdown=lambda *args, **kwargs: call_log.append(("sidebar.markdown", args, kwargs)),
     )
     fake_streamlit.set_page_config = lambda *args, **kwargs: call_log.append(
-        ("set_page_config", args, kwargs)
+        ("set_page_config", args, kwargs),
     )
     fake_streamlit.title = lambda *args, **kwargs: call_log.append(("title", args, kwargs))
     fake_streamlit.caption = lambda *args, **kwargs: call_log.append(("caption", args, kwargs))
@@ -39,22 +45,32 @@ def _run_streamlit_page_script_once(
     relative_page_path: str,
     render_module_name: str,
     render_function_name: str,
-) -> tuple[list[tuple[str, tuple[object, ...], dict[str, object]]], list[str]]:
+) -> tuple[
+    list[tuple[str, tuple[object, ...], dict[str, object]]],
+    list[str],
+    list[str],
+]:
     streamlit_calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
     render_calls: list[str] = []
+    observability_calls: list[str] = []
 
     fake_streamlit = _build_fake_streamlit(streamlit_calls)
     fake_render_module = ModuleType(render_module_name)
     setattr(fake_render_module, render_function_name, lambda: render_calls.append(render_function_name))
+    fake_observability_module = ModuleType("utils.observability")
+    setattr(fake_observability_module, "init_logging", lambda: observability_calls.append("init_logging"))
 
     import ui
+    import utils
 
     monkeypatch.setitem(sys.modules, "streamlit", fake_streamlit)
     monkeypatch.setitem(sys.modules, render_module_name, fake_render_module)
+    monkeypatch.setitem(sys.modules, "utils.observability", fake_observability_module)
     monkeypatch.setattr(ui, render_module_name.rsplit(".", 1)[-1], fake_render_module, raising=False)
+    monkeypatch.setattr(utils, "observability", fake_observability_module, raising=False)
 
     runpy.run_path(str(REPO_ROOT / relative_page_path), run_name="__main__")
-    return streamlit_calls, render_calls
+    return streamlit_calls, render_calls, observability_calls
 
 
 def test_app_css_uses_full_width_layout_and_keeps_sidebar_controls_interactive() -> None:
@@ -62,8 +78,8 @@ def test_app_css_uses_full_width_layout_and_keeps_sidebar_controls_interactive()
 
     assert "max-width: 1520px;" not in content
     assert "max-width: none;" in content
-    assert 'transform: translateX(0) !important;' not in content
-    assert 'pointer-events: none !important;' not in content
+    assert "transform: translateX(0) !important;" not in content
+    assert "pointer-events: none !important;" not in content
     assert 'button[kind="header"]' in content
 
 
@@ -78,15 +94,15 @@ def test_app_css_uses_full_width_layout_and_keeps_sidebar_controls_interactive()
 def test_page_navigation_css_does_not_force_sidebar_open(relative_page_path: str) -> None:
     content = (REPO_ROOT / relative_page_path).read_text(encoding="utf-8")
 
-    assert 'transform: translateX(0) !important;' not in content
-    assert 'pointer-events: none !important;' not in content
+    assert "transform: translateX(0) !important;" not in content
+    assert "pointer-events: none !important;" not in content
     assert 'button[kind="header"]' in content
 
 
 def test_results_hub_is_only_exposed_via_dedicated_results_store_page() -> None:
     main_results_view = (REPO_ROOT / "ui" / "results.py").read_text(encoding="utf-8")
     dedicated_results_page = (REPO_ROOT / "ui" / "results_store_view.py").read_text(
-        encoding="utf-8"
+        encoding="utf-8",
     )
 
     assert "Hub résultats, sauvegardes et catalogue" not in main_results_view
@@ -125,7 +141,7 @@ def test_collect_builder_sessions_reads_summary_and_latest_strategy(tmp_path: Pa
                 "requested_model": "qwen3-coder:30b",
                 "resolved_model": "qwen3-coder:30b",
                 "available": True,
-            }
+            },
         ],
         "multi_llm_shared_memory": {
             "continuity_context": {
@@ -133,7 +149,7 @@ def test_collect_builder_sessions_reads_summary_and_latest_strategy(tmp_path: Pa
                 "best_recent_session": {"session_num": 8, "symbol": "BTCUSDT"},
                 "carry_over_focus": ["tighten exits"],
                 "recurring_risks": ["drawdown spike"],
-            }
+            },
         },
     }
     (session_dir / "session_summary.json").write_text(json.dumps(summary), encoding="utf-8")
@@ -145,11 +161,156 @@ def test_collect_builder_sessions_reads_summary_and_latest_strategy(tmp_path: Pa
     assert row["session_id"] == "session_alpha"
     assert row["status"] == "success"
     assert row["best_return_pct"] == 12.25
+    assert row["best_return_iteration"] == 3
+    assert row["positive_iterations"] == 2
+    assert row["positive_iteration_ids"] == [3, 2]
+    assert "i3 +12.25%" in row["positive_iteration_summary"]
     assert row["strategy_versions"] == 2
     assert Path(row["latest_strategy_path"]).name == "strategy.py"
     assert row["multi_llm_profile"] == "brain"
     assert row["multi_llm_router_decision"]["action"] == "iterate"
     assert row["continuity_context"]["carry_over_focus"] == ["tighten exits"]
+
+
+def test_display_int_and_coerce_int_tolerate_nan() -> None:
+    assert results_store_view_module._coerce_int(float("nan")) is None
+    assert results_store_view_module._display_int(float("nan")) == 0
+    assert results_store_view_module._display_int("7") == 7
+
+
+def test_render_builder_tab_tolerates_nan_builder_counts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    metric_calls: list[tuple[str, object]] = []
+    caption_calls: list[str] = []
+
+    class _ColumnStub:
+        def metric(self, label: object, value: object, *args: object, **kwargs: object) -> None:
+            metric_calls.append((str(label), value))
+
+        def __enter__(self) -> "_ColumnStub":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+    monkeypatch.setattr(results_store_view_module.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_store_view_module.st, "write", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_store_view_module.st, "info", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_store_view_module.st, "warning", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_store_view_module.st, "dataframe", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_store_view_module.st, "code", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_store_view_module.st, "caption", lambda body, **kwargs: caption_calls.append(str(body)))
+    monkeypatch.setattr(results_store_view_module.st, "text_input", lambda *args, **kwargs: "")
+    monkeypatch.setattr(results_store_view_module.st, "multiselect", lambda label, options, default=None, **kwargs: list(options))
+    monkeypatch.setattr(results_store_view_module.st, "selectbox", lambda label, options, **kwargs: list(options)[0])
+    monkeypatch.setattr(results_store_view_module.st, "checkbox", lambda *args, **kwargs: False)
+    monkeypatch.setattr(results_store_view_module.st, "button", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        results_store_view_module.st,
+        "columns",
+        lambda spec: [_ColumnStub() for _ in range(spec if isinstance(spec, int) else len(spec))],
+    )
+    monkeypatch.setattr(results_store_view_module.st, "expander", lambda *args, **kwargs: nullcontext())
+    monkeypatch.setattr(results_store_view_module, "_handle_open_action", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_store_view_module, "_load_builder_linked_runs_df", lambda *args, **kwargs: pd.DataFrame())
+
+    builder_df = pd.DataFrame(
+        [
+            {
+                "session_id": "session_nan",
+                "status": "success",
+                "best_return_pct": 10.5,
+                "best_return_iteration": float("nan"),
+                "positive_iterations": float("nan"),
+                "positive_iteration_summary": "",
+                "best_sharpe": 1.23,
+                "total_iterations": float("nan"),
+                "strategy_versions": float("nan"),
+                "last_modified": "2026-04-18 10:00:00",
+                "objective_excerpt": "objectif",
+                "session_dir": str(tmp_path / "session_nan"),
+                "summary_path": "",
+                "pipeline_traces_path": "",
+                "latest_strategy_path": "",
+                "instrumentation_enabled": False,
+                "builder_execution_mode": "mono_single_llm",
+                "orchestration_mode": "single_llm",
+                "objective": "",
+            },
+        ],
+    )
+
+    results_store_view_module._render_builder_tab(
+        builder_df,
+        pd.DataFrame(),
+        tmp_path,
+        {
+            "builder_session_dir_count": 1,
+            "catalog_builder_session_count": float("nan"),
+            "linked_builder_run_count": 0,
+            "disk_only_session_count": 0,
+            "catalog_only_session_count": 0,
+            "disk_only_sessions": [],
+            "catalog_only_sessions": [],
+        },
+    )
+
+    assert ("Iterations", 0) in metric_calls
+    assert ("Retours positifs", 0) in metric_calls
+    assert ("Sessions cataloguées", 0) in metric_calls
+    assert any(caption == "Fichiers stratégie: 0" for caption in caption_calls)
+    assert all("best iter" not in caption for caption in caption_calls)
+
+
+def test_collect_builder_iterations_reads_all_iteration_rows(tmp_path: Path) -> None:
+    builder_root = tmp_path / "_builder_sessions"
+    session_dir = builder_root / "session_alpha"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "strategy_v1.py").write_text("print('v1')\n", encoding="utf-8")
+    (session_dir / "strategy_v2.py").write_text("print('v2')\n", encoding="utf-8")
+    summary = {
+        "session_id": "session_alpha",
+        "status": "max_iterations",
+        "objective": "Explorer plusieurs variantes momentum.",
+        "iterations": [
+            {
+                "iteration": 1,
+                "return_pct": -2.0,
+                "sharpe": 0.1,
+                "profit_factor": 0.9,
+                "trades": 8,
+                "params_used": {"fast_period": 8},
+                "diagnostic_category": "weak_edge",
+            },
+            {
+                "iteration": 2,
+                "return_pct": 8.5,
+                "sharpe": 0.9,
+                "profit_factor": 1.2,
+                "trades": 18,
+                "params_used": {"fast_period": 12, "slow_period": 26},
+                "diagnostic_category": "trend",
+            },
+        ],
+        "leaderboard": [
+            {"rank": 1, "iteration": 2},
+            {"rank": 2, "iteration": 1},
+        ],
+    }
+    (session_dir / "session_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+
+    rows = collect_builder_iterations(builder_root)
+
+    assert len(rows) == 2
+    by_iteration = {row["iteration"]: row for row in rows}
+    assert by_iteration[1]["candidate_id"] == "builder:session_alpha:1"
+    assert by_iteration[1]["positive_return"] is False
+    assert by_iteration[2]["positive_return"] is True
+    assert by_iteration[2]["leaderboard_rank"] == 1
+    assert by_iteration[2]["params_used_preview"] == "fast_period=12, slow_period=26"
+    assert Path(by_iteration[2]["strategy_path"]).name == "strategy_v2.py"
 
 
 def test_collect_store_inventory_counts_expected_directories(tmp_path: Path) -> None:
@@ -165,11 +326,40 @@ def test_collect_store_inventory_counts_expected_directories(tmp_path: Path) -> 
     rows = collect_store_inventory(results_root, artifacts_root)
 
     by_label = {row["label"]: row for row in rows}
-    assert by_label["Analyses"]["exists"] is True
-    assert by_label["Analyses"]["items"] == 1
-    assert by_label["Sessions Builder"]["items"] == 1
-    assert by_label["Diagnostics sweeps"]["items"] == 1
-    assert by_label["Legacy runs"]["exists"] is True
+    assert by_label["Dossier analyses"]["exists"] is True
+    assert by_label["Dossier analyses"]["items"] == 1
+    assert by_label["Dossiers de session Builder"]["items"] == 1
+    assert by_label["Dossier diagnostics sweeps"]["items"] == 1
+    assert by_label["Dossiers de run legacy"]["exists"] is True
+
+
+def test_collect_builder_catalog_reconciliation_reports_disk_and_catalog_gaps(tmp_path: Path) -> None:
+    builder_root = tmp_path / "_builder_sessions"
+    (builder_root / "session_a").mkdir(parents=True, exist_ok=True)
+    (builder_root / "session_b").mkdir(parents=True, exist_ok=True)
+
+    catalog_dir = tmp_path / "_catalog"
+    catalog_dir.mkdir(parents=True, exist_ok=True)
+    catalog_path = catalog_dir / "unified_overview.csv"
+    fieldnames = ["run_id", "extra_builder_session_id"]
+    with catalog_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(
+            [
+                {"run_id": "run_1", "extra_builder_session_id": "session_a"},
+                {"run_id": "run_2", "extra_builder_session_id": "session_c"},
+            ],
+        )
+
+    audit = collect_builder_catalog_reconciliation(tmp_path, builder_root)
+
+    assert audit["builder_session_dir_count"] == 2
+    assert audit["catalog_builder_session_count"] == 2
+    assert audit["linked_builder_run_count"] == 2
+    assert audit["matched_session_count"] == 1
+    assert audit["disk_only_sessions"] == ["session_b"]
+    assert audit["catalog_only_sessions"] == ["session_c"]
 
 
 def test_collect_builder_linked_runs_filters_catalog_by_session_id(tmp_path: Path) -> None:
@@ -264,7 +454,7 @@ def test_streamlit_page_scripts_render_once_when_executed_as_main(
     render_module_name: str,
     render_function_name: str,
 ) -> None:
-    streamlit_calls, render_calls = _run_streamlit_page_script_once(
+    streamlit_calls, render_calls, observability_calls = _run_streamlit_page_script_once(
         monkeypatch,
         relative_page_path=relative_page_path,
         render_module_name=render_module_name,
@@ -272,4 +462,45 @@ def test_streamlit_page_scripts_render_once_when_executed_as_main(
     )
 
     assert render_calls == [render_function_name]
+    assert observability_calls == ["init_logging"]
     assert [call[0] for call in streamlit_calls].count("set_page_config") == 1
+
+
+def test_asyncio_websocket_close_filter_only_drops_benign_closed_socket_noise() -> None:
+    from utils.observability import _AsyncioBenignWebSocketCloseFilter
+
+    filter_ = _AsyncioBenignWebSocketCloseFilter()
+    benign_exc = type("WebSocketClosedError", (Exception,), {})("socket closed")
+    benign_record = logging.LogRecord(
+        name="asyncio",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=1,
+        msg="Task exception was never retrieved",
+        args=(),
+        exc_info=(type(benign_exc), benign_exc, None),
+    )
+    assert filter_.filter(benign_record) is False
+
+    unrelated_exc = RuntimeError("boom")
+    unrelated_record = logging.LogRecord(
+        name="asyncio",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=1,
+        msg="Task exception was never retrieved",
+        args=(),
+        exc_info=(type(unrelated_exc), unrelated_exc, None),
+    )
+    assert filter_.filter(unrelated_record) is True
+
+    other_logger_record = logging.LogRecord(
+        name="backtest.ui",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=1,
+        msg="Task exception was never retrieved",
+        args=(),
+        exc_info=(type(benign_exc), benign_exc, None),
+    )
+    assert filter_.filter(other_logger_record) is True

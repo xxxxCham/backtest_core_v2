@@ -33,16 +33,15 @@ def main() -> int:
         print("Aucune ligne autonome à réparer.")
         return 0
 
-    before_empty = sum(
-        1 for row in history if not str(row.get("session_id", "") or "").strip()
-    )
-    after_empty = sum(
-        1 for row in recovered_history if not str(row.get("session_id", "") or "").strip()
-    )
+    before_empty = sum(1 for row in history if not str(row.get("session_id", "") or "").strip())
+    after_empty = sum(1 for row in recovered_history if not str(row.get("session_id", "") or "").strip())
 
     state_path = Path(_AUTONOMOUS_SUPERVISOR_STATE_FILE)
-    backup_path = state_path.with_suffix(state_path.suffix + ".bak")
-    shutil.copy2(state_path, backup_path)
+    backup_file = None
+    if state_path.exists():
+        backup_path = state_path.with_suffix(state_path.suffix + ".bak")
+        shutil.copy2(state_path, backup_path)
+        backup_file = str(backup_path)
 
     _save_autonomous_supervisor_state(recovered_history, supervisor)
 
@@ -50,7 +49,7 @@ def main() -> int:
         json.dumps(
             {
                 "state_file": str(state_path),
-                "backup_file": str(backup_path),
+                "backup_file": backup_file,
                 "history_rows": len(history),
                 "empty_session_id_before": before_empty,
                 "empty_session_id_after": after_empty,
@@ -58,7 +57,7 @@ def main() -> int:
             },
             indent=2,
             ensure_ascii=False,
-        )
+        ),
     )
     return 0
 

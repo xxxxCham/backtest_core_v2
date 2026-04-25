@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.backend_config
+"""Module-ID: utils.backend_config
 
 Purpose: Configuration centralisée du backend de calcul (CPU/GPU/Auto).
 
@@ -21,25 +20,24 @@ Skip-if: Vous utilisez juste is_gpu_enabled() pour vérifier.
 """
 
 from enum import Enum
-from typing import Optional
 
 __all__ = ["BackendType", "get_backend", "is_gpu_enabled", "reset_backend"]
 
 
 class BackendType(Enum):
     """Type de backend pour les calculs."""
+
     CPU = "cpu"
     GPU = "gpu"
     AUTO = "auto"
 
 
 # Cache global du backend sélectionné
-_BACKEND: Optional[BackendType] = None
+_BACKEND: BackendType | None = None
 
 
 def get_backend() -> BackendType:
-    """
-    Retourne le backend (CPU-only).
+    """Retourne le backend (CPU-only).
 
     Returns:
         BackendType sélectionné
@@ -53,6 +51,7 @@ def get_backend() -> BackendType:
         >>> os.environ["BACKTEST_BACKEND"] = "gpu"
         >>> get_backend()
         <BackendType.CPU: 'cpu'>
+
     """
     global _BACKEND
 
@@ -64,8 +63,7 @@ def get_backend() -> BackendType:
 
 
 def is_gpu_enabled() -> bool:
-    """
-    Retourne True si le GPU peut être utilisé.
+    """Retourne True si le GPU peut être utilisé.
 
     Mode CPU-only: retourne toujours False.
 
@@ -81,13 +79,13 @@ def is_gpu_enabled() -> bool:
         >>> os.environ["BACKTEST_BACKEND"] = "gpu"
         >>> is_gpu_enabled()
         False
+
     """
     return False
 
 
 def reset_backend() -> None:
-    """
-    Réinitialise le cache du backend (pour tests uniquement).
+    """Réinitialise le cache du backend (pour tests uniquement).
 
     Examples:
         >>> import os
@@ -98,6 +96,7 @@ def reset_backend() -> None:
         >>> reset_backend()
         >>> get_backend()
         <BackendType.CPU: 'cpu'>
+
     """
     global _BACKEND
     _BACKEND = None

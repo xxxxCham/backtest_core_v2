@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.ema
+"""Module-ID: indicators.ema
 
 Purpose: Indicateurs EMA (exponentielles) et SMA (simples) vectorisés.
 
@@ -21,7 +20,6 @@ Skip-if: Vous utilisez juste calculate_indicator('ema').
 """
 
 from dataclasses import dataclass
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -39,11 +37,10 @@ class EMASettings:
 
 
 def sma(
-    data: Union[pd.Series, np.ndarray],
-    period: int = 20
+    data: pd.Series | np.ndarray,
+    period: int = 20,
 ) -> np.ndarray:
-    """
-    Calcule la Simple Moving Average.
+    """Calcule la Simple Moving Average.
 
     Args:
         data: Série de données (typiquement close)
@@ -51,6 +48,7 @@ def sma(
 
     Returns:
         Array SMA de même longueur. Les premières (period-1) valeurs seront NaN.
+
     """
     if isinstance(data, pd.Series):
         data = data.values
@@ -69,13 +67,12 @@ def sma(
 
 
 def ema(
-    data: Union[pd.Series, np.ndarray],
+    data: pd.Series | np.ndarray,
     period: int = 20,
     adjust: bool = True,
-    settings: EMASettings = None
+    settings: EMASettings = None,
 ) -> np.ndarray:
-    """
-    Calcule l'Exponential Moving Average.
+    """Calcule l'Exponential Moving Average.
 
     Args:
         data: Série de données
@@ -85,6 +82,7 @@ def ema(
 
     Returns:
         Array EMA de même longueur.
+
     """
     if settings is not None:
         period = settings.period
@@ -106,12 +104,11 @@ def ema(
 
 
 def ema_crossover(
-    data: Union[pd.Series, np.ndarray],
+    data: pd.Series | np.ndarray,
     fast_period: int = 12,
-    slow_period: int = 26
+    slow_period: int = 26,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Calcule les EMAs rapide et lente avec détection de croisement.
+    """Calcule les EMAs rapide et lente avec détection de croisement.
 
     Args:
         data: Prix de clôture
@@ -121,6 +118,7 @@ def ema_crossover(
     Returns:
         Tuple (ema_fast, ema_slow, crossover_signal)
         crossover_signal: 1 = golden cross, -1 = death cross, 0 = pas de croisement
+
     """
     ema_fast = ema(data, fast_period)
     ema_slow = ema(data, slow_period)
@@ -145,11 +143,10 @@ def ema_crossover(
 
 
 def dema(
-    data: Union[pd.Series, np.ndarray],
-    period: int = 20
+    data: pd.Series | np.ndarray,
+    period: int = 20,
 ) -> np.ndarray:
-    """
-    Calcule la Double EMA (DEMA).
+    """Calcule la Double EMA (DEMA).
 
     Formule: DEMA = 2 * EMA(data) - EMA(EMA(data))
 
@@ -162,11 +159,10 @@ def dema(
 
 
 def tema(
-    data: Union[pd.Series, np.ndarray],
-    period: int = 20
+    data: pd.Series | np.ndarray,
+    period: int = 20,
 ) -> np.ndarray:
-    """
-    Calcule la Triple EMA (TEMA).
+    """Calcule la Triple EMA (TEMA).
 
     Formule: TEMA = 3*EMA - 3*EMA(EMA) + EMA(EMA(EMA))
 
@@ -179,4 +175,4 @@ def tema(
     return 3 * ema1 - 3 * ema2 + ema3
 
 
-__all__ = ["sma", "ema", "EMASettings", "ema_crossover", "dema", "tema"]
+__all__ = ["EMASettings", "dema", "ema", "ema_crossover", "sma", "tema"]

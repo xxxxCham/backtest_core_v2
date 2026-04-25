@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.elder_ray
+"""Module-ID: indicators.elder_ray
 
 Purpose: Elder Ray Index.
 """
@@ -52,4 +51,4 @@ register_indicator(
 )
 
 
-__all__ = ["elder_ray", "calculate_elder_ray", "ElderRaySettings"]
+__all__ = ["ElderRaySettings", "calculate_elder_ray", "elder_ray"]

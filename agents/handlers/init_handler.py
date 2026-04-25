@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 logger = get_obs_logger(__name__)
 
 
-def ensure_indicator_context(orch: "Orchestrator") -> None:
+def ensure_indicator_context(orch: Orchestrator) -> None:
     """Compute indicator context once per run (deduplicated from init + analyze)."""
     if orch._indicator_context_cached or orch._loaded_data is None:
         return
@@ -47,7 +47,7 @@ def ensure_indicator_context(orch: "Orchestrator") -> None:
         orch._indicator_context_cached = True
 
 
-def validate_config(orch: "Orchestrator") -> ValidationResult:
+def validate_config(orch: Orchestrator) -> ValidationResult:
     """Validate the initial configuration."""
     errors = []
 
@@ -69,7 +69,7 @@ def validate_config(orch: "Orchestrator") -> ValidationResult:
     return ValidationResult.success()
 
 
-def compute_walk_forward_metrics(orch: "Orchestrator") -> None:
+def compute_walk_forward_metrics(orch: Orchestrator) -> None:
     """Compute walk-forward validation metrics and update context."""
     # If data is already loaded (from UI), use it directly
     if orch._loaded_data is not None:
@@ -191,7 +191,7 @@ def compute_walk_forward_metrics(orch: "Orchestrator") -> None:
         orch._log_event("warning", message=f"Walk-forward échoué: {e}")
 
 
-def handle_init(orch: "Orchestrator") -> None:
+def handle_init(orch: Orchestrator) -> None:
     """Handle INIT state - Validate config and run initial backtest."""
     orch._log_event("phase_start", phase="INIT")
     logger.info("Phase INIT: Validation configuration et backtest initial")
@@ -200,7 +200,9 @@ def handle_init(orch: "Orchestrator") -> None:
     validation = validate_config(orch)
     if not validation.is_valid:
         orch._log_event(
-            "config_invalid", errors=validation.errors or [], message=validation.message
+            "config_invalid",
+            errors=validation.errors or [],
+            message=validation.message,
         )
         orch.state_machine.fail(f"Configuration invalide: {validation.message}")
         return

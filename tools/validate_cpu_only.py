@@ -1,5 +1,4 @@
-"""
-Script de validation CPU-only mode.
+"""Script de validation CPU-only mode.
 
 Vérifie que le mode CPU-only respecte toutes les contraintes :
 - Aucun import CuPy/torch/numba.cuda
@@ -18,9 +17,9 @@ sys.path.insert(0, str(repo_root))
 
 def print_header(text: str):
     """Affiche un header."""
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"  {text}")
-    print('='*70)
+    print("=" * 70)
 
 
 def print_success(text: str):
@@ -90,9 +89,8 @@ def check_no_gpu_imports():
     if not violations:
         print_success("Aucun import GPU détecté")
         return True
-    else:
-        print_error(f"Modules GPU importés: {violations}")
-        return False
+    print_error(f"Modules GPU importés: {violations}")
+    return False
 
 
 def check_device_backend():
@@ -143,9 +141,8 @@ def check_gpu_manager():
     if manager is None:
         print_success("GPUDeviceManager non initialisé (lazy)")
         return True
-    else:
-        print_error("GPUDeviceManager initialisé en mode CPU-only!")
-        return False
+    print_error("GPUDeviceManager initialisé en mode CPU-only!")
+    return False
 
 
 def check_numba_cache():
@@ -163,9 +160,8 @@ def check_numba_cache():
     if ".numba_cache/" in content:
         print_success(".numba_cache/ dans .gitignore")
         return True
-    else:
-        print_error(".numba_cache/ absent de .gitignore")
-        return False
+    print_error(".numba_cache/ absent de .gitignore")
+    return False
 
 
 def check_tests_exist():
@@ -183,9 +179,8 @@ def check_tests_exist():
 
         print_success(f"Nombre de tests: {test_count}")
         return True
-    else:
-        print_error("Fichier de tests absent!")
-        return False
+    print_error("Fichier de tests absent!")
+    return False
 
 
 def run_quick_benchmark():
@@ -211,35 +206,39 @@ def run_quick_benchmark():
         signals = np.random.choice([-1, 0, 1], size=n)
 
         # Warm-up JIT
-        from backtest.simulator_fast import simulate_trades_fast
         import pandas as pd
 
-        df_test = pd.DataFrame({
-            "close": closes[:100],
-            "high": highs[:100],
-            "low": lows[:100],
-        })
+        from backtest.simulator_fast import simulate_trades_fast
+
+        df_test = pd.DataFrame(
+            {
+                "close": closes[:100],
+                "high": highs[:100],
+                "low": lows[:100],
+            },
+        )
         _ = simulate_trades_fast(df_test, signals[:100], {"leverage": 1, "k_sl": 2})
 
         # Benchmark
-        df_bench = pd.DataFrame({
-            "close": closes,
-            "high": highs,
-            "low": lows,
-        })
+        df_bench = pd.DataFrame(
+            {
+                "close": closes,
+                "high": highs,
+                "low": lows,
+            },
+        )
 
         start = time.perf_counter()
         _ = simulate_trades_fast(df_bench, signals, {"leverage": 1, "k_sl": 2})
         elapsed = time.perf_counter() - start
 
-        print_success(f"Simulation {n} barres: {elapsed*1000:.2f}ms")
+        print_success(f"Simulation {n} barres: {elapsed * 1000:.2f}ms")
 
         if elapsed < 0.1:  # < 100ms = acceptable
             print_success("Performance acceptable")
             return True
-        else:
-            print_warning(f"Performance lente: {elapsed*1000:.0f}ms")
-            return False
+        print_warning(f"Performance lente: {elapsed * 1000:.0f}ms")
+        return False
 
     except Exception as e:
         print_error(f"Erreur benchmark: {e}")
@@ -289,9 +288,8 @@ def main():
     if success_count == total:
         print_success(f"VALIDATION RÉUSSIE ({success_count}/{total})")
         return 0
-    else:
-        print_error(f"VALIDATION ÉCHOUÉE ({success_count}/{total})")
-        return 1
+    print_error(f"VALIDATION ÉCHOUÉE ({success_count}/{total})")
+    return 1
 
 
 if __name__ == "__main__":

@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.components.validation_viewer
+"""Module-ID: ui.components.validation_viewer
 
 Purpose: Renderer Streamlit pour rapports walk-forward validation - résumé, graphiques, overfitting flags.
 
@@ -25,12 +24,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     import plotly.graph_objects as go
     import streamlit as st
     from plotly.subplots import make_subplots
+
     STREAMLIT_AVAILABLE = True
 except ImportError:
     STREAMLIT_AVAILABLE = False
@@ -38,6 +38,7 @@ except ImportError:
 
 class ValidationStatus(Enum):
     """Statut de validation."""
+
     PASSED = "passed"
     WARNING = "warning"
     FAILED = "failed"
@@ -46,12 +47,12 @@ class ValidationStatus(Enum):
 
 @dataclass
 class WindowResult:
-    """
-    Represents metrics and parameters for a single walk-forward fold.
+    """Represents metrics and parameters for a single walk-forward fold.
 
     Captures train/test metrics/degradation to allow UI cards and charts to flag
     problematic windows while keeping the validation logic separated.
     """
+
     window_id: int
     train_start: datetime
     train_end: datetime
@@ -71,7 +72,7 @@ class WindowResult:
     test_trades: int
 
     # Paramètres optimaux
-    params: Dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
 
     @property
     def sharpe_degradation(self) -> float:
@@ -110,7 +111,7 @@ class WindowResult:
             return ValidationStatus.FAILED
         return ValidationStatus.PASSED
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "window_id": self.window_id,
@@ -130,15 +131,15 @@ class WindowResult:
 
 @dataclass
 class ValidationReport:
-    """
-    Aggregated walk-forward validation report.
+    """Aggregated walk-forward validation report.
 
     Contains windows, aggregate metrics, and helpers to surface the best params.
     Lifespan: produced by the validation runner and consumed by UI renderers.
     """
+
     strategy_name: str
     created_at: datetime
-    windows: List[WindowResult]
+    windows: list[WindowResult]
 
     # Configuration
     n_splits: int = 5
@@ -146,10 +147,10 @@ class ValidationReport:
     purge_gap: int = 0
 
     # Métriques globales (calculées)
-    _aggregate_metrics: Optional[Dict[str, float]] = field(default=None, repr=False)
+    _aggregate_metrics: dict[str, float] | None = field(default=None, repr=False)
 
     @property
-    def aggregate_metrics(self) -> Dict[str, float]:
+    def aggregate_metrics(self) -> dict[str, float]:
         """Calcule les métriques agrégées."""
         if self._aggregate_metrics is not None:
             return self._aggregate_metrics
@@ -210,7 +211,7 @@ class ValidationReport:
         """La stratégie est-elle validée?"""
         return self.overall_status == ValidationStatus.PASSED
 
-    def get_best_params(self) -> Dict[str, Any]:
+    def get_best_params(self) -> dict[str, Any]:
         """Retourne les paramètres les plus robustes."""
         if not self.windows:
             return {}
@@ -225,7 +226,7 @@ class ValidationReport:
         best = max(valid_windows, key=lambda w: w.test_sharpe)
         return best.params
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Sérialise en dictionnaire."""
         return {
             "strategy_name": self.strategy_name,
@@ -258,14 +259,14 @@ STATUS_ICONS = {
 
 
 def create_validation_figure(report: ValidationReport) -> go.Figure:
-    """
-    Crée une figure Plotly du rapport de validation.
+    """Crée une figure Plotly du rapport de validation.
 
     Args:
         report: Rapport à visualiser
 
     Returns:
         Figure Plotly
+
     """
     fig = make_subplots(
         rows=2,
@@ -400,8 +401,7 @@ def render_validation_report(
     report: ValidationReport,
     key: str = "validation_report",
 ) -> None:
-    """
-    Streamlit dashboard that surfaces a Walk-Forward validation report.
+    """Streamlit dashboard that surfaces a Walk-Forward validation report.
 
     Displays status badges, global metrics, per-window tables and the multi-panel figure
     so that users can judge strategy robustness during backtests.
@@ -409,6 +409,7 @@ def render_validation_report(
     Args:
         report: ValidationReport produced by `validation_integration`.
         key: Widget key preventing Streamlit rerun collisions.
+
     """
     if not STREAMLIT_AVAILABLE:
         return
@@ -419,7 +420,7 @@ def render_validation_report(
     status_icon = STATUS_ICONS[status]
 
     st.markdown(
-        f"## {status_icon} Rapport de Validation - {report.strategy_name}"
+        f"## {status_icon} Rapport de Validation - {report.strategy_name}",
     )
 
     # Badge statut
@@ -479,7 +480,7 @@ def render_validation_report(
     # Graphique
     st.markdown("### 📈 Visualisation")
     fig = create_validation_figure(report)
-    st.plotly_chart(fig, width='stretch', key=f"{key}_chart")
+    st.plotly_chart(fig, width="stretch", key=f"{key}_chart")
 
     # Détails par fenêtre
     st.markdown("### 🔍 Détails par Fenêtre")
@@ -487,17 +488,19 @@ def render_validation_report(
     # Tableau récapitulatif
     data = []
     for w in report.windows:
-        data.append({
-            "Fenêtre": w.window_id,
-            "Train": f"{w.train_start.date()} → {w.train_end.date()}",
-            "Test": f"{w.test_start.date()} → {w.test_end.date()}",
-            "Sharpe (T)": f"{w.train_sharpe:.3f}",
-            "Sharpe (V)": f"{w.test_sharpe:.3f}",
-            "Dégr.": f"{w.sharpe_degradation:.1%}",
-            "Statut": f"{STATUS_ICONS[w.status]} {w.status.value}",
-        })
+        data.append(
+            {
+                "Fenêtre": w.window_id,
+                "Train": f"{w.train_start.date()} → {w.train_end.date()}",
+                "Test": f"{w.test_start.date()} → {w.test_end.date()}",
+                "Sharpe (T)": f"{w.train_sharpe:.3f}",
+                "Sharpe (V)": f"{w.test_sharpe:.3f}",
+                "Dégr.": f"{w.sharpe_degradation:.1%}",
+                "Statut": f"{STATUS_ICONS[w.status]} {w.status.value}",
+            },
+        )
 
-    st.dataframe(data, width='stretch')
+    st.dataframe(data, width="stretch")
 
     # Détails expandables
     for w in report.windows:
@@ -531,7 +534,7 @@ def render_validation_report(
     if report.overall_status == ValidationStatus.PASSED:
         st.success(
             "✅ **Stratégie validée** - Les performances sont consistantes entre "
-            "l'entraînement et le test. La stratégie peut être utilisée en production."
+            "l'entraînement et le test. La stratégie peut être utilisée en production.",
         )
         best_params = report.get_best_params()
         if best_params:
@@ -541,24 +544,25 @@ def render_validation_report(
     elif report.overall_status == ValidationStatus.WARNING:
         st.warning(
             "⚠️ **Attention** - Dégradation significative entre train et test. "
-            "Considérez d'ajuster les paramètres ou de réduire la complexité."
+            "Considérez d'ajuster les paramètres ou de réduire la complexité.",
         )
 
     elif report.overall_status == ValidationStatus.OVERFITTING:
         st.error(
             "📈❌ **Overfitting détecté** - Les performances train ne se généralisent pas "
-            "sur les données de test. Simplifiez la stratégie ou utilisez moins de paramètres."
+            "sur les données de test. Simplifiez la stratégie ou utilisez moins de paramètres.",
         )
 
     else:
         st.error(
             "❌ **Échec de validation** - La stratégie ne performe pas de manière "
-            "satisfaisante sur les données de test."
+            "satisfaisante sur les données de test.",
         )
 
     # Export
     with st.expander("📥 Export"):
         import json
+
         report_json = json.dumps(report.to_dict(), indent=2, default=str)
 
         col1, col2 = st.columns(2)
@@ -579,14 +583,14 @@ def render_validation_summary_card(
     report: ValidationReport,
     key: str = "validation_card",
 ) -> None:
-    """
-    Compact sidebar card summarizing validation status and best candidates.
+    """Compact sidebar card summarizing validation status and best candidates.
 
     Useful for quick sanity checks without expanding the full report panel.
 
     Args:
         report: Same validation report as the main panel.
         key: Streamlit widget key.
+
     """
     if not STREAMLIT_AVAILABLE:
         return
@@ -624,22 +628,24 @@ def create_sample_report() -> ValidationReport:
         train_sharpe = random.uniform(0.8, 2.5)
         degradation = random.uniform(0.1, 0.6)
 
-        windows.append(WindowResult(
-            window_id=i + 1,
-            train_start=train_start,
-            train_end=train_end,
-            test_start=test_start,
-            test_end=test_end,
-            train_sharpe=train_sharpe,
-            train_return=random.uniform(0.05, 0.25),
-            train_drawdown=random.uniform(0.05, 0.15),
-            train_trades=random.randint(50, 150),
-            test_sharpe=train_sharpe * (1 - degradation),
-            test_return=random.uniform(-0.02, 0.15),
-            test_drawdown=random.uniform(0.05, 0.20),
-            test_trades=random.randint(10, 40),
-            params={"fast_period": 10 + i, "slow_period": 20 + i * 2},
-        ))
+        windows.append(
+            WindowResult(
+                window_id=i + 1,
+                train_start=train_start,
+                train_end=train_end,
+                test_start=test_start,
+                test_end=test_end,
+                train_sharpe=train_sharpe,
+                train_return=random.uniform(0.05, 0.25),
+                train_drawdown=random.uniform(0.05, 0.15),
+                train_trades=random.randint(50, 150),
+                test_sharpe=train_sharpe * (1 - degradation),
+                test_return=random.uniform(-0.02, 0.15),
+                test_drawdown=random.uniform(0.05, 0.20),
+                test_trades=random.randint(10, 40),
+                params={"fast_period": 10 + i, "slow_period": 20 + i * 2},
+            ),
+        )
 
     return ValidationReport(
         strategy_name="ema_cross",

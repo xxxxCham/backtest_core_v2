@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.autonomous_strategist
+"""Module-ID: agents.autonomous_strategist
 
 Purpose: Optimiseur autonome piloté par LLM qui itère propose → backtest → analyse → décide.
 
@@ -23,9 +22,10 @@ Skip-if: Vous utilisez uniquement le mode orchestré sans exécution de backtest
 from __future__ import annotations
 
 import itertools
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -55,16 +55,16 @@ class IterationDecision:
 
     # Prochaine action si "continue"
     next_hypothesis: str = ""
-    next_parameters: Dict[str, Any] = field(default_factory=dict)
+    next_parameters: dict[str, Any] = field(default_factory=dict)
 
     # Raison
     reasoning: str = ""
 
     # Insights accumulés
-    insights: List[str] = field(default_factory=list)
+    insights: list[str] = field(default_factory=list)
 
     # Champs spécifiques au sweep
-    ranges: Optional[Dict[str, Dict[str, float]]] = None
+    ranges: dict[str, dict[str, float]] | None = None
     rationale: str = ""  # Explication du sweep (différent de reasoning)
     optimize_for: str = "sharpe_ratio"
     max_combinations: int = 100
@@ -76,7 +76,7 @@ class OptimizationSession:
 
     # Configuration
     strategy_name: str
-    initial_params: Dict[str, Any]
+    initial_params: dict[str, Any]
     target_metric: str = "sharpe_ratio"
 
     # Contraintes
@@ -89,9 +89,9 @@ class OptimizationSession:
     start_time: datetime = field(default_factory=datetime.now)
 
     # Résultats
-    best_result: Optional[BacktestResult] = None
-    all_results: List[BacktestResult] = field(default_factory=list)
-    decisions: List[IterationDecision] = field(default_factory=list)
+    best_result: BacktestResult | None = None
+    all_results: list[BacktestResult] = field(default_factory=list)
+    decisions: list[IterationDecision] = field(default_factory=list)
 
     # Status final
     final_status: str = ""  # "success", "max_iterations", "timeout", "no_improvement"
@@ -100,17 +100,16 @@ class OptimizationSession:
     # Contexte indicateurs (calculé une fois par run)
     strategy_indicators_context: str = ""
     readonly_indicators_context: str = ""
-    indicator_context_warnings: List[str] = field(default_factory=list)
+    indicator_context_warnings: list[str] = field(default_factory=list)
     indicator_context_cached: bool = False
-    comparison_context: Optional[Dict[str, Any]] = None
+    comparison_context: dict[str, Any] | None = None
 
 
 def _param_bounds_to_specs(
-    param_bounds: Dict[str, tuple],
-    defaults: Dict[str, Any]
-) -> List[ParameterSpec]:
-    """
-    Convertit param_bounds en List[ParameterSpec] pour run_llm_sweep().
+    param_bounds: dict[str, tuple],
+    defaults: dict[str, Any],
+) -> list[ParameterSpec]:
+    """Convertit param_bounds en List[ParameterSpec] pour run_llm_sweep().
 
     Args:
         param_bounds: {param: (min, max) ou (min, max, step)}
@@ -118,6 +117,7 @@ def _param_bounds_to_specs(
 
     Returns:
         List de ParameterSpec
+
     """
     specs = []
     for param_name, bound_spec in param_bounds.items():
@@ -136,21 +136,22 @@ def _param_bounds_to_specs(
         is_int = all(isinstance(bound_spec[i], int) for i in range(min(2, len(bound_spec))))
         param_type = "int" if is_int else "float"
 
-        specs.append(ParameterSpec(
-            name=param_name,
-            min_val=min_val,
-            max_val=max_val,
-            default=default,
-            step=step,
-            param_type=param_type
-        ))
+        specs.append(
+            ParameterSpec(
+                name=param_name,
+                min_val=min_val,
+                max_val=max_val,
+                default=default,
+                step=step,
+                param_type=param_type,
+            ),
+        )
 
     return specs
 
 
 class AutonomousStrategist(BaseAgent):
-    """
-    Agent Strategist Autonome capable de lancer des backtests.
+    """Agent Strategist Autonome capable de lancer des backtests.
 
     Workflow:
     1. Analyser la configuration initiale
@@ -174,6 +175,7 @@ class AutonomousStrategist(BaseAgent):
         ...     max_iterations=10
         ... )
         >>> print(f"Best Sharpe: {session.best_result.sharpe_ratio}")
+
     """
 
     @property
@@ -288,13 +290,12 @@ Actions:
         self,
         llm_client: LLMClient,
         verbose: bool = False,
-        on_progress: Optional[Callable[[int, BacktestResult], None]] = None,
-        unload_llm_during_backtest: Optional[bool] = None,
-        comparison_context: Optional[Dict[str, Any]] = None,
-        orchestration_logger: Optional[Any] = None,
+        on_progress: Callable[[int, BacktestResult], None] | None = None,
+        unload_llm_during_backtest: bool | None = None,
+        comparison_context: dict[str, Any] | None = None,
+        orchestration_logger: Any | None = None,
     ):
-        """
-        Initialise le strategist autonome.
+        """Initialise le strategist autonome.
 
         Args:
             llm_client: Client LLM
@@ -305,8 +306,10 @@ Actions:
                 env var (default: False pour CPU-only compatibility)
             comparison_context: Contexte multi-sweep pour enrichir les décisions LLM
             orchestration_logger: Logger pour enregistrer les actions d'orchestration
+
         """
         import os
+
         super().__init__(llm_client)
         self.verbose = verbose
         self.on_progress = on_progress
@@ -315,18 +318,18 @@ Actions:
 
         # Lire depuis env var si non spécifié (default False pour CPU-only)
         if unload_llm_during_backtest is None:
-            env_val = os.getenv('UNLOAD_LLM_DURING_BACKTEST', 'False')
-            self.unload_llm_during_backtest = env_val.lower() in ('true', '1', 'yes')
+            env_val = os.getenv("UNLOAD_LLM_DURING_BACKTEST", "False")
+            self.unload_llm_during_backtest = env_val.lower() in ("true", "1", "yes")
         else:
             self.unload_llm_during_backtest = unload_llm_during_backtest
 
         # GPU Memory Manager - initialisé avec le modèle du client
-        self._gpu_manager: Optional[GPUMemoryManager] = None
-        self._conversation_context: List[dict] = []
+        self._gpu_manager: GPUMemoryManager | None = None
+        self._conversation_context: list[dict] = []
 
     def _get_model_name(self) -> str:
         """Récupère le nom du modèle depuis le client LLM."""
-        if hasattr(self.llm, 'config'):
+        if hasattr(self.llm, "config"):
             return self.llm.config.model
         return "unknown"
 
@@ -344,8 +347,7 @@ Actions:
         executor: BacktestExecutor,
         request: BacktestRequest,
     ) -> BacktestResult:
-        """
-        Exécute un backtest avec optimisation mémoire GPU.
+        """Exécute un backtest avec optimisation mémoire GPU.
 
         1. Décharge le LLM du GPU
         2. Exécute le backtest (GPU libre)
@@ -357,6 +359,7 @@ Actions:
 
         Returns:
             Résultat du backtest
+
         """
         if not self.unload_llm_during_backtest:
             # Mode sans optimisation GPU
@@ -389,8 +392,7 @@ Actions:
             stats = manager.get_stats()
             if stats.get("was_loaded"):
                 logger.debug(
-                    f"⏱️ GPU swap: unload={stats['unload_time_ms']:.0f}ms, "
-                    f"reload={stats['reload_time_ms']:.0f}ms"
+                    f"⏱️ GPU swap: unload={stats['unload_time_ms']:.0f}ms, reload={stats['reload_time_ms']:.0f}ms",
                 )
 
         return result
@@ -398,17 +400,16 @@ Actions:
     def optimize(
         self,
         executor: BacktestExecutor,
-        initial_params: Dict[str, Any],
-        param_bounds: Dict[str, tuple],
+        initial_params: dict[str, Any],
+        param_bounds: dict[str, tuple],
         max_iterations: int = 20,
         target_metric: str = "sharpe_ratio",
         min_sharpe: float = 0.5,
         max_drawdown: float = 0.30,
-        check_pause_callback: Optional[callable] = None,
-        max_time_seconds: Optional[float] = None,
+        check_pause_callback: callable | None = None,
+        max_time_seconds: float | None = None,
     ) -> OptimizationSession:
-        """
-        Lance une session d'optimisation autonome.
+        """Lance une session d'optimisation autonome.
 
         Args:
             executor: BacktestExecutor configuré
@@ -422,6 +423,7 @@ Actions:
 
         Returns:
             OptimizationSession avec tous les résultats
+
         """
         session = OptimizationSession(
             strategy_name=executor.strategy_name,
@@ -435,14 +437,14 @@ Actions:
 
         # Tracker de ranges pour éviter boucles infinies
         from utils.session_ranges_tracker import SessionRangesTracker
+
         ranges_tracker = SessionRangesTracker(
-            session_id=f"{session.strategy_name}_{session.start_time.strftime('%Y%m%d_%H%M%S')}"
+            session_id=f"{session.strategy_name}_{session.start_time.strftime('%Y%m%d_%H%M%S')}",
         )
 
         max_iter_label = "∞" if max_iterations <= 0 else str(max_iterations)
         logger.info(
-            f"Démarrage optimisation: {session.strategy_name} | "
-            f"max_iter={max_iter_label}"
+            f"Démarrage optimisation: {session.strategy_name} | max_iter={max_iter_label}",
         )
 
         # Logger d'orchestration: début de l'optimisation
@@ -452,7 +454,7 @@ Actions:
                 details={
                     "strategy": session.strategy_name,
                     "initial_params": initial_params,
-                }
+                },
             )
 
         # 1. Backtest initial
@@ -492,8 +494,7 @@ Actions:
             self.on_progress(0, baseline_result)
 
         logger.info(
-            f"Baseline: Sharpe={baseline_result.sharpe_ratio:.3f}, "
-            f"Return={baseline_result.total_return:.2%}"
+            f"Baseline: Sharpe={baseline_result.sharpe_ratio:.3f}, Return={baseline_result.total_return:.2%}",
         )
 
         # Contexte indicateurs (une seule fois par run)
@@ -556,8 +557,7 @@ Actions:
                 if elapsed_seconds >= session.max_time_seconds:
                     session.final_status = "timeout"
                     session.final_reasoning = (
-                        f"Time budget exceeded after {elapsed_seconds:.1f}s "
-                        f"(limit: {session.max_time_seconds:.1f}s)"
+                        f"Time budget exceeded after {elapsed_seconds:.1f}s (limit: {session.max_time_seconds:.1f}s)"
                     )
                     logger.warning("⏱️ Timeout optimisation atteint: %.1fs", elapsed_seconds)
                     break
@@ -568,18 +568,17 @@ Actions:
             if max_iterations > 0 and total_combinations_tested >= max_iterations:
                 session.final_status = "max_iterations"
                 session.final_reasoning = (
-                    f"Budget épuisé: {total_combinations_tested} combinaisons testées "
-                    f"(limite: {max_iterations})"
+                    f"Budget épuisé: {total_combinations_tested} combinaisons testées (limite: {max_iterations})"
                 )
                 logger.warning(
-                    f"⚠️ Budget épuisé: {total_combinations_tested} combos testées "
-                    f"dont {sweeps_performed} sweeps"
+                    f"⚠️ Budget épuisé: {total_combinations_tested} combos testées dont {sweeps_performed} sweeps",
                 )
                 break
 
             # Vérifier pause/stop si callback fourni
             if check_pause_callback:
                 import time
+
                 is_paused, should_stop = check_pause_callback()
 
                 # Si stop demandé, sortir immédiatement
@@ -607,7 +606,11 @@ Actions:
 
             # Générer le contexte pour le LLM
             context = self._build_iteration_context(
-                executor, session, param_bounds, min_sharpe, max_drawdown
+                executor,
+                session,
+                param_bounds,
+                min_sharpe,
+                max_drawdown,
             )
 
             # Demander une décision au LLM
@@ -616,16 +619,13 @@ Actions:
             # VALIDATION STRICTE : Forcer STOP si next_parameters vide pour continue/change_direction
             if decision.action in ("continue", "change_direction"):
                 required_params = list(param_bounds.keys())
-                missing_params = [
-                    param for param in required_params
-                    if param not in decision.next_parameters
-                ]
+                missing_params = [param for param in required_params if param not in decision.next_parameters]
                 if not decision.next_parameters or missing_params:
                     optim_id = f"{session.strategy_name}_{session.start_time.strftime('%Y%m%d_%H%M%S')}"
                     logger.error(
                         f"LLM_INVALID_DECISION optim_id={optim_id} iteration={session.current_iteration} "
                         f"action_original={decision.action} action_forced=stop "
-                        f"reason=next_parameters_incomplete missing={missing_params}"
+                        f"reason=next_parameters_incomplete missing={missing_params}",
                     )
                     # Forcer STOP au lieu d'utiliser defaults silencieusement
                     original_action = decision.action
@@ -641,7 +641,9 @@ Actions:
 
             # Logger: décision prise
             if self.orchestration_logger:
-                action_type = decision.action if decision.action in ("continue", "stop", "change_approach") else "continue"
+                action_type = (
+                    decision.action if decision.action in ("continue", "stop", "change_approach") else "continue"
+                )
                 self.orchestration_logger.log_decision(
                     agent="AutonomousStrategist",
                     decision_type=action_type,
@@ -653,12 +655,12 @@ Actions:
             if decision.action in ("stop", "accept"):
                 logger.warning(
                     f"🤖 Iteration {iteration}/{max_iter_label}: ACTION CRITIQUE = '{decision.action.upper()}' | "
-                    f"Confidence={decision.confidence:.2f} | Reasoning: {decision.reasoning}"
+                    f"Confidence={decision.confidence:.2f} | Reasoning: {decision.reasoning}",
                 )
             elif self.verbose:
                 logger.info(
                     f"🤖 Iteration {iteration}/{max_iter_label}: action='{decision.action}' | "
-                    f"confidence={decision.confidence:.2f} | reasoning={decision.reasoning[:80]}..."
+                    f"confidence={decision.confidence:.2f} | reasoning={decision.reasoning[:80]}...",
                 )
             else:
                 # Log minimaliste pour continue/change_direction
@@ -671,18 +673,18 @@ Actions:
                 logger.info(f"Optimisation acceptée: {decision.reasoning}")
                 break
 
-            elif decision.action == "stop":
+            if decision.action == "stop":
                 session.final_status = "no_improvement"
                 session.final_reasoning = decision.reasoning
                 logger.info(f"Arrêt: {decision.reasoning}")
                 break
 
-            elif decision.action == "sweep":
+            if decision.action == "sweep":
                 # Vérifier la limite de sweeps
                 if sweeps_performed >= max_sweeps_per_session:
                     logger.warning(
                         f"⚠️ Limite de sweeps atteinte ({max_sweeps_per_session}). "
-                        f"Sweep request ignoré, continue avec proposals normales."
+                        f"Sweep request ignoré, continue avec proposals normales.",
                     )
                     # Forcer l'action à "stop" pour éviter boucle infinie
                     decision.action = "stop"
@@ -698,7 +700,7 @@ Actions:
                 logger.warning(
                     f"🔍 Iteration {iteration}/{max_iter_label}: SWEEP REQUEST #{sweeps_performed + 1} | "
                     f"Ranges={list(decision.ranges.keys()) if decision.ranges else []} | "
-                    f"Rationale: {decision.rationale[:80]}"
+                    f"Rationale: {decision.rationale[:80]}",
                 )
 
                 # Logger: lancement du sweep
@@ -719,13 +721,12 @@ Actions:
                     logger.warning(
                         f"⚠️ Ranges déjà testées dans cette session! | "
                         f"Params={list(decision.ranges.keys())} | "
-                        f"Forcing diversification..."
+                        f"Forcing diversification...",
                     )
                     # Forcer à stop pour éviter boucle infinie
                     decision.action = "stop"
                     decision.reasoning = (
-                        f"Ranges already tested. Need different ranges. "
-                        f"Original rationale: {decision.rationale}"
+                        f"Ranges already tested. Need different ranges. Original rationale: {decision.rationale}"
                     )
                     session.final_status = "ranges_already_tested"
                     session.final_reasoning = decision.reasoning
@@ -756,43 +757,43 @@ Actions:
                     )
 
                     # Incrémenter les compteurs de budget
-                    n_combinations = sweep_results['n_combinations']
+                    n_combinations = sweep_results["n_combinations"]
                     sweeps_performed += 1
                     total_combinations_tested += n_combinations
 
                     # Enregistrer les ranges testées dans le tracker
-                    best_sharpe = sweep_results['best_metrics'].get('sharpe_ratio', 0)
+                    best_sharpe = sweep_results["best_metrics"].get("sharpe_ratio", 0)
                     ranges_tracker.register(
                         ranges=decision.ranges,
                         n_combinations=n_combinations,
                         best_sharpe=best_sharpe,
-                        rationale=decision.rationale
+                        rationale=decision.rationale,
                     )
 
                     logger.info(
                         f"✅ Sweep #{sweeps_performed} terminé: {n_combinations} combinaisons testées | "
                         f"Best {decision.optimize_for}={sweep_results['best_metrics'].get(decision.optimize_for, 0):.3f} | "
-                        f"Budget: {total_combinations_tested}/{max_iter_label} combos"
+                        f"Budget: {total_combinations_tested}/{max_iter_label} combos",
                     )
 
                     # Logger: résultat du sweep
                     if self.orchestration_logger:
                         self.orchestration_logger.log_backtest_complete(
                             agent="AutonomousStrategist",
-                            params=sweep_results['best_params'],
+                            params=sweep_results["best_params"],
                             results={
-                                "pnl": sweep_results['best_metrics'].get('total_return', 0),
-                                "sharpe": sweep_results['best_metrics'].get('sharpe_ratio', 0),
-                                "return": sweep_results['best_metrics'].get('total_return', 0),
-                                "n_combinations": sweep_results['n_combinations'],
+                                "pnl": sweep_results["best_metrics"].get("total_return", 0),
+                                "sharpe": sweep_results["best_metrics"].get("sharpe_ratio", 0),
+                                "return": sweep_results["best_metrics"].get("total_return", 0),
+                                "n_combinations": sweep_results["n_combinations"],
                             },
                             combination_id=iteration,
                         )
 
                     # Valider le meilleur config avec un backtest complet (déjà fait par sweep)
                     # On crée un BacktestResult artificiel depuis les métriques
-                    best_params = sweep_results['best_params']
-                    best_metrics = sweep_results['best_metrics']
+                    best_params = sweep_results["best_params"]
+                    best_metrics = sweep_results["best_metrics"]
 
                     # Créer BacktestRequest pour traçabilité
                     request = BacktestRequest(
@@ -805,12 +806,12 @@ Actions:
                     result = BacktestResult(
                         request=request,
                         success=True,
-                        sharpe_ratio=best_metrics.get('sharpe_ratio', 0),
-                        total_return=best_metrics.get('total_return', 0),
-                        max_drawdown=best_metrics.get('max_drawdown', 1),
-                        win_rate=best_metrics.get('win_rate', 0),
-                        total_trades=best_metrics.get('total_trades', 0),
-                        overfitting_ratio=best_metrics.get('overfitting_ratio', 1.0),
+                        sharpe_ratio=best_metrics.get("sharpe_ratio", 0),
+                        total_return=best_metrics.get("total_return", 0),
+                        max_drawdown=best_metrics.get("max_drawdown", 1),
+                        win_rate=best_metrics.get("win_rate", 0),
+                        total_trades=best_metrics.get("total_trades", 0),
+                        overfitting_ratio=best_metrics.get("overfitting_ratio", 1.0),
                         execution_time_ms=0,
                     )
 
@@ -820,7 +821,7 @@ Actions:
                     if self._is_better(result, session.best_result, target_metric):
                         session.best_result = result
                         logger.info(
-                            f"Nouveau meilleur trouvé par sweep! Sharpe={result.sharpe_ratio:.3f}"
+                            f"Nouveau meilleur trouvé par sweep! Sharpe={result.sharpe_ratio:.3f}",
                         )
 
                     if self.on_progress:
@@ -833,14 +834,17 @@ Actions:
                         self.orchestration_logger.log_decision(
                             agent="AutonomousStrategist",
                             decision_type="sweep_failed",
-                            reason=f"Sweep failed: {str(e)}",
+                            reason=f"Sweep failed: {e!s}",
                             details={},
                         )
 
             elif decision.action in ("continue", "change_direction"):
                 # Valider et corriger les paramètres
                 next_params = self._validate_parameters(
-                    decision.next_parameters, param_bounds, initial_params, session
+                    decision.next_parameters,
+                    param_bounds,
+                    initial_params,
+                    session,
                 )
 
                 # Logger: changement de paramètres
@@ -893,7 +897,7 @@ Actions:
                 if self._is_better(result, session.best_result, target_metric):
                     session.best_result = result
                     logger.info(
-                        f"Nouveau meilleur! Sharpe={result.sharpe_ratio:.3f}"
+                        f"Nouveau meilleur! Sharpe={result.sharpe_ratio:.3f}",
                     )
 
                 # Incrémenter le compteur de budget (1 combo testée)
@@ -925,8 +929,7 @@ Actions:
                 logger.warning(f"Échec de la sauvegarde finale des logs: {e}")
 
         logger.info(
-            f"Optimisation terminée: {session.final_status} | "
-            f"Meilleur Sharpe: {session.best_result.sharpe_ratio:.3f}"
+            f"Optimisation terminée: {session.final_status} | Meilleur Sharpe: {session.best_result.sharpe_ratio:.3f}",
         )
 
         return session
@@ -935,11 +938,12 @@ Actions:
         self,
         executor: BacktestExecutor,
         session: OptimizationSession,
-        param_bounds: Dict[str, tuple],
+        param_bounds: dict[str, tuple],
         min_sharpe: float,
         max_drawdown: float,
     ) -> str:
         """Construit le contexte pour le LLM."""
+
         def _format_items(items: Any) -> str:
             if isinstance(items, (list, tuple)):
                 return ", ".join(str(item) for item in items) if items else "N/A"
@@ -966,24 +970,28 @@ Actions:
 
         if session.comparison_context:
             context_data = session.comparison_context
-            lines.extend([
-                "Multi-Sweep Context:",
-                f"  Mode: {context_data.get('mode', 'N/A')}",
-                f"  Strategies: {_format_items(context_data.get('strategies'))}",
-                f"  Symbols: {_format_items(context_data.get('symbols'))}",
-                f"  Timeframes: {_format_items(context_data.get('timeframes'))}",
-                f"  Total combinations: {context_data.get('total_combinations', 0)}",
-            ])
+            lines.extend(
+                [
+                    "Multi-Sweep Context:",
+                    f"  Mode: {context_data.get('mode', 'N/A')}",
+                    f"  Strategies: {_format_items(context_data.get('strategies'))}",
+                    f"  Symbols: {_format_items(context_data.get('symbols'))}",
+                    f"  Timeframes: {_format_items(context_data.get('timeframes'))}",
+                    f"  Total combinations: {context_data.get('total_combinations', 0)}",
+                ],
+            )
 
             if context_data.get("has_results"):
-                lines.extend([
-                    f"  Sweeps: {context_data.get('total_sweeps', 0)}",
-                    f"  Profitable: {context_data.get('profitable_count', 0)}",
-                    f"  Avg PnL: {_format_float(context_data.get('avg_pnl'), 2)}",
-                    f"  Median PnL: {_format_float(context_data.get('median_pnl'), 2)}",
-                    f"  Best Sharpe: {_format_float(context_data.get('best_sharpe'), 3)}",
-                    f"  Avg Sharpe: {_format_float(context_data.get('avg_sharpe'), 3)}",
-                ])
+                lines.extend(
+                    [
+                        f"  Sweeps: {context_data.get('total_sweeps', 0)}",
+                        f"  Profitable: {context_data.get('profitable_count', 0)}",
+                        f"  Avg PnL: {_format_float(context_data.get('avg_pnl'), 2)}",
+                        f"  Median PnL: {_format_float(context_data.get('median_pnl'), 2)}",
+                        f"  Best Sharpe: {_format_float(context_data.get('best_sharpe'), 3)}",
+                        f"  Avg Sharpe: {_format_float(context_data.get('avg_sharpe'), 3)}",
+                    ],
+                )
 
                 best_overall = context_data.get("best_overall")
                 if isinstance(best_overall, dict) and best_overall:
@@ -996,7 +1004,7 @@ Actions:
                     if best_strategy or best_symbol or best_timeframe:
                         lines.append(
                             f"{label} {best_strategy} {best_symbol} {best_timeframe} | "
-                            f"PnL={best_pnl} Sharpe={best_sharpe}"
+                            f"PnL={best_pnl} Sharpe={best_sharpe}",
                         )
                     else:
                         lines.append(f"{label} PnL={best_pnl} Sharpe={best_sharpe}")
@@ -1020,30 +1028,36 @@ Actions:
             session.indicator_context_cached = True
 
         if session.strategy_indicators_context:
-            lines.extend([
-                "Strategy Indicators (modifiable):",
-                session.strategy_indicators_context,
-                "",
-            ])
+            lines.extend(
+                [
+                    "Strategy Indicators (modifiable):",
+                    session.strategy_indicators_context,
+                    "",
+                ],
+            )
         if session.readonly_indicators_context:
-            lines.extend([
-                "Context Indicators (read-only):",
-                session.readonly_indicators_context,
-                "",
-            ])
+            lines.extend(
+                [
+                    "Context Indicators (read-only):",
+                    session.readonly_indicators_context,
+                    "",
+                ],
+            )
         if session.indicator_context_warnings:
             lines.append("Indicator Context Warnings:")
             for w in session.indicator_context_warnings:
                 lines.append(f"  - {w}")
             lines.append("")
 
-        lines.extend([
-            "Indicator Usage Notes:",
-            "  - Strategy indicators are tied to tunable parameters.",
-            "  - Context indicators are read-only and for regime interpretation only.",
-            "  - Indicator values are computed once per run (baseline snapshot).",
-            "",
-        ])
+        lines.extend(
+            [
+                "Indicator Usage Notes:",
+                "  - Strategy indicators are tied to tunable parameters.",
+                "  - Context indicators are read-only and for regime interpretation only.",
+                "  - Indicator values are computed once per run (baseline snapshot).",
+                "",
+            ],
+        )
 
         lines.append("Parameter Bounds:")
 
@@ -1055,16 +1069,17 @@ Actions:
                 current = session.best_result.request.parameters.get(param, "?")
                 param_count = stats.per_param_counts.get(param, "?")
                 lines.append(
-                    f"  {param}: [{min_val}, {max_val}] "
-                    f"(current: {current}, values: {param_count})"
+                    f"  {param}: [{min_val}, {max_val}] (current: {current}, values: {param_count})",
                 )
 
             # Ajouter le résumé de l'espace de recherche
-            lines.extend([
-                "",
-                "Search Space:",
-                f"  {stats.summary()}",
-            ])
+            lines.extend(
+                [
+                    "",
+                    "Search Space:",
+                    f"  {stats.summary()}",
+                ],
+            )
 
             if stats.warnings:
                 lines.append(f"  Warnings: {', '.join(stats.warnings)}")
@@ -1076,12 +1091,14 @@ Actions:
                 current = session.best_result.request.parameters.get(param, "?")
                 lines.append(f"  {param}: [{min_val}, {max_val}] (current: {current})")
 
-        lines.extend([
-            "",
-            "Constraints:",
-            f"  Min Sharpe: {min_sharpe}",
-            f"  Max Drawdown: {max_drawdown:.0%}",
-        ])
+        lines.extend(
+            [
+                "",
+                "Constraints:",
+                f"  Min Sharpe: {min_sharpe}",
+                f"  Max Drawdown: {max_drawdown:.0%}",
+            ],
+        )
 
         # Dernières décisions
         if session.decisions:
@@ -1089,31 +1106,29 @@ Actions:
             for i, dec in enumerate(session.decisions[-5:], 1):
                 lines.append(f"  {i}. {dec.action}: {dec.reasoning[:60]}...")
 
-        lines.extend([
-            "",
-            "What is your next action?",
-            "Remember: respond in JSON format with action, reasoning, next_hypothesis, next_parameters.",
-        ])
+        lines.extend(
+            [
+                "",
+                "What is your next action?",
+                "Remember: respond in JSON format with action, reasoning, next_hypothesis, next_parameters.",
+            ],
+        )
 
         return "\n".join(lines)
 
     def _get_llm_decision(self, context: str, session: OptimizationSession) -> IterationDecision:
         """Obtient une décision du LLM."""
-
         # Identifiant pour corrélation logs (optim_id = strategy + timestamp)
         import hashlib
         import time
+
         optim_id = f"{session.strategy_name}_{session.start_time.strftime('%Y%m%d_%H%M%S')}"
 
         # LLM_CALL_START
         # Récupérer config depuis le client LLM
-        model_name = self.llm.config.model if hasattr(self.llm, 'config') else 'unknown'
-        max_tokens = self.llm.config.max_tokens if hasattr(self.llm, 'config') else 0
-        timeout = (
-            getattr(self.llm.config, "timeout_seconds", 0)
-            if hasattr(self.llm, "config")
-            else 0
-        )
+        model_name = self.llm.config.model if hasattr(self.llm, "config") else "unknown"
+        max_tokens = self.llm.config.max_tokens if hasattr(self.llm, "config") else 0
+        timeout = getattr(self.llm.config, "timeout_seconds", 0) if hasattr(self.llm, "config") else 0
 
         def _log_orchestration_event(event_type: str, **payload: Any) -> None:
             if not self.orchestration_logger:
@@ -1146,7 +1161,7 @@ Actions:
             f"LLM_CALL_START optim_id={optim_id} iteration={session.current_iteration} "
             f"model={model_name} temperature=0.5 "
             f"tokens_max={max_tokens} "
-            f"timeout={timeout}"
+            f"timeout={timeout}",
         )
 
         # LLM_PROMPT_META
@@ -1154,7 +1169,7 @@ Actions:
         logger.debug(
             f"LLM_PROMPT_META optim_id={optim_id} iteration={session.current_iteration} "
             f"prompt_hash={context_hash} prompt_chars={len(context)} "
-            f"prompt_tokens={len(context.split())} template_version=v1.0"
+            f"prompt_tokens={len(context.split())} template_version=v1.0",
         )
 
         # Appel LLM avec mesure latence
@@ -1167,7 +1182,7 @@ Actions:
         logger.info(
             f"LLM_RESPONSE_META optim_id={optim_id} iteration={session.current_iteration} "
             f"latency_sec={latency:.2f} tokens_out={tokens_out} "
-            f"finish_reason=complete"
+            f"finish_reason=complete",
         )
 
         if not response.content:
@@ -1196,7 +1211,7 @@ Actions:
             )
             logger.error(
                 f"❌ Échec parsing JSON de la réponse LLM. "
-                f"Réponse brute (100 premiers chars): {response.content[:100]}"
+                f"Réponse brute (100 premiers chars): {response.content[:100]}",
             )
             return IterationDecision(
                 action="stop",
@@ -1233,7 +1248,7 @@ Actions:
                 f"LLM_DECISION_PARSED optim_id={optim_id} iteration={session.current_iteration} "
                 f"action={action} confidence={data.get('confidence', 0.5):.2f} "
                 f"ranges_count={ranges_count} optimize_for={optimize_for} "
-                f"max_combinations={max_combinations} reasoning_hash={reasoning_hash}"
+                f"max_combinations={max_combinations} reasoning_hash={reasoning_hash}",
             )
         else:
             logger.info(
@@ -1241,14 +1256,14 @@ Actions:
                 f"action={action} confidence={data.get('confidence', 0.5):.2f} "
                 f"next_params_count={len(next_params) if next_params else 0} "
                 f"next_params_keys={list(next_params.keys()) if next_params else []} "
-                f"reasoning_hash={reasoning_hash}"
+                f"reasoning_hash={reasoning_hash}",
             )
 
         # LLM_FALLBACK_USED - Warning si next_parameters vide pour continue/change_direction
         if action in ("continue", "change_direction") and not next_params:
             logger.warning(
                 f"LLM_FALLBACK_USED optim_id={optim_id} iteration={session.current_iteration} "
-                f"action={action} fallback=will_use_defaults cause=next_params_empty"
+                f"action={action} fallback=will_use_defaults cause=next_params_empty",
             )
 
         # Validation sweep: ranges obligatoire si action == "sweep"
@@ -1262,7 +1277,7 @@ Actions:
             )
             logger.warning(
                 f"LLM_INVALID_DECISION optim_id={optim_id} iteration={session.current_iteration} "
-                f"action_original=sweep action_forced=stop reason=ranges_empty_or_missing"
+                f"action_original=sweep action_forced=stop reason=ranges_empty_or_missing",
             )
             return IterationDecision(
                 action="stop",
@@ -1292,20 +1307,19 @@ Actions:
 
     def _validate_parameters(
         self,
-        params: Dict[str, Any],
-        bounds: Dict[str, tuple],
-        defaults: Dict[str, Any],
+        params: dict[str, Any],
+        bounds: dict[str, tuple],
+        defaults: dict[str, Any],
         session: OptimizationSession,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Valide et corrige les paramètres avec checks robustes."""
-
         # Identifiant pour corrélation logs
         optim_id = f"{session.strategy_name}_{session.start_time.strftime('%Y%m%d_%H%M%S')}"
 
         # VALIDATION_START
         logger.info(
             f"VALIDATION_START optim_id={optim_id} iteration={session.current_iteration} "
-            f"validating=parameters proposed={params} bounds_count={len(bounds)}"
+            f"validating=parameters proposed={params} bounds_count={len(bounds)}",
         )
 
         validated = {}
@@ -1325,7 +1339,9 @@ Actions:
                         min_val, max_val = max_val, min_val
                 else:
                     # Valeur scalaire (cas edge)
-                    min_val = max_val = float(bound_spec) if not isinstance(bound_spec, (tuple, list)) else float(bound_spec[0])
+                    min_val = max_val = (
+                        float(bound_spec) if not isinstance(bound_spec, (tuple, list)) else float(bound_spec[0])
+                    )
 
                 value_proposed = params.get(param)
                 value_default = defaults.get(param)
@@ -1356,7 +1372,7 @@ Actions:
                     f"VALIDATION_RULE_RESULT optim_id={optim_id} iteration={session.current_iteration} "
                     f"param={param} rule=bounds_check proposed={value_proposed} "
                     f"default={value_default} bounds=({min_val},{max_val}) "
-                    f"final={value} status={status} action={action}"
+                    f"final={value} status={status} action={action}",
                 )
 
             except (ValueError, TypeError, IndexError) as e:
@@ -1367,7 +1383,7 @@ Actions:
         # VALIDATION_END
         logger.info(
             f"VALIDATION_END optim_id={optim_id} iteration={session.current_iteration} "
-            f"validated={validated} used_defaults={used_defaults} verdict=accepted"
+            f"validated={validated} used_defaults={used_defaults} verdict=accepted",
         )
 
         return validated
@@ -1379,7 +1395,6 @@ Actions:
         metric: str,
     ) -> bool:
         """Détermine si un résultat est meilleur."""
-
         if not new.success:
             return False
 
@@ -1393,12 +1408,11 @@ Actions:
 
         if metric in ("max_drawdown",):  # Métriques à minimiser
             return new_value < current_value
-        else:  # Métriques à maximiser
-            return new_value > current_value
+        # Métriques à maximiser
+        return new_value > current_value
 
     def execute(self, context: AgentContext) -> AgentResult:
-        """
-        Exécute une itération (pour compatibilité avec BaseAgent).
+        """Exécute une itération (pour compatibilité avec BaseAgent).
 
         Pour une optimisation complète, utilisez optimize() directement.
         """
@@ -1418,10 +1432,9 @@ def create_autonomous_optimizer(
     backtest_fn: Callable,
     strategy_name: str,
     data: pd.DataFrame,
-    validation_fn: Optional[Callable] = None,
+    validation_fn: Callable | None = None,
 ) -> tuple[AutonomousStrategist, BacktestExecutor]:
-    """
-    Factory pour créer un optimiseur autonome complet.
+    """Factory pour créer un optimiseur autonome complet.
 
     Args:
         llm_config: Configuration LLM
@@ -1449,6 +1462,7 @@ def create_autonomous_optimizer(
         ...     initial_params={"fast": 10, "slow": 21},
         ...     param_bounds={"fast": (5, 20), "slow": (15, 50)},
         ... )
+
     """
     from .llm_client import create_llm_client
 

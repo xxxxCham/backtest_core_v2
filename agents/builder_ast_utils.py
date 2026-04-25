@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.builder_ast_utils
+"""Module-ID: agents.builder_ast_utils
 
 Purpose: Utilitaires AST et parsing LLM extraits de strategy_builder.
 
@@ -16,7 +15,7 @@ import json
 import logging
 import re
 import textwrap
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from agents.builder_constants import (
     _AST_PARSE_RECOVERABLE_EXCEPTIONS,
@@ -72,7 +71,7 @@ def _const_value(node: ast.AST) -> Any:
     return None
 
 
-def _indicator_name_from_subscript(node: ast.AST) -> Optional[str]:
+def _indicator_name_from_subscript(node: ast.AST) -> str | None:
     """Retourne le nom d'indicateur pour indicators['name']."""
     if not isinstance(node, ast.Subscript):
         return None
@@ -84,7 +83,7 @@ def _indicator_name_from_subscript(node: ast.AST) -> Optional[str]:
     return None
 
 
-def _indicator_name_from_get_call(node: ast.AST) -> Optional[str]:
+def _indicator_name_from_get_call(node: ast.AST) -> str | None:
     """Retourne le nom d'indicateur pour indicators.get('name', ...)."""
     if not isinstance(node, ast.Call):
         return None
@@ -149,7 +148,7 @@ def _iter_generated_class_methods(tree: ast.AST):
             return
 
 
-def _iter_generate_signals_functions(tree: ast.AST) -> List[ast.FunctionDef]:
+def _iter_generate_signals_functions(tree: ast.AST) -> list[ast.FunctionDef]:
     """Extrait les méthodes generate_signals de BuilderGeneratedStrategy."""
     return [
         m
@@ -234,14 +233,11 @@ def _collect_bound_names(fn: ast.AST) -> set[str]:
     bound.update(store_names)
 
     for node in ast.walk(fn):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) or (
+            isinstance(node, ast.ExceptHandler) and isinstance(node.name, str)
+        ):
             bound.add(node.name)
-        elif isinstance(node, ast.ExceptHandler) and isinstance(node.name, str):
-            bound.add(node.name)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                bound.add(alias.asname or alias.name.split(".")[0])
-        elif isinstance(node, ast.ImportFrom):
+        elif isinstance(node, ast.Import) or isinstance(node, ast.ImportFrom):
             for alias in node.names:
                 bound.add(alias.asname or alias.name.split(".")[0])
 
@@ -255,10 +251,7 @@ def _collect_module_level_bound_names(tree: ast.AST) -> set[str]:
     for node in getattr(tree, "body", []) or []:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             bound.add(node.name)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                bound.add(alias.asname or alias.name.split(".")[0])
-        elif isinstance(node, ast.ImportFrom):
+        elif isinstance(node, ast.Import) or isinstance(node, ast.ImportFrom):
             for alias in node.names:
                 bound.add(alias.asname or alias.name.split(".")[0])
         elif isinstance(node, ast.Assign):
@@ -271,8 +264,8 @@ def _collect_module_level_bound_names(tree: ast.AST) -> set[str]:
     return bound
 
 
-def _normalize_required_indicator_names(required_indicators: Optional[List[str]]) -> List[str]:
-    normalized: List[str] = []
+def _normalize_required_indicator_names(required_indicators: list[str] | None) -> list[str]:
+    normalized: list[str] = []
     if not required_indicators:
         return normalized
     for item in required_indicators:
@@ -297,7 +290,7 @@ def _strip_leading_list_marker(line: str) -> str:
 
 def _sanitize_python_list_markers(code: str) -> str:
     """Supprime les marqueurs de liste LLM devant des lignes Python valides."""
-    fixed_lines: List[str] = []
+    fixed_lines: list[str] = []
     for line in str(code or "").splitlines():
         candidate = _strip_leading_list_marker(line)
         if candidate != line and (_PYTHONISH_LINE_RE.match(candidate.lstrip()) or candidate.lstrip().startswith("#")):
@@ -309,7 +302,7 @@ def _sanitize_python_list_markers(code: str) -> str:
 
 def _drop_obvious_non_python_lines(code: str) -> str:
     """Supprime les lignes manifestement non Python après extraction."""
-    kept_lines: List[str] = []
+    kept_lines: list[str] = []
     for line in str(code or "").splitlines():
         stripped = line.strip()
         if not stripped:
@@ -327,8 +320,8 @@ def _balance_brackets_outside_strings(code: str) -> str:
     """Rééquilibre prudemment les parenthèses/crochets/accolades hors chaînes."""
     open_to_close = {"(": ")", "[": "]", "{": "}"}
     closing_to_open = {")": "(", "]": "[", "}": "{"}
-    stack: List[str] = []
-    output: List[str] = []
+    stack: list[str] = []
+    output: list[str] = []
     in_single = False
     in_double = False
     escape = False
@@ -376,7 +369,7 @@ def _balance_brackets_outside_strings(code: str) -> str:
 def _strip_non_python_noise(text: str) -> str:
     """Retire le bruit fréquent des réponses LLM autour du code Python."""
     raw_lines = str(text or "").splitlines()
-    cleaned_lines: List[str] = []
+    cleaned_lines: list[str] = []
     seen_code = False
 
     for line in raw_lines:
@@ -419,10 +412,10 @@ def _strip_non_python_noise(text: str) -> str:
     return ""
 
 
-def _extract_json_from_response(text: str) -> Dict[str, Any]:
+def _extract_json_from_response(text: str) -> dict[str, Any]:
     """Extrait un bloc JSON depuis une réponse LLM (gère ```json ... ```, <think>, etc.)."""
 
-    def _parse_json_dict(payload: str) -> Dict[str, Any]:
+    def _parse_json_dict(payload: str) -> dict[str, Any]:
         try:
             data = json.loads(payload)
         except json.JSONDecodeError:
@@ -534,14 +527,14 @@ def _salvage_complex_ast_syntax(code: str) -> str:
     return candidate
 
 
-def _indicator_name_from_hint_expression(expr: str) -> Optional[str]:
+def _indicator_name_from_hint_expression(expr: str) -> str | None:
     match = re.search(r"indicators\[['\"]([A-Za-z0-9_]+)['\"]\]", str(expr or ""))
     if not match:
         return None
     return str(match.group(1)).strip().lower() or None
 
 
-def _extract_declared_required_indicators(code: str) -> List[str]:
+def _extract_declared_required_indicators(code: str) -> list[str]:
     try:
         tree = ast.parse(code)
     except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
@@ -553,7 +546,7 @@ def _extract_declared_required_indicators(code: str) -> List[str]:
         for stmt in node.body:
             if not isinstance(stmt, ast.Return) or not isinstance(stmt.value, ast.List):
                 continue
-            items: List[str] = []
+            items: list[str] = []
             for elt in stmt.value.elts:
                 if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
                     items.append(str(elt.value))
@@ -563,7 +556,7 @@ def _extract_declared_required_indicators(code: str) -> List[str]:
 
 def _extract_generate_signals_logic_block(code: str) -> str:
     """Extrait le bloc logique de generate_signals depuis une réponse LLM."""
-    candidates: List[str] = []
+    candidates: list[str] = []
     direct = str(code or "")
     salvaged = _salvage_complex_ast_syntax(direct)
     extracted = _extract_python_from_response(direct)
@@ -594,7 +587,7 @@ def _extract_generate_signals_logic_block(code: str) -> str:
             start = int(fn.body[0].lineno) - 1
             end = int(getattr(fn.body[-1], "end_lineno", fn.body[-1].lineno))
             block_lines = lines[start:end]
-            stripped: List[str] = []
+            stripped: list[str] = []
             for line in block_lines:
                 s = line.strip()
                 if not s:
@@ -650,7 +643,7 @@ def _extract_generate_signals_signature(code: str) -> str:
     return ""
 
 
-def _extract_default_params_signature(code: str) -> Dict[str, Any]:
+def _extract_default_params_signature(code: str) -> dict[str, Any]:
     """Retourne le dict literal de default_params depuis le code généré."""
     try:
         tree = ast.parse(code)

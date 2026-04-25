@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.filters
+"""Module-ID: indicators.filters
 
 Purpose: Configuration et logique métier pour les filtres de signaux.
          Extraction de la logique depuis ui/sidebar.py (DDD refactoring).
@@ -23,7 +22,7 @@ Skip-if: Logique de trading pure
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # ============================================================================
 # CONFIGURATION CONSTANTS
@@ -57,12 +56,14 @@ DEFAULT_MARKOV_CONFIG = {
 # DATA CLASSES
 # ============================================================================
 
+
 @dataclass
 class MarkovFilterConfig:
     """Configuration du filtre Markov Switching."""
+
     enabled: bool = False
-    allowed_regimes: List[int] = field(default_factory=lambda: [0, 1, 2])
-    forbidden_regimes: List[int] = field(default_factory=list)
+    allowed_regimes: list[int] = field(default_factory=lambda: [0, 1, 2])
+    forbidden_regimes: list[int] = field(default_factory=list)
     resample_tf: str = "1h"
     k_regimes: int = 3
     filter_mode: str = "allow"  # "allow" ou "forbid"
@@ -75,7 +76,7 @@ class MarkovFilterConfig:
         all_regimes = set(range(self.k_regimes))
         return set(self.allowed_regimes) != all_regimes
 
-    def to_params_dict(self) -> Dict[str, Any]:
+    def to_params_dict(self) -> dict[str, Any]:
         """Convertit en dict pour injection dans les paramètres backtest."""
         return {
             "use_markov_filter": self.enabled,
@@ -88,22 +89,24 @@ class MarkovFilterConfig:
 @dataclass
 class MarkovOptions:
     """Options disponibles pour la configuration Markov."""
-    available_regimes: Dict[int, str] = field(default_factory=lambda: MARKOV_REGIMES.copy())
-    recommended_timeframes: List[str] = field(default_factory=lambda: MARKOV_RECOMMENDED_TF.copy())
-    unstable_timeframes: List[str] = field(default_factory=lambda: MARKOV_UNSTABLE_TF.copy())
-    k_regimes_options: List[int] = field(default_factory=lambda: MARKOV_K_REGIMES_OPTIONS.copy())
+
+    available_regimes: dict[int, str] = field(default_factory=lambda: MARKOV_REGIMES.copy())
+    recommended_timeframes: list[str] = field(default_factory=lambda: MARKOV_RECOMMENDED_TF.copy())
+    unstable_timeframes: list[str] = field(default_factory=lambda: MARKOV_UNSTABLE_TF.copy())
+    k_regimes_options: list[int] = field(default_factory=lambda: MARKOV_K_REGIMES_OPTIONS.copy())
 
 
 # ============================================================================
 # CONFIGURATION FUNCTIONS
 # ============================================================================
 
+
 def get_markov_options() -> MarkovOptions:
-    """
-    Récupère les options disponibles pour le filtre Markov.
+    """Récupère les options disponibles pour le filtre Markov.
 
     Returns:
         MarkovOptions avec régimes, timeframes, etc.
+
     """
     return MarkovOptions()
 
@@ -111,12 +114,11 @@ def get_markov_options() -> MarkovOptions:
 def create_markov_config(
     enabled: bool = False,
     filter_mode: str = "allow",
-    selected_regimes: Optional[List[int]] = None,
+    selected_regimes: list[int] | None = None,
     resample_tf: str = "1h",
-    k_regimes: int = 3
+    k_regimes: int = 3,
 ) -> MarkovFilterConfig:
-    """
-    Crée une configuration Markov à partir des sélections utilisateur.
+    """Crée une configuration Markov à partir des sélections utilisateur.
 
     Args:
         enabled: Si le filtre est activé
@@ -127,6 +129,7 @@ def create_markov_config(
 
     Returns:
         MarkovFilterConfig configurée
+
     """
     if selected_regimes is None:
         selected_regimes = [0, 1, 2]
@@ -151,15 +154,15 @@ def create_markov_config(
     return config
 
 
-def validate_markov_config(config: MarkovFilterConfig) -> tuple[bool, Optional[str]]:
-    """
-    Valide une configuration Markov.
+def validate_markov_config(config: MarkovFilterConfig) -> tuple[bool, str | None]:
+    """Valide une configuration Markov.
 
     Args:
         config: Configuration à valider
 
     Returns:
         Tuple (is_valid, error_message)
+
     """
     if not config.enabled:
         return True, None  # Désactivé = toujours valide
@@ -181,45 +184,45 @@ def validate_markov_config(config: MarkovFilterConfig) -> tuple[bool, Optional[s
     return True, None
 
 
-def get_regime_display_info(k_regimes: int) -> Dict[int, Dict[str, str]]:
-    """
-    Récupère les informations d'affichage pour chaque régime.
+def get_regime_display_info(k_regimes: int) -> dict[int, dict[str, str]]:
+    """Récupère les informations d'affichage pour chaque régime.
 
     Args:
         k_regimes: Nombre de régimes
 
     Returns:
         Dict {regime_id: {name, emoji, description}}
+
     """
     if k_regimes == 2:
         return {
             0: {"name": "Bull", "emoji": "🟢", "description": "Régime haussier"},
             1: {"name": "Bear", "emoji": "🔴", "description": "Régime baissier"},
         }
-    elif k_regimes == 3:
+    if k_regimes == 3:
         return {
             0: {"name": "Bull", "emoji": "🟢", "description": "Forte volatilité positive"},
             1: {"name": "Bear", "emoji": "🔴", "description": "Forte volatilité négative"},
             2: {"name": "Ranging", "emoji": "🟡", "description": "Consolidation, faible volatilité"},
         }
-    else:  # k_regimes == 4
-        return {
-            0: {"name": "Bull fort", "emoji": "🟢", "description": "Tendance haussière forte"},
-            1: {"name": "Bull faible", "emoji": "🟡", "description": "Tendance haussière modérée"},
-            2: {"name": "Bear", "emoji": "🔴", "description": "Tendance baissière"},
-            3: {"name": "Ranging", "emoji": "⚪", "description": "Consolidation"},
-        }
+    # k_regimes == 4
+    return {
+        0: {"name": "Bull fort", "emoji": "🟢", "description": "Tendance haussière forte"},
+        1: {"name": "Bull faible", "emoji": "🟡", "description": "Tendance haussière modérée"},
+        2: {"name": "Bear", "emoji": "🔴", "description": "Tendance baissière"},
+        3: {"name": "Ranging", "emoji": "⚪", "description": "Consolidation"},
+    }
 
 
-def get_recommended_regimes_for_strategy(strategy_key: str) -> List[int]:
-    """
-    Récupère les régimes recommandés pour une stratégie.
+def get_recommended_regimes_for_strategy(strategy_key: str) -> list[int]:
+    """Récupère les régimes recommandés pour une stratégie.
 
     Args:
         strategy_key: Clé de la stratégie
 
     Returns:
         Liste des régimes recommandés
+
     """
     # Stratégies long → préférer Bull + Ranging
     if "long" in strategy_key.lower():
@@ -241,12 +244,12 @@ def get_recommended_regimes_for_strategy(strategy_key: str) -> List[int]:
 # PARAMETER INJECTION
 # ============================================================================
 
+
 def inject_markov_params(
-    params: Dict[str, Any],
-    config: MarkovFilterConfig
-) -> Dict[str, Any]:
-    """
-    Injecte les paramètres Markov dans un dict de paramètres backtest.
+    params: dict[str, Any],
+    config: MarkovFilterConfig,
+) -> dict[str, Any]:
+    """Injecte les paramètres Markov dans un dict de paramètres backtest.
 
     Args:
         params: Dict de paramètres existant
@@ -254,21 +257,22 @@ def inject_markov_params(
 
     Returns:
         Dict de paramètres mis à jour
+
     """
     updated = dict(params)
     updated.update(config.to_params_dict())
     return updated
 
 
-def extract_markov_config_from_params(params: Dict[str, Any]) -> MarkovFilterConfig:
-    """
-    Extrait une configuration Markov depuis un dict de paramètres.
+def extract_markov_config_from_params(params: dict[str, Any]) -> MarkovFilterConfig:
+    """Extrait une configuration Markov depuis un dict de paramètres.
 
     Args:
         params: Dict de paramètres backtest
 
     Returns:
         MarkovFilterConfig extraite
+
     """
     return MarkovFilterConfig(
         enabled=params.get("use_markov_filter", False),

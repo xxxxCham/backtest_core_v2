@@ -1,5 +1,4 @@
-"""
-Benchmark Calcul Hybride CPU+GPU
+"""Benchmark Calcul Hybride CPU+GPU
 ================================
 
 Compare performances CPU vs GPU vs HYBRIDE sur différentes tailles de datasets.
@@ -44,11 +43,11 @@ def benchmark_single_operation(
     window: int = 20,
     n_iterations: int = 10,
 ) -> dict:
-    """
-    Benchmark une opération sur CPU vs GPU.
+    """Benchmark une opération sur CPU vs GPU.
 
     Returns:
         Dict avec times_cpu, times_gpu, speedup
+
     """
     hc = HybridCompute()
 
@@ -60,7 +59,9 @@ def benchmark_single_operation(
     for _ in range(n_iterations):
         start = time.perf_counter()
         _ = auto_compute(
-            data, operation, window=window,
+            data,
+            operation,
+            window=window,
         )
         times_cpu.append((time.perf_counter() - start) * 1000)  # ms
 
@@ -91,45 +92,40 @@ def benchmark_single_operation(
 
 
 def benchmark_dataset_sizes(operation: str = "sma", window: int = 20) -> pd.DataFrame:
-    """
-    Benchmark sur différentes tailles de dataset.
+    """Benchmark sur différentes tailles de dataset.
 
     Teste: 100, 500, 1000, 2000, 5000, 10000, 20000 points
     """
     sizes = [100, 500, 1000, 2000, 5000, 10000, 20000]
     results = []
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"BENCHMARK: {operation.upper()} (window={window})")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     for size in sizes:
         data = generate_test_data(size)
         result = benchmark_single_operation(data, operation, window, n_iterations=10)
         results.append(result)
 
-        gpu_str = f"{result['avg_gpu_ms']:.2f}ms" if result['avg_gpu_ms'] else "N/A"
-        speedup_str = f"{result['speedup']:.2f}×" if result['speedup'] else "N/A"
+        gpu_str = f"{result['avg_gpu_ms']:.2f}ms" if result["avg_gpu_ms"] else "N/A"
+        speedup_str = f"{result['speedup']:.2f}×" if result["speedup"] else "N/A"
 
         print(
-            f"{size:>6} points | "
-            f"CPU: {result['avg_cpu_ms']:>7.2f}ms | "
-            f"GPU: {gpu_str:>10} | "
-            f"Speedup: {speedup_str:>8}"
+            f"{size:>6} points | CPU: {result['avg_cpu_ms']:>7.2f}ms | GPU: {gpu_str:>10} | Speedup: {speedup_str:>8}",
         )
 
     return pd.DataFrame(results)
 
 
 def benchmark_batch_processing(n_symbols: int = 10, data_size: int = 5000) -> dict:
-    """
-    Benchmark batch processing multi-symboles.
+    """Benchmark batch processing multi-symboles.
 
     Simule un sweep multi-symboles avec calculs d'indicateurs.
     """
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"BENCHMARK BATCH: {n_symbols} symboles × {data_size} points")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     # Générer données pour N symboles
     data_list = [generate_test_data(data_size, seed=i) for i in range(n_symbols)]
@@ -172,14 +168,13 @@ def benchmark_sweep_simulation(
     n_combinations: int = 100,
     data_size: int = 2000,
 ) -> dict:
-    """
-    Simule un sweep avec calculs d'indicateurs répétés.
+    """Simule un sweep avec calculs d'indicateurs répétés.
 
     Mesure l'impact du calcul hybride sur un sweep réaliste.
     """
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"BENCHMARK SWEEP: {n_combinations} combinaisons")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     data = generate_test_data(data_size)
     hc = HybridCompute()
@@ -230,9 +225,9 @@ def benchmark_sweep_simulation(
 
 def run_full_benchmark():
     """Execute le benchmark complet."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("BENCHMARK CALCUL HYBRIDE CPU+GPU (RTX 5080)")
-    print("="*70)
+    print("=" * 70)
 
     hc = HybridCompute()
     print(f"\nGPU Disponible : {hc.gpu_available}")
@@ -253,14 +248,14 @@ def run_full_benchmark():
     sweep_500 = benchmark_sweep_simulation(n_combinations=500, data_size=5000)
 
     # Résumé
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("RÉSUMÉ")
-    print("="*70)
+    print("=" * 70)
 
     if hc.gpu_available:
         # Moyennes speedup
-        speedups_sma = [r['speedup'] for r in results_sma.to_dict('records') if r['speedup']]
-        speedups_ema = [r['speedup'] for r in results_ema.to_dict('records') if r['speedup']]
+        speedups_sma = [r["speedup"] for r in results_sma.to_dict("records") if r["speedup"]]
+        speedups_ema = [r["speedup"] for r in results_ema.to_dict("records") if r["speedup"]]
 
         avg_speedup_sma = np.mean(speedups_sma) if speedups_sma else None
         avg_speedup_ema = np.mean(speedups_ema) if speedups_ema else None
@@ -276,7 +271,7 @@ def run_full_benchmark():
         # Estimation gain backtest
         # Hypothèse: 30% du temps en calculs indicateurs
         indicator_time_pct = 0.30
-        avg_speedup = np.mean([avg_speedup_sma, avg_speedup_ema, sweep_500['speedup']])
+        avg_speedup = np.mean([avg_speedup_sma, avg_speedup_ema, sweep_500["speedup"]])
         overall_speedup = 1 + (avg_speedup - 1) * indicator_time_pct
 
         print("   Baseline CPU    : 475 bt/s (30 workers)")
@@ -290,7 +285,7 @@ def run_full_benchmark():
     else:
         print("\n❌ GPU non disponible - Benchmark CPU only")
 
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
 
 
 if __name__ == "__main__":

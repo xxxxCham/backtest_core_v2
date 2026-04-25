@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.observability
+"""Module-ID: utils.observability
 
 Purpose: Observabilité debug intelligent (lazy formatting, traces corrélées, sampling).
 
@@ -29,12 +28,13 @@ import random
 import sys
 import time
 import uuid
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, Generator, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -62,6 +62,7 @@ _LEVEL_MAP = {
 # ============================================================================
 # JSON FORMATTER (pour logs structurés)
 # ============================================================================
+
 
 class JSONFormatter(logging.Formatter):
     """Formateur JSON Lines pour logs structurés."""
@@ -94,7 +95,7 @@ class HumanFormatter(logging.Formatter):
     def __init__(self):
         super().__init__(
             "%(asctime)s | %(levelname)-5s | %(name)s | %(message)s",
-            datefmt="%H:%M:%S"
+            datefmt="%H:%M:%S",
         )
 
     def format(self, record: logging.LogRecord) -> str:
@@ -108,9 +109,9 @@ class HumanFormatter(logging.Formatter):
 # LOGGER ADAPTER AVEC CONTEXTE
 # ============================================================================
 
+
 class ObsLoggerAdapter(logging.LoggerAdapter):
-    """
-    Adapter qui injecte run_id et contexte dans chaque log.
+    """Adapter qui injecte run_id et contexte dans chaque log.
 
     Le contexte est passé une seule fois à la création, puis réutilisé.
     """
@@ -118,10 +119,10 @@ class ObsLoggerAdapter(logging.LoggerAdapter):
     def __init__(
         self,
         logger: logging.Logger,
-        run_id: Optional[str] = None,
-        strategy: Optional[str] = None,
-        symbol: Optional[str] = None,
-        timeframe: Optional[str] = None,
+        run_id: str | None = None,
+        strategy: str | None = None,
+        symbol: str | None = None,
+        timeframe: str | None = None,
     ):
         extra = {
             "run_id": run_id,
@@ -132,14 +133,14 @@ class ObsLoggerAdapter(logging.LoggerAdapter):
         super().__init__(logger, extra)
         self._sample_rate = _LOG_SAMPLE
 
-    def process(self, msg: str, kwargs: Dict[str, Any]) -> tuple:
+    def process(self, msg: str, kwargs: dict[str, Any]) -> tuple:
         """Injecte le contexte dans chaque log."""
         extra = kwargs.get("extra", {})
         extra.update(self.extra)
         kwargs["extra"] = extra
         return msg, kwargs
 
-    def with_context(self, **fields) -> "ObsLoggerAdapter":
+    def with_context(self, **fields) -> ObsLoggerAdapter:
         """Crée un nouvel adapter avec contexte enrichi."""
         new_extra = {**self.extra, **fields}
         return ObsLoggerAdapter(
@@ -160,17 +161,42 @@ class ObsLoggerAdapter(logging.LoggerAdapter):
 # ============================================================================
 
 _initialized = False
-_root_handler: Optional[logging.Handler] = None
+_root_handler: logging.Handler | None = None
+
+
+class _AsyncioBenignWebSocketCloseFilter(logging.Filter):
+    """Filtre le bruit asyncio causé par des WebSockets Streamlit déjà fermées."""
+
+    _BENIGN_MESSAGES = (
+        "Task exception was never retrieved",
+        "Exception in callback",
+    )
+    _BENIGN_EXCEPTION_NAMES = {
+        "WebSocketClosedError",
+        "StreamClosedError",
+    }
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name != "asyncio":
+            return True
+        message = record.getMessage()
+        if not any(marker in message for marker in self._BENIGN_MESSAGES):
+            return True
+        exc_info = record.exc_info
+        if not exc_info:
+            return True
+        exc_type, exc, _traceback = exc_info
+        exc_name = getattr(exc_type, "__name__", "") if exc_type is not None else type(exc).__name__
+        return exc_name not in self._BENIGN_EXCEPTION_NAMES
 
 
 def init_logging(
-    level: Optional[str] = None,
-    json_format: Optional[bool] = None,
-    file_path: Optional[Path] = None,
-    rotate_mb: Optional[int] = None,
+    level: str | None = None,
+    json_format: bool | None = None,
+    file_path: Path | None = None,
+    rotate_mb: int | None = None,
 ) -> None:
-    """
-    Initialise le système de logging.
+    """Initialise le système de logging.
 
     Appelé automatiquement au premier get_obs_logger(), mais peut être
     appelé manuellement pour forcer une configuration spécifique.
@@ -180,6 +206,7 @@ def init_logging(
         json_format: True pour JSON lines, False pour texte
         file_path: Chemin vers fichier de log (optionnel)
         rotate_mb: Taille max du fichier avant rotation (Mo)
+
     """
     global _initialized, _root_handler
 
@@ -231,17 +258,23 @@ def init_logging(
     tornado_general_logger = logging.getLogger("tornado.general")
     tornado_general_logger.setLevel(logging.ERROR)
 
+    # Streamlit/Tornado peuvent fermer le socket navigateur pendant un rerun.
+    # Ces erreurs sont bénignes mais remontent via le logger asyncio comme
+    # "Task exception was never retrieved".
+    asyncio_logger = logging.getLogger("asyncio")
+    if not any(isinstance(f, _AsyncioBenignWebSocketCloseFilter) for f in asyncio_logger.filters):
+        asyncio_logger.addFilter(_AsyncioBenignWebSocketCloseFilter())
+
     _root_handler = console_handler
     _initialized = True
 
 
 def get_obs_logger(
     name: str,
-    run_id: Optional[str] = None,
+    run_id: str | None = None,
     **context,
 ) -> ObsLoggerAdapter:
-    """
-    Obtient un logger avec contexte d'observabilité.
+    """Obtient un logger avec contexte d'observabilité.
 
     Args:
         name: Nom du module (utiliser __name__)
@@ -254,6 +287,7 @@ def get_obs_logger(
     Usage:
         logger = get_obs_logger(__name__, run_id="abc123", strategy="ema_cross")
         logger.info("Pipeline started")  # [abc123] Pipeline started
+
     """
     init_logging()
 
@@ -272,13 +306,12 @@ def get_obs_logger(
 
 
 def generate_run_id(
-    strategy: Optional[str] = None,
-    symbol: Optional[str] = None,
-    timeframe: Optional[str] = None,
-    seed: Optional[int] = None
+    strategy: str | None = None,
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    seed: int | None = None,
 ) -> str:
-    """
-    Génère un run_id unique et lisible pour traçabilité complète.
+    """Génère un run_id unique et lisible pour traçabilité complète.
 
     Format court (si pas de paramètres): 8 caractères UUID
     Format complet: {strategy}_{symbol}_{timeframe}_{timestamp}_{unique}[_s{seed}]
@@ -297,6 +330,7 @@ def generate_run_id(
         'a3f7b2c1'
         >>> generate_run_id("ema_cross", "BTCUSDT", "1h", 42)  # Format complet
         'ema_cross_BTCUSDT_1h_20250228_143052_a3f7b2c1_s42'
+
     """
     # Format court si pas de paramètres
     if not strategy and not symbol and not timeframe:
@@ -326,15 +360,15 @@ def generate_run_id(
 # TRACE SPAN - Mesure de durée
 # ============================================================================
 
+
 @contextmanager
 def trace_span(
     logger: ObsLoggerAdapter,
     name: str,
     log_level: int = logging.DEBUG,
     **fields,
-) -> Generator[Dict[str, Any], None, None]:
-    """
-    Context manager pour tracer la durée d'une opération.
+) -> Generator[dict[str, Any], None, None]:
+    """Context manager pour tracer la durée d'une opération.
 
     ZERO OVERHEAD si le niveau n'est pas activé:
     - Pas de string formatting
@@ -353,8 +387,9 @@ def trace_span(
         with trace_span(logger, "indicators", count=5) as span:
             # ... calculs ...
             span["computed"] = 42
+
     """
-    span_data: Dict[str, Any] = {}
+    span_data: dict[str, Any] = {}
 
     # Check niveau AVANT toute opération
     if not logger.isEnabledFor(log_level):
@@ -376,9 +411,9 @@ def trace_span(
 # SAFE STATS - Résumés sans dump complet
 # ============================================================================
 
-def safe_stats_df(df: pd.DataFrame, max_rows: int = 3) -> Dict[str, Any]:
-    """
-    Statistiques sûres d'un DataFrame (jamais le contenu complet).
+
+def safe_stats_df(df: pd.DataFrame, max_rows: int = 3) -> dict[str, Any]:
+    """Statistiques sûres d'un DataFrame (jamais le contenu complet).
 
     Args:
         df: DataFrame à résumer
@@ -386,6 +421,7 @@ def safe_stats_df(df: pd.DataFrame, max_rows: int = 3) -> Dict[str, Any]:
 
     Returns:
         Dict avec shape, dtypes, nan_count, sample_values
+
     """
     if df is None or df.empty:
         return {"shape": (0, 0), "empty": True}
@@ -408,9 +444,8 @@ def safe_stats_df(df: pd.DataFrame, max_rows: int = 3) -> Dict[str, Any]:
     return stats
 
 
-def safe_stats_array(x: np.ndarray, name: str = "array") -> Dict[str, Any]:
-    """
-    Statistiques sûres d'un array numpy.
+def safe_stats_array(x: np.ndarray, name: str = "array") -> dict[str, Any]:
+    """Statistiques sûres d'un array numpy.
 
     Args:
         x: Array à résumer
@@ -418,6 +453,7 @@ def safe_stats_array(x: np.ndarray, name: str = "array") -> Dict[str, Any]:
 
     Returns:
         Dict avec shape, dtype, nan_count, min/max/mean
+
     """
     if x is None:
         return {"name": name, "value": None}
@@ -444,10 +480,8 @@ def safe_stats_array(x: np.ndarray, name: str = "array") -> Dict[str, Any]:
     return stats
 
 
-def safe_stats_series(s: pd.Series, name: str = "series") -> Dict[str, Any]:
-    """
-    Statistiques sûres d'une Series pandas.
-    """
+def safe_stats_series(s: pd.Series, name: str = "series") -> dict[str, Any]:
+    """Statistiques sûres d'une Series pandas."""
     if s is None or s.empty:
         return {"name": name, "empty": True}
 
@@ -465,10 +499,10 @@ def safe_stats_series(s: pd.Series, name: str = "series") -> Dict[str, Any]:
 # PERF COUNTERS - Compteurs légers O(1)
 # ============================================================================
 
+
 @dataclass
 class PerfCounters:
-    """
-    Compteurs de performance légers pour le pipeline.
+    """Compteurs de performance légers pour le pipeline.
 
     Usage:
         counters = PerfCounters()
@@ -478,9 +512,10 @@ class PerfCounters:
 
         print(counters.summary())
     """
-    _starts: Dict[str, float] = field(default_factory=dict)
-    _durations: Dict[str, float] = field(default_factory=dict)
-    _counts: Dict[str, int] = field(default_factory=dict)
+
+    _starts: dict[str, float] = field(default_factory=dict)
+    _durations: dict[str, float] = field(default_factory=dict)
+    _counts: dict[str, int] = field(default_factory=dict)
 
     def start(self, name: str) -> None:
         """Démarre un chrono."""
@@ -502,7 +537,7 @@ class PerfCounters:
         """Retourne la durée en ms."""
         return self._durations.get(name, 0.0)
 
-    def summary(self) -> Dict[str, Any]:
+    def summary(self) -> dict[str, Any]:
         """Retourne un résumé des compteurs."""
         return {
             "durations_ms": {k: round(v, 2) for k, v in self._durations.items()},
@@ -515,19 +550,21 @@ class PerfCounters:
 # DIAGNOSTIC PACK
 # ============================================================================
 
+
 @dataclass
 class DiagnosticPack:
     """Pack diagnostic compact pour analyse rapide."""
+
     run_id: str
     timestamp: str
-    strategy: Optional[str]
-    symbol: Optional[str]
-    timeframe: Optional[str]
-    params: Dict[str, Any]
-    counters: Dict[str, Any]
-    result_summary: Dict[str, Any]
-    error: Optional[str]
-    error_type: Optional[str]
+    strategy: str | None
+    symbol: str | None
+    timeframe: str | None
+    params: dict[str, Any]
+    counters: dict[str, Any]
+    result_summary: dict[str, Any]
+    error: str | None
+    error_type: str | None
 
     def to_json(self) -> str:
         """Sérialise en JSON compact."""
@@ -540,13 +577,12 @@ class DiagnosticPack:
 
 def build_diagnostic_summary(
     run_id: str,
-    request: Optional[Dict[str, Any]] = None,
-    result: Optional[Any] = None,  # RunResult ou dict
-    counters: Optional[PerfCounters] = None,
-    last_exception: Optional[Exception] = None,
+    request: dict[str, Any] | None = None,
+    result: Any | None = None,  # RunResult ou dict
+    counters: PerfCounters | None = None,
+    last_exception: Exception | None = None,
 ) -> DiagnosticPack:
-    """
-    Construit un pack diagnostic compact.
+    """Construit un pack diagnostic compact.
 
     Args:
         run_id: Identifiant du run
@@ -557,6 +593,7 @@ def build_diagnostic_summary(
 
     Returns:
         DiagnosticPack prêt à exporter
+
     """
     request = request or {}
 
@@ -598,9 +635,9 @@ def build_diagnostic_summary(
 # CONFIGURATION DYNAMIQUE (UI toggle)
 # ============================================================================
 
+
 def set_log_level(level: str) -> None:
-    """
-    Change le niveau de log dynamiquement.
+    """Change le niveau de log dynamiquement.
 
     Utilisé par le toggle UI pour activer DEBUG à la volée.
     Met à jour tous les loggers (backtest, backtest_core et leurs enfants).
@@ -621,9 +658,7 @@ def set_log_level(level: str) -> None:
 
     # Mettre à jour tous les loggers enfants existants
     for name, logger in logging.Logger.manager.loggerDict.items():
-        if isinstance(logger, logging.Logger) and (
-            name.startswith("backtest.") or name.startswith("backtest_core.")
-        ):
+        if isinstance(logger, logging.Logger) and (name.startswith("backtest.") or name.startswith("backtest_core.")):
             logger.setLevel(log_level)
             for handler in logger.handlers:
                 handler.setLevel(log_level)

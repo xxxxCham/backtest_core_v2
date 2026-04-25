@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.builder_feedback
+"""Module-ID: agents.builder_feedback
 
 Purpose: Typed-yet-flexible Builder iteration feedback containers.
 
@@ -14,7 +13,8 @@ inside each section as regular extras.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Dict, Iterable, Mapping, Type
+from collections.abc import Iterable, Mapping
+from typing import Any, ClassVar
 
 
 class FeedbackSection(dict[str, Any]):
@@ -38,15 +38,11 @@ class FeedbackSection(dict[str, Any]):
             self.update(kwargs)
 
     @property
-    def extras(self) -> Dict[str, Any]:
-        return {
-            key: value
-            for key, value in self.items()
-            if key not in self.KNOWN_KEYS
-        }
+    def extras(self) -> dict[str, Any]:
+        return {key: value for key, value in self.items() if key not in self.KNOWN_KEYS}
 
-    def to_dict(self) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {}
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
         for key, value in self.items():
             if isinstance(value, FeedbackSection):
                 payload[key] = value.to_dict()
@@ -74,7 +70,7 @@ class ProposalFeedbackSection(FeedbackSection):
             "branching_enabled",
             "branch_labels",
             "branching",
-        }
+        },
     )
 
 
@@ -97,7 +93,7 @@ class CodeFeedbackSection(FeedbackSection):
             "params_contract_fallback",
             "runtime_fix_fallback_deterministic_used",
             "safe_path_mode",
-        }
+        },
     )
 
 
@@ -112,7 +108,7 @@ class PrecheckFeedbackSection(FeedbackSection):
             "signal_density",
             "transition_density",
             "repeated_same_ratio",
-        }
+        },
     )
 
 
@@ -140,7 +136,7 @@ class BacktestFeedbackSection(FeedbackSection):
             "sweep_candidate_values",
             "sweep_best_params",
             "sweep_top_results",
-        }
+        },
     )
 
 
@@ -152,7 +148,7 @@ class ScoringFeedbackSection(FeedbackSection):
             "drawdown_excess_pct",
             "components",
             "penalties",
-        }
+        },
     )
 
 
@@ -163,7 +159,7 @@ class DecisionFeedbackSection(FeedbackSection):
             "stagnation_circuit_breaker",
             "stop_overridden",
             "accept_overridden",
-        }
+        },
     )
 
 
@@ -186,11 +182,11 @@ class SessionResetFeedbackSection(FeedbackSection):
             "consecutive_failures_before_reset",
             "fallback_count_before_reset",
             "timestamp",
-        }
+        },
     )
 
 
-_SECTION_TYPES: Dict[str, Type[FeedbackSection]] = {
+_SECTION_TYPES: dict[str, type[FeedbackSection]] = {
     "proposal": ProposalFeedbackSection,
     "code": CodeFeedbackSection,
     "precheck": PrecheckFeedbackSection,
@@ -298,8 +294,8 @@ class IterationPhaseFeedback(dict[str, Any]):
     def session_reset(self) -> SessionResetFeedbackSection:
         return self.setdefault("session_reset", {})
 
-    def to_dict(self) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {}
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
         for key, value in self.items():
             if isinstance(value, FeedbackSection):
                 payload[key] = value.to_dict()

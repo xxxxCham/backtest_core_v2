@@ -1,6 +1,4 @@
-"""
-Tests pour le module catalog — générateur paramétrique de fiches de stratégies.
-"""
+"""Tests pour le module catalog — générateur paramétrique de fiches de stratégies."""
 
 from __future__ import annotations
 
@@ -21,6 +19,7 @@ EXAMPLE_CONFIG = ROOT / "catalog" / "example_config.json"
 # ===========================================================================
 # 1. Fingerprint
 # ===========================================================================
+
 
 class TestFingerprint:
     def test_fingerprint_deterministic(self):
@@ -55,10 +54,20 @@ class TestFingerprint:
         h2 = fingerprint_sha256({"a": 2})
         assert h1 != h2
 
+    def test_canonical_json_normalizes_ndarray_nan_and_inf(self):
+        """Les ndarray avec NaN/Inf doivent être sérialisés de façon canonique et JSON-safe."""
+        import numpy as np
+
+        from catalog.fingerprint import canonical_json
+
+        result = canonical_json({"arr": np.array([1.0, np.nan, np.inf, -np.inf])})
+        assert result == '{"arr":[1,"NaN","Inf","-Inf"]}'
+
 
 # ===========================================================================
 # 2. Archetype loading
 # ===========================================================================
+
 
 class TestArchetypeLoad:
     @pytest.fixture
@@ -102,6 +111,7 @@ class TestArchetypeLoad:
 # 3. ParamPack loading
 # ===========================================================================
 
+
 class TestParamPackLoad:
     @pytest.fixture
     def pack_files(self):
@@ -125,10 +135,7 @@ class TestParamPackLoad:
         """Chaque param_pack référence un archetype existant."""
         from catalog.models import Archetype, ParamPack
 
-        archetype_ids = {
-            Archetype.load(p).archetype_id
-            for p in ARCHETYPES_DIR.glob("*.json")
-        }
+        archetype_ids = {Archetype.load(p).archetype_id for p in ARCHETYPES_DIR.glob("*.json")}
         for path in pack_files:
             pack = ParamPack.load(path)
             assert pack.archetype_id in archetype_ids, (
@@ -139,6 +146,7 @@ class TestParamPackLoad:
 # ===========================================================================
 # 4. Ranges loader (TOML resolution)
 # ===========================================================================
+
 
 class TestRangesLoader:
     def test_resolve_param_defs_from_toml(self):
@@ -172,6 +180,7 @@ class TestRangesLoader:
 # 5. Sanity validation
 # ===========================================================================
 
+
 class TestSanity:
     def _make_valid_variant(self):
         """Crée un variant minimal valide."""
@@ -190,8 +199,11 @@ class TestSanity:
                 "exit_logic": "cross_any(close, bollinger.middle)",
                 "risk_management": "ATR stop-loss (1.5x)",
                 "default_params": {
-                    "bb_period": 20, "rsi_period": 14,
-                    "stop_atr_mult": 1.5, "warmup": 50, "leverage": 1,
+                    "bb_period": 20,
+                    "rsi_period": 14,
+                    "stop_atr_mult": 1.5,
+                    "warmup": 50,
+                    "leverage": 1,
                 },
                 "parameter_specs": {},
             },
@@ -291,6 +303,7 @@ class TestSanity:
 # 6. Chainer (generation)
 # ===========================================================================
 
+
 class TestChainer:
     def test_generate_variants_count(self):
         """Génère des variants et vérifie le count."""
@@ -346,10 +359,28 @@ class TestChainer:
         fps2 = [v.fingerprint for v in r2.variants]
         assert fps1 == fps2
 
+    def test_generate_catalog_does_not_exceed_target(self):
+        """Le générateur ne doit jamais dépasser n_variants_target."""
+        from catalog.chainer import generate_catalog
+        from catalog.models import CatalogConfig
+
+        config = CatalogConfig(
+            seed=42,
+            n_variants_target=1,
+            batch_size=10,
+            archetypes_dir=str(ARCHETYPES_DIR),
+            param_packs_dir=str(PARAM_PACKS_DIR),
+        )
+
+        result = generate_catalog(config)
+        assert len(result.variants) <= 1
+        assert result.total_after_gating <= 1
+
 
 # ===========================================================================
 # 7. Builder export
 # ===========================================================================
+
 
 class TestBuilderExport:
     def _make_proposal(self):
@@ -367,8 +398,11 @@ class TestBuilderExport:
             "exit_logic": "cross_any(close, bollinger.middle)",
             "risk_management": "ATR stop-loss (1.5x)",
             "default_params": {
-                "bb_period": 20, "stop_atr_mult": 1.5,
-                "tp_atr_mult": 3.0, "warmup": 50, "leverage": 1,
+                "bb_period": 20,
+                "stop_atr_mult": 1.5,
+                "tp_atr_mult": 3.0,
+                "warmup": 50,
+                "leverage": 1,
             },
             "parameter_specs": {},
         }
@@ -392,8 +426,13 @@ class TestBuilderExport:
         result = to_json_proposal(proposal)
 
         required_keys = {
-            "strategy_name", "used_indicators", "entry_long_logic",
-            "exit_logic", "risk_management", "default_params", "parameter_specs",
+            "strategy_name",
+            "used_indicators",
+            "entry_long_logic",
+            "exit_logic",
+            "risk_management",
+            "default_params",
+            "parameter_specs",
         }
         assert required_keys.issubset(result.keys())
 
@@ -409,10 +448,29 @@ class TestBuilderExport:
         assert result["default_params"]["leverage"] == 1
         assert result["default_params"]["warmup"] == 50
 
+    def test_export_json_proposal_does_not_mutate_input(self):
+        """L'export JSON ne doit pas modifier le dictionnaire source."""
+        from catalog.builder_export import to_json_proposal
+
+        proposal = {
+            "strategy_name": "test",
+            "default_params": {},
+            "used_indicators": ["rsi"],
+            "indicator_params": {"rsi": {"period": 14}},
+        }
+
+        result = to_json_proposal(proposal)
+
+        assert proposal["default_params"] == {}
+        assert "leverage" not in proposal["default_params"]
+        assert result["default_params"]["leverage"] == 1
+        assert result["indicator_params"] == {"rsi": {"period": 14}}
+
 
 # ===========================================================================
 # 8. Models serialization
 # ===========================================================================
+
 
 class TestModels:
     def test_archetype_roundtrip(self, tmp_path):
@@ -478,6 +536,7 @@ class TestModels:
 # 9. Gating (compile check only — no actual backtest)
 # ===========================================================================
 
+
 class TestGatingCompile:
     def test_gating_proposal_compiles(self):
         """compile_proposal_to_code produit du code Python non vide."""
@@ -496,9 +555,13 @@ class TestGatingCompile:
             "exit_logic": "cross_any(close, bollinger.middle)",
             "risk_management": "ATR stop-loss (1.5x)",
             "default_params": {
-                "bb_period": 20, "rsi_period": 14, "atr_period": 14,
-                "stop_atr_mult": 1.5, "tp_atr_mult": 3.0,
-                "warmup": 50, "leverage": 1,
+                "bb_period": 20,
+                "rsi_period": 14,
+                "atr_period": 14,
+                "stop_atr_mult": 1.5,
+                "tp_atr_mult": 3.0,
+                "warmup": 50,
+                "leverage": 1,
             },
             "parameter_specs": {},
         }

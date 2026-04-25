@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.tsi
+"""Module-ID: indicators.tsi
 
 Purpose: True Strength Index (TSI).
 """
@@ -67,4 +66,4 @@ register_indicator(
 )
 
 
-__all__ = ["tsi", "calculate_tsi", "TSISettings"]
+__all__ = ["TSISettings", "calculate_tsi", "tsi"]

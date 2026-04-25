@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest
+"""Module-ID: backtest
 
 Purpose: Moteur de backtesting (pipeline complet + optimisation + validation) avec API stable pour UI/agents.
 
@@ -21,13 +20,6 @@ Skip-if: Vous travaillez sur une seule strat/indicateur.
 """
 
 from .engine import BacktestEngine, RunResult
-from .walk_forward import (
-    FoldResult,
-    WalkForwardConfig,
-    WalkForwardSummary,
-    check_wfa_feasibility,
-    run_walk_forward,
-)
 from .errors import (
     BackendInternalError,
     BacktestError,
@@ -59,6 +51,13 @@ from .storage import (
     ResultStorage,
     StoredResultMetadata,
     get_storage,
+)
+from .walk_forward import (
+    FoldResult,
+    WalkForwardConfig,
+    WalkForwardSummary,
+    check_wfa_feasibility,
+    run_walk_forward,
 )
 
 # Import conditionnel Optuna (peut ne pas être installé)

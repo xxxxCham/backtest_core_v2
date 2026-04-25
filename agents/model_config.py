@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.model_config
+"""Module-ID: agents.model_config
 
 Purpose: Configuration multi-modèles par rôle d'agent avec sélection intelligente (rapide/lourd par itération).
 
@@ -27,7 +26,7 @@ import random
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 import httpx
 
@@ -57,8 +56,9 @@ def _fetch_ollama_tags_with_retries(
     base_backoff_s: float = 1.0,
     warn_on_failure: bool = True,
     fast_fail_on_connection_refused: bool = False,
-) -> Optional[dict]:
+) -> dict | None:
     """Récupère /api/tags avec retries/backoff (Ollama peut démarrer lentement)."""
+
     def _is_connection_refused(exc: BaseException) -> bool:
         text = str(exc or "").lower()
         if "10061" in text:
@@ -70,7 +70,7 @@ def _fetch_ollama_tags_with_retries(
         return False
 
     url = f"{_ollama_base_url()}/api/tags"
-    last_exc: Optional[BaseException] = None
+    last_exc: BaseException | None = None
     for attempt in range(max_attempts):
         try:
             resp = httpx.get(url, timeout=timeout_s)
@@ -83,7 +83,7 @@ def _fetch_ollama_tags_with_retries(
                 break
 
         if attempt < max_attempts - 1:
-            sleep_s = float(base_backoff_s * (2 ** attempt))
+            sleep_s = float(base_backoff_s * (2**attempt))
             time.sleep(sleep_s)
 
     if warn_on_failure and last_exc is not None:
@@ -99,7 +99,7 @@ def _infer_category_from_size(size_gb: float) -> ModelCategory:
     return ModelCategory.HEAVY
 
 
-def _ollama_name_from_library_entry(entry: Dict[str, Any]) -> Optional[str]:
+def _ollama_name_from_library_entry(entry: dict[str, Any]) -> str | None:
     model_name = entry.get("model_name")
     tag = entry.get("tag")
     if model_name and tag:
@@ -112,7 +112,7 @@ def _ollama_name_from_library_entry(entry: Dict[str, Any]) -> Optional[str]:
     return normalize_model_name(str(entry.get("id") or "")) or None
 
 
-def _model_info_from_library_entry(entry: Dict[str, Any]) -> Optional[ModelInfo]:
+def _model_info_from_library_entry(entry: dict[str, Any]) -> ModelInfo | None:
     name = _ollama_name_from_library_entry(entry)
     if not name:
         return None
@@ -146,36 +146,32 @@ def is_cloud_only_model(model_name: str) -> bool:
     return bool(info and info.cloud_only)
 
 
-def list_cloud_only_model_names() -> List[str]:
+def list_cloud_only_model_names() -> list[str]:
     """Retourne la liste canonique des modèles Ollama Cloud supportés par le projet."""
     return sorted(
-        {
-            info.name
-            for info in KNOWN_MODELS.values()
-            if bool(getattr(info, "cloud_only", False))
-        }
+        {info.name for info in KNOWN_MODELS.values() if bool(getattr(info, "cloud_only", False))},
     )
 
 
 class ModelCategory(Enum):
     """Catégories de modèles par taille/vitesse."""
 
-    LIGHT = "light"      # < 10B params, rapide (< 30s)
-    MEDIUM = "medium"    # 10-30B params, modéré (30s-2min)
-    HEAVY = "heavy"      # > 30B params, lent (> 2min)
+    LIGHT = "light"  # < 10B params, rapide (< 30s)
+    MEDIUM = "medium"  # 10-30B params, modéré (30s-2min)
+    HEAVY = "heavy"  # > 30B params, lent (> 2min)
 
 
 @dataclass
 class ModelInfo:
     """Information sur un modèle LLM."""
 
-    name: str                      # Nom Ollama (ex: "deepseek-r1:32b")
-    category: ModelCategory        # Catégorie de taille
-    description: str = ""          # Description courte
-    recommended_for: List[str] = field(default_factory=list)  # Rôles recommandés
+    name: str  # Nom Ollama (ex: "deepseek-r1:32b")
+    category: ModelCategory  # Catégorie de taille
+    description: str = ""  # Description courte
+    recommended_for: list[str] = field(default_factory=list)  # Rôles recommandés
     avg_response_time_s: float = 30.0  # Temps de réponse moyen estimé
-    params_billions: float = 0.0   # Nombre de paramètres en milliards (0 = inconnu)
-    cloud_only: bool = False        # True = hébergé sur Ollama Cloud, nécessite des crédits
+    params_billions: float = 0.0  # Nombre de paramètres en milliards (0 = inconnu)
+    cloud_only: bool = False  # True = hébergé sur Ollama Cloud, nécessite des crédits
 
     @property
     def requires_manual_approval(self) -> bool:
@@ -192,7 +188,7 @@ class ModelInfo:
 
 
 # Base de données des modèles connus avec leurs caractéristiques
-KNOWN_MODELS: Dict[str, ModelInfo] = {
+KNOWN_MODELS: dict[str, ModelInfo] = {
     # Light models (< 10B) - Rapides
     "deepseek-r1:8b": ModelInfo(
         name="deepseek-r1:8b",
@@ -218,15 +214,6 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         avg_response_time_s=20.0,
         params_billions=8.0,
     ),
-    "martain7r/finance-llama-8b:q4_k_m": ModelInfo(
-        name="martain7r/finance-llama-8b:q4_k_m",
-        category=ModelCategory.LIGHT,
-        description="Finance Llama 8B - Spécialisé finance/trading",
-        recommended_for=["analyst", "critic"],
-        avg_response_time_s=15.0,
-        params_billions=8.0,
-    ),
-
     "deepseek-moe-16b-local": ModelInfo(
         name="deepseek-moe-16b-local",
         category=ModelCategory.LIGHT,
@@ -235,7 +222,6 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         avg_response_time_s=12.0,
         params_billions=16.4,
     ),
-
     # Medium models (10-30B) - Équilibrés
     "gemma4:26b": ModelInfo(
         name="gemma4:26b",
@@ -293,7 +279,6 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         avg_response_time_s=55.0,
         params_billions=30.5,
     ),
-
     # Heavy models (> 30B) - Puissants mais lents
     "deepseek-r1:32b": ModelInfo(
         name="deepseek-r1:32b",
@@ -351,6 +336,14 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         avg_response_time_s=60.0,
         params_billions=30.0,
     ),
+    "qwen3.6:35b": ModelInfo(
+        name="qwen3.6:35b",
+        category=ModelCategory.HEAVY,
+        description="Qwen 3.6 35B - dernier generaliste multimodal local, agentic coding + thinking preservation",
+        recommended_for=["analyst", "strategist", "critic", "validator"],
+        avg_response_time_s=175.0,
+        params_billions=36.0,
+    ),
     "qwen3.5:35b": ModelInfo(
         name="qwen3.5:35b",
         category=ModelCategory.HEAVY,
@@ -392,9 +385,7 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         avg_response_time_s=180.0,  # Plus rapide avec 2 GPUs
         params_billions=70.0,
     ),
-
     # ── Nouveaux modèles Ollama 2025-2026 ──────────────────────────────────────
-
     # Light -- nouveaux
     "qwen3:8b": ModelInfo(
         name="qwen3:8b",
@@ -428,7 +419,6 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         avg_response_time_s=8.0,
         params_billions=3.8,
     ),
-
     # Medium -- nouveaux
     "phi4:14b": ModelInfo(
         name="phi4:14b",
@@ -502,7 +492,6 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         avg_response_time_s=20.0,
         params_billions=8.0,
     ),
-
     # Heavy -- nouveaux
     "qwen3:32b": ModelInfo(
         name="qwen3:32b",
@@ -554,11 +543,9 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         params_billions=671.0,
         cloud_only=False,
     ),
-
     # ── Modèles CLOUD-ONLY (hébergés sur Ollama Cloud, non téléchargeables) ───
     # Ces modèles nécessitent des crédits Ollama Cloud pour fonctionner.
     # Ils ne peuvent pas tourner localement, quelle que soit la configuration GPU.
-
     # DeepSeek cloud
     "deepseek-v3.2": ModelInfo(
         name="deepseek-v3.2",
@@ -578,7 +565,6 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         params_billions=671.0,
         cloud_only=True,
     ),
-
     # GLM family (Z.ai / Zhipu)
     "glm-4.7": ModelInfo(
         name="glm-4.7",
@@ -598,6 +584,15 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         params_billions=0.0,
         cloud_only=True,
     ),
+    "glm-5.1": ModelInfo(
+        name="glm-5.1",
+        category=ModelCategory.HEAVY,
+        description="GLM-5.1 - Raisonnement avancé, coding et long contexte (Z.ai) ☁️ Cloud",
+        recommended_for=["strategist", "critic", "validator"],
+        avg_response_time_s=50.0,
+        params_billions=0.0,
+        cloud_only=True,
+    ),
     "glm-5": ModelInfo(
         name="glm-5",
         category=ModelCategory.HEAVY,
@@ -607,7 +602,6 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         params_billions=744.0,
         cloud_only=True,
     ),
-
     # Qwen cloud (tailles non téléchargeables)
     "qwen3-coder:480b": ModelInfo(
         name="qwen3-coder:480b",
@@ -645,7 +639,6 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         params_billions=235.0,
         cloud_only=True,
     ),
-
     # Kimi (Moonshot AI)
     "kimi-k2": ModelInfo(
         name="kimi-k2",
@@ -674,7 +667,6 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         params_billions=0.0,
         cloud_only=True,
     ),
-
     # MiniMax
     "minimax-m2.7": ModelInfo(
         name="minimax-m2.7",
@@ -694,7 +686,6 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         params_billions=0.0,
         cloud_only=True,
     ),
-
     # NVIDIA
     "nemotron-3-super:120b": ModelInfo(
         name="nemotron-3-super:120b",
@@ -705,7 +696,6 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         params_billions=120.0,
         cloud_only=True,
     ),
-
     # Mistral cloud
     "devstral-2:123b": ModelInfo(
         name="devstral-2:123b",
@@ -725,7 +715,6 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         params_billions=0.0,
         cloud_only=True,
     ),
-
     # GPT-OSS (OpenAI open weights)
     "gpt-oss:120b": ModelInfo(
         name="gpt-oss:120b",
@@ -736,7 +725,6 @@ KNOWN_MODELS: Dict[str, ModelInfo] = {
         params_billions=120.0,
         cloud_only=True,
     ),
-
     # Cogito cloud
     "cogito-2.1:671b": ModelInfo(
         name="cogito-2.1:671b",
@@ -755,7 +743,7 @@ class RoleModelAssignment:
     """Configuration des modèles pour un rôle."""
 
     role: str
-    models: List[str] = field(default_factory=list)
+    models: list[str] = field(default_factory=list)
     allow_heavy_after_iteration: int = 3  # N'autoriser les modèles lourds qu'après N itérations
     prefer_specialized: bool = True  # Préférer les modèles spécialisés pour ce rôle
 
@@ -763,11 +751,10 @@ class RoleModelAssignment:
         self,
         iteration: int = 1,
         allow_heavy: bool = False,
-        installed_models: Optional[Set[str]] = None,
+        installed_models: set[str] | None = None,
         allow_very_large: bool = False,
-    ) -> List[str]:
-        """
-        Retourne les modèles disponibles pour cette itération.
+    ) -> list[str]:
+        """Retourne les modèles disponibles pour cette itération.
 
         Args:
             iteration: Numéro d'itération actuel
@@ -777,6 +764,7 @@ class RoleModelAssignment:
 
         Returns:
             Liste des modèles utilisables
+
         """
         available = []
 
@@ -795,7 +783,7 @@ class RoleModelAssignment:
             if model_info:
                 if model_info.requires_manual_approval and not allow_very_large:
                     logger.debug(
-                        f"Modele {resolved_name} exclu (>{MAX_AUTO_SELECT_PARAMS_B}B params, approbation requise)"
+                        f"Modele {resolved_name} exclu (>{MAX_AUTO_SELECT_PARAMS_B}B params, approbation requise)",
                     )
                     continue
 
@@ -810,101 +798,175 @@ class RoleModelAssignment:
 
 @dataclass
 class RoleModelConfig:
-    """
-    Configuration complète des modèles par rôle.
+    """Configuration complète des modèles par rôle.
 
     Permet d'assigner plusieurs modèles à chaque rôle avec sélection
     aléatoire ou basée sur des critères.
     """
 
     # Configuration par rôle
-    analyst: RoleModelAssignment = field(default_factory=lambda: RoleModelAssignment(
-        role="analyst",
-        models=[
-            # Light
-            "phi4-mini:3.8b", "deepseek-r1:7b", "deepseek-r1:8b",
-            "qwen3:8b", "cogito:8b", "qwen3.5:9b",
-            "mistral:7b-instruct", "martain7r/finance-llama-8b:q4_k_m",
-            # Medium
-            "gemma4:26b", "deepseek-moe-16b-local", "glm-4.7-flash-23b-local", "lfm2:24b",
-            # Heavy
-            "gemma4:31b", "qwen3-vl:32b", "qwen3.5:35b", "llama4:16x17b",
-        ],
-        allow_heavy_after_iteration=5,
-    ))
+    analyst: RoleModelAssignment = field(
+        default_factory=lambda: RoleModelAssignment(
+            role="analyst",
+            models=[
+                # Light
+                "phi4-mini:3.8b",
+                "deepseek-r1:7b",
+                "deepseek-r1:8b",
+                "qwen3:8b",
+                "cogito:8b",
+                "qwen3.5:9b",
+                "mistral:7b-instruct",
+                # Medium
+                "gemma4:26b",
+                "deepseek-moe-16b-local",
+                "glm-4.7-flash-23b-local",
+                "lfm2:24b",
+                # Heavy
+                "gemma4:31b",
+                "qwen3-vl:32b",
+                "qwen3.6:35b",
+                "qwen3.5:35b",
+                "llama4:16x17b",
+            ],
+            allow_heavy_after_iteration=5,
+        ),
+    )
 
-    strategist: RoleModelAssignment = field(default_factory=lambda: RoleModelAssignment(
-        role="strategist",
-        models=[
-            # Light
-            "deepseek-r1:7b", "deepseek-r1:8b", "qwen3:8b", "cogito:8b",
-            # Medium
-            "gemma4:26b", "phi4:14b", "qwen3:14b", "cogito:14b",
-            "deepseek-r1-distill:14b", "mistral:22b",
-            "glm-4.7-flash-23b-local", "devstral:24b", "devstral-small-2:24b",
-            "mistral-small3.2:24b", "lfm2:24b", "qwen3-30b-a3b:q4_k_m",
-            # Heavy local
-            "gemma4:31b", "deepseek-coder-33b-local", "qwen3-coder:30b", "qwen3.5:35b",
-            # Cloud-only (☁️ crédits Ollama requis)
-            "deepseek-v3.2", "glm-4.7", "glm-4.6",
-            "qwen3-coder:480b", "kimi-k2", "kimi-k2.5",
-            "minimax-m2.7", "devstral-2:123b",
-        ],
-        allow_heavy_after_iteration=3,
-    ))
+    strategist: RoleModelAssignment = field(
+        default_factory=lambda: RoleModelAssignment(
+            role="strategist",
+            models=[
+                # Light
+                "deepseek-r1:7b",
+                "deepseek-r1:8b",
+                "qwen3:8b",
+                "cogito:8b",
+                # Medium
+                "gemma4:26b",
+                "phi4:14b",
+                "qwen3:14b",
+                "cogito:14b",
+                "deepseek-r1-distill:14b",
+                "mistral:22b",
+                "glm-4.7-flash-23b-local",
+                "devstral:24b",
+                "devstral-small-2:24b",
+                "mistral-small3.2:24b",
+                "lfm2:24b",
+                "qwen3-30b-a3b:q4_k_m",
+                # Heavy local
+                "gemma4:31b",
+                "deepseek-coder-33b-local",
+                "qwen3-coder:30b",
+                "qwen3.6:35b",
+                "qwen3.5:35b",
+                # Cloud-only (☁️ crédits Ollama requis)
+                "deepseek-v3.2",
+                "glm-4.7",
+                "glm-4.6",
+                "qwen3-coder:480b",
+                "kimi-k2",
+                "kimi-k2.5",
+                "minimax-m2.7",
+                "devstral-2:123b",
+            ],
+            allow_heavy_after_iteration=3,
+        ),
+    )
 
-    critic: RoleModelAssignment = field(default_factory=lambda: RoleModelAssignment(
-        role="critic",
-        models=[
-            # Medium
-            "gemma4:26b", "phi4-reasoning:14b", "qwen3:14b", "cogito:14b", "deepseek-r1-distill:14b",
-            "mistral:22b", "glm-4.7-flash-23b-local",
-            "devstral:24b", "devstral-small-2:24b", "mistral-small3.2:24b",
-            "magistral:24b", "lfm2:24b", "qwen3.5:27b",
-            # Heavy local
-            "gemma4:31b", "deepseek-r1:32b", "qwq:32b", "qwen3:32b", "cogito:32b",
-            "deepseek-coder-33b-local", "qwen3.5:35b",
-            # Cloud-only (☁️ crédits Ollama requis)
-            "deepseek-v3.2", "glm-4.7", "glm-4.6", "glm-5",
-            "qwen3-coder:480b", "qwen3.5:122b",
-            "kimi-k2", "minimax-m2.7", "minimax-m2.5",
-            "nemotron-3-super:120b", "devstral-2:123b", "mistral-large-3",
-        ],
-        allow_heavy_after_iteration=2,
-    ))
+    critic: RoleModelAssignment = field(
+        default_factory=lambda: RoleModelAssignment(
+            role="critic",
+            models=[
+                # Medium
+                "gemma4:26b",
+                "phi4-reasoning:14b",
+                "qwen3:14b",
+                "cogito:14b",
+                "deepseek-r1-distill:14b",
+                "mistral:22b",
+                "glm-4.7-flash-23b-local",
+                "devstral:24b",
+                "devstral-small-2:24b",
+                "mistral-small3.2:24b",
+                "magistral:24b",
+                "lfm2:24b",
+                "qwen3.5:27b",
+                # Heavy local
+                "gemma4:31b",
+                "deepseek-r1:32b",
+                "qwq:32b",
+                "qwen3:32b",
+                "cogito:32b",
+                "deepseek-coder-33b-local",
+                "qwen3.6:35b",
+                "qwen3.5:35b",
+                # Cloud-only (☁️ crédits Ollama requis)
+                "deepseek-v3.2",
+                "glm-4.7",
+                "glm-4.6",
+                "glm-5.1",
+                "glm-5",
+                "minimax-m2.7",
+                "minimax-m2.5",
+                "nemotron-3-super:120b",
+                "devstral-2:123b",
+                "mistral-large-3",
+            ],
+            allow_heavy_after_iteration=2,
+        ),
+    )
 
-    validator: RoleModelAssignment = field(default_factory=lambda: RoleModelAssignment(
-        role="validator",
-        models=[
-            # Medium
-            "gemma4:26b", "phi4-reasoning:14b", "deepseek-r1-distill:14b",
-            "qwen3.5:27b", "magistral:24b",
-            # Heavy local
-            "gemma4:31b", "deepseek-r1:32b", "qwq:32b", "qwen3:32b", "cogito:32b",
-            "qwen3.5:35b",
-            # Very large local (>50B — approbation manuelle)
-            "deepseek-r1:70b", "nemotron:70b",
-            "llama3.3:70b-instruct-q4_K_M", "llama3.3-70b-2gpu",
-            # Cloud-only (☁️ crédits Ollama requis)
-            "deepseek-v3.2", "deepseek-v3.1",
-            "glm-5", "qwen3.5:122b", "qwen3-next:80b", "qwen3-vl:235b",
-            "kimi-k2-thinking", "nemotron-3-super:120b",
-            "gpt-oss:120b", "cogito-2.1:671b",
-            # deepseek-r1:671b et deepseek-v3:671b sont téléchargeables (non cloud), retirés ici
-        ],
-        allow_heavy_after_iteration=3,
-    ))
+    validator: RoleModelAssignment = field(
+        default_factory=lambda: RoleModelAssignment(
+            role="validator",
+            models=[
+                # Medium
+                "gemma4:26b",
+                "phi4-reasoning:14b",
+                "deepseek-r1-distill:14b",
+                "qwen3.5:27b",
+                "magistral:24b",
+                # Heavy local
+                "gemma4:31b",
+                "deepseek-r1:32b",
+                "qwq:32b",
+                "qwen3:32b",
+                "cogito:32b",
+                "qwen3.6:35b",
+                "qwen3.5:35b",
+                # Very large local (>50B — approbation manuelle)
+                "deepseek-r1:70b",
+                "nemotron:70b",
+                "llama3.3:70b-instruct-q4_K_M",
+                "llama3.3-70b-2gpu",
+                # Cloud-only (☁️ crédits Ollama requis)
+                "deepseek-v3.2",
+                "deepseek-v3.1",
+                "glm-5.1",
+                "glm-5",
+                "qwen3-vl:235b",
+                "kimi-k2-thinking",
+                "nemotron-3-super:120b",
+                "gpt-oss:120b",
+                "cogito-2.1:671b",
+                # deepseek-r1:671b et deepseek-v3:671b sont téléchargeables (non cloud), retirés ici
+            ],
+            allow_heavy_after_iteration=3,
+        ),
+    )
 
     # Cache des modèles installés
-    _installed_models: Optional[Set[str]] = field(default=None, repr=False)
+    _installed_models: set[str] | None = field(default=None, repr=False)
 
     def __post_init__(self):
         """Initialise le cache des modèles installés."""
         self._refresh_installed_models()
 
-    def _refresh_installed_models(self) -> Set[str]:
+    def _refresh_installed_models(self) -> set[str]:
         """Rafraîchit la liste des modèles Ollama installés."""
-        names: Set[str] = set()
+        names: set[str] = set()
         catalog_names = list(get_ollama_runtime_model_names())
 
         for name in catalog_names:
@@ -942,7 +1004,7 @@ class RoleModelConfig:
 
         return self._installed_models
 
-    def get_installed_models(self) -> Set[str]:
+    def get_installed_models(self) -> set[str]:
         """Retourne les modèles installés (avec cache)."""
         if self._installed_models is None:
             self._refresh_installed_models()
@@ -953,16 +1015,15 @@ class RoleModelConfig:
         role = role.lower()
         if role == "analyst":
             return self.analyst
-        elif role == "strategist":
+        if role == "strategist":
             return self.strategist
-        elif role == "critic":
+        if role == "critic":
             return self.critic
-        elif role == "validator":
+        if role == "validator":
             return self.validator
-        else:
-            # Défaut: utiliser analyst
-            logger.warning(f"Rôle inconnu: {role}, utilisation de analyst")
-            return self.analyst
+        # Défaut: utiliser analyst
+        logger.warning(f"Rôle inconnu: {role}, utilisation de analyst")
+        return self.analyst
 
     def get_model(
         self,
@@ -971,9 +1032,8 @@ class RoleModelConfig:
         allow_heavy: bool = False,
         random_selection: bool = True,
         allow_very_large: bool = False,
-    ) -> Optional[str]:
-        """
-        Obtient un modèle pour un rôle donné.
+    ) -> str | None:
+        """Obtient un modèle pour un rôle donné.
 
         Args:
             role: Nom du rôle (analyst, strategist, critic, validator)
@@ -984,6 +1044,7 @@ class RoleModelConfig:
 
         Returns:
             Nom du modèle ou None si aucun disponible
+
         """
         assignment = self.get_role_assignment(role)
         installed = self.get_installed_models()
@@ -1006,11 +1067,7 @@ class RoleModelConfig:
             allow_very_large=allow_very_large,
         )
         if fallback_cfg:
-            return (
-                random.choice(fallback_cfg)
-                if (random_selection and len(fallback_cfg) > 1)
-                else fallback_cfg[0]
-            )
+            return random.choice(fallback_cfg) if (random_selection and len(fallback_cfg) > 1) else fallback_cfg[0]
 
         # Niveau 3: n'importe quel modele installe
         if installed:
@@ -1019,18 +1076,18 @@ class RoleModelConfig:
         logger.warning("Aucun modele disponible pour %s (iteration=%s)", role, iteration)
         return None
 
-    def get_model_info(self, model_name: str) -> Optional[ModelInfo]:
+    def get_model_info(self, model_name: str) -> ModelInfo | None:
         """Retourne les infos d'un modele."""
         resolved_name = _normalize_model_name(model_name)
         return KNOWN_MODELS.get(resolved_name) or KNOWN_MODELS.get(model_name)
 
-    def set_role_models(self, role: str, models: List[str]) -> None:
+    def set_role_models(self, role: str, models: list[str]) -> None:
         """Configure les modeles pour un role."""
         assignment = self.get_role_assignment(role)
         assignment.models = [_normalize_model_name(model) for model in models]
         logger.info(f"Modeles pour {role}: {assignment.models}")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Sérialise la configuration."""
         return {
             "analyst": {
@@ -1052,7 +1109,7 @@ class RoleModelConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> RoleModelConfig:
+    def from_dict(cls, data: dict[str, Any]) -> RoleModelConfig:
         """Désérialise la configuration."""
         config = cls()
 
@@ -1063,15 +1120,15 @@ class RoleModelConfig:
                 assignment.models = [_normalize_model_name(m) for m in role_data.get("models", assignment.models)]
                 assignment.allow_heavy_after_iteration = role_data.get(
                     "allow_heavy_after_iteration",
-                    assignment.allow_heavy_after_iteration
+                    assignment.allow_heavy_after_iteration,
                 )
 
         return config
 
 
-def list_available_models() -> List[ModelInfo]:
+def list_available_models() -> list[ModelInfo]:
     """Liste tous les modèles installés ou présents dans models.json."""
-    result_by_name: Dict[str, ModelInfo] = {}
+    result_by_name: dict[str, ModelInfo] = {}
 
     for entry in get_all_ollama_models():
         info = _model_info_from_library_entry(entry)
@@ -1126,14 +1183,14 @@ def list_available_models() -> List[ModelInfo]:
     return sorted(result_by_name.values(), key=lambda info: info.name)
 
 
-def get_models_by_category(category: ModelCategory) -> List[ModelInfo]:
+def get_models_by_category(category: ModelCategory) -> list[ModelInfo]:
     """Retourne les modèles installés d'une catégorie."""
     all_models = list_available_models()
     return [m for m in all_models if m.category == category]
 
 
 # Singleton pour la configuration globale
-_global_config: Optional[RoleModelConfig] = None
+_global_config: RoleModelConfig | None = None
 
 
 def get_global_model_config() -> RoleModelConfig:
@@ -1151,16 +1208,16 @@ def set_global_model_config(config: RoleModelConfig) -> None:
 
 
 __all__ = [
+    "KNOWN_MODELS",
+    "MAX_AUTO_SELECT_PARAMS_B",
     "ModelCategory",
     "ModelInfo",
     "RoleModelAssignment",
     "RoleModelConfig",
-    "KNOWN_MODELS",
-    "MAX_AUTO_SELECT_PARAMS_B",
-    "is_cloud_only_model",
-    "list_cloud_only_model_names",
-    "list_available_models",
-    "get_models_by_category",
     "get_global_model_config",
+    "get_models_by_category",
+    "is_cloud_only_model",
+    "list_available_models",
+    "list_cloud_only_model_names",
     "set_global_model_config",
 ]

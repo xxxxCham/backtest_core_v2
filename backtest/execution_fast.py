@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.execution_fast
+"""Module-ID: backtest.execution_fast
 
 Purpose: Optimisations Numba JIT pour calculs spread/slippage dynamiques (50-100x accélération).
 
@@ -24,6 +23,7 @@ import numpy as np
 
 try:
     from numba import njit, prange
+
     HAS_NUMBA = True
 except ImportError:
     HAS_NUMBA = False
@@ -31,14 +31,14 @@ except ImportError:
 
 
 if HAS_NUMBA:
+
     @njit(cache=True, nogil=True, fastmath=True, boundscheck=False, parallel=True)
     def roll_spread_numba(
         closes: np.ndarray,
         returns: np.ndarray,
-        window: int = 20
+        window: int = 20,
     ) -> np.ndarray:
-        """
-        Estimateur Roll vectorisé avec Numba.
+        """Estimateur Roll vectorisé avec Numba.
 
         Calcule le spread effectif basé sur l'auto-covariance des returns.
         Version JIT-compiled pour performance maximale.
@@ -48,8 +48,8 @@ if HAS_NUMBA:
 
         for i in prange(window + 1, n):
             # Fenêtre de returns
-            r_window = returns[i-window:i]
-            r_lag = returns[i-window-1:i-1]
+            r_window = returns[i - window : i]
+            r_lag = returns[i - window - 1 : i - 1]
 
             # Covariance manuelle (plus rapide que np.cov en boucle)
             mean_window = np.mean(r_window)
@@ -70,10 +70,9 @@ if HAS_NUMBA:
     @njit(cache=True, nogil=True, fastmath=True, boundscheck=False, parallel=True)
     def high_low_spread_numba(
         highs: np.ndarray,
-        lows: np.ndarray
+        lows: np.ndarray,
     ) -> np.ndarray:
-        """
-        Estimateur Corwin-Schultz vectorisé avec Numba.
+        """Estimateur Corwin-Schultz vectorisé avec Numba.
 
         Version JIT-compiled pour performance maximale.
         """
@@ -84,12 +83,12 @@ if HAS_NUMBA:
         for i in prange(2, n):
             # Beta
             log_hl_t = np.log(highs[i] / lows[i])
-            log_hl_t1 = np.log(highs[i-1] / lows[i-1])
-            beta = log_hl_t ** 2 + log_hl_t1 ** 2
+            log_hl_t1 = np.log(highs[i - 1] / lows[i - 1])
+            beta = log_hl_t**2 + log_hl_t1**2
 
             # Gamma
-            max_high = max(highs[i], highs[i-1])
-            min_low = min(lows[i], lows[i-1])
+            max_high = max(highs[i], highs[i - 1])
+            min_low = min(lows[i], lows[i - 1])
             gamma = (np.log(max_high / min_low)) ** 2
 
             # Alpha
@@ -110,10 +109,9 @@ if HAS_NUMBA:
     @njit(cache=True, nogil=True, fastmath=True, boundscheck=False, parallel=True)
     def calculate_volatility_fast(
         returns: np.ndarray,
-        window: int
+        window: int,
     ) -> np.ndarray:
-        """
-        Calcul de volatilité rolling vectorisé avec Numba.
+        """Calcul de volatilité rolling vectorisé avec Numba.
 
         Parallélisé pour performance maximale sur grandes séries.
         """
@@ -121,7 +119,7 @@ if HAS_NUMBA:
         volatility = np.zeros(n)
 
         for i in prange(window, n):
-            volatility[i] = np.std(returns[i-window:i])
+            volatility[i] = np.std(returns[i - window : i])
 
         # Remplir le début
         if window < n and volatility[window] > 0:
@@ -132,10 +130,9 @@ if HAS_NUMBA:
     @njit(cache=True, nogil=True, fastmath=True, boundscheck=False, parallel=True)
     def calculate_volume_ratio_fast(
         volumes: np.ndarray,
-        window: int
+        window: int,
     ) -> np.ndarray:
-        """
-        Calcul de volume ratio rolling vectorisé avec Numba.
+        """Calcul de volume ratio rolling vectorisé avec Numba.
 
         Ratio = 1 / (volume_courant / volume_moyen)
         Faible volume -> ratio élevé -> plus de slippage
@@ -144,7 +141,7 @@ if HAS_NUMBA:
         volume_ratio = np.ones(n)
 
         for i in prange(window, n):
-            avg_vol = np.mean(volumes[i-window:i])
+            avg_vol = np.mean(volumes[i - window : i])
             if avg_vol > 0 and volumes[i] > 0:
                 ratio = volumes[i] / avg_vol
                 if ratio > 0:
@@ -160,10 +157,11 @@ if HAS_NUMBA:
 # FALLBACK NUMPY (si Numba non disponible)
 # =============================================================================
 
+
 def roll_spread_numpy(
     closes: np.ndarray,
     returns: np.ndarray,
-    window: int = 20
+    window: int = 20,
 ) -> np.ndarray:
     """Version numpy pure (fallback)."""
     import pandas as pd
@@ -188,7 +186,7 @@ def roll_spread_numpy(
 
 def high_low_spread_numpy(
     highs: np.ndarray,
-    lows: np.ndarray
+    lows: np.ndarray,
 ) -> np.ndarray:
     """Version numpy pure (fallback) - garde la boucle car logique complexe."""
     n = len(highs)
@@ -196,8 +194,8 @@ def high_low_spread_numpy(
     sqrt_2 = np.sqrt(2.0)
 
     for i in range(2, n):
-        beta = (np.log(highs[i] / lows[i])) ** 2 + (np.log(highs[i-1] / lows[i-1])) ** 2
-        gamma = (np.log(max(highs[i], highs[i-1]) / min(lows[i], lows[i-1]))) ** 2
+        beta = (np.log(highs[i] / lows[i])) ** 2 + (np.log(highs[i - 1] / lows[i - 1])) ** 2
+        gamma = (np.log(max(highs[i], highs[i - 1]) / min(lows[i], lows[i - 1]))) ** 2
 
         denom = 3.0 - 2.0 * sqrt_2
         if abs(denom) > 1e-10:

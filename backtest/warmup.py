@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest/warmup
+"""Module-ID: backtest/warmup
 
 Purpose: Pré-compilation JIT Numba au démarrage pour éliminer le coût de compilation (170ms → 8ms).
 
@@ -28,7 +27,6 @@ Performance:
 
 import logging
 import time
-from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -40,9 +38,8 @@ _warmup_complete = False
 _warmup_time_ms = 0.0
 
 
-def warmup_numba(silent: bool = True) -> Tuple[bool, float]:
-    """
-    Pré-compile les fonctions Numba JIT pour accélérer les premiers backtests.
+def warmup_numba(silent: bool = True) -> tuple[bool, float]:
+    """Pré-compile les fonctions Numba JIT pour accélérer les premiers backtests.
 
     Cette fonction exécute un mini-backtest avec des données synthétiques
     pour forcer la compilation JIT de toutes les fonctions Numba critiques.
@@ -64,6 +61,7 @@ def warmup_numba(silent: bool = True) -> Tuple[bool, float]:
         >>> from backtest.warmup import warmup_numba
         >>> success, time_ms = warmup_numba()
         >>> print(f"Warmup en {time_ms:.0f}ms")
+
     """
     global _warmup_complete, _warmup_time_ms
 
@@ -87,27 +85,30 @@ def warmup_numba(silent: bool = True) -> Tuple[bool, float]:
         prices = 100 + np.cumsum(np.random.randn(n) * 0.5)
 
         # DataFrame OHLCV minimal
-        df = pd.DataFrame({
-            'open': prices,
-            'high': prices + np.abs(np.random.randn(n) * 0.3),
-            'low': prices - np.abs(np.random.randn(n) * 0.3),
-            'close': prices + np.random.randn(n) * 0.2,
-            'volume': np.random.randint(1000, 10000, n),
-        }, index=pd.date_range('2024-01-01', periods=n, freq='1h'))
+        df = pd.DataFrame(
+            {
+                "open": prices,
+                "high": prices + np.abs(np.random.randn(n) * 0.3),
+                "low": prices - np.abs(np.random.randn(n) * 0.3),
+                "close": prices + np.random.randn(n) * 0.2,
+                "volume": np.random.randint(1000, 10000, n),
+            },
+            index=pd.date_range("2024-01-01", periods=n, freq="1h"),
+        )
 
         # Signaux synthétiques (quelques entrées/sorties)
         signals = pd.Series(0, index=df.index)
-        signals.iloc[5] = 1   # Entrée long
+        signals.iloc[5] = 1  # Entrée long
         signals.iloc[15] = 0  # Sortie
         signals.iloc[25] = 1  # Entrée
         signals.iloc[40] = 0  # Sortie
 
         # Paramètres minimaux
         params = {
-            'initial_capital': 10000.0,
-            'fees_bps': 10,
-            'slippage_bps': 5,
-            'k_sl': 2.0,
+            "initial_capital": 10000.0,
+            "fees_bps": 10,
+            "slippage_bps": 5,
+            "k_sl": 2.0,
         }
 
         # Exécuter un backtest rapide pour compiler Numba
@@ -115,27 +116,27 @@ def warmup_numba(silent: bool = True) -> Tuple[bool, float]:
         trades = simulate_trades_fast(
             df=df,
             signals=signals,
-            params=params
+            params=params,
         )
         _ = calculate_equity_fast(df=df, trades_df=trades, initial_capital=params["initial_capital"])
 
         # Mode bb_pos si disponible (colonnes optionnelles)
         try:
             df_bbpos = df.copy()
-            df_bbpos['bb_pos_low'] = np.random.uniform(0, 1, n)
-            df_bbpos['bb_pos_high'] = np.random.uniform(0, 1, n)
-            df_bbpos['bb_lower'] = prices - 2
-            df_bbpos['bb_upper'] = prices + 2
+            df_bbpos["bb_pos_low"] = np.random.uniform(0, 1, n)
+            df_bbpos["bb_pos_high"] = np.random.uniform(0, 1, n)
+            df_bbpos["bb_lower"] = prices - 2
+            df_bbpos["bb_upper"] = prices + 2
 
             params_bbpos = params.copy()
-            params_bbpos['entry_level'] = 0.0
-            params_bbpos['sl_level'] = -0.5
-            params_bbpos['tp_level'] = 1.0
+            params_bbpos["entry_level"] = 0.0
+            params_bbpos["sl_level"] = -0.5
+            params_bbpos["tp_level"] = 1.0
 
             trades_bbpos = simulate_trades_fast(
                 df=df_bbpos,
                 signals=signals,
-                params=params_bbpos
+                params=params_bbpos,
             )
             _ = calculate_equity_fast(
                 df=df_bbpos,
@@ -182,5 +183,5 @@ def reset_warmup_flag():
 # Désactivé par défaut pour éviter surprises
 import os
 
-if os.environ.get('NUMBA_WARMUP_ON_IMPORT', '').lower() in ('1', 'true', 'yes'):
+if os.environ.get("NUMBA_WARMUP_ON_IMPORT", "").lower() in ("1", "true", "yes"):
     warmup_numba(silent=True)

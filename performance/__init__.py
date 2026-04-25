@@ -1,5 +1,4 @@
-"""
-Module-ID: performance.__init__
+"""Module-ID: performance.__init__
 
 Purpose: Package performance - exports profiler, parallel, monitor, GPU, benchmarks.
 

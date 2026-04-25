@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.indicators_panel
+"""Module-ID: ui.indicators_panel
 
 Purpose: Panel d'indicateurs dynamique Streamlit - grouper et afficher indicateurs par catégorie (tendance, momentum, volatilite).
 
@@ -20,19 +19,17 @@ Read-if: Modification UI sélection indicateurs ou catégorisation.
 Skip-if: Interface indicateurs déjà définie.
 """
 
-from typing import Dict, List
-
 import streamlit as st
 
 from indicators.registry import get_indicator, list_indicators
 
 
-def group_indicators_by_category() -> Dict[str, List[str]]:
-    """
-    Groupe les indicateurs par catégorie fonctionnelle.
+def group_indicators_by_category() -> dict[str, list[str]]:
+    """Groupe les indicateurs par catégorie fonctionnelle.
 
     Returns:
         Dict avec catégories comme clés et listes d'indicateurs comme valeurs
+
     """
     # Récupérer tous les indicateurs
     all_indicators = list_indicators()
@@ -61,10 +58,18 @@ def group_indicators_by_category() -> Dict[str, List[str]]:
             "amplitude_hunter",
         ],
         "⚡ Momentum": [
-            "rsi", "stochastic", "cci", "momentum", "roc", "williams_r"
+            "rsi",
+            "stochastic",
+            "cci",
+            "momentum",
+            "roc",
+            "williams_r",
         ],
         "📦 Volume": [
-            "vwap", "obv", "mfi", "volume_oscillator"
+            "vwap",
+            "obv",
+            "mfi",
+            "volume_oscillator",
         ],
     }
 
@@ -88,11 +93,11 @@ def group_indicators_by_category() -> Dict[str, List[str]]:
 
 
 def render_indicators_panel(expanded: bool = False):
-    """
-    Affiche le panel complet des indicateurs disponibles.
+    """Affiche le panel complet des indicateurs disponibles.
 
     Args:
         expanded: Si True, affiche toutes les catégories ouvertes
+
     """
     st.markdown("### 📊 Indicateurs Disponibles")
 
@@ -115,9 +120,7 @@ def render_indicators_panel(expanded: bool = False):
 
 
 def render_indicators_summary():
-    """
-    Affiche un résumé compact des indicateurs disponibles.
-    """
+    """Affiche un résumé compact des indicateurs disponibles."""
     categories = group_indicators_by_category()
     total = sum(len(inds) for inds in categories.values())
 
@@ -136,9 +139,7 @@ def render_indicators_summary():
 
 
 def render_indicators_table():
-    """
-    Affiche un tableau complet des indicateurs avec leurs métadonnées.
-    """
+    """Affiche un tableau complet des indicateurs avec leurs métadonnées."""
     import pandas as pd
 
     st.markdown("### 📋 Table Complète des Indicateurs")
@@ -150,11 +151,13 @@ def render_indicators_table():
     for ind_name in sorted(all_indicators):
         info = get_indicator(ind_name)
         if info:
-            data.append({
-                "Nom": ind_name.upper(),
-                "Colonnes Requises": ", ".join(info.required_columns),
-                "Description": info.description or "N/A"
-            })
+            data.append(
+                {
+                    "Nom": ind_name.upper(),
+                    "Colonnes Requises": ", ".join(info.required_columns),
+                    "Description": info.description or "N/A",
+                },
+            )
 
     # Afficher le DataFrame
     df = pd.DataFrame(data)
@@ -162,14 +165,14 @@ def render_indicators_table():
 
 
 def get_category_for_indicator(indicator_name: str) -> str:
-    """
-    Retourne la catégorie d'un indicateur.
+    """Retourne la catégorie d'un indicateur.
 
     Args:
         indicator_name: Nom de l'indicateur
 
     Returns:
         Nom de la catégorie (sans emoji)
+
     """
     categories = group_indicators_by_category()
 
@@ -182,8 +185,7 @@ def get_category_for_indicator(indicator_name: str) -> str:
 
 
 def format_indicator_name(indicator_name: str, with_description: bool = True) -> str:
-    """
-    Formate le nom d'un indicateur pour l'affichage.
+    """Formate le nom d'un indicateur pour l'affichage.
 
     Args:
         indicator_name: Nom de l'indicateur
@@ -191,6 +193,7 @@ def format_indicator_name(indicator_name: str, with_description: bool = True) ->
 
     Returns:
         Nom formaté
+
     """
     info = get_indicator(indicator_name)
 
@@ -199,15 +202,14 @@ def format_indicator_name(indicator_name: str, with_description: bool = True) ->
 
     if with_description and info.description:
         return f"**{indicator_name.upper()}** : {info.description}"
-    else:
-        return f"**{indicator_name.upper()}**"
+    return f"**{indicator_name.upper()}**"
 
 
 __all__ = [
+    "format_indicator_name",
+    "get_category_for_indicator",
     "group_indicators_by_category",
     "render_indicators_panel",
     "render_indicators_summary",
     "render_indicators_table",
-    "get_category_for_indicator",
-    "format_indicator_name",
 ]

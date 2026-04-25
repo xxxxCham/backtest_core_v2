@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.preset_validation
+"""Module-ID: utils.preset_validation
 
 Purpose: Valide/remplit presets (cohérence indicateurs et params vs stratégies).
 
@@ -21,7 +20,7 @@ Skip-if: Vous appelez juste validate_preset(preset_name).
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING
 
 from utils.log import get_logger
 
@@ -37,24 +36,22 @@ class PresetValidationResult:
 
     preset_name: str
     is_valid: bool
-    errors: List[str]
-    warnings: List[str]
+    errors: list[str]
+    warnings: list[str]
     indicators_match: bool
-    indicators_expected: List[str]
-    indicators_actual: List[str]
+    indicators_expected: list[str]
+    indicators_actual: list[str]
 
     def summary(self) -> str:
         """Retourne un résumé textuel."""
         if self.is_valid:
             return f"✓ {self.preset_name}: VALIDE"
-        else:
-            errors_str = ", ".join(self.errors)
-            return f"✗ {self.preset_name}: INVALIDE - {errors_str}"
+        errors_str = ", ".join(self.errors)
+        return f"✗ {self.preset_name}: INVALIDE - {errors_str}"
 
 
-def auto_fill_indicators_from_strategy(strategy_name: str) -> List[str]:
-    """
-    Auto-remplit les indicateurs requis depuis le mapping de stratégie.
+def auto_fill_indicators_from_strategy(strategy_name: str) -> list[str]:
+    """Auto-remplit les indicateurs requis depuis le mapping de stratégie.
 
     Args:
         strategy_name: Nom de la stratégie
@@ -66,9 +63,11 @@ def auto_fill_indicators_from_strategy(strategy_name: str) -> List[str]:
         >>> indicators = auto_fill_indicators_from_strategy("bollinger_atr")
         >>> print(indicators)
         ['bollinger', 'atr']
+
     """
     try:
         from strategies.indicators_mapping import get_required_indicators
+
         return get_required_indicators(strategy_name)
     except ImportError:
         logger.warning("Module indicators_mapping non disponible")
@@ -80,10 +79,9 @@ def auto_fill_indicators_from_strategy(strategy_name: str) -> List[str]:
 
 def validate_preset_against_strategy(
     preset: "Preset",  # type: ignore
-    strategy_name: str
+    strategy_name: str,
 ) -> PresetValidationResult:
-    """
-    Valide qu'un Preset correspond bien aux indicateurs requis par une stratégie.
+    """Valide qu'un Preset correspond bien aux indicateurs requis par une stratégie.
 
     Args:
         preset: Instance de Preset à valider
@@ -91,6 +89,7 @@ def validate_preset_against_strategy(
 
     Returns:
         PresetValidationResult avec tous les détails
+
     """
     errors = []
     warnings = []
@@ -98,6 +97,7 @@ def validate_preset_against_strategy(
     # Récupérer les indicateurs attendus
     try:
         from strategies.indicators_mapping import get_required_indicators
+
         expected_indicators = get_required_indicators(strategy_name)
     except ImportError:
         errors.append("Module indicators_mapping non disponible")
@@ -108,7 +108,7 @@ def validate_preset_against_strategy(
             warnings=warnings,
             indicators_match=False,
             indicators_expected=[],
-            indicators_actual=preset.indicators
+            indicators_actual=preset.indicators,
         )
     except KeyError:
         errors.append(f"Stratégie '{strategy_name}' non trouvée")
@@ -119,7 +119,7 @@ def validate_preset_against_strategy(
             warnings=warnings,
             indicators_match=False,
             indicators_expected=[],
-            indicators_actual=preset.indicators
+            indicators_actual=preset.indicators,
         )
 
     # Comparer les indicateurs
@@ -145,16 +145,16 @@ def validate_preset_against_strategy(
         warnings=warnings,
         indicators_match=indicators_match,
         indicators_expected=expected_indicators,
-        indicators_actual=preset.indicators
+        indicators_actual=preset.indicators,
     )
 
 
-def validate_all_presets() -> Dict[str, PresetValidationResult]:
-    """
-    Valide tous les Presets du registre.
+def validate_all_presets() -> dict[str, PresetValidationResult]:
+    """Valide tous les Presets du registre.
 
     Returns:
         Dict mapping preset_name → PresetValidationResult
+
     """
     from utils.parameters import PRESETS
 
@@ -183,12 +183,11 @@ def validate_all_presets() -> Dict[str, PresetValidationResult]:
 
 def create_preset_from_strategy(
     strategy_name: str,
-    preset_name: Optional[str] = None,
-    description: Optional[str] = None,
-    granularity: float = 0.5
+    preset_name: str | None = None,
+    description: str | None = None,
+    granularity: float = 0.5,
 ) -> "Preset":  # type: ignore
-    """
-    Crée un Preset automatiquement depuis une stratégie.
+    """Crée un Preset automatiquement depuis une stratégie.
 
     Args:
         strategy_name: Nom de la stratégie
@@ -203,6 +202,7 @@ def create_preset_from_strategy(
         >>> preset = create_preset_from_strategy("bollinger_atr")
         >>> print(preset.indicators)
         ['bollinger', 'atr']
+
     """
     from strategies.base import get_strategy
     from strategies.indicators_mapping import get_required_indicators
@@ -228,21 +228,21 @@ def create_preset_from_strategy(
         description=description,
         parameters=strategy.parameter_specs,
         indicators=indicators,
-        default_granularity=granularity
+        default_granularity=granularity,
     )
 
     return preset
 
 
-def format_validation_report(results: Dict[str, PresetValidationResult]) -> str:
-    """
-    Formate un rapport de validation complet.
+def format_validation_report(results: dict[str, PresetValidationResult]) -> str:
+    """Formate un rapport de validation complet.
 
     Args:
         results: Résultats de validation
 
     Returns:
         Rapport formaté en texte
+
     """
     lines = ["=" * 80]
     lines.append("RAPPORT DE VALIDATION DES PRESETS")
@@ -277,8 +277,8 @@ def format_validation_report(results: Dict[str, PresetValidationResult]) -> str:
 __all__ = [
     "PresetValidationResult",
     "auto_fill_indicators_from_strategy",
-    "validate_preset_against_strategy",
-    "validate_all_presets",
     "create_preset_from_strategy",
     "format_validation_report",
+    "validate_all_presets",
+    "validate_preset_against_strategy",
 ]

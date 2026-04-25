@@ -5,13 +5,14 @@ import os
 import sys
 
 # Configuration AVANT import numba
-os.environ['NUMBA_NUM_THREADS'] = '32'
-os.environ['NUMBA_THREADING_LAYER'] = 'omp'  # OpenMP au lieu de TBB
-os.environ['OMP_NUM_THREADS'] = '32'
+os.environ["NUMBA_NUM_THREADS"] = "32"
+os.environ["NUMBA_THREADING_LAYER"] = "omp"  # OpenMP au lieu de TBB
+os.environ["OMP_NUM_THREADS"] = "32"
 
 import time
-import numpy as np
+
 import numba
+import numpy as np
 
 print("=" * 70)
 print("TEST NUMBA avec OpenMP")
@@ -22,6 +23,7 @@ print(f"NumPy version: {np.__version__}")
 print(f"Threading layer: {numba.config.THREADING_LAYER}")
 print(f"Threads: {numba.config.NUMBA_NUM_THREADS}")
 
+
 # Test prange
 @numba.njit(parallel=True, fastmath=True)
 def test_prange(n):
@@ -29,6 +31,7 @@ def test_prange(n):
     for i in numba.prange(n):
         total += i * 2.0
     return total
+
 
 try:
     print("\nTest prange...")
@@ -41,7 +44,7 @@ try:
     start = time.perf_counter()
     _ = test_prange(n)
     elapsed = time.perf_counter() - start
-    print(f"✓ Benchmark: {n:,} itérations en {elapsed*1000:.1f} ms")
+    print(f"✓ Benchmark: {n:,} itérations en {elapsed * 1000:.1f} ms")
 
 except Exception as e:
     print(f"✗ Erreur: {e}")

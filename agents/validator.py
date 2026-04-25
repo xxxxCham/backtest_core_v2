@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.validator
+"""Module-ID: agents.validator
 
 Purpose: Prendre la décision finale (APPROVE/REJECT/ITERATE/ABORT) avec synthèse des agents.
 
@@ -24,7 +23,7 @@ from __future__ import annotations
 
 import time
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -43,10 +42,11 @@ logger = get_obs_logger(__name__)
 
 class ValidationDecision(Enum):
     """Décisions possibles du Validator."""
-    APPROVE = "APPROVE"      # Accepter la configuration
-    REJECT = "REJECT"        # Rejeter définitivement
-    ITERATE = "ITERATE"      # Continuer l'optimisation
-    ABORT = "ABORT"          # Arrêter (problème grave)
+
+    APPROVE = "APPROVE"  # Accepter la configuration
+    REJECT = "REJECT"  # Rejeter définitivement
+    ITERATE = "ITERATE"  # Continuer l'optimisation
+    ABORT = "ABORT"  # Arrêter (problème grave)
 
 
 # === Modèles Pydantic pour validation ===
@@ -54,6 +54,7 @@ class ValidationDecision(Enum):
 
 class CriteriaCheck(BaseModel):
     """Vérification des critères objectifs."""
+
     sharpe_meets_minimum: bool = False
     drawdown_within_limit: bool = False
     overfitting_acceptable: bool = False
@@ -63,43 +64,48 @@ class CriteriaCheck(BaseModel):
 
 class AgentSynthesis(BaseModel):
     """Synthèse des contributions des agents."""
-    analyst_key_points: List[str] = Field(default_factory=list)
+
+    analyst_key_points: list[str] = Field(default_factory=list)
     strategist_contribution: str = ""
     critic_concerns_addressed: bool = False
 
 
 class ApprovedConfig(BaseModel):
     """Détails si décision APPROVE."""
-    final_parameters: Dict[str, Any] = Field(default_factory=dict)
-    expected_performance: Dict[str, Any] = Field(default_factory=dict)
-    deployment_notes: List[str] = Field(default_factory=list)
-    monitoring_recommendations: List[str] = Field(default_factory=list)
+
+    final_parameters: dict[str, Any] = Field(default_factory=dict)
+    expected_performance: dict[str, Any] = Field(default_factory=dict)
+    deployment_notes: list[str] = Field(default_factory=list)
+    monitoring_recommendations: list[str] = Field(default_factory=list)
 
 
 class IterateGuidance(BaseModel):
     """Détails si décision ITERATE."""
-    focus_areas: List[str] = Field(default_factory=list)
+
+    focus_areas: list[str] = Field(default_factory=list)
     suggested_approach: str = ""
     max_more_iterations: int = Field(default=3, ge=1, le=20)
 
 
 class RejectionDetails(BaseModel):
     """Détails si décision REJECT."""
-    primary_reasons: List[str] = Field(default_factory=list)
-    fundamental_issues: List[str] = Field(default_factory=list)
-    recommendations: List[str] = Field(default_factory=list)
+
+    primary_reasons: list[str] = Field(default_factory=list)
+    fundamental_issues: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
 
 
 class ValidatorResponse(BaseModel):
     """Structure de réponse complète du Validator."""
+
     decision: str = Field(..., pattern="^(APPROVE|REJECT|ITERATE|ABORT)$")
     confidence: int = Field(default=50, ge=0, le=100)
     summary: str = ""
-    criteria_check: Optional[CriteriaCheck] = None
-    agent_synthesis: Optional[AgentSynthesis] = None
-    if_approved: Optional[ApprovedConfig] = None
-    if_iterate: Optional[IterateGuidance] = None
-    if_rejected: Optional[RejectionDetails] = None
+    criteria_check: CriteriaCheck | None = None
+    agent_synthesis: AgentSynthesis | None = None
+    if_approved: ApprovedConfig | None = None
+    if_iterate: IterateGuidance | None = None
+    if_rejected: RejectionDetails | None = None
     final_report: str = ""
 
     @field_validator("decision", mode="before")
@@ -111,8 +117,7 @@ class ValidatorResponse(BaseModel):
 
 
 class ValidatorAgent(BaseAgent):
-    """
-    Agent Validator - Décideur final.
+    """Agent Validator - Décideur final.
 
     Responsabilités:
     - Synthétiser les avis des agents
@@ -202,14 +207,14 @@ Respond ONLY in valid JSON format with this exact structure:
 }"""
 
     def execute(self, context: AgentContext) -> AgentResult:
-        """
-        Effectue la validation finale.
+        """Effectue la validation finale.
 
         Args:
             context: Contexte complet
 
         Returns:
             Décision finale
+
         """
         start_time = time.time()
 
@@ -248,7 +253,8 @@ Respond ONLY in valid JSON format with this exact structure:
             validated_resp = ValidatorResponse.model_validate(validation)
             logger.debug(
                 "validator_response_validated decision=%s confidence=%d",
-                validated_resp.decision, validated_resp.confidence,
+                validated_resp.decision,
+                validated_resp.confidence,
             )
         except ValidationError as exc:
             logger.warning("validator_pydantic_partial errors=%d", len(exc.errors()))
@@ -291,7 +297,7 @@ Respond ONLY in valid JSON format with this exact structure:
             raw_llm_response=response,
         )
 
-    def _check_objective_criteria(self, context: AgentContext) -> Dict[str, bool]:
+    def _check_objective_criteria(self, context: AgentContext) -> dict[str, bool]:
         """Vérifie les critères objectifs."""
         checks = {
             "sharpe_meets_minimum": False,
@@ -328,10 +334,9 @@ Respond ONLY in valid JSON format with this exact structure:
     def _build_validation_prompt(
         self,
         context: AgentContext,
-        objective_check: Dict[str, bool],
+        objective_check: dict[str, bool],
     ) -> str:
         """Construit le prompt de validation via template Jinja2."""
-
         # Convertir MetricsSnapshot en dict pour le template
         current_metrics_dict = None
         if context.current_metrics:
@@ -385,11 +390,10 @@ Respond ONLY in valid JSON format with this exact structure:
     def _validate_decision_coherence(
         self,
         decision: ValidationDecision,
-        objective_check: Dict[str, bool],
-        validation: Dict[str, Any],
+        objective_check: dict[str, bool],
+        validation: dict[str, Any],
     ) -> ValidationDecision:
-        """
-        Valide la cohérence entre la décision et les critères.
+        """Valide la cohérence entre la décision et les critères.
 
         Empêche les décisions incohérentes (ex: APPROVE sans meeting criteria).
         """
@@ -398,7 +402,7 @@ Respond ONLY in valid JSON format with this exact structure:
         # Ne pas APPROVE si tous les critères ne sont pas remplis
         if decision == ValidationDecision.APPROVE and not all_criteria_met:
             logger.warning(
-                "validator_decision_override from=APPROVE to=ITERATE reason=criteria_not_met"
+                "validator_decision_override from=APPROVE to=ITERATE reason=criteria_not_met",
             )
             return ValidationDecision.ITERATE
 

@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.report_generator
+"""Module-ID: backtest.report_generator
 
 Purpose: Générer des rapports de backtest lisibles, organisés et facilement interprétables.
 
@@ -23,7 +22,7 @@ Skip-if: Vous n'avez besoin que des résultats bruts sans rapport.
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import pandas as pd
 
@@ -58,9 +57,9 @@ MIN_TRADES = 10  # Nombre minimum de trades pour considérer le résultat valide
 # FONCTIONS DE CLASSEMENT
 # =============================================================================
 
-def classify_result(metrics: Dict[str, Any]) -> Tuple[str, str]:
-    """
-    Classifie un résultat de backtest selon ses performances.
+
+def classify_result(metrics: dict[str, Any]) -> tuple[str, str]:
+    """Classifie un résultat de backtest selon ses performances.
 
     Args:
         metrics: Dict des métriques de performance
@@ -72,6 +71,7 @@ def classify_result(metrics: Dict[str, Any]) -> Tuple[str, str]:
         >>> metrics = {"total_return_pct": 18.5, "sharpe_ratio": 2.3}
         >>> classify_result(metrics)
         ("excellent", "🏆")
+
     """
     total_return = metrics.get("total_return_pct", 0)
     sharpe = metrics.get("sharpe_ratio", 0)
@@ -92,17 +92,15 @@ def classify_result(metrics: Dict[str, Any]) -> Tuple[str, str]:
     # Classification par performance
     if total_return >= PROFITABLE_THRESHOLD and sharpe >= EXCELLENT_SHARPE:
         return "excellent", "🏆"
-    elif total_return >= PROFITABLE_THRESHOLD and sharpe >= GOOD_SHARPE:
+    if total_return >= PROFITABLE_THRESHOLD and sharpe >= GOOD_SHARPE:
         return "good", "✅"
-    elif total_return >= 0:
+    if total_return >= 0:
         return "mediocre", "📊"
-    else:
-        return "unprofitable", "❌"
+    return "unprofitable", "❌"
 
 
-def rank_results(results: List[Dict[str, Any]], sort_by: str = "total_return_pct") -> pd.DataFrame:
-    """
-    Classe les résultats de backtest par ordre de performance.
+def rank_results(results: list[dict[str, Any]], sort_by: str = "total_return_pct") -> pd.DataFrame:
+    """Classe les résultats de backtest par ordre de performance.
 
     Args:
         results: Liste de métadonnées de résultats
@@ -115,6 +113,7 @@ def rank_results(results: List[Dict[str, Any]], sort_by: str = "total_return_pct
         >>> results = [{"run_id": "abc", "metrics": {...}}, ...]
         >>> df = rank_results(results)
         >>> print(df[["run_id", "category", "total_return_pct"]].head())
+
     """
     rows = []
     for result in results:
@@ -146,13 +145,13 @@ def rank_results(results: List[Dict[str, Any]], sort_by: str = "total_return_pct
 # GÉNÉRATION DE RAPPORTS MARKDOWN
 # =============================================================================
 
+
 def generate_summary_report(
-    results: List[Dict[str, Any]],
-    output_path: Optional[Path] = None,
+    results: list[dict[str, Any]],
+    output_path: Path | None = None,
     title: str = "📊 Rapport de Backtest - Résumé",
 ) -> str:
-    """
-    Génère un rapport Markdown résumant les résultats de backtest.
+    """Génère un rapport Markdown résumant les résultats de backtest.
 
     Args:
         results: Liste de métadonnées de résultats
@@ -166,6 +165,7 @@ def generate_summary_report(
         >>> results = storage.load_all_results()
         >>> report = generate_summary_report(results)
         >>> print(report)
+
     """
     df = rank_results(results)
 
@@ -179,123 +179,146 @@ def generate_summary_report(
     ]
 
     # Statistiques globales
-    report_lines.extend([
-        "## 📈 Statistiques Globales",
-        "",
-        f"- **Excellents (🏆):** {len(df[df['category'] == 'excellent'])}",
-        f"- **Bons (✅):** {len(df[df['category'] == 'good'])}",
-        f"- **Médiocres (📊):** {len(df[df['category'] == 'mediocre'])}",
-        f"- **Non rentables (❌):** {len(df[df['category'] == 'unprofitable'])}",
-        f"- **Échecs catastrophiques (💀):** {len(df[df['category'] == 'ruined'])}",
-        f"- **Données insuffisantes (⚠️):** {len(df[df['category'] == 'insufficient_data'])}",
-        "",
-    ])
+    report_lines.extend(
+        [
+            "## 📈 Statistiques Globales",
+            "",
+            f"- **Excellents (🏆):** {len(df[df['category'] == 'excellent'])}",
+            f"- **Bons (✅):** {len(df[df['category'] == 'good'])}",
+            f"- **Médiocres (📊):** {len(df[df['category'] == 'mediocre'])}",
+            f"- **Non rentables (❌):** {len(df[df['category'] == 'unprofitable'])}",
+            f"- **Échecs catastrophiques (💀):** {len(df[df['category'] == 'ruined'])}",
+            f"- **Données insuffisantes (⚠️):** {len(df[df['category'] == 'insufficient_data'])}",
+            "",
+        ],
+    )
 
     # Top 10 meilleurs résultats
     top10 = df.head(10)
-    report_lines.extend([
-        "## 🏆 Top 10 des Meilleurs Résultats",
-        "",
-        "| Rang | Emoji | Stratégie | Symbole | TF | Return % | Sharpe | Max DD % | Win Rate % | Trades |",
-        "|------|-------|-----------|---------|----|---------:|-------:|---------:|-----------:|-------:|",
-    ])
+    report_lines.extend(
+        [
+            "## 🏆 Top 10 des Meilleurs Résultats",
+            "",
+            "| Rang | Emoji | Stratégie | Symbole | TF | Return % | Sharpe | Max DD % | Win Rate % | Trades |",
+            "|------|-------|-----------|---------|----|---------:|-------:|---------:|-----------:|-------:|",
+        ],
+    )
 
     for idx, (_, row) in enumerate(top10.iterrows(), 1):
         report_lines.append(
             f"| {idx} | {row['emoji']} | {row['strategy']} | {row['symbol']} | {row['timeframe']} | "
             f"{row['total_return_pct']:.2f} | {row['sharpe_ratio']:.2f} | "
-            f"{row['max_drawdown_pct']:.2f} | {row['win_rate_pct']:.2f} | {int(row['total_trades'])} |"
+            f"{row['max_drawdown_pct']:.2f} | {row['win_rate_pct']:.2f} | {int(row['total_trades'])} |",
         )
 
     report_lines.append("")
 
     # Pires résultats (Bottom 5)
     bottom5 = df.tail(5).sort_values("total_return_pct", ascending=True)
-    report_lines.extend([
-        "## ⚠️ Les 5 Pires Résultats",
-        "",
-        "| Rang | Emoji | Stratégie | Symbole | TF | Return % | Sharpe | Max DD % | Raison |",
-        "|------|-------|-----------|---------|----|---------:|-------:|---------:|--------|",
-    ])
+    report_lines.extend(
+        [
+            "## ⚠️ Les 5 Pires Résultats",
+            "",
+            "| Rang | Emoji | Stratégie | Symbole | TF | Return % | Sharpe | Max DD % | Raison |",
+            "|------|-------|-----------|---------|----|---------:|-------:|---------:|--------|",
+        ],
+    )
 
     for idx, (_, row) in enumerate(bottom5.iterrows(), 1):
         reason = "Compte ruiné" if row.get("category") == "ruined" else "Pertes importantes"
         report_lines.append(
             f"| {idx} | {row['emoji']} | {row['strategy']} | {row['symbol']} | {row['timeframe']} | "
             f"{row['total_return_pct']:.2f} | {row['sharpe_ratio']:.2f} | "
-            f"{row['max_drawdown_pct']:.2f} | {reason} |"
+            f"{row['max_drawdown_pct']:.2f} | {reason} |",
         )
 
     report_lines.append("")
 
     # Performance par stratégie
-    strategy_stats = df.groupby("strategy").agg({
-        "total_return_pct": ["mean", "std", "count"],
-        "sharpe_ratio": "mean",
-        "win_rate_pct": "mean",
-    }).round(2)
+    strategy_stats = (
+        df.groupby("strategy")
+        .agg(
+            {
+                "total_return_pct": ["mean", "std", "count"],
+                "sharpe_ratio": "mean",
+                "win_rate_pct": "mean",
+            },
+        )
+        .round(2)
+    )
 
-    report_lines.extend([
-        "## 📊 Performance par Stratégie",
-        "",
-        "| Stratégie | Backtests | Return Moyen % | Return Std % | Sharpe Moyen | Win Rate Moyen % |",
-        "|-----------|----------:|---------------:|-------------:|-------------:|-----------------:|",
-    ])
+    report_lines.extend(
+        [
+            "## 📊 Performance par Stratégie",
+            "",
+            "| Stratégie | Backtests | Return Moyen % | Return Std % | Sharpe Moyen | Win Rate Moyen % |",
+            "|-----------|----------:|---------------:|-------------:|-------------:|-----------------:|",
+        ],
+    )
 
     for strategy, row in strategy_stats.iterrows():
         report_lines.append(
             f"| {strategy} | {int(row[('total_return_pct', 'count')])} | "
             f"{row[('total_return_pct', 'mean')]:.2f} | {row[('total_return_pct', 'std')]:.2f} | "
-            f"{row[('sharpe_ratio', 'mean')]:.2f} | {row[('win_rate_pct', 'mean')]:.2f} |"
+            f"{row[('sharpe_ratio', 'mean')]:.2f} | {row[('win_rate_pct', 'mean')]:.2f} |",
         )
 
     report_lines.append("")
 
     # Recommandations
-    report_lines.extend([
-        "## 🚀 Recommandations",
-        "",
-    ])
+    report_lines.extend(
+        [
+            "## 🚀 Recommandations",
+            "",
+        ],
+    )
 
-    excellent_count = len(df[df['category'] == 'excellent'])
+    excellent_count = len(df[df["category"] == "excellent"])
     if excellent_count > 0:
         top_strategy = top10.iloc[0]
-        report_lines.extend([
-            "### ✅ Production Immédiate",
-            "",
-            f"**{top_strategy['strategy']}** sur **{top_strategy['symbol']}** ({top_strategy['timeframe']}) :",
-            f"- Return: **{top_strategy['total_return_pct']:.2f}%**",
-            f"- Sharpe: **{top_strategy['sharpe_ratio']:.2f}**",
-            f"- Max Drawdown: **{top_strategy['max_drawdown_pct']:.2f}%**",
-            "",
-        ])
+        report_lines.extend(
+            [
+                "### ✅ Production Immédiate",
+                "",
+                f"**{top_strategy['strategy']}** sur **{top_strategy['symbol']}** ({top_strategy['timeframe']}) :",
+                f"- Return: **{top_strategy['total_return_pct']:.2f}%**",
+                f"- Sharpe: **{top_strategy['sharpe_ratio']:.2f}**",
+                f"- Max Drawdown: **{top_strategy['max_drawdown_pct']:.2f}%**",
+                "",
+            ],
+        )
     else:
-        report_lines.extend([
-            "⚠️ Aucune configuration excellente trouvée. Optimisation nécessaire.",
-            "",
-        ])
+        report_lines.extend(
+            [
+                "⚠️ Aucune configuration excellente trouvée. Optimisation nécessaire.",
+                "",
+            ],
+        )
 
     # Avertissements
-    ruined_count = len(df[df['category'] == 'ruined'])
+    ruined_count = len(df[df["category"] == "ruined"])
     if ruined_count > 0:
-        report_lines.extend([
-            "### ⚠️ Configurations Dangereuses",
-            "",
-            f"**{ruined_count} configuration(s)** ont mené à la ruine du compte. À éviter absolument :",
-            "",
-        ])
-        for _, row in df[df['category'] == 'ruined'].head(3).iterrows():
+        report_lines.extend(
+            [
+                "### ⚠️ Configurations Dangereuses",
+                "",
+                f"**{ruined_count} configuration(s)** ont mené à la ruine du compte. À éviter absolument :",
+                "",
+            ],
+        )
+        for _, row in df[df["category"] == "ruined"].head(3).iterrows():
             report_lines.append(
-                f"- {row['strategy']} sur {row['symbol']} ({row['timeframe']}) : "
-                f"Return {row['total_return_pct']:.2f}%"
+                f"- {row['strategy']} sur {row['symbol']} ({row['timeframe']}) : Return {row['total_return_pct']:.2f}%",
             )
         report_lines.append("")
 
-    report_lines.extend([
-        "---",
-        "",
-        "*Rapport généré automatiquement par backtest-core-v2*",
-    ])
+    report_lines.extend(
+        [
+            "---",
+            "",
+            "*Rapport généré automatiquement par backtest-core-v2*",
+        ],
+    )
 
     report_content = "\n".join(report_lines)
 
@@ -309,12 +332,11 @@ def generate_summary_report(
 
 
 def generate_comparison_table(
-    results: List[Dict[str, Any]],
-    filter_category: Optional[str] = None,
+    results: list[dict[str, Any]],
+    filter_category: str | None = None,
     output_format: str = "markdown",
 ) -> str:
-    """
-    Génère un tableau comparatif des résultats.
+    """Génère un tableau comparatif des résultats.
 
     Args:
         results: Liste de métadonnées de résultats
@@ -328,6 +350,7 @@ def generate_comparison_table(
         >>> results = storage.load_all_results()
         >>> table = generate_comparison_table(results, filter_category="excellent")
         >>> print(table)
+
     """
     df = rank_results(results)
 
@@ -336,12 +359,11 @@ def generate_comparison_table(
 
     if output_format == "markdown":
         return df.to_markdown(index=False, floatfmt=".2f")
-    elif output_format == "html":
+    if output_format == "html":
         return df.to_html(index=False, classes="table table-striped")
-    elif output_format == "csv":
+    if output_format == "csv":
         return df.to_csv(index=False)
-    else:
-        raise ValueError(f"Format non supporté: {output_format}")
+    raise ValueError(f"Format non supporté: {output_format}")
 
 
 # =============================================================================
@@ -358,7 +380,7 @@ if __name__ == "__main__":
         print(f"❌ Fichier index introuvable: {index_path}")
         exit(1)
 
-    with open(index_path, "r") as f:
+    with open(index_path) as f:
         index_data = json.load(f)
 
     results = list(index_data.values())

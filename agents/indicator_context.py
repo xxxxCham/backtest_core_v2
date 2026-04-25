@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.indicator_context
+"""Module-ID: agents.indicator_context
 
 Purpose: Construire un contexte indicateurs (stratégie vs lecture seule) pour LLM.
 
@@ -18,7 +17,8 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from collections.abc import Iterable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -30,7 +30,7 @@ from strategies.indicators_mapping import (
     get_required_indicators,
 )
 
-INDICATOR_SELECTION_REFERENCE: Dict[str, Dict[str, str]] = {
+INDICATOR_SELECTION_REFERENCE: dict[str, dict[str, str]] = {
     "adx": {
         "label": "Average Directional Index",
         "summary": "Trend-strength gauge. Best used to filter breakouts or trend systems and avoid weak/noisy ranges.",
@@ -384,7 +384,6 @@ _INDICATOR_SELECTION_STOPWORDS = {
     "plus",
     "pour",
     "prix",
-    "propose",
     "quand",
     "qui",
     "sont",
@@ -433,7 +432,7 @@ _INDICATOR_OBJECTIVE_HINTS = {
     "déséquilibre": ("imbalance", "structure", "gap", "déséquilibre"),
 }
 
-_DICT_INDICATOR_BUILDER_ACCESS: Dict[str, str] = {
+_DICT_INDICATOR_BUILDER_ACCESS: dict[str, str] = {
     "adx": 'adx_d = indicators["adx"]; adx = np.nan_to_num(adx_d["adx"]); adx_val = adx',
     "amplitude_hunter": 'amp = indicators["amplitude_hunter"]; range_pct = np.nan_to_num(amp["range_pct"]); score = np.nan_to_num(amp["score"])',
     "aroon": 'ar = indicators["aroon"]; up = np.nan_to_num(ar["aroon_up"]); down = np.nan_to_num(ar["aroon_down"])',
@@ -455,7 +454,7 @@ _DICT_INDICATOR_BUILDER_ACCESS: Dict[str, str] = {
     "vortex": 'vx = indicators["vortex"]; vip = np.nan_to_num(vx["vi_plus"]); vin = np.nan_to_num(vx["vi_minus"])',
 }
 
-_DICT_INDICATOR_STABLE_ALIAS_MAP: Dict[str, Dict[str, str]] = {
+_DICT_INDICATOR_STABLE_ALIAS_MAP: dict[str, dict[str, str]] = {
     "adx": {"adx_d": "adx_data", "adx": "adx_value", "adx_val": "adx_value"},
     "amplitude_hunter": {
         "amp": "amplitude_hunter_data",
@@ -463,14 +462,24 @@ _DICT_INDICATOR_STABLE_ALIAS_MAP: Dict[str, Dict[str, str]] = {
         "score": "amplitude_hunter_score",
     },
     "aroon": {"ar": "aroon_data", "up": "aroon_up", "down": "aroon_down"},
-    "bollinger": {"bb": "bollinger_data", "upper": "bollinger_upper", "middle": "bollinger_middle", "lower": "bollinger_lower"},
+    "bollinger": {
+        "bb": "bollinger_data",
+        "upper": "bollinger_upper",
+        "middle": "bollinger_middle",
+        "lower": "bollinger_lower",
+    },
     "directional_bias": {
         "bias": "directional_bias_data",
         "bull_score": "directional_bias_bull_score",
         "bear_score": "directional_bias_bear_score",
         "net_bias": "directional_bias_net",
     },
-    "donchian": {"dc": "donchian_data", "upper": "donchian_upper", "middle": "donchian_middle", "lower": "donchian_lower"},
+    "donchian": {
+        "dc": "donchian_data",
+        "upper": "donchian_upper",
+        "middle": "donchian_middle",
+        "lower": "donchian_lower",
+    },
     "fvg": {"fvg": "fvg_data", "bull_gap": "fvg_bullish_gap"},
     "ichimoku": {"ich": "ichimoku_data", "tenkan": "ichimoku_tenkan", "kijun": "ichimoku_kijun"},
     "keltner": {"kelt": "keltner_data", "upper": "keltner_upper", "lower": "keltner_lower"},
@@ -481,7 +490,11 @@ _DICT_INDICATOR_STABLE_ALIAS_MAP: Dict[str, Dict[str, str]] = {
     "smart_legs": {"legs": "smart_legs_data", "bull_leg": "smart_legs_bull_leg"},
     "stochastic": {"stoch": "stochastic_data", "k": "stochastic_k", "d": "stochastic_d"},
     "stoch_rsi": {"srsi": "stoch_rsi_data", "k": "stoch_rsi_k", "d": "stoch_rsi_d"},
-    "supertrend": {"st": "supertrend_data", "st_direction": "supertrend_direction", "direction": "supertrend_direction"},
+    "supertrend": {
+        "st": "supertrend_data",
+        "st_direction": "supertrend_direction",
+        "direction": "supertrend_direction",
+    },
     "swing": {"sw": "swing_data", "swing_low": "swing_low_flag"},
     "vortex": {"vx": "vortex_data", "vip": "vortex_vi_plus", "vin": "vortex_vi_minus"},
 }
@@ -519,15 +532,16 @@ _INDICATOR_NOISE_WEIGHT = 0.12
 _INDICATOR_BASELINE_UTILITY_BONUS = 0.05
 
 # Mapping indicateur → famille (chargé paresseusement, partagé en mémoire)
-_INDICATOR_FAMILY_MAP_CACHE: Optional[Dict[str, str]] = None
+_INDICATOR_FAMILY_MAP_CACHE: dict[str, str] | None = None
 
 
-def _get_indicator_family_map() -> Dict[str, str]:
+def _get_indicator_family_map() -> dict[str, str]:
     """Retourne le mapping indicateur→famille (construit une seule fois par processus)."""
     global _INDICATOR_FAMILY_MAP_CACHE
     if _INDICATOR_FAMILY_MAP_CACHE is None:
         try:
             from config.indicator_history import build_indicator_to_family_map
+
             _INDICATOR_FAMILY_MAP_CACHE = build_indicator_to_family_map()
         except Exception:
             _INDICATOR_FAMILY_MAP_CACHE = {}
@@ -549,7 +563,7 @@ def _tokenize_indicator_selection_text(*texts: Any) -> set[str]:
 
 def _build_indicator_query_tokens(
     objective: str = "",
-    diagnostic: Optional[Dict[str, Any]] = None,
+    diagnostic: dict[str, Any] | None = None,
 ) -> set[str]:
     diagnostic = diagnostic or {}
     tokens = _tokenize_indicator_selection_text(
@@ -580,7 +594,7 @@ def _indicator_reference_tokens(indicator_name: str) -> set[str]:
 def _stable_indicator_order_noise(session_seed: str, indicator_name: str) -> float:
     payload = f"{session_seed}|{indicator_name}".encode("utf-8", errors="ignore")
     digest = hashlib.sha256(payload).hexdigest()
-    return int(digest[:12], 16) / float(16 ** 12)
+    return int(digest[:12], 16) / float(16**12)
 
 
 def get_indicator_builder_access_example(indicator_name: str) -> str:
@@ -597,7 +611,7 @@ def get_indicator_builder_access_example(indicator_name: str) -> str:
     return _default_indicator_builder_access(key)
 
 
-def get_indicator_builder_stable_alias_map(indicator_name: str) -> Dict[str, str]:
+def get_indicator_builder_stable_alias_map(indicator_name: str) -> dict[str, str]:
     """Retourne les alias stables preferes pour un indicateur Builder."""
     key = str(indicator_name or "").strip().lower()
     alias_map = _DICT_INDICATOR_STABLE_ALIAS_MAP.get(key, {})
@@ -614,19 +628,19 @@ def rank_indicator_selection(
     available_indicators: Iterable[str],
     *,
     objective: str = "",
-    diagnostic: Optional[Dict[str, Any]] = None,
-    previous_indicators: Optional[Iterable[str]] = None,
+    diagnostic: dict[str, Any] | None = None,
+    previous_indicators: Iterable[str] | None = None,
     session_seed: str = "",
     prefer_diversity: bool = False,
     # ── Nouvelles options de diversité inter-sessions ──────────────────────
-    banned_indicators: Optional[Iterable[str]] = None,
-    previous_families: Optional[Iterable[str]] = None,
+    banned_indicators: Iterable[str] | None = None,
+    previous_families: Iterable[str] | None = None,
     family_penalty: float = 0.0,
     family_bonus: float = 0.0,
     inter_session_penalty: float = 0.0,
     inter_session_novelty_bonus: float = 0.0,
-    inter_session_indicators: Optional[Iterable[str]] = None,
-) -> List[str]:
+    inter_session_indicators: Iterable[str] | None = None,
+) -> list[str]:
     """Classe les indicateurs pour le prompt Builder.
 
     Le classement combine deux contraintes liées :
@@ -653,32 +667,16 @@ def rank_indicator_selection(
             (passé depuis ``config.indicator_history``).
     """
     query_tokens = _build_indicator_query_tokens(objective, diagnostic)
-    previous = {
-        str(ind or "").strip().lower()
-        for ind in (previous_indicators or [])
-        if str(ind or "").strip()
-    }
-    banned = {
-        str(ind or "").strip().lower()
-        for ind in (banned_indicators or [])
-        if str(ind or "").strip()
-    }
-    recent_families = {
-        str(fam or "").strip().lower()
-        for fam in (previous_families or [])
-        if str(fam or "").strip()
-    }
+    previous = {str(ind or "").strip().lower() for ind in (previous_indicators or []) if str(ind or "").strip()}
+    banned = {str(ind or "").strip().lower() for ind in (banned_indicators or []) if str(ind or "").strip()}
+    recent_families = {str(fam or "").strip().lower() for fam in (previous_families or []) if str(fam or "").strip()}
     inter_session = {
-        str(ind or "").strip().lower()
-        for ind in (inter_session_indicators or [])
-        if str(ind or "").strip()
+        str(ind or "").strip().lower() for ind in (inter_session_indicators or []) if str(ind or "").strip()
     }
 
     # Charger le mapping famille une seule fois si on a besoin des malus/bonus
-    family_map: Dict[str, str] = (
-        _get_indicator_family_map()
-        if (recent_families or family_penalty or family_bonus)
-        else {}
+    family_map: dict[str, str] = (
+        _get_indicator_family_map() if (recent_families or family_penalty or family_bonus) else {}
     )
 
     # Filtrer les indicateurs bannis
@@ -691,7 +689,7 @@ def rank_indicator_selection(
         return []
 
     effective_seed = str(session_seed or objective or "builder-indicators")
-    ranking: List[tuple[float, str]] = []
+    ranking: list[tuple[float, str]] = []
 
     for indicator_name in normalized:
         key = indicator_name.lower()
@@ -709,9 +707,7 @@ def rank_indicator_selection(
         if previous:
             if key in previous:
                 relevance_score += (
-                    -_INDICATOR_PREVIOUS_DIVERSITY_PENALTY
-                    if prefer_diversity
-                    else _INDICATOR_PREVIOUS_STABILITY_BONUS
+                    -_INDICATOR_PREVIOUS_DIVERSITY_PENALTY if prefer_diversity else _INDICATOR_PREVIOUS_STABILITY_BONUS
                 )
             elif prefer_diversity:
                 relevance_score += _INDICATOR_NOVELTY_BONUS
@@ -744,13 +740,16 @@ def rank_indicator_selection(
 
 
 # Indicateurs contextuels (lecture seule). Modifiable côté code.
-DEFAULT_READ_ONLY_INDICATORS: List[Tuple[str, Dict[str, Any]]] = [
+DEFAULT_READ_ONLY_INDICATORS: list[tuple[str, dict[str, Any]]] = [
     ("adx", {"period": 14}),
     ("atr", {"period": 14}),
     ("rsi", {"period": 14}),
     ("macd", {"fast_period": 12, "slow_period": 26, "signal_period": 9}),
     ("stochastic", {"k_period": 14, "d_period": 3, "smooth_k": 3}),
-    ("stoch_rsi", {"rsi_period": 14, "stoch_period": 14, "k_smooth": 3, "d_smooth": 3, "oversold": 20, "overbought": 80}),
+    (
+        "stoch_rsi",
+        {"rsi_period": 14, "stoch_period": 14, "k_smooth": 3, "d_smooth": 3, "oversold": 20, "overbought": 80},
+    ),
     ("cci", {"period": 20}),
     ("williams_r", {"period": 14}),
     ("momentum", {"period": 14}),
@@ -773,12 +772,12 @@ DEFAULT_READ_ONLY_INDICATORS: List[Tuple[str, Dict[str, Any]]] = [
     ("fibonacci_levels", {"period": 50}),
 ]
 
-TUPLE_LABELS: Dict[str, Tuple[str, ...]] = {
+TUPLE_LABELS: dict[str, tuple[str, ...]] = {
     "bollinger": ("upper", "middle", "lower"),
     "stochastic": ("k", "d"),
 }
 
-DICT_KEY_ALIASES: Dict[str, str] = {
+DICT_KEY_ALIASES: dict[str, str] = {
     "histogram": "hist",
 }
 
@@ -786,18 +785,17 @@ DICT_KEY_ALIASES: Dict[str, str] = {
 def build_indicator_context(
     df: pd.DataFrame,
     strategy_name: str,
-    params: Dict[str, Any],
-    read_only_indicators: Optional[Iterable[Tuple[str, Dict[str, Any]]]] = None,
-) -> Dict[str, Any]:
-    """
-    Construit un contexte indicateurs séparé en:
+    params: dict[str, Any],
+    read_only_indicators: Iterable[tuple[str, dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
+    """Construit un contexte indicateurs séparé en:
     - strategy_indicators: indicateurs liés à la stratégie (modifiables via params)
     - read_only_indicators: indicateurs contexte (lecture seule)
     """
-    warnings: List[str] = []
+    warnings: list[str] = []
 
     # Strategy indicators
-    strategy_lines: List[str] = []
+    strategy_lines: list[str] = []
     try:
         strategy_cls = get_strategy(strategy_name)
         strategy = strategy_cls()
@@ -826,11 +824,11 @@ def build_indicator_context(
                 strategy=strategy,
                 warnings=warnings,
                 is_strategy=True,
-            )
+            ),
         )
 
     # Read-only indicators
-    read_only_lines: List[str] = []
+    read_only_lines: list[str] = []
     ro_specs = list(read_only_indicators) if read_only_indicators else list(DEFAULT_READ_ONLY_INDICATORS)
 
     for indicator_name, indicator_params in ro_specs:
@@ -845,7 +843,7 @@ def build_indicator_context(
                 strategy=None,
                 warnings=warnings,
                 is_strategy=False,
-            )
+            ),
         )
 
     return {
@@ -857,14 +855,14 @@ def build_indicator_context(
 
 def build_indicator_selection_guide(
     available_indicators: Iterable[str],
-) -> List[str]:
+) -> list[str]:
     """Retourne un guide compact pour aider le LLM a choisir les indicateurs.
 
     Chaque ligne expose l'abreviation, le nom complet, l'usage principal et un
     rappel de formule ou de mecanique, afin d'eviter un prompt limite a une
     simple liste de noms.
     """
-    guide_lines: List[str] = []
+    guide_lines: list[str] = []
     seen: set[str] = set()
 
     for indicator_name in available_indicators or []:
@@ -879,7 +877,7 @@ def build_indicator_selection_guide(
         if meta is None:
             pretty_name = raw_name.replace("_", " ").title()
             guide_lines.append(
-                f"- {raw_name}: {pretty_name}. Use only if its mechanics clearly fit the hypothesis; inspect name semantics before choosing. Builder access: {get_indicator_builder_access_example(raw_name)}"
+                f"- {raw_name}: {pretty_name}. Use only if its mechanics clearly fit the hypothesis; inspect name semantics before choosing. Builder access: {get_indicator_builder_access_example(raw_name)}",
             )
             continue
 
@@ -888,7 +886,7 @@ def build_indicator_selection_guide(
             + ", ".join(
                 f"{short_name}->{stable_name}"
                 for short_name, stable_name in get_indicator_builder_stable_alias_map(raw_name).items()
-            )
+            ),
         )
 
     return guide_lines
@@ -897,15 +895,15 @@ def build_indicator_selection_guide(
 def _summarize_indicator(
     df: pd.DataFrame,
     indicator_name: str,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     strategy: Any,
-    warnings: List[str],
+    warnings: list[str],
     is_strategy: bool,
-) -> List[str]:
-    lines: List[str] = []
+) -> list[str]:
+    lines: list[str] = []
 
     # Parametrage base
-    indicator_params: Dict[str, Any] = {}
+    indicator_params: dict[str, Any] = {}
     if is_strategy and strategy is not None:
         try:
             indicator_params = strategy.get_indicator_params(indicator_name, params)
@@ -921,30 +919,42 @@ def _summarize_indicator(
         if fast is not None:
             lines.extend(
                 _summarize_single_indicator(
-                    df, indicator_name, {"period": int(fast)}, f"{indicator_name}_fast", warnings
-                )
+                    df,
+                    indicator_name,
+                    {"period": int(fast)},
+                    f"{indicator_name}_fast",
+                    warnings,
+                ),
             )
         if slow is not None:
             lines.extend(
                 _summarize_single_indicator(
-                    df, indicator_name, {"period": int(slow)}, f"{indicator_name}_slow", warnings
-                )
+                    df,
+                    indicator_name,
+                    {"period": int(slow)},
+                    f"{indicator_name}_slow",
+                    warnings,
+                ),
             )
         if lines:
             return lines
 
     return _summarize_single_indicator(
-        df, indicator_name, indicator_params, indicator_name, warnings
+        df,
+        indicator_name,
+        indicator_params,
+        indicator_name,
+        warnings,
     )
 
 
 def _summarize_single_indicator(
     df: pd.DataFrame,
     indicator_name: str,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     label_name: str,
-    warnings: List[str],
-) -> List[str]:
+    warnings: list[str],
+) -> list[str]:
     try:
         result = calculate_indicator(indicator_name, df, params)
     except Exception as exc:
@@ -984,14 +994,14 @@ def _summarize_single_indicator(
 
     return [
         "- "
-        + f"{label}: last={_fmt(stats['last'])}, "
-        + f"mean={_fmt(stats['mean'])}, "
-        + f"min={_fmt(stats['min'])}, "
-        + f"max={_fmt(stats['max'])}"
+        f"{label}: last={_fmt(stats['last'])}, "
+        f"mean={_fmt(stats['mean'])}, "
+        f"min={_fmt(stats['min'])}, "
+        f"max={_fmt(stats['max'])}",
     ]
 
 
-def _series_stats(values: Any) -> Optional[Dict[str, float]]:
+def _series_stats(values: Any) -> dict[str, float] | None:
     arr = _to_array(values)
     if arr is None or arr.size == 0:
         return None
@@ -1011,7 +1021,7 @@ def _series_stats(values: Any) -> Optional[Dict[str, float]]:
     }
 
 
-def _last_valid_value(values: Any) -> Optional[float]:
+def _last_valid_value(values: Any) -> float | None:
     arr = _to_array(values)
     if arr is None or arr.size == 0:
         return None
@@ -1021,7 +1031,7 @@ def _last_valid_value(values: Any) -> Optional[float]:
     return float(arr[mask][-1])
 
 
-def _to_array(values: Any) -> Optional[np.ndarray]:
+def _to_array(values: Any) -> np.ndarray | None:
     if values is None:
         return None
     if isinstance(values, pd.Series):
@@ -1033,7 +1043,7 @@ def _to_array(values: Any) -> Optional[np.ndarray]:
     return arr.astype("float64", copy=False)
 
 
-def _format_indicator_label(name: str, params: Dict[str, Any]) -> str:
+def _format_indicator_label(name: str, params: dict[str, Any]) -> str:
     if not params:
         return name
     parts = []
@@ -1055,7 +1065,7 @@ def _fmt(value: Any) -> str:
     return f"{val:.4f}"
 
 
-def _first_param(params: Dict[str, Any], keys: Iterable[str]) -> Optional[float]:
+def _first_param(params: dict[str, Any], keys: Iterable[str]) -> float | None:
     for key in keys:
         if key in params:
             try:

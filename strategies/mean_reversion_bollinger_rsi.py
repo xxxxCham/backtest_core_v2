@@ -1,23 +1,23 @@
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from utils.parameters import ParameterSpec
 from strategies.base import StrategyBase, register_strategy
+from utils.parameters import ParameterSpec
 
 
-@register_strategy('mean_reversion_bollinger_rsi')
+@register_strategy("mean_reversion_bollinger_rsi")
 class MeanReversionBollingerRsiStrategy(StrategyBase):
     def __init__(self):
-        super().__init__(name='mean_reversion_bollinger_rsi_adx_filter')
+        super().__init__(name="mean_reversion_bollinger_rsi_adx_filter")
 
     @property
-    def required_indicators(self) -> List[str]:
-        return ['bollinger', 'rsi', 'adx', 'atr']
+    def required_indicators(self) -> list[str]:
+        return ["bollinger", "rsi", "adx", "atr"]
 
     @property
-    def default_params(self) -> Dict[str, Any]:
+    def default_params(self) -> dict[str, Any]:
         return {
             "bb_period": 20,
             "bb_std": 2.0,
@@ -32,15 +32,16 @@ class MeanReversionBollingerRsiStrategy(StrategyBase):
             "leverage": 1,
             "warmup": 50,
         }
+
     @property
-    def parameter_specs(self) -> Dict[str, ParameterSpec]:
+    def parameter_specs(self) -> dict[str, ParameterSpec]:
         return {
-            'rsi_period': ParameterSpec(
-                name='rsi_period',
+            "rsi_period": ParameterSpec(
+                name="rsi_period",
                 min_val=5,
                 max_val=20,
                 default=9,
-                param_type='int',
+                param_type="int",
                 step=1,
             ),
             "bb_period": ParameterSpec(
@@ -83,48 +84,48 @@ class MeanReversionBollingerRsiStrategy(StrategyBase):
                 param_type="int",
                 step=1,
             ),
-            'stop_atr_mult': ParameterSpec(
-                name='stop_atr_mult',
+            "stop_atr_mult": ParameterSpec(
+                name="stop_atr_mult",
                 min_val=0.5,
                 max_val=4.0,
                 default=2.5,
-                param_type='float',
+                param_type="float",
                 step=0.1,
             ),
-            'tp_atr_mult': ParameterSpec(
-                name='tp_atr_mult',
+            "tp_atr_mult": ParameterSpec(
+                name="tp_atr_mult",
                 min_val=1.0,
                 max_val=10.0,
                 default=6.0,
-                param_type='float',
+                param_type="float",
                 step=0.1,
             ),
-            'leverage': ParameterSpec(
-                name='leverage',
+            "leverage": ParameterSpec(
+                name="leverage",
                 min_val=1,
                 max_val=2,
                 default=1,
-                param_type='int',
+                param_type="int",
                 step=1,
                 optimize=False,
             ),
         }
 
-    def generate_signals(self, df: pd.DataFrame, indicators: Dict[str, Any], params: Dict[str, Any]) -> pd.Series:
-        warmup = int(params.get('warmup', 50))
+    def generate_signals(self, df: pd.DataFrame, indicators: dict[str, Any], params: dict[str, Any]) -> pd.Series:
+        warmup = int(params.get("warmup", 50))
 
         # Initialize signal series
         signals = pd.Series(0.0, index=df.index, dtype=np.float64)
 
         # Indicator arrays
         close = df["close"].values
-        bb = indicators['bollinger']
+        bb = indicators["bollinger"]
         upper = np.nan_to_num(bb["upper"])
         lower = np.nan_to_num(bb["lower"])
         middle = np.nan_to_num(bb["middle"])
-        rsi = np.nan_to_num(indicators['rsi'])
-        adx_val = np.nan_to_num(indicators['adx']["adx"])
-        atr = np.nan_to_num(indicators['atr'])
+        rsi = np.nan_to_num(indicators["rsi"])
+        adx_val = np.nan_to_num(indicators["adx"]["adx"])
+        atr = np.nan_to_num(indicators["atr"])
         adx_max = float(params.get("adx_max", 25.0))
 
         # Entry masks

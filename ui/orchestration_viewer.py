@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.orchestration_viewer
+"""Module-ID: ui.orchestration_viewer
 
 Purpose: Affiche les logs d'orchestration des agents LLM de manière interactive dans l'UI Streamlit.
 
@@ -22,7 +21,6 @@ Skip-if: Pas d'utilisation d'agents LLM ou pas besoin de visualisation des logs
 
 from datetime import datetime
 from html import escape
-from typing import List, Optional
 
 import pandas as pd
 import streamlit as st
@@ -38,15 +36,15 @@ from agents.orchestration_logger import (
 def render_orchestration_logs(
     orchestration_logger: OrchestrationLogger,
     show_filters: bool = True,
-    max_entries: int = 50
+    max_entries: int = 50,
 ):
-    """
-    Affiche les logs d'orchestration avec filtres et visualisation.
+    """Affiche les logs d'orchestration avec filtres et visualisation.
 
     Args:
         orchestration_logger: Instance du logger d'orchestration
         show_filters: Si True, affiche les filtres interactifs
         max_entries: Nombre maximum d'entrées à afficher
+
     """
     st.markdown("### 🤖 Journal d'Orchestration LLM")
 
@@ -68,10 +66,7 @@ def render_orchestration_logs(
 
     with col4:
         # Compter les actions complétées
-        completed = sum(
-            1 for log in orchestration_logger.logs
-            if log.status == OrchestrationStatus.COMPLETED
-        )
+        completed = sum(1 for log in orchestration_logger.logs if log.status == OrchestrationStatus.COMPLETED)
         st.metric("Complétés", completed)
 
     # Filtres
@@ -85,7 +80,7 @@ def render_orchestration_logs(
             agents_filter = st.multiselect(
                 "Filtrer par Agent",
                 ["Tous"] + agents,
-                default=["Tous"]
+                default=["Tous"],
             )
 
         with col_f2:
@@ -94,7 +89,7 @@ def render_orchestration_logs(
             action_filter = st.multiselect(
                 "Filtrer par Action",
                 ["Tous"] + [at.value for at in action_types],
-                default=["Tous"]
+                default=["Tous"],
             )
 
         with col_f3:
@@ -103,7 +98,7 @@ def render_orchestration_logs(
             iteration_filter = st.multiselect(
                 "Filtrer par Itération",
                 ["Toutes"] + [f"Itération {i}" for i in sorted(iterations)],
-                default=["Toutes"]
+                default=["Toutes"],
             )
 
         # Appliquer les filtres
@@ -117,9 +112,7 @@ def render_orchestration_logs(
             filtered_logs = [log for log in filtered_logs if log.action_type.value in action_values]
 
         if "Toutes" not in iteration_filter:
-            selected_iterations = [
-                int(it.split(" ")[1]) for it in iteration_filter if it != "Toutes"
-            ]
+            selected_iterations = [int(it.split(" ")[1]) for it in iteration_filter if it != "Toutes"]
             filtered_logs = [log for log in filtered_logs if log.iteration in selected_iterations]
 
     else:
@@ -131,7 +124,7 @@ def render_orchestration_logs(
     _render_logs_timeline(filtered_logs, max_entries)
 
 
-def _render_logs_timeline(logs: List[OrchestrationLogEntry], max_entries: int):
+def _render_logs_timeline(logs: list[OrchestrationLogEntry], max_entries: int):
     """Affiche les logs sous forme de timeline."""
     st.markdown("#### 📋 Timeline des Actions")
 
@@ -153,7 +146,10 @@ def _render_logs_timeline(logs: List[OrchestrationLogEntry], max_entries: int):
     for iteration in sorted(logs_by_iteration.keys(), reverse=True):
         iteration_logs = logs_by_iteration[iteration]
 
-        with st.expander(f"🔄 **Itération {iteration}** ({len(iteration_logs)} actions)", expanded=(iteration == max(logs_by_iteration.keys()))):
+        with st.expander(
+            f"🔄 **Itération {iteration}** ({len(iteration_logs)} actions)",
+            expanded=(iteration == max(logs_by_iteration.keys())),
+        ):
             for log in iteration_logs:
                 _render_log_entry(log)
 
@@ -183,20 +179,12 @@ def _render_log_entry(log: OrchestrationLogEntry):
         route_name = log.details.get("route_name") or ""
         gpu_target = log.details.get("gpu_target") or ""
         if route_name:
-            agent_label = (
-                f"{agent_label} · {route_name}" if agent_label else route_name
-            )
+            agent_label = f"{agent_label} · {route_name}" if agent_label else route_name
         if gpu_target:
-            agent_label = (
-                f"{agent_label} · {gpu_target}" if agent_label else gpu_target
-            )
+            agent_label = f"{agent_label} · {gpu_target}" if agent_label else gpu_target
         if host_name:
             agent_label = f"{agent_label} · {host_name}" if agent_label else host_name
-    agent_badge = (
-        f"<strong style='color: {text_color};'>[{escape(agent_label)}]</strong>"
-        if agent_label
-        else ""
-    )
+    agent_badge = f"<strong style='color: {text_color};'>[{escape(agent_label)}]</strong>" if agent_label else ""
 
     # Action type
     action_type = escape(log.action_type.value.replace("_", " ").title())
@@ -204,28 +192,19 @@ def _render_log_entry(log: OrchestrationLogEntry):
     # Construire la ligne principale
     timestamp_bg, timestamp_border = _get_timestamp_chip_colors(text_color)
     timestamp_html = (
-        "<code style='color: {text_color}; background-color: {timestamp_bg}; "
-        "border: 1px solid {timestamp_border}; padding: 1px 4px; "
+        f"<code style='color: {text_color}; background-color: {timestamp_bg}; "
+        f"border: 1px solid {timestamp_border}; padding: 1px 4px; "
         "border-radius: 3px;'>"
-        "{timestamp}</code>"
-    ).format(
-        text_color=text_color,
-        timestamp_bg=timestamp_bg,
-        timestamp_border=timestamp_border,
-        timestamp=escape(timestamp),
+        f"{escape(timestamp)}</code>"
     )
     parts = [emoji, timestamp_html, agent_badge, action_type]
     main_line = " ".join(part for part in parts if part)
 
     # Afficher
     st.markdown(
-        "<div style='background-color: {status_color}; color: {text_color}; "
+        f"<div style='background-color: {status_color}; color: {text_color}; "
         "padding: 8px; border-radius: 5px; margin: 5px 0;'>"
-        "{main_line}</div>".format(
-            status_color=status_color,
-            text_color=text_color,
-            main_line=main_line,
-        ),
+        f"{main_line}</div>",
         unsafe_allow_html=True,
     )
 
@@ -256,14 +235,14 @@ def _render_log_details(log: OrchestrationLogEntry):
 
     # Paramètres
     if "params" in details:
-        params = details['params']
+        params = details["params"]
         if isinstance(params, dict):
             param_str = ", ".join([f"{k}={v}" for k, v in list(params.items())[:3]])
             st.caption(f"   Paramètres: {param_str}...")
 
     # Résultats
     if "results" in details:
-        results = details['results']
+        results = details["results"]
         if isinstance(results, dict):
             if "sharpe" in results:
                 st.caption(f"   📊 Sharpe: {results['sharpe']:.3f}")
@@ -295,11 +274,11 @@ def _get_status_color(status: OrchestrationStatus) -> str:
     """Retourne la couleur de fond selon le statut."""
     colors = {
         OrchestrationStatus.COMPLETED: "#d4edda",  # Vert clair
-        OrchestrationStatus.FAILED: "#f8d7da",     # Rouge clair
-        OrchestrationStatus.VALIDATED: "#d1ecf1",   # Bleu clair
-        OrchestrationStatus.REJECTED: "#f8d7da",    # Rouge clair
+        OrchestrationStatus.FAILED: "#f8d7da",  # Rouge clair
+        OrchestrationStatus.VALIDATED: "#d1ecf1",  # Bleu clair
+        OrchestrationStatus.REJECTED: "#f8d7da",  # Rouge clair
         OrchestrationStatus.IN_PROGRESS: "#fff3cd",  # Jaune clair
-        OrchestrationStatus.PENDING: "#e7e7e7",     # Gris clair
+        OrchestrationStatus.PENDING: "#e7e7e7",  # Gris clair
     }
     return colors.get(status, "#ffffff")
 
@@ -339,7 +318,7 @@ def render_orchestration_summary_table(orchestration_logger: OrchestrationLogger
                     "total": 0,
                     "completed": 0,
                     "failed": 0,
-                    "pending": 0
+                    "pending": 0,
                 }
 
             agent_actions[log.agent]["total"] += 1
@@ -368,26 +347,26 @@ def render_orchestration_metrics(orchestration_logger: OrchestrationLogger):
 
     # Compter les backtests
     backtests_launched = len(
-        orchestration_logger.get_logs_by_type(OrchestrationActionType.BACKTEST_LAUNCH)
+        orchestration_logger.get_logs_by_type(OrchestrationActionType.BACKTEST_LAUNCH),
     )
     backtests_completed = len(
-        orchestration_logger.get_logs_by_type(OrchestrationActionType.BACKTEST_COMPLETE)
+        orchestration_logger.get_logs_by_type(OrchestrationActionType.BACKTEST_COMPLETE),
     )
     backtests_failed = len(
-        orchestration_logger.get_logs_by_type(OrchestrationActionType.BACKTEST_FAILED)
+        orchestration_logger.get_logs_by_type(OrchestrationActionType.BACKTEST_FAILED),
     )
 
     # Compter les changements de stratégie
     strategy_changes = len(
-        orchestration_logger.get_logs_by_type(OrchestrationActionType.STRATEGY_MODIFICATION)
+        orchestration_logger.get_logs_by_type(OrchestrationActionType.STRATEGY_MODIFICATION),
     )
 
     # Compter les changements d'indicateurs
     indicator_changes = len(
-        orchestration_logger.get_logs_by_type(OrchestrationActionType.INDICATOR_VALUES_CHANGE)
+        orchestration_logger.get_logs_by_type(OrchestrationActionType.INDICATOR_VALUES_CHANGE),
     )
     indicator_adds = len(
-        orchestration_logger.get_logs_by_type(OrchestrationActionType.INDICATOR_ADD)
+        orchestration_logger.get_logs_by_type(OrchestrationActionType.INDICATOR_ADD),
     )
 
     # Afficher
@@ -436,22 +415,22 @@ def render_full_orchestration_viewer(
 # LIVE ORCHESTRATION VIEWER - Affichage temps réel
 # =============================================================================
 
+
 class LiveOrchestrationViewer:
-    """
-    Composant pour afficher les logs d'orchestration en temps réel.
+    """Composant pour afficher les logs d'orchestration en temps réel.
 
     Utilise un callback pour se mettre à jour à chaque nouvel événement.
     """
 
     def __init__(self, container_key: str = "live_orch"):
-        """
-        Initialise le viewer live.
+        """Initialise le viewer live.
 
         Args:
             container_key: Clé unique pour le conteneur Streamlit
+
         """
         self.container_key = container_key
-        self._events: List[OrchestrationLogEntry] = []
+        self._events: list[OrchestrationLogEntry] = []
         self._max_display = 20  # Derniers événements affichés
 
     def add_event(self, entry: OrchestrationLogEntry) -> None:
@@ -463,12 +442,12 @@ class LiveOrchestrationViewer:
         return self.add_event
 
     def render(self, placeholder, show_header: bool = True) -> None:
-        """
-        Affiche les événements dans le placeholder donné.
+        """Affiche les événements dans le placeholder donné.
 
         Args:
             placeholder: st.empty() ou conteneur Streamlit
             show_header: Si True, affiche un header avec stats
+
         """
         with placeholder.container():
             if show_header:
@@ -500,7 +479,7 @@ class LiveOrchestrationViewer:
             return
 
         # Afficher les derniers événements (plus récents en haut)
-        recent = self._events[-self._max_display:][::-1]
+        recent = self._events[-self._max_display :][::-1]
 
         for event in recent:
             self._render_single_event(event)
@@ -557,7 +536,7 @@ class LiveOrchestrationViewer:
                 </span>
                 <span style="font-size: 0.85em; opacity: 0.8;">Iter {event.iteration}</span>
             </div>
-            {f'<div style="font-size: 0.85em; margin-top: 4px; opacity: 0.9;">{escape(detail_summary)}</div>' if detail_summary else ''}
+            {f'<div style="font-size: 0.85em; margin-top: 4px; opacity: 0.9;">{escape(detail_summary)}</div>' if detail_summary else ""}
         </div>
         """
         st.markdown(html, unsafe_allow_html=True)
@@ -570,15 +549,15 @@ class LiveOrchestrationViewer:
 def render_live_orchestration_panel(
     orchestration_logger: OrchestrationLogger,
     placeholder,
-    iteration_info: Optional[dict] = None
+    iteration_info: dict | None = None,
 ) -> None:
-    """
-    Affiche un panneau de suivi live de l'orchestration.
+    """Affiche un panneau de suivi live de l'orchestration.
 
     Args:
         orchestration_logger: Logger d'orchestration avec les événements
         placeholder: st.empty() pour les mises à jour
         iteration_info: Optionnel, dict avec current/total pour la progress bar
+
     """
     with placeholder.container():
         # Progress bar si info disponible
@@ -621,17 +600,16 @@ def render_live_orchestration_panel(
                 color = "#6c757d"
 
             st.markdown(
-                f"<span style='color:{color}'>{emoji}</span> "
-                f"**[{escape(agent)}]** {escape(action)}",
-                unsafe_allow_html=True
+                f"<span style='color:{color}'>{emoji}</span> **[{escape(agent)}]** {escape(action)}",
+                unsafe_allow_html=True,
             )
 
 
 __all__ = [
-    "render_orchestration_logs",
-    "render_orchestration_summary_table",
-    "render_orchestration_metrics",
-    "render_full_orchestration_viewer",
     "LiveOrchestrationViewer",
+    "render_full_orchestration_viewer",
     "render_live_orchestration_panel",
+    "render_orchestration_logs",
+    "render_orchestration_metrics",
+    "render_orchestration_summary_table",
 ]

@@ -1,13 +1,15 @@
-"""
-Dedicated Streamlit page for the centralized results store.
-"""
+"""Dedicated Streamlit page for the centralized results store."""
 
 import sys
 from pathlib import Path
 
-import streamlit as st
-
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from utils.observability import init_logging
+
+init_logging()
+
+import streamlit as st
 
 from ui.results_store_view import render_results_store_page
 
@@ -122,6 +124,7 @@ def main() -> None:
     )
     _render_page_navigation()
     render_results_store_page()
+
 
 if __name__ == "__main__":
     main()

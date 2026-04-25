@@ -1,6 +1,4 @@
-# ruff: noqa: I001
-"""
-Module-ID: agents.builder_text_utils
+"""Module-ID: agents.builder_text_utils
 
 Purpose: Utilitaires texte purs du Strategy Builder, sans dépendance métier.
 
@@ -15,7 +13,7 @@ import json
 import pprint
 import re
 import traceback
-from typing import Any, Dict, List
+from typing import Any
 
 
 def _err(code: str, message: str) -> str:
@@ -69,8 +67,7 @@ def _looks_like_log_pollution(text: str) -> bool:
 
 
 def _safe_format_exception(exc: BaseException) -> str:
-    """
-    Formate une exception sans passer par traceback.format_exc/format_exception.
+    """Formate une exception sans passer par traceback.format_exc/format_exception.
 
     Évite les crashs secondaires Python 3.12 quand le moteur de suggestion
     d'erreur évalue des propriétés qui relèvent elles-mêmes des exceptions.
@@ -80,13 +77,13 @@ def _safe_format_exception(exc: BaseException) -> str:
     except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
         tb = None
 
-    lines: List[str] = []
+    lines: list[str] = []
     if tb is not None:
         try:
             for frame in traceback.extract_tb(tb):
                 code_line = (frame.line or "").strip()
                 lines.append(
-                    f'  File "{frame.filename}", line {frame.lineno}, in {frame.name}'
+                    f'  File "{frame.filename}", line {frame.lineno}, in {frame.name}',
                 )
                 if code_line:
                     lines.append(f"    {code_line}")
@@ -95,14 +92,10 @@ def _safe_format_exception(exc: BaseException) -> str:
 
     header = f"{type(exc).__name__}: {exc}"
     if lines:
-        return (
-            "Traceback (most recent call last):\n"
-            + "\n".join(lines)
-            + f"\n{header}"
-        )
+        return "Traceback (most recent call last):\n" + "\n".join(lines) + f"\n{header}"
     return header
 
 
-def _format_python_dict_literal(data: Dict[str, Any]) -> str:
+def _format_python_dict_literal(data: dict[str, Any]) -> str:
     """Formate un dict Python de manière stable pour insertion dans le code."""
     return pprint.pformat(data, width=88, sort_dicts=True, compact=False)

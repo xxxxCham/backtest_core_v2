@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.momentum
+"""Module-ID: indicators.momentum
 
 Purpose: Indicateur Momentum - taux changement prix simple.
 
@@ -29,6 +28,7 @@ import pandas as pd
 @dataclass
 class MomentumSettings:
     """Paramètres Momentum."""
+
     period: int = 14
 
 
@@ -36,8 +36,7 @@ def momentum(
     close: pd.Series | np.ndarray,
     period: int = 14,
 ) -> np.ndarray:
-    """
-    Calcule Momentum.
+    """Calcule Momentum.
 
     Args:
         close: Prix de clôture
@@ -45,6 +44,7 @@ def momentum(
 
     Returns:
         Différence de prix sur la période
+
     """
     if isinstance(close, pd.Series):
         close = close.values
@@ -55,4 +55,4 @@ def momentum(
     return momentum_values
 
 
-__all__ = ["momentum", "MomentumSettings"]
+__all__ = ["MomentumSettings", "momentum"]

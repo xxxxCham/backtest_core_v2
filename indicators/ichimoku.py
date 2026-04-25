@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.ichimoku
+"""Module-ID: indicators.ichimoku
 
 Purpose: Indicateur Ichimoku Cloud - système complet japonais (5 lignes).
 
@@ -20,8 +19,6 @@ Read-if: Modification périodes, output format.
 Skip-if: Vous utilisez juste calculate_indicator('ichimoku').
 """
 
-from typing import Dict, Tuple
-
 import numpy as np
 import pandas as pd
 
@@ -29,8 +26,7 @@ from indicators.registry import register_indicator
 
 
 def tenkan_sen(high: pd.Series, low: pd.Series, period: int = 9) -> np.ndarray:
-    """
-    Calcule le Tenkan-sen (Conversion Line).
+    """Calcule le Tenkan-sen (Conversion Line).
 
     Formule: (Plus haut sur N périodes + Plus bas sur N périodes) / 2
 
@@ -41,6 +37,7 @@ def tenkan_sen(high: pd.Series, low: pd.Series, period: int = 9) -> np.ndarray:
 
     Returns:
         Array du Tenkan-sen
+
     """
     high_arr = np.asarray(high, dtype=np.float64)
     low_arr = np.asarray(low, dtype=np.float64)
@@ -49,16 +46,15 @@ def tenkan_sen(high: pd.Series, low: pd.Series, period: int = 9) -> np.ndarray:
     result = np.full(n, np.nan)
 
     for i in range(period - 1, n):
-        highest = np.max(high_arr[i - period + 1:i + 1])
-        lowest = np.min(low_arr[i - period + 1:i + 1])
+        highest = np.max(high_arr[i - period + 1 : i + 1])
+        lowest = np.min(low_arr[i - period + 1 : i + 1])
         result[i] = (highest + lowest) / 2
 
     return result
 
 
 def kijun_sen(high: pd.Series, low: pd.Series, period: int = 26) -> np.ndarray:
-    """
-    Calcule le Kijun-sen (Base Line).
+    """Calcule le Kijun-sen (Base Line).
 
     Formule: (Plus haut sur N périodes + Plus bas sur N périodes) / 2
 
@@ -69,6 +65,7 @@ def kijun_sen(high: pd.Series, low: pd.Series, period: int = 26) -> np.ndarray:
 
     Returns:
         Array du Kijun-sen
+
     """
     # Même formule que Tenkan-sen mais période différente
     return tenkan_sen(high, low, period)
@@ -77,10 +74,9 @@ def kijun_sen(high: pd.Series, low: pd.Series, period: int = 26) -> np.ndarray:
 def senkou_span_a(
     tenkan: np.ndarray,
     kijun: np.ndarray,
-    displacement: int = 26
+    displacement: int = 26,
 ) -> np.ndarray:
-    """
-    Calcule le Senkou Span A (Leading Span A).
+    """Calcule le Senkou Span A (Leading Span A).
 
     Formule: (Tenkan-sen + Kijun-sen) / 2, décalé de N périodes dans le futur
 
@@ -91,6 +87,7 @@ def senkou_span_a(
 
     Returns:
         Array du Senkou Span A
+
     """
     n = len(tenkan)
     span_a = (tenkan + kijun) / 2
@@ -107,10 +104,9 @@ def senkou_span_b(
     high: pd.Series,
     low: pd.Series,
     period: int = 52,
-    displacement: int = 26
+    displacement: int = 26,
 ) -> np.ndarray:
-    """
-    Calcule le Senkou Span B (Leading Span B).
+    """Calcule le Senkou Span B (Leading Span B).
 
     Formule: (Plus haut sur N périodes + Plus bas sur N périodes) / 2,
              décalé de M périodes dans le futur
@@ -123,6 +119,7 @@ def senkou_span_b(
 
     Returns:
         Array du Senkou Span B
+
     """
     # Calculer la ligne de base sur 52 périodes
     span_b_raw = tenkan_sen(high, low, period)
@@ -138,8 +135,7 @@ def senkou_span_b(
 
 
 def chikou_span(close: pd.Series, displacement: int = 26) -> np.ndarray:
-    """
-    Calcule le Chikou Span (Lagging Span).
+    """Calcule le Chikou Span (Lagging Span).
 
     Formule: Prix de clôture actuel tracé N périodes dans le passé
 
@@ -149,6 +145,7 @@ def chikou_span(close: pd.Series, displacement: int = 26) -> np.ndarray:
 
     Returns:
         Array du Chikou Span
+
     """
     close_arr = np.asarray(close, dtype=np.float64)
     n = len(close_arr)
@@ -169,10 +166,9 @@ def ichimoku(
     tenkan_period: int = 9,
     kijun_period: int = 26,
     senkou_b_period: int = 52,
-    displacement: int = 26
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Calcule tous les composants de l'Ichimoku Cloud.
+    displacement: int = 26,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Calcule tous les composants de l'Ichimoku Cloud.
 
     Args:
         high: Série des prix hauts
@@ -185,6 +181,7 @@ def ichimoku(
 
     Returns:
         Tuple (tenkan, kijun, senkou_a, senkou_b, chikou)
+
     """
     # Calculer les lignes de base
     tenkan = tenkan_sen(high, low, tenkan_period)
@@ -203,15 +200,15 @@ def ichimoku(
 def ichimoku_cloud_position(
     close: pd.Series,
     senkou_a: np.ndarray,
-    senkou_b: np.ndarray
+    senkou_b: np.ndarray,
 ) -> np.ndarray:
-    """
-    Détermine la position du prix par rapport au cloud.
+    """Détermine la position du prix par rapport au cloud.
 
     Returns:
         1 = au-dessus du cloud (bullish)
         -1 = en-dessous du cloud (bearish)
         0 = dans le cloud (neutre)
+
     """
     close_arr = np.asarray(close, dtype=np.float64)
     n = len(close_arr)
@@ -241,10 +238,9 @@ def ichimoku_signal(
     tenkan_period: int = 9,
     kijun_period: int = 26,
     senkou_b_period: int = 52,
-    displacement: int = 26
+    displacement: int = 26,
 ) -> np.ndarray:
-    """
-    Génère des signaux de trading basés sur l'Ichimoku.
+    """Génère des signaux de trading basés sur l'Ichimoku.
 
     Signaux:
     - Long (1): Tenkan croise Kijun vers le haut ET prix au-dessus du cloud
@@ -260,10 +256,16 @@ def ichimoku_signal(
 
     Returns:
         Array de signaux (-1, 0, 1)
+
     """
     tenkan, kijun, senkou_a, senkou_b, chikou = ichimoku(
-        high, low, close,
-        tenkan_period, kijun_period, senkou_b_period, displacement
+        high,
+        low,
+        close,
+        tenkan_period,
+        kijun_period,
+        senkou_b_period,
+        displacement,
     )
 
     n = len(close)
@@ -276,25 +278,24 @@ def ichimoku_signal(
     for i in range(1, n):
         if np.isnan(tenkan[i]) or np.isnan(kijun[i]):
             continue
-        if np.isnan(tenkan[i-1]) or np.isnan(kijun[i-1]):
+        if np.isnan(tenkan[i - 1]) or np.isnan(kijun[i - 1]):
             continue
 
         # Croisement haussier: Tenkan passe au-dessus de Kijun
-        if tenkan[i-1] <= kijun[i-1] and tenkan[i] > kijun[i]:
+        if tenkan[i - 1] <= kijun[i - 1] and tenkan[i] > kijun[i]:
             if cloud_pos[i] == 1:  # Au-dessus du cloud
                 signals[i] = 1
 
         # Croisement baissier: Tenkan passe en-dessous de Kijun
-        elif tenkan[i-1] >= kijun[i-1] and tenkan[i] < kijun[i]:
+        elif tenkan[i - 1] >= kijun[i - 1] and tenkan[i] < kijun[i]:
             if cloud_pos[i] == -1:  # En-dessous du cloud
                 signals[i] = -1
 
     return signals
 
 
-def calculate_ichimoku(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
-    """
-    Fonction wrapper pour le registre d'indicateurs.
+def calculate_ichimoku(df: pd.DataFrame, **params) -> dict[str, np.ndarray]:
+    """Fonction wrapper pour le registre d'indicateurs.
 
     Args:
         df: DataFrame avec colonnes high, low, close
@@ -306,6 +307,7 @@ def calculate_ichimoku(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
 
     Returns:
         Dict avec tenkan, kijun, senkou_a, senkou_b, chikou, cloud_position
+
     """
     tenkan_period = params.get("tenkan_period", 9)
     kijun_period = params.get("kijun_period", 26)
@@ -313,8 +315,13 @@ def calculate_ichimoku(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
     displacement = params.get("displacement", 26)
 
     tenkan_arr, kijun_arr, senkou_a, senkou_b, chikou = ichimoku(
-        df["high"], df["low"], df["close"],
-        tenkan_period, kijun_period, senkou_b_period, displacement
+        df["high"],
+        df["low"],
+        df["close"],
+        tenkan_period,
+        kijun_period,
+        senkou_b_period,
+        displacement,
     )
 
     cloud_pos = ichimoku_cloud_position(df["close"], senkou_a, senkou_b)
@@ -325,7 +332,7 @@ def calculate_ichimoku(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
         "senkou_a": senkou_a,
         "senkou_b": senkou_b,
         "chikou": chikou,
-        "cloud_position": cloud_pos
+        "cloud_position": cloud_pos,
     }
 
 
@@ -334,18 +341,18 @@ register_indicator(
     "ichimoku",
     calculate_ichimoku,
     required_columns=("high", "low", "close"),
-    description="Ichimoku Kinko Hyo - Système d'analyse technique japonais"
+    description="Ichimoku Kinko Hyo - Système d'analyse technique japonais",
 )
 
 
 __all__ = [
+    "calculate_ichimoku",
+    "chikou_span",
     "ichimoku",
-    "tenkan_sen",
+    "ichimoku_cloud_position",
+    "ichimoku_signal",
     "kijun_sen",
     "senkou_span_a",
     "senkou_span_b",
-    "chikou_span",
-    "ichimoku_cloud_position",
-    "ichimoku_signal",
-    "calculate_ichimoku",
+    "tenkan_sen",
 ]

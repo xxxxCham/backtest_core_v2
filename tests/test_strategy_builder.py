@@ -26,6 +26,7 @@ import pandas as pd
 import pytest
 
 import agents.builder_candidate_executor as builder_candidate_executor_module
+import agents.builder_session_io as builder_session_io_module
 import agents.strategy_builder as strategy_builder_module
 from agents.builder_feedback import (
     CodeFeedbackSection,
@@ -81,6 +82,7 @@ from strategies.base import StrategyBase
 
 # ─── Fixtures ────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def valid_strategy_code():
     """Code Python valide d'une stratégie générée."""
@@ -135,13 +137,15 @@ def sample_ohlcv():
     n = 200
     np.random.seed(42)
     close = np.cumsum(np.random.randn(n)) + 100
-    return pd.DataFrame({
-        "open": close + np.random.randn(n) * 0.5,
-        "high": close + abs(np.random.randn(n)),
-        "low": close - abs(np.random.randn(n)),
-        "close": close,
-        "volume": np.random.randint(100, 10000, n).astype(float),
-    })
+    return pd.DataFrame(
+        {
+            "open": close + np.random.randn(n) * 0.5,
+            "high": close + abs(np.random.randn(n)),
+            "low": close - abs(np.random.randn(n)),
+            "close": close,
+            "volume": np.random.randint(100, 10000, n).astype(float),
+        }
+    )
 
 
 def _make_market_df(
@@ -213,11 +217,185 @@ def _valid_builder_proposal_payload() -> str:
             "exit_logic": "rsi crosses 50",
             "risk_management": "ATR stop and ATR take-profit",
             "default_params": {"rsi_period": 14, "atr_period": 14},
-            "parameter_specs": {
-                "rsi_period": {"min": 5, "max": 30, "default": 14, "type": "int"}
-            },
+            "parameter_specs": {"rsi_period": {"min": 5, "max": 30, "default": 14, "type": "int"}},
         }
     )
+
+
+def _write_builder_memory_session(
+    root: Path,
+    *,
+    session_id: str,
+    objective: str,
+    symbol: str = "BTCUSDC",
+    timeframe: str = "1h",
+    status: str = "success",
+    best_iteration: int = 3,
+    hypothesis: str = "",
+    best_sharpe: float = 0.0,
+    return_pct: float = 0.0,
+    drawdown_pct: float = -10.0,
+    profit_factor: float = 1.0,
+    trades: int = 20,
+    diagnostic_category: str = "",
+    params_used: dict[str, object] | None = None,
+    indicators: list[str] | None = None,
+    row_used_indicators: list[str] | None = None,
+) -> Path:
+    session_dir = root / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    row = {
+        "iteration": best_iteration,
+        "hypothesis": hypothesis or objective,
+        "change_type": "logic",
+        "diagnostic_category": diagnostic_category,
+        "used_indicators": list(row_used_indicators if row_used_indicators is not None else (indicators or [])),
+        "error": None,
+        "decision": "continue",
+        "evaluation_mode": "sweep",
+        "params_used": dict(params_used or {}),
+        "sharpe": best_sharpe,
+        "return_pct": return_pct,
+        "max_drawdown_pct": drawdown_pct,
+        "profit_factor": profit_factor,
+        "trades": trades,
+        "telemetry_score": best_sharpe * 10.0,
+    }
+    summary = {
+        "session_id": session_id,
+        "objective": objective,
+        "status": status,
+        "best_sharpe": best_sharpe,
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "start_time": "2026-04-19T10:00:00",
+        "universe_mode": "canonical",
+        "universe_strategy_type": "trend_following",
+        "last_runtime_error": "",
+        "iterations": [row],
+        "leaderboard": [dict(row, rank=1)],
+    }
+    (session_dir / "session_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    if indicators:
+        strategy_code = textwrap.dedent(
+            f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+            from utils.parameters import ParameterSpec
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                def __init__(self):
+                    super().__init__(name="memory_probe")
+
+                @property
+                def required_indicators(self) -> List[str]:
+                    return {indicators!r}
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{"leverage": 1, "warmup": 50}}
+
+                @property
+                def parameter_specs(self) -> Dict[str, ParameterSpec]:
+                    return {{}}
+
+                def generate_signals(self, df: pd.DataFrame, indicators: Dict[str, Any], params: Dict[str, Any]) -> pd.Series:
+                    return pd.Series(0.0, index=df.index, dtype=np.float64)
+            """
+        )
+        (session_dir / f"strategy_v{best_iteration}.py").write_text(strategy_code, encoding="utf-8")
+    return session_dir
+
+
+def test_load_builder_cross_session_memory_balances_success_and_failure(tmp_path):
+    _write_builder_memory_session(
+        tmp_path,
+        session_id="memory_success",
+        objective="Trend breakout BTC with Donchian confirmation",
+        symbol="BTCUSDC",
+        timeframe="1h",
+        status="success",
+        hypothesis="Donchian breakout with ATR filter",
+        best_sharpe=1.48,
+        return_pct=18.2,
+        drawdown_pct=-11.5,
+        profit_factor=1.31,
+        trades=42,
+        indicators=["donchian", "atr", "adx"],
+        row_used_indicators=[],
+        params_used={"donchian_period": 20, "atr_period": 14},
+    )
+    _write_builder_memory_session(
+        tmp_path,
+        session_id="memory_failure",
+        objective="Trend breakout BTC with Donchian confirmation",
+        symbol="BTCUSDC",
+        timeframe="1h",
+        status="failed",
+        hypothesis="RSI reversal inside noisy breakout",
+        best_sharpe=0.12,
+        return_pct=-6.4,
+        drawdown_pct=-29.0,
+        profit_factor=0.84,
+        trades=63,
+        diagnostic_category="overtrading",
+        indicators=["rsi", "atr"],
+        params_used={"rsi_period": 7, "atr_period": 14},
+    )
+    _write_builder_memory_session(
+        tmp_path,
+        session_id="memory_unrelated",
+        objective="Mean reversion SOL on 5m",
+        symbol="SOLUSDC",
+        timeframe="5m",
+        status="success",
+        hypothesis="Bollinger squeeze fade",
+        best_sharpe=1.7,
+        return_pct=22.0,
+        indicators=["bollinger", "rsi"],
+    )
+
+    memories = builder_session_io_module.load_builder_cross_session_memory(
+        objective="Trend breakout BTC with Donchian confirmation",
+        symbol="BTCUSDC",
+        timeframe="1h",
+        session_id="memory_current",
+        universe_mode="canonical",
+        universe_strategy_type="trend_following",
+        base_dir=tmp_path,
+        max_entries=2,
+    )
+
+    assert len(memories) == 2
+    outcomes = {str(entry["outcome"]) for entry in memories}
+    assert outcomes == {"success", "failure"}
+
+    success_entry = next(entry for entry in memories if entry["outcome"] == "success")
+    failure_entry = next(entry for entry in memories if entry["outcome"] == "failure")
+
+    assert success_entry["session_id"] == "memory_success"
+    assert set(success_entry["indicators"]) == {"donchian", "atr", "adx"}
+    assert "Positive reference" in success_entry["lesson"]
+    assert "same_symbol" in success_entry["relation"]
+
+    assert failure_entry["session_id"] == "memory_failure"
+    assert "Failure reference" in failure_entry["lesson"]
+    assert failure_entry["diagnostic_category"] == "overtrading"
+
+
+def test_format_builder_cross_session_memory_respects_char_budget():
+    entries = [
+        {"summary_line": "- [SUCCESS] breakout donchian atr adx with robust profitability"},
+        {"summary_line": "- [FAILURE] noisy rsi reversal overtrading pattern to avoid"},
+    ]
+
+    rendered = builder_session_io_module.format_builder_cross_session_memory(entries, max_chars=68)
+
+    assert rendered.startswith("- [SUCCESS]")
+    assert "- [FAILURE]" not in rendered
+    assert len(rendered) <= 68
 
 
 def test_precheck_signal_counts_handles_nameerror(sample_ohlcv):
@@ -362,9 +540,7 @@ def test_ask_code_skips_runtime_context_blocks_when_ablated(monkeypatch, tmp_pat
         "render_prompt",
         lambda template, context: captured.setdefault("context", dict(context)) or "prompt",
     )
-    builder._chat_llm = lambda **kwargs: SimpleNamespace(
-        content="```python\nsignals[:] = 0.0\n```"
-    )
+    builder._chat_llm = lambda **kwargs: SimpleNamespace(content="```python\nsignals[:] = 0.0\n```")
 
     code, feedback = builder._ask_code(session, proposal, last_iteration)
 
@@ -375,6 +551,90 @@ def test_ask_code_skips_runtime_context_blocks_when_ablated(monkeypatch, tmp_pat
     assert context["available_indicators"] == ["rsi", "atr", "ema"]
     assert context["diagnostic_actions"] == []
     assert context["diagnostic_donts"] == []
+
+
+def test_ask_proposal_includes_cross_session_memory_prompt(monkeypatch, tmp_path):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.available_indicators = ["rsi", "atr", "ema"]
+
+    session = BuilderSession(
+        session_id="proposal_memory_test",
+        objective="Tester la mémoire inter-sessions en proposal",
+        session_dir=tmp_path / "proposal_memory_test",
+        available_indicators=list(builder.available_indicators),
+        max_iterations=3,
+        symbol="BTCUSDC",
+        timeframe="1h",
+        n_bars=500,
+        cross_session_memory=[
+            {
+                "summary_line": (
+                    "- [SUCCESS | same_symbol] BTCUSDC 1h | sharpe=1.42 "
+                    "| lesson=Positive reference: Donchian + ATR breakout."
+                )
+            }
+        ],
+    )
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "render_prompt",
+        lambda template, context: captured.setdefault("context", dict(context)) or "prompt",
+    )
+    builder._chat_llm = lambda **kwargs: SimpleNamespace(content=_valid_builder_proposal_payload())
+
+    proposal, feedback = builder._ask_proposal(session)
+
+    assert proposal["strategy_name"] == "runtime_ablation_probe"
+    assert feedback["final_valid"] is True
+    context = captured["context"]
+    assert isinstance(context, dict)
+    assert context["cross_session_memory_count"] == 1
+    assert "Positive reference" in context["cross_session_memory_prompt"]
+
+
+def test_ask_code_includes_cross_session_memory_prompt(monkeypatch, tmp_path):
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+    builder.available_indicators = ["rsi", "atr", "ema"]
+
+    session = BuilderSession(
+        session_id="code_memory_test",
+        objective="Tester la mémoire inter-sessions en code",
+        session_dir=tmp_path / "code_memory_test",
+        available_indicators=list(builder.available_indicators),
+        max_iterations=3,
+        symbol="BTCUSDC",
+        timeframe="1h",
+        n_bars=500,
+        cross_session_memory=[
+            {
+                "summary_line": (
+                    "- [FAILURE | same_symbol] BTCUSDC 1h | sharpe=0.10 "
+                    "| lesson=Failure reference: avoid repeating RSI churn."
+                )
+            }
+        ],
+    )
+    proposal = json.loads(_valid_builder_proposal_payload())
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        strategy_builder_module,
+        "render_prompt",
+        lambda template, context: captured.setdefault("context", dict(context)) or "prompt",
+    )
+    builder._chat_llm = lambda **kwargs: SimpleNamespace(content="```python\nsignals[:] = 0.0\n```")
+
+    code, feedback = builder._ask_code(session, proposal)
+
+    assert "signals[:] = 0.0" in code
+    assert feedback["final_valid"] is True
+    context = captured["context"]
+    assert isinstance(context, dict)
+    assert context["cross_session_memory_count"] == 1
+    assert "Failure reference" in context["cross_session_memory_prompt"]
 
 
 def test_builder_run_uses_rule_based_analysis_when_llm_analysis_ablated(
@@ -435,9 +695,7 @@ def test_builder_run_uses_rule_based_analysis_when_llm_analysis_ablated(
         },
         meta={},
     )
-    builder._ask_analysis = lambda *args, **kwargs: pytest.fail(
-        "llm_analysis should not be called when ablated"
-    )
+    builder._ask_analysis = lambda *args, **kwargs: pytest.fail("llm_analysis should not be called when ablated")
 
     session = builder.run(
         objective="Tester l'analyse rule-based",
@@ -586,8 +844,7 @@ def test_filter_market_universe_differs_between_canonical_and_exploratory():
 
     assert canonical["symbols"] == ["BTCUSDC"]
     assert any(
-        item["symbol"] == "DOGEUSDC"
-        and "outside canonical universe" in " | ".join(item.get("exclusion_reasons", []))
+        item["symbol"] == "DOGEUSDC" and "outside canonical universe" in " | ".join(item.get("exclusion_reasons", []))
         for item in canonical["excluded_pairs"]
     )
     assert set(exploratory["symbols"]) == {"DOGEUSDC", "BTCUSDC"}
@@ -634,10 +891,7 @@ def test_evaluate_market_dataset_prioritizes_dollar_volume_over_raw_volume():
     assert result["accepted"] is False
     assert result["local_metrics"]["median_volume"] > 1000.0
     assert result["local_metrics"]["median_dollar_volume"] < 250000.0
-    assert any(
-        "median dollar volume insufficient" in reason
-        for reason in result["exclusion_reasons"]
-    )
+    assert any("median dollar volume insufficient" in reason for reason in result["exclusion_reasons"])
 
 
 def test_evaluate_market_dataset_volatility_depends_on_strategy_type():
@@ -699,10 +953,7 @@ def test_evaluate_market_dataset_rejects_sparse_weekly_in_canonical_mode():
 
     assert result["accepted"] is False
     assert result["applied_criteria"]["timeframe_specific_min_segment_bars"] == 400
-    assert any(
-        "continuous segment insufficient" in reason
-        for reason in result["exclusion_reasons"]
-    )
+    assert any("continuous segment insufficient" in reason for reason in result["exclusion_reasons"])
 
 
 def test_extract_default_params_signature_reads_generated_literal(valid_strategy_code):
@@ -896,9 +1147,7 @@ def test_builder_run_emits_progress_events(
         and event.get("payload", {}).get("sharpe") == 1.42
         for event in progress_events
     )
-    proposal_selected = next(
-        event for event in progress_events if event["event"] == "proposal_selected"
-    )
+    proposal_selected = next(event for event in progress_events if event["event"] == "proposal_selected")
     assert proposal_selected["selected_branch_label"] == "main"
     assert proposal_selected["payload"]["proposal"]["hypothesis"] == "RSI reversal simple"
     assert all("timestamp" in event and "payload" in event for event in progress_events)
@@ -1061,20 +1310,15 @@ def test_builder_run_emits_branch_candidates_and_selected_branch(monkeypatch, tm
     )
 
     assert session.status == "success"
-    candidate_events = [
-        event for event in progress_events if event["event"] == "proposal_candidate"
-    ]
+    candidate_events = [event for event in progress_events if event["event"] == "proposal_candidate"]
     assert [event["branch_label"] for event in candidate_events] == ["keep", "add_one"]
-    selected_event = next(
-        event for event in progress_events if event["event"] == "proposal_selected"
-    )
+    selected_event = next(event for event in progress_events if event["event"] == "proposal_selected")
     assert selected_event["selected_branch_label"] == "add_one"
     assert selected_event["payload"]["proposal"]["hypothesis"] == "Hypothese add_one"
     phase_branch_events = [
         event
         for event in progress_events
-        if event["event"] in {"phase_start", "phase_done"}
-        and event.get("phase") in {"save_and_load", "backtest"}
+        if event["event"] in {"phase_start", "phase_done"} and event.get("phase") in {"save_and_load", "backtest"}
     ]
     assert {event["branch_label"] for event in phase_branch_events} == {"keep", "add_one"}
     assert all(event["branch_label"] for event in phase_branch_events)
@@ -1525,12 +1769,8 @@ def test_builder_run_uses_sweep_and_rewrites_code_defaults(
     assert backtest_feedback["sweep_total_tested"] == 9
     assert backtest_feedback["params_used"]["rsi_period"] == 15
     assert backtest_feedback["params_used"]["atr_period"] == 13
-    assert (
-        _extract_default_params_signature(iteration.code)["rsi_period"] == 15
-    )
-    assert (
-        _extract_default_params_signature(iteration.code)["atr_period"] == 13
-    )
+    assert _extract_default_params_signature(iteration.code)["rsi_period"] == 15
+    assert _extract_default_params_signature(iteration.code)["atr_period"] == 13
 
 
 def test_retry_runtime_timeout_ignores_reasoning_floor():
@@ -1825,9 +2065,7 @@ def test_candidate_executor_skips_runtime_fix_when_ablated(
 ):
     builder = StrategyBuilder(llm_client=SimpleNamespace())
     builder.ablation.disable("runtime_fix")
-    builder._retry_code_runtime_fix = lambda **kwargs: pytest.fail(
-        "runtime_fix should not be called when ablated"
-    )
+    builder._retry_code_runtime_fix = lambda **kwargs: pytest.fail("runtime_fix should not be called when ablated")
     builder._save_and_load = lambda session, code, iteration_num: object
     builder._auto_fix_required_indicators = lambda strategy_cls, code: strategy_cls
     builder._run_backtest_with_optional_sweep = lambda *args, **kwargs: (
@@ -1965,9 +2203,7 @@ def test_candidate_executor_passes_indicator_binding_flag_to_repair(
     monkeypatch.setattr(
         builder_candidate_executor_module,
         "_repair_code",
-        lambda code, req_inds, enable_indicator_binding: (
-            recorded_flags.append(bool(enable_indicator_binding)) or code
-        ),
+        lambda code, req_inds, enable_indicator_binding: recorded_flags.append(bool(enable_indicator_binding)) or code,
     )
     monkeypatch.setattr(
         builder_candidate_executor_module,
@@ -2100,10 +2336,12 @@ def test_builder_overrides_params_when_no_real_param_delta(
         meta={},
     )
 
-    analysis_calls = iter([
-        ("continuer", "continue"),
-        ("accepter", "accept"),
-    ])
+    analysis_calls = iter(
+        [
+            ("continuer", "continue"),
+            ("accepter", "accept"),
+        ]
+    )
     builder._ask_analysis = lambda *args, **kwargs: next(analysis_calls)
 
     session = builder.run(
@@ -2119,23 +2357,14 @@ def test_builder_overrides_params_when_no_real_param_delta(
     assert code_calls == ["logic", "logic"]
     assert session.iterations[1].change_type == "logic"
     assert (
-        "indicator_set_changed"
-        in session.iterations[1]
-        .phase_feedback["proposal"]["change_type_overridden"]["reason"]
+        "indicator_set_changed" in session.iterations[1].phase_feedback["proposal"]["change_type_overridden"]["reason"]
     )
-    assert (
-        session.iterations[1]
-        .phase_feedback["proposal"]["change_type_overridden"]["reason"]
-        != ""
-    )
+    assert session.iterations[1].phase_feedback["proposal"]["change_type_overridden"]["reason"] != ""
     assert session.iterations[1].phase_feedback["code"].get("source") != "params_patch"
 
 
 def test_infer_direction_constraint_from_objective_detects_buy_only():
-    objective = (
-        "Generate buy signals on BTCUSDC 4h timeframe. "
-        "Only execute buy orders."
-    )
+    objective = "Generate buy signals on BTCUSDC 4h timeframe. Only execute buy orders."
     assert _infer_direction_constraint_from_objective(objective) == "long_only"
 
 
@@ -2150,9 +2379,7 @@ def test_sanitize_proposal_payload_clears_short_logic_for_long_only():
         "exit_logic": "close crosses above ema",
         "risk_management": "ATR-based stop/take-profit",
         "default_params": {"rsi_period": 14},
-        "parameter_specs": {
-            "rsi_period": {"min": 5, "max": 30, "default": 14, "type": "int"}
-        },
+        "parameter_specs": {"rsi_period": {"min": 5, "max": 30, "default": 14, "type": "int"}},
     }
 
     cleaned = _sanitize_proposal_payload(
@@ -2216,9 +2443,7 @@ def test_builder_iteration_phase_feedback_coerces_to_typed_mapping():
     assert isinstance(iteration.phase_feedback, dict)
     assert isinstance(iteration.phase_feedback["proposal"], ProposalFeedbackSection)
     assert iteration.phase_feedback["proposal"]["phase"] == "proposal"
-    assert iteration.phase_feedback["proposal"].extras == {
-        "lm_signature": "custom-model-trace"
-    }
+    assert iteration.phase_feedback["proposal"].extras == {"lm_signature": "custom-model-trace"}
 
     iteration.phase_feedback["code"] = {
         "source": "llm",
@@ -2226,9 +2451,7 @@ def test_builder_iteration_phase_feedback_coerces_to_typed_mapping():
     }
 
     assert isinstance(iteration.phase_feedback["code"], CodeFeedbackSection)
-    assert iteration.phase_feedback["code"].extras == {
-        "provider_hint": "reasoning-pass"
-    }
+    assert iteration.phase_feedback["code"].extras == {"provider_hint": "reasoning-pass"}
 
 
 def test_sanitize_proposal_payload_canonicalizes_common_indicator_aliases():
@@ -2348,17 +2571,12 @@ def test_builder_run_skips_backtest_for_pathological_signal_density(
     assert session.iterations[0].diagnostic_category == "overtrading"
     assert session.iterations[0].backtest_result.metrics["total_trades"] == 950
     assert session.iterations[0].phase_feedback["precheck"]["backtest_skipped"] is True
-    assert (
-        session.iterations[0].phase_feedback["precheck"]["pathological_signal_density"]
-        is True
-    )
-    assert (
-        session.iterations[0].phase_feedback["precheck"]["skip_reason"]
-        == "pathological_signal_density"
-    )
+    assert session.iterations[0].phase_feedback["precheck"]["pathological_signal_density"] is True
+    assert session.iterations[0].phase_feedback["precheck"]["skip_reason"] == "pathological_signal_density"
 
 
 # ─── Tests validate_generated_code ───────────────────────────────────────
+
 
 class TestValidateCode:
     """Tests de la fonction validate_generated_code."""
@@ -2831,6 +3049,7 @@ class TestValidateCode:
 
 # ─── Tests extraction LLM ─────────────────────────────────────────────────
 
+
 class TestExtractResponse:
     """Tests des helpers d'extraction de réponse LLM."""
 
@@ -3170,7 +3389,9 @@ class TestCodeRepair:
 
         repaired = _repair_code(raw, ["directional_bias"])
 
-        assert 'bias = indicators["directional_bias"]' in repaired or "bias = indicators['directional_bias']" in repaired
+        assert (
+            'bias = indicators["directional_bias"]' in repaired or "bias = indicators['directional_bias']" in repaired
+        )
         assert 'bull_score = np.nan_to_num(bias["bull_score"])' in repaired
         assert 'bear_score = np.nan_to_num(bias["bear_score"])' in repaired
 
@@ -3238,11 +3459,7 @@ class TestCodeRepair:
         assert "rsi_arr = rsi" in repaired
 
     def test_repair_rewrites_invalid_indicator_and_param_access_aliases(self):
-        raw = (
-            "x = indicators['plus_di']\n"
-            "y = indicators.get('aroon_down')\n"
-            "z = indicators['stop_atr_mult']\n"
-        )
+        raw = "x = indicators['plus_di']\ny = indicators.get('aroon_down')\nz = indicators['stop_atr_mult']\n"
 
         repaired = _repair_code(raw)
 
@@ -3628,10 +3845,7 @@ class TestObjectiveGenerationIndicatorSanitization:
         )
         objective = generate_llm_objective_from_seed(
             llm,
-            seed_objective=(
-                "Strategie de Mean Reversion sur {symbol} {timeframe}. "
-                "Indicateurs : RSI + EMA + ATR."
-            ),
+            seed_objective=("Strategie de Mean Reversion sur {symbol} {timeframe}. Indicateurs : RSI + EMA + ATR."),
             symbol=None,
             timeframe=None,
             available_indicators=["ema", "rsi", "atr"],
@@ -3663,6 +3877,7 @@ class TestObjectiveGenerationIndicatorSanitization:
 
 
 # ─── Tests session ─────────────────────────────────────────────────────────
+
 
 class TestSession:
     """Tests de gestion de session."""
@@ -3811,16 +4026,14 @@ class TestSessionRecovery:
             "agents.builder_session_io.save_session_summary",
             side_effect=lambda s: checkpoint_calls.append(s.auto_reset_count),
         ):
-            ok, anchor, consecutive_failures, fallback_count, event = (
-                builder._attempt_session_auto_reset(
-                    session,
-                    iteration_num=3,
-                    trigger="consecutive_failures",
-                    reason="3 erreurs",
-                    last_iteration=None,
-                    consecutive_failures=3,
-                    fallback_count=1,
-                )
+            ok, anchor, consecutive_failures, fallback_count, event = builder._attempt_session_auto_reset(
+                session,
+                iteration_num=3,
+                trigger="consecutive_failures",
+                reason="3 erreurs",
+                last_iteration=None,
+                consecutive_failures=3,
+                fallback_count=1,
             )
 
         assert ok is True
@@ -4000,10 +4213,7 @@ def test_candidate_executor_falls_back_when_code_uses_indicator_outside_proposal
         builder,
         "_retry_code_simple",
         lambda proposal: (
-            "```python\n"
-            "adx = np.nan_to_num(indicators['adx']['adx'])\n"
-            "signals[:] = (adx > 20).astype(float)\n"
-            "```"
+            "```python\nadx = np.nan_to_num(indicators['adx']['adx'])\nsignals[:] = (adx > 20).astype(float)\n```"
         ),
     )
     monkeypatch.setattr(executor, "_next_fallback_code", lambda: "fallback_code")
@@ -4016,8 +4226,7 @@ def test_candidate_executor_falls_back_when_code_uses_indicator_outside_proposal
     }
     drifting_code = _build_deterministic_strategy_code(
         proposal,
-        "adx = np.nan_to_num(indicators['adx']['adx'])\n"
-        "signals[:] = (adx > 20).astype(float)\n",
+        "adx = np.nan_to_num(indicators['adx']['adx'])\nsignals[:] = (adx > 20).astype(float)\n",
     )
 
     code = executor._validate_candidate_code(drifting_code)
@@ -4057,7 +4266,9 @@ class TestGracefulInterpreterShutdown:
             def shutdown(self, wait=True):  # noqa: ARG002
                 pass
 
-        monkeypatch.setattr(strategy_builder_module, "_new_streamlit_aware_thread_pool", lambda max_workers=1: _BrokenPool())
+        monkeypatch.setattr(
+            strategy_builder_module, "_new_streamlit_aware_thread_pool", lambda max_workers=1: _BrokenPool()
+        )
 
         with pytest.raises(KeyboardInterrupt):
             builder._chat_llm(
@@ -4067,6 +4278,7 @@ class TestGracefulInterpreterShutdown:
 
 
 # ─── Tests chargement dynamique ──────────────────────────────────────────
+
 
 class TestDynamicLoad:
     """Tests du chargement dynamique de stratégie."""
@@ -4110,11 +4322,13 @@ class TestDynamicLoad:
 
 # ─── Tests indicateurs disponibles ───────────────────────────────────────
 
+
 class TestIndicators:
     """Vérifie que le builder voit bien le registry."""
 
     def test_available_indicators_not_empty(self):
         from indicators.registry import list_indicators
+
         indicators = list_indicators()
         assert len(indicators) > 10
         assert "bollinger" in indicators
@@ -4126,6 +4340,7 @@ class TestIndicators:
         # On ne peut pas instancier le builder sans LLM, mais on peut
         # vérifier la liste statiquement
         from indicators.registry import list_indicators
+
         assert "macd" in list_indicators()
         assert "supertrend" in list_indicators()
         assert "fva" in list_indicators()
@@ -4183,6 +4398,7 @@ class TestIndicators:
 
 
 # ─── Tests templates ──────────────────────────────────────────────────────
+
 
 class TestTemplates:
     """Vérifie que les templates Jinja2 sont accessibles et rendables."""
@@ -4280,32 +4496,35 @@ class TestTemplates:
         example = get_indicator_builder_access_example("bollinger")
 
         assert 'indicators["bollinger"]' in example
-        assert 'np.nan_to_num' in example
-        assert 'upper' in example
+        assert "np.nan_to_num" in example
+        assert "upper" in example
 
     def test_indicator_builder_access_example_handles_amplitude_hunter_dict(self):
         example = get_indicator_builder_access_example("amplitude_hunter")
         alias_map = get_indicator_builder_stable_alias_map("amplitude_hunter")
 
         assert 'indicators["amplitude_hunter"]' in example
-        assert 'range_pct' in example
-        assert 'score' in example
+        assert "range_pct" in example
+        assert "score" in example
         assert alias_map["score"] == "amplitude_hunter_score"
 
     def test_indicator_reference_stores_builder_access_examples(self):
-        assert 'builder_access' in INDICATOR_SELECTION_REFERENCE["rsi"]
-        assert 'builder_access' in INDICATOR_SELECTION_REFERENCE["bollinger"]
+        assert "builder_access" in INDICATOR_SELECTION_REFERENCE["rsi"]
+        assert "builder_access" in INDICATOR_SELECTION_REFERENCE["bollinger"]
         assert 'indicators["rsi"]' in INDICATOR_SELECTION_REFERENCE["rsi"]["builder_access"]
         assert 'indicators["bollinger"]' in INDICATOR_SELECTION_REFERENCE["bollinger"]["builder_access"]
 
     def test_proposal_template_renders(self):
         from utils.template import render_prompt
+
         context = {
             "objective": "Trend following BTC",
             "available_indicators": ["rsi", "bollinger", "atr", "markov_switching", "directional_bias"],
             "available_indicator_guide": build_indicator_selection_guide(
                 ["rsi", "bollinger", "atr", "markov_switching", "directional_bias"]
             ),
+            "cross_session_memory_prompt": "- [SUCCESS] Prior Donchian breakout on BTC 1h",
+            "cross_session_memory_count": 1,
             "iteration": 1,
             "max_iterations": 5,
         }
@@ -4322,6 +4541,8 @@ class TestTemplates:
         assert "markov_switching" in result
         assert "directional_bias" in result
         assert "1 to 5 indicators" in result
+        assert "CROSS-SESSION MEMORY (1)" in result
+        assert "Prior Donchian breakout" in result
 
     def test_proposal_template_locks_explicit_objective_indicators_and_drops_canonical_example(self):
         from utils.template import render_prompt
@@ -4352,9 +4573,7 @@ class TestTemplates:
         context = {
             "objective": "Breakout ETH",
             "available_indicators": ["rsi", "bollinger", "atr", "adx"],
-            "available_indicator_guide": build_indicator_selection_guide(
-                ["rsi", "bollinger", "atr", "adx"]
-            ),
+            "available_indicator_guide": build_indicator_selection_guide(["rsi", "bollinger", "atr", "adx"]),
             "iteration": 4,
             "max_iterations": 10,
             "diagnostic": {
@@ -4380,9 +4599,7 @@ class TestTemplates:
         context = {
             "objective": "Breakout ETH",
             "available_indicators": ["rsi", "bollinger", "atr"],
-            "available_indicator_guide": build_indicator_selection_guide(
-                ["rsi", "bollinger", "atr"]
-            ),
+            "available_indicator_guide": build_indicator_selection_guide(["rsi", "bollinger", "atr"]),
             "iteration": 5,
             "max_iterations": 10,
             "branch_directive": "STAGNATION BRANCH: ADD_ONE. Add exactly one new indicator.",
@@ -4495,6 +4712,7 @@ class TestTemplates:
 
     def test_code_template_renders(self):
         from utils.template import render_prompt
+
         context = {
             "objective": "Mean reversion ETH",
             "proposal": {
@@ -4507,9 +4725,9 @@ class TestTemplates:
                 "default_params": {"rsi_period": 14},
             },
             "available_indicators": ["rsi", "bollinger", "atr"],
-            "available_indicator_guide": build_indicator_selection_guide(
-                ["rsi", "bollinger", "atr"]
-            ),
+            "available_indicator_guide": build_indicator_selection_guide(["rsi", "bollinger", "atr"]),
+            "cross_session_memory_prompt": "- [FAILURE] Prior RSI churn on ETH 1h",
+            "cross_session_memory_count": 1,
             "class_name": GENERATED_CLASS_NAME,
         }
         result = render_prompt("strategy_builder_code.jinja2", context)
@@ -4521,6 +4739,8 @@ class TestTemplates:
         assert "session-stable and lightly re-ranked" in result
         assert "Average True Range" in result
         assert 'indicators["bollinger"]' in result
+        assert "CROSS-SESSION MEMORY SNAPSHOT (1)" in result
+        assert "Prior RSI churn" in result
 
 
 class TestMarketRecommendationDiversity:
@@ -4541,8 +4761,6 @@ class TestMarketRecommendationDiversity:
         assert result["timeframe"] == "15m"
         assert str(result["source"]).endswith("diversity_override")
 
-
-
     def test_recommend_market_context_rotates_when_all_pairs_recent(self):
         llm = _DummyLLMClient(
             '{"symbol":"0GUSDC","timeframe":"1h","confidence":0.90,"reason":"focus"}',
@@ -4559,6 +4777,8 @@ class TestMarketRecommendationDiversity:
         assert result["symbol"] == "BTCUSDC"
         assert result["timeframe"] == "1h"
         assert str(result["source"]).endswith("diversity_override")
+
+
 class TestBuilderRobustnessProfitFactor:
     def test_accept_candidate_rejects_low_profit_factor(self):
         metrics = {
@@ -4729,6 +4949,9 @@ class TestBuilderSummaryLeaderboard:
             assert payload["date_range_start"] == "2026-01-01 00:00:00"
             assert payload["date_range_end"] == "2026-02-10 00:00:00"
             assert payload["initial_capital"] == 25000.0
+            assert payload["start_time"]
+            assert payload["end_time"]
+            assert payload["session_duration_seconds"] >= 0.0
             assert payload["last_runtime_error"] == "ValueError: test runtime"
             assert payload["last_runtime_error_iteration"] == 1
             assert payload["last_runtime_traceback_tail"] == "Traceback line 1\nTraceback line 2"
@@ -4744,8 +4967,8 @@ class TestBuilderSummaryLeaderboard:
         finally:
             shutil.rmtree(session_dir, ignore_errors=True)
 
-# ─── Tests refactor scoring souple ──────────────────────────────────────────
 
+# ─── Tests refactor scoring souple ──────────────────────────────────────────
 
 
 class TestRefactorCheckpoints:
@@ -4754,11 +4977,13 @@ class TestRefactorCheckpoints:
     def test_positive_progress_gate_checkpoints_updated(self):
         """Vérifie que les checkpoints sont bien à {6: 1, 9: 2}."""
         from agents.strategy_builder import POSITIVE_PROGRESS_GATE_CHECKPOINTS
+
         assert POSITIVE_PROGRESS_GATE_CHECKPOINTS == {6: 1, 9: 2}
 
     def test_min_successful_iterations_updated(self):
         """Vérifie que MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP = 5."""
         from agents.strategy_builder import MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP
+
         assert MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP == 5
 
     def test_count_positive_iterations_with_fallback_quota(self):
@@ -4776,23 +5001,17 @@ class TestRefactorCheckpoints:
             BuilderIteration(
                 iteration=1,
                 is_fallback=True,
-                backtest_result=SimpleNamespace(
-                    metrics={"total_return_pct": 5.0, "total_trades": 25}
-                ),
+                backtest_result=SimpleNamespace(metrics={"total_return_pct": 5.0, "total_trades": 25}),
             ),
             BuilderIteration(
                 iteration=2,
                 is_fallback=True,
-                backtest_result=SimpleNamespace(
-                    metrics={"total_return_pct": 3.0, "total_trades": 22}
-                ),
+                backtest_result=SimpleNamespace(metrics={"total_return_pct": 3.0, "total_trades": 22}),
             ),
             BuilderIteration(
                 iteration=3,
                 is_fallback=False,
-                backtest_result=SimpleNamespace(
-                    metrics={"total_return_pct": 8.0, "total_trades": 30}
-                ),
+                backtest_result=SimpleNamespace(metrics={"total_return_pct": 8.0, "total_trades": 30}),
             ),
         ]
 
@@ -4840,4 +5059,3 @@ def test_builder_session_has_model_name_field():
     assert session.model_name == ""
     session.model_name = "gemma4:26b"
     assert session.model_name == "gemma4:26b"
-

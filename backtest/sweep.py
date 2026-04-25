@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.sweep
+"""Module-ID: backtest.sweep
 
 Purpose: Optimiser les paramètres via grid search parallélisé avec suivi temps réel et filtrage par contraintes.
 
@@ -27,7 +26,7 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -35,6 +34,11 @@ if TYPE_CHECKING:
     from strategies.base import StrategyBase
 
 from backtest.engine import BacktestEngine
+from backtest.sweep_numba import (
+    normalize_numba_strategy_key,
+    run_numba_sweep_items_if_supported,
+    should_use_numba_backend,
+)
 from metrics_types import PerformanceMetricsPct, normalize_metrics
 from performance.monitor import (
     ProgressBar,
@@ -45,17 +49,12 @@ from performance.parallel import (
     generate_param_grid,
 )
 from performance.profiler import Profiler
-from backtest.sweep_numba import (
-    normalize_numba_strategy_key,
-    run_numba_sweep_items_if_supported,
-    should_use_numba_backend,
-)
 from utils.parameters import compute_search_space_stats
 
 logger = logging.getLogger(__name__)
 
 
-def _normalize_metrics_pct(metrics: Dict[str, Any]) -> PerformanceMetricsPct:
+def _normalize_metrics_pct(metrics: dict[str, Any]) -> PerformanceMetricsPct:
     if not metrics:
         return {}
     return normalize_metrics(metrics, "pct")
@@ -64,22 +63,24 @@ def _normalize_metrics_pct(metrics: Dict[str, Any]) -> PerformanceMetricsPct:
 @dataclass
 class SweepResultItem:
     """Résultat d'une combinaison de paramètres."""
-    params: Dict[str, Any]
+
+    params: dict[str, Any]
     metrics: PerformanceMetricsPct
     success: bool
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @dataclass
 class SweepResults:
     """Résultats complets d'un sweep paramétrique."""
-    items: List[SweepResultItem]
-    best_params: Dict[str, Any]
+
+    items: list[SweepResultItem]
+    best_params: dict[str, Any]
     best_metrics: PerformanceMetricsPct
     total_time: float
     n_completed: int
     n_failed: int
-    resource_stats: Optional[Dict[str, Any]] = None
+    resource_stats: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         self.best_metrics = _normalize_metrics_pct(self.best_metrics)
@@ -105,9 +106,9 @@ class SweepResults:
 
     def summary(self) -> str:
         """Retourne un résumé textuel."""
-        sharpe = self.best_metrics.get('sharpe_ratio', 0)
-        total_pnl = self.best_metrics.get('total_pnl', 0)
-        win_rate = self.best_metrics.get('win_rate_pct', 0)
+        sharpe = self.best_metrics.get("sharpe_ratio", 0)
+        total_pnl = self.best_metrics.get("total_pnl", 0)
+        win_rate = self.best_metrics.get("win_rate_pct", 0)
 
         # Gérer le cas où les valeurs sont des strings (N/A)
         sharpe_str = f"{sharpe:.2f}" if isinstance(sharpe, (int, float)) else str(sharpe)
@@ -133,15 +134,14 @@ Best Metrics:
 
 
 def _run_single_backtest_wrapper(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     df: pd.DataFrame,
-    strategy: "StrategyBase",
+    strategy: StrategyBase,
     initial_capital: float,
     silent_mode: bool = True,
     fast_metrics: bool = True,
-) -> Dict[str, Any]:
-    """
-    Wrapper function pour exécuter un backtest en parallèle (picklable).
+) -> dict[str, Any]:
+    """Wrapper function pour exécuter un backtest en parallèle (picklable).
 
     Cette fonction est conçue pour être utilisée avec concurrent.futures:
     - Accepte tous les arguments nécessaires explicitement
@@ -158,6 +158,7 @@ def _run_single_backtest_wrapper(
 
     Returns:
         Dict avec clés: params, metrics, success, error (optionnel)
+
     """
     try:
         engine = BacktestEngine(initial_capital=initial_capital)
@@ -185,8 +186,7 @@ def _run_single_backtest_wrapper(
 
 
 class SweepEngine:
-    """
-    Moteur de sweep paramétrique avec parallélisation et monitoring.
+    """Moteur de sweep paramétrique avec parallélisation et monitoring.
 
     Features:
     - Exécution parallèle sur tous les CPU
@@ -209,11 +209,12 @@ class SweepEngine:
         ... )
         >>>
         >>> print(results.best_params)
+
     """
 
     def __init__(
         self,
-        max_workers: Optional[int] = None,
+        max_workers: int | None = None,
         use_processes: bool = True,
         initial_capital: float = 10000.0,
         enable_profiling: bool = False,
@@ -222,8 +223,7 @@ class SweepEngine:
         silent_mode: bool = True,
         fast_metrics: bool = True,
     ):
-        """
-        Initialise le moteur de sweep.
+        """Initialise le moteur de sweep.
 
         Args:
             max_workers: Nombre de workers parallèles (None = auto)
@@ -234,6 +234,7 @@ class SweepEngine:
             save_individual_runs: Sauvegarder chaque run individuel (False = résumé uniquement)
             silent_mode: Désactiver les logs internes pendant le sweep
             fast_metrics: Utiliser les métriques rapides (Sharpe/Sortino)
+
         """
         self.max_workers = max_workers
         self.use_processes = use_processes
@@ -255,25 +256,24 @@ class SweepEngine:
         logger.info(
             f"SweepEngine initialisé: {self._runner.max_workers} workers, "
             f"capital=${initial_capital:,.0f}, auto_save={auto_save}, "
-            f"save_individual_runs={save_individual_runs}"
+            f"save_individual_runs={save_individual_runs}",
         )
 
     def run_sweep(
         self,
         df: pd.DataFrame,
-        strategy: Union["StrategyBase", str],
-        param_grid: Dict[str, Any],
+        strategy: StrategyBase | str,
+        param_grid: dict[str, Any],
         *,
         optimize_for: str = "sharpe_ratio",
         minimize: bool = False,
         show_progress: bool = True,
-        early_stop_threshold: Optional[float] = None,
-        silent_mode: Optional[bool] = None,
-        fast_metrics: Optional[bool] = None,
-        indicator_cache_config: Optional[Dict[str, Any]] = None,
+        early_stop_threshold: float | None = None,
+        silent_mode: bool | None = None,
+        fast_metrics: bool | None = None,
+        indicator_cache_config: dict[str, Any] | None = None,
     ) -> SweepResults:
-        """
-        Exécute un sweep paramétrique complet.
+        """Exécute un sweep paramétrique complet.
 
         Args:
             df: DataFrame OHLCV
@@ -290,6 +290,7 @@ class SweepEngine:
 
         Returns:
             SweepResults avec tous les résultats et le meilleur
+
         """
         self._stop_requested = False
         start_time = time.time()
@@ -330,9 +331,9 @@ class SweepEngine:
         tracker = ResourceTracker(interval=1.0)
         tracker.start()
 
-        results: List[SweepResultItem] = []
+        results: list[SweepResultItem] = []
         best_value = float("-inf") if not minimize else float("inf")
-        best_params: Dict[str, Any] = {}
+        best_params: dict[str, Any] = {}
         best_metrics: PerformanceMetricsPct = {}
 
         # Profiler optionnel
@@ -356,7 +357,7 @@ class SweepEngine:
                 else:
                     pbar = None
 
-                def progress_callback_numba(current: int, total: int, _best: Dict[str, Any]) -> None:
+                def progress_callback_numba(current: int, total: int, _best: dict[str, Any]) -> None:
                     if pbar:
                         pbar.update(current)
 
@@ -384,10 +385,7 @@ class SweepEngine:
 
                     if optimize_for in item.metrics:
                         value = item.metrics[optimize_for]
-                        is_better = (
-                            (not minimize and value > best_value) or
-                            (minimize and value < best_value)
-                        )
+                        is_better = (not minimize and value > best_value) or (minimize and value < best_value)
                         if is_better:
                             best_value = value
                             best_params = item.params.copy()
@@ -453,10 +451,7 @@ class SweepEngine:
                     # Mise à jour du meilleur
                     if item.success and optimize_for in item.metrics:
                         value = item.metrics[optimize_for]
-                        is_better = (
-                            (not minimize and value > best_value) or
-                            (minimize and value < best_value)
-                        )
+                        is_better = (not minimize and value > best_value) or (minimize and value < best_value)
                         if is_better:
                             best_value = value
                             best_params = item.params.copy()
@@ -464,8 +459,9 @@ class SweepEngine:
 
                             # Early stopping (post-traitement)
                             if early_stop_threshold is not None:
-                                if (not minimize and best_value >= early_stop_threshold) or \
-                                   (minimize and best_value <= early_stop_threshold):
+                                if (not minimize and best_value >= early_stop_threshold) or (
+                                    minimize and best_value <= early_stop_threshold
+                                ):
                                     logger.info(f"Early stop: {optimize_for}={best_value:.4f}")
                                     # Note: avec ParallelRunner, les tâches restantes sont déjà lancées
                                     # mais on arrête le traitement des résultats
@@ -501,13 +497,14 @@ class SweepEngine:
                 "cpu_max": resource_stats.cpu_max,
                 "memory_max_gb": resource_stats.memory_max_gb,
                 "duration": resource_stats.duration_seconds,
-            }
+            },
         )
 
         # Sauvegarde automatique si activée
         if self.auto_save:
             try:
                 from backtest.storage import get_storage
+
                 storage = get_storage()
                 sweep_id = storage.save_sweep_results(sweep_results)
                 logger.info(f"✅ Sweep sauvegardé: {sweep_id}")
@@ -547,16 +544,15 @@ class SweepEngine:
     def run_sweep_parallel(
         self,
         df: pd.DataFrame,
-        strategy: Union["StrategyBase", str],
-        param_grid: Dict[str, Any],
+        strategy: StrategyBase | str,
+        param_grid: dict[str, Any],
         *,
         optimize_for: str = "sharpe_ratio",
         minimize: bool = False,
-        silent_mode: Optional[bool] = None,
-        fast_metrics: Optional[bool] = None,
+        silent_mode: bool | None = None,
+        fast_metrics: bool | None = None,
     ) -> SweepResults:
-        """
-        Exécute un sweep paramétrique en parallèle (multiprocessing).
+        """Exécute un sweep paramétrique en parallèle (multiprocessing).
 
         Note: Le multiprocessing nécessite que strategy soit picklable.
         Pour des stratégies complexes, utilisez run_sweep().
@@ -572,6 +568,7 @@ class SweepEngine:
 
         Returns:
             SweepResults
+
         """
         start_time = time.time()
         silent_mode = self.silent_mode if silent_mode is None else silent_mode
@@ -597,9 +594,9 @@ class SweepEngine:
         )
 
         # Convertir les résultats
-        results: List[SweepResultItem] = []
+        results: list[SweepResultItem] = []
         best_value = float("-inf") if not minimize else float("inf")
-        best_params: Dict[str, Any] = {}
+        best_params: dict[str, Any] = {}
         best_metrics: PerformanceMetricsPct = {}
 
         for item in parallel_result.results:
@@ -622,10 +619,7 @@ class SweepEngine:
 
             if result_item.success and optimize_for in result_item.metrics:
                 value = result_item.metrics[optimize_for]
-                is_better = (
-                    (not minimize and value > best_value) or
-                    (minimize and value < best_value)
-                )
+                is_better = (not minimize and value > best_value) or (minimize and value < best_value)
                 if is_better:
                     best_value = value
                     best_params = result_item.params.copy()
@@ -643,13 +637,14 @@ class SweepEngine:
             resource_stats={
                 "memory_peak_gb": parallel_result.memory_peak_gb,
                 "avg_time_per_task": parallel_result.avg_time_per_task,
-            }
+            },
         )
 
         # Sauvegarde automatique si activée
         if self.auto_save:
             try:
                 from backtest.storage import get_storage
+
                 storage = get_storage()
                 sweep_id = storage.save_sweep_results(sweep_results)
                 logger.info(f"✅ Sweep parallèle sauvegardé: {sweep_id}")
@@ -668,7 +663,7 @@ class SweepEngine:
         """Vérifie si un arrêt a été demandé."""
         return self._stop_requested
 
-    def _get_strategy_by_name(self, name: str) -> "StrategyBase":
+    def _get_strategy_by_name(self, name: str) -> StrategyBase:
         """Récupère une stratégie par son nom."""
         from strategies import get_strategy, list_strategies
 
@@ -683,15 +678,15 @@ class SweepEngine:
 
 # ======================== Fonctions utilitaires ========================
 
+
 def quick_sweep(
     df: pd.DataFrame,
-    strategy: Union["StrategyBase", str],
-    param_grid: Dict[str, Any],
+    strategy: StrategyBase | str,
+    param_grid: dict[str, Any],
     optimize_for: str = "sharpe_ratio",
     max_workers: int = 4,
 ) -> SweepResults:
-    """
-    Fonction raccourcie pour un sweep rapide.
+    """Fonction raccourcie pour un sweep rapide.
 
     Args:
         df: DataFrame OHLCV
@@ -709,6 +704,7 @@ def quick_sweep(
         ...     strategy="bollinger_atr",
         ...     param_grid={"entry_z": [1.5, 2.0, 2.5]},
         ... )
+
     """
     engine = SweepEngine(max_workers=max_workers)
     return engine.run_sweep(

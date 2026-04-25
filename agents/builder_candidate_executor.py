@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.builder_candidate_executor
+"""Module-ID: agents.builder_candidate_executor
 
 Purpose: Internal Builder V2 candidate execution pipeline.
 
@@ -16,7 +15,7 @@ import copy
 import time as _time
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -49,9 +48,9 @@ from agents.strategy_builder import (
 @dataclass
 class CandidateExecutionContext:
     session: BuilderSession
-    proposal: Dict[str, Any]
-    proposal_feedback: Dict[str, Any]
-    last_iteration: Optional[BuilderIteration]
+    proposal: dict[str, Any]
+    proposal_feedback: dict[str, Any]
+    last_iteration: BuilderIteration | None
     iteration_num: int
     data: pd.DataFrame
     initial_capital: float
@@ -83,7 +82,7 @@ class BuilderCandidateExecutorV2:
         self.ctx = context
         self.candidate_proposal = copy.deepcopy(context.proposal)
         self.candidate_feedback = copy.deepcopy(context.proposal_feedback)
-        self.outcome: Dict[str, Any] = {
+        self.outcome: dict[str, Any] = {
             "branch_label": context.branch_label,
             "proposal": self.candidate_proposal,
             "proposal_feedback": self.candidate_feedback,
@@ -101,24 +100,24 @@ class BuilderCandidateExecutorV2:
             "checkpoint_file": "runtime_checkpoint.json",
         }
         self.change_type = _normalize_change_type(
-            self.candidate_proposal.get("change_type", "logic")
+            self.candidate_proposal.get("change_type", "logic"),
         )
         self.has_stable_base_code = bool(
             context.last_iteration
             and context.last_iteration.code
             and context.last_iteration.error is None
-            and context.last_iteration.backtest_result is not None
+            and context.last_iteration.backtest_result is not None,
         )
-        self.code_feedback: Dict[str, Any] = {
+        self.code_feedback: dict[str, Any] = {
             "phase": "code",
             "initial_kind": "local_patch",
             "realign_attempts": 0,
             "realign_success": False,
             "final_valid": True,
         }
-        self.precheck_feedback: Dict[str, Any] = {}
-        self.backtest_feedback: Dict[str, Any] = {}
-        self.pre_reflection_feedback: Dict[str, Any] = {}
+        self.precheck_feedback: dict[str, Any] = {}
+        self.backtest_feedback: dict[str, Any] = {}
+        self.pre_reflection_feedback: dict[str, Any] = {}
         self.current_stage = "init"
         self.req_inds = [
             str(x).strip().lower()
@@ -126,7 +125,7 @@ class BuilderCandidateExecutorV2:
             if isinstance(x, str) and str(x).strip()
         ]
 
-    def execute(self) -> tuple[Dict[str, Any], int]:
+    def execute(self) -> tuple[dict[str, Any], int]:
         try:
             self._apply_change_type_policy()
             code = self._resolve_candidate_code()
@@ -163,8 +162,8 @@ class BuilderCandidateExecutorV2:
             self.precheck_feedback.update(
                 {
                     "signal_count": int(signal_probe.get("total_signals", 0) or 0),
-                    "bar_count": int(len(self.ctx.data.index)),
-                }
+                    "bar_count": len(self.ctx.data.index),
+                },
             )
             self._checkpoint(
                 "precheck",
@@ -190,7 +189,7 @@ class BuilderCandidateExecutorV2:
                 self.ctx.iteration_num,
             )
             return self.outcome, self.ctx.fallback_count
-        except BaseException as exc:  # noqa: BLE001
+        except BaseException as exc:
             failure_text = f"{type(exc).__name__}: {exc}"
             traceback_tail = _safe_format_exception(exc)
             self.outcome["error"] = failure_text
@@ -228,7 +227,7 @@ class BuilderCandidateExecutorV2:
         *,
         error: str = "",
         traceback_tail: str = "",
-        extra: Optional[Dict[str, Any]] = None,
+        extra: dict[str, Any] | None = None,
     ) -> None:
         self.builder._persist_runtime_checkpoint(
             self.ctx.session,
@@ -274,13 +273,8 @@ class BuilderCandidateExecutorV2:
 
     def _apply_change_type_policy(self) -> None:
         last_iteration = self.ctx.last_iteration
-        if (
-            self.change_type == "params"
-            and self.has_stable_base_code
-            and last_iteration
-            and last_iteration.code
-        ):
-            params_override_reasons: List[str] = []
+        if self.change_type == "params" and self.has_stable_base_code and last_iteration and last_iteration.code:
+            params_override_reasons: list[str] = []
             if _proposal_changes_indicator_set_in_params_mode(
                 last_iteration.code,
                 self.candidate_proposal,
@@ -313,12 +307,7 @@ class BuilderCandidateExecutorV2:
     def _resolve_candidate_code(self) -> str:
         raw_code = ""
         last_iteration = self.ctx.last_iteration
-        if (
-            self.change_type == "params"
-            and self.has_stable_base_code
-            and last_iteration
-            and last_iteration.code
-        ):
+        if self.change_type == "params" and self.has_stable_base_code and last_iteration and last_iteration.code:
             patched = _rewrite_default_params_from_proposal(
                 last_iteration.code,
                 self.candidate_proposal,
@@ -361,9 +350,7 @@ class BuilderCandidateExecutorV2:
                     code = patched
                 else:
                     code = last_iteration.code
-                    self.code_feedback["params_contract_fallback"] = (
-                        "reused_previous_code"
-                    )
+                    self.code_feedback["params_contract_fallback"] = "reused_previous_code"
 
         return self._validate_candidate_code(code)
 
@@ -373,11 +360,7 @@ class BuilderCandidateExecutorV2:
         *,
         prefer_generate_signals_block: bool = False,
     ) -> CodeAttempt:
-        logic_block = (
-            _extract_generate_signals_logic_block(raw_code)
-            if prefer_generate_signals_block
-            else ""
-        )
+        logic_block = _extract_generate_signals_logic_block(raw_code) if prefer_generate_signals_block else ""
         if not logic_block.strip():
             logic_block = _extract_python_from_response(raw_code)
         if self.builder.ablation.is_enabled("postprocess_logic"):
@@ -422,7 +405,7 @@ class BuilderCandidateExecutorV2:
                 code,
                 self.req_inds,
                 enable_indicator_binding=self.builder.ablation.is_enabled(
-                    "indicator_binding"
+                    "indicator_binding",
                 ),
             )
             if self.builder.ablation.is_enabled("code_repair")
@@ -438,7 +421,7 @@ class BuilderCandidateExecutorV2:
         *,
         invalid_fallback_error: str,
         mark_code_fallback: bool = True,
-        runtime_feedback_key: Optional[str] = None,
+        runtime_feedback_key: str | None = None,
     ) -> str:
         fallback_code = self._next_fallback_code()
         is_valid_fb, fallback_error = validate_generated_code(fallback_code)
@@ -461,12 +444,12 @@ class BuilderCandidateExecutorV2:
     def _infer_indicator_contract_gap(
         self,
         code: str,
-    ) -> tuple[List[str], List[str]]:
+    ) -> tuple[list[str], list[str]]:
         inferred = list(
             strategy_builder_module._infer_required_indicator_names_from_code(
                 code,
                 self.req_inds,
-            )
+            ),
         )
         unexpected = [ind for ind in inferred if ind not in self.req_inds]
         return inferred, unexpected
@@ -516,8 +499,7 @@ class BuilderCandidateExecutorV2:
         self.code_feedback["validation_error_retry"] = retry_attempt.error
         return self._validated_deterministic_fallback(
             invalid_fallback_error=(
-                f"Validation échouée: {error_msg} | retry: {retry_attempt.error} | "
-                "fallback: {fallback_error}"
+                f"Validation échouée: {error_msg} | retry: {retry_attempt.error} | fallback: {{fallback_error}}"
             ),
         )
 
@@ -540,7 +522,7 @@ class BuilderCandidateExecutorV2:
             retry_attempt = self._retry_code_attempt(repair_and_validate=True)
             if retry_attempt.ok:
                 retry_inferred, retry_unexpected = self._infer_indicator_contract_gap(
-                    retry_attempt.code
+                    retry_attempt.code,
                 )
                 if not retry_unexpected:
                     self.code_feedback["indicator_contract_retry_used"] = True
@@ -551,25 +533,19 @@ class BuilderCandidateExecutorV2:
                     "unexpected": list(retry_unexpected),
                 }
             elif retry_attempt.validation_error:
-                self.code_feedback["indicator_contract_retry_validation_error"] = (
-                    retry_attempt.validation_error
-                )
+                self.code_feedback["indicator_contract_retry_validation_error"] = retry_attempt.validation_error
             else:
-                self.code_feedback["indicator_contract_retry_logic_error"] = (
-                    retry_attempt.logic_error
-                )
+                self.code_feedback["indicator_contract_retry_logic_error"] = retry_attempt.logic_error
 
         return self._validated_deterministic_fallback(
-            invalid_fallback_error=(
-                "Indicator contract fallback invalide: {fallback_error}"
-            ),
+            invalid_fallback_error=("Indicator contract fallback invalide: {fallback_error}"),
         )
 
     def _execute_backtest_pipeline(
         self,
         strategy_cls: Any,
         code: str,
-        signal_probe: Dict[str, Any],
+        signal_probe: dict[str, Any],
     ) -> tuple[str, Any]:
         if not signal_probe.get("ok"):
             self.precheck_feedback["backtest_skipped"] = True
@@ -585,16 +561,13 @@ class BuilderCandidateExecutorV2:
             )
             return code, self._empty_backtest_result()
 
-        if (
-            self.builder._is_pathological_signal_profile(signal_probe)
-            and self.builder.ablation.is_enabled("precheck")
-        ):
+        if self.builder._is_pathological_signal_profile(signal_probe) and self.builder.ablation.is_enabled("precheck"):
             self.precheck_feedback.update(
                 {
                     "pathological_signal_density": True,
                     "skip_reason": "pathological_signal_density",
                     "backtest_skipped": True,
-                }
+                },
             )
             self._phase_done(
                 "precheck",
@@ -616,14 +589,12 @@ class BuilderCandidateExecutorV2:
         )
 
         pre_reflection_future = None
-        pre_reflection_pool: Optional[
-            concurrent.futures.ThreadPoolExecutor
-        ] = None
+        pre_reflection_pool: concurrent.futures.ThreadPoolExecutor | None = None
         try:
             if self.builder.ablation.is_enabled("pre_reflection"):
                 try:
                     pre_reflection_pool = strategy_builder_module._new_streamlit_aware_thread_pool(
-                        max_workers=1
+                        max_workers=1,
                     )
                     pre_reflection_future = pre_reflection_pool.submit(
                         self.builder._ask_pre_reflection,
@@ -703,7 +674,7 @@ class BuilderCandidateExecutorV2:
         bt_error = f"{type(bt_exc).__name__}: {bt_exc}"
         self.backtest_feedback["runtime_error"] = bt_error
         self.backtest_feedback["runtime_traceback_tail"] = _safe_format_exception(
-            bt_exc
+            bt_exc,
         )
         self.current_stage = "runtime_fix"
         self._phase_start("runtime_fix", detail=bt_error)
@@ -734,8 +705,7 @@ class BuilderCandidateExecutorV2:
             self.backtest_feedback["runtime_fix_validation_error"] = retry_err
             retry_code = self._validated_deterministic_fallback(
                 invalid_fallback_error=(
-                    "Runtime-fix invalide et fallback déterministe invalide: "
-                    f"{retry_err} | {{fallback_error}}"
+                    f"Runtime-fix invalide et fallback déterministe invalide: {retry_err} | {{fallback_error}}"
                 ),
                 mark_code_fallback=False,
                 runtime_feedback_key="runtime_fix_fallback_deterministic_used",
@@ -780,12 +750,11 @@ class BuilderCandidateExecutorV2:
                 self.outcome["error"] = retry_bt_error
                 self.outcome["code_feedback"] = self.code_feedback
                 self.outcome["backtest_feedback"] = self.backtest_feedback
-                raise RuntimeError(str(self.outcome["error"])) from retry_bt_exc  # noqa: B904  # pylint: disable=raise-missing-from
+                raise RuntimeError(str(self.outcome["error"])) from retry_bt_exc  # pylint: disable=raise-missing-from
 
             fallback_code = self._validated_deterministic_fallback(
                 invalid_fallback_error=(
-                    "Runtime-fix backtest failed and deterministic fallback is "
-                    "invalid: {fallback_error}"
+                    "Runtime-fix backtest failed and deterministic fallback is invalid: {fallback_error}"
                 ),
                 mark_code_fallback=False,
                 runtime_feedback_key="runtime_fix_fallback_deterministic_used",
@@ -830,7 +799,7 @@ class BuilderCandidateExecutorV2:
                     "mode": "single",
                     "params_used": dict(params),
                     "sweep_skipped_reason": "deterministic_fallback",
-                }
+                },
             )
             return self.builder._run_backtest(
                 strategy_cls,
@@ -875,7 +844,7 @@ class BuilderCandidateExecutorV2:
             self.code_feedback.get("fallback_deterministic_used")
             or self.code_feedback.get("source") == "deterministic_fallback"
             or self.backtest_feedback.get(
-                "runtime_fix_fallback_deterministic_used"
+                "runtime_fix_fallback_deterministic_used",
             )
         ):
             self.outcome["is_fallback"] = True
@@ -899,7 +868,7 @@ class BuilderCandidateExecutorV2:
                 "telemetry_payload": scoring_payload,
                 "scoring_payload": scoring_payload,
                 "code_quality_score": self._compute_code_quality_score(),
-            }
+            },
         )
 
     # ── Micro-benchmark ────────────────────────────────────────────────
@@ -908,7 +877,7 @@ class BuilderCandidateExecutorV2:
     _BENCH_MAX_BARS: int = 5000
     _BENCH_THRESHOLD_MS: float = 50.0
 
-    def _benchmark_generate_signals(self, strategy_cls: Any) -> Dict[str, Any]:
+    def _benchmark_generate_signals(self, strategy_cls: Any) -> dict[str, Any]:
         """Median generate_signals latency over *_BENCH_N_RUNS* runs."""
         from backtest.engine import BacktestEngine
         from utils.observability import generate_run_id
@@ -928,7 +897,7 @@ class BuilderCandidateExecutorV2:
             # Warmup (JIT / caches)
             inst.generate_signals(bench_df, indicators, params)
 
-            timings: List[float] = []
+            timings: list[float] = []
             for _ in range(self._BENCH_N_RUNS):
                 t0 = _time.perf_counter()
                 inst.generate_signals(bench_df, indicators, params)
@@ -1014,15 +983,15 @@ def execute_proposal_candidate_v2(
     builder: Any,
     *,
     session: BuilderSession,
-    proposal: Dict[str, Any],
-    proposal_feedback: Dict[str, Any],
-    last_iteration: Optional[BuilderIteration],
+    proposal: dict[str, Any],
+    proposal_feedback: dict[str, Any],
+    last_iteration: BuilderIteration | None,
     iteration_num: int,
     data: pd.DataFrame,
     initial_capital: float,
     fallback_count: int,
     branch_label: str = "main",
-) -> tuple[Dict[str, Any], int]:
+) -> tuple[dict[str, Any], int]:
     executor = BuilderCandidateExecutorV2(
         builder,
         CandidateExecutionContext(

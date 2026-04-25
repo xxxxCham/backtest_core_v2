@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.results
+"""Module-ID: ui.results
 
 Purpose: Affiche les résultats détaillés des backtests avec métriques et graphiques.
 
@@ -22,8 +21,6 @@ Skip-if: Pas de résultats à afficher
 
 from __future__ import annotations
 
-from typing import Optional
-
 import pandas as pd
 import streamlit as st
 
@@ -42,10 +39,12 @@ from ui.helpers import (
     get_partial_result_notice,
 )
 from ui.log_taps import BestPnlTracker
-from ui.state import SidebarState
+from ui.state import BUILDER_OPTIMIZATION_MODE, SidebarState
 
 
-def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracker]) -> None:
+def render_results(state: SidebarState, best_pnl_tracker: BestPnlTracker | None) -> None:
+    if state.optimization_mode == BUILDER_OPTIMIZATION_MODE:
+        return
     result = st.session_state.get("last_run_result")
     winner_params = st.session_state.get("last_winner_params")
     winner_metrics = st.session_state.get("last_winner_metrics")
@@ -114,7 +113,7 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
                 time_note = f" à {liquidation_time}" if liquidation_time else ""
                 st.write(
                     f"💥 Liquidation détectée{time_note}. "
-                    "Le mode liquidation coupe les trades dès que le capital atteint 0."
+                    "Le mode liquidation coupe les trades dès que le capital atteint 0.",
                 )
 
             with st.expander("🧯 Liquidation vs crédit infini", expanded=False):
@@ -159,9 +158,7 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
                 )
 
             with col_save_b:
-                description_default = (
-                    f"{state.strategy_key} winner {state.symbol}/{state.timeframe}"
-                )
+                description_default = f"{state.strategy_key} winner {state.symbol}/{state.timeframe}"
                 preset_description = st.text_input(
                     "Description",
                     value=description_default,
@@ -190,9 +187,7 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
                         version=preset_version,
                         preset_name=preset_name,
                         params_values=winner_params,
-                        indicators=state.strategy_info.required_indicators
-                        if state.strategy_info is not None
-                        else None,
+                        indicators=state.strategy_info.required_indicators if state.strategy_info is not None else None,
                         description=preset_description,
                         metrics=winner_metrics,
                         origin=winner_origin,
@@ -229,7 +224,9 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
             else:
                 chart_params = result.meta.get("params", state.params)
                 indicator_overlays = build_indicator_overlays(
-                    state.strategy_key, chart_df, chart_params
+                    state.strategy_key,
+                    chart_df,
+                    chart_params,
                 )
 
                 if indicator_overlays:
@@ -252,7 +249,7 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
                     )
                 else:
                     st.write(
-                        "ℹ️ Aucun trade execute, affichage du graphique de prix uniquement"
+                        "ℹ️ Aucun trade execute, affichage du graphique de prix uniquement",
                     )
                     render_ohlcv_with_trades(
                         df=chart_df,
@@ -282,14 +279,14 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
                 st.text(f"Sortino: {result.metrics.get('sortino_ratio', 0):.2f}")
                 st.text(f"Calmar: {result.metrics.get('calmar_ratio', 0):.2f}")
                 # Compatibilité: fallback max_drawdown si max_drawdown_pct absent
-                max_dd = result.metrics.get('max_drawdown_pct', result.metrics.get('max_drawdown', 0))
+                max_dd = result.metrics.get("max_drawdown_pct", result.metrics.get("max_drawdown", 0))
                 st.text(f"Max DD: {max_dd:.2f}%")
 
             with col3:
                 st.markdown("**🎯 Trading**")
                 st.text(f"Trades: {result.metrics.get('total_trades', 0)}")
                 # Compatibilité: fallback win_rate si win_rate_pct absent
-                win_rate = result.metrics.get('win_rate_pct', result.metrics.get('win_rate', 0))
+                win_rate = result.metrics.get("win_rate_pct", result.metrics.get("win_rate", 0))
                 st.text(f"Win Rate: {win_rate:.1f}%")
                 st.text(f"Profit Factor: {result.metrics.get('profit_factor', 0):.2f}")
                 st.text(f"Expectancy: ${result.metrics.get('expectancy', 0):.2f}")
@@ -330,16 +327,17 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
 
             if "entry_ts" in trades_display.columns:
                 trades_display["entry_ts"] = pd.to_datetime(
-                    trades_display["entry_ts"]
+                    trades_display["entry_ts"],
                 ).dt.strftime("%Y-%m-%d %H:%M")
             if "exit_ts" in trades_display.columns:
                 trades_display["exit_ts"] = pd.to_datetime(
-                    trades_display["exit_ts"]
+                    trades_display["exit_ts"],
                 ).dt.strftime("%Y-%m-%d %H:%M")
             if "pnl" in trades_display.columns:
                 trades_display["pnl"] = trades_display["pnl"].apply(
-                    lambda x: f"${x:,.2f}"
+                    lambda x: f"${x:,.2f}",
                 )
+
             def _format_price(value: float) -> str:
                 if value is None or pd.isna(value):
                     return "—"
@@ -355,13 +353,9 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
                 return fmt.format(value)
 
             if "price_entry" in trades_display.columns:
-                trades_display["price_entry"] = trades_display[
-                    "price_entry"
-                ].apply(_format_price)
+                trades_display["price_entry"] = trades_display["price_entry"].apply(_format_price)
             if "price_exit" in trades_display.columns:
-                trades_display["price_exit"] = trades_display[
-                    "price_exit"
-                ].apply(_format_price)
+                trades_display["price_exit"] = trades_display["price_exit"].apply(_format_price)
 
             cols_to_show = [
                 "entry_ts",
@@ -381,7 +375,7 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
             winners = (result.trades["pnl"] > 0).sum()
             losers = (result.trades["pnl"] < 0).sum()
             st.caption(
-                f"Total: {total_trades} | Gagnants: {winners} | Perdants: {losers}"
+                f"Total: {total_trades} | Gagnants: {winners} | Perdants: {losers}",
             )
         elif result is not None:
             st.write("ℹ️ Aucun trade exécuté pendant cette période")
@@ -389,13 +383,14 @@ def render_results(state: SidebarState, best_pnl_tracker: Optional[BestPnlTracke
     else:
         render_home(state)
 
+
 def render_home(state: SidebarState) -> None:
     st.write("👆 Configurez dans la sidebar puis cliquez sur **🚀 Lancer le Backtest**")
 
     llm_mode_active = state.optimization_mode == "🤖 Optimisation LLM"
 
     tab1, tab2, tab3, tab4 = st.tabs(
-        ["🎯 Stratégies", "📊 Optimisation", "📁 Données", "❓ FAQ"]
+        ["🎯 Stratégies", "📊 Optimisation", "📁 Données", "❓ FAQ"],
     )
 
     with tab1:
@@ -407,7 +402,7 @@ def render_home(state: SidebarState) -> None:
         ### Indicateurs Intégrés
         - Bollinger Bands, ATR, RSI, EMA, SMA, MACD, ADX
         - Ichimoku, PSAR, Stochastic RSI, Vortex, etc.
-        """
+        """,
         )
 
     with tab2:
@@ -421,7 +416,7 @@ def render_home(state: SidebarState) -> None:
         - Limite configurable (jusqu'à 1,000,000)
 
         **Mode Simple** : Test d'une seule combinaison de paramètres.
-        """
+        """,
         )
 
         table_lines = [
@@ -444,7 +439,7 @@ def render_home(state: SidebarState) -> None:
         - Supporte Ollama (local/gratuit) ou OpenAI
 
         ⚠️ Mode LLM nécessite Ollama installé localement ou une clé OpenAI.
-        """
+        """,
             )
 
     with tab3:
@@ -456,8 +451,8 @@ def render_home(state: SidebarState) -> None:
         - `SYMBOL_TIMEFRAME.parquet` (ex: `BTCUSDT_1h.parquet`)
 
         **Symboles détectés**: {len(state.available_tokens)}
-        **Timeframes**: {', '.join(state.available_timeframes)}
-        """
+        **Timeframes**: {", ".join(state.available_timeframes)}
+        """,
         )
 
     with tab4:
@@ -474,7 +469,7 @@ def render_home(state: SidebarState) -> None:
 
         **Q: Pourquoi le mode Grille est lent?**
         R: Il teste toutes les combinaisons. Augmentez le Step ou réduisez la plage.
-        """
+        """,
         )
 
         if llm_mode_active:
@@ -494,5 +489,5 @@ def render_home(state: SidebarState) -> None:
         **Q: Ollama vs OpenAI?**
         R: Ollama est gratuit et local (installer depuis ollama.ai).
         OpenAI est plus puissant mais payant (~0.01$/requête).
-        """
+        """,
             )

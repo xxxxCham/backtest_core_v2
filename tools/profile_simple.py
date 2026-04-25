@@ -1,6 +1,4 @@
-"""
-Script de profiling simple et direct pour identifier la régression 450→60 bt/s
-"""
+"""Script de profiling simple et direct pour identifier la régression 450→60 bt/s"""
 
 import cProfile
 import pstats
@@ -20,7 +18,7 @@ print("=" * 80)
 
 data_path = r"D:\my_soft\gestionnaire_telechargement_multi-timeframe\processed\parquet\BTCUSDC_30m.parquet"
 df = pd.read_parquet(data_path)
-df.index = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
+df.index = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
 df = df.head(1000)  # 1000 barres
 
 print(f"\nDonnées: {len(df)} barres")
@@ -48,7 +46,7 @@ result = engine.run(
     strategy=strategy,
     params={"fast_period": 10, "slow_period": 21},
     silent_mode=True,
-    fast_metrics=False
+    fast_metrics=False,
 )
 warmup_time = time.perf_counter() - start
 print(f"Temps warmup: {warmup_time:.3f}s")
@@ -66,7 +64,7 @@ for i in range(n_tests):
         strategy=strategy,
         params={"fast_period": 10 + i, "slow_period": 21 + i},
         silent_mode=True,
-        fast_metrics=True  # ACTIVÉ pour test
+        fast_metrics=True,  # ACTIVÉ pour test
     )
 elapsed = time.perf_counter() - start
 
@@ -75,7 +73,7 @@ bars_per_sec = (n_tests * len(df)) / elapsed
 
 print("\n📊 RÉSULTATS:")
 print(f"   Temps total: {elapsed:.2f}s")
-print(f"   Temps moyen/backtest: {elapsed/n_tests*1000:.1f}ms")
+print(f"   Temps moyen/backtest: {elapsed / n_tests * 1000:.1f}ms")
 print(f"   Backtests/sec: {bt_per_sec:.1f}")
 print(f"   Barres/sec: {bars_per_sec:.0f}")
 
@@ -103,7 +101,7 @@ for i in range(10):
         strategy=strategy,
         params={"fast_period": 10 + i, "slow_period": 21 + i},
         silent_mode=True,
-        fast_metrics=False
+        fast_metrics=False,
     )
 
 profiler.disable()
@@ -112,7 +110,7 @@ profiler.disable()
 s = StringIO()
 ps = pstats.Stats(profiler, stream=s)
 ps.strip_dirs()
-ps.sort_stats('cumulative')
+ps.sort_stats("cumulative")
 ps.print_stats(30)
 
 print(s.getvalue())
@@ -130,7 +128,7 @@ for i in range(10):
         strategy=strategy,
         params={"fast_period": 10 + i, "slow_period": 21 + i},
         silent_mode=True,
-        fast_metrics=False
+        fast_metrics=False,
     )
 elapsed_full = time.perf_counter() - start
 
@@ -142,13 +140,13 @@ for i in range(10):
         strategy=strategy,
         params={"fast_period": 10 + i, "slow_period": 21 + i},
         silent_mode=True,
-        fast_metrics=True
+        fast_metrics=True,
     )
 elapsed_fast = time.perf_counter() - start
 
-print(f"Full metrics: {10/elapsed_full:.1f} bt/s")
-print(f"Fast metrics: {10/elapsed_fast:.1f} bt/s")
-print(f"Speedup: {elapsed_full/elapsed_fast:.1f}x")
+print(f"Full metrics: {10 / elapsed_full:.1f} bt/s")
+print(f"Fast metrics: {10 / elapsed_fast:.1f} bt/s")
+print(f"Speedup: {elapsed_full / elapsed_fast:.1f}x")
 
 # Test 5: BREAKDOWN PAR COMPOSANT
 print("\n" + "=" * 80)
@@ -164,7 +162,7 @@ for _ in range(10):
     ema_fast = calculate_indicator("ema", df, period=10)
     ema_slow = calculate_indicator("ema", df, period=21)
 elapsed_indicators = time.perf_counter() - start
-print(f"   Temps: {elapsed_indicators:.3f}s ({10/elapsed_indicators:.0f} runs/s)")
+print(f"   Temps: {elapsed_indicators:.3f}s ({10 / elapsed_indicators:.0f} runs/s)")
 
 # Test stratégie seule (signals)
 print("\n📊 Test STRATÉGIE (signals)...")
@@ -176,7 +174,7 @@ start = time.perf_counter()
 for _ in range(10):
     signals = strategy.generate_signals(df, indicators, {"fast_period": 10, "slow_period": 21})
 elapsed_signals = time.perf_counter() - start
-print(f"   Temps: {elapsed_signals:.3f}s ({10/elapsed_signals:.0f} runs/s)")
+print(f"   Temps: {elapsed_signals:.3f}s ({10 / elapsed_signals:.0f} runs/s)")
 
 # Test simulateur seul
 print("\n📊 Test SIMULATEUR...")
@@ -191,10 +189,10 @@ for _ in range(10):
         signals=signals,
         initial_capital=10000.0,
         strategy=strategy,
-        params={"fast_period": 10, "slow_period": 21}
+        params={"fast_period": 10, "slow_period": 21},
     )
 elapsed_simulator = time.perf_counter() - start
-print(f"   Temps: {elapsed_simulator:.3f}s ({10/elapsed_simulator:.0f} runs/s)")
+print(f"   Temps: {elapsed_simulator:.3f}s ({10 / elapsed_simulator:.0f} runs/s)")
 
 # Test métriques seules
 print("\n📊 Test MÉTRIQUES...")
@@ -205,7 +203,7 @@ trades_df = simulate_trades_fast(
     signals=signals,
     initial_capital=10000.0,
     strategy=strategy,
-    params={"fast_period": 10, "slow_period": 21}
+    params={"fast_period": 10, "slow_period": 21},
 )
 
 start = time.perf_counter()
@@ -214,22 +212,22 @@ for _ in range(10):
         trades_df=trades_df,
         df=df,
         initial_capital=10000.0,
-        fast_metrics=False
+        fast_metrics=False,
     )
 elapsed_metrics = time.perf_counter() - start
-print(f"   Temps: {elapsed_metrics:.3f}s ({10/elapsed_metrics:.0f} runs/s)")
+print(f"   Temps: {elapsed_metrics:.3f}s ({10 / elapsed_metrics:.0f} runs/s)")
 
 # Résumé du breakdown
 print("\n" + "=" * 80)
 print("RÉSUMÉ BREAKDOWN:")
 print("=" * 80)
 total_components = elapsed_indicators + elapsed_signals + elapsed_simulator + elapsed_metrics
-print(f"Indicateurs:  {elapsed_indicators:.3f}s ({elapsed_indicators/total_components*100:.1f}%)")
-print(f"Stratégie:    {elapsed_signals:.3f}s ({elapsed_signals/total_components*100:.1f}%)")
-print(f"Simulateur:   {elapsed_simulator:.3f}s ({elapsed_simulator/total_components*100:.1f}%)")
-print(f"Métriques:    {elapsed_metrics:.3f}s ({elapsed_metrics/total_components*100:.1f}%)")
+print(f"Indicateurs:  {elapsed_indicators:.3f}s ({elapsed_indicators / total_components * 100:.1f}%)")
+print(f"Stratégie:    {elapsed_signals:.3f}s ({elapsed_signals / total_components * 100:.1f}%)")
+print(f"Simulateur:   {elapsed_simulator:.3f}s ({elapsed_simulator / total_components * 100:.1f}%)")
+print(f"Métriques:    {elapsed_metrics:.3f}s ({elapsed_metrics / total_components * 100:.1f}%)")
 print(f"Total:        {total_components:.3f}s")
-print(f"Overhead:     {(elapsed_full - total_components)/elapsed_full*100:.1f}%")
+print(f"Overhead:     {(elapsed_full - total_components) / elapsed_full * 100:.1f}%")
 
 print("\n" + "=" * 80)
 print("✅ PROFILING TERMINÉ")

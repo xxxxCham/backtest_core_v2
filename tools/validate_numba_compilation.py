@@ -1,9 +1,9 @@
-"""
-Valide la compilation Numba des kernels critiques.
+"""Valide la compilation Numba des kernels critiques.
 
 Usage:
     python tools/validate_numba_compilation.py
 """
+
 import sys
 from pathlib import Path
 
@@ -12,6 +12,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 import numpy as np
+
 
 def validate_kernel_compilation():
     """Valide que les kernels Numba compilent correctement en mode nopython."""
@@ -35,10 +36,17 @@ def validate_kernel_compilation():
 
         # Forcer compilation JIT
         _sweep_bollinger_full(
-            closes, highs, lows,
-            bb_periods, bb_stds, entry_zs,
-            leverages, k_sls,
-            10000.0, 10.0, 5.0
+            closes,
+            highs,
+            lows,
+            bb_periods,
+            bb_stds,
+            entry_zs,
+            leverages,
+            k_sls,
+            10000.0,
+            10.0,
+            5.0,
         )
 
         # Vérifier signatures compilées
@@ -53,7 +61,7 @@ def validate_kernel_compilation():
 
     # Test 2: _simulate_trades_numba
     try:
-        from backtest.simulator_fast import _simulate_trades_numba, HAS_NUMBA
+        from backtest.simulator_fast import HAS_NUMBA, _simulate_trades_numba
 
         if not HAS_NUMBA:
             results.append(("⚠️ _simulate_trades_numba", "Numba non disponible", False))
@@ -65,8 +73,15 @@ def validate_kernel_compilation():
 
             # Forcer compilation
             _simulate_trades_numba(
-                closes, highs, lows, signals,
-                1.0, 1.5, 10000.0, 10.0, 5.0
+                closes,
+                highs,
+                lows,
+                signals,
+                1.0,
+                1.5,
+                10000.0,
+                10.0,
+                5.0,
             )
 
             sigs = _simulate_trades_numba.signatures
@@ -91,10 +106,16 @@ def validate_kernel_compilation():
         k_sls = np.array([1.5, 2.0], dtype=np.float64)
 
         _sweep_ema_cross_full(
-            closes, highs, lows,
-            fast_periods, slow_periods,
-            leverages, k_sls,
-            10000.0, 10.0, 5.0
+            closes,
+            highs,
+            lows,
+            fast_periods,
+            slow_periods,
+            leverages,
+            k_sls,
+            10000.0,
+            10.0,
+            5.0,
         )
 
         sigs = _sweep_ema_cross_full.signatures
@@ -120,10 +141,17 @@ def validate_kernel_compilation():
         k_sls = np.array([1.5, 2.0], dtype=np.float64)
 
         _sweep_rsi_reversal_full(
-            closes, highs, lows,
-            rsi_periods, overboughts, oversolds,
-            leverages, k_sls,
-            10000.0, 10.0, 5.0
+            closes,
+            highs,
+            lows,
+            rsi_periods,
+            overboughts,
+            oversolds,
+            leverages,
+            k_sls,
+            10000.0,
+            10.0,
+            5.0,
         )
 
         sigs = _sweep_rsi_reversal_full.signatures
@@ -150,15 +178,15 @@ def validate_kernel_compilation():
     if all_ok:
         print("✅ SUCCÈS: Tous les kernels compilent en mode nopython")
         return 0
-    else:
-        print("❌ ÉCHEC: Certains kernels ont des problèmes de compilation")
-        return 1
+    print("❌ ÉCHEC: Certains kernels ont des problèmes de compilation")
+    return 1
 
 
 def check_numba_config():
     """Affiche la configuration Numba."""
     try:
         import numba
+
         print("\n📋 CONFIGURATION NUMBA")
         print("=" * 60)
         print(f"Version Numba: {numba.__version__}")
@@ -178,27 +206,28 @@ def check_memory_allocations():
     print("=" * 60)
 
     import inspect
+
     from backtest import sweep_numba
 
     kernels = [
-        ('_sweep_bollinger_full', sweep_numba._sweep_bollinger_full),
-        ('_sweep_ema_cross_full', sweep_numba._sweep_ema_cross_full),
-        ('_sweep_rsi_reversal_full', sweep_numba._sweep_rsi_reversal_full),
+        ("_sweep_bollinger_full", sweep_numba._sweep_bollinger_full),
+        ("_sweep_ema_cross_full", sweep_numba._sweep_ema_cross_full),
+        ("_sweep_rsi_reversal_full", sweep_numba._sweep_rsi_reversal_full),
     ]
 
     for name, kernel in kernels:
         try:
             source = inspect.getsource(kernel)
             # Chercher np.zeros, np.empty, np.array dans prange
-            lines = source.split('\n')
+            lines = source.split("\n")
             in_prange = False
             allocations = []
 
             for i, line in enumerate(lines):
-                if 'prange(' in line:
+                if "prange(" in line:
                     in_prange = True
-                if in_prange and ('np.zeros' in line or 'np.empty' in line or 'np.array(' in line):
-                    allocations.append((i+1, line.strip()))
+                if in_prange and ("np.zeros" in line or "np.empty" in line or "np.array(" in line):
+                    allocations.append((i + 1, line.strip()))
 
             if allocations:
                 print(f"⚠️ {name}: {len(allocations)} allocation(s) dans prange")

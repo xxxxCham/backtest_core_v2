@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.config_form
+"""Module-ID: ui.config_form
 
 Purpose: Gère la configuration via st.form() pour éviter les reloads inutiles.
 
@@ -30,7 +29,7 @@ Skip-if: Logique backend pure
 from __future__ import annotations
 
 import copy
-from typing import Any, Dict, Optional
+from typing import Any
 
 import streamlit as st
 
@@ -40,15 +39,15 @@ from ui.context import (
 )
 
 
-def compute_nb_combos(param_ranges: Dict[str, Dict[str, float]]) -> int:
-    """
-    Calcule le nombre de combinaisons sans charger les données.
+def compute_nb_combos(param_ranges: dict[str, dict[str, float]]) -> int:
+    """Calcule le nombre de combinaisons sans charger les données.
 
     Args:
         param_ranges: Dict {param_name: {"min": val, "max": val, "step": val}}
 
     Returns:
         Nombre de combinaisons
+
     """
     if not param_ranges:
         return 1
@@ -74,8 +73,7 @@ def compute_nb_combos(param_ranges: Dict[str, Dict[str, float]]) -> int:
 
 
 def estimate_duration(nb_combos: int, n_workers: int = 1) -> float:
-    """
-    Estime la durée d'exécution (heuristique).
+    """Estime la durée d'exécution (heuristique).
 
     Args:
         nb_combos: Nombre de combinaisons
@@ -83,6 +81,7 @@ def estimate_duration(nb_combos: int, n_workers: int = 1) -> float:
 
     Returns:
         Durée estimée en secondes
+
     """
     # Heuristique: ~10-50ms par combo selon complexité
     # Utilisons 20ms comme moyenne
@@ -98,33 +97,32 @@ def estimate_duration(nb_combos: int, n_workers: int = 1) -> float:
 
 
 def format_duration(seconds: float) -> str:
-    """
-    Formate une durée en secondes en format lisible.
+    """Formate une durée en secondes en format lisible.
 
     Args:
         seconds: Durée en secondes
 
     Returns:
         Chaîne formatée (ex: "2m 30s", "45s", "1h 15m")
+
     """
     if seconds < 60:
         return f"{seconds:.1f}s"
-    elif seconds < 3600:
+    if seconds < 3600:
         minutes = int(seconds // 60)
         remaining_seconds = int(seconds % 60)
         return f"{minutes}m {remaining_seconds}s"
-    else:
-        hours = int(seconds // 3600)
-        remaining_minutes = int((seconds % 3600) // 60)
-        return f"{hours}h {remaining_minutes}m"
+    hours = int(seconds // 3600)
+    remaining_minutes = int((seconds % 3600) // 60)
+    return f"{hours}h {remaining_minutes}m"
 
 
-def render_config_preview(cfg_draft: Dict[str, Any]) -> None:
-    """
-    Affiche une preview de la configuration sans charger de données.
+def render_config_preview(cfg_draft: dict[str, Any]) -> None:
+    """Affiche une preview de la configuration sans charger de données.
 
     Args:
         cfg_draft: Configuration draft depuis session_state
+
     """
     st.markdown("---")
     st.subheader("📋 Preview Configuration")
@@ -155,14 +153,14 @@ def render_config_preview(cfg_draft: Dict[str, Any]) -> None:
             st.metric(
                 "Combinaisons",
                 f"{nb_combos:,}",
-                help="Nombre total de combinaisons de paramètres à tester"
+                help="Nombre total de combinaisons de paramètres à tester",
             )
 
         with col2:
             st.metric(
                 "Durée estimée",
                 format_duration(estimated_sec),
-                help=f"Estimation avec {n_workers} worker(s) parallèle(s)"
+                help=f"Estimation avec {n_workers} worker(s) parallèle(s)",
             )
 
         # Détail des ranges
@@ -174,17 +172,14 @@ def render_config_preview(cfg_draft: Dict[str, Any]) -> None:
                 n_values = compute_nb_combos({param_name: range_def})
 
                 st.caption(
-                    f"**{param_name}**: {min_val} → {max_val} (step {step}) "
-                    f"= {n_values} valeurs"
+                    f"**{param_name}**: {min_val} → {max_val} (step {step}) = {n_values} valeurs",
                 )
     else:
         st.info("Aucun range de paramètres défini - exécution simple")
 
 
 def init_config_draft() -> None:
-    """
-    Initialise cfg_draft dans session_state s'il n'existe pas.
-    """
+    """Initialise cfg_draft dans session_state s'il n'existe pas."""
     if "cfg_draft" not in st.session_state:
         st.session_state["cfg_draft"] = {
             "debug_enabled": False,
@@ -205,11 +200,11 @@ def init_config_draft() -> None:
 
 
 def render_minimal_config_form() -> bool:
-    """
-    Affiche un formulaire de configuration minimal dans la sidebar.
+    """Affiche un formulaire de configuration minimal dans la sidebar.
 
     Returns:
         True si configuration validée (submit button pressed)
+
     """
     # Initialiser draft si nécessaire
     init_config_draft()
@@ -252,7 +247,7 @@ def render_minimal_config_form() -> bool:
                 "Stratégie",
                 strategy_keys,
                 index=strategy_idx,
-                help="Stratégie de trading à backtester"
+                help="Stratégie de trading à backtester",
             )
 
             # Symbole
@@ -266,7 +261,7 @@ def render_minimal_config_form() -> bool:
                 "Symbole",
                 available_tokens,
                 index=symbol_idx,
-                help="Paire de trading"
+                help="Paire de trading",
             )
 
             # Timeframe
@@ -274,13 +269,15 @@ def render_minimal_config_form() -> bool:
             if current_timeframe not in available_timeframes:
                 current_timeframe = available_timeframes[0]
 
-            timeframe_idx = available_timeframes.index(current_timeframe) if current_timeframe in available_timeframes else 0
+            timeframe_idx = (
+                available_timeframes.index(current_timeframe) if current_timeframe in available_timeframes else 0
+            )
 
             timeframe = st.selectbox(
                 "Timeframe",
                 available_timeframes,
                 index=timeframe_idx,
-                help="Intervalle de temps des bougies"
+                help="Intervalle de temps des bougies",
             )
 
             # Capital initial
@@ -290,7 +287,7 @@ def render_minimal_config_form() -> bool:
                 max_value=10_000_000.0,
                 value=st.session_state["cfg_draft"].get("initial_capital", 100000.0),
                 step=1000.0,
-                help="Capital de départ pour le backtest"
+                help="Capital de départ pour le backtest",
             )
 
             # Nombre de workers
@@ -299,7 +296,7 @@ def render_minimal_config_form() -> bool:
                 min_value=1,
                 max_value=32,
                 value=st.session_state["cfg_draft"].get("n_workers", 1),
-                help="Nombre de processus parallèles pour sweep"
+                help="Nombre de processus parallèles pour sweep",
             )
 
             # Bouton submit DANS le formulaire
@@ -342,12 +339,12 @@ def render_minimal_config_form() -> bool:
         return st.session_state.get("cfg_validated", False)
 
 
-def get_frozen_config() -> Optional[Dict[str, Any]]:
-    """
-    Retourne une copie immutable de la configuration validée.
+def get_frozen_config() -> dict[str, Any] | None:
+    """Retourne une copie immutable de la configuration validée.
 
     Returns:
         Copie profonde de cfg_draft si validée, None sinon
+
     """
     if not st.session_state.get("cfg_validated", False):
         return None
@@ -356,20 +353,18 @@ def get_frozen_config() -> Optional[Dict[str, Any]]:
 
 
 def reset_validation() -> None:
-    """
-    Reset le flag de validation (après exécution ou changement config).
-    """
+    """Reset le flag de validation (après exécution ou changement config)."""
     st.session_state["cfg_validated"] = False
     if "cfg_validated_timestamp" in st.session_state:
         del st.session_state["cfg_validated_timestamp"]
 
 
 __all__ = [
-    "render_minimal_config_form",
-    "render_config_preview",
-    "get_frozen_config",
-    "reset_validation",
-    "init_config_draft",
     "compute_nb_combos",
     "estimate_duration",
+    "get_frozen_config",
+    "init_config_draft",
+    "render_config_preview",
+    "render_minimal_config_form",
+    "reset_validation",
 ]

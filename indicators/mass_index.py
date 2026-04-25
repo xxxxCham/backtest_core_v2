@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.mass_index
+"""Module-ID: indicators.mass_index
 
 Purpose: Mass Index.
 """
@@ -55,4 +54,4 @@ register_indicator(
 )
 
 
-__all__ = ["mass_index", "calculate_mass_index", "MassIndexSettings"]
+__all__ = ["MassIndexSettings", "calculate_mass_index", "mass_index"]

@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.config_validator
+"""Module-ID: utils.config_validator
 
 Purpose: Valider les paramètres de configuration contre les contraintes définies dans indicator_ranges.toml
 
@@ -22,7 +21,7 @@ Skip-if: Vous ne faites que lire les configs sans les valider
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 # Python 3.11+ a tomllib built-in, sinon utiliser tomli
 if sys.version_info >= (3, 11):
@@ -32,7 +31,7 @@ else:
         import tomli as tomllib
     except ImportError:
         raise ImportError(
-            "Python < 3.11 nécessite 'tomli'. Installez avec: pip install tomli"
+            "Python < 3.11 nécessite 'tomli'. Installez avec: pip install tomli",
         )
 
 from utils.log import get_logger
@@ -40,12 +39,11 @@ from utils.log import get_logger
 logger = get_logger(__name__)
 
 # Cache global pour éviter de recharger le fichier TOML à chaque validation
-_CONSTRAINTS_CACHE: Dict[str, List[str]] = {}
+_CONSTRAINTS_CACHE: dict[str, list[str]] = {}
 
 
-def load_constraints(config_path: Path = None) -> Dict[str, List[str]]:
-    """
-    Charge les contraintes depuis indicator_ranges.toml.
+def load_constraints(config_path: Path = None) -> dict[str, list[str]]:
+    """Charge les contraintes depuis indicator_ranges.toml.
 
     Args:
         config_path: Chemin optionnel vers le fichier TOML.
@@ -58,6 +56,7 @@ def load_constraints(config_path: Path = None) -> Dict[str, List[str]]:
         >>> constraints = load_constraints()
         >>> constraints["ema_cross"]
         ["fast_period < slow_period"]
+
     """
     global _CONSTRAINTS_CACHE
 
@@ -81,16 +80,17 @@ def load_constraints(config_path: Path = None) -> Dict[str, List[str]]:
     _CONSTRAINTS_CACHE = constraints
 
     logger.info(
-        f"Contraintes chargées: {len(constraints)} catégories depuis {config_path}"
+        f"Contraintes chargées: {len(constraints)} catégories depuis {config_path}",
     )
     return constraints
 
 
 def check_constraint(
-    expression: str, params: Dict[str, Any], safe_namespace: Dict[str, Any] = None
-) -> Tuple[bool, str]:
-    """
-    Évalue une expression de contrainte de manière sécurisée.
+    expression: str,
+    params: dict[str, Any],
+    safe_namespace: dict[str, Any] = None,
+) -> tuple[bool, str]:
+    """Évalue une expression de contrainte de manière sécurisée.
 
     Args:
         expression: Expression Python (ex: "fast_period < slow_period")
@@ -104,6 +104,7 @@ def check_constraint(
         >>> params = {"fast_period": 12, "slow_period": 26}
         >>> check_constraint("fast_period < slow_period", params)
         (True, "")
+
     """
     if safe_namespace is None:
         # Namespace sécurisé: seulement les opérateurs de comparaison
@@ -119,7 +120,7 @@ def check_constraint(
         result = eval(expression, eval_namespace)
         if not isinstance(result, bool):
             logger.warning(
-                f"Contrainte non booléenne: '{expression}' -> {result} (type: {type(result)})"
+                f"Contrainte non booléenne: '{expression}' -> {result} (type: {type(result)})",
             )
             return False, f"Expression non booléenne: {expression}"
 
@@ -132,7 +133,7 @@ def check_constraint(
         # Paramètre manquant dans params (peut-être optionnel)
         missing_param = str(e).split("'")[1] if "'" in str(e) else "unknown"
         logger.debug(
-            f"Paramètre manquant pour contrainte '{expression}': {missing_param}"
+            f"Paramètre manquant pour contrainte '{expression}': {missing_param}",
         )
         return True, ""  # On considère valide si paramètre optionnel manquant
 
@@ -142,10 +143,11 @@ def check_constraint(
 
 
 def validate_params(
-    category: str, params: Dict[str, Any], config_path: Path = None
-) -> Tuple[bool, List[str]]:
-    """
-    Valide les paramètres d'une catégorie contre ses contraintes.
+    category: str,
+    params: dict[str, Any],
+    config_path: Path = None,
+) -> tuple[bool, list[str]]:
+    """Valide les paramètres d'une catégorie contre ses contraintes.
 
     Args:
         category: Nom de la catégorie (ex: "ema_cross", "rsi", "macd")
@@ -165,6 +167,7 @@ def validate_params(
         >>> is_valid, errors = validate_params("ema_cross", params)
         >>> print(is_valid, errors)
         True []
+
     """
     constraints = load_constraints(config_path)
 
@@ -184,7 +187,7 @@ def validate_params(
 
     if not is_valid:
         logger.warning(
-            f"Validation échouée pour {category}: {len(errors)} contrainte(s) violée(s)"
+            f"Validation échouée pour {category}: {len(errors)} contrainte(s) violée(s)",
         )
         for error in errors:
             logger.warning(f"  - {error}")
@@ -192,9 +195,8 @@ def validate_params(
     return is_valid, errors
 
 
-def validate_preset(preset_dict: Dict[str, Any]) -> Tuple[bool, List[str]]:
-    """
-    Valide un preset complet (depuis profitable_presets.toml).
+def validate_preset(preset_dict: dict[str, Any]) -> tuple[bool, list[str]]:
+    """Valide un preset complet (depuis profitable_presets.toml).
 
     Args:
         preset_dict: Dict contenant 'strategy' et 'params'
@@ -210,6 +212,7 @@ def validate_preset(preset_dict: Dict[str, Any]) -> Tuple[bool, List[str]]:
         >>> is_valid, errors = validate_preset(preset)
         >>> print(is_valid)
         True
+
     """
     if "strategy" not in preset_dict:
         return False, ["Clé 'strategy' manquante dans le preset"]

@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.result_store
+"""Module-ID: backtest.result_store
 
 Lightweight v2 result store used by CLI shadow/v2 persistence mode.
 """
@@ -7,20 +6,20 @@ Lightweight v2 result store used by CLI shadow/v2 persistence mode.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-import logging
-from typing import Any, Iterable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 import pandas as pd
 
 from .store_v3 import BacktestStoreV3
-
 
 ARTIFACTS_DIR_ENV_VAR = "BACKTEST_ARTIFACTS_DIR"
 RESULTS_DIR_ENV_VAR = "BACKTEST_RESULTS_DIR"
@@ -44,7 +43,7 @@ def _apply_env_file_fallback(env_path: Path, *, override: bool = False) -> bool:
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
-            line = line[len("export "):].strip()
+            line = line[len("export ") :].strip()
         if "=" not in line:
             logger.debug("Skipping invalid env line in %s: %r", env_path, raw_line)
             continue
@@ -304,9 +303,9 @@ class ResultStore:
                 "total_return_pct": df.get("total_return_pct"),
                 "sharpe_ratio": df.get("sharpe_ratio"),
                 "parent_run_id": extra_series.apply(
-                    lambda payload: payload.get("parent_run_id") if isinstance(payload, dict) else None
+                    lambda payload: payload.get("parent_run_id") if isinstance(payload, dict) else None,
                 ),
-            }
+            },
         )
         for column in self._INDEX_COLUMNS:
             if column not in legacy.columns:
@@ -341,7 +340,7 @@ class ResultStore:
                         "reason": golden.get("reason", ""),
                         "priority": golden.get("priority", 1),
                         "notes": golden.get("notes", ""),
-                    }
+                    },
                 )
 
         pd.DataFrame(rows, columns=columns).to_csv(self.golden_path, index=False, encoding="utf-8")

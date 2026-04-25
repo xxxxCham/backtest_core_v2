@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.cci
+"""Module-ID: indicators.cci
 
 Purpose: Indicateur CCI (Commodity Channel Index) - écart normalisé du prix.
 
@@ -29,6 +28,7 @@ import pandas as pd
 @dataclass
 class CCISettings:
     """Paramètres CCI."""
+
     period: int = 20
     factor: float = 0.015  # Facteur de normalisation standard
 
@@ -40,8 +40,7 @@ def cci(
     period: int = 20,
     factor: float = 0.015,
 ) -> np.ndarray:
-    """
-    Calcule le Commodity Channel Index (CCI).
+    """Calcule le Commodity Channel Index (CCI).
 
     Args:
         high: Prix hauts
@@ -52,13 +51,18 @@ def cci(
 
     Returns:
         Valeurs CCI (généralement entre -200 et +200)
+
     """
-    if isinstance(high, pd.Series):
-        high = high.values
-    if isinstance(low, pd.Series):
-        low = low.values
-    if isinstance(close, pd.Series):
-        close = close.values
+    high = np.atleast_1d(np.asarray(high, dtype=np.float64))
+    low = np.atleast_1d(np.asarray(low, dtype=np.float64))
+    close = np.atleast_1d(np.asarray(close, dtype=np.float64))
+    if not (len(high) == len(low) == len(close)):
+        raise ValueError("high, low and close must have same length")
+    if high.size == 0:
+        return np.array([], dtype=np.float64)
+    if factor == 0:
+        raise ValueError("factor must be non-zero")
+    period = max(int(period), 1)
 
     # Typical Price
     typical_price = (high + low + close) / 3.0
@@ -72,18 +76,19 @@ def cci(
 
     # Mean Absolute Deviation
     def rolling_mad(arr, window):
-        result = np.empty_like(arr)
-        result[:window - 1] = np.nan
+        result = np.empty(arr.shape, dtype=np.float64)
+        result[: window - 1] = np.nan
         for i in range(window - 1, len(arr)):
-            result[i] = np.mean(np.abs(arr[i - window + 1:i + 1] - tp_sma[i]))
+            result[i] = np.mean(np.abs(arr[i - window + 1 : i + 1] - tp_sma[i]))
         return result
 
     mean_dev = rolling_mad(typical_price, period)
 
     # CCI
-    cci_values = np.where(mean_dev != 0, deviation / (factor * mean_dev), 0.0)
+    cci_values = np.zeros_like(mean_dev, dtype=np.float64)
+    np.divide(deviation, factor * mean_dev, out=cci_values, where=mean_dev != 0)
 
     return cci_values
 
 
-__all__ = ["cci", "CCISettings"]
+__all__ = ["CCISettings", "cci"]

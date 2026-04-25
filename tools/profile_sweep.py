@@ -1,6 +1,5 @@
-"""
-Script de profiling pour identifier les goulots d'étranglement dans les sweeps.
-"""
+"""Script de profiling pour identifier les goulots d'étranglement dans les sweeps."""
+
 import cProfile
 import io
 import pstats
@@ -9,6 +8,11 @@ from pstats import SortKey
 from backtest.engine import BacktestEngine
 from backtest.result_store import get_profiling_results_dir
 from data.loader import load_ohlcv
+
+
+def _compute_profile_total_time(stats: pstats.Stats) -> float:
+    """Retourne le temps total réel du profil sans double comptage cumulatif."""
+    return float(getattr(stats, "total_tt", 0.0) or 0.0)
 
 
 def profile_sweep():
@@ -20,6 +24,8 @@ def profile_sweep():
     # Charger données
     print("\n[1/3] Chargement données BTCUSDC/30m...")
     df = load_ohlcv("BTCUSDC", "30m")
+    if df is None or len(df) == 0:
+        raise RuntimeError("Impossible de profiler le sweep: aucune donnée BTCUSDC/30m disponible")
     print(f"✓ {len(df):,} barres chargées")
 
     # Préparer stratégie
@@ -31,14 +37,16 @@ def profile_sweep():
     for entry_z in [1.5, 2.0, 2.5]:
         for k_sl in [1.0, 1.5, 2.0]:
             for leverage in [1, 3]:
-                param_combos.append({
-                    "entry_z": entry_z,
-                    "k_sl": k_sl,
-                    "leverage": leverage,
-                    "bb_period": 20,
-                    "bb_std_dev": 2.0,
-                    "atr_period": 14,
-                })
+                param_combos.append(
+                    {
+                        "entry_z": entry_z,
+                        "k_sl": k_sl,
+                        "leverage": leverage,
+                        "bb_period": 20,
+                        "bb_std_dev": 2.0,
+                        "atr_period": 14,
+                    },
+                )
 
     print(f"✓ {len(param_combos)} combinaisons générées")
 
@@ -61,7 +69,7 @@ def profile_sweep():
                 symbol="BTCUSDC",
                 timeframe="30m",
                 silent_mode=True,
-                fast_metrics=True
+                fast_metrics=True,
             )
             results.append(result)
 
@@ -100,7 +108,7 @@ def profile_sweep():
 
     # Filtrer les fonctions d'indicateurs
     ps.sort_stats(SortKey.CUMULATIVE)
-    ps.print_stats('bollinger|atr|rsi|ema|calculate_indicator')
+    ps.print_stats("bollinger|atr|rsi|ema|calculate_indicator")
     print(s.getvalue())
 
     # Vérifier si le cache est utilisé
@@ -113,11 +121,11 @@ def profile_sweep():
     print("=" * 80)
 
     ps.sort_stats(SortKey.CUMULATIVE)
-    ps.print_stats('cache|get_indicator|put')
+    ps.print_stats("cache|get_indicator|put")
     cache_output = s.getvalue()
     print(cache_output)
 
-    if 'get_indicator_bank' in cache_output or '_worker_indicator_cache' in cache_output:
+    if "get_indicator_bank" in cache_output or "_worker_indicator_cache" in cache_output:
         print("✓ Cache détecté dans le profiling")
     else:
         print("❌ PROBLÈME: Aucune fonction de cache détectée!")
@@ -130,12 +138,15 @@ def profile_sweep():
     print(f"Backtests réussis: {len(results)}/{len(param_combos)}")
 
     # Calculer le temps total
-    total_time = sum(stat[3] for stat in ps.stats.values())
+    total_time = _compute_profile_total_time(ps)
     avg_time_per_bt = total_time / len(param_combos) if param_combos else 0
 
     print(f"Temps total: {total_time:.2f}s")
     print(f"Temps moyen/backtest: {avg_time_per_bt:.3f}s")
-    print(f"Débit: {len(param_combos)/total_time:.1f} backtests/sec")
+    if total_time > 0:
+        print(f"Débit: {len(param_combos) / total_time:.1f} backtests/sec")
+    else:
+        print("Débit: n/a (temps total nul)")
 
     # Sauvegarder le profiling complet
     profiling_dir = get_profiling_results_dir()

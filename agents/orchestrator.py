@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.orchestrator
+"""Module-ID: agents.orchestrator
 
 Purpose: Orchestrer le workflow multi-agents (Analyst/Strategist/Critic/Validator) et piloter la boucle d’optimisation.
 
@@ -24,10 +23,11 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any
 
 from utils.llm_memory import (
     MAX_INSIGHTS,
@@ -57,6 +57,7 @@ from .validator import ValidationDecision, ValidatorAgent
 # Import optionnel de tqdm pour barres de progression
 try:
     from tqdm import tqdm
+
     TQDM_AVAILABLE = True
 except ImportError:
     TQDM_AVAILABLE = False
@@ -64,6 +65,7 @@ except ImportError:
 
     def tqdm(iterable: Iterable[Any], **kwargs: Any) -> Iterable[Any]:
         return iterable
+
 
 if TYPE_CHECKING:  # pragma: no cover
     import pandas as pd
@@ -84,15 +86,15 @@ class OrchestratorConfig:
 
     # Données
     data_path: str = ""
-    data: Optional["pd.DataFrame"] = None
+    data: pd.DataFrame | None = None
     data_symbol: str = ""
     data_timeframe: str = ""
     data_date_range: str = ""
-    comparison_context: Optional[Dict[str, Any]] = None
+    comparison_context: dict[str, Any] | None = None
 
     # Paramètres initiaux
-    initial_params: Dict[str, Any] = field(default_factory=dict)
-    param_specs: List[ParameterConfig] = field(default_factory=list)
+    initial_params: dict[str, Any] = field(default_factory=dict)
+    param_specs: list[ParameterConfig] = field(default_factory=list)
 
     # Objectifs d'optimisation
     optimization_target: str = "sharpe_ratio"
@@ -107,25 +109,25 @@ class OrchestratorConfig:
 
     # Exécution
     n_workers: int = 1
-    session_id: Optional[str] = None
-    orchestration_logger: Optional[Any] = None
+    session_id: str | None = None
+    orchestration_logger: Any | None = None
 
     # LLM
-    llm_config: Optional[LLMConfig] = None
-    role_model_config: Optional[RoleModelConfig] = None
-    llm_topology_config: Optional[LLMTopologyConfig] = None
+    llm_config: LLMConfig | None = None
+    role_model_config: RoleModelConfig | None = None
+    llm_topology_config: LLMTopologyConfig | None = None
     max_consecutive_llm_failures: int = 3
 
     # Walk-forward
     use_walk_forward: bool = True
     walk_forward_windows: int = 5
     train_ratio: float = 0.7
-    walk_forward_disabled_reason: Optional[str] = None  # Raison si désactivé automatiquement
+    walk_forward_disabled_reason: str | None = None  # Raison si désactivé automatiquement
 
     # Callbacks (optionnels)
-    on_state_change: Optional[Callable[[AgentState, AgentState], None]] = None
-    on_iteration_complete: Optional[Callable[[int, Dict[str, Any]], None]] = None
-    on_backtest_needed: Optional[Callable[[Dict[str, Any]], "AgentBacktestMetrics"]] = None
+    on_state_change: Callable[[AgentState, AgentState], None] | None = None
+    on_iteration_complete: Callable[[int, dict[str, Any]], None] | None = None
+    on_backtest_needed: Callable[[dict[str, Any]], AgentBacktestMetrics] | None = None
 
 
 @dataclass
@@ -137,8 +139,8 @@ class OrchestratorResult:
     decision: str  # APPROVE, REJECT, ABORT
 
     # Configuration finale
-    final_params: Dict[str, Any] = field(default_factory=dict)
-    final_metrics: Optional[MetricsSnapshot] = None
+    final_params: dict[str, Any] = field(default_factory=dict)
+    final_metrics: MetricsSnapshot | None = None
 
     # Métriques d'exécution
     total_iterations: int = 0
@@ -148,21 +150,20 @@ class OrchestratorResult:
     total_llm_calls: int = 0
 
     # Historique
-    iteration_history: List[Dict[str, Any]] = field(default_factory=list)
-    state_history: List[Dict[str, Any]] = field(default_factory=list)
+    iteration_history: list[dict[str, Any]] = field(default_factory=list)
+    state_history: list[dict[str, Any]] = field(default_factory=list)
 
     # Rapport
     final_report: str = ""
-    recommendations: List[str] = field(default_factory=list)
+    recommendations: list[str] = field(default_factory=list)
 
     # Erreurs
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 class Orchestrator:
-    """
-    Orchestrator - Coordonne le workflow d'optimisation LLM.
+    """Orchestrator - Coordonne le workflow d'optimisation LLM.
 
     Garanties:
     - Transitions validées via State Machine
@@ -181,20 +182,21 @@ class Orchestrator:
         >>> result = orchestrator.run()
         >>> if result.success:
         ...     print(f"Optimized params: {result.final_params}")
+
     """
 
     def __init__(self, config: OrchestratorConfig) -> None:
-        """
-        Initialise l'Orchestrator.
+        """Initialise l'Orchestrator.
 
         Args:
             config: Configuration complète
+
         """
         self.config = config
         if config.session_id:
             self.session_id = str(config.session_id)
         elif config.orchestration_logger is not None and hasattr(config.orchestration_logger, "session_id"):
-            self.session_id = str(getattr(config.orchestration_logger, "session_id"))
+            self.session_id = str(config.orchestration_logger.session_id)
         else:
             self.session_id = str(uuid.uuid4())[:8]
 
@@ -217,41 +219,42 @@ class Orchestrator:
         self.context = self._create_initial_context()
 
         # Tracking
-        self._start_time: Optional[float] = None
+        self._start_time: float | None = None
         self._backtests_count = 0
         self._total_combinations_tested = 0  # Compteur de budget (sweep + individual)
         self._sweeps_performed = 0
         self._max_sweeps_per_session = 3  # Limite de sweeps pour éviter l'abus
-        self._errors: List[str] = []
-        self._warnings: List[str] = []
+        self._errors: list[str] = []
+        self._warnings: list[str] = []
         self._indicator_context_cached = False
         self._consecutive_llm_failures = 0
 
         # Tracker de ranges pour éviter boucles infinies
         from utils.session_ranges_tracker import SessionRangesTracker
+
         self._ranges_tracker = SessionRangesTracker(session_id=self.session_id)
-        self._memory_session_path: Optional[Path] = None
-        self._last_validation_data: Optional[Dict[str, Any]] = None
+        self._memory_session_path: Path | None = None
+        self._last_validation_data: dict[str, Any] | None = None
         self._last_validator_summary: str = ""
-        self._role_models: Dict[str, str] = {}
-        self._role_routes: Dict[str, ResolvedLLMRoute] = {}
+        self._role_models: dict[str, str] = {}
+        self._role_routes: dict[str, ResolvedLLMRoute] = {}
 
         # Session Parameter Tracker - empêche les LLMs de retester les mêmes paramètres
         self.param_tracker = SessionParameterTracker(session_id=self.session_id)
 
         # Données chargées (pour walk-forward)
-        self._loaded_data: Optional["pd.DataFrame"] = getattr(config, "data", None)
+        self._loaded_data: pd.DataFrame | None = getattr(config, "data", None)
 
         # Orchestration logger (optionnel, non bloquant)
         self._orch_logger: Any = None
         self._init_orchestration_logger()
         self.llm_topology_config = config.llm_topology_config or build_phase1_topology(
-            primary_host=getattr(self.llm_client.config, "ollama_host", None)
+            primary_host=getattr(self.llm_client.config, "ollama_host", None),
         )
 
         logger.info(
             f"Orchestrator initialisé: session={self.session_id}, "
-            f"strategy={config.strategy_name}, max_iter={self._max_iter_label}"
+            f"strategy={config.strategy_name}, max_iter={self._max_iter_label}",
         )
 
     def _create_initial_context(self) -> AgentContext:
@@ -284,13 +287,13 @@ class Orchestrator:
         # Tentative de création depuis le module dédié (si disponible)
         try:
             from .orchestration_logger import OrchestrationLogger  # type: ignore
+
             self._orch_logger = OrchestrationLogger(session_id=self.session_id)
         except Exception:
             self._orch_logger = None  # Mode dégradé: aucune trace persistée
 
     def _log_event(self, event_type: str, **payload: Any) -> None:
-        """
-        Ajoute un événement d'orchestration de manière non bloquante.
+        """Ajoute un événement d'orchestration de manière non bloquante.
         Supporte plusieurs API possibles (log/add_event/append).
         """
         if not self._orch_logger:
@@ -341,10 +344,7 @@ class Orchestrator:
         )
 
         if self._consecutive_llm_failures >= self.config.max_consecutive_llm_failures:
-            reason = (
-                "LLM indisponible ou en erreur répétée "
-                f"({self._consecutive_llm_failures} échecs)"
-            )
+            reason = f"LLM indisponible ou en erreur répétée ({self._consecutive_llm_failures} échecs)"
             self._errors.append(reason)
             self._log_event("llm_abort", role=role, reason=reason)
             self.state_machine.fail(reason)
@@ -358,7 +358,7 @@ class Orchestrator:
             fallback_host=getattr(self.llm_client.config, "ollama_host", None),
         )
 
-    def _get_role_route_payload(self, role: str) -> Dict[str, Any]:
+    def _get_role_route_payload(self, role: str) -> dict[str, Any]:
         route = self._role_routes.get(role) or self._resolve_role_route(role)
         self._role_routes[role] = route
         return {
@@ -368,7 +368,7 @@ class Orchestrator:
             "route_fallback_used": route.fallback_used,
         }
 
-    def _apply_role_model(self, role: str) -> Optional[str]:
+    def _apply_role_model(self, role: str) -> str | None:
         """Select and apply a model for the given role if configured."""
         route = self._resolve_role_route(role)
         self._role_routes[role] = route
@@ -450,7 +450,7 @@ class Orchestrator:
             logger.debug("LLM memory summary failed: %s", exc)
             self.context.memory_summary = ""
 
-    def _append_memory_iteration(self, entry: Dict[str, Any]) -> None:
+    def _append_memory_iteration(self, entry: dict[str, Any]) -> None:
         if not self._memory_session_path:
             return
         try:
@@ -458,8 +458,8 @@ class Orchestrator:
         except Exception as exc:
             logger.debug("LLM memory session update failed: %s", exc)
 
-    def _collect_insights(self) -> List[str]:
-        insights: List[str] = []
+    def _collect_insights(self) -> list[str]:
+        insights: list[str] = []
         if self._last_validator_summary:
             insights.append(self._last_validator_summary)
 
@@ -473,7 +473,7 @@ class Orchestrator:
                             if isinstance(item, str) and item:
                                 insights.append(item)
 
-        unique: List[str] = []
+        unique: list[str] = []
         seen = set()
         for item in insights:
             if item in seen:
@@ -482,7 +482,7 @@ class Orchestrator:
             unique.append(item)
         return unique[:MAX_INSIGHTS]
 
-    def _build_history_entry(self, result: OrchestratorResult) -> Optional[Dict[str, Any]]:
+    def _build_history_entry(self, result: OrchestratorResult) -> dict[str, Any] | None:
         strategy, symbol, timeframe = self._get_memory_identifiers()
         period_start, period_end, data_rows = self._resolve_data_info()
         metrics = self.context.best_metrics or self.context.current_metrics
@@ -506,7 +506,7 @@ class Orchestrator:
                     f"Sharpe {metrics.sharpe_ratio:.2f}, "
                     f"return {metrics.total_return * 100.0:.1f}%, "
                     f"drawdown {metrics.max_drawdown * 100.0:.1f}%."
-                )
+                ),
             ]
 
         entry = {
@@ -545,11 +545,11 @@ class Orchestrator:
             self._memory_session_path = None
 
     def run(self) -> OrchestratorResult:
-        """
-        Exécute le workflow d'optimisation complet.
+        """Exécute le workflow d'optimisation complet.
 
         Returns:
             Résultat de l'orchestration
+
         """
         self._start_time = time.time()
         self._log_event(
@@ -605,7 +605,6 @@ class Orchestrator:
 
     def _run_workflow(self) -> None:
         """Exécute la boucle principale du workflow."""
-
         while not self.state_machine.is_terminal:
             current = self.state_machine.current_state
             self._log_event("state_enter", state=current.name)
@@ -667,7 +666,7 @@ class Orchestrator:
                 )
                 logger.info(
                     f"Backtest initial: Sharpe={initial_metrics.sharpe_ratio:.3f}, "
-                    f"Return={initial_metrics.total_return:.2%}"
+                    f"Return={initial_metrics.total_return:.2%}",
                 )
             else:
                 self._warnings.append("Backtest initial sans métriques")
@@ -700,6 +699,7 @@ class Orchestrator:
         if not self._indicator_context_cached and self._loaded_data is not None:
             try:
                 from .indicator_context import build_indicator_context
+
                 indicator_ctx = build_indicator_context(
                     df=self._loaded_data,
                     strategy_name=self.context.strategy_name,
@@ -734,18 +734,15 @@ class Orchestrator:
         self.context.iteration = self.state_machine.iteration
 
         # Ajouter le résumé du tracker de session pour informer l'Analyst
-        if hasattr(self, 'param_tracker'):
+        if hasattr(self, "param_tracker"):
             # Ajouter dynamiquement au contexte (pour ne pas modifier base_agent.py)
-            setattr(
-                self.context,
-                'session_params_summary',
-                self.param_tracker.get_summary()
-            )
+            self.context.session_params_summary = self.param_tracker.get_summary()
 
         # Contexte indicateurs (stratégie vs lecture seule) - calculé une seule fois par run
         if not self._indicator_context_cached and self._loaded_data is not None:
             try:
                 from .indicator_context import build_indicator_context
+
                 indicator_ctx = build_indicator_context(
                     df=self._loaded_data,
                     strategy_name=self.context.strategy_name,
@@ -824,12 +821,8 @@ class Orchestrator:
         logger.info("Phase PROPOSE: Exécution Agent Strategist")
 
         # Ajouter le résumé du tracker de session pour informer le Strategist
-        if hasattr(self, 'param_tracker'):
-            setattr(
-                self.context,
-                'session_params_summary',
-                self.param_tracker.get_summary()
-            )
+        if hasattr(self, "param_tracker"):
+            self.context.session_params_summary = self.param_tracker.get_summary()
 
         # Exécuter le Strategist
         self._apply_role_model("strategist")
@@ -872,7 +865,7 @@ class Orchestrator:
 
         # Stocker les propositions
         proposals = result.data.get("proposals", [])
-        proposals = proposals[:self.config.max_proposals_per_iteration]
+        proposals = proposals[: self.config.max_proposals_per_iteration]
 
         # Filtrer les propositions déjà testées dans cette session
         filtered_proposals = []
@@ -886,7 +879,7 @@ class Orchestrator:
             if self.param_tracker.was_tested(params):
                 duplicates_count += 1
                 logger.info(
-                    f"  ⚠️ Proposition ignorée (déjà testée): {proposal.get('name', 'N/A')}"
+                    f"  ⚠️ Proposition ignorée (déjà testée): {proposal.get('name', 'N/A')}",
                 )
                 continue
 
@@ -896,12 +889,12 @@ class Orchestrator:
         self._log_event(
             "proposals_generated",
             count=len(self.context.strategist_proposals),
-            duplicates_filtered=duplicates_count
+            duplicates_filtered=duplicates_count,
         )
         logger.info(
             f"Strategist: {len(proposals)} propositions générées, "
             f"{duplicates_count} duplications filtrées, "
-            f"{len(filtered_proposals)} nouvelles"
+            f"{len(filtered_proposals)} nouvelles",
         )
 
         # Si toutes les propositions étaient des duplications
@@ -913,12 +906,12 @@ class Orchestrator:
         # Transition vers CRITIQUE
         self.state_machine.transition_to(AgentState.CRITIQUE)
 
-    def _handle_sweep_proposal(self, sweep_request: Dict[str, Any]) -> None:
-        """
-        Gère un sweep request du Strategist (grid search).
+    def _handle_sweep_proposal(self, sweep_request: dict[str, Any]) -> None:
+        """Gère un sweep request du Strategist (grid search).
 
         Args:
             sweep_request: Dict avec ranges, rationale, optimize_for, max_combinations
+
         """
         self._log_event("sweep_request", details=sweep_request)
         logger.info(f"  Sweep rationale: {sweep_request.get('rationale', 'N/A')}")
@@ -926,11 +919,10 @@ class Orchestrator:
         # Vérifier la limite de sweeps
         if self._sweeps_performed >= self._max_sweeps_per_session:
             logger.warning(
-                f"⚠️ Limite de sweeps atteinte ({self._max_sweeps_per_session}). "
-                f"Sweep request ignoré."
+                f"⚠️ Limite de sweeps atteinte ({self._max_sweeps_per_session}). Sweep request ignoré.",
             )
             self._warnings.append(
-                f"Sweep limit reached ({self._sweeps_performed}/{self._max_sweeps_per_session})"
+                f"Sweep limit reached ({self._sweeps_performed}/{self._max_sweeps_per_session})",
             )
             # Passer à VALIDATE sans proposals
             self.context.strategist_proposals = []
@@ -943,10 +935,10 @@ class Orchestrator:
             logger.warning(
                 f"⚠️ Ranges déjà testées dans cette session! | "
                 f"Params={list(ranges.keys())} | "
-                f"Forcing diversification..."
+                f"Forcing diversification...",
             )
             self._warnings.append(
-                f"Ranges already tested: {list(ranges.keys())}"
+                f"Ranges already tested: {list(ranges.keys())}",
             )
             # Passer à VALIDATE sans proposals
             self.context.strategist_proposals = []
@@ -969,20 +961,23 @@ class Orchestrator:
 
             # Extraire param_specs depuis le contexte
             param_specs = []
-            if hasattr(self.context, 'param_specs'):
+            if hasattr(self.context, "param_specs"):
                 param_specs = self.context.param_specs
-            elif hasattr(self.context, 'parameter_configs'):
+            elif hasattr(self.context, "parameter_configs"):
                 # Convertir ParameterConfig → ParameterSpec
                 from utils.parameters import ParameterSpec
+
                 for pc in self.context.parameter_configs:
-                    param_specs.append(ParameterSpec(
-                        name=pc.name,
-                        min_val=pc.bounds[0],
-                        max_val=pc.bounds[1],
-                        default=pc.current_value,
-                        step=pc.step,
-                        param_type="int" if pc.value_type == "int" else "float"
-                    ))
+                    param_specs.append(
+                        ParameterSpec(
+                            name=pc.name,
+                            min_val=pc.bounds[0],
+                            max_val=pc.bounds[1],
+                            default=pc.current_value,
+                            step=pc.step,
+                            param_type="int" if pc.value_type == "int" else "float",
+                        ),
+                    )
 
             if not param_specs:
                 raise RuntimeError("Impossible d'extraire param_specs du contexte")
@@ -995,7 +990,7 @@ class Orchestrator:
             # Exécuter le sweep
             logger.info(
                 f"  Lancement sweep: {len(range_proposal.ranges)} paramètres, "
-                f"max {range_proposal.max_combinations} combinaisons"
+                f"max {range_proposal.max_combinations} combinaisons",
             )
             self._log_event("sweep_start", n_params=len(range_proposal.ranges))
 
@@ -1009,35 +1004,35 @@ class Orchestrator:
             )
 
             # Incrémenter les compteurs de budget
-            n_combinations = sweep_results['n_combinations']
+            n_combinations = sweep_results["n_combinations"]
             self._sweeps_performed += 1
             self._total_combinations_tested += n_combinations
 
             # Enregistrer les ranges testées dans le tracker
-            best_sharpe = sweep_results['best_metrics'].get('sharpe_ratio', 0)
+            best_sharpe = sweep_results["best_metrics"].get("sharpe_ratio", 0)
             self._ranges_tracker.register(
                 ranges=range_proposal.ranges,
                 n_combinations=n_combinations,
                 best_sharpe=best_sharpe,
-                rationale=range_proposal.rationale
+                rationale=range_proposal.rationale,
             )
 
             logger.info(
                 f"✅ Sweep #{self._sweeps_performed} terminé: {n_combinations} combinaisons testées | "
                 f"Best {range_proposal.optimize_for}={sweep_results['best_metrics'].get(range_proposal.optimize_for, 0):.3f} | "
-                f"Budget: {self._total_combinations_tested}/{self._max_iter_label} combos"
+                f"Budget: {self._total_combinations_tested}/{self._max_iter_label} combos",
             )
             self._log_event(
                 "sweep_complete",
                 n_combinations=n_combinations,
                 sweeps_performed=self._sweeps_performed,
                 total_combinations_tested=self._total_combinations_tested,
-                best_metrics=sweep_results['best_metrics']
+                best_metrics=sweep_results["best_metrics"],
             )
 
             # Stocker les résultats dans le contexte
             self.context.sweep_results = sweep_results
-            self.context.sweep_summary = sweep_results['summary']
+            self.context.sweep_summary = sweep_results["summary"]
 
             # Créer une proposition artificielle depuis le meilleur config
             best_proposal = {
@@ -1045,9 +1040,9 @@ class Orchestrator:
                 "name": f"Sweep Best Config ({range_proposal.optimize_for}={sweep_results['best_metrics'].get(range_proposal.optimize_for, 0):.3f})",
                 "priority": "HIGH",
                 "risk_level": "LOW",
-                "parameters": sweep_results['best_params'],
+                "parameters": sweep_results["best_params"],
                 "rationale": f"Best config from grid search: {range_proposal.rationale}",
-                "expected_impact": sweep_results['best_metrics'],
+                "expected_impact": sweep_results["best_metrics"],
                 "risks": ["Config from grid search, may not generalize"],
             }
 
@@ -1060,7 +1055,7 @@ class Orchestrator:
         except Exception as e:
             logger.error(f"Erreur durant le sweep: {e}")
             self._log_event("sweep_failed", error=str(e))
-            self._errors.append(f"Sweep failed: {str(e)}")
+            self._errors.append(f"Sweep failed: {e!s}")
 
             # En cas d'erreur, passer à VALIDATE sans proposals
             self.context.strategist_proposals = []
@@ -1120,8 +1115,7 @@ class Orchestrator:
                 concerns_count=len(self.context.critic_concerns),
             )
             logger.info(
-                f"Critic: {len(approved)} propositions approuvées, "
-                f"{len(self.context.critic_concerns)} concerns"
+                f"Critic: {len(approved)} propositions approuvées, {len(self.context.critic_concerns)} concerns",
             )
 
         # Tester les propositions approuvées
@@ -1188,13 +1182,12 @@ class Orchestrator:
             self.state_machine.transition_to(AgentState.REJECTED)
         elif decision == ValidationDecision.ABORT:
             self.state_machine.fail("Validator a décidé ABORT")
-        else:  # ITERATE
-            # Vérifier si on peut encore itérer
-            if self.state_machine.can_transition_to(AgentState.ITERATE):
-                self.state_machine.transition_to(AgentState.ITERATE)
-            else:
-                logger.info("Max iterations atteint, passage en REJECTED")
-                self.state_machine.transition_to(AgentState.REJECTED)
+        # Vérifier si on peut encore itérer
+        elif self.state_machine.can_transition_to(AgentState.ITERATE):
+            self.state_machine.transition_to(AgentState.ITERATE)
+        else:
+            logger.info("Max iterations atteint, passage en REJECTED")
+            self.state_machine.transition_to(AgentState.REJECTED)
 
     def _handle_iterate(self) -> None:
         """Gère l'état ITERATE - Préparation de l'itération suivante."""
@@ -1211,8 +1204,7 @@ class Orchestrator:
                 # Mettre à jour le best si meilleur
                 if (
                     self.context.best_metrics is None
-                    or best_tested["metrics"].sharpe_ratio
-                    > self.context.best_metrics.sharpe_ratio
+                    or best_tested["metrics"].sharpe_ratio > self.context.best_metrics.sharpe_ratio
                 ):
                     self.context.best_metrics = best_tested["metrics"]
                     self.context.best_params = best_tested["params"].copy()
@@ -1225,17 +1217,17 @@ class Orchestrator:
         if self.config.on_iteration_complete:
             self.config.on_iteration_complete(
                 self.state_machine.iteration,
-                {"metrics": self.context.current_metrics, "params": self.context.current_params}
+                {"metrics": self.context.current_metrics, "params": self.context.current_params},
             )
 
         # Vérifier le budget de combinaisons testées avant la prochaine itération
         if (not self._unlimited_iterations) and self._total_combinations_tested >= self.config.max_iterations:
             logger.warning(
                 f"⚠️ Budget épuisé: {self._total_combinations_tested} combos testées "
-                f"(limite: {self.config.max_iterations}, dont {self._sweeps_performed} sweeps)"
+                f"(limite: {self.config.max_iterations}, dont {self._sweeps_performed} sweeps)",
             )
             self._warnings.append(
-                f"Budget épuisé: {self._total_combinations_tested}/{self.config.max_iterations} combos"
+                f"Budget épuisé: {self._total_combinations_tested}/{self.config.max_iterations} combos",
             )
             # Transition vers REJECTED car budget épuisé
             self.state_machine.transition_to(AgentState.REJECTED)
@@ -1265,9 +1257,8 @@ class Orchestrator:
 
         return ValidationResult.success()
 
-    def _run_backtest(self, params: Dict[str, Any]) -> Optional[MetricsSnapshot]:
-        """
-        Exécute un backtest avec les paramètres donnés.
+    def _run_backtest(self, params: dict[str, Any]) -> MetricsSnapshot | None:
+        """Exécute un backtest avec les paramètres donnés.
 
         Utilise le callback on_backtest_needed si fourni,
         sinon retourne None.
@@ -1297,8 +1288,7 @@ class Orchestrator:
         return None
 
     def _compute_walk_forward_metrics(self) -> None:
-        """
-        Calcule les métriques de walk-forward validation et met à jour le contexte.
+        """Calcule les métriques de walk-forward validation et met à jour le contexte.
 
         Charge les données si nécessaire et exécute une validation walk-forward
         pour détecter l'overfitting avec les métriques robustes.
@@ -1360,9 +1350,9 @@ class Orchestrator:
                 import pandas as pd
 
                 # Charger selon l'extension
-                if data_path.suffix == '.csv':
+                if data_path.suffix == ".csv":
                     self._loaded_data = pd.read_csv(data_path)
-                elif data_path.suffix == '.parquet':
+                elif data_path.suffix == ".parquet":
                     self._loaded_data = pd.read_parquet(data_path)
                 else:
                     logger.warning(f"Format non supporté pour walk-forward: {data_path.suffix}")
@@ -1374,10 +1364,11 @@ class Orchestrator:
             self.context.data_rows = len(self._loaded_data)
 
             # Extraire la plage de dates si disponible
-            if 'timestamp' in self._loaded_data.columns or 'date' in self._loaded_data.columns:
-                date_col = 'timestamp' if 'timestamp' in self._loaded_data.columns else 'date'
+            if "timestamp" in self._loaded_data.columns or "date" in self._loaded_data.columns:
+                date_col = "timestamp" if "timestamp" in self._loaded_data.columns else "date"
                 try:
                     import pandas as pd
+
                     dates = pd.to_datetime(self._loaded_data[date_col])
                     self.context.data_date_range = f"{dates.min()} → {dates.max()}"
                 except Exception:
@@ -1406,7 +1397,7 @@ class Orchestrator:
                 f"Walk-forward terminé: "
                 f"overfitting_ratio={wf_metrics['overfitting_ratio']:.3f}, "
                 f"degradation={wf_metrics['degradation_pct']:.1f}%, "
-                f"stability_std={wf_metrics['test_stability_std']:.3f}"
+                f"stability_std={wf_metrics['test_stability_std']:.3f}",
             )
 
             # Journaliser l'événement
@@ -1430,7 +1421,7 @@ class Orchestrator:
         if not proposals:
             return
 
-        def _eval_one(proposal: Dict[str, Any]) -> tuple[Dict[str, Any], Optional[MetricsSnapshot]]:
+        def _eval_one(proposal: dict[str, Any]) -> tuple[dict[str, Any], MetricsSnapshot | None]:
             params = proposal.get("parameters", {})
             if not params:
                 return proposal, None
@@ -1441,13 +1432,17 @@ class Orchestrator:
         # Séquentiel par défaut
         if n_workers <= 1 or len(proposals) <= 1:
             # Barre de progression pour les tests de propositions
-            proposal_iterator = tqdm(
-                proposals,
-                desc="Testing proposals",
-                unit="proposal",
-                disable=not TQDM_AVAILABLE,
-                leave=False
-            ) if len(proposals) > 1 else proposals
+            proposal_iterator = (
+                tqdm(
+                    proposals,
+                    desc="Testing proposals",
+                    unit="proposal",
+                    disable=not TQDM_AVAILABLE,
+                    leave=False,
+                )
+                if len(proposals) > 1
+                else proposals
+            )
 
             for proposal in proposal_iterator:
                 params = proposal.get("parameters", {})
@@ -1470,7 +1465,7 @@ class Orchestrator:
                     self.param_tracker.register(
                         params=params,
                         sharpe_ratio=metrics.sharpe_ratio,
-                        total_return=metrics.total_return
+                        total_return=metrics.total_return,
                     )
 
                     self._log_event(
@@ -1530,7 +1525,7 @@ class Orchestrator:
                     self.param_tracker.register(
                         params=proposal.get("parameters", {}),
                         sharpe_ratio=metrics.sharpe_ratio,
-                        total_return=metrics.total_return
+                        total_return=metrics.total_return,
                     )
 
                     self._log_event(
@@ -1548,7 +1543,7 @@ class Orchestrator:
                         tested=False,
                     )
 
-    def _get_best_tested_config(self) -> Optional[Dict[str, Any]]:
+    def _get_best_tested_config(self) -> dict[str, Any] | None:
         """Retourne la meilleure configuration testée."""
         best = None
         best_sharpe = float("-inf")
@@ -1569,7 +1564,7 @@ class Orchestrator:
 
         return best
 
-    def _record_iteration(self, decision: Optional[str] = None) -> None:
+    def _record_iteration(self, decision: str | None = None) -> None:
         """Enregistre l'itération actuelle dans l'historique."""
         entry = {
             "iteration": self.state_machine.iteration,
@@ -1578,11 +1573,13 @@ class Orchestrator:
         }
 
         if self.context.current_metrics:
-            entry.update({
-                "sharpe_ratio": self.context.current_metrics.sharpe_ratio,
-                "total_return": self.context.current_metrics.total_return,
-                "max_drawdown": self.context.current_metrics.max_drawdown,
-            })
+            entry.update(
+                {
+                    "sharpe_ratio": self.context.current_metrics.sharpe_ratio,
+                    "total_return": self.context.current_metrics.total_return,
+                    "max_drawdown": self.context.current_metrics.max_drawdown,
+                },
+            )
 
         entry["proposals_count"] = len(self.context.strategist_proposals)
         entry["concerns_count"] = len(self.context.critic_concerns)
@@ -1622,42 +1619,52 @@ class Orchestrator:
 
         # État final de la machine à états
         final_state = self.state_machine.current_state
-        lines.extend([
-            "📌 DÉCISION FINALE:",
-            f"  État: {final_state.name}",
-            f"  Décision: {'✅ APPROUVÉ' if final_state == AgentState.APPROVED else '❌ REJETÉ' if final_state == AgentState.REJECTED else '⚠️ AVORTÉ'}",
-            "",
-        ])
+        lines.extend(
+            [
+                "📌 DÉCISION FINALE:",
+                f"  État: {final_state.name}",
+                f"  Décision: {'✅ APPROUVÉ' if final_state == AgentState.APPROVED else '❌ REJETÉ' if final_state == AgentState.REJECTED else '⚠️ AVORTÉ'}",
+                "",
+            ],
+        )
 
         # Walk-forward validation status
         if self.config.walk_forward_disabled_reason:
-            lines.extend([
-                "⚠️ WALK-FORWARD VALIDATION:",
-                "  Status: DÉSACTIVÉ AUTOMATIQUEMENT",
-                f"  Raison: {self.config.walk_forward_disabled_reason}",
-                "",
-            ])
+            lines.extend(
+                [
+                    "⚠️ WALK-FORWARD VALIDATION:",
+                    "  Status: DÉSACTIVÉ AUTOMATIQUEMENT",
+                    f"  Raison: {self.config.walk_forward_disabled_reason}",
+                    "",
+                ],
+            )
         elif self.config.use_walk_forward:
-            lines.extend([
-                "✅ WALK-FORWARD VALIDATION:",
-                "  Status: ACTIVÉ",
-                f"  Windows: {self.config.walk_forward_windows}",
-                f"  Train ratio: {self.config.train_ratio:.0%}",
-                "",
-            ])
+            lines.extend(
+                [
+                    "✅ WALK-FORWARD VALIDATION:",
+                    "  Status: ACTIVÉ",
+                    f"  Windows: {self.config.walk_forward_windows}",
+                    f"  Train ratio: {self.config.train_ratio:.0%}",
+                    "",
+                ],
+            )
 
         # Résultats finaux
         if self.context.best_metrics:
-            lines.extend([
-                "🏆 MEILLEURS RÉSULTATS OBTENUS:",
-                f"  📊 Sharpe Ratio: {self.context.best_metrics.sharpe_ratio:.3f}",
-                f"  💰 Total Return: {self.context.best_metrics.total_return:.2%}",
-                f"  📉 Max Drawdown: {self.context.best_metrics.max_drawdown:.2%}",
-                f"  🎯 Win Rate: {self.context.best_metrics.win_rate:.1%}" if hasattr(self.context.best_metrics, 'win_rate') else "",
-                f"  🔢 Total Trades: {self.context.best_metrics.total_trades}",
-                "",
-                "⚙️  Paramètres optimaux:",
-            ])
+            lines.extend(
+                [
+                    "🏆 MEILLEURS RÉSULTATS OBTENUS:",
+                    f"  📊 Sharpe Ratio: {self.context.best_metrics.sharpe_ratio:.3f}",
+                    f"  💰 Total Return: {self.context.best_metrics.total_return:.2%}",
+                    f"  📉 Max Drawdown: {self.context.best_metrics.max_drawdown:.2%}",
+                    f"  🎯 Win Rate: {self.context.best_metrics.win_rate:.1%}"
+                    if hasattr(self.context.best_metrics, "win_rate")
+                    else "",
+                    f"  🔢 Total Trades: {self.context.best_metrics.total_trades}",
+                    "",
+                    "⚙️  Paramètres optimaux:",
+                ],
+            )
             for k, v in (self.context.best_params or {}).items():
                 if isinstance(v, float):
                     lines.append(f"    • {k}: {v:.4f}")
@@ -1666,15 +1673,17 @@ class Orchestrator:
             lines.append("")
 
         # Activité des agents multi-agents
-        lines.extend([
-            "=" * 80,
-            "🤖 ACTIVITÉ DES AGENTS",
-            "=" * 80,
-            "",
-        ])
+        lines.extend(
+            [
+                "=" * 80,
+                "🤖 ACTIVITÉ DES AGENTS",
+                "=" * 80,
+                "",
+            ],
+        )
 
         # Statistiques par agent
-        def _get_agent_stats(agent: BaseAgent, name: str) -> List[str]:
+        def _get_agent_stats(agent: BaseAgent, name: str) -> list[str]:
             stats = getattr(agent, "stats", {})
             tokens = stats.get("total_tokens", 0)
             calls = stats.get("execution_count", 0)
@@ -1692,12 +1701,14 @@ class Orchestrator:
 
         # Historique des itérations
         if self.context.iteration_history:
-            lines.extend([
-                "=" * 80,
-                "📜 HISTORIQUE DES ITÉRATIONS",
-                "=" * 80,
-                "",
-            ])
+            lines.extend(
+                [
+                    "=" * 80,
+                    "📜 HISTORIQUE DES ITÉRATIONS",
+                    "=" * 80,
+                    "",
+                ],
+            )
             for i, hist in enumerate(self.context.iteration_history[-10:], 1):  # Dernières 10
                 iter_num = hist.get("iteration", i)
                 sharpe = hist.get("sharpe_ratio", 0)
@@ -1705,11 +1716,13 @@ class Orchestrator:
                 params = hist.get("params", {})
                 decision = hist.get("decision", "N/A")
 
-                lines.extend([
-                    f"Itération #{iter_num}:",
-                    f"  Sharpe: {sharpe:.3f} | Return: {ret:.2%}",
-                    f"  Décision: {decision}",
-                ])
+                lines.extend(
+                    [
+                        f"Itération #{iter_num}:",
+                        f"  Sharpe: {sharpe:.3f} | Return: {ret:.2%}",
+                        f"  Décision: {decision}",
+                    ],
+                )
                 if params and len(params) <= 5:  # Afficher params si peu nombreux
                     param_str = ", ".join(f"{k}={v}" for k, v in params.items())
                     lines.append(f"  Params: {param_str}")
@@ -1717,48 +1730,58 @@ class Orchestrator:
 
         # Statistiques de sweep (si utilisés)
         if self._sweeps_performed > 0:
-            lines.extend([
-                "=" * 80,
-                "🔍 STATISTIQUES GRID SEARCH (SWEEPS)",
-                "=" * 80,
-                "",
-                f"  Nombre de sweeps: {self._sweeps_performed}",
-                f"  Limite par session: {self._max_sweeps_per_session}",
-                f"  Combinaisons testées via sweeps: {self._total_combinations_tested - self._backtests_count}",
-                "",
-            ])
+            lines.extend(
+                [
+                    "=" * 80,
+                    "🔍 STATISTIQUES GRID SEARCH (SWEEPS)",
+                    "=" * 80,
+                    "",
+                    f"  Nombre de sweeps: {self._sweeps_performed}",
+                    f"  Limite par session: {self._max_sweeps_per_session}",
+                    f"  Combinaisons testées via sweeps: {self._total_combinations_tested - self._backtests_count}",
+                    "",
+                ],
+            )
 
             # Ranges testées (si tracker disponible)
-            if hasattr(self, '_ranges_tracker'):
+            if hasattr(self, "_ranges_tracker"):
                 ranges_summary = self._ranges_tracker.get_summary(max_ranges=5)
                 if ranges_summary != "Aucune range testée dans cette session.":
-                    lines.extend([
-                        "Ranges explorées:",
-                        ranges_summary,
-                        "",
-                    ])
+                    lines.extend(
+                        [
+                            "Ranges explorées:",
+                            ranges_summary,
+                            "",
+                        ],
+                    )
 
         # Statistiques du tracker de paramètres
-        if hasattr(self, 'param_tracker'):
-            lines.extend([
-                "=" * 80,
-                "📊 STATISTIQUES DE SESSION",
-                "=" * 80,
-                "",
-                f"  ✅ Tests uniques: {self.param_tracker.get_tested_count()}",
-                f"  🔄 Duplications évitées: {self.param_tracker.get_duplicates_prevented()}",
-                "",
-            ])
+        if hasattr(self, "param_tracker"):
+            lines.extend(
+                [
+                    "=" * 80,
+                    "📊 STATISTIQUES DE SESSION",
+                    "=" * 80,
+                    "",
+                    f"  ✅ Tests uniques: {self.param_tracker.get_tested_count()}",
+                    f"  🔄 Duplications évitées: {self.param_tracker.get_duplicates_prevented()}",
+                    "",
+                ],
+            )
 
             # Meilleurs paramètres selon le tracker
             best_sharpe = self.param_tracker.get_best_params("sharpe_ratio")
             if best_sharpe:
-                lines.extend([
-                    "🏅 Meilleur Sharpe Ratio testé:",
-                    f"    Valeur: {best_sharpe.sharpe_ratio:.3f}",
-                    f"    Return: {best_sharpe.total_return:.2%}" if hasattr(best_sharpe, 'total_return') and best_sharpe.total_return else "",
-                    "    Paramètres:",
-                ])
+                lines.extend(
+                    [
+                        "🏅 Meilleur Sharpe Ratio testé:",
+                        f"    Valeur: {best_sharpe.sharpe_ratio:.3f}",
+                        f"    Return: {best_sharpe.total_return:.2%}"
+                        if hasattr(best_sharpe, "total_return") and best_sharpe.total_return
+                        else "",
+                        "    Paramètres:",
+                    ],
+                )
                 for k, v in best_sharpe.params.items():
                     if isinstance(v, float):
                         lines.append(f"      • {k}: {v:.4f}")
@@ -1768,24 +1791,30 @@ class Orchestrator:
 
         # Warnings et erreurs
         if self._warnings or self._errors:
-            lines.extend([
-                "=" * 80,
-                "⚠️  AVERTISSEMENTS ET ERREURS",
-                "=" * 80,
-                "",
-            ])
+            lines.extend(
+                [
+                    "=" * 80,
+                    "⚠️  AVERTISSEMENTS ET ERREURS",
+                    "=" * 80,
+                    "",
+                ],
+            )
             if self._warnings:
-                lines.extend([
-                    "Avertissements:",
-                    *[f"  ⚠️  {w}" for w in self._warnings],
-                    "",
-                ])
+                lines.extend(
+                    [
+                        "Avertissements:",
+                        *[f"  ⚠️  {w}" for w in self._warnings],
+                        "",
+                    ],
+                )
             if self._errors:
-                lines.extend([
-                    "Erreurs:",
-                    *[f"  ❌ {e}" for e in self._errors],
-                    "",
-                ])
+                lines.extend(
+                    [
+                        "Erreurs:",
+                        *[f"  ❌ {e}" for e in self._errors],
+                        "",
+                    ],
+                )
 
         lines.append("=" * 80)
         return "\n".join(lines)
@@ -1807,7 +1836,7 @@ class Orchestrator:
             success = False
 
         # Statistiques LLM (avec fallback si agent n'a pas de stats)
-        def _get_agent_stats(agent: BaseAgent) -> Dict[str, int]:
+        def _get_agent_stats(agent: BaseAgent) -> dict[str, int]:
             """Récupère les stats d'un agent de manière sûre."""
             stats = getattr(agent, "stats", {})
             return {
@@ -1824,15 +1853,15 @@ class Orchestrator:
 
         # Recommandations basées sur le tracker
         recommendations = []
-        if hasattr(self, 'param_tracker'):
+        if hasattr(self, "param_tracker"):
             duplicates = self.param_tracker.get_duplicates_prevented()
             if duplicates > 0:
                 recommendations.append(
-                    f"✅ {duplicates} duplications de paramètres évitées durant la session"
+                    f"✅ {duplicates} duplications de paramètres évitées durant la session",
                 )
             if self.param_tracker.get_tested_count() > 0:
                 recommendations.append(
-                    f"📊 {self.param_tracker.get_tested_count()} combinaisons uniques testées"
+                    f"📊 {self.param_tracker.get_tested_count()} combinaisons uniques testées",
                 )
 
         return OrchestratorResult(

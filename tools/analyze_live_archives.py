@@ -1,21 +1,20 @@
-"""
-Analyse statistique des archives live Builder pour extraire le vocabulaire réel
+"""Analyse statistique des archives live Builder pour extraire le vocabulaire réel
 des LLMs (hypothèses, marqueurs, patterns de fuite prompt, accès indicateurs, etc.)
 """
-import re
+
 import json
-import os
-from collections import Counter, defaultdict
+import re
+from collections import Counter
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 ARCHIVES_DIR = Path(
-    r"C:\Users\o3-Pro\Documents\backtest_results\_builder_sessions\_live_thoughts_archives"
+    r"C:\Users\o3-Pro\Documents\backtest_results\_builder_sessions\_live_thoughts_archives",
 )
 
 # ---------------------------------------------------------------------------
 # Extraction helpers
 # ---------------------------------------------------------------------------
+
 
 def iter_real_sessions(d: Path):
     """Yield only real session files (exclude test stubs)."""
@@ -112,7 +111,8 @@ def parse_file(path: Path) -> dict:
 # Analysis functions
 # ---------------------------------------------------------------------------
 
-def analyze_hypotheses(sessions: List[dict]) -> dict:
+
+def analyze_hypotheses(sessions: list[dict]) -> dict:
     """Analyse le vocabulaire des hypothèses."""
     all_hypotheses = []
     for s in sessions:
@@ -151,7 +151,7 @@ def analyze_hypotheses(sessions: List[dict]) -> dict:
     }
 
 
-def analyze_entry_logic(sessions: List[dict]) -> dict:
+def analyze_entry_logic(sessions: list[dict]) -> dict:
     """Analyse les patterns d'entrée long/short."""
     long_patterns = []
     short_patterns = []
@@ -160,7 +160,9 @@ def analyze_entry_logic(sessions: List[dict]) -> dict:
         short_patterns.extend(s["entry_short"])
 
     # Extract indicator references from logic
-    indicator_re = re.compile(r"\b([a-z_]+)\s*[<>=!]|\b([a-z_]+)\s+crosses?\b|\bindicators?\[.([a-z_]+).\]", re.I)
+    indicator_re = re.compile(
+        r"\b([a-z_]+)\s*[<>=!]|\b([a-z_]+)\s+crosses?\b|\bindicators?\[.([a-z_]+).\]", re.IGNORECASE,
+    )
 
     long_indicators = Counter()
     short_indicators = Counter()
@@ -179,10 +181,12 @@ def analyze_entry_logic(sessions: List[dict]) -> dict:
     direction_words_long = Counter()
     direction_words_short = Counter()
     dir_re_long = re.compile(
-        r"\b(haussier|bullish|long|buy|acheter|hausse|monte|supérieur|above|upward|achat)\b", re.I
+        r"\b(haussier|bullish|long|buy|acheter|hausse|monte|supérieur|above|upward|achat)\b",
+        re.IGNORECASE,
     )
     dir_re_short = re.compile(
-        r"\b(baissier|bearish|short|sell|vendre|baisse|descend|inférieur|below|downward|vente)\b", re.I
+        r"\b(baissier|bearish|short|sell|vendre|baisse|descend|inférieur|below|downward|vente)\b",
+        re.IGNORECASE,
     )
     for p in long_patterns:
         direction_words_long.update(m.group().lower() for m in dir_re_long.finditer(p))
@@ -201,7 +205,7 @@ def analyze_entry_logic(sessions: List[dict]) -> dict:
     }
 
 
-def analyze_stream_leakage(sessions: List[dict]) -> dict:
+def analyze_stream_leakage(sessions: list[dict]) -> dict:
     """Detect prompt leakage / reasoning-out-loud in STREAM lines."""
     all_stream = []
     for s in sessions:
@@ -259,7 +263,7 @@ def analyze_stream_leakage(sessions: List[dict]) -> dict:
     }
 
 
-def analyze_indicator_access_patterns(sessions: List[dict]) -> dict:
+def analyze_indicator_access_patterns(sessions: list[dict]) -> dict:
     """Analyse les patterns d'accès aux indicateurs dans le code stream."""
     all_code = []
     for s in sessions:
@@ -268,30 +272,32 @@ def analyze_indicator_access_patterns(sessions: List[dict]) -> dict:
 
     # indicators["xxx"] and indicators["xxx"]["yyy"]
     dict_access = Counter()
-    dict_access_re = re.compile(r'indicators\[.(\w+).\](?:\[.(\w+).\])?')
+    dict_access_re = re.compile(r"indicators\[.(\w+).\](?:\[.(\w+).\])?")
     for line in all_code:
         for m in dict_access_re.finditer(line):
             key = m.group(1)
             subkey = m.group(2)
             if subkey:
-                dict_access[f'{key}.{subkey}'] += 1
+                dict_access[f"{key}.{subkey}"] += 1
             else:
                 dict_access[key] += 1
 
     # Dot-notation access (the bug pattern)
     dot_access = Counter()
-    dot_re = re.compile(r'\b(\w+)\.(upper|lower|middle|tenkan|kijun|senkou_a|senkou_b|'
-                        r'chikou|span_a|span_b|direction|supertrend|signal|histogram|'
-                        r'adx|plus_di|minus_di|swing_high|swing_low|r1|s1|r2|s2|'
-                        r'net_bias|smart_leg_bullish|smart_leg_bearish|'
-                        r'fast_k|fast_d|slowk|slowd|macd_line|signal_line)\b')
+    dot_re = re.compile(
+        r"\b(\w+)\.(upper|lower|middle|tenkan|kijun|senkou_a|senkou_b|"
+        r"chikou|span_a|span_b|direction|supertrend|signal|histogram|"
+        r"adx|plus_di|minus_di|swing_high|swing_low|r1|s1|r2|s2|"
+        r"net_bias|smart_leg_bullish|smart_leg_bearish|"
+        r"fast_k|fast_d|slowk|slowd|macd_line|signal_line)\b",
+    )
     for line in all_code:
         for m in dot_re.finditer(line):
-            dot_access[f'{m.group(1)}.{m.group(2)}'] += 1
+            dot_access[f"{m.group(1)}.{m.group(2)}"] += 1
 
     # ParameterSpec patterns
     param_spec_patterns = Counter()
-    ps_re = re.compile(r'ParameterSpec\(([^)]+)\)')
+    ps_re = re.compile(r"ParameterSpec\(([^)]+)\)")
     for line in all_code:
         for m in ps_re.finditer(line):
             param_spec_patterns[m.group(1)[:80]] += 1
@@ -303,7 +309,7 @@ def analyze_indicator_access_patterns(sessions: List[dict]) -> dict:
     }
 
 
-def analyze_diagnostics_and_decisions(sessions: List[dict]) -> dict:
+def analyze_diagnostics_and_decisions(sessions: list[dict]) -> dict:
     """Analyse les diagnostics et décisions d'analyse."""
     all_diag = []
     all_analysis = []
@@ -319,14 +325,14 @@ def analyze_diagnostics_and_decisions(sessions: List[dict]) -> dict:
 
     # Diagnostic categories
     diag_cats = Counter()
-    diag_re = re.compile(r'\[DIAG\]\s*(\w+)')
+    diag_re = re.compile(r"\[DIAG\]\s*(\w+)")
     for d in all_diag:
         m = diag_re.search(d)
         if m:
             diag_cats[m.group(1)] += 1
 
     # Analysis decisions
-    decision_re = re.compile(r'decision=(\w+)')
+    decision_re = re.compile(r"decision=(\w+)")
     decisions = Counter()
     for a in all_analysis:
         m = decision_re.search(a)
@@ -345,7 +351,7 @@ def analyze_diagnostics_and_decisions(sessions: List[dict]) -> dict:
     }
 
 
-def analyze_risk_management(sessions: List[dict]) -> dict:
+def analyze_risk_management(sessions: list[dict]) -> dict:
     """Analyse le vocabulaire de gestion du risque."""
     all_risk = []
     for s in sessions:
@@ -358,7 +364,7 @@ def analyze_risk_management(sessions: List[dict]) -> dict:
 
     # ATR patterns
     atr_patterns = Counter()
-    atr_re = re.compile(r'(\d+\.?\d*)\s*x?\s*atr', re.I)
+    atr_re = re.compile(r"(\d+\.?\d*)\s*x?\s*atr", re.IGNORECASE)
     for r in all_risk:
         for m in atr_re.finditer(r):
             atr_patterns[f"{m.group(1)}x ATR"] += 1
@@ -371,14 +377,14 @@ def analyze_risk_management(sessions: List[dict]) -> dict:
     }
 
 
-def analyze_models_and_objectives(sessions: List[dict]) -> dict:
+def analyze_models_and_objectives(sessions: list[dict]) -> dict:
     """Répartition par modèle et type d'objectif."""
     model_counter = Counter()
     obj_lang = Counter()
     for s in sessions:
         model_counter[s["model"] or "unknown"] += 1
         obj = s["objective"]
-        if re.search(r"[àâéèêëïîôùûüçœæ]|(?:stratégie|indicateur|acheter|vendre)", obj, re.I):
+        if re.search(r"[àâéèêëïîôùûüçœæ]|(?:stratégie|indicateur|acheter|vendre)", obj, re.IGNORECASE):
             obj_lang["FR"] += 1
         elif obj:
             obj_lang["EN"] += 1
@@ -389,7 +395,7 @@ def analyze_models_and_objectives(sessions: List[dict]) -> dict:
     }
 
 
-def analyze_indicators_requested(sessions: List[dict]) -> dict:
+def analyze_indicators_requested(sessions: list[dict]) -> dict:
     """Quels indicateurs sont réellement demandés et utilisés."""
     all_inds = Counter()
     for s in sessions:
@@ -404,7 +410,7 @@ def analyze_indicators_requested(sessions: List[dict]) -> dict:
     }
 
 
-def analyze_repetition_patterns(sessions: List[dict]) -> dict:
+def analyze_repetition_patterns(sessions: list[dict]) -> dict:
     """Détecte les patterns de répétition/boucle dans les streams."""
     repetition_events = []
     for s in sessions:
@@ -429,6 +435,7 @@ def analyze_repetition_patterns(sessions: List[dict]) -> dict:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     files = list(iter_real_sessions(ARCHIVES_DIR))
@@ -485,56 +492,56 @@ def main():
     h = report["hypotheses"]
     print(f"\nHypothèses : {h['total_hypotheses']} total, {h['unique_hypotheses']} uniques")
     print(f"  Placeholders détectés : {h['placeholder_count']}")
-    print(f"  Top 20 mots :")
+    print("  Top 20 mots :")
     for w, c in h["top_50_words"][:20]:
         print(f"    {w:25s} {c:4d}")
 
     el = report["entry_logic"]
     print(f"\nLogique d'entrée : {el['total_long']} long, {el['total_short']} short")
-    print(f"  Indicateurs les plus référencés (long) :")
+    print("  Indicateurs les plus référencés (long) :")
     for w, c in el["long_indicators_freq"][:10]:
         print(f"    {w:20s} {c:4d}")
-    print(f"  Mots directionnels dans long :")
+    print("  Mots directionnels dans long :")
     for w, c in el["direction_in_long"][:10]:
         print(f"    {w:20s} {c:4d}")
-    print(f"  Mots directionnels dans short :")
+    print("  Mots directionnels dans short :")
     for w, c in el["direction_in_short"][:10]:
         print(f"    {w:20s} {c:4d}")
 
     ir = report["indicators_requested"]
-    print(f"\nIndicateurs demandés dans proposals :")
+    print("\nIndicateurs demandés dans proposals :")
     for w, c in ir["indicator_frequency"][:15]:
         print(f"    {w:20s} {c:4d}")
 
     ia = report["indicator_access"]
-    print(f"\nAccès dict indicators[] dans le code :")
+    print("\nAccès dict indicators[] dans le code :")
     for w, c in ia["dict_access_top30"][:15]:
         print(f"    {w:35s} {c:4d}")
-    print(f"  Accès dot-notation (pattern de bug) :")
+    print("  Accès dot-notation (pattern de bug) :")
     for w, c in ia["dot_access_top30"][:15]:
         print(f"    {w:35s} {c:4d}")
 
     sl = report["stream_leakage"]
     print(f"\nFuites de prompt / NL dans code : {sl['natural_language_in_code_count']} lignes NL")
-    print(f"  Patterns de fuite détectés :")
+    print("  Patterns de fuite détectés :")
     for w, c in sl["leakage_freq"][:15]:
         print(f"    {w:40s} {c:4d}")
 
     dd = report["diagnostics_decisions"]
-    print(f"\nDiagnostics :")
+    print("\nDiagnostics :")
     for w, c in dd["diagnostic_categories"][:10]:
         print(f"    {w:25s} {c:4d}")
-    print(f"  Décisions d'analyse :")
+    print("  Décisions d'analyse :")
     for w, c in dd["analysis_decisions"]:
         print(f"    {w:15s} {c:4d}")
     print(f"  Warnings: {dd['warn_count']}, Errors: {dd['error_count']}, Fallbacks: {dd['fallback_count']}")
 
     rm = report["risk_management"]
     print(f"\nGestion du risque : {rm['total_risk_entries']} entrées")
-    print(f"  Top mots :")
+    print("  Top mots :")
     for w, c in rm["top_words"][:15]:
         print(f"    {w:20s} {c:4d}")
-    print(f"  Multiplicateurs ATR :")
+    print("  Multiplicateurs ATR :")
     for w, c in rm["atr_multipliers"]:
         print(f"    {w:15s} {c:4d}")
 

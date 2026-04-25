@@ -1,5 +1,4 @@
-"""
-Module-ID: performance.profiler
+"""Module-ID: performance.profiler
 
 Purpose: Profiling cProfile/line_profiler - identifie goulots d'étranglement (CPU, ligne).
 
@@ -29,15 +28,17 @@ import logging
 import os
 import pstats
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
 # line_profiler (optionnel)
 try:
     from line_profiler import LineProfiler
+
     HAS_LINE_PROFILER = True
 except ImportError:
     HAS_LINE_PROFILER = False
@@ -45,6 +46,7 @@ except ImportError:
 # memory_profiler (optionnel)
 try:
     from memory_profiler import memory_usage
+
     HAS_MEMORY_PROFILER = True
 except ImportError:
     HAS_MEMORY_PROFILER = False
@@ -55,16 +57,16 @@ F = TypeVar("F", bound=Callable[..., Any])
 @dataclass
 class ProfileResult:
     """Résultat d'un profiling."""
+
     name: str
     total_time: float
     n_calls: int
-    top_functions: List[Dict[str, Any]]
-    memory_peak_mb: Optional[float] = None
+    top_functions: list[dict[str, Any]]
+    memory_peak_mb: float | None = None
 
 
 class Profiler:
-    """
-    Profiler flexible avec support cProfile et line_profiler.
+    """Profiler flexible avec support cProfile et line_profiler.
 
     Example:
         >>> profiler = Profiler("backtest_run")
@@ -75,21 +77,22 @@ class Profiler:
         >>> profiler.stop()
         >>> profiler.print_stats(top_n=20)
         >>> profiler.save_report("profile_output.txt")
+
     """
 
-    def __init__(self, name: str = "profile", output_dir: Optional[str] = None):
-        """
-        Initialise le profiler.
+    def __init__(self, name: str = "profile", output_dir: str | None = None):
+        """Initialise le profiler.
 
         Args:
             name: Nom du profil (pour fichiers de sortie)
             output_dir: Répertoire de sortie (None = répertoire courant)
+
         """
         self.name = name
-        self.output_dir = Path(output_dir) if output_dir else Path(".")
+        self.output_dir = Path(output_dir) if output_dir else Path()
 
-        self._profiler: Optional[cProfile.Profile] = None
-        self._stats: Optional[pstats.Stats] = None
+        self._profiler: cProfile.Profile | None = None
+        self._stats: pstats.Stats | None = None
         self._start_time: float = 0.0
         self._end_time: float = 0.0
         self._is_running = False
@@ -108,11 +111,11 @@ class Profiler:
         logger.debug(f"Profiler '{self.name}' démarré")
 
     def stop(self) -> ProfileResult:
-        """
-        Arrête le profiling et retourne les résultats.
+        """Arrête le profiling et retourne les résultats.
 
         Returns:
             ProfileResult avec les statistiques
+
         """
         if not self._is_running:
             logger.warning("Profiler non démarré")
@@ -137,14 +140,16 @@ class Profiler:
         top_functions = []
         for func, (cc, nc, tt, ct, callers) in list(self._stats.stats.items())[:20]:
             filename, lineno, name = func
-            top_functions.append({
-                "function": name,
-                "file": filename,
-                "line": lineno,
-                "calls": nc,
-                "total_time": tt,
-                "cumulative_time": ct,
-            })
+            top_functions.append(
+                {
+                    "function": name,
+                    "file": filename,
+                    "line": lineno,
+                    "calls": nc,
+                    "total_time": tt,
+                    "cumulative_time": ct,
+                },
+            )
 
         total_time = self._end_time - self._start_time
         n_calls = sum(s[1] for s in self._stats.stats.values())
@@ -169,32 +174,32 @@ class Profiler:
         return False
 
     def print_stats(self, top_n: int = 20, sort_by: str = "cumulative"):
-        """
-        Affiche les statistiques de profiling.
+        """Affiche les statistiques de profiling.
 
         Args:
             top_n: Nombre de fonctions à afficher
             sort_by: Critère de tri ('cumulative', 'time', 'calls')
+
         """
         if not self._stats:
             logger.warning("Pas de stats disponibles - avez-vous appelé stop()?")
             return
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"PROFILING REPORT: {self.name}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"Total time: {self._end_time - self._start_time:.3f}s")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         self._stats.sort_stats(sort_by)
         self._stats.print_stats(top_n)
 
-    def save_report(self, filename: Optional[str] = None):
-        """
-        Sauvegarde le rapport de profiling.
+    def save_report(self, filename: str | None = None):
+        """Sauvegarde le rapport de profiling.
 
         Args:
             filename: Nom du fichier (None = auto-généré)
+
         """
         if not self._stats:
             logger.warning("Pas de stats disponibles")
@@ -225,15 +230,15 @@ class Profiler:
                 stats.print_stats(50)
             logger.info(f"Rapport sauvé: {filepath}")
 
-    def get_slowest_functions(self, n: int = 10) -> List[Dict[str, Any]]:
-        """
-        Retourne les N fonctions les plus lentes.
+    def get_slowest_functions(self, n: int = 10) -> list[dict[str, Any]]:
+        """Retourne les N fonctions les plus lentes.
 
         Args:
             n: Nombre de fonctions
 
         Returns:
             Liste de dicts avec infos sur chaque fonction
+
         """
         if not self._stats:
             return []
@@ -243,22 +248,23 @@ class Profiler:
         slowest = []
         for func, (cc, nc, tt, ct, callers) in list(self._stats.stats.items())[:n]:
             filename, lineno, name = func
-            slowest.append({
-                "function": name,
-                "file": os.path.basename(filename),
-                "line": lineno,
-                "calls": nc,
-                "total_time_ms": tt * 1000,
-                "cumulative_time_ms": ct * 1000,
-                "time_per_call_ms": (ct / nc * 1000) if nc > 0 else 0,
-            })
+            slowest.append(
+                {
+                    "function": name,
+                    "file": os.path.basename(filename),
+                    "line": lineno,
+                    "calls": nc,
+                    "total_time_ms": tt * 1000,
+                    "cumulative_time_ms": ct * 1000,
+                    "time_per_call_ms": (ct / nc * 1000) if nc > 0 else 0,
+                },
+            )
 
         return slowest
 
 
 def profile_function(func: F) -> F:
-    """
-    Décorateur pour profiler une fonction.
+    """Décorateur pour profiler une fonction.
 
     Affiche les statistiques de temps après chaque appel.
 
@@ -270,7 +276,9 @@ def profile_function(func: F) -> F:
         >>>
         >>> result = slow_function()
         # Affiche: slow_function executed in 1.001s
+
     """
+
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         profiler = cProfile.Profile()
@@ -293,7 +301,7 @@ def profile_function(func: F) -> F:
             for i, (key, val) in enumerate(list(stats.stats.items())[:5]):
                 filename, lineno, name = key
                 _, nc, tt, ct, _ = val
-                print(f"   {i+1}. {name}: {ct*1000:.1f}ms ({nc} calls)")
+                print(f"   {i + 1}. {name}: {ct * 1000:.1f}ms ({nc} calls)")
 
         return result
 
@@ -301,8 +309,7 @@ def profile_function(func: F) -> F:
 
 
 def profile_memory(func: F) -> F:
-    """
-    Décorateur pour profiler la mémoire d'une fonction.
+    """Décorateur pour profiler la mémoire d'une fonction.
 
     Nécessite memory_profiler installé.
 
@@ -311,6 +318,7 @@ def profile_memory(func: F) -> F:
         >>> def memory_hungry():
         ...     data = [i for i in range(1000000)]
         ...     return len(data)
+
     """
     if not HAS_MEMORY_PROFILER:
         logger.warning("memory_profiler non disponible - décorateur ignoré")
@@ -337,13 +345,13 @@ def profile_memory(func: F) -> F:
 
 
 class TimingContext:
-    """
-    Context manager simple pour mesurer le temps.
+    """Context manager simple pour mesurer le temps.
 
     Example:
         >>> with TimingContext("data_loading"):
         ...     df = pd.read_csv("large_file.csv")
         # Affiche: data_loading: 2.345s
+
     """
 
     def __init__(self, name: str, verbose: bool = True):
@@ -363,8 +371,7 @@ class TimingContext:
 
 
 class LineProfilerWrapper:
-    """
-    Wrapper pour line_profiler avec API simplifiée.
+    """Wrapper pour line_profiler avec API simplifiée.
 
     Nécessite line_profiler installé.
 
@@ -374,17 +381,17 @@ class LineProfilerWrapper:
         >>>
         >>> lp.run(my_slow_function, arg1, arg2)
         >>> lp.print_stats()
+
     """
 
     def __init__(self):
         if not HAS_LINE_PROFILER:
             raise ImportError(
-                "line_profiler non installé. "
-                "Installez avec: pip install line_profiler"
+                "line_profiler non installé. Installez avec: pip install line_profiler",
             )
 
         self._profiler = LineProfiler()
-        self._functions: List[Callable] = []
+        self._functions: list[Callable] = []
 
     def add_function(self, func: Callable):
         """Ajoute une fonction à profiler."""
@@ -392,8 +399,7 @@ class LineProfilerWrapper:
         self._functions.append(func)
 
     def run(self, func: Callable, *args, **kwargs) -> Any:
-        """
-        Exécute une fonction avec profiling ligne par ligne.
+        """Exécute une fonction avec profiling ligne par ligne.
 
         Args:
             func: Fonction à exécuter
@@ -401,6 +407,7 @@ class LineProfilerWrapper:
 
         Returns:
             Résultat de la fonction
+
         """
         if func not in self._functions:
             self.add_function(func)
@@ -411,7 +418,7 @@ class LineProfilerWrapper:
         """Affiche les statistiques ligne par ligne."""
         self._profiler.print_stats()
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Retourne les statistiques sous forme de dict."""
         stats = {}
 
@@ -420,11 +427,13 @@ class LineProfilerWrapper:
 
             lines = []
             for lineno, nhits, time_ns in timings:
-                lines.append({
-                    "line": lineno,
-                    "hits": nhits,
-                    "time_us": time_ns / 1000,  # ns -> us
-                })
+                lines.append(
+                    {
+                        "line": lineno,
+                        "hits": nhits,
+                        "time_us": time_ns / 1000,  # ns -> us
+                    },
+                )
 
             stats[name] = {
                 "file": filename,
@@ -437,14 +446,14 @@ class LineProfilerWrapper:
 
 # ======================== Fonctions utilitaires ========================
 
+
 def run_with_profiling(
     func: Callable,
     *args,
-    output_file: Optional[str] = None,
-    **kwargs
+    output_file: str | None = None,
+    **kwargs,
 ) -> Any:
-    """
-    Exécute une fonction avec profiling complet.
+    """Exécute une fonction avec profiling complet.
 
     Args:
         func: Fonction à profiler
@@ -454,6 +463,7 @@ def run_with_profiling(
 
     Returns:
         Résultat de la fonction
+
     """
     profiler = Profiler(func.__name__)
     profiler.start()
@@ -475,10 +485,9 @@ def benchmark_function(
     *args,
     n_runs: int = 10,
     warmup: int = 2,
-    **kwargs
-) -> Dict[str, float]:
-    """
-    Benchmark une fonction avec statistiques.
+    **kwargs,
+) -> dict[str, float]:
+    """Benchmark une fonction avec statistiques.
 
     Args:
         func: Fonction à benchmarker
@@ -489,6 +498,7 @@ def benchmark_function(
 
     Returns:
         Dict avec min, max, mean, std des temps
+
     """
     import statistics
 

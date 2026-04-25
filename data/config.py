@@ -1,5 +1,4 @@
-"""
-Module-ID: data.config
+"""Module-ID: data.config
 
 Purpose: Configuration et logique métier pour la gestion des données OHLCV.
          Extraction de la logique depuis ui/sidebar.py (DDD refactoring).
@@ -26,7 +25,7 @@ import random
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from functools import lru_cache
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, NamedTuple
 
 from utils.log import get_logger
 
@@ -44,49 +43,62 @@ RANDOM_SLOTS_COUNT = 6
 
 # Priorité des timeframes pour sélection intelligente
 TIMEFRAME_PRIORITY_MAP = {
-    "1m": 1, "3m": 2, "5m": 3, "15m": 4, "30m": 5,
-    "1h": 6, "2h": 7, "4h": 8, "6h": 9, "8h": 10, "12h": 11,
-    "1d": 12, "3d": 13, "1w": 14, "1M": 15
+    "1m": 1,
+    "3m": 2,
+    "5m": 3,
+    "15m": 4,
+    "30m": 5,
+    "1h": 6,
+    "2h": 7,
+    "4h": 8,
+    "6h": 9,
+    "8h": 10,
+    "12h": 11,
+    "1d": 12,
+    "3d": 13,
+    "1w": 14,
+    "1M": 15,
 }
 
 # Facteur de fréquence de trading par timeframe (opportunités relatives)
 TIMEFRAME_FREQUENCY_FACTOR = {
-    "1m": 1440,   # 1440 barres/jour
-    "3m": 480,    # 480 barres/jour
-    "5m": 288,    # 288 barres/jour
-    "15m": 96,    # 96 barres/jour
-    "30m": 48,    # 48 barres/jour
-    "1h": 24,     # 24 barres/jour
-    "2h": 12,     # 12 barres/jour
-    "4h": 6,      # 6 barres/jour
-    "6h": 4,      # 4 barres/jour
-    "8h": 3,      # 3 barres/jour
-    "12h": 2,     # 2 barres/jour
-    "1d": 1,      # 1 barre/jour
-    "3d": 0.33,   # 0.33 barre/jour
-    "1w": 0.14,   # 0.14 barre/jour
-    "1M": 0.03    # 0.03 barre/jour
+    "1m": 1440,  # 1440 barres/jour
+    "3m": 480,  # 480 barres/jour
+    "5m": 288,  # 288 barres/jour
+    "15m": 96,  # 96 barres/jour
+    "30m": 48,  # 48 barres/jour
+    "1h": 24,  # 24 barres/jour
+    "2h": 12,  # 12 barres/jour
+    "4h": 6,  # 6 barres/jour
+    "6h": 4,  # 4 barres/jour
+    "8h": 3,  # 3 barres/jour
+    "12h": 2,  # 2 barres/jour
+    "1d": 1,  # 1 barre/jour
+    "3d": 0.33,  # 0.33 barre/jour
+    "1w": 0.14,  # 0.14 barre/jour
+    "1M": 0.03,  # 0.03 barre/jour
 }
 
 # Catégorisation des timeframes pour analyse indépendante
 TIMEFRAME_CATEGORIES = {
-    "scalping": ["1m", "3m", "5m"],           # Trading haute fréquence
-    "intraday": ["15m", "30m", "1h", "2h"],   # Trading intraday
-    "swing": ["4h", "6h", "8h", "12h"],        # Swing trading
-    "position": ["1d", "3d", "1w", "1M"]       # Position trading
+    "scalping": ["1m", "3m", "5m"],  # Trading haute fréquence
+    "intraday": ["15m", "30m", "1h", "2h"],  # Trading intraday
+    "swing": ["4h", "6h", "8h", "12h"],  # Swing trading
+    "position": ["1d", "3d", "1w", "1M"],  # Position trading
 }
 
 # Facteurs de tolérance aux gaps par catégorie
 CATEGORY_GAP_TOLERANCE = {
-    "scalping": 0.02,    # 2% de gaps max (très sensible)
-    "intraday": 0.05,    # 5% de gaps max (sensible)
-    "swing": 0.10,       # 10% de gaps max (modéré)
-    "position": 0.20     # 20% de gaps max (tolérant)
+    "scalping": 0.02,  # 2% de gaps max (très sensible)
+    "intraday": 0.05,  # 5% de gaps max (sensible)
+    "swing": 0.10,  # 10% de gaps max (modéré)
+    "position": 0.20,  # 20% de gaps max (tolérant)
 }
 
 
 class OptimalPeriod(NamedTuple):
     """Période optimale avec métadonnées de qualité."""
+
     start_date: pd.Timestamp
     end_date: pd.Timestamp
     completeness_score: float  # 0-100%
@@ -95,22 +107,24 @@ class OptimalPeriod(NamedTuple):
     avg_data_density: float
     description: str
     category: str = "mixed"  # Catégorie de timeframe
-    timeframes: List[str] = None  # Timeframes concernés
+    timeframes: list[str] = None  # Timeframes concernés
 
 
 class CategoryAnalysis(NamedTuple):
     """Analyse par catégorie de timeframes."""
+
     category: str
-    timeframes: List[str]
-    symbols: List[str]
-    optimal_periods: List[OptimalPeriod]
-    best_period: Optional[OptimalPeriod]
+    timeframes: list[str]
+    symbols: list[str]
+    optimal_periods: list[OptimalPeriod]
+    best_period: OptimalPeriod | None
     data_quality_score: float
     trading_opportunities_score: float
 
 
 class DataGap(NamedTuple):
     """Représente un gap dans les données."""
+
     start: pd.Timestamp
     end: pd.Timestamp
     duration_days: float
@@ -122,16 +136,18 @@ class DataGap(NamedTuple):
 # DATA CLASSES
 # ============================================================================
 
+
 @dataclass
 class DataAvailabilityResult:
     """Résultat du scan de disponibilité des données."""
-    availability: Dict[Tuple[str, str], Tuple[pd.Timestamp, pd.Timestamp]] = field(default_factory=dict)
-    missing_data: List[str] = field(default_factory=list)
-    common_start: Optional[pd.Timestamp] = None
-    common_end: Optional[pd.Timestamp] = None
+
+    availability: dict[tuple[str, str], tuple[pd.Timestamp, pd.Timestamp]] = field(default_factory=dict)
+    missing_data: list[str] = field(default_factory=list)
+    common_start: pd.Timestamp | None = None
+    common_end: pd.Timestamp | None = None
     has_common_range: bool = False
-    rows: List[Dict[str, Any]] = field(default_factory=list)
-    optimal_periods: List[OptimalPeriod] = field(default_factory=list)
+    rows: list[dict[str, Any]] = field(default_factory=list)
+    optimal_periods: list[OptimalPeriod] = field(default_factory=list)
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convertit les lignes en DataFrame pour affichage."""
@@ -139,7 +155,7 @@ class DataAvailabilityResult:
             return pd.DataFrame()
         return pd.DataFrame(self.rows)
 
-    def get_best_period(self) -> Optional[OptimalPeriod]:
+    def get_best_period(self) -> OptimalPeriod | None:
         """Retourne la meilleure période optimale si disponible."""
         return self.optimal_periods[0] if self.optimal_periods else None
 
@@ -147,9 +163,10 @@ class DataAvailabilityResult:
 @dataclass
 class PeriodValidationResult:
     """Résultat de la validation d'une période."""
-    tokens_ok: List[str] = field(default_factory=list)
-    tokens_partial: List[str] = field(default_factory=list)
-    tokens_missing: List[str] = field(default_factory=list)
+
+    tokens_ok: list[str] = field(default_factory=list)
+    tokens_partial: list[str] = field(default_factory=list)
+    tokens_missing: list[str] = field(default_factory=list)
     all_ok: bool = False
 
 
@@ -157,7 +174,8 @@ class PeriodValidationResult:
 # DATA DISCOVERY FUNCTIONS
 # ============================================================================
 
-def _load_ohlcv_silent(symbol: str, timeframe: str) -> Optional[pd.DataFrame]:
+
+def _load_ohlcv_silent(symbol: str, timeframe: str) -> pd.DataFrame | None:
     """Charge OHLCV sans logs (utilisé pour analyse des gaps/metadata)."""
     from data.loader import _find_data_file, _normalize_ohlcv, _read_file
 
@@ -174,9 +192,8 @@ def _load_ohlcv_silent(symbol: str, timeframe: str) -> Optional[pd.DataFrame]:
 def _get_range_and_gaps(
     symbol: str,
     timeframe: str,
-) -> Tuple[Optional[pd.Timestamp], Optional[pd.Timestamp], Tuple["DataGap", ...]]:
-    """
-    Retourne plage + gaps avec un seul chargement (cache en mémoire).
+) -> tuple[pd.Timestamp | None, pd.Timestamp | None, tuple[DataGap, ...]]:
+    """Retourne plage + gaps avec un seul chargement (cache en mémoire).
 
     Objectif: éviter les multiples load_ohlcv() et leurs logs.
     """
@@ -207,7 +224,7 @@ def _get_range_and_gaps(
         time_diffs = df.index[1:] - df.index[:-1]
         gap_indices = time_diffs > gap_threshold
 
-        gaps: List[DataGap] = []
+        gaps: list[DataGap] = []
         if gap_indices.any():
             gap_positions = np.where(gap_indices)[0]
 
@@ -217,13 +234,15 @@ def _get_range_and_gaps(
                 duration_days = (gap_end - gap_start).total_seconds() / (24 * 3600)
 
                 if duration_days > 0.1:  # Ignorer gaps < 2.4h
-                    gaps.append(DataGap(
-                        start=gap_start,
-                        end=gap_end,
-                        duration_days=duration_days,
-                        token=symbol,
-                        timeframe=timeframe
-                    ))
+                    gaps.append(
+                        DataGap(
+                            start=gap_start,
+                            end=gap_end,
+                            duration_days=duration_days,
+                            token=symbol,
+                            timeframe=timeframe,
+                        ),
+                    )
 
         gaps_sorted = tuple(sorted(gaps, key=lambda g: g.duration_days, reverse=True))
         return df.index[0], df.index[-1], gaps_sorted
@@ -231,9 +250,8 @@ def _get_range_and_gaps(
         return None, None, tuple()
 
 
-def get_data_date_range(symbol: str, timeframe: str) -> Optional[Tuple[pd.Timestamp, pd.Timestamp]]:
-    """
-    Récupère la plage de dates disponibles pour un symbole/timeframe.
+def get_data_date_range(symbol: str, timeframe: str) -> tuple[pd.Timestamp, pd.Timestamp] | None:
+    """Récupère la plage de dates disponibles pour un symbole/timeframe.
 
     Args:
         symbol: Le symbole (ex: "BTCUSDC")
@@ -241,6 +259,7 @@ def get_data_date_range(symbol: str, timeframe: str) -> Optional[Tuple[pd.Timest
 
     Returns:
         Tuple (start, end) ou None si données indisponibles
+
     """
     start_ts, end_ts, _ = _get_range_and_gaps(symbol, timeframe)
     if start_ts is None or end_ts is None:
@@ -251,11 +270,10 @@ def get_data_date_range(symbol: str, timeframe: str) -> Optional[Tuple[pd.Timest
 def check_data_completeness(
     symbol: str,
     timeframe: str,
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None
-) -> Tuple[bool, str, int]:
-    """
-    Vérifie la complétude des données dans une plage spécifique.
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> tuple[bool, str, int]:
+    """Vérifie la complétude des données dans une plage spécifique.
 
     Cette fonction charge effectivement les données avec filtrage pour détecter
     les trous ou données manquantes que la simple plage début/fin ne révèle pas.
@@ -271,6 +289,7 @@ def check_data_completeness(
         - is_complete: True si données complètes dans la plage
         - message: Description de l'état des données
         - actual_rows: Nombre de barres effectivement disponibles
+
     """
     try:
         from data.loader import load_ohlcv
@@ -316,17 +335,15 @@ def check_data_completeness(
         if completeness_ratio >= 0.5:
             message = f"✅ Données complètes: {actual_rows} barres sur {period_days} jours"
             return True, message, actual_rows
-        else:
-            message = f"⚠️ Données incomplètes: {actual_rows} barres (attendu ~{expected_bars})"
-            return False, message, actual_rows
+        message = f"⚠️ Données incomplètes: {actual_rows} barres (attendu ~{expected_bars})"
+        return False, message, actual_rows
 
     except Exception as e:
-        return False, f"❌ Erreur chargement: {str(e)}", 0
+        return False, f"❌ Erreur chargement: {e!s}", 0
 
 
-def analyze_data_gaps(symbol: str, timeframe: str) -> List[DataGap]:
-    """
-    Analyse les gaps/trous dans les données d'un token/timeframe.
+def analyze_data_gaps(symbol: str, timeframe: str) -> list[DataGap]:
+    """Analyse les gaps/trous dans les données d'un token/timeframe.
 
     Args:
         symbol: Le symbole (ex: "BTCUSDC")
@@ -334,19 +351,19 @@ def analyze_data_gaps(symbol: str, timeframe: str) -> List[DataGap]:
 
     Returns:
         Liste des gaps détectés, triés par durée décroissante
+
     """
     _, _, gaps = _get_range_and_gaps(symbol, timeframe)
     return list(gaps)
 
 
 def find_optimal_periods(
-    symbols: List[str],
-    timeframes: List[str],
+    symbols: list[str],
+    timeframes: list[str],
     min_period_days: int = 30,
-    max_periods: int = 3
-) -> List[OptimalPeriod]:
-    """
-    Trouve les périodes optimales avec tolérance aux gaps selon les timeframes.
+    max_periods: int = 3,
+) -> list[OptimalPeriod]:
+    """Trouve les périodes optimales avec tolérance aux gaps selon les timeframes.
 
     Analyse intelligente qui :
     1. Scan les gaps de tous les tokens/timeframes
@@ -363,6 +380,7 @@ def find_optimal_periods(
 
     Returns:
         Liste des périodes optimales, triées par score décroissant
+
     """
     try:
         # 0. Déterminer la tolérance aux gaps selon les timeframes
@@ -426,7 +444,9 @@ def find_optimal_periods(
 
                 if gap_days > gap_threshold_days:
                     major_gaps.append((gap.start, gap.end, gap_days))
-                    logger.debug(f"   Gap majeur: {gap.start.strftime('%Y-%m-%d')} → {gap.end.strftime('%Y-%m-%d')} ({gap_days:.1f}j)")
+                    logger.debug(
+                        f"   Gap majeur: {gap.start.strftime('%Y-%m-%d')} → {gap.end.strftime('%Y-%m-%d')} ({gap_days:.1f}j)",
+                    )
 
         # Trier par date de début
         major_gaps.sort(key=lambda x: x[0])
@@ -444,7 +464,9 @@ def find_optimal_periods(
 
                 if segment_days >= min_period_days:
                     segments.append((current_start, segment_end, segment_days))
-                    logger.debug(f"   Segment viable: {current_start.strftime('%Y-%m-%d')} → {segment_end.strftime('%Y-%m-%d')} ({segment_days}j)")
+                    logger.debug(
+                        f"   Segment viable: {current_start.strftime('%Y-%m-%d')} → {segment_end.strftime('%Y-%m-%d')} ({segment_days}j)",
+                    )
 
             # Nouveau début après ce gap
             current_start = max(current_start, gap_end)
@@ -454,7 +476,9 @@ def find_optimal_periods(
             segment_days = (global_end - current_start).days
             if segment_days >= min_period_days:
                 segments.append((current_start, global_end, segment_days))
-                logger.debug(f"   Segment final: {current_start.strftime('%Y-%m-%d')} → {global_end.strftime('%Y-%m-%d')} ({segment_days}j)")
+                logger.debug(
+                    f"   Segment final: {current_start.strftime('%Y-%m-%d')} → {global_end.strftime('%Y-%m-%d')} ({segment_days}j)",
+                )
 
         # 5. Si aucun segment sans gros gaps, prendre toute la plage avec tolérance
         if not segments:
@@ -483,15 +507,14 @@ def find_optimal_periods(
 
                     for gap in gaps:
                         # Gap chevauche-t-il le segment ?
-                        if (gap.start < segment_end and gap.end > segment_start):
+                        if gap.start < segment_end and gap.end > segment_start:
                             gap_days = (gap.end - gap.start).days
                             gap_threshold_days = segment_days * gap_tolerance
 
                             if gap_days > gap_threshold_days:
                                 has_major_gaps = True
                                 break
-                            else:
-                                tolerated_gaps += 1
+                            tolerated_gaps += 1
 
                     if not has_major_gaps:
                         tokens_complete += 1
@@ -532,15 +555,17 @@ def find_optimal_periods(
                 if tolerated_gaps > 0:
                     description += f", {tolerated_gaps} gaps tolérés"
 
-                scored_periods.append(OptimalPeriod(
-                    start_date=segment_start,
-                    end_date=segment_end,
-                    completeness_score=completeness_score,
-                    tokens_complete=tokens_complete,
-                    tokens_total=tokens_total,
-                    avg_data_density=data_density / 100.0,
-                    description=description
-                ))
+                scored_periods.append(
+                    OptimalPeriod(
+                        start_date=segment_start,
+                        end_date=segment_end,
+                        completeness_score=completeness_score,
+                        tokens_complete=tokens_complete,
+                        tokens_total=tokens_total,
+                        avg_data_density=data_density / 100.0,
+                        description=description,
+                    ),
+                )
 
         # 7. Trier par score et déduplicquer les périodes similaires
         scored_periods.sort(key=lambda p: p.completeness_score * p.avg_data_density, reverse=True)
@@ -572,15 +597,15 @@ def find_optimal_periods(
 def _build_segments_from_gaps(
     data_start: pd.Timestamp,
     data_end: pd.Timestamp,
-    gaps: List[DataGap],
+    gaps: list[DataGap],
     gap_threshold_days: float,
     min_period_days: int,
-) -> List[Tuple[pd.Timestamp, pd.Timestamp]]:
+) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
     """Découpe une plage de données en segments en excluant les gaps majeurs."""
     if data_start >= data_end:
         return []
 
-    segments: List[Tuple[pd.Timestamp, pd.Timestamp]] = []
+    segments: list[tuple[pd.Timestamp, pd.Timestamp]] = []
     current_start = data_start
     for gap in sorted(gaps, key=lambda g: g.start):
         gap_days = (gap.end - gap.start).days
@@ -597,12 +622,12 @@ def _build_segments_from_gaps(
 
 
 def _intersect_segments(
-    left: List[Tuple[pd.Timestamp, pd.Timestamp]],
-    right: List[Tuple[pd.Timestamp, pd.Timestamp]],
+    left: list[tuple[pd.Timestamp, pd.Timestamp]],
+    right: list[tuple[pd.Timestamp, pd.Timestamp]],
     min_period_days: int,
-) -> List[Tuple[pd.Timestamp, pd.Timestamp]]:
+) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
     """Intersecte deux listes de segments et filtre par durée minimale."""
-    intersections: List[Tuple[pd.Timestamp, pd.Timestamp]] = []
+    intersections: list[tuple[pd.Timestamp, pd.Timestamp]] = []
     for left_start, left_end in left:
         for right_start, right_end in right:
             start = max(left_start, right_start)
@@ -613,11 +638,11 @@ def _intersect_segments(
 
 
 def _estimate_segment_density(
-    symbols: List[str],
+    symbols: list[str],
     timeframe: str,
     segment_start: pd.Timestamp,
     segment_end: pd.Timestamp,
-    gaps_by_symbol: Dict[str, List[DataGap]],
+    gaps_by_symbol: dict[str, list[DataGap]],
 ) -> float:
     """Estime la densité des données dans un segment via les gaps."""
     segment_hours = max(1.0, (segment_end - segment_start).total_seconds() / 3600.0)
@@ -636,12 +661,11 @@ def _estimate_segment_density(
 
 
 def find_longest_common_period_for_timeframe(
-    symbols: List[str],
+    symbols: list[str],
     timeframe: str,
     min_period_days: int,
-) -> List[OptimalPeriod]:
-    """
-    Trouve la plus longue période commune consécutive pour un timeframe.
+) -> list[OptimalPeriod]:
+    """Trouve la plus longue période commune consécutive pour un timeframe.
 
     Procédure:
     - Pour chaque token, découpe sa plage en segments sans gaps majeurs.
@@ -654,8 +678,8 @@ def find_longest_common_period_for_timeframe(
     category = get_timeframe_category(timeframe)
     gap_tolerance = CATEGORY_GAP_TOLERANCE.get(category, 0.10)
 
-    segments_by_symbol: Dict[str, List[Tuple[pd.Timestamp, pd.Timestamp]]] = {}
-    gaps_by_symbol: Dict[str, List[DataGap]] = {}
+    segments_by_symbol: dict[str, list[tuple[pd.Timestamp, pd.Timestamp]]] = {}
+    gaps_by_symbol: dict[str, list[DataGap]] = {}
 
     for symbol in symbols:
         date_range = get_data_date_range(symbol, timeframe)
@@ -715,25 +739,25 @@ def find_longest_common_period_for_timeframe(
             description=description,
             category=category,
             timeframes=[timeframe],
-        )
+        ),
     ]
 
 
-def categorize_timeframes(timeframes: List[str]) -> Dict[str, List[str]]:
-    """
-    Catégorise les timeframes selon leur durée.
+def categorize_timeframes(timeframes: list[str]) -> dict[str, list[str]]:
+    """Catégorise les timeframes selon leur durée.
 
     Args:
         timeframes: Liste des timeframes à catégoriser
 
     Returns:
         Dict avec clés 'scalping', 'intraday', 'swing', 'position'
+
     """
     categories = {
-        'scalping': [],
-        'intraday': [],
-        'swing': [],
-        'position': []
+        "scalping": [],
+        "intraday": [],
+        "swing": [],
+        "position": [],
     }
 
     for tf in timeframes:
@@ -745,22 +769,20 @@ def categorize_timeframes(timeframes: List[str]) -> Dict[str, List[str]]:
     return categories
 
 
-def get_min_period_days_for_timeframes(timeframes: List[str]) -> int:
-    """
-    Détermine la durée minimale recommandée selon les timeframes sélectionnés.
+def get_min_period_days_for_timeframes(timeframes: list[str]) -> int:
+    """Détermine la durée minimale recommandée selon les timeframes sélectionnés.
 
     Args:
         timeframes: Liste des timeframes à évaluer
 
     Returns:
         Nombre de jours minimum recommandé
+
     """
     if not timeframes:
         return 30
 
-    frequency_factor = sum(
-        TIMEFRAME_FREQUENCY_FACTOR.get(tf, 1) for tf in timeframes
-    )
+    frequency_factor = sum(TIMEFRAME_FREQUENCY_FACTOR.get(tf, 1) for tf in timeframes)
 
     if frequency_factor > 100:  # Timeframes très courts (1m, 5m)
         return 7
@@ -778,13 +800,12 @@ def get_timeframe_category(timeframe: str) -> str:
 
 
 def analyze_by_category(
-    symbols: List[str],
-    timeframes: List[str],
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None
-) -> Dict[str, Any]:
-    """
-    Analyse les données par catégorie de timeframe.
+    symbols: list[str],
+    timeframes: list[str],
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> dict[str, Any]:
+    """Analyse les données par catégorie de timeframe.
 
     Args:
         symbols: Liste des symboles
@@ -794,6 +815,7 @@ def analyze_by_category(
 
     Returns:
         Dict avec analyse par catégorie
+
     """
     categories = categorize_timeframes(timeframes)
     analysis = {}
@@ -814,29 +836,28 @@ def analyze_by_category(
                 symbols=symbols,
                 timeframes=category_timeframes,
                 min_period_days=min_period_days,
-                max_periods=3
+                max_periods=3,
             )
 
         analysis[category] = {
-            'timeframes': category_timeframes,
-            'availability': availability_result,
-            'optimal_periods': optimal_periods,
-            'gap_tolerance': CATEGORY_GAP_TOLERANCE.get(category, 10.0),
-            'frequency_factor': sum(TIMEFRAME_FREQUENCY_FACTOR.get(tf, 1) for tf in category_timeframes),
-            'recommendations': _get_category_recommendations(category, optimal_periods)
+            "timeframes": category_timeframes,
+            "availability": availability_result,
+            "optimal_periods": optimal_periods,
+            "gap_tolerance": CATEGORY_GAP_TOLERANCE.get(category, 10.0),
+            "frequency_factor": sum(TIMEFRAME_FREQUENCY_FACTOR.get(tf, 1) for tf in category_timeframes),
+            "recommendations": _get_category_recommendations(category, optimal_periods),
         }
 
     return analysis
 
 
 def analyze_by_timeframe(
-    symbols: List[str],
-    timeframes: List[str],
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None
-) -> Dict[str, Any]:
-    """
-    Analyse les données par timeframe (plage commune par TF).
+    symbols: list[str],
+    timeframes: list[str],
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> dict[str, Any]:
+    """Analyse les données par timeframe (plage commune par TF).
 
     Args:
         symbols: Liste des symboles
@@ -846,13 +867,14 @@ def analyze_by_timeframe(
 
     Returns:
         Dict avec analyse par timeframe
+
     """
-    analysis: Dict[str, Any] = {}
+    analysis: dict[str, Any] = {}
 
     for timeframe in timeframes:
         availability_result = scan_data_availability(symbols, [timeframe])
 
-        optimal_periods: List[OptimalPeriod] = []
+        optimal_periods: list[OptimalPeriod] = []
         if availability_result.has_common_range:
             min_period_days = get_min_period_days_for_timeframes([timeframe])
             optimal_periods = find_longest_common_period_for_timeframe(
@@ -875,23 +897,23 @@ def analyze_by_timeframe(
     return analysis
 
 
-def find_harmonized_period(category_analysis: Dict[str, Any]) -> Optional[OptimalPeriod]:
-    """
-    Trouve une période harmonisée entre toutes les catégories.
+def find_harmonized_period(category_analysis: dict[str, Any]) -> OptimalPeriod | None:
+    """Trouve une période harmonisée entre toutes les catégories.
 
     Args:
         category_analysis: Résultat d'analyze_by_category()
 
     Returns:
         Période optimale commune ou None
+
     """
     all_periods = []
     all_timeframes = []
 
     # Collecter toutes les périodes et timeframes
     for category, data in category_analysis.items():
-        all_periods.extend(data['optimal_periods'])
-        all_timeframes.extend(data['timeframes'])
+        all_periods.extend(data["optimal_periods"])
+        all_timeframes.extend(data["timeframes"])
 
     if not all_periods:
         return None
@@ -909,13 +931,12 @@ def find_harmonized_period(category_analysis: Dict[str, Any]) -> Optional[Optima
         avg_data_density=best_period.avg_data_density,
         description=f"Période harmonisée (basée sur {best_period.description})",
         category="harmonized",
-        timeframes=all_timeframes
+        timeframes=all_timeframes,
     )
 
 
-def _get_category_recommendations(category: str, optimal_periods: List[OptimalPeriod]) -> List[str]:
-    """
-    Génère des recommandations spécifiques à une catégorie.
+def _get_category_recommendations(category: str, optimal_periods: list[OptimalPeriod]) -> list[str]:
+    """Génère des recommandations spécifiques à une catégorie.
 
     Args:
         category: Nom de la catégorie
@@ -923,6 +944,7 @@ def _get_category_recommendations(category: str, optimal_periods: List[OptimalPe
 
     Returns:
         Liste de recommandations
+
     """
     recommendations = []
 
@@ -932,27 +954,27 @@ def _get_category_recommendations(category: str, optimal_periods: List[OptimalPe
 
     best_period = optimal_periods[0]
 
-    if category == 'scalping':
+    if category == "scalping":
         if best_period.avg_data_density < 0.95:
             recommendations.append("⚠️ Scalping nécessite des données très denses")
         if (best_period.end_date - best_period.start_date).days < 30:
             recommendations.append("⚠️ Période courte pour backtests scalping fiables")
 
-    elif category == 'intraday':
+    elif category == "intraday":
         if best_period.completeness_score < 0.9:
             recommendations.append("⚠️ Gaps de données problématiques pour intraday")
         duration_days = (best_period.end_date - best_period.start_date).days
         if duration_days > 365:
             recommendations.append("✅ Période longue idéale pour intraday")
 
-    elif category == 'swing':
+    elif category == "swing":
         tolerance = CATEGORY_GAP_TOLERANCE.get(category, 10.0)
         if best_period.completeness_score < (100 - tolerance) / 100:
             recommendations.append("⚠️ Gaps importants même pour swing trading")
         else:
             recommendations.append("✅ Gaps acceptables pour swing trading")
 
-    elif category == 'position':
+    elif category == "position":
         if best_period.completeness_score > 0.8:  # Position trading tolère plus de gaps
             recommendations.append("✅ Qualité suffisante pour position trading")
         duration_days = (best_period.end_date - best_period.start_date).days
@@ -962,15 +984,16 @@ def _get_category_recommendations(category: str, optimal_periods: List[OptimalPe
     return recommendations
 
 
-def discover_available_data() -> Tuple[List[str], List[str]]:
-    """
-    Découvre les données disponibles dans le système.
+def discover_available_data() -> tuple[list[str], list[str]]:
+    """Découvre les données disponibles dans le système.
 
     Returns:
         Tuple (liste de symboles, liste de timeframes)
+
     """
     try:
         from data.loader import discover_available_data as _discover
+
         return _discover()
     except (ImportError, AttributeError):
         return (["BTCUSDC", "ETHUSDC"], ["1h", "4h", "1d"])
@@ -980,15 +1003,15 @@ def discover_available_data() -> Tuple[List[str], List[str]]:
 # AVAILABILITY SCANNING
 # ============================================================================
 
+
 def scan_data_availability(
-    symbols: List[str],
-    timeframes: List[str],
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None,
-    find_optimal: bool = True
+    symbols: list[str],
+    timeframes: list[str],
+    start_date: date | None = None,
+    end_date: date | None = None,
+    find_optimal: bool = True,
 ) -> DataAvailabilityResult:
-    """
-    Scanne la disponibilité des données pour toutes les combinaisons symbole/timeframe.
+    """Scanne la disponibilité des données pour toutes les combinaisons symbole/timeframe.
 
     AMÉLIORÉ:
     - Vérifie la complétude réelle des données avec filtrage de dates
@@ -1005,11 +1028,12 @@ def scan_data_availability(
 
     Returns:
         DataAvailabilityResult avec toutes les infos de disponibilité + périodes optimales
+
     """
     result = DataAvailabilityResult()
 
-    all_starts: List[pd.Timestamp] = []
-    all_ends: List[pd.Timestamp] = []
+    all_starts: list[pd.Timestamp] = []
+    all_ends: list[pd.Timestamp] = []
 
     for symbol in symbols:
         for tf in timeframes:
@@ -1028,7 +1052,10 @@ def scan_data_availability(
                 # Si des dates de filtrage sont spécifiées, vérifier la complétude réelle
                 if start_date and end_date:
                     is_complete, message, actual_rows = check_data_completeness(
-                        symbol, tf, start_date, end_date
+                        symbol,
+                        tf,
+                        start_date,
+                        end_date,
                     )
 
                     if is_complete:
@@ -1063,34 +1090,38 @@ def scan_data_availability(
                         missing_pct = 0.0
                         missing_days = 0.0
 
-                result.rows.append({
-                    "Token": symbol,
-                    "TF": tf,
-                    "Début": data_start.strftime("%Y-%m-%d"),
-                    "Fin": data_end.strftime("%Y-%m-%d"),
-                    "Jours": (data_end - data_start).days,
-                    "Couverture %": coverage_pct,
-                    "Manquant %": missing_pct,
-                    "Jours manquants": missing_days,
-                    "Plage commune %": None,
-                    "Status": status,
-                    "Détails": status_msg
-                })
+                result.rows.append(
+                    {
+                        "Token": symbol,
+                        "TF": tf,
+                        "Début": data_start.strftime("%Y-%m-%d"),
+                        "Fin": data_end.strftime("%Y-%m-%d"),
+                        "Jours": (data_end - data_start).days,
+                        "Couverture %": coverage_pct,
+                        "Manquant %": missing_pct,
+                        "Jours manquants": missing_days,
+                        "Plage commune %": None,
+                        "Status": status,
+                        "Détails": status_msg,
+                    },
+                )
             else:
                 result.missing_data.append(f"{symbol}/{tf}")
-                result.rows.append({
-                    "Token": symbol,
-                    "TF": tf,
-                    "Début": "-",
-                    "Fin": "-",
-                    "Jours": 0,
-                    "Couverture %": None,
-                    "Manquant %": None,
-                    "Jours manquants": None,
-                    "Plage commune %": None,
-                    "Status": "❌",
-                    "Détails": "Fichier non trouvé"
-                })
+                result.rows.append(
+                    {
+                        "Token": symbol,
+                        "TF": tf,
+                        "Début": "-",
+                        "Fin": "-",
+                        "Jours": 0,
+                        "Couverture %": None,
+                        "Manquant %": None,
+                        "Jours manquants": None,
+                        "Plage commune %": None,
+                        "Status": "❌",
+                        "Détails": "Fichier non trouvé",
+                    },
+                )
 
     # Calculer la plage commune (intersection)
     if all_starts and all_ends:
@@ -1110,11 +1141,11 @@ def scan_data_availability(
     if find_optimal and len(symbols) > 0 and len(timeframes) > 0:
         optimal_periods = find_optimal_periods(symbols, timeframes)
         # Stocker dans le result pour usage ultérieur
-        if hasattr(result, 'optimal_periods'):
+        if hasattr(result, "optimal_periods"):
             result.optimal_periods = optimal_periods
         else:
             # Ajouter dynamiquement l'attribut
-            setattr(result, 'optimal_periods', optimal_periods)
+            result.optimal_periods = optimal_periods
 
     return result
 
@@ -1123,12 +1154,12 @@ def scan_data_availability(
 # INTELLIGENT DEFAULTS
 # ============================================================================
 
+
 def get_intelligent_timeframe_defaults(
-    available_timeframes: List[str],
-    common_days: Optional[int] = None
-) -> List[str]:
-    """
-    Sélectionne des timeframes par défaut basés sur la plage commune.
+    available_timeframes: list[str],
+    common_days: int | None = None,
+) -> list[str]:
+    """Sélectionne des timeframes par défaut basés sur la plage commune.
 
     Règles:
     - Plage < 30 jours → timeframes courts (15m, 30m, 1h)
@@ -1141,13 +1172,14 @@ def get_intelligent_timeframe_defaults(
 
     Returns:
         Liste de 1-2 timeframes recommandés
+
     """
     if not available_timeframes:
         return []
 
     sorted_tfs = sorted(
         available_timeframes,
-        key=lambda tf: TIMEFRAME_PRIORITY_MAP.get(tf, 999)
+        key=lambda tf: TIMEFRAME_PRIORITY_MAP.get(tf, 999),
     )
 
     if common_days is None or common_days >= 180:
@@ -1169,12 +1201,11 @@ def get_intelligent_timeframe_defaults(
 
 
 def generate_random_token_suggestions(
-    available_tokens: List[str],
-    selected_tokens: List[str],
-    count: int = RANDOM_SLOTS_COUNT
-) -> List[str]:
-    """
-    Génère des suggestions de tokens aléatoires avec anti-doublons.
+    available_tokens: list[str],
+    selected_tokens: list[str],
+    count: int = RANDOM_SLOTS_COUNT,
+) -> list[str]:
+    """Génère des suggestions de tokens aléatoires avec anti-doublons.
 
     Args:
         available_tokens: Tous les tokens disponibles
@@ -1183,6 +1214,7 @@ def generate_random_token_suggestions(
 
     Returns:
         Liste de tokens uniques non sélectionnés
+
     """
     pool = [t for t in available_tokens if t not in selected_tokens]
 
@@ -1196,13 +1228,13 @@ def generate_random_token_suggestions(
 # PERIOD VALIDATION
 # ============================================================================
 
+
 def validate_period_for_tokens(
     start_date: date,
     end_date: date,
-    data_availability: Dict[Tuple[str, str], Tuple[pd.Timestamp, pd.Timestamp]]
+    data_availability: dict[tuple[str, str], tuple[pd.Timestamp, pd.Timestamp]],
 ) -> PeriodValidationResult:
-    """
-    Valide une période sélectionnée contre les données disponibles.
+    """Valide une période sélectionnée contre les données disponibles.
 
     Compare au niveau du jour pour éviter les faux positifs dus aux heures.
 
@@ -1213,6 +1245,7 @@ def validate_period_for_tokens(
 
     Returns:
         PeriodValidationResult avec tokens ok/partiels/manquants
+
     """
     result = PeriodValidationResult()
 
@@ -1224,8 +1257,8 @@ def validate_period_for_tokens(
         token_key = f"{symbol}/{tf}"
 
         # Comparer au niveau du jour
-        data_start_day = data_start.date() if hasattr(data_start, 'date') else data_start
-        data_end_day = data_end.date() if hasattr(data_end, 'date') else data_end
+        data_start_day = data_start.date() if hasattr(data_start, "date") else data_start
+        data_end_day = data_end.date() if hasattr(data_end, "date") else data_end
 
         if end_day < data_start_day or start_day > data_end_day:
             result.tokens_missing.append(token_key)
@@ -1234,11 +1267,7 @@ def validate_period_for_tokens(
         else:
             result.tokens_ok.append(token_key)
 
-    result.all_ok = (
-        len(result.tokens_ok) > 0
-        and len(result.tokens_missing) == 0
-        and len(result.tokens_partial) == 0
-    )
+    result.all_ok = len(result.tokens_ok) > 0 and len(result.tokens_missing) == 0 and len(result.tokens_partial) == 0
 
     return result
 
@@ -1247,15 +1276,16 @@ def validate_period_for_tokens(
 # FORMATTING UTILITIES
 # ============================================================================
 
+
 def format_date_fr(date_obj) -> str:
-    """
-    Formate une date au format français JJ/MM/AAAA.
+    """Formate une date au format français JJ/MM/AAAA.
 
     Args:
         date_obj: datetime.date, pandas.Timestamp ou string
 
     Returns:
         String au format "01/12/2025"
+
     """
     if isinstance(date_obj, str):
         try:
@@ -1263,15 +1293,14 @@ def format_date_fr(date_obj) -> str:
             return parsed.strftime("%d/%m/%Y")
         except (ValueError, TypeError):
             return date_obj
-    elif hasattr(date_obj, 'strftime'):
+    elif hasattr(date_obj, "strftime"):
         return date_obj.strftime("%d/%m/%Y")
     else:
         return str(date_obj)
 
 
 def compute_period_days(start_date: date, end_date: date) -> int:
-    """
-    Calcule le nombre de jours entre deux dates.
+    """Calcule le nombre de jours entre deux dates.
 
     Args:
         start_date: Date de début
@@ -1279,5 +1308,6 @@ def compute_period_days(start_date: date, end_date: date) -> int:
 
     Returns:
         Nombre de jours (inclusif)
+
     """
     return (end_date - start_date).days

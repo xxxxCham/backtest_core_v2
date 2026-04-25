@@ -3,32 +3,14 @@
   "description": "Preset utilisateur derive de 24GB_curated_2026 via la configuration Expert Multi-Role.",
   "derived_from": "24GB_curated_2026",
   "roles": {
-    "idea_llm": {
-      "backend": "ollama",
-      "preferred_models": [
-        "qwen3-48b-savant",
-        "qwen3-coder:30b",
-        "nemotron-cascade-14b-local",
-        "deepseek-coder-33b-local",
-        "gpt-oss-safeguard:20b"
-      ],
-      "fallback_models": [
-        "gemma4:26b",
-        "deepseek-moe-16b-local"
-      ],
-      "required": true,
-      "description": "Recent generalist ideation stack for diverse but testable objectives.",
-      "random_pool_models": [
-        "qwen3-48b-savant",
-        "qwen3-coder:30b",
-        "nemotron-cascade-14b-local",
-        "deepseek-coder-33b-local",
-        "gpt-oss-safeguard:20b"
-      ]
-    },
     "builder_llm": {
       "backend": "ollama",
       "preferred_models": [
+        "gpt-oss:20b",
+        "deepseek-r1:8b",
+        "nemotron-cascade-14b-local"
+      ],
+      "random_pool_models": [
         "gpt-oss:20b",
         "deepseek-r1:8b",
         "nemotron-cascade-14b-local"
@@ -38,63 +20,47 @@
         "gpt-oss:20b"
       ],
       "required": true,
-      "description": "Recent local coding stack for Builder code generation and refactors.",
-      "random_pool_models": [
-        "gpt-oss:20b",
-        "deepseek-r1:8b",
-        "nemotron-cascade-14b-local"
-      ]
+      "description": "Ecrit et ajuste la strategie."
     },
-    "critic_llm": {
+    "supervisor_llm": {
       "backend": "ollama",
       "preferred_models": [
+        "qwen3-48b-savant",
+        "qwen3-coder:30b",
+        "nemotron-cascade-14b-local",
+        "deepseek-coder-33b-local",
+        "gpt-oss-safeguard:20b",
         "deepseek-r1:32b",
         "nemotron-3-nano:30b",
-        "qwen3-48b-savant"
-      ],
-      "fallback_models": [
-        "deepseek-r1:32b",
-        "qwq:32b"
-      ],
-      "required": true,
-      "description": "Combines recent general reasoning with proven critique fallbacks.",
-      "random_pool_models": [
-        "deepseek-r1:32b",
-        "nemotron-3-nano:30b",
-        "qwen3-48b-savant"
-      ]
-    },
-    "risk_llm": {
-      "backend": "ollama",
-      "preferred_models": [
         "deepseek-r1-distill:14b",
         "deepseek-moe-16b-local",
         "mistral:22b",
-        "nemotron-cascade-14b-local"
+        "nemotron-orchestrator-8b",
+        "mistral:7b-instruct"
       ],
-      "fallback_models": [
-        "deepseek-r1-distill:14b"
-      ],
-      "required": true,
-      "description": "Keeps the risk role finance-aware while staying fully local.",
       "random_pool_models": [
+        "qwen3-48b-savant",
+        "qwen3-coder:30b",
+        "nemotron-cascade-14b-local",
+        "deepseek-coder-33b-local",
+        "gpt-oss-safeguard:20b",
+        "deepseek-r1:32b",
+        "nemotron-3-nano:30b",
         "deepseek-r1-distill:14b",
         "deepseek-moe-16b-local",
         "mistral:22b",
-        "nemotron-cascade-14b-local"
-      ]
-    },
-    "execution_router_llm": {
-      "backend": "ollama",
-      "preferred_models": [
         "nemotron-orchestrator-8b",
         "mistral:7b-instruct"
       ],
       "fallback_models": [
-        "deepseek-moe-16b-local"
+        "gemma4:26b",
+        "deepseek-moe-16b-local",
+        "deepseek-r1:32b",
+        "qwq:32b",
+        "deepseek-r1-distill:14b"
       ],
-      "required": false,
-      "description": "Legacy LLM router kept for audit only; the simple multi-LLM mode now uses a deterministic local router."
+      "required": true,
+      "description": "Fusionne generation objectif, critique, risque et decision de boucle."
     }
   },
   "updated_at": "2026-03-15T23:26:55Z",

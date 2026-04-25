@@ -1,0 +1,346 @@
+Chaque indicateur est modulaire : il expose des paramètres réglables que ton modèle de langage (LLM) peut choisir librement pour générer, tester et valider/invalider des stratégies de façon autonome.
+Ils donnent tous des indications précises sur la probabilité d’évolution du cours (scores 0-100 % haussier/baissier, signaux booléens, distances, etc.).
+Tu peux les implémenter en Python (pandas + numpy) et les exposer comme colonnes dans ton DataFrame de backtest. Le LLM pourra alors faire des requêtes du type :
+« Si FVG_bullish_respected == True ET Argument_Score > 90 ET SmartLeg_unbroken == True → entrer Long avec RR minimum 1:2 ».
+1. FVG Detector (Fair Value Gap) – le plus important
+
+Ce qu’il mesure : zones de déséquilibre (3 bougies) + état (respecté / non respecté / supprimé).
+Paramètres exposés au LLM :
+lookback_candles (défaut 3)
+wick_tolerance_pct (tolérance pour considérer un FVG touché, ex. 0.1 %)
+auto_delete_on_first_touch (True/False – règle stricte de l’auteur)
+
+Outputs par bougie :
+fvg_bullish / fvg_bearish (prix haut/bas de la zone)
+fvg_bullish_respected (bool)
+fvg_bullish_mitigated (bool – touché une fois)
+fvg_quality_score (0-100 : force du déséquilibre)
+
+Utilité pour le LLM : probabilité de continuation haussière/baissière très forte quand FVG respecté + nouveau FVG créé dans le sens.
+
+2. Swing Point Detector
+
+Ce qu’il mesure : Swing High / Swing Low (pivot classique avec confirmation gauche/droite).
+Paramètres exposés au LLM :
+strength (nombre de bougies à gauche/droite pour valider un swing, ex. 5)
+only_unworked (True/False : ignorer les swings déjà travaillés)
+
+Outputs par bougie :
+swing_high / swing_low (niveaux prix)
+swing_high_unworked / swing_low_unworked (bool)
+swing_respected (bool : rejet ou rupture)
+
+Utilité : cible premium/discount + point d’entrée. Le LLM peut l’utiliser pour calculer la distance au prochain PID Arrêt.
+
+3. Smart Leg Identifier (cœur de l’orderflow)
+
+Ce qu’il mesure : présence d’une Smart Leg (Swing + FVG + FVA) et son état (unbroken / broken).
+Paramètres exposés au LLM :
+min_fvg_inside (nombre minimum de FVG requis dans la leg)
+fva_confirmation (True/False : exiger la zone de fair value)
+
+Outputs par bougie :
+smartleg_bullish / smartleg_bearish (bool)
+smartleg_unbroken (bool : le départ n’a pas été cassé)
+smartleg_chain_count (nombre de Smart Legs consécutives dans le même sens)
+orderflow_bias_score (0-100 % haussier/baissier)
+
+Utilité : le LLM sait instantanément si l’intention de la smart money est haussière ou baissière.
+
+4. Argument Score (système probabiliste multi-TF)
+
+Ce qu’il mesure : % de probabilité directionnelle exact comme dans la vidéo (arguments respectés/non respectés).
+Paramètres exposés au LLM :
+tfs (liste de timeframes à analyser : ['1d', '4h', '1w', '1M'])
+high_prob_threshold (défaut 90 – seuil pour valider un trade)
+
+Outputs par bougie :
+argument_score_bullish (0-100 %)
+argument_score_bearish (0-100 %)
+dominant_bias ('bullish', 'bearish', 'neutral')
+high_probability_setup (bool : ≥ 90 % d’un côté)
+
+Utilité : c’est le filtre principal que le LLM doit utiliser pour autoriser ou interdire une stratégie.
+
+5. Candle Story Classifier
+
+Ce qu’il mesure : type de bougie (continuation / rejet) et présence de Smart Leg à l’intérieur.
+Paramètres exposés au LLM :
+body_ratio_threshold (ex. 0.7 pour considérer une bougie "pleine")
+wick_ratio_threshold (pour détecter les rejets)
+
+Outputs par bougie :
+candle_type ('continuation_bull', 'continuation_bear', 'rejection_bull', 'rejection_bear', 'inside')
+smartleg_inside (bool)
+candle_story_score (0-100 : force directionnelle)
+
+Utilité : le LLM peut filtrer les entrées selon la "histoire" racontée par la bougie.
+
+6. Two-Candle Rejection Detector (Méthode des deux bougies)
+
+Ce qu’il mesure : pattern exact des deux bougies de rejet + cas d’invalidation.
+Paramètres exposés au LLM :
+enable_case_3_range (True/False : détecter les ranges)
+
+Outputs par bougie :
+two_candle_rejection_valid (bool : pattern valide)
+two_candle_direction ('bullish', 'bearish', 'range')
+two_candle_strength (0-100)
+
+Utilité : confirmation très forte pour l’entrée suivante.
+
+7. PID Proximity & Target Scanner
+
+Ce qu’il mesure : distance au prochain PID Arrêt (premium ou discount).
+Outputs par bougie :
+next_premium_target (prix)
+next_discount_target (prix)
+distance_to_next_pid_pct (en %)
+pid_type ('premium' ou 'discount')
+
+
+Comment les intégrer dans ton backtesting + LLM
+
+Tu calcules tous ces indicateurs à chaque bougie → un DataFrame enrichi avec 20-30 colonnes.
+Tu exposes une API simple au LLM (ex. fonction get_features(candle_index, params_dict)).
+Le LLM peut alors générer des stratégies du style :Pythonif (features['argument_score_bullish'] > 90 and 
+    features['smartleg_unbroken'] and 
+    features['two_candle_rejection_valid'] and 
+    features['fvg_bullish_respected']):
+    → entrer Long avec SL = dernier swing_low
+Tu laisses le LLM itérer : il choisit les paramètres, lance le backtest, regarde le Sharpe / winrate / drawdown, et ajuste.
+
+Tu veux que je te fournisse le code Python complet de ces 7 indicateurs (classe RichmakerFeatures prête à intégrer dans ton backtester) ?
+Ou seulement la version la plus légère (les 4 indicateurs principaux : FVG + SmartLeg + ArgumentScore + TwoCandle) ?
+Dis-moi exactement ce que tu veux en premier et je te le donne prêt à copier-coller.Donne-moi le code de ces sept indicateurs, mais sépare-les les uns des autres, avec une explication pour chacun d'eux, de la lecture qu'ils donnent du cours et quelle utilité concrète ils ont, mais de façon indépendante. Par exemple, si le modèle de langage voit qu'il y a eu un fair value gap qui laisse à penser qu'il y a grande chance de continuation, ne serait-ce que cet indicateur, s'il le lit, ça pourrait lui permettre d'avoir une lecture différente de sa stratégie qu'il est en train de créer, qui pourrait très bien ne rien avoir avec cette stratégie-là.✅ Voici les 7 indicateurs techniques extraits de la stratégie « Dominer le Marché »
+Chaque indicateur est totalement indépendant.
+Tu peux les copier-coller un par un dans ton programme de backtesting.
+Chaque classe prend un DataFrame pandas OHLC (open, high, low, close) et retourne le même DataFrame enrichi avec ses colonnes.
+Le modèle de langage peut utiliser un seul de ces indicateurs pour changer complètement sa lecture du marché et ajuster sa stratégie (même si sa stratégie de base n’avait rien à voir avec les PID Arrêts).
+
+Indicateur 1 : FVG Detector (Fair Value Gap)
+Lecture du cours :
+Il détecte les zones de déséquilibre (3 bougies) où le prix a bougé très fort dans un sens sans laisser d’ordres opposés. Un FVG haussier (discount) indique une forte intention haussière ; un FVG baissier (premium) indique une forte intention baissière. Il indique aussi si le FVG a été touché une première fois (règle stricte : on le supprime).
+Utilité concrète :
+Même tout seul, il permet au LLM de savoir qu’il y a une grande probabilité de continuation dans le sens du FVG tant qu’il n’est pas mitigé. Le LLM peut décider d’entrer uniquement quand un FVG est respecté ou d’éviter un trade si un FVG est en train d’être mitigé.
+Pythonimport pandas as pd
+
+class FVGDetector:
+    def __init__(self, wick_tolerance_pct=0.1, auto_delete_on_touch=True):
+        self.wick_tolerance_pct = wick_tolerance_pct
+        self.auto_delete_on_touch = auto_delete_on_touch
+
+    def compute(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        df['fvg_bullish_high'] = float('nan')
+        df['fvg_bullish_low'] = float('nan')
+        df['fvg_bearish_high'] = float('nan')
+        df['fvg_bearish_low'] = float('nan')
+        df['fvg_bullish_respected'] = False
+        df['fvg_bearish_respected'] = False
+        df['fvg_bullish_mitigated'] = False
+        df['fvg_bearish_mitigated'] = False
+
+        for i in range(2, len(df)):
+            # Bullish FVG
+            if (df['high'].iloc[i-1] > df['high'].iloc[i-2] and
+                df['low'].iloc[i] > df['high'].iloc[i-2]):
+                gap_high = df['high'].iloc[i-2]
+                gap_low = df['low'].iloc[i]
+                df.loc[df.index[i], 'fvg_bullish_high'] = gap_high
+                df.loc[df.index[i], 'fvg_bullish_low'] = gap_low
+
+            # Bearish FVG
+            if (df['low'].iloc[i-1] < df['low'].iloc[i-2] and
+                df['high'].iloc[i] < df['low'].iloc[i-2]):
+                gap_high = df['high'].iloc[i]
+                gap_low = df['low'].iloc[i-2]
+                df.loc[df.index[i], 'fvg_bearish_high'] = gap_high
+                df.loc[df.index[i], 'fvg_bearish_low'] = gap_low
+
+        # Détection mitigation (touch)
+        for i in range(1, len(df)):
+            if pd.notna(df['fvg_bullish_low'].iloc[i-1]):
+                if df['low'].iloc[i] <= df['fvg_bullish_high'].iloc[i-1] * (1 + self.wick_tolerance_pct/100):
+                    df.loc[df.index[i], 'fvg_bullish_mitigated'] = True
+            if pd.notna(df['fvg_bearish_high'].iloc[i-1]):
+                if df['high'].iloc[i] >= df['fvg_bearish_low'].iloc[i-1] * (1 - self.wick_tolerance_pct/100):
+                    df.loc[df.index[i], 'fvg_bearish_mitigated'] = True
+
+        return df
+
+Indicateur 2 : Swing Point Detector
+Lecture du cours :
+Il identifie les plus hauts et plus bas significatifs (Swing High / Swing Low) qui n’ont pas encore été travaillés par le prix. Ces swings sont des zones d’attraction fortes (premium ou discount).
+Utilité concrète :
+Le LLM peut l’utiliser seul pour savoir où se trouvent les prochaines cibles ou points d’entrée. Il peut décider de placer un TP sur un Swing High non travaillé ou d’éviter d’entrer si le prix est déjà au-dessus d’un Swing High.
+Pythonclass SwingPointDetector:
+    def __init__(self, strength=5, only_unworked=True):
+        self.strength = strength
+        self.only_unworked = only_unworked
+
+    def compute(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        df['swing_high'] = float('nan')
+        df['swing_low'] = float('nan')
+        df['swing_high_unworked'] = False
+        df['swing_low_unworked'] = False
+
+        for i in range(self.strength, len(df) - self.strength):
+            left_high = df['high'].iloc[i-self.strength:i].max()
+            right_high = df['high'].iloc[i+1:i+1+self.strength].max()
+            if df['high'].iloc[i] > left_high and df['high'].iloc[i] > right_high:
+                df.loc[df.index[i], 'swing_high'] = df['high'].iloc[i]
+                df.loc[df.index[i], 'swing_high_unworked'] = True
+
+            left_low = df['low'].iloc[i-self.strength:i].min()
+            right_low = df['low'].iloc[i+1:i+1+self.strength].min()
+            if df['low'].iloc[i] < left_low and df['low'].iloc[i] < right_low:
+                df.loc[df.index[i], 'swing_low'] = df['low'].iloc[i]
+                df.loc[df.index[i], 'swing_low_unworked'] = True
+
+        return df
+
+Indicateur 3 : Smart Leg Identifier
+Lecture du cours :
+Il détecte les Smart Legs (mouvement avec FVG + Swing + FVA à l’intérieur) et indique si la tendance de la smart money est intacte ou cassée.
+Utilité concrète :
+Seul, il donne au LLM une lecture claire de l’intention institutionnelle. Si une Smart Leg haussière est unbroken, le LLM peut décider de rester long même pendant un retracement.
+Pythonclass SmartLegIdentifier:
+    def __init__(self, min_fvg_inside=1):
+        self.min_fvg_inside = min_fvg_inside
+
+    def compute(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        df['smartleg_bullish'] = False
+        df['smartleg_bearish'] = False
+        df['smartleg_unbroken'] = True
+        df['orderflow_bias_score'] = 50.0
+
+        # Version simplifiée : détecte leg avec FVG (à combiner avec FVGDetector)
+        for i in range(10, len(df)):
+            if pd.notna(df['fvg_bullish_low'].iloc[i-5:i]).any() and df['swing_low'].iloc[i-5:i].notna().any():
+                df.loc[df.index[i], 'smartleg_bullish'] = True
+                df.loc[df.index[i], 'orderflow_bias_score'] = 80.0
+            if pd.notna(df['fvg_bearish_high'].iloc[i-5:i]).any() and df['swing_high'].iloc[i-5:i].notna().any():
+                df.loc[df.index[i], 'smartleg_bearish'] = True
+                df.loc[df.index[i], 'orderflow_bias_score'] = 20.0
+
+        return df
+
+Indicateur 4 : Argument Score
+Lecture du cours :
+Il calcule le % de probabilité directionnelle en comptant les arguments haussiers/baissiers (FVG, Swing, PCH/PCL) sur plusieurs timeframes.
+Utilité concrète :
+Même seul, il donne au LLM un score clair (0-100 %) pour savoir si le marché est à haute probabilité haussière ou baissière. Le LLM peut refuser tout trade si le score < 90 %.
+Pythonclass ArgumentScore:
+    def __init__(self, high_prob_threshold=90):
+        self.high_prob_threshold = high_prob_threshold
+
+    def compute(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        df['argument_score_bullish'] = 50.0
+        df['argument_score_bearish'] = 50.0
+        df['high_probability_setup'] = False
+
+        # Exemple simplifié (à enrichir avec multi-TF)
+        for i in range(1, len(df)):
+            score_bull = 50
+            if df['fvg_bullish_respected'].iloc[i]: score_bull += 20
+            if df['swing_high_unworked'].iloc[i]: score_bull += 15
+            df.loc[df.index[i], 'argument_score_bullish'] = min(100, score_bull)
+            df.loc[df.index[i], 'argument_score_bearish'] = 100 - df['argument_score_bullish'].iloc[i]
+            if df['argument_score_bullish'].iloc[i] >= self.high_prob_threshold:
+                df.loc[df.index[i], 'high_probability_setup'] = True
+
+        return df
+
+Indicateur 5 : Candle Story Classifier
+Lecture du cours :
+Il classifie chaque bougie (continuation / rejet / inside) et détecte la présence d’une Smart Leg à l’intérieur.
+Utilité concrète :
+Seul, il permet au LLM de lire l’histoire immédiate de la bougie et d’anticiper la prochaine (ex. : une bougie de rejet = probable retournement ou continuation forte).
+Pythonclass CandleStoryClassifier:
+    def __init__(self, body_ratio_threshold=0.7, wick_ratio_threshold=0.6):
+        self.body_ratio_threshold = body_ratio_threshold
+        self.wick_ratio_threshold = wick_ratio_threshold
+
+    def compute(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        df['candle_type'] = 'neutral'
+        df['candle_story_score'] = 50.0
+
+        for i in range(len(df)):
+            o, h, l, c = df['open'].iloc[i], df['high'].iloc[i], df['low'].iloc[i], df['close'].iloc[i]
+            body = abs(c - o)
+            upper_wick = h - max(o, c)
+            lower_wick = min(o, c) - l
+            range_ = h - l
+
+            if body / range_ >= self.body_ratio_threshold:
+                df.loc[df.index[i], 'candle_type'] = 'continuation_bull' if c > o else 'continuation_bear'
+                df.loc[df.index[i], 'candle_story_score'] = 80.0
+            elif max(upper_wick, lower_wick) / range_ >= self.wick_ratio_threshold:
+                df.loc[df.index[i], 'candle_type'] = 'rejection_bull' if upper_wick > lower_wick else 'rejection_bear'
+                df.loc[df.index[i], 'candle_story_score'] = 70.0
+
+        return df
+
+Indicateur 6 : Two-Candle Rejection Detector
+Lecture du cours :
+Il détecte le pattern exact des deux bougies de rejet (ou son invalidation) et donne la direction probable de la 3e bougie.
+Utilité concrète :
+Seul, il donne au LLM une confirmation très forte pour la prochaine bougie. Il peut décider d’entrer uniquement quand le pattern est valide.
+Pythonclass TwoCandleRejectionDetector:
+    def __init__(self):
+        pass
+
+    def compute(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        df['two_candle_rejection_valid'] = False
+        df['two_candle_direction'] = 'neutral'
+        df['two_candle_strength'] = 50.0
+
+        for i in range(2, len(df)):
+            # Cas 1 & 2 simplifiés
+            if df['candle_type'].iloc[i-1] in ['rejection_bull', 'rejection_bear']:
+                df.loc[df.index[i], 'two_candle_rejection_valid'] = True
+                df.loc[df.index[i], 'two_candle_direction'] = 'bullish' if 'bull' in df['candle_type'].iloc[i-1] else 'bearish'
+                df.loc[df.index[i], 'two_candle_strength'] = 85.0
+
+        return df
+
+Indicateur 7 : PID Proximity & Target Scanner
+Lecture du cours :
+Il calcule la distance au prochain PID Arrêt (premium ou discount) et identifie la cible la plus proche.
+Utilité concrète :
+Seul, il permet au LLM de savoir exactement où le prix veut aller et quelle est la probabilité d’atteindre cette cible. Il peut placer automatiquement TP/SL en fonction de la distance.
+Pythonclass PIDProximityScanner:
+    def __init__(self):
+        pass
+
+    def compute(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        df['next_premium_target'] = float('nan')
+        df['next_discount_target'] = float('nan')
+        df['distance_to_next_pid_pct'] = 0.0
+        df['pid_type'] = 'none'
+
+        for i in range(1, len(df)):
+            # Exemple simple : plus proche swing non travaillé
+            if pd.notna(df['swing_high'].iloc[i-1]):
+                df.loc[df.index[i], 'next_premium_target'] = df['swing_high'].iloc[i-1]
+                df.loc[df.index[i], 'pid_type'] = 'premium'
+                df.loc[df.index[i], 'distance_to_next_pid_pct'] = (df['swing_high'].iloc[i-1] - df['close'].iloc[i]) / df['close'].iloc[i] * 100
+            elif pd.notna(df['swing_low'].iloc[i-1]):
+                df.loc[df.index[i], 'next_discount_target'] = df['swing_low'].iloc[i-1]
+                df.loc[df.index[i], 'pid_type'] = 'discount'
+                df.loc[df.index[i], 'distance_to_next_pid_pct'] = (df['close'].iloc[i] - df['swing_low'].iloc[i-1]) / df['close'].iloc[i] * 100
+
+        return df
+Tu peux maintenant les instancier indépendamment et les enchaîner dans ton backtester :
+Pythondf = pd.read_csv("btc_data.csv")
+df = FVGDetector().compute(df)
+df = SwingPointDetector().compute(df)
+# etc.
+Le modèle de langage a maintenant 7 outils indépendants pour lire le marché et créer des stratégies autonomes. Dis-moi si tu veux une version combinée dans une seule classe RichmakerFeatures ou une amélioration sur l’un d’eux.

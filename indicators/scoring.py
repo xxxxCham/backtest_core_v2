@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.scoring
+"""Module-ID: indicators.scoring
 
 Purpose: Calcul score directionnel bull/bear base sur patterns.
 
@@ -16,8 +15,6 @@ Dependencies: pandas, numpy
 Conventions: Score = somme ponderee patterns detectes, normalise 0-1
 """
 
-from typing import Dict
-
 import numpy as np
 import pandas as pd
 
@@ -29,8 +26,7 @@ from .swing import calculate_swing_high, calculate_swing_low
 
 
 def calculate_bull_score(df: pd.DataFrame, **params) -> np.ndarray:
-    """
-    Calcule le score haussier base sur patterns detectes.
+    """Calcule le score haussier base sur patterns detectes.
 
     Composantes:
         +1 si swing_low detecte (support potentiel)
@@ -44,28 +40,29 @@ def calculate_bull_score(df: pd.DataFrame, **params) -> np.ndarray:
 
     Returns:
         Float array (score 0.0-1.0, normalise par max possible)
+
     """
     n = len(df)
     score = np.zeros(n, dtype=float)
 
     # Composantes optionnelles
-    if 'swing_low' in df.columns:
-        score += df['swing_low'].values.astype(float)
+    if "swing_low" in df.columns:
+        score += df["swing_low"].values.astype(float)
     else:
         score += calculate_swing_low(df, **params).astype(float)
 
-    if 'fvg_bullish' in df.columns:
-        score += df['fvg_bullish'].values.astype(float)
+    if "fvg_bullish" in df.columns:
+        score += df["fvg_bullish"].values.astype(float)
     else:
         score += calculate_fvg_bullish(df, **params).astype(float)
 
-    if 'smart_leg_bullish' in df.columns:
-        score += df['smart_leg_bullish'].values.astype(float)
+    if "smart_leg_bullish" in df.columns:
+        score += df["smart_leg_bullish"].values.astype(float)
     else:
         score += calculate_smart_legs_bullish(df, **params).astype(float)
 
-    if 'fva' in df.columns:
-        score += df['fva'].values.astype(float) * 0.5  # Poids reduit
+    if "fva" in df.columns:
+        score += df["fva"].values.astype(float) * 0.5  # Poids reduit
     else:
         score += calculate_fva(df, **params).astype(float) * 0.5
 
@@ -77,8 +74,7 @@ def calculate_bull_score(df: pd.DataFrame, **params) -> np.ndarray:
 
 
 def calculate_bear_score(df: pd.DataFrame, **params) -> np.ndarray:
-    """
-    Calcule le score baissier base sur patterns detectes.
+    """Calcule le score baissier base sur patterns detectes.
 
     Composantes:
         +1 si swing_high detecte (resistance potentielle)
@@ -92,28 +88,29 @@ def calculate_bear_score(df: pd.DataFrame, **params) -> np.ndarray:
 
     Returns:
         Float array (score 0.0-1.0, normalise par max possible)
+
     """
     n = len(df)
     score = np.zeros(n, dtype=float)
 
     # Composantes optionnelles
-    if 'swing_high' in df.columns:
-        score += df['swing_high'].values.astype(float)
+    if "swing_high" in df.columns:
+        score += df["swing_high"].values.astype(float)
     else:
         score += calculate_swing_high(df, **params).astype(float)
 
-    if 'fvg_bearish' in df.columns:
-        score += df['fvg_bearish'].values.astype(float)
+    if "fvg_bearish" in df.columns:
+        score += df["fvg_bearish"].values.astype(float)
     else:
         score += calculate_fvg_bearish(df, **params).astype(float)
 
-    if 'smart_leg_bearish' in df.columns:
-        score += df['smart_leg_bearish'].values.astype(float)
+    if "smart_leg_bearish" in df.columns:
+        score += df["smart_leg_bearish"].values.astype(float)
     else:
         score += calculate_smart_legs_bearish(df, **params).astype(float)
 
-    if 'fva' in df.columns:
-        score += df['fva'].values.astype(float) * 0.5  # Poids reduit
+    if "fva" in df.columns:
+        score += df["fva"].values.astype(float) * 0.5  # Poids reduit
     else:
         score += calculate_fva(df, **params).astype(float) * 0.5
 
@@ -124,33 +121,33 @@ def calculate_bear_score(df: pd.DataFrame, **params) -> np.ndarray:
     return score_normalized
 
 
-def directional_bias(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
-    """
-    Calcule le biais directionnel net.
+def directional_bias(df: pd.DataFrame, **params) -> dict[str, np.ndarray]:
+    """Calcule le biais directionnel net.
 
     Returns:
         Dict avec:
             'bull_score': score haussier 0-1
             'bear_score': score baissier 0-1
             'net_bias': bull_score - bear_score (-1 a +1)
+
     """
     bull = calculate_bull_score(df, **params)
     bear = calculate_bear_score(df, **params)
 
     return {
-        'bull_score': bull,
-        'bear_score': bear,
-        'net_bias': bull - bear
+        "bull_score": bull,
+        "bear_score": bear,
+        "net_bias": bull - bear,
     }
 
 
 register_indicator(
-    name='directional_bias',
+    name="directional_bias",
     function=directional_bias,
     settings_class=None,
-    required_columns=('high', 'low'),
-    description='Directional bias - bull/bear composite score derived from FVG, FVA, swings and smart legs',
+    required_columns=("high", "low"),
+    description="Directional bias - bull/bear composite score derived from FVG, FVA, swings and smart legs",
 )
 
 
-__all__ = ['calculate_bull_score', 'calculate_bear_score', 'directional_bias']
+__all__ = ["calculate_bear_score", "calculate_bull_score", "directional_bias"]

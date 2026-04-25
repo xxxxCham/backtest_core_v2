@@ -1,5 +1,4 @@
-"""
-Module-ID: strategies.rsi_reversal
+"""Module-ID: strategies.rsi_reversal
 
 Purpose: Stratégie mean-reversion basée sur seuils surédapte/survente RSI.
 
@@ -20,7 +19,7 @@ Read-if: Modification seuils RSI, période, ou logique renversement.
 Skip-if: Vous ne changez que d'autres stratégies.
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -31,8 +30,7 @@ from utils.parameters import ParameterSpec
 
 @register_strategy("rsi_reversal")
 class RSIReversalStrategy(StrategyBase):
-    """
-    Stratégie RSI de renversement.
+    """Stratégie RSI de renversement.
 
     Signaux:
         - LONG (+1): RSI < oversold_level (survente → achat)
@@ -49,12 +47,12 @@ class RSIReversalStrategy(StrategyBase):
         super().__init__(name)
 
     @property
-    def required_indicators(self) -> List[str]:
+    def required_indicators(self) -> list[str]:
         """Indicateurs requis par la stratégie."""
         return ["rsi"]
 
     @property
-    def default_params(self) -> Dict[str, Any]:
+    def default_params(self) -> dict[str, Any]:
         """Paramètres par défaut."""
         return {
             "rsi_period": 14,
@@ -64,7 +62,7 @@ class RSIReversalStrategy(StrategyBase):
         }
 
     @property
-    def parameter_specs(self) -> Dict[str, ParameterSpec]:
+    def parameter_specs(self) -> dict[str, ParameterSpec]:
         """Spécifications des paramètres pour l'UI et l'optimisation."""
         return {
             "rsi_period": ParameterSpec(
@@ -73,7 +71,7 @@ class RSIReversalStrategy(StrategyBase):
                 max_val=30,
                 default=14,
                 param_type="int",
-                description="Période du RSI"
+                description="Période du RSI",
             ),
             "oversold_level": ParameterSpec(
                 name="oversold_level",
@@ -81,7 +79,7 @@ class RSIReversalStrategy(StrategyBase):
                 max_val=40,
                 default=30,
                 param_type="int",
-                description="Seuil de survente"
+                description="Seuil de survente",
             ),
             "overbought_level": ParameterSpec(
                 name="overbought_level",
@@ -89,7 +87,7 @@ class RSIReversalStrategy(StrategyBase):
                 max_val=90,
                 default=70,
                 param_type="int",
-                description="Seuil de surachat"
+                description="Seuil de surachat",
             ),
             "leverage": ParameterSpec(
                 name="leverage",
@@ -105,8 +103,8 @@ class RSIReversalStrategy(StrategyBase):
     def get_indicator_params(
         self,
         indicator_name: str,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
         """Mappe les parametres de la strategie vers les indicateurs."""
         if indicator_name == "rsi":
             return {"period": int(params.get("rsi_period", 14))}
@@ -115,11 +113,10 @@ class RSIReversalStrategy(StrategyBase):
     def generate_signals(
         self,
         df: pd.DataFrame,
-        indicators: Dict[str, Any],
-        params: Dict[str, Any]
+        indicators: dict[str, Any],
+        params: dict[str, Any],
     ) -> pd.Series:
-        """
-        Génère les signaux de trading basés sur les niveaux RSI.
+        """Génère les signaux de trading basés sur les niveaux RSI.
 
         Args:
             df: DataFrame OHLCV
@@ -128,6 +125,7 @@ class RSIReversalStrategy(StrategyBase):
 
         Returns:
             Series de signaux (-1, 0, +1)
+
         """
         signals = pd.Series(0.0, index=df.index)
 
@@ -169,11 +167,10 @@ class RSIReversalStrategy(StrategyBase):
     def run(
         self,
         df: pd.DataFrame,
-        indicators: Dict[str, Any],
-        params: Dict[str, Any] = None
+        indicators: dict[str, Any],
+        params: dict[str, Any] = None,
     ) -> StrategyResult:
-        """
-        Exécute la stratégie.
+        """Exécute la stratégie.
 
         Args:
             df: DataFrame OHLCV
@@ -182,6 +179,7 @@ class RSIReversalStrategy(StrategyBase):
 
         Returns:
             StrategyResult avec signaux et métadonnées
+
         """
         if params is None:
             params = self.default_params
@@ -203,7 +201,7 @@ class RSIReversalStrategy(StrategyBase):
                 "rsi_period": params.get("rsi_period", 14),
                 "oversold_level": params.get("oversold_level", 30),
                 "overbought_level": params.get("overbought_level", 70),
-            }
+            },
         )
 
         return self._last_result

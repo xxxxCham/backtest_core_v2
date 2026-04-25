@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.ultimate_oscillator
+"""Module-ID: indicators.ultimate_oscillator
 
 Purpose: Ultimate Oscillator.
 """
@@ -38,15 +37,27 @@ def ultimate_oscillator(
     bp = close_series - true_low
     tr = (true_high - true_low).replace(0.0, np.nan)
 
-    avg1 = bp.rolling(window=max(int(period1), 1), min_periods=max(int(period1), 1)).sum() / tr.rolling(
-        window=max(int(period1), 1), min_periods=max(int(period1), 1)
-    ).sum()
-    avg2 = bp.rolling(window=max(int(period2), 1), min_periods=max(int(period2), 1)).sum() / tr.rolling(
-        window=max(int(period2), 1), min_periods=max(int(period2), 1)
-    ).sum()
-    avg3 = bp.rolling(window=max(int(period3), 1), min_periods=max(int(period3), 1)).sum() / tr.rolling(
-        window=max(int(period3), 1), min_periods=max(int(period3), 1)
-    ).sum()
+    avg1 = (
+        bp.rolling(window=max(int(period1), 1), min_periods=max(int(period1), 1)).sum()
+        / tr.rolling(
+            window=max(int(period1), 1),
+            min_periods=max(int(period1), 1),
+        ).sum()
+    )
+    avg2 = (
+        bp.rolling(window=max(int(period2), 1), min_periods=max(int(period2), 1)).sum()
+        / tr.rolling(
+            window=max(int(period2), 1),
+            min_periods=max(int(period2), 1),
+        ).sum()
+    )
+    avg3 = (
+        bp.rolling(window=max(int(period3), 1), min_periods=max(int(period3), 1)).sum()
+        / tr.rolling(
+            window=max(int(period3), 1),
+            min_periods=max(int(period3), 1),
+        ).sum()
+    )
 
     return (100.0 * (4.0 * avg1 + 2.0 * avg2 + avg3) / 7.0).values
 
@@ -72,7 +83,7 @@ register_indicator(
 
 
 __all__ = [
-    "ultimate_oscillator",
-    "calculate_ultimate_oscillator",
     "UltimateOscillatorSettings",
+    "calculate_ultimate_oscillator",
+    "ultimate_oscillator",
 ]

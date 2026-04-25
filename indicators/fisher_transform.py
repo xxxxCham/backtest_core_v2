@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.fisher_transform
+"""Module-ID: indicators.fisher_transform
 
 Purpose: Fisher Transform.
 """
@@ -56,7 +55,7 @@ register_indicator(
 
 
 __all__ = [
-    "fisher_transform",
-    "calculate_fisher_transform",
     "FisherTransformSettings",
+    "calculate_fisher_transform",
+    "fisher_transform",
 ]

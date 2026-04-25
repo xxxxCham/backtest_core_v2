@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.circuit_breaker
+"""Module-ID: utils.circuit_breaker
 
 Purpose: Circuit Breaker - protection contre cascades d'erreurs répétées.
 
@@ -22,11 +21,12 @@ Skip-if: Vous utilisez juste CircuitBreaker.call().
 
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any
 
 from utils.log import get_logger
 
@@ -35,8 +35,9 @@ logger = get_logger(__name__)
 
 class CircuitState(Enum):
     """États possibles du circuit breaker."""
-    CLOSED = "closed"      # Normal, appels autorisés
-    OPEN = "open"          # Bloqué, appels refusés
+
+    CLOSED = "closed"  # Normal, appels autorisés
+    OPEN = "open"  # Bloqué, appels refusés
     HALF_OPEN = "half_open"  # Test de récupération
 
 
@@ -46,14 +47,13 @@ class CircuitBreakerError(Exception):
     def __init__(self, breaker_name: str, message: str = ""):
         self.breaker_name = breaker_name
         super().__init__(
-            f"Circuit '{breaker_name}' est OUVERT. {message}"
+            f"Circuit '{breaker_name}' est OUVERT. {message}",
         )
 
 
 @dataclass
 class CircuitStats:
-    """
-    Statistiques du circuit breaker.
+    """Statistiques du circuit breaker.
 
     Attributes:
         total_calls: Nombre total d'appels
@@ -64,15 +64,17 @@ class CircuitStats:
         last_success_time: Timestamp dernier succès
         consecutive_failures: Échecs consécutifs actuels
         state_changes: Historique des changements d'état
+
     """
+
     total_calls: int = 0
     successful_calls: int = 0
     failed_calls: int = 0
     rejected_calls: int = 0
-    last_failure_time: Optional[datetime] = None
-    last_success_time: Optional[datetime] = None
+    last_failure_time: datetime | None = None
+    last_success_time: datetime | None = None
     consecutive_failures: int = 0
-    state_changes: List[Dict[str, Any]] = field(default_factory=list)
+    state_changes: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def success_rate(self) -> float:
@@ -108,13 +110,15 @@ class CircuitStats:
 
     def record_state_change(self, from_state: CircuitState, to_state: CircuitState):
         """Enregistre un changement d'état."""
-        self.state_changes.append({
-            "timestamp": datetime.now().isoformat(),
-            "from": from_state.value,
-            "to": to_state.value,
-        })
+        self.state_changes.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "from": from_state.value,
+                "to": to_state.value,
+            },
+        )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "total_calls": self.total_calls,
@@ -124,21 +128,14 @@ class CircuitStats:
             "success_rate": round(self.success_rate, 4),
             "failure_rate": round(self.failure_rate, 4),
             "consecutive_failures": self.consecutive_failures,
-            "last_failure": (
-                self.last_failure_time.isoformat()
-                if self.last_failure_time else None
-            ),
-            "last_success": (
-                self.last_success_time.isoformat()
-                if self.last_success_time else None
-            ),
+            "last_failure": (self.last_failure_time.isoformat() if self.last_failure_time else None),
+            "last_success": (self.last_success_time.isoformat() if self.last_success_time else None),
             "state_changes": len(self.state_changes),
         }
 
 
 class CircuitBreaker:
-    """
-    Circuit Breaker pour protéger les appels à des composants externes.
+    """Circuit Breaker pour protéger les appels à des composants externes.
 
     Example:
         >>> breaker = CircuitBreaker("backtest", failure_threshold=3)
@@ -150,6 +147,7 @@ class CircuitBreaker:
         >>> # Ou manuellement:
         >>> with breaker:
         ...     result = engine.run(params)
+
     """
 
     def __init__(
@@ -158,10 +156,9 @@ class CircuitBreaker:
         failure_threshold: int = 5,
         recovery_timeout: float = 30.0,
         half_open_max_calls: int = 1,
-        excluded_exceptions: Optional[List[Type[Exception]]] = None,
+        excluded_exceptions: list[type[Exception]] | None = None,
     ):
-        """
-        Initialise le circuit breaker.
+        """Initialise le circuit breaker.
 
         Args:
             name: Nom du circuit (pour logging)
@@ -169,6 +166,7 @@ class CircuitBreaker:
             recovery_timeout: Secondes avant tentative de récupération
             half_open_max_calls: Appels autorisés en half-open
             excluded_exceptions: Exceptions qui ne comptent pas comme échec
+
         """
         self.name = name
         self.failure_threshold = failure_threshold
@@ -178,7 +176,7 @@ class CircuitBreaker:
 
         self._state = CircuitState.CLOSED
         self._stats = CircuitStats()
-        self._opened_at: Optional[float] = None
+        self._opened_at: float | None = None
         self._half_open_calls = 0
         self._lock = threading.RLock()
 
@@ -225,8 +223,7 @@ class CircuitBreaker:
         if new_state == CircuitState.OPEN:
             self._opened_at = time.time()
             logger.warning(
-                f"CircuitBreaker '{self.name}' OUVERT "
-                f"(échecs consécutifs: {self._stats.consecutive_failures})"
+                f"CircuitBreaker '{self.name}' OUVERT (échecs consécutifs: {self._stats.consecutive_failures})",
             )
         elif new_state == CircuitState.HALF_OPEN:
             self._half_open_calls = 0
@@ -266,10 +263,10 @@ class CircuitBreaker:
 
             if self._state == CircuitState.CLOSED:
                 return True
-            elif self._state == CircuitState.OPEN:
+            if self._state == CircuitState.OPEN:
                 self._stats.record_rejection()
                 return False
-            elif self._state == CircuitState.HALF_OPEN:
+            if self._state == CircuitState.HALF_OPEN:
                 if self._half_open_calls < self.half_open_max_calls:
                     self._half_open_calls += 1
                     return True
@@ -278,8 +275,7 @@ class CircuitBreaker:
         return False
 
     def call(self, func: Callable, *args, **kwargs) -> Any:
-        """
-        Exécute une fonction à travers le circuit breaker.
+        """Exécute une fonction à travers le circuit breaker.
 
         Args:
             func: Fonction à exécuter
@@ -290,11 +286,12 @@ class CircuitBreaker:
 
         Raises:
             CircuitBreakerError: Si le circuit est ouvert
+
         """
         if not self._can_execute():
             raise CircuitBreakerError(
                 self.name,
-                f"Réessayez dans {self.recovery_timeout}s"
+                f"Réessayez dans {self.recovery_timeout}s",
             )
 
         try:
@@ -306,17 +303,19 @@ class CircuitBreaker:
             raise
 
     def __call__(self, func: Callable) -> Callable:
-        """
-        Décorateur pour protéger une fonction.
+        """Décorateur pour protéger une fonction.
 
         Example:
             >>> @breaker
             >>> def my_function():
             ...     pass
+
         """
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             return self.call(func, *args, **kwargs)
+
         return wrapper
 
     def __enter__(self):
@@ -329,9 +328,8 @@ class CircuitBreaker:
         """Context manager - enregistre succès/échec."""
         if exc_type is None:
             self._handle_success()
-        else:
-            if exc_val is not None:
-                self._handle_failure(exc_val)
+        elif exc_val is not None:
+            self._handle_failure(exc_val)
         return False  # Ne pas supprimer l'exception
 
     def reset(self):
@@ -355,8 +353,7 @@ class CircuitBreaker:
 
 
 class CircuitBreakerRegistry:
-    """
-    Registre central des circuit breakers.
+    """Registre central des circuit breakers.
 
     Permet de gérer plusieurs circuits et d'obtenir des stats globales.
     """
@@ -368,16 +365,15 @@ class CircuitBreakerRegistry:
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
-                cls._instance._breakers: Dict[str, CircuitBreaker] = {}
+                cls._instance._breakers: dict[str, CircuitBreaker] = {}
         return cls._instance
 
     def get_or_create(
         self,
         name: str,
-        **kwargs
+        **kwargs,
     ) -> CircuitBreaker:
-        """
-        Récupère ou crée un circuit breaker.
+        """Récupère ou crée un circuit breaker.
 
         Args:
             name: Nom du circuit
@@ -385,25 +381,26 @@ class CircuitBreakerRegistry:
 
         Returns:
             CircuitBreaker existant ou nouveau
+
         """
         if name not in self._breakers:
             self._breakers[name] = CircuitBreaker(name, **kwargs)
         return self._breakers[name]
 
-    def get(self, name: str) -> Optional[CircuitBreaker]:
+    def get(self, name: str) -> CircuitBreaker | None:
         """Récupère un circuit breaker par son nom."""
         return self._breakers.get(name)
 
-    def list_all(self) -> List[str]:
+    def list_all(self) -> list[str]:
         """Liste tous les circuits enregistrés."""
         return list(self._breakers.keys())
 
-    def get_all_stats(self) -> Dict[str, Dict[str, Any]]:
+    def get_all_stats(self) -> dict[str, dict[str, Any]]:
         """Récupère les stats de tous les circuits."""
         return {
             name: {
                 "state": breaker.state.value,
-                **breaker.stats.to_dict()
+                **breaker.stats.to_dict(),
             }
             for name, breaker in self._breakers.items()
         }
@@ -423,8 +420,7 @@ _registry = CircuitBreakerRegistry()
 
 
 def get_circuit_breaker(name: str, **kwargs) -> CircuitBreaker:
-    """
-    Raccourci pour récupérer/créer un circuit breaker.
+    """Raccourci pour récupérer/créer un circuit breaker.
 
     Args:
         name: Nom du circuit
@@ -432,6 +428,7 @@ def get_circuit_breaker(name: str, **kwargs) -> CircuitBreaker:
 
     Returns:
         CircuitBreaker
+
     """
     return _registry.get_or_create(name, **kwargs)
 
@@ -440,20 +437,20 @@ def circuit_breaker(
     name: str,
     failure_threshold: int = 5,
     recovery_timeout: float = 30.0,
-    **kwargs
+    **kwargs,
 ) -> Callable:
-    """
-    Décorateur pour protéger une fonction avec un circuit breaker.
+    """Décorateur pour protéger une fonction avec un circuit breaker.
 
     Example:
         >>> @circuit_breaker("backtest", failure_threshold=3)
         >>> def run_backtest(params):
         ...     return engine.run(params)
+
     """
     breaker = get_circuit_breaker(
         name,
         failure_threshold=failure_threshold,
         recovery_timeout=recovery_timeout,
-        **kwargs
+        **kwargs,
     )
     return breaker

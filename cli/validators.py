@@ -1,5 +1,4 @@
-"""
-Module-ID: cli.validators
+"""Module-ID: cli.validators
 
 Purpose: Validation des arguments CLI, paramètres et fichiers.
 
@@ -20,7 +19,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any
 
 import pandas as pd
 
@@ -28,13 +27,15 @@ import pandas as pd
 # DATACLASSES RÉSULTATS
 # =============================================================================
 
+
 @dataclass
 class ValidationResult:
     """Résultat d'une validation."""
+
     success: bool
     value: Any = None
-    error: Optional[str] = None
-    warnings: List[str] = None
+    error: str | None = None
+    warnings: list[str] = None
 
     def __post_init__(self):
         if self.warnings is None:
@@ -45,15 +46,16 @@ class ValidationResult:
 # VALIDATION STRATÉGIE
 # =============================================================================
 
+
 def validate_strategy(strategy_name: str) -> ValidationResult:
-    """
-    Valide qu'une stratégie existe dans le registre.
+    """Valide qu'une stratégie existe dans le registre.
 
     Args:
         strategy_name: Nom de la stratégie (case-insensitive)
 
     Returns:
         ValidationResult avec la classe de stratégie si succès
+
     """
     from strategies import get_strategy, list_strategies
 
@@ -64,22 +66,21 @@ def validate_strategy(strategy_name: str) -> ValidationResult:
         available = list_strategies()
         return ValidationResult(
             success=False,
-            error=f"Stratégie '{strategy_name}' non trouvée. "
-                  f"Disponibles: {', '.join(available[:5])}..."
+            error=f"Stratégie '{strategy_name}' non trouvée. Disponibles: {', '.join(available[:5])}...",
         )
 
     return ValidationResult(success=True, value=strategy_class)
 
 
 def get_strategy_info(strategy_name: str) -> ValidationResult:
-    """
-    Récupère les informations complètes d'une stratégie.
+    """Récupère les informations complètes d'une stratégie.
 
     Args:
         strategy_name: Nom de la stratégie
 
     Returns:
         ValidationResult avec dict d'infos {class, instance, params, ranges}
+
     """
     result = validate_strategy(strategy_name)
     if not result.success:
@@ -101,7 +102,7 @@ def get_strategy_info(strategy_name: str) -> ValidationResult:
     except Exception as e:
         return ValidationResult(
             success=False,
-            error=f"Erreur initialisation stratégie: {e}"
+            error=f"Erreur initialisation stratégie: {e}",
         )
 
 
@@ -109,10 +110,9 @@ def get_strategy_info(strategy_name: str) -> ValidationResult:
 # VALIDATION FICHIERS DONNÉES
 # =============================================================================
 
-def validate_data_file(data_path: Union[str, Path],
-                       env_var: str = "BACKTEST_DATA_DIR") -> ValidationResult:
-    """
-    Valide et résout le chemin d'un fichier de données.
+
+def validate_data_file(data_path: str | Path, env_var: str = "BACKTEST_DATA_DIR") -> ValidationResult:
+    """Valide et résout le chemin d'un fichier de données.
 
     Args:
         data_path: Chemin du fichier (absolu ou relatif)
@@ -120,6 +120,7 @@ def validate_data_file(data_path: Union[str, Path],
 
     Returns:
         ValidationResult avec Path résolu si succès
+
     """
     from data.loader import resolve_data_file
 
@@ -151,16 +152,14 @@ def validate_data_file(data_path: Union[str, Path],
 
     return ValidationResult(
         success=False,
-        error=f"Fichier non trouvé: {data_path}. "
-              f"Définissez {env_var} ou placez le fichier dans data/sample_data/"
+        error=f"Fichier non trouvé: {data_path}. Définissez {env_var} ou placez le fichier dans data/sample_data/",
     )
 
 
-def extract_symbol_timeframe(data_path: Path,
-                             default_symbol: str = "UNKNOWN",
-                             default_timeframe: str = "1h") -> Tuple[str, str]:
-    """
-    Extrait symbol et timeframe du nom de fichier.
+def extract_symbol_timeframe(
+    data_path: Path, default_symbol: str = "UNKNOWN", default_timeframe: str = "1h",
+) -> tuple[str, str]:
+    """Extrait symbol et timeframe du nom de fichier.
 
     Format attendu: SYMBOL_TIMEFRAME.ext (ex: BTCUSDC_1h.parquet)
 
@@ -171,6 +170,7 @@ def extract_symbol_timeframe(data_path: Path,
 
     Returns:
         Tuple (symbol, timeframe)
+
     """
     stem = data_path.stem
     parts = stem.split("_")
@@ -185,12 +185,11 @@ def extract_symbol_timeframe(data_path: Path,
 # VALIDATION PARAMÈTRES
 # =============================================================================
 
-def validate_param_value(name: str, value: Any,
-                        min_val: float = None,
-                        max_val: float = None,
-                        param_type: str = None) -> ValidationResult:
-    """
-    Valide une valeur de paramètre.
+
+def validate_param_value(
+    name: str, value: Any, min_val: float = None, max_val: float = None, param_type: str = None,
+) -> ValidationResult:
+    """Valide une valeur de paramètre.
 
     Args:
         name: Nom du paramètre
@@ -201,6 +200,7 @@ def validate_param_value(name: str, value: Any,
 
     Returns:
         ValidationResult avec valeur convertie si succès
+
     """
     warnings = []
 
@@ -213,28 +213,27 @@ def validate_param_value(name: str, value: Any,
     except (ValueError, TypeError) as e:
         return ValidationResult(
             success=False,
-            error=f"Paramètre '{name}': conversion impossible vers {param_type}: {e}"
+            error=f"Paramètre '{name}': conversion impossible vers {param_type}: {e}",
         )
 
     # Validation bornes
     if min_val is not None and value < min_val:
         return ValidationResult(
             success=False,
-            error=f"Paramètre '{name}': valeur {value} < minimum {min_val}"
+            error=f"Paramètre '{name}': valeur {value} < minimum {min_val}",
         )
 
     if max_val is not None and value > max_val:
         return ValidationResult(
             success=False,
-            error=f"Paramètre '{name}': valeur {value} > maximum {max_val}"
+            error=f"Paramètre '{name}': valeur {value} > maximum {max_val}",
         )
 
     return ValidationResult(success=True, value=value, warnings=warnings)
 
 
 def parse_param_grid(json_string: str) -> ValidationResult:
-    """
-    Parse une grille de paramètres depuis JSON.
+    """Parse une grille de paramètres depuis JSON.
 
     Format attendu: {"param1": [v1, v2, ...], "param2": [v1, v2, ...]}
 
@@ -243,6 +242,7 @@ def parse_param_grid(json_string: str) -> ValidationResult:
 
     Returns:
         ValidationResult avec dict de grille si succès
+
     """
     try:
         grid = json.loads(json_string)
@@ -250,7 +250,7 @@ def parse_param_grid(json_string: str) -> ValidationResult:
         if not isinstance(grid, dict):
             return ValidationResult(
                 success=False,
-                error="La grille doit être un objet JSON {param: [valeurs]}"
+                error="La grille doit être un objet JSON {param: [valeurs]}",
             )
 
         # Valider que chaque valeur est une liste
@@ -258,12 +258,12 @@ def parse_param_grid(json_string: str) -> ValidationResult:
             if not isinstance(values, list):
                 return ValidationResult(
                     success=False,
-                    error=f"Paramètre '{param}': doit être une liste de valeurs"
+                    error=f"Paramètre '{param}': doit être une liste de valeurs",
                 )
             if len(values) == 0:
                 return ValidationResult(
                     success=False,
-                    error=f"Paramètre '{param}': liste vide non autorisée"
+                    error=f"Paramètre '{param}': liste vide non autorisée",
                 )
 
         return ValidationResult(success=True, value=grid)
@@ -271,13 +271,12 @@ def parse_param_grid(json_string: str) -> ValidationResult:
     except json.JSONDecodeError as e:
         return ValidationResult(
             success=False,
-            error=f"JSON invalide: {e}"
+            error=f"JSON invalide: {e}",
         )
 
 
 def parse_params_string(params_string: str) -> ValidationResult:
-    """
-    Parse des paramètres depuis une string key=value.
+    """Parse des paramètres depuis une string key=value.
 
     Format: "param1=value1,param2=value2" ou JSON
 
@@ -286,6 +285,7 @@ def parse_params_string(params_string: str) -> ValidationResult:
 
     Returns:
         ValidationResult avec dict de paramètres si succès
+
     """
     if not params_string:
         return ValidationResult(success=True, value={})
@@ -305,7 +305,7 @@ def parse_params_string(params_string: str) -> ValidationResult:
             if "=" not in pair:
                 return ValidationResult(
                     success=False,
-                    error=f"Format invalide: '{pair}'. Attendu: key=value"
+                    error=f"Format invalide: '{pair}'. Attendu: key=value",
                 )
 
             key, value = pair.split("=", 1)
@@ -334,7 +334,7 @@ def parse_params_string(params_string: str) -> ValidationResult:
     except Exception as e:
         return ValidationResult(
             success=False,
-            error=f"Erreur parsing paramètres: {e}"
+            error=f"Erreur parsing paramètres: {e}",
         )
 
 
@@ -342,9 +342,9 @@ def parse_params_string(params_string: str) -> ValidationResult:
 # VALIDATION DATES
 # =============================================================================
 
-def validate_date_range(start: Optional[str], end: Optional[str]) -> ValidationResult:
-    """
-    Valide une plage de dates.
+
+def validate_date_range(start: str | None, end: str | None) -> ValidationResult:
+    """Valide une plage de dates.
 
     Args:
         start: Date de début (format YYYY-MM-DD ou None)
@@ -352,6 +352,7 @@ def validate_date_range(start: Optional[str], end: Optional[str]) -> ValidationR
 
     Returns:
         ValidationResult avec tuple (start_ts, end_ts) si succès
+
     """
     start_ts = None
     end_ts = None
@@ -362,7 +363,7 @@ def validate_date_range(start: Optional[str], end: Optional[str]) -> ValidationR
         except Exception:
             return ValidationResult(
                 success=False,
-                error=f"Date de début invalide: {start}. Format attendu: YYYY-MM-DD"
+                error=f"Date de début invalide: {start}. Format attendu: YYYY-MM-DD",
             )
 
     if end:
@@ -371,23 +372,20 @@ def validate_date_range(start: Optional[str], end: Optional[str]) -> ValidationR
         except Exception:
             return ValidationResult(
                 success=False,
-                error=f"Date de fin invalide: {end}. Format attendu: YYYY-MM-DD"
+                error=f"Date de fin invalide: {end}. Format attendu: YYYY-MM-DD",
             )
 
     if start_ts and end_ts and start_ts >= end_ts:
         return ValidationResult(
             success=False,
-            error=f"Date de début ({start}) >= date de fin ({end})"
+            error=f"Date de début ({start}) >= date de fin ({end})",
         )
 
     return ValidationResult(success=True, value=(start_ts, end_ts))
 
 
-def apply_date_filter(df: pd.DataFrame,
-                     start: Optional[str],
-                     end: Optional[str]) -> ValidationResult:
-    """
-    Applique un filtre de dates à un DataFrame OHLCV.
+def apply_date_filter(df: pd.DataFrame, start: str | None, end: str | None) -> ValidationResult:
+    """Applique un filtre de dates à un DataFrame OHLCV.
 
     Args:
         df: DataFrame avec index DatetimeIndex
@@ -396,6 +394,7 @@ def apply_date_filter(df: pd.DataFrame,
 
     Returns:
         ValidationResult avec DataFrame filtré si succès
+
     """
     if not start and not end:
         return ValidationResult(success=True, value=df)
@@ -415,7 +414,7 @@ def apply_date_filter(df: pd.DataFrame,
     if filtered_df.empty:
         return ValidationResult(
             success=False,
-            error=f"Aucune donnée dans la période {start} - {end}"
+            error=f"Aucune donnée dans la période {start} - {end}",
         )
 
     return ValidationResult(success=True, value=filtered_df)
@@ -452,14 +451,14 @@ def normalize_metric_name(metric: str) -> str:
 
 
 def validate_metric(metric: str) -> ValidationResult:
-    """
-    Valide un nom de métrique.
+    """Valide un nom de métrique.
 
     Args:
         metric: Nom de la métrique (peut être un alias)
 
     Returns:
         ValidationResult avec nom normalisé si succès
+
     """
     normalized = normalize_metric_name(metric)
 
@@ -468,8 +467,7 @@ def validate_metric(metric: str) -> ValidationResult:
     if normalized not in valid_metrics:
         return ValidationResult(
             success=False,
-            error=f"Métrique '{metric}' inconnue. "
-                  f"Valides: {', '.join(sorted(valid_metrics))}"
+            error=f"Métrique '{metric}' inconnue. Valides: {', '.join(sorted(valid_metrics))}",
         )
 
     return ValidationResult(success=True, value=normalized)

@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.critic
+"""Module-ID: agents.critic
 
 Purpose: Évaluer critiquement les propositions pour détecter overfitting et risques cachés.
 
@@ -23,7 +22,7 @@ Skip-if: Vous ne modifiez que analyze/propose/validate.
 from __future__ import annotations
 
 import time
-from typing import Any, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -45,13 +44,14 @@ logger = get_obs_logger(__name__)
 
 class ProposalEvaluation(BaseModel):
     """Évaluation d'une proposition par le Critic."""
+
     proposal_id: int
     overfitting_score: int = Field(default=50, ge=0, le=100)
     robustness_score: int = Field(default=50, ge=0, le=100)
     recommendation: str = Field(..., pattern="^(APPROVE|MODIFY|REJECT)$")
-    critical_issues: List[str] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
-    suggested_modifications: List[str] = Field(default_factory=list)
+    critical_issues: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    suggested_modifications: list[str] = Field(default_factory=list)
     reasoning: str = ""
 
     @field_validator("recommendation", mode="before")
@@ -64,21 +64,21 @@ class ProposalEvaluation(BaseModel):
 
 class CriticResponse(BaseModel):
     """Structure de réponse complète du Critic."""
+
     overall_assessment: str = Field(..., min_length=5)
     walk_forward_summary: str = ""
-    market_regime_concerns: List[str] = Field(default_factory=list)
-    statistical_concerns: List[str] = Field(default_factory=list)
-    proposal_evaluations: List[ProposalEvaluation] = Field(default_factory=list)
-    approved_proposals: List[int] = Field(default_factory=list)
-    rejected_proposals: List[int] = Field(default_factory=list)
-    best_proposal_id: Optional[int] = None
+    market_regime_concerns: list[str] = Field(default_factory=list)
+    statistical_concerns: list[str] = Field(default_factory=list)
+    proposal_evaluations: list[ProposalEvaluation] = Field(default_factory=list)
+    approved_proposals: list[int] = Field(default_factory=list)
+    rejected_proposals: list[int] = Field(default_factory=list)
+    best_proposal_id: int | None = None
     proceed_with_testing: bool = False
-    final_concerns: List[str] = Field(default_factory=list)
+    final_concerns: list[str] = Field(default_factory=list)
 
 
 class CriticAgent(BaseAgent):
-    """
-    Agent Critic - Expert en détection des risques.
+    """Agent Critic - Expert en détection des risques.
 
     Évalue:
     - Risque d'overfitting pour chaque proposition
@@ -155,14 +155,14 @@ Respond ONLY in valid JSON format with this exact structure:
 }"""
 
     def execute(self, context: AgentContext) -> AgentResult:
-        """
-        Évalue critiquement les propositions.
+        """Évalue critiquement les propositions.
 
         Args:
             context: Contexte avec propositions du Strategist
 
         Returns:
             Évaluation critique
+
         """
         start_time = time.time()
 
@@ -231,19 +231,18 @@ Respond ONLY in valid JSON format with this exact structure:
             if prop_id in approved:
                 # Trouver l'évaluation correspondante
                 eval_data = next(
-                    (e for e in critique.get("proposal_evaluations", [])
-                     if e.get("proposal_id") == prop_id),
-                    {}
+                    (e for e in critique.get("proposal_evaluations", []) if e.get("proposal_id") == prop_id),
+                    {},
                 )
                 prop["critic_evaluation"] = eval_data
-                prop["is_best"] = (prop_id == best_id)
+                prop["is_best"] = prop_id == best_id
                 approved_proposals.append(prop)
 
         # Collecter les concerns
         concerns = (
-            critique.get("market_regime_concerns", []) +
-            critique.get("statistical_concerns", []) +
-            critique.get("final_concerns", [])
+            critique.get("market_regime_concerns", [])
+            + critique.get("statistical_concerns", [])
+            + critique.get("final_concerns", [])
         )
 
         return AgentResult.success_result(
@@ -266,7 +265,6 @@ Respond ONLY in valid JSON format with this exact structure:
 
     def _build_critique_prompt(self, context: AgentContext) -> str:
         """Construit le prompt de critique via template Jinja2."""
-
         # Convertir MetricsSnapshot en dict pour le template
         current_metrics_dict = None
         if context.current_metrics:
@@ -302,4 +300,3 @@ Respond ONLY in valid JSON format with this exact structure:
         }
 
         return render_prompt("critic.jinja2", template_context)
-

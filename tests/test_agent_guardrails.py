@@ -22,7 +22,7 @@ def _sample_ohlcv() -> pd.DataFrame:
             "low": close - 1.0,
             "close": close,
             "volume": np.full(n, 1000.0),
-        }
+        },
     )
 
 
@@ -163,7 +163,7 @@ def test_critic_execute_fails_on_invalid_pydantic_payload() -> None:
         AgentContext(
             strategy_name="ema_cross",
             strategist_proposals=[{"id": 1, "hypothesis": "test"}],
-        )
+        ),
     )
 
     assert result.success is False

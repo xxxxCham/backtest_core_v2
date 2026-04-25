@@ -1,5 +1,4 @@
-"""
-Module-ID: strategies.bollinger_atr_v2
+"""Module-ID: strategies.bollinger_atr_v2
 
 Purpose: Stratégie mean-reversion Bollinger Bands + ATR avec stop-loss Bollinger paramétrable (V2).
 
@@ -22,7 +21,7 @@ Read-if: Configuration V2 spécifique, paramètres stop-loss Bollinger, ou logiq
 Skip-if: Vous utilisez V1 ou V3, ou autres stratégies.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -34,8 +33,7 @@ from .base import StrategyBase, register_strategy
 
 @register_strategy("bollinger_atr_v2")
 class BollingerATRStrategyV2(StrategyBase):
-    """
-    Stratégie Bollinger Bands + ATR V2 (Mean Reversion + Stop Bollinger).
+    """Stratégie Bollinger Bands + ATR V2 (Mean Reversion + Stop Bollinger).
 
     Paramètres:
         bb_period: Période des Bandes de Bollinger (défaut: 20)
@@ -63,12 +61,12 @@ class BollingerATRStrategyV2(StrategyBase):
         super().__init__(name="BollingerATR_V2")
 
     @property
-    def required_indicators(self) -> List[str]:
+    def required_indicators(self) -> list[str]:
         """Indicateurs requis: Bollinger Bands et ATR."""
         return ["bollinger", "atr"]
 
     @property
-    def default_params(self) -> Dict[str, Any]:
+    def default_params(self) -> dict[str, Any]:
         """Paramètres par défaut de la stratégie."""
         return {
             # Bollinger
@@ -83,67 +81,82 @@ class BollingerATRStrategyV2(StrategyBase):
             "leverage": 1,  # Fixé à 1 - ne pas optimiser
             # Frais (pour référence)
             "fees_bps": 10,
-            "slippage_bps": 5
+            "slippage_bps": 5,
         }
 
     @property
-    def parameter_specs(self) -> Dict[str, ParameterSpec]:
+    def parameter_specs(self) -> dict[str, ParameterSpec]:
         """Spécifications détaillées des paramètres pour UI/optimisation."""
         return {
             "bb_period": ParameterSpec(
                 name="bb_period",
-                min_val=5, max_val=60, default=20,  # Élargi: 5-60 pour explorer très court terme à long terme
+                min_val=5,
+                max_val=60,
+                default=20,  # Élargi: 5-60 pour explorer très court terme à long terme
                 param_type="int",
-                description="Période des Bandes de Bollinger"
+                description="Période des Bandes de Bollinger",
             ),
             "bb_std": ParameterSpec(
                 name="bb_std",
-                min_val=0.5, max_val=5.0, default=2.0,  # Élargi: 0.5-5.0 pour bandes très serrées à ultra larges
+                min_val=0.5,
+                max_val=5.0,
+                default=2.0,  # Élargi: 0.5-5.0 pour bandes très serrées à ultra larges
                 param_type="float",
-                description="Écarts-types pour les bandes"
+                description="Écarts-types pour les bandes",
             ),
             "entry_z": ParameterSpec(
                 name="entry_z",
-                min_val=0.5, max_val=4.0, default=2.0,  # Élargi: 0.5-4.0 pour entrées agressives à conservatrices
+                min_val=0.5,
+                max_val=4.0,
+                default=2.0,  # Élargi: 0.5-4.0 pour entrées agressives à conservatrices
                 param_type="float",
-                description="Seuil z-score pour entrée"
+                description="Seuil z-score pour entrée",
             ),
             "atr_period": ParameterSpec(
                 name="atr_period",
-                min_val=5, max_val=35, default=14,  # Élargi: 5-35 pour volatilité ultra court à long terme
+                min_val=5,
+                max_val=35,
+                default=14,  # Élargi: 5-35 pour volatilité ultra court à long terme
                 param_type="int",
-                description="Période de l'ATR"
+                description="Période de l'ATR",
             ),
             "atr_percentile": ParameterSpec(
                 name="atr_percentile",
-                min_val=0, max_val=90, default=30,  # Élargi: 0-90 pour aucun filtre à très restrictif
+                min_val=0,
+                max_val=90,
+                default=30,  # Élargi: 0-90 pour aucun filtre à très restrictif
                 param_type="int",
-                description="Percentile volatilité minimum (ATR)"
+                description="Percentile volatilité minimum (ATR)",
             ),
             "bb_stop_factor": ParameterSpec(
                 name="bb_stop_factor",
-                min_val=0.1, max_val=3.0, step=0.1, default=0.5,  # Élargi: 0.1-3.0 pour stops ultra serrés à très larges
+                min_val=0.1,
+                max_val=3.0,
+                step=0.1,
+                default=0.5,  # Élargi: 0.1-3.0 pour stops ultra serrés à très larges
                 param_type="float",
-                description="Facteur stop-loss Bollinger (0.1=très proche, 3.0=très loin)"
+                description="Facteur stop-loss Bollinger (0.1=très proche, 3.0=très loin)",
             ),
             "leverage": ParameterSpec(
                 name="leverage",
-                min_val=1, max_val=10, default=1,
+                min_val=1,
+                max_val=10,
+                default=1,
                 param_type="int",
                 description="Levier de trading (non optimisé)",
                 optimize=False,
             ),
         }
 
-    def get_preset(self) -> Optional[Preset]:
+    def get_preset(self) -> Preset | None:
         """Retourne le preset Safe Ranges associé."""
         return SAFE_RANGES_PRESET
 
     def get_indicator_params(
         self,
         indicator_name: str,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
         """Mappe les paramètres de la stratégie vers les indicateurs."""
         if indicator_name == "bollinger":
             return {
@@ -157,11 +170,10 @@ class BollingerATRStrategyV2(StrategyBase):
     def generate_signals(
         self,
         df: pd.DataFrame,
-        indicators: Dict[str, Any],
-        params: Dict[str, Any]
+        indicators: dict[str, Any],
+        params: dict[str, Any],
     ) -> pd.Series:
-        """
-        Génère les signaux de trading Bollinger + ATR.
+        """Génère les signaux de trading Bollinger + ATR.
 
         Args:
             df: DataFrame OHLCV
@@ -170,6 +182,7 @@ class BollingerATRStrategyV2(StrategyBase):
 
         Returns:
             pd.Series de signaux (+1, -1, 0)
+
         """
         # Initialiser signaux à 0 (hold)
         signals = pd.Series(0.0, index=df.index, dtype=np.float64, name="signals")
@@ -244,12 +257,12 @@ class BollingerATRStrategyV2(StrategyBase):
         stop_short = upper + bb_stop_factor * bb_distance_upper
 
         # Ajouter les colonnes au DataFrame (disponibles pour le backtest)
-        df.loc[:, 'bb_stop_long'] = stop_long
-        df.loc[:, 'bb_stop_short'] = stop_short
-        df.loc[:, 'bb_upper'] = upper
-        df.loc[:, 'bb_middle'] = middle
-        df.loc[:, 'bb_lower'] = lower
-        df.loc[:, 'bb_stop_factor'] = bb_stop_factor  # Pour debug/analyse
+        df.loc[:, "bb_stop_long"] = stop_long
+        df.loc[:, "bb_stop_short"] = stop_short
+        df.loc[:, "bb_upper"] = upper
+        df.loc[:, "bb_middle"] = middle
+        df.loc[:, "bb_lower"] = lower
+        df.loc[:, "bb_stop_factor"] = bb_stop_factor  # Pour debug/analyse
 
         # === Éviter signaux consécutifs identiques ===
         # Ne garder que les changements de signal
@@ -265,10 +278,9 @@ class BollingerATRStrategyV2(StrategyBase):
         capital: float,
         entry_price: float,
         atr_value: float,
-        params: Dict[str, Any]
+        params: dict[str, Any],
     ) -> float:
-        """
-        Calcule la taille de position basée sur le risque.
+        """Calcule la taille de position basée sur le risque.
 
         Position sizing: risk_amount / stop_distance
 
@@ -280,6 +292,7 @@ class BollingerATRStrategyV2(StrategyBase):
 
         Returns:
             Quantité à trader
+
         """
         leverage = params.get("leverage", 1)
         risk_pct = params.get("risk_pct", 0.02)  # 2% du capital par trade
@@ -308,13 +321,12 @@ class BollingerATRStrategyV2(StrategyBase):
         entry_price: float,
         atr_value: float,
         side: str,
-        params: Dict[str, Any],
-        bb_middle: Optional[float] = None,
-        bb_upper: Optional[float] = None,
-        bb_lower: Optional[float] = None
+        params: dict[str, Any],
+        bb_middle: float | None = None,
+        bb_upper: float | None = None,
+        bb_lower: float | None = None,
     ) -> float:
-        """
-        Calcule le niveau de stop-loss basé sur les bandes de Bollinger.
+        """Calcule le niveau de stop-loss basé sur les bandes de Bollinger.
 
         Logique V2 (paramétrable):
         - LONG: stop = lower_band - bb_stop_factor × (middle_band - lower_band)
@@ -335,6 +347,7 @@ class BollingerATRStrategyV2(StrategyBase):
 
         Returns:
             Prix du stop-loss
+
         """
         # Récupérer le facteur paramétrable
         bb_stop_factor = float(params.get("bb_stop_factor", 0.5))
@@ -345,19 +358,17 @@ class BollingerATRStrategyV2(StrategyBase):
                 # Stop LONG: lower - bb_stop_factor × (middle - lower)
                 bb_distance = bb_middle - bb_lower
                 return bb_lower - bb_stop_factor * bb_distance
-            else:  # SHORT
-                # Stop SHORT: upper + bb_stop_factor × (upper - middle)
-                bb_distance = bb_upper - bb_middle
-                return bb_upper + bb_stop_factor * bb_distance
-        else:
-            # Fallback: logique ATR legacy (si les bandes ne sont pas disponibles)
-            # Utiliser bb_stop_factor à la place de k_sl
-            distance = bb_stop_factor * atr_value
+            # SHORT
+            # Stop SHORT: upper + bb_stop_factor × (upper - middle)
+            bb_distance = bb_upper - bb_middle
+            return bb_upper + bb_stop_factor * bb_distance
+        # Fallback: logique ATR legacy (si les bandes ne sont pas disponibles)
+        # Utiliser bb_stop_factor à la place de k_sl
+        distance = bb_stop_factor * atr_value
 
-            if side == "long":
-                return entry_price - distance
-            else:
-                return entry_price + distance
+        if side == "long":
+            return entry_price - distance
+        return entry_price + distance
 
 
 __all__ = ["BollingerATRStrategyV2"]

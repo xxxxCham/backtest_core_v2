@@ -1,22 +1,21 @@
-"""
-Module-ID: catalog.builder_export
+"""Module-ID: catalog.builder_export
 
 Purpose: Export des variants en Format A (texte structuré) et Format B (JSON proposal Builder).
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from copy import deepcopy
+from typing import Any
 
 from catalog.models import Archetype
 
 
 def to_text_v1(
-    proposal: Dict[str, Any],
-    archetype: Optional[Archetype] = None,
+    proposal: dict[str, Any],
+    archetype: Archetype | None = None,
 ) -> str:
-    """
-    Format A : texte structuré FICHE_STRATEGIE v1.
+    """Format A : texte structuré FICHE_STRATEGIE v1.
 
     Compatible prompt Builder LLM. Chaque fiche est un bloc de texte
     lisible et injectable comme "objective".
@@ -83,27 +82,26 @@ def to_text_v1(
     return "\n".join(lines)
 
 
-def to_json_proposal(proposal: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Format B : JSON proposal compatible StrategyBuilder.
+def to_json_proposal(proposal: dict[str, Any]) -> dict[str, Any]:
+    """Format B : JSON proposal compatible StrategyBuilder.
 
     Retourne un dict avec toutes les clés requises par _BUILDER_PROPOSAL_REQUIRED_KEYS :
     strategy_name, used_indicators, entry_long_logic, exit_logic,
     risk_management, default_params, parameter_specs
     """
     # S'assurer que toutes les clés obligatoires sont présentes
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "strategy_name": proposal.get("strategy_name", "catalog_variant"),
         "hypothesis": proposal.get("hypothesis", ""),
         "change_type": proposal.get("change_type", "logic"),
-        "used_indicators": proposal.get("used_indicators", []),
-        "indicator_params": proposal.get("indicator_params", {}),
+        "used_indicators": list(proposal.get("used_indicators", [])),
+        "indicator_params": deepcopy(proposal.get("indicator_params", {})),
         "entry_long_logic": proposal.get("entry_long_logic", ""),
         "entry_short_logic": proposal.get("entry_short_logic", ""),
         "exit_logic": proposal.get("exit_logic", ""),
         "risk_management": proposal.get("risk_management", ""),
-        "default_params": proposal.get("default_params", {}),
-        "parameter_specs": proposal.get("parameter_specs", {}),
+        "default_params": deepcopy(proposal.get("default_params", {})),
+        "parameter_specs": deepcopy(proposal.get("parameter_specs", {})),
     }
 
     # Forcer leverage=1

@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.template
+"""Module-ID: utils.template
 
 Purpose: Template Jinja2 centralisé pour prompts LLM agents.
 
@@ -23,7 +22,7 @@ Skip-if: Vous appelez juste render_prompt().
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 from jinja2.runtime import Undefined
@@ -37,26 +36,28 @@ logger = get_obs_logger(__name__)
 try:
     # Python 3.9+
     from importlib.resources import files
+
     TEMPLATES_DIR = Path(str(files("backtest_core") / "templates"))
 except (ImportError, TypeError):
     # Fallback pour Python < 3.9 ou si backtest_core n'est pas un paquet installé
     try:
         from importlib_resources import files
+
         TEMPLATES_DIR = Path(str(files("backtest_core") / "templates"))
     except (ImportError, TypeError):
         # Dernier fallback : utiliser le chemin relatif résolu
         TEMPLATES_DIR = (Path(__file__).resolve().parent.parent / "strategies" / "templates").expanduser()
 
 # Environment Jinja2 global (lazy init)
-_jinja_env: Optional[Environment] = None
+_jinja_env: Environment | None = None
 
 
 def get_jinja_env() -> Environment:
-    """
-    Retourne l'environnement Jinja2 (singleton).
+    """Retourne l'environnement Jinja2 (singleton).
 
     Returns:
         Environment Jinja2 configuré
+
     """
     global _jinja_env
 
@@ -85,17 +86,16 @@ def get_jinja_env() -> Environment:
             except Exception:
                 return "N/A"
 
-        _jinja_env.filters['format_percent'] = _format_percent
-        _jinja_env.filters['format_float'] = _format_float
+        _jinja_env.filters["format_percent"] = _format_percent
+        _jinja_env.filters["format_float"] = _format_float
 
         logger.debug(f"Jinja2 environment initialisé: {TEMPLATES_DIR}")
 
     return _jinja_env
 
 
-def render_prompt(template_name: str, context: Dict[str, Any]) -> str:
-    """
-    Rend un template de prompt avec le contexte fourni.
+def render_prompt(template_name: str, context: dict[str, Any]) -> str:
+    """Rend un template de prompt avec le contexte fourni.
 
     Args:
         template_name: Nom du fichier template (ex: "analyst.jinja2")
@@ -113,6 +113,7 @@ def render_prompt(template_name: str, context: Dict[str, Any]) -> str:
         ...     "strategy_name": "ema_cross",
         ...     "current_metrics": {"sharpe_ratio": 1.5},
         ... })
+
     """
     try:
         env = get_jinja_env()
@@ -130,9 +131,8 @@ def render_prompt(template_name: str, context: Dict[str, Any]) -> str:
         raise
 
 
-def render_prompt_from_string(template_str: str, context: Dict[str, Any]) -> str:
-    """
-    Rend un template à partir d'une chaîne (pour tests ou usage ponctuel).
+def render_prompt_from_string(template_str: str, context: dict[str, Any]) -> str:
+    """Rend un template à partir d'une chaîne (pour tests ou usage ponctuel).
 
     Args:
         template_str: Template Jinja2 sous forme de chaîne
@@ -144,6 +144,7 @@ def render_prompt_from_string(template_str: str, context: Dict[str, Any]) -> str
     Example:
         >>> render_prompt_from_string("Hello {{ name }}", {"name": "Agent"})
         'Hello Agent'
+
     """
     env = get_jinja_env()
     template = env.from_string(template_str)
@@ -151,31 +152,29 @@ def render_prompt_from_string(template_str: str, context: Dict[str, Any]) -> str
 
 
 def list_available_templates() -> list[str]:
-    """
-    Liste tous les templates disponibles.
+    """Liste tous les templates disponibles.
 
     Returns:
         Liste des noms de fichiers templates
+
     """
     if not TEMPLATES_DIR.exists():
         return []
 
-    templates = [
-        f.name for f in TEMPLATES_DIR.glob("*.jinja2")
-    ]
+    templates = [f.name for f in TEMPLATES_DIR.glob("*.jinja2")]
     return sorted(templates)
 
 
 # Fonction helper pour formater les métriques
 def format_metrics_summary(metrics: Any) -> str:
-    """
-    Formate un objet MetricsSnapshot en résumé texte.
+    """Formate un objet MetricsSnapshot en résumé texte.
 
     Args:
         metrics: Objet avec attributs sharpe_ratio, total_return, etc.
 
     Returns:
         Résumé formaté
+
     """
     if not metrics:
         return "No metrics available"
@@ -197,7 +196,7 @@ def format_metrics_summary(metrics: Any) -> str:
 def _register_filters():
     """Enregistre les filtres personnalisés."""
     env = get_jinja_env()
-    env.filters['format_metrics'] = format_metrics_summary
+    env.filters["format_metrics"] = format_metrics_summary
 
 
 # Initialiser les filtres au chargement du module

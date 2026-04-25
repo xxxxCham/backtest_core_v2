@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.pivot_points
+"""Module-ID: indicators.pivot_points
 
 Purpose: Points pivot classiques - calculés depuis barre précédente.
 
@@ -46,8 +45,7 @@ def pivot_points(
     method: str = "classic",
     settings: PivotPointsSettings | None = None,
 ) -> dict[str, np.ndarray]:
-    """
-    Compute pivot points using the previous bar values.
+    """Compute pivot points using the previous bar values.
 
     Args:
         high: High series
@@ -58,6 +56,7 @@ def pivot_points(
 
     Returns:
         Dict with pivot, r1/r2/r3, s1/s2/s3
+
     """
     if settings is not None:
         method = settings.method
@@ -156,9 +155,8 @@ def _normalize_method(method: object) -> str:
 def calculate_pivot_points(
     df: pd.DataFrame,
     **params,
-) -> dict[str,  np.ndarray]:
-    """
-    Wrapper for registry calculation.
+) -> dict[str, np.ndarray]:
+    """Wrapper for registry calculation.
 
     Params:
         method: classic, fibonacci, or woodie (default: classic)
@@ -183,7 +181,7 @@ register_indicator(
 
 
 __all__ = [
-    "pivot_points",
-    "calculate_pivot_points",
     "PivotPointsSettings",
+    "calculate_pivot_points",
+    "pivot_points",
 ]

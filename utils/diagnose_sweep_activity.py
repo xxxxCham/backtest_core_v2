@@ -1,5 +1,4 @@
-"""
-Script de diagnostic pour vérifier l'activité d'un sweep en cours.
+"""Script de diagnostic pour vérifier l'activité d'un sweep en cours.
 
 Usage:
     python utils/diagnose_sweep_activity.py
@@ -20,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 try:
     import psutil
+
     HAS_PSUTIL = True
 except ImportError:
     HAS_PSUTIL = False
@@ -32,11 +32,13 @@ def find_backtest_processes():
         return []
 
     backtest_procs = []
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'cpu_percent', 'memory_percent']):
+    for proc in psutil.process_iter(["pid", "name", "cmdline", "cpu_percent", "memory_percent"]):
         try:
-            if proc.info['name'] and 'python' in proc.info['name'].lower():
-                cmdline = proc.info.get('cmdline', [])
-                if cmdline and any('backtest' in str(arg).lower() or 'streamlit' in str(arg).lower() for arg in cmdline):
+            if proc.info["name"] and "python" in proc.info["name"].lower():
+                cmdline = proc.info.get("cmdline", [])
+                if cmdline and any(
+                    "backtest" in str(arg).lower() or "streamlit" in str(arg).lower() for arg in cmdline
+                ):
                     backtest_procs.append(proc)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
@@ -51,10 +53,10 @@ def get_system_stats():
     cpu_percent = psutil.cpu_percent(interval=1, percpu=False)
     mem = psutil.virtual_memory()
     return {
-        'cpu_percent': cpu_percent,
-        'ram_used_gb': mem.used / (1024**3),
-        'ram_total_gb': mem.total / (1024**3),
-        'ram_percent': mem.percent,
+        "cpu_percent": cpu_percent,
+        "ram_used_gb": mem.used / (1024**3),
+        "ram_total_gb": mem.total / (1024**3),
+        "ram_percent": mem.percent,
     }
 
 
@@ -77,9 +79,9 @@ def check_log_activity():
             if modified_ago < 60:
                 print("   ✅ Activité récente détectée")
             elif modified_ago < 300:
-                print(f"   ⚠️  Pas d'activité depuis {modified_ago/60:.0f} minutes")
+                print(f"   ⚠️  Pas d'activité depuis {modified_ago / 60:.0f} minutes")
             else:
-                print(f"   ❌ Inactif depuis {modified_ago/60:.0f} minutes")
+                print(f"   ❌ Inactif depuis {modified_ago / 60:.0f} minutes")
 
 
 def check_result_files():
@@ -100,7 +102,7 @@ def check_result_files():
     if recent_files:
         print(f"\n📊 {len(recent_files)} fichiers de résultats modifiés récemment:")
         for file, age in sorted(recent_files, key=lambda x: x[1])[:5]:
-            print(f"   • {file.name} (il y a {age/60:.0f}m)")
+            print(f"   • {file.name} (il y a {age / 60:.0f}m)")
     else:
         print("\n❌ Aucun fichier de résultats récent (< 1h)")
 
@@ -130,7 +132,7 @@ def main():
                 mem = proc.memory_percent()
                 total_cpu += cpu
                 total_mem += mem
-                cmdline_str = ' '.join(proc.cmdline()[:3]) if proc.cmdline() else 'N/A'
+                cmdline_str = " ".join(proc.cmdline()[:3]) if proc.cmdline() else "N/A"
                 print(f"   PID {proc.pid}: CPU {cpu:.1f}% | RAM {mem:.1f}% | {cmdline_str[:60]}")
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
@@ -155,7 +157,7 @@ def main():
     print("=" * 70)
 
     # Recommandations
-    if procs and stats and stats['cpu_percent'] < 10:
+    if procs and stats and stats["cpu_percent"] < 10:
         print("\n💡 Recommandation: CPU faible détecté.")
         print("   Le sweep utilise peut-être peu de workers ou est bloqué.")
         print("   Vérifiez les logs pour d'éventuelles erreurs.")

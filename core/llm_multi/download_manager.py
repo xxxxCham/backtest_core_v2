@@ -9,10 +9,11 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+from utils.model_loader import get_huggingface_archive_root, get_ollama_models_root
 
 from .model_discovery import ModelInventory
-from utils.model_loader import get_huggingface_archive_root, get_ollama_models_root
 from .registry import resolve_profile_assignments
 
 DEFAULT_DOWNLOAD_LOG_DIR = Path(__file__).resolve().parent / "logs"
@@ -28,7 +29,7 @@ class ModelInstallRequest:
     reason: str
     destination_root: str
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "role": self.role,
             "backend": self.backend,
@@ -46,11 +47,11 @@ class ModelInstallResult:
     backend: str
     model_name: str
     success: bool
-    command: List[str] = field(default_factory=list)
+    command: list[str] = field(default_factory=list)
     log_path: str = ""
     detail: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "role": self.role,
             "backend": self.backend,
@@ -72,10 +73,10 @@ def plan_missing_downloads(
     profile_name: str,
     inventory: ModelInventory,
     *,
-    config_path: Optional[str | Path] = None,
-    role_overrides: Optional[Dict[str, str]] = None,
+    config_path: str | Path | None = None,
+    role_overrides: dict[str, str] | None = None,
     require_live_ollama: bool = False,
-) -> List[ModelInstallRequest]:
+) -> list[ModelInstallRequest]:
     resolved = resolve_profile_assignments(
         profile_name,
         inventory,
@@ -83,7 +84,7 @@ def plan_missing_downloads(
         role_overrides=role_overrides,
         require_live_ollama=require_live_ollama,
     )
-    requests: List[ModelInstallRequest] = []
+    requests: list[ModelInstallRequest] = []
     for assignment in resolved["assignments"]:
         if (
             not assignment.required
@@ -99,35 +100,32 @@ def plan_missing_downloads(
                 model_name=assignment.requested_model,
                 reason=assignment.reason,
                 destination_root=_default_destination_root(assignment.backend),
-            )
+            ),
         )
     return requests
 
 
 def install_missing_models(
-    requests: List[ModelInstallRequest],
+    requests: list[ModelInstallRequest],
     *,
-    ollama_host: Optional[str] = None,
+    ollama_host: str | None = None,
     dry_run: bool = False,
-    log_dir: Optional[str | Path] = None,
-) -> List[ModelInstallResult]:
+    log_dir: str | Path | None = None,
+) -> list[ModelInstallResult]:
     """Install only the missing models that have explicit requests."""
-
-    results: List[ModelInstallResult] = []
+    results: list[ModelInstallResult] = []
     if not requests:
         return results
 
     destination = Path(log_dir or DEFAULT_DOWNLOAD_LOG_DIR)
     destination.mkdir(parents=True, exist_ok=True)
     host = str(
-        ollama_host or os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
+        ollama_host or os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434"),
     ).strip()
     ollama_binary = shutil.which("ollama")
 
     for request in requests:
-        log_path = destination / (
-            f"install_{request.role}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-        )
+        log_path = destination / (f"install_{request.role}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
         if request.backend != "ollama":
             detail = "automatic install currently implemented for Ollama models only"
             log_path.write_text(detail, encoding="utf-8")
@@ -139,7 +137,7 @@ def install_missing_models(
                     success=False,
                     log_path=str(log_path),
                     detail=detail,
-                )
+                ),
             )
             continue
 
@@ -154,7 +152,7 @@ def install_missing_models(
                     success=False,
                     log_path=str(log_path),
                     detail=detail,
-                )
+                ),
             )
             continue
 
@@ -171,7 +169,7 @@ def install_missing_models(
                     command=command,
                     log_path=str(log_path),
                     detail=detail,
-                )
+                ),
             )
             continue
 
@@ -202,7 +200,7 @@ def install_missing_models(
                 command=command,
                 log_path=str(log_path),
                 detail=(completed.stdout or completed.stderr or "").strip(),
-            )
+            ),
         )
 
     return results

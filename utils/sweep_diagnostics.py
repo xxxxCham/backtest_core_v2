@@ -1,10 +1,11 @@
 """Système de diagnostic pour sweeps multiprocess."""
+
 import logging
 import os
 import time
 import traceback
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 
 from backtest.result_store import get_sweep_diagnostics_dir
 
@@ -41,7 +42,7 @@ class SweepDiagnostics:
         # Utiliser un formateur custom ou accepter la précision à la seconde
         formatter = logging.Formatter(
             "%(asctime)s | %(levelname)-8s | %(message)s",
-            datefmt="%H:%M:%S"
+            datefmt="%H:%M:%S",
         )
         fh.setFormatter(formatter)
         self.logger.addHandler(fh)
@@ -57,25 +58,25 @@ class SweepDiagnostics:
 
     def _log_header(self):
         """Log d'en-tête avec infos système."""
-        self.logger.info("="*80)
+        self.logger.info("=" * 80)
         self.logger.info(f"SWEEP DIAGNOSTICS - Run ID: {self.run_id}")
         self.logger.info(f"Log file: {self.log_file}")
         self.logger.info(f"Python PID: {os.getpid()}")
         self.logger.info(f"Workers: {os.environ.get('BACKTEST_WORKER_THREADS', 'N/A')} threads")
-        self.logger.info("="*80)
+        self.logger.info("=" * 80)
 
     def log_pool_start(self, n_workers: int, thread_limit: int, total_combos: int):
         """Log démarrage du pool."""
         self.logger.info(f"▶ POOL START: {n_workers} workers × {thread_limit} threads")
         self.logger.info(f"▶ Total combinaisons: {total_combos:,}")
 
-    def log_submit(self, combo_idx: int, params: Dict[str, Any]):
+    def log_submit(self, combo_idx: int, params: dict[str, Any]):
         """Log soumission d'une combinaison."""
         self.submitted += 1
         elapsed = time.perf_counter() - self.start_time
         self.logger.debug(f"➤ SUBMIT #{combo_idx} ({self.submitted} total) @ {elapsed:.1f}s | {params}")
 
-    def log_completion(self, combo_idx: int, params: Dict[str, Any], result: Dict[str, Any], duration_ms: float):
+    def log_completion(self, combo_idx: int, params: dict[str, Any], result: dict[str, Any], duration_ms: float):
         """Log complétion normale."""
         self.completed += 1
         self.last_completion_time = time.perf_counter()
@@ -88,15 +89,17 @@ class SweepDiagnostics:
         else:
             pnl = result.get("total_pnl", 0)
             sharpe = result.get("sharpe", 0)
-            self.logger.debug(f"✓ COMPLETE #{combo_idx} @ {elapsed:.1f}s ({duration_ms:.0f}ms) | PnL={pnl:.2f} Sharpe={sharpe:.2f}")
+            self.logger.debug(
+                f"✓ COMPLETE #{combo_idx} @ {elapsed:.1f}s ({duration_ms:.0f}ms) | PnL={pnl:.2f} Sharpe={sharpe:.2f}",
+            )
 
-    def log_timeout(self, combo_idx: int, params: Dict[str, Any], timeout_sec: float):
+    def log_timeout(self, combo_idx: int, params: dict[str, Any], timeout_sec: float):
         """Log timeout worker."""
         self.timeouts += 1
         elapsed = time.perf_counter() - self.start_time
         self.logger.error(f"⏱ TIMEOUT #{combo_idx} @ {elapsed:.1f}s (>{timeout_sec:.0f}s) | {params}")
 
-    def log_future_exception(self, combo_idx: int, params: Dict[str, Any], exc: Exception):
+    def log_future_exception(self, combo_idx: int, params: dict[str, Any], exc: Exception):
         """Log exception future."""
         self.errors += 1
         elapsed = time.perf_counter() - self.start_time
@@ -115,7 +118,9 @@ class SweepDiagnostics:
     def log_stall(self, stall_duration: float, pending_count: int):
         """Log détection de stall."""
         elapsed = time.perf_counter() - self.start_time
-        self.logger.error(f"⚠ STALL DETECTED @ {elapsed:.1f}s | No completion for {stall_duration:.0f}s | {pending_count} pending")
+        self.logger.error(
+            f"⚠ STALL DETECTED @ {elapsed:.1f}s | No completion for {stall_duration:.0f}s | {pending_count} pending",
+        )
 
     def log_sequential_fallback(self, reason: str | None = None, remaining_combos: int | None = None):
         """Log bascule en séquentiel."""
@@ -137,17 +142,17 @@ class SweepDiagnostics:
         self.logger.info(f"   Completed: {self.completed}")
         self.logger.info(f"   Errors: {self.errors}")
         self.logger.info(f"   Timeouts: {self.timeouts}")
-        self.logger.info(f"   Success rate: {self.completed/(self.submitted or 1)*100:.1f}%")
+        self.logger.info(f"   Success rate: {self.completed / (self.submitted or 1) * 100:.1f}%")
 
     def log_final_summary(self):
         """Log résumé final."""
         elapsed = time.perf_counter() - self.start_time
-        self.logger.info("="*80)
+        self.logger.info("=" * 80)
         self.logger.info(f"SWEEP COMPLETED @ {elapsed:.1f}s")
         self.logger.info(f"Log saved to: {self.log_file}")
-        self.logger.info("="*80)
+        self.logger.info("=" * 80)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Retourne stats actuelles."""
         return {
             "submitted": self.submitted,

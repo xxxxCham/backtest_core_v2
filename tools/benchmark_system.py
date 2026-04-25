@@ -1,5 +1,4 @@
-"""
-Module-ID: tools.benchmark_system
+"""Module-ID: tools.benchmark_system
 
 Purpose: Benchmark complet du système de backtest pour optimisation.
 
@@ -30,7 +29,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 import numpy as np
@@ -44,6 +43,7 @@ from utils.model_loader import normalize_model_name
 # psutil pour monitoring
 try:
     import psutil
+
     HAS_PSUTIL = True
 except ImportError:
     HAS_PSUTIL = False
@@ -98,6 +98,7 @@ LLM_BENCHMARK_PROMPT_VERSION = "token_matrix_v2_compact"
 @dataclass
 class SystemInfo:
     """Informations système."""
+
     cpu_physical: int
     cpu_logical: int
     ram_total_gb: float
@@ -110,12 +111,13 @@ class SystemInfo:
 @dataclass
 class BenchmarkResult:
     """Résultat d'un benchmark."""
+
     name: str
     time_ms: float
     throughput: float  # items/sec
     cpu_usage_pct: float
     ram_usage_gb: float
-    config: Dict[str, Any]
+    config: dict[str, Any]
 
 
 def get_system_info() -> SystemInfo:
@@ -137,6 +139,7 @@ def get_system_info() -> SystemInfo:
     # Numba info
     try:
         import numba
+
         numba_version = numba.__version__
         numba_threads = numba.get_num_threads()
     except ImportError:
@@ -182,19 +185,22 @@ def generate_test_data(n_bars: int = 10000) -> pd.DataFrame:
     open_price = low + (high - low) * np.random.rand(n_bars)
     volume = np.random.randint(1000, 100000, n_bars)
 
-    return pd.DataFrame({
-        'open': open_price,
-        'high': high,
-        'low': low,
-        'close': close,
-        'volume': volume,
-    })
+    return pd.DataFrame(
+        {
+            "open": open_price,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+        },
+    )
 
 
-def benchmark_numba(df: pd.DataFrame) -> List[BenchmarkResult]:
+def benchmark_numba(df: pd.DataFrame) -> list[BenchmarkResult]:
     """Benchmark du sweep Numba (intégré dans backtest/sweep_numba.py)."""
     try:
-        from backtest.sweep_numba import benchmark_sweep_numba, HAS_NUMBA
+        from backtest.sweep_numba import HAS_NUMBA, benchmark_sweep_numba
+
         if not HAS_NUMBA:
             print("\n⚠️ Numba non disponible, skip benchmark")
             return []
@@ -211,30 +217,34 @@ def benchmark_numba(df: pd.DataFrame) -> List[BenchmarkResult]:
     # Benchmark avec différentes tailles
     for n_combos, n_bars in [(100, 5000), (500, 10000), (1000, 10000)]:
         result = benchmark_sweep_numba(n_combos=n_combos, n_bars=n_bars)
-        results.append(BenchmarkResult(
-            name=f"Numba sweep ({n_combos} combos × {n_bars} bars)",
-            time_ms=result['total_time'] * 1000,
-            throughput=result['throughput'],
-            cpu_usage_pct=0,
-            ram_usage_gb=0,
-            config={"n_combos": n_combos, "n_bars": n_bars},
-        ))
+        results.append(
+            BenchmarkResult(
+                name=f"Numba sweep ({n_combos} combos × {n_bars} bars)",
+                time_ms=result["total_time"] * 1000,
+                throughput=result["throughput"],
+                cpu_usage_pct=0,
+                ram_usage_gb=0,
+                config={"n_combos": n_combos, "n_bars": n_bars},
+            ),
+        )
 
     return results
 
 
-def benchmark_parallel_sweep(df: pd.DataFrame, n_combos: int = 100) -> List[BenchmarkResult]:
+def benchmark_parallel_sweep(df: pd.DataFrame, n_combos: int = 100) -> list[BenchmarkResult]:
     """Benchmark du sweep parallèle avec différentes configurations."""
     from performance.parallel import ParallelRunner, generate_param_grid
 
     results = []
 
     # Générer grille de paramètres
-    param_grid = generate_param_grid({
-        "bb_period": list(range(15, 35, 5)),
-        "bb_std": [1.5, 2.0, 2.5],
-        "atr_period": [10, 14, 21],
-    })[:n_combos]
+    param_grid = generate_param_grid(
+        {
+            "bb_period": list(range(15, 35, 5)),
+            "bb_std": [1.5, 2.0, 2.5],
+            "atr_period": [10, 14, 21],
+        },
+    )[:n_combos]
 
     # Fonction de backtest simplifiée
     def dummy_backtest(params, data=None):
@@ -277,7 +287,7 @@ def benchmark_parallel_sweep(df: pd.DataFrame, n_combos: int = 100) -> List[Benc
     return results
 
 
-def benchmark_real_backtest(df: pd.DataFrame, n_runs: int = 50) -> List[BenchmarkResult]:
+def benchmark_real_backtest(df: pd.DataFrame, n_runs: int = 50) -> list[BenchmarkResult]:
     """Benchmark avec de vrais backtests."""
     try:
         from backtest.engine import BacktestEngine
@@ -325,7 +335,7 @@ def benchmark_real_backtest(df: pd.DataFrame, n_runs: int = 50) -> List[Benchmar
     return results
 
 
-def print_recommendations(info: SystemInfo, results: List[BenchmarkResult]):
+def print_recommendations(info: SystemInfo, results: list[BenchmarkResult]):
     """Affiche les recommandations d'optimisation."""
     print("\n" + "=" * 60)
     print("💡 RECOMMANDATIONS D'OPTIMISATION")
@@ -333,36 +343,36 @@ def print_recommendations(info: SystemInfo, results: List[BenchmarkResult]):
 
     # Recommandations CPU
     optimal_workers = min(info.cpu_logical, int(info.cpu_physical * 2.5))
-    print(f"\n🔧 Configuration CPU recommandée:")
+    print("\n🔧 Configuration CPU recommandée:")
     print(f"   BACKTEST_CPU_MULTIPLIER=2.0  (actuellement {info.cpu_physical * 2} workers)")
     print(f"   Workers optimaux: {optimal_workers}")
 
     # Recommandations Numba
     if info.numba_threads < info.cpu_logical:
-        print(f"\n🔧 Configuration Numba:")
+        print("\n🔧 Configuration Numba:")
         print(f"   NUMBA_NUM_THREADS={info.cpu_logical}  (actuellement {info.numba_threads})")
 
     # Recommandations RAM
     if info.ram_total_gb >= 32:
         print(f"\n🔧 Configuration RAM ({info.ram_total_gb:.0f} GB DDR5):")
-        print(f"   JOBLIB_MAX_NBYTES=500M  (copies directes en RAM)")
-        print(f"   Pré-chargement données en RAM recommandé")
+        print("   JOBLIB_MAX_NBYTES=500M  (copies directes en RAM)")
+        print("   Pré-chargement données en RAM recommandé")
 
     # Trouver la meilleure config de sweep
     sweep_results = [r for r in results if "Sweep" in r.name]
     if sweep_results:
         best = max(sweep_results, key=lambda r: r.throughput)
-        print(f"\n🏆 Meilleure configuration sweep:")
+        print("\n🏆 Meilleure configuration sweep:")
         print(f"   {best.name}: {best.throughput:.1f} backtests/sec")
 
     # Variables d'environnement recommandées
     print("\n📝 Variables d'environnement (.env):")
     print("-" * 40)
-    print(f"BACKTEST_CPU_MULTIPLIER=2.0")
+    print("BACKTEST_CPU_MULTIPLIER=2.0")
     print(f"NUMBA_NUM_THREADS={info.cpu_logical}")
-    print(f"NUMBA_CACHE_DIR=.numba_cache")
-    print(f"JOBLIB_MAX_NBYTES=500M")
-    print(f"JOBLIB_VERBOSE=0")
+    print("NUMBA_CACHE_DIR=.numba_cache")
+    print("JOBLIB_MAX_NBYTES=500M")
+    print("JOBLIB_VERBOSE=0")
     print(f"OMP_NUM_THREADS={info.cpu_logical}")
     print(f"MKL_NUM_THREADS={info.cpu_logical}")
     print("-" * 40)
@@ -391,12 +401,12 @@ def _trim_text(value: Any, max_chars: int = 280) -> str:
     return text[:max_chars] + "..."
 
 
-def _extract_json_payload(raw_text: str) -> tuple[Optional[Any], str]:
+def _extract_json_payload(raw_text: str) -> tuple[Any | None, str]:
     text = str(raw_text or "").strip()
     if not text:
         return None, "empty_response"
 
-    def _attempt_literal_eval(candidate: str, mode: str) -> tuple[Optional[Any], str]:
+    def _attempt_literal_eval(candidate: str, mode: str) -> tuple[Any | None, str]:
         try:
             return ast.literal_eval(candidate), mode
         except (SyntaxError, ValueError):
@@ -447,7 +457,7 @@ def _extract_json_payload(raw_text: str) -> tuple[Optional[Any], str]:
     return None, "invalid_json"
 
 
-def _coerce_token_items(payload: Any) -> Optional[List[Any]]:
+def _coerce_token_items(payload: Any) -> list[Any] | None:
     if isinstance(payload, list):
         return payload
     if not isinstance(payload, dict):
@@ -506,8 +516,8 @@ def _ollama_generate_request(
     max_tokens: int,
     timeout_s: float,
     json_mode: bool,
-) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "model": model_name,
         "prompt": _messages_to_generate_prompt(system_prompt, user_prompt, json_mode),
         "stream": False,
@@ -601,8 +611,8 @@ def _ollama_chat_request(
     max_tokens: int,
     timeout_s: float,
     json_mode: bool,
-) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "model": model_name,
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -702,9 +712,9 @@ def _ollama_chat_request(
 
 
 def _build_llm_token_matrix_prompt(
-    tokens: List[str],
+    tokens: list[str],
     timeframe: str,
-    allowed_indicators: List[str],
+    allowed_indicators: list[str],
 ) -> tuple[str, str]:
     tokens_csv = ", ".join(tokens)
     indicators_csv = ", ".join(allowed_indicators)
@@ -747,9 +757,9 @@ def _build_llm_token_matrix_prompt(
 
 def _validate_token_matrix_payload(
     payload: Any,
-    expected_tokens: List[str],
-    allowed_indicators: List[str],
-) -> Dict[str, Any]:
+    expected_tokens: list[str],
+    allowed_indicators: list[str],
+) -> dict[str, Any]:
     token_items = _coerce_token_items(payload)
 
     if token_items is None:
@@ -771,7 +781,7 @@ def _validate_token_matrix_payload(
     expected_set = set(expected_tokens)
     allowed_set = {str(indicator or "").strip().lower() for indicator in allowed_indicators}
     returned_counter: Counter[str] = Counter()
-    token_records: List[Dict[str, Any]] = []
+    token_records: list[dict[str, Any]] = []
     invalid_indicator_count = 0
     invalid_field_count = 0
 
@@ -784,7 +794,7 @@ def _validate_token_matrix_payload(
                     "valid": False,
                     "issues": ["item_not_object"],
                     "bad_indicators": [],
-                }
+                },
             )
             invalid_field_count += 1
             continue
@@ -796,17 +806,13 @@ def _validate_token_matrix_payload(
         used_indicators_raw = item.get("used_indicators", [])
         if isinstance(used_indicators_raw, list):
             used_indicators = [
-                str(value or "").strip().lower()
-                for value in used_indicators_raw
-                if str(value or "").strip()
+                str(value or "").strip().lower() for value in used_indicators_raw if str(value or "").strip()
             ]
         else:
             used_indicators = []
 
-        bad_indicators = [
-            indicator for indicator in used_indicators if indicator not in allowed_set
-        ]
-        issues: List[str] = []
+        bad_indicators = [indicator for indicator in used_indicators if indicator not in allowed_set]
+        issues: list[str] = []
         if token not in expected_set:
             issues.append("unexpected_token")
         if not token:
@@ -832,7 +838,7 @@ def _validate_token_matrix_payload(
                 "valid": not issues,
                 "issues": issues,
                 "bad_indicators": bad_indicators,
-            }
+            },
         )
 
     missing_tokens = [token for token in expected_tokens if returned_counter[token] == 0]
@@ -842,7 +848,7 @@ def _validate_token_matrix_payload(
     matched_expected_count = len(expected_tokens) - len(missing_tokens)
     coverage_ratio = matched_expected_count / max(len(expected_tokens), 1)
 
-    issues: List[str] = []
+    issues: list[str] = []
     if missing_tokens:
         issues.append("missing_tokens")
     if extra_tokens:
@@ -886,10 +892,10 @@ def _validate_token_matrix_payload(
 
 
 def _evaluate_chat_attempt(
-    chat_result: Dict[str, Any],
-    expected_tokens: List[str],
-    allowed_indicators: List[str],
-) -> Dict[str, Any]:
+    chat_result: dict[str, Any],
+    expected_tokens: list[str],
+    allowed_indicators: list[str],
+) -> dict[str, Any]:
     if not chat_result.get("ok"):
         validation = {
             "status": str(chat_result.get("status") or "request_error"),
@@ -943,28 +949,36 @@ def _evaluate_chat_attempt(
     }
 
 
-def _attempt_score(attempt: Dict[str, Any]) -> tuple[int, float, int]:
+def _attempt_score(attempt: dict[str, Any]) -> tuple[int, float, int]:
     validation = attempt.get("validation", {})
     status = str(validation.get("status") or "")
     if status == "success":
-        return (3, float(validation.get("coverage_ratio", 0.0) or 0.0), int(validation.get("valid_token_count", 0) or 0))
+        return (
+            3,
+            float(validation.get("coverage_ratio", 0.0) or 0.0),
+            int(validation.get("valid_token_count", 0) or 0),
+        )
     if attempt.get("chat", {}).get("ok"):
-        return (2, float(validation.get("coverage_ratio", 0.0) or 0.0), int(validation.get("valid_token_count", 0) or 0))
+        return (
+            2,
+            float(validation.get("coverage_ratio", 0.0) or 0.0),
+            int(validation.get("valid_token_count", 0) or 0),
+        )
     return (1, 0.0, 0)
 
 
-def _build_llm_candidate_inventory(model_filter: str = "") -> List[Dict[str, Any]]:
+def _build_llm_candidate_inventory(model_filter: str = "") -> list[dict[str, Any]]:
     from agents.model_config import list_available_models
 
     catalog_infos = list_available_models()
-    info_by_name: Dict[str, Any] = {}
+    info_by_name: dict[str, Any] = {}
     for info in catalog_infos:
         normalized_name = normalize_model_name(getattr(info, "name", "")) or str(getattr(info, "name", "") or "")
         if normalized_name:
             info_by_name[normalized_name] = info
 
     pattern = re.compile(model_filter, re.IGNORECASE) if model_filter else None
-    candidates: List[Dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
     for normalized_name in sorted(info_by_name.keys()):
         info = info_by_name[normalized_name]
         description = str(getattr(info, "description", "") or "")
@@ -993,7 +1007,7 @@ def _build_llm_candidate_inventory(model_filter: str = "") -> List[Dict[str, Any
                 "params_billions": params_billions,
                 "cloud_billed": cloud_billed,
                 "requires_manual_approval": requires_manual_approval,
-            }
+            },
         )
     return candidates
 
@@ -1008,20 +1022,18 @@ def _default_llm_benchmark_output_path(explicit_output: str) -> Path:
 
 
 def _summarize_llm_benchmark(
-    probe_records: List[Dict[str, Any]],
-    run_rows: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    probe_records: list[dict[str, Any]],
+    run_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
     probe_status_counts = Counter(record.get("probe_status", "unknown") for record in probe_records)
     chat_policy_counts = Counter(record.get("chat_policy", "unknown") for record in probe_records)
     run_status_counts = Counter(row.get("status", "unknown") for row in run_rows)
     error_type_counts = Counter(
-        row.get("error_type", "unknown")
-        for row in run_rows
-        if row.get("error_type") not in {None, "success"}
+        row.get("error_type", "unknown") for row in run_rows if row.get("error_type") not in {None, "success"}
     )
     missing_token_counts: Counter[str] = Counter()
     invalid_indicator_counts: Counter[str] = Counter()
-    per_model_rows: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    per_model_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
     for row in run_rows:
         model_name = str(row.get("model_name", "") or "")
@@ -1032,7 +1044,7 @@ def _summarize_llm_benchmark(
             for indicator in token_record.get("bad_indicators", []):
                 invalid_indicator_counts[str(indicator)] += 1
 
-    model_summaries: List[Dict[str, Any]] = []
+    model_summaries: list[dict[str, Any]] = []
     for model_name, rows in per_model_rows.items():
         attempts = len(rows)
         success_runs = sum(1 for row in rows if row.get("status") == "success")
@@ -1056,7 +1068,7 @@ def _summarize_llm_benchmark(
                 "avg_coverage_ratio": avg_coverage_ratio,
                 "avg_valid_tokens": avg_valid_tokens,
                 "fallback_runs": fallback_runs,
-            }
+            },
         )
 
     model_summaries.sort(
@@ -1065,7 +1077,7 @@ def _summarize_llm_benchmark(
             -float(item.get("avg_coverage_ratio", 0.0) or 0.0),
             float(item.get("avg_latency_ms", 0.0) or 0.0),
             str(item.get("model_name", "")),
-        )
+        ),
     )
 
     return {
@@ -1083,7 +1095,7 @@ def _summarize_llm_benchmark(
     }
 
 
-def _render_llm_benchmark_markdown(payload: Dict[str, Any]) -> str:
+def _render_llm_benchmark_markdown(payload: dict[str, Any]) -> str:
     summary = dict(payload.get("summary", {}) or {})
     config = dict(payload.get("config", {}) or {})
     probe_records = list(payload.get("probe_records", []) or [])
@@ -1124,7 +1136,7 @@ def _render_llm_benchmark_markdown(payload: Dict[str, Any]) -> str:
                     attempts=int(item.get("attempts", 0) or 0),
                     coverage=float(item.get("avg_coverage_ratio", 0.0) or 0.0),
                     latency=float(item.get("avg_latency_ms", 0.0) or 0.0),
-                )
+                ),
             )
     else:
         lines.append("- Aucun modèle n'a été exécuté.")
@@ -1139,7 +1151,7 @@ def _render_llm_benchmark_markdown(payload: Dict[str, Any]) -> str:
                     policy=record.get("chat_policy", "?"),
                     probe=record.get("probe_status", "?"),
                     message=_trim_text(record.get("probe_message", ""), max_chars=160),
-                )
+                ),
             )
     else:
         lines.append("- Aucun modèle en probe-only.")
@@ -1147,7 +1159,7 @@ def _render_llm_benchmark_markdown(payload: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _persist_llm_benchmark_payload(output_path: Path, payload: Dict[str, Any]) -> None:
+def _persist_llm_benchmark_payload(output_path: Path, payload: dict[str, Any]) -> None:
     from tools.generate_html_report import generate_llm_benchmark_html_report
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1164,7 +1176,7 @@ def _persist_llm_benchmark_payload(output_path: Path, payload: Dict[str, Any]) -
     generate_llm_benchmark_html_report(html_payload, output_path.with_suffix(".html"))
 
 
-def run_llm_token_matrix_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
+def run_llm_token_matrix_benchmark(args: argparse.Namespace) -> dict[str, Any]:
     from agents.ollama_manager import (
         cleanup_all_models,
         ensure_ollama_running,
@@ -1188,11 +1200,11 @@ def run_llm_token_matrix_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
     missing_tokens = [token for token in CANONICAL_LLM_BENCHMARK_TOKENS if token not in available_tokens]
     if missing_tokens:
         raise RuntimeError(
-            "Tokens benchmark manquants dans les données: " + ", ".join(missing_tokens)
+            "Tokens benchmark manquants dans les données: " + ", ".join(missing_tokens),
         )
     if args.llm_timeframe not in available_timeframes:
         raise RuntimeError(
-            f"Timeframe benchmark indisponible: {args.llm_timeframe}. Disponibles: {available_timeframes}"
+            f"Timeframe benchmark indisponible: {args.llm_timeframe}. Disponibles: {available_timeframes}",
         )
 
     available_indicator_names = set(list_indicators())
@@ -1212,13 +1224,13 @@ def run_llm_token_matrix_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
     if not ok:
         raise RuntimeError(msg)
 
-    probe_records: List[Dict[str, Any]] = []
-    run_rows: List[Dict[str, Any]] = []
-    payload: Dict[str, Any] = {}
+    probe_records: list[dict[str, Any]] = []
+    run_rows: list[dict[str, Any]] = []
+    payload: dict[str, Any] = {}
 
     try:
-        tags_status_code: Optional[int] = None
-        tags_payload: Optional[Dict[str, Any]] = None
+        tags_status_code: int | None = None
+        tags_payload: dict[str, Any] | None = None
         try:
             tags_response = httpx.get(f"{ollama_host}/api/tags", timeout=8.0)
             tags_status_code = tags_response.status_code
@@ -1228,10 +1240,7 @@ def run_llm_token_matrix_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
             tags_payload = None
 
         runtime_models_exact = list_ollama_models(ollama_host=ollama_host)
-        runtime_models_by_norm = {
-            normalize_model_name(name) or str(name): str(name)
-            for name in runtime_models_exact
-        }
+        runtime_models_by_norm = {normalize_model_name(name) or str(name): str(name) for name in runtime_models_exact}
         candidates = _build_llm_candidate_inventory(model_filter=str(args.llm_model_filter or ""))
 
         for candidate in candidates:
@@ -1261,7 +1270,7 @@ def run_llm_token_matrix_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
                     "probe_present_in_tags": bool(probe.get("present_in_tags", False)),
                     "probe_accepted": bool(probe.get("accepted", False)),
                     "chat_policy": chat_policy,
-                }
+                },
             )
 
         full_candidates = [record for record in probe_records if record.get("chat_policy") == "full"]
@@ -1270,7 +1279,7 @@ def run_llm_token_matrix_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
                 {"light": 0, "medium": 1, "heavy": 2, "unknown": 3}.get(str(item.get("category", "unknown")), 3),
                 float(item.get("params_billions", 0.0) or 0.0),
                 str(item.get("runtime_name") or item.get("canonical_name") or ""),
-            )
+            ),
         )
 
         if int(args.llm_max_models or 0) > 0:
@@ -1291,8 +1300,7 @@ def run_llm_token_matrix_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
         for model_index, candidate in enumerate(full_candidates, start=1):
             model_name = str(candidate.get("runtime_name") or candidate.get("canonical_name") or "").strip()
             print(
-                f"\n[{model_index}/{len(full_candidates)}] {model_name} "
-                f"({candidate.get('category', 'unknown')})"
+                f"\n[{model_index}/{len(full_candidates)}] {model_name} ({candidate.get('category', 'unknown')})",
             )
 
             cleanup_all_models(ollama_host=ollama_host)
@@ -1335,7 +1343,7 @@ def run_llm_token_matrix_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
                         "http_status": None,
                         "error_detail": warmup_detail,
                         "response_excerpt": "",
-                    }
+                    },
                 )
                 print(f"  ❌ Warmup échoué: {warmup_detail}")
             else:
@@ -1358,7 +1366,7 @@ def run_llm_token_matrix_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
                     )
                     fallback_attempted = False
                     fallback_selected = False
-                    fallback_attempt: Optional[Dict[str, Any]] = None
+                    fallback_attempt: dict[str, Any] | None = None
                     selected_attempt = primary_attempt
 
                     if primary_attempt["chat"].get("ok") and primary_attempt.get("status") != "success":
@@ -1418,9 +1426,13 @@ def run_llm_token_matrix_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
                             "response_excerpt": _trim_text(chat.get("content", ""), max_chars=220),
                             "primary_status": primary_attempt.get("status", "unknown"),
                             "primary_error_type": primary_attempt.get("error_type", "unknown"),
-                            "fallback_status": "" if fallback_attempt is None else fallback_attempt.get("status", "unknown"),
-                            "fallback_error_type": "" if fallback_attempt is None else fallback_attempt.get("error_type", "unknown"),
-                        }
+                            "fallback_status": ""
+                            if fallback_attempt is None
+                            else fallback_attempt.get("status", "unknown"),
+                            "fallback_error_type": ""
+                            if fallback_attempt is None
+                            else fallback_attempt.get("error_type", "unknown"),
+                        },
                     )
                     print(
                         "  run {run}: {status} | coverage={coverage:.0%} | latency={latency:.0f}ms{fallback}".format(
@@ -1429,7 +1441,7 @@ def run_llm_token_matrix_benchmark(args: argparse.Namespace) -> Dict[str, Any]:
                             coverage=float(validation.get("coverage_ratio", 0.0) or 0.0),
                             latency=float(chat.get("latency_ms", 0.0) or 0.0),
                             fallback=" | retry-nojson" if fallback_selected else "",
-                        )
+                        ),
                     )
 
             payload = {
@@ -1497,18 +1509,43 @@ def main():
     parser.add_argument("--numba-only", action="store_true", help="Benchmark Numba uniquement")
     parser.add_argument("--n-bars", type=int, default=10000, help="Nombre de barres de test")
     parser.add_argument("--n-combos", type=int, default=100, help="Nombre de combinaisons sweep")
-    parser.add_argument("--llm-proposal-benchmark", action="store_true", help="Benchmark LLM multi-modèles sur 23 tokens fixes")
+    parser.add_argument(
+        "--llm-proposal-benchmark", action="store_true", help="Benchmark LLM multi-modèles sur 23 tokens fixes",
+    )
     parser.add_argument("--llm-runs", type=int, default=1, help="Nombre de runs par modèle pour le benchmark LLM")
-    parser.add_argument("--llm-timeframe", type=str, default=DEFAULT_LLM_BENCHMARK_TIMEFRAME, help="Timeframe de référence pour le benchmark LLM")
+    parser.add_argument(
+        "--llm-timeframe",
+        type=str,
+        default=DEFAULT_LLM_BENCHMARK_TIMEFRAME,
+        help="Timeframe de référence pour le benchmark LLM",
+    )
     parser.add_argument("--llm-timeout", type=int, default=120, help="Timeout en secondes par run LLM")
     parser.add_argument("--llm-max-tokens", type=int, default=2400, help="Tokens maximum de sortie par run LLM")
-    parser.add_argument("--llm-temperature", type=float, default=0.2, help="Température de génération pour le benchmark LLM")
-    parser.add_argument("--llm-keep-alive-minutes", type=int, default=10, help="Keep-alive minutes pour le warmup des modèles")
-    parser.add_argument("--llm-max-models", type=int, default=0, help="Limiter le nombre de modèles réellement exécutés après la phase probe (0=tous)")
+    parser.add_argument(
+        "--llm-temperature", type=float, default=0.2, help="Température de génération pour le benchmark LLM",
+    )
+    parser.add_argument(
+        "--llm-keep-alive-minutes", type=int, default=10, help="Keep-alive minutes pour le warmup des modèles",
+    )
+    parser.add_argument(
+        "--llm-max-models",
+        type=int,
+        default=0,
+        help="Limiter le nombre de modèles réellement exécutés après la phase probe (0=tous)",
+    )
     parser.add_argument("--llm-model-filter", type=str, default="", help="Regex de filtrage des modèles benchmarkés")
-    parser.add_argument("--llm-include-expensive", action="store_true", help="Exécuter aussi les modèles cloud ou >50B au lieu de les laisser en probe-only")
+    parser.add_argument(
+        "--llm-include-expensive",
+        action="store_true",
+        help="Exécuter aussi les modèles cloud ou >50B au lieu de les laisser en probe-only",
+    )
     parser.add_argument("--llm-output", type=str, default="", help="Chemin de sortie JSON du benchmark LLM")
-    parser.add_argument("--llm-ollama-host", type=str, default=os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434"), help="Host Ollama à utiliser pour le benchmark LLM")
+    parser.add_argument(
+        "--llm-ollama-host",
+        type=str,
+        default=os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434"),
+        help="Host Ollama à utiliser pour le benchmark LLM",
+    )
     args = parser.parse_args()
 
     if args.llm_proposal_benchmark:

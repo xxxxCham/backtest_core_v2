@@ -1,5 +1,4 @@
-"""
-Module-ID: strategies.ema_cross
+"""Module-ID: strategies.ema_cross
 
 Purpose: Stratégie de suivi de tendance par croisement de deux EMAs (Golden/Death Cross).
 
@@ -20,7 +19,7 @@ Read-if: Modification logique croisement, seuils entrée, ou preset.
 Skip-if: Vous ne changez que d'autres stratégies.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -32,8 +31,7 @@ from .base import StrategyBase, register_strategy
 
 @register_strategy("ema_cross")
 class EMACrossStrategy(StrategyBase):
-    """
-    Stratégie EMA Crossover (Trend Following).
+    """Stratégie EMA Crossover (Trend Following).
 
     Stratégie classique de suivi de tendance utilisant deux moyennes
     mobiles exponentielles de périodes différentes.
@@ -53,12 +51,12 @@ class EMACrossStrategy(StrategyBase):
         super().__init__(name="EMACross")
 
     @property
-    def required_indicators(self) -> List[str]:
+    def required_indicators(self) -> list[str]:
         """Cette stratégie calcule ses propres EMAs."""
         return []
 
     @property
-    def default_params(self) -> Dict[str, Any]:
+    def default_params(self) -> dict[str, Any]:
         """Paramètres par défaut."""
         return {
             "fast_period": 12,
@@ -66,52 +64,59 @@ class EMACrossStrategy(StrategyBase):
             "leverage": 1,  # Fixé à 1 - ne pas optimiser
             "k_sl": 2.0,  # Stop loss en % du prix
             "fees_bps": 10,
-            "slippage_bps": 5
+            "slippage_bps": 5,
         }
 
     @property
-    def parameter_specs(self) -> Dict[str, ParameterSpec]:
+    def parameter_specs(self) -> dict[str, ParameterSpec]:
         """Spécifications des paramètres."""
         return {
             "fast_period": ParameterSpec(
                 name="fast_period",
-                min_val=5, max_val=20, default=12,
+                min_val=5,
+                max_val=20,
+                default=12,
                 param_type="int",
-                description="Période EMA rapide"
+                description="Période EMA rapide",
             ),
             "slow_period": ParameterSpec(
                 name="slow_period",
-                min_val=20, max_val=50, default=26,
+                min_val=20,
+                max_val=50,
+                default=26,
                 param_type="int",
-                description="Période EMA lente"
+                description="Période EMA lente",
             ),
             "k_sl": ParameterSpec(
                 name="k_sl",
-                min_val=1.0, max_val=5.0, default=2.0,
+                min_val=1.0,
+                max_val=5.0,
+                default=2.0,
                 param_type="float",
-                description="Stop-loss en %"
+                description="Stop-loss en %",
             ),
             "leverage": ParameterSpec(
                 name="leverage",
-                min_val=1, max_val=10, default=1,
+                min_val=1,
+                max_val=10,
+                default=1,
                 param_type="int",
                 description="Levier de trading (non optimisé)",
                 optimize=False,
             ),
         }
 
-    def get_preset(self) -> Optional[Preset]:
+    def get_preset(self) -> Preset | None:
         """Retourne le preset EMA Cross."""
         return EMA_CROSS_PRESET
 
     def generate_signals(
         self,
         df: pd.DataFrame,
-        indicators: Dict[str, Any],
-        params: Dict[str, Any]
+        indicators: dict[str, Any],
+        params: dict[str, Any],
     ) -> pd.Series:
-        """
-        Génère les signaux de croisement EMA.
+        """Génère les signaux de croisement EMA.
 
         Note: Cette stratégie calcule ses propres EMAs car elle a besoin
         de deux périodes spécifiques. Le registre d'indicateurs standard

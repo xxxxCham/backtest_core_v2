@@ -1,6 +1,4 @@
-# ruff: noqa: I001
-"""
-Module-ID: agents.builder_policy_helpers
+"""Module-ID: agents.builder_policy_helpers
 
 Purpose: Helpers de politique itérative du Strategy Builder — override de
          change_type, détection de stagnation, branching, sélection de branche.
@@ -13,7 +11,7 @@ Dependencies: agents.builder_ast_utils, agents.builder_diagnostics,
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 from agents.builder_ast_utils import (
     _extract_required_indicators_signature,
@@ -23,7 +21,6 @@ from agents.builder_diagnostics import (
 )
 from agents.builder_proposal_helpers import (
     _is_logic_like_change_type,
-    _normalize_change_type,
 )
 
 if TYPE_CHECKING:
@@ -34,11 +31,13 @@ if TYPE_CHECKING:
 # Policy overrides
 # ---------------------------------------------------------------------------
 
+
 def _to_ctx(
-    arg: "Union[BuilderIteration, IterationContext, None]",
-) -> "IterationContext":
+    arg: BuilderIteration | IterationContext | None,
+) -> IterationContext:
     """Coerce un BuilderIteration ou None en IterationContext (import tardif)."""
     from agents.builder_state import IterationContext
+
     if isinstance(arg, IterationContext):
         return arg
     return IterationContext(arg)
@@ -46,10 +45,10 @@ def _to_ctx(
 
 def _policy_change_type_override(
     *,
-    session: "BuilderSession",
-    last_iteration: "Union[BuilderIteration, IterationContext, None]" = None,
-    ctx: "Optional[IterationContext]" = None,
-) -> Optional[str]:
+    session: BuilderSession,
+    last_iteration: BuilderIteration | IterationContext | None = None,
+    ctx: IterationContext | None = None,
+) -> str | None:
     """Force un type de modification cohérent avec le diagnostic récent."""
     c = ctx if ctx is not None else _to_ctx(last_iteration)
     if not c.exists:
@@ -67,8 +66,12 @@ def _policy_change_type_override(
         return "logic"
 
     logic_cats = {
-        "ruined", "no_trades", "overtrading",
-        "wrong_direction", "high_drawdown", "needs_work",
+        "ruined",
+        "no_trades",
+        "overtrading",
+        "wrong_direction",
+        "high_drawdown",
+        "needs_work",
     }
     param_cats = {"approaching_target", "marginal", "target_reached"}
 
@@ -83,10 +86,11 @@ def _policy_change_type_override(
 # Indicator exploration helpers
 # ---------------------------------------------------------------------------
 
+
 def _previous_iteration_indicators(
-    last_iteration: "Union[BuilderIteration, IterationContext, None]" = None,
+    last_iteration: BuilderIteration | IterationContext | None = None,
     *,
-    ctx: "Optional[IterationContext]" = None,
+    ctx: IterationContext | None = None,
 ) -> tuple[str, ...]:
     """Retourne les indicateurs de l'itération précédente depuis son code validé."""
     c = ctx if ctx is not None else _to_ctx(last_iteration)
@@ -96,9 +100,9 @@ def _previous_iteration_indicators(
 
 
 def _requires_indicator_exploration(
-    last_iteration: "Union[BuilderIteration, IterationContext, None]" = None,
+    last_iteration: BuilderIteration | IterationContext | None = None,
     *,
-    ctx: "Optional[IterationContext]" = None,
+    ctx: IterationContext | None = None,
 ) -> bool:
     """Indique si la prochaine proposition doit explorer de nouveaux indicateurs."""
     c = ctx if ctx is not None else _to_ctx(last_iteration)
@@ -107,8 +111,12 @@ def _requires_indicator_exploration(
     if c.has_identical_metrics_stagnation:
         return True
     return c.is_category(
-        "ruined", "no_trades", "overtrading",
-        "wrong_direction", "high_drawdown", "needs_work",
+        "ruined",
+        "no_trades",
+        "overtrading",
+        "wrong_direction",
+        "high_drawdown",
+        "needs_work",
     )
 
 
@@ -116,10 +124,11 @@ def _requires_indicator_exploration(
 # Stagnation branching
 # ---------------------------------------------------------------------------
 
+
 def _should_enable_stagnation_branching(
-    last_iteration: "Union[BuilderIteration, IterationContext, None]" = None,
+    last_iteration: BuilderIteration | IterationContext | None = None,
     *,
-    ctx: "Optional[IterationContext]" = None,
+    ctx: IterationContext | None = None,
 ) -> bool:
     """N'ouvre des branches supplémentaires qu'après vraie stagnation."""
     c = ctx if ctx is not None else _to_ctx(last_iteration)
@@ -130,7 +139,7 @@ def _should_enable_stagnation_branching(
 
 def _build_stagnation_branch_specs(
     previous_indicators: tuple[str, ...],
-) -> List[Dict[str, str]]:
+) -> list[dict[str, str]]:
     previous_text = ", ".join(previous_indicators) if previous_indicators else "the previous indicator set"
     return [
         {
@@ -164,9 +173,10 @@ def _build_stagnation_branch_specs(
 # Stagnation circuit breaker
 # ---------------------------------------------------------------------------
 
+
 def _should_trip_logic_stagnation_circuit(
-    last_iteration: "Union[BuilderIteration, IterationContext, None]",
-    iteration: "BuilderIteration",
+    last_iteration: BuilderIteration | IterationContext | None,
+    iteration: BuilderIteration,
 ) -> bool:
     prev = _to_ctx(last_iteration)
     if not prev.exists:
@@ -187,9 +197,10 @@ def _should_trip_logic_stagnation_circuit(
 # Branch selection
 # ---------------------------------------------------------------------------
 
+
 def _select_best_branch_candidate(
-    outcomes: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    outcomes: list[dict[str, Any]],
+) -> dict[str, Any]:
     successful = [outcome for outcome in outcomes if not outcome.get("error") and outcome.get("bt_result") is not None]
     if not successful:
         return outcomes[0] if outcomes else {}
@@ -200,7 +211,7 @@ def _select_best_branch_candidate(
         "keep": 0,
     }
 
-    def _outcome_metrics(outcome: Dict[str, Any]) -> Dict[str, Any]:
+    def _outcome_metrics(outcome: dict[str, Any]) -> dict[str, Any]:
         metrics = outcome.get("metrics")
         if isinstance(metrics, dict):
             return metrics

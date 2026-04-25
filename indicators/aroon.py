@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.aroon
+"""Module-ID: indicators.aroon
 
 Purpose: Indicateur Aroon (Aroon Up/Down) - temps depuis haut/bas.
 
@@ -21,7 +20,6 @@ Skip-if: Vous utilisez juste calculate_indicator('aroon').
 """
 
 from dataclasses import dataclass
-from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -30,6 +28,7 @@ import pandas as pd
 @dataclass
 class AroonSettings:
     """Paramètres Aroon."""
+
     period: int = 14
 
 
@@ -37,9 +36,8 @@ def aroon(
     high: pd.Series | np.ndarray,
     low: pd.Series | np.ndarray,
     period: int = 14,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Calcule Aroon Up/Down.
+) -> tuple[np.ndarray, np.ndarray]:
+    """Calcule Aroon Up/Down.
 
     Args:
         high: Prix hauts
@@ -48,6 +46,7 @@ def aroon(
 
     Returns:
         Tuple (aroon_up, aroon_down) en pourcentage (0-100)
+
     """
     if isinstance(high, pd.Series):
         high = high.values
@@ -59,8 +58,8 @@ def aroon(
     aroon_down = np.full(n, np.nan)
 
     for i in range(period - 1, n):
-        window_high = high[i - period + 1:i + 1]
-        window_low = low[i - period + 1:i + 1]
+        window_high = high[i - period + 1 : i + 1]
+        window_low = low[i - period + 1 : i + 1]
 
         bars_since_high = period - 1 - int(np.argmax(window_high))
         bars_since_low = period - 1 - int(np.argmin(window_low))
@@ -71,4 +70,4 @@ def aroon(
     return aroon_up, aroon_down
 
 
-__all__ = ["aroon", "AroonSettings"]
+__all__ = ["AroonSettings", "aroon"]

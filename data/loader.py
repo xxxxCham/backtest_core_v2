@@ -1,5 +1,4 @@
-"""
-Module-ID: data.loader
+"""Module-ID: data.loader
 
 Purpose: Chargement OHLCV multi-formats (CSV, Parquet, JSON, Feather) + découverte auto.
 
@@ -24,7 +23,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -40,6 +39,7 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 TRIM_LAUNCH_PCT = float(os.environ.get("BACKTEST_TRIM_LAUNCH_PCT", "2"))
 TRIM_LAUNCH_MIN_HOURS = int(os.environ.get("BACKTEST_TRIM_LAUNCH_MIN_HOURS", "24"))
+
 
 def _timeframe_to_timedelta(timeframe: str) -> pd.Timedelta:
     """Convertit un timeframe string ('1h', '15m', '1d') en pd.Timedelta."""
@@ -73,11 +73,10 @@ def _timeframe_to_timedelta(timeframe: str) -> pd.Timedelta:
 def _trim_launch_period(
     df: pd.DataFrame,
     timeframe: str,
-    trim_pct: Optional[float] = None,
-    min_hours: Optional[int] = None,
+    trim_pct: float | None = None,
+    min_hours: int | None = None,
 ) -> pd.DataFrame:
-    """
-    Supprime les premières barres post-listing d'un DataFrame OHLCV.
+    """Supprime les premières barres post-listing d'un DataFrame OHLCV.
 
     Nombre de barres supprimées = max(floor_24h, pct% du total).
 
@@ -89,6 +88,7 @@ def _trim_launch_period(
 
     Returns:
         DataFrame tronqué (inchangé si désactivé ou données insuffisantes)
+
     """
     pct = trim_pct if trim_pct is not None else TRIM_LAUNCH_PCT
     if pct <= 0 or df.empty:
@@ -109,7 +109,7 @@ def _trim_launch_period(
     if trim_count >= len(df) * 0.5:
         logger.warning(
             f"⚠️  Trim launch: {trim_count} barres ({pct}% / floor {floor_h}h) "
-            f"≥ 50 % du dataset ({len(df)} barres). Trim ignoré."
+            f"≥ 50 % du dataset ({len(df)} barres). Trim ignoré.",
         )
         return df
 
@@ -118,14 +118,13 @@ def _trim_launch_period(
     logger.info(
         f"✂️  Trim post-listing: {trim_count} barres supprimées "
         f"({df.index[0]} → {trim_end_ts}, "
-        f"max({floor_bars} barres/{floor_h}h, {pct_bars} barres/{pct}%))"
+        f"max({floor_bars} barres/{floor_h}h, {pct_bars} barres/{pct}%))",
     )
     return trimmed
 
 
 def _mark_data_quality(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Ajoute la colonne ``_tradable`` au DataFrame OHLCV.
+    """Ajoute la colonne ``_tradable`` au DataFrame OHLCV.
 
     _tradable = False pour les bougies à volume nul (synthétiques ou suspectes).
     Le moteur de backtest masque les signaux d'entrée sur ces barres.
@@ -140,8 +139,7 @@ def _mark_data_quality(df: pd.DataFrame) -> pd.DataFrame:
     if n_untradable > 0:
         ratio = n_untradable / len(df)
         logger.info(
-            f"📊 Data quality: {n_untradable}/{len(df)} barres non-tradables "
-            f"({ratio:.1%}) — volume=0"
+            f"📊 Data quality: {n_untradable}/{len(df)} barres non-tradables ({ratio:.1%}) — volume=0",
         )
 
     return df
@@ -150,10 +148,9 @@ def _mark_data_quality(df: pd.DataFrame) -> pd.DataFrame:
 def detect_gaps(
     df: pd.DataFrame,
     timeframe: str,
-    max_gap_multiplier: float = 2.0
-) -> List[Tuple[pd.Timestamp, pd.Timestamp, int]]:
-    """
-    Détecte les gaps (discontinuités) dans un DataFrame OHLCV.
+    max_gap_multiplier: float = 2.0,
+) -> list[tuple[pd.Timestamp, pd.Timestamp, int]]:
+    """Détecte les gaps (discontinuités) dans un DataFrame OHLCV.
 
     Args:
         df: DataFrame avec DatetimeIndex
@@ -162,6 +159,7 @@ def detect_gaps(
 
     Returns:
         Liste de (gap_start, gap_end, nb_barres_manquantes)
+
     """
     if len(df) < 2:
         return []
@@ -172,13 +170,14 @@ def detect_gaps(
     timestamps = df.index
 
     for i in range(1, len(timestamps)):
-        delta = timestamps[i] - timestamps[i-1]
+        delta = timestamps[i] - timestamps[i - 1]
 
         if delta > expected_delta * max_gap_multiplier:
             nb_missing = int(delta / expected_delta) - 1
-            gaps.append((timestamps[i-1], timestamps[i], nb_missing))
+            gaps.append((timestamps[i - 1], timestamps[i], nb_missing))
 
     return gaps
+
 
 # Extensions supportées
 SUPPORTED_EXTENSIONS = (".parquet", ".feather", ".csv", ".json")
@@ -187,13 +186,17 @@ SUPPORTED_EXTENSION_SET = {ext.lower() for ext in SUPPORTED_EXTENSIONS}
 # Dossiers à exclure du scan de données (cache/artefacts locaux)
 IGNORED_SCAN_DIRS = {
     "__pycache__",
+    ".vscode",
+    ".idea",
     ".mypy_cache",
     ".pytest_cache",
+    ".ruff_cache",
     ".tmp",
     ".tmp_pytest_codex",
     ".tmp_pytest_codex_run",
     "pytest_temp",
     ".git",
+    "node_modules",
     ".venv",
     ".venv_old",
 }
@@ -203,25 +206,28 @@ IGNORED_SCAN_DIRS = {
 #   SYMBOL_TIMEFRAME_<suffix>.ext
 #   SYMBOL-TIMEFRAME-suffix.ext (support partiel via séparateur après timeframe)
 DATA_FILE_STEM_RE = re.compile(
-    r"^(?P<symbol>[A-Za-z0-9][A-Za-z0-9.\-]*)_(?P<timeframe>\d+[mhdwM])(?:$|[_-].*)"
+    r"^(?P<symbol>[A-Za-z0-9][A-Za-z0-9.\-]*)_(?P<timeframe>\d+[mhdwM])(?:$|[_-].*)",
 )
 
 # Répertoire de données par défaut
 # Source principale: gestionnaire multi-timeframe processed parquets
 _GESTIONNAIRE_CLEAN_DIR = Path("D:/.my_soft/gestionnaire_telechargement_multi-timeframe_clean/processed/parquet")
-DEFAULT_DATA_DIR = _GESTIONNAIRE_CLEAN_DIR if _GESTIONNAIRE_CLEAN_DIR.exists() else Path(__file__).parent / "sample_data"
+DEFAULT_DATA_DIR = (
+    _GESTIONNAIRE_CLEAN_DIR if _GESTIONNAIRE_CLEAN_DIR.exists() else Path(__file__).parent / "sample_data"
+)
 
-def _optional_env_path(key: str) -> Optional[Path]:
+
+def _optional_env_path(key: str) -> Path | None:
     value = os.environ.get(key)
     if not value:
         return None
     return Path(value)
 
 
-def _dedupe_paths(paths: List[Path]) -> List[Path]:
+def _dedupe_paths(paths: list[Path]) -> list[Path]:
     """Supprime les doublons de chemins en conservant l'ordre."""
     seen = set()
-    out: List[Path] = []
+    out: list[Path] = []
     for path in paths:
         key = str(path).lower()
         if key in seen:
@@ -231,7 +237,7 @@ def _dedupe_paths(paths: List[Path]) -> List[Path]:
     return out
 
 
-def _extract_symbol_timeframe_from_stem(stem: str) -> Optional[Tuple[str, str]]:
+def _extract_symbol_timeframe_from_stem(stem: str) -> tuple[str, str] | None:
     """Extrait (SYMBOL, timeframe) depuis un nom de fichier sans extension."""
     match = DATA_FILE_STEM_RE.match(stem)
     if not match:
@@ -258,7 +264,7 @@ def _iter_supported_files(root: Path):
                 yield current / name
 
 
-def _build_legacy_windows_data_dirs() -> List[Path]:
+def _build_legacy_windows_data_dirs() -> list[Path]:
     """Construit des candidats Windows connus pour auto-détection data."""
     if os.name != "nt":
         return []
@@ -298,7 +304,7 @@ GESTIONNAIRE_DATA_DIR = _optional_env_path("BACKTEST_CORE_V2_GESTIONNAIRE_DIR")
 GESTIONNAIRE_RAW_DIR = _optional_env_path("BACKTEST_CORE_V2_RAW_DIR")
 
 # Compatibilité Windows (auto-détection banque externe sans env obligatoire).
-LEGACY_WINDOWS_DATA_DIRS: List[Path] = _build_legacy_windows_data_dirs()
+LEGACY_WINDOWS_DATA_DIRS: list[Path] = _build_legacy_windows_data_dirs()
 
 
 def _get_data_dir() -> Path:
@@ -311,7 +317,7 @@ def _get_data_dir() -> Path:
             return env_path
         if env_path.exists():
             logger.warning(
-                f"BACKTEST_DATA_DIR existe mais ne contient pas de fichiers OHLCV valides: {env_path}"
+                f"BACKTEST_DATA_DIR existe mais ne contient pas de fichiers OHLCV valides: {env_path}",
             )
 
     # Variable TRADX_DATA_ROOT (compatibilité)
@@ -322,7 +328,7 @@ def _get_data_dir() -> Path:
             return tradx_path
         if tradx_path.exists():
             logger.warning(
-                f"TRADX_DATA_ROOT existe mais ne contient pas de fichiers OHLCV valides: {tradx_path}"
+                f"TRADX_DATA_ROOT existe mais ne contient pas de fichiers OHLCV valides: {tradx_path}",
             )
 
     # Gestionnaire multi-timeframe (données processed)
@@ -347,7 +353,7 @@ def _get_data_dir() -> Path:
             Path.cwd() / "data" / "sample_data",
             project_data_dir / "sample_data",
             DEFAULT_DATA_DIR,
-        ]
+        ],
     )
 
     for candidate in candidates:
@@ -360,26 +366,30 @@ def _get_data_dir() -> Path:
 
 
 @lru_cache(maxsize=4)
-def _scan_data_files_for_dir(data_dir: str) -> Tuple[Path, ...]:
+def _scan_data_files_for_dir(data_dir: str) -> tuple[Path, ...]:
     """Scanne les fichiers de données disponibles."""
     root = Path(data_dir)
-    files = list(_iter_supported_files(root))
+    files = [
+        path
+        for path in _iter_supported_files(root)
+        if _extract_symbol_timeframe_from_stem(path.stem) is not None
+    ]
 
     return tuple(sorted(set(files)))
 
 
-def _scan_data_files() -> Tuple[Path, ...]:
+def _scan_data_files() -> tuple[Path, ...]:
     """Scanne les fichiers de données depuis le répertoire actuellement résolu."""
     data_dir = str(_get_data_dir().resolve())
     return _scan_data_files_for_dir(data_dir)
 
 
-def discover_available_data() -> Tuple[List[str], List[str]]:
-    """
-    Découvre les tokens et timeframes disponibles.
+def discover_available_data() -> tuple[list[str], list[str]]:
+    """Découvre les tokens et timeframes disponibles.
 
     Returns:
         Tuple (liste de tokens, liste de timeframes)
+
     """
     tokens = set()
     timeframes = set()
@@ -393,7 +403,7 @@ def discover_available_data() -> Tuple[List[str], List[str]]:
         timeframes.add(tf)
 
     # Tri des timeframes par ordre logique
-    def tf_sort_key(tf: str) -> Tuple[int, int]:
+    def tf_sort_key(tf: str) -> tuple[int, int]:
         if not tf:
             return (99, 0)
         unit = tf[-1]
@@ -407,9 +417,8 @@ def discover_available_data() -> Tuple[List[str], List[str]]:
     return sorted(tokens), sorted(timeframes, key=tf_sort_key)
 
 
-def discover_data_inventory() -> Dict[str, Dict[str, Dict[str, Any]]]:
-    """
-    Retourne un inventaire détaillé des données disponibles par token/timeframe.
+def discover_data_inventory() -> dict[str, dict[str, dict[str, Any]]]:
+    """Retourne un inventaire détaillé des données disponibles par token/timeframe.
 
     Structure:
         {
@@ -423,14 +432,14 @@ def discover_data_inventory() -> Dict[str, Dict[str, Dict[str, Any]]]:
             }
         }
     """
-    inventory: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    inventory: dict[str, dict[str, dict[str, Any]]] = {}
 
     for file_path in _scan_data_files():
         parsed = _extract_symbol_timeframe_from_stem(file_path.stem)
         if parsed is None:
             continue
         symbol, tf = parsed
-        record: Dict[str, Any] = {
+        record: dict[str, Any] = {
             "path": str(file_path),
             "n_bars": None,
             "start": None,
@@ -439,7 +448,7 @@ def discover_data_inventory() -> Dict[str, Dict[str, Dict[str, Any]]]:
         try:
             df = _normalize_ohlcv(_read_file(file_path))
             if not df.empty:
-                record["n_bars"] = int(len(df))
+                record["n_bars"] = len(df)
                 record["start"] = df.index[0].isoformat()
                 record["end"] = df.index[-1].isoformat()
         except Exception as exc:
@@ -451,25 +460,25 @@ def discover_data_inventory() -> Dict[str, Dict[str, Dict[str, Any]]]:
 
 
 def is_valid_timeframe(tf: str) -> bool:
-    """
-    Valide qu'un timeframe est dans un format correct.
+    """Valide qu'un timeframe est dans un format correct.
 
     Args:
         tf: Timeframe à valider (ex: "1m", "5m", "1h", "4h", "1d")
 
     Returns:
         True si le timeframe est valide, False sinon
+
     """
     if not tf or len(tf) < 2:
         return False
 
     # Validation supplémentaire : rejeter patterns problématiques
     problematic_patterns = [
-        r".*\.meta$",    # Fichiers .meta
-        r".*\.data$",    # Fichiers .data
-        r".*\.cache$",   # Fichiers cache
-        r".*_backup$",   # Fichiers backup
-        r".*\.tmp$",     # Fichiers temporaires
+        r".*\.meta$",  # Fichiers .meta
+        r".*\.data$",  # Fichiers .data
+        r".*\.cache$",  # Fichiers cache
+        r".*_backup$",  # Fichiers backup
+        r".*\.tmp$",  # Fichiers temporaires
     ]
 
     for pattern in problematic_patterns:
@@ -478,7 +487,7 @@ def is_valid_timeframe(tf: str) -> bool:
 
     # Doit se terminer par m, h, d, w ou M
     unit = tf[-1]
-    if unit not in ('m', 'h', 'd', 'w', 'M'):
+    if unit not in ("m", "h", "d", "w", "M"):
         return False
 
     # La partie numérique doit être un entier positif
@@ -495,17 +504,16 @@ def _read_file(path: Path) -> pd.DataFrame:
 
     if suffix == ".parquet":
         return pd.read_parquet(path)
-    elif suffix == ".feather":
+    if suffix == ".feather":
         return pd.read_feather(path)
-    elif suffix == ".csv":
+    if suffix == ".csv":
         return pd.read_csv(path, parse_dates=True)
-    elif suffix == ".json":
+    if suffix == ".json":
         return pd.read_json(path)
-    else:
-        raise ValueError(f"Extension non supportée: {suffix}")
+    raise ValueError(f"Extension non supportée: {suffix}")
 
 
-def _find_data_file(symbol: str, timeframe: str) -> Optional[Path]:
+def _find_data_file(symbol: str, timeframe: str) -> Path | None:
     """Cherche le fichier de données correspondant.
 
     IMPORTANT: Le symbole est comparé en case-insensitive (BTCUSDC = btcusdc),
@@ -526,8 +534,7 @@ def _find_data_file(symbol: str, timeframe: str) -> Optional[Path]:
 
 
 def _normalize_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Normalise un DataFrame OHLCV au format standard.
+    """Normalise un DataFrame OHLCV au format standard.
 
     Format de sortie:
     - Index: DatetimeIndex (UTC)
@@ -541,10 +548,21 @@ def _normalize_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
 
     # Mapper les variantes de noms courantes
     column_map = {
-        "o": "open", "h": "high", "l": "low", "c": "close", "v": "volume",
-        "Open": "open", "High": "high", "Low": "low", "Close": "close", "Volume": "volume",
-        "prix_ouverture": "open", "prix_haut": "high", "prix_bas": "low",
-        "prix_cloture": "close", "vol": "volume"
+        "o": "open",
+        "h": "high",
+        "l": "low",
+        "c": "close",
+        "v": "volume",
+        "Open": "open",
+        "High": "high",
+        "Low": "low",
+        "Close": "close",
+        "Volume": "volume",
+        "prix_ouverture": "open",
+        "prix_haut": "high",
+        "prix_bas": "low",
+        "prix_cloture": "close",
+        "vol": "volume",
     }
     df = df.rename(columns=column_map)
 
@@ -572,10 +590,10 @@ def _normalize_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
                 sample_val = float(sample_ts)
                 if sample_val > 1e12:
                     # Timestamp en millisecondes
-                    df[time_col] = pd.to_datetime(df[time_col], unit='ms')
+                    df[time_col] = pd.to_datetime(df[time_col], unit="ms")
                 elif sample_val > 1e9:
                     # Timestamp en secondes
-                    df[time_col] = pd.to_datetime(df[time_col], unit='s')
+                    df[time_col] = pd.to_datetime(df[time_col], unit="s")
                 else:
                     # Format datetime normal
                     df[time_col] = pd.to_datetime(df[time_col])
@@ -588,9 +606,9 @@ def _normalize_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
             df.index = pd.to_datetime(df.index)
 
     # Convertir en UTC si nécessaire
-    if hasattr(df.index, 'tz') and df.index.tz is None:
+    if hasattr(df.index, "tz") and df.index.tz is None:
         df.index = df.index.tz_localize("UTC")  # type: ignore[union-attr]
-    elif hasattr(df.index, 'tz') and df.index.tz is not None:
+    elif hasattr(df.index, "tz") and df.index.tz is not None:
         df.index = df.index.tz_convert("UTC")  # type: ignore[union-attr]
 
     # Sélectionner et trier
@@ -613,12 +631,11 @@ def _normalize_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
 def load_ohlcv(
     symbol: str,
     timeframe: str,
-    start: Optional[str] = None,
-    end: Optional[str] = None,
-    trim_launch_pct: Optional[float] = None,
+    start: str | None = None,
+    end: str | None = None,
+    trim_launch_pct: float | None = None,
 ) -> pd.DataFrame:
-    """
-    Charge les données OHLCV pour un symbole et timeframe.
+    """Charge les données OHLCV pour un symbole et timeframe.
 
     Args:
         symbol: Symbole de l'actif (ex: "BTCUSDT")
@@ -640,11 +657,12 @@ def load_ohlcv(
     Note:
         Dates end "pures" (sans heure) incluent toutes les barres du jour.
         Ex: end="2025-02-28" → inclut barres jusqu'à 23:59:59
+
     """
     if not is_valid_timeframe(timeframe):
         raise ValueError(
             f"Timeframe invalide: '{timeframe}'. "
-            "Format attendu: <nombre><unité> (ex: 1m, 3m, 5m, 15m, 30m, 1h, 4h, 1d, 1w, 1M)."
+            "Format attendu: <nombre><unité> (ex: 1m, 3m, 5m, 15m, 30m, 1h, 4h, 1d, 1w, 1M).",
         )
 
     logger.info(f"Chargement données: {symbol}/{timeframe}")
@@ -654,7 +672,7 @@ def load_ohlcv(
     if file_path is None:
         data_dir = _get_data_dir()
         raise FileNotFoundError(
-            f"Fichier OHLCV introuvable pour {symbol}/{timeframe} dans {data_dir}"
+            f"Fichier OHLCV introuvable pour {symbol}/{timeframe} dans {data_dir}",
         )
 
     # Lire et normaliser
@@ -675,12 +693,10 @@ def load_ohlcv(
 
         # Logging sommaire (UNE FOIS, pas dans boucle)
         logger.warning(
-            f"⚠️  {len(gaps)} gap(s) détecté(s) dans {symbol}/{timeframe} "
-            f"({total_missing} barres manquantes au total)"
+            f"⚠️  {len(gaps)} gap(s) détecté(s) dans {symbol}/{timeframe} ({total_missing} barres manquantes au total)",
         )
         logger.warning(
-            f"    Plus gros gap : {biggest_gap[0]} → {biggest_gap[1]} "
-            f"({biggest_gap[2]} barres)"
+            f"    Plus gros gap : {biggest_gap[0]} → {biggest_gap[1]} ({biggest_gap[2]} barres)",
         )
 
         # Exemples (max 3)
@@ -688,7 +704,7 @@ def load_ohlcv(
             logger.debug(f"    Gap : {gap_start} → {gap_end} ({nb_missing} barres)")
 
         if len(gaps) > 3:
-            logger.debug(f"    ... et {len(gaps)-3} autres gaps")
+            logger.debug(f"    ... et {len(gaps) - 3} autres gaps")
     else:
         logger.debug(f"✅ Aucun gap détecté dans {symbol}/{timeframe}")
 
@@ -711,8 +727,7 @@ def load_ohlcv(
             end_exclusive = end_ts + pd.Timedelta(days=1)
             df = df[df.index < end_exclusive]  # < au lieu de <=
             logger.debug(
-                f"Date end pure détectée : {end_ts.date()} → "
-                f"filtrage jusqu'à {end_exclusive} (exclusif)"
+                f"Date end pure détectée : {end_ts.date()} → filtrage jusqu'à {end_exclusive} (exclusif)",
             )
         else:
             # L'utilisateur a spécifié une heure précise, garder comportement strict
@@ -723,7 +738,7 @@ def load_ohlcv(
         raise ValueError(
             f"Aucune donnée dans la période {start} - {end}. "
             f"Données disponibles: {data_start.strftime('%Y-%m-%d')} → "
-            f"{data_end.strftime('%Y-%m-%d')}"
+            f"{data_end.strftime('%Y-%m-%d')}",
         )
 
     logger.info(f"  Après filtrage: {len(df)} barres")
@@ -734,7 +749,7 @@ def load_ohlcv(
     return df
 
 
-def get_available_timeframes(symbol: str) -> List[str]:
+def get_available_timeframes(symbol: str) -> list[str]:
     """Retourne les timeframes disponibles pour un symbole."""
     symbol = symbol.upper()
     timeframes = set()
@@ -752,10 +767,9 @@ def get_available_timeframes(symbol: str) -> List[str]:
 
 def get_data_date_range(
     symbol: str,
-    timeframe: str
-) -> Optional[Tuple[pd.Timestamp, pd.Timestamp]]:
-    """
-    Retourne la plage de dates disponible pour un symbole/timeframe.
+    timeframe: str,
+) -> tuple[pd.Timestamp, pd.Timestamp] | None:
+    """Retourne la plage de dates disponible pour un symbole/timeframe.
 
     Args:
         symbol: Symbole de l'actif (ex: "BTCUSDC")
@@ -763,6 +777,7 @@ def get_data_date_range(
 
     Returns:
         Tuple (date_debut, date_fin) ou None si fichier non trouvé
+
     """
     file_path = _find_data_file(symbol, timeframe)
     if file_path is None:
@@ -779,9 +794,9 @@ def get_data_date_range(
 
 
 __all__ = [
-    "load_ohlcv",
     "discover_available_data",
     "discover_data_inventory",
     "get_available_timeframes",
     "get_data_date_range",
+    "load_ohlcv",
 ]

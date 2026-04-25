@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.session_ranges_tracker
+"""Module-ID: utils.session_ranges_tracker
 
 Purpose: Tracker de ranges de grid search testées dans une session pour éviter boucles infinies.
 
@@ -24,7 +23,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from utils.log import get_logger
 
@@ -35,10 +34,10 @@ logger = get_logger(__name__)
 class TestedRange:
     """Représente une range de grid search testée."""
 
-    ranges: Dict[str, Dict[str, float]]  # {"param": {"min": x, "max": y, "step": z}}
+    ranges: dict[str, dict[str, float]]  # {"param": {"min": x, "max": y, "step": z}}
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
     n_combinations: int = 0
-    best_sharpe: Optional[float] = None
+    best_sharpe: float | None = None
     rationale: str = ""
 
     def compute_hash(self) -> str:
@@ -47,7 +46,7 @@ class TestedRange:
         normalized = json.dumps(self.ranges, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(normalized.encode()).hexdigest()[:12]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "ranges": self.ranges,
@@ -60,8 +59,7 @@ class TestedRange:
 
 
 class SessionRangesTracker:
-    """
-    Tracker de ranges de grid search pour UNE session d'optimisation.
+    """Tracker de ranges de grid search pour UNE session d'optimisation.
 
     Usage dans l'optimisation LLM:
         # Au début de l'optimisation
@@ -76,28 +74,28 @@ class SessionRangesTracker:
             tracker.register(ranges, result)
     """
 
-    def __init__(self, session_id: Optional[str] = None):
-        """
-        Initialise le tracker pour une session.
+    def __init__(self, session_id: str | None = None):
+        """Initialise le tracker pour une session.
 
         Args:
             session_id: Identifiant de session (optionnel)
+
         """
         self.session_id = session_id or "default"
-        self._tested_hashes: Set[str] = set()
-        self._tested_ranges: List[TestedRange] = []
+        self._tested_hashes: set[str] = set()
+        self._tested_ranges: list[TestedRange] = []
 
         logger.info(f"📊 Nouvelle session de tracking ranges: {self.session_id}")
 
-    def was_tested(self, ranges: Dict[str, Dict[str, float]]) -> bool:
-        """
-        Vérifie si ces ranges ont déjà été testées dans cette session.
+    def was_tested(self, ranges: dict[str, dict[str, float]]) -> bool:
+        """Vérifie si ces ranges ont déjà été testées dans cette session.
 
         Args:
             ranges: Dict de ranges à vérifier
 
         Returns:
             True si déjà testées, False sinon
+
         """
         tested_range = TestedRange(ranges=ranges)
         range_hash = tested_range.compute_hash()
@@ -105,13 +103,12 @@ class SessionRangesTracker:
 
     def register(
         self,
-        ranges: Dict[str, Dict[str, float]],
+        ranges: dict[str, dict[str, float]],
         n_combinations: int = 0,
-        best_sharpe: Optional[float] = None,
+        best_sharpe: float | None = None,
         rationale: str = "",
     ) -> str:
-        """
-        Enregistre une range testée.
+        """Enregistre une range testée.
 
         Args:
             ranges: Dict de ranges testées
@@ -121,6 +118,7 @@ class SessionRangesTracker:
 
         Returns:
             Hash de la range
+
         """
         tested_range = TestedRange(
             ranges=ranges,
@@ -133,8 +131,7 @@ class SessionRangesTracker:
 
         if range_hash in self._tested_hashes:
             logger.warning(
-                f"⚠️ Range déjà testée: {range_hash} | "
-                f"Params={list(ranges.keys())}"
+                f"⚠️ Range déjà testée: {range_hash} | Params={list(ranges.keys())}",
             )
             return range_hash
 
@@ -142,22 +139,20 @@ class SessionRangesTracker:
         self._tested_ranges.append(tested_range)
 
         logger.debug(
-            f"✅ Range enregistrée: {range_hash} | "
-            f"Params={list(ranges.keys())} | "
-            f"N_combos={n_combinations}"
+            f"✅ Range enregistrée: {range_hash} | Params={list(ranges.keys())} | N_combos={n_combinations}",
         )
 
         return range_hash
 
     def get_summary(self, max_ranges: int = 5) -> str:
-        """
-        Génère un résumé des ranges testées pour feedback LLM.
+        """Génère un résumé des ranges testées pour feedback LLM.
 
         Args:
             max_ranges: Nombre maximum de ranges à afficher
 
         Returns:
             Résumé textuel
+
         """
         if not self._tested_ranges:
             return "Aucune range testée dans cette session."
@@ -165,10 +160,7 @@ class SessionRangesTracker:
         summary = f"**Ranges déjà testées dans cette session ({len(self._tested_ranges)} total):**\n\n"
 
         for i, tested in enumerate(self._tested_ranges[:max_ranges], 1):
-            params_str = ", ".join(
-                f"{param}: [{r['min']}-{r['max']}]"
-                for param, r in tested.ranges.items()
-            )
+            params_str = ", ".join(f"{param}: [{r['min']}-{r['max']}]" for param, r in tested.ranges.items())
             summary += f"{i}. {params_str} | {tested.n_combinations} combos | "
             if tested.best_sharpe is not None:
                 summary += f"Best Sharpe={tested.best_sharpe:.3f}"
@@ -181,7 +173,7 @@ class SessionRangesTracker:
 
         return summary
 
-    def get_all_ranges(self) -> List[Dict[str, Any]]:
+    def get_all_ranges(self) -> list[dict[str, Any]]:
         """Retourne toutes les ranges testées."""
         return [tested.to_dict() for tested in self._tested_ranges]
 

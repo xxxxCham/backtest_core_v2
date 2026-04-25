@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 logger = get_obs_logger(__name__)
 
 
-def handle_validate(orch: "Orchestrator") -> None:
+def handle_validate(orch: Orchestrator) -> None:
     """Handle VALIDATE state - Execute Validator agent."""
     orch._log_event("phase_start", phase="VALIDATE")
     logger.info("Phase VALIDATE: Exécution Agent Validator")
@@ -25,7 +25,9 @@ def handle_validate(orch: "Orchestrator") -> None:
     # Execute Validator
     orch._apply_role_model("validator")
     orch._log_event(
-        "agent_execute_start", role="validator", model=orch.llm_client.config.model
+        "agent_execute_start",
+        role="validator",
+        model=orch.llm_client.config.model,
     )
     t0 = time.time()
     result = orch.validator.execute(orch.context)
@@ -71,9 +73,8 @@ def handle_validate(orch: "Orchestrator") -> None:
         orch.state_machine.transition_to(AgentState.REJECTED)
     elif decision == ValidationDecision.ABORT:
         orch.state_machine.fail("Validator a décidé ABORT")
-    else:  # ITERATE
-        if orch.state_machine.can_transition_to(AgentState.ITERATE):
-            orch.state_machine.transition_to(AgentState.ITERATE)
-        else:
-            logger.info("Max iterations atteint, passage en REJECTED")
-            orch.state_machine.transition_to(AgentState.REJECTED)
+    elif orch.state_machine.can_transition_to(AgentState.ITERATE):
+        orch.state_machine.transition_to(AgentState.ITERATE)
+    else:
+        logger.info("Max iterations atteint, passage en REJECTED")
+        orch.state_machine.transition_to(AgentState.REJECTED)

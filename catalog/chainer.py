@@ -1,5 +1,4 @@
-"""
-Module-ID: catalog.chainer
+"""Module-ID: catalog.chainer
 
 Purpose: Moteur de génération de variants (grid/sampling, seeding, batching, dédup).
 """
@@ -10,17 +9,9 @@ import hashlib
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
-
-from utils.parameters import (
-    ConstraintValidator,
-    ParameterConstraint,
-    ParameterSpec,
-    compute_search_space_stats,
-    generate_param_grid,
-)
 
 from catalog.builder_export import to_text_v1
 from catalog.fingerprint import fingerprint_sha256
@@ -33,11 +24,18 @@ from catalog.models import (
 )
 from catalog.ranges_loader import resolve_param_defs
 from catalog.sanity import validate_variant
+from utils.parameters import (
+    ConstraintValidator,
+    ParameterConstraint,
+    ParameterSpec,
+    compute_search_space_stats,
+    generate_param_grid,
+)
 
 
 def _seed_for_archetype(root_seed: int, archetype_id: str) -> int:
     """Calcule un seed déterministe par archetype."""
-    raw = f"{root_seed}:{archetype_id}".encode("utf-8")
+    raw = f"{root_seed}:{archetype_id}".encode()
     return int(hashlib.md5(raw).hexdigest()[:8], 16)
 
 
@@ -50,13 +48,15 @@ def _build_constraints(param_pack: ParamPack) -> ConstraintValidator:
         b = c.get("b")
         value = c.get("value")
         ratio = c.get("ratio")
-        validator.add_constraint(ParameterConstraint(
-            param_a=a,
-            constraint_type=ctype,
-            param_b=b,
-            value=value,
-            ratio=ratio,
-        ))
+        validator.add_constraint(
+            ParameterConstraint(
+                param_a=a,
+                constraint_type=ctype,
+                param_b=b,
+                value=value,
+                ratio=ratio,
+            ),
+        )
     return validator
 
 
@@ -109,8 +109,9 @@ def normalize_dsl(text: str) -> str:
     return text
 
 
-def _instantiate_dsl(template: str, params: Dict[str, Any]) -> str:
+def _instantiate_dsl(template: str, params: dict[str, Any]) -> str:
     """Remplace les placeholders ${...} puis normalise les tokens DSL."""
+
     def _replacer(match: re.Match) -> str:
         key = match.group(1)
         if key in params:
@@ -123,8 +124,8 @@ def _instantiate_dsl(template: str, params: Dict[str, Any]) -> str:
 
 def _build_proposal(
     archetype: Archetype,
-    params: Dict[str, Any],
-) -> Dict[str, Any]:
+    params: dict[str, Any],
+) -> dict[str, Any]:
     """Construit un proposal JSON au format Builder depuis un archetype + params concrets."""
     # Fusionner les default_params de l'archetype avec les params générés
     merged_params = dict(archetype.default_params)
@@ -140,9 +141,9 @@ def _build_proposal(
     risk_mgmt = _instantiate_dsl(archetype.risk_management, merged_params)
 
     # Construire indicator_params avec valeurs concrètes
-    indicator_params: Dict[str, Dict[str, Any]] = {}
+    indicator_params: dict[str, dict[str, Any]] = {}
     for ind_name, ind_template in archetype.indicator_params.items():
-        resolved: Dict[str, Any] = {}
+        resolved: dict[str, Any] = {}
         for k, v in ind_template.items():
             if isinstance(v, str) and v.startswith("${") and v.endswith("}"):
                 key = v[2:-1]
@@ -173,19 +174,19 @@ def _build_proposal(
 
 
 def _sample_random(
-    specs: Dict[str, ParameterSpec],
+    specs: dict[str, ParameterSpec],
     n: int,
     rng: np.random.Generator,
     constraints: ConstraintValidator,
     max_retries: int = 1000,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Sampling aléatoire avec contraintes."""
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     attempts = 0
 
     while len(results) < n and attempts < n * max_retries:
         attempts += 1
-        sample: Dict[str, Any] = {}
+        sample: dict[str, Any] = {}
 
         for name, spec in specs.items():
             if spec.param_type == "int":
@@ -209,7 +210,7 @@ def _sample_random(
     return results
 
 
-def _load_archetypes(archetypes_dir: Path) -> List[Archetype]:
+def _load_archetypes(archetypes_dir: Path) -> list[Archetype]:
     """Charge tous les archetypes depuis un répertoire."""
     archetypes = []
     if not archetypes_dir.exists():
@@ -221,8 +222,8 @@ def _load_archetypes(archetypes_dir: Path) -> List[Archetype]:
 
 def _load_param_packs(
     param_packs_dir: Path,
-    archetype_id: Optional[str] = None,
-) -> List[ParamPack]:
+    archetype_id: str | None = None,
+) -> list[ParamPack]:
     """Charge les param_packs, filtré optionnellement par archetype_id."""
     packs = []
     if not param_packs_dir.exists():
@@ -235,14 +236,13 @@ def _load_param_packs(
 
 
 def generate_catalog(config: CatalogConfig) -> CatalogResult:
-    """
-    Génère le catalogue complet de variants.
+    """Génère le catalogue complet de variants.
 
     Pipeline : load archetypes → load param_packs → generate → sanity → dedup → batch.
     """
     result = CatalogResult(run_id=config.run_id)
     seen_fingerprints: set = set()
-    all_variants: List[Variant] = []
+    all_variants: list[Variant] = []
 
     archetypes_dir = Path(config.archetypes_dir)
     param_packs_dir = Path(config.param_packs_dir)
@@ -250,9 +250,12 @@ def generate_catalog(config: CatalogConfig) -> CatalogResult:
     archetypes = _load_archetypes(archetypes_dir)
     if not archetypes:
         return result
+    target = max(int(config.n_variants_target), 0)
+    if target == 0:
+        return result
 
     # Budget par archetype (réparti également)
-    budget_per_archetype = max(1, config.n_variants_target // len(archetypes))
+    budget_per_archetype = max(1, target // len(archetypes))
 
     for archetype in archetypes:
         arch_seed = _seed_for_archetype(config.seed, archetype.archetype_id)
@@ -284,7 +287,10 @@ def generate_catalog(config: CatalogConfig) -> CatalogResult:
                 # Sampling aléatoire
                 rng = np.random.default_rng(pack_seed)
                 param_combos = _sample_random(
-                    specs, budget_per_pack, rng, constraints
+                    specs,
+                    budget_per_pack,
+                    rng,
+                    constraints,
                 )
 
             # Limiter au budget
@@ -323,15 +329,22 @@ def generate_catalog(config: CatalogConfig) -> CatalogResult:
                     profile=config.profiles.get("dataset", "ohlcv_only"),
                 )
                 if not is_valid:
-                    result.rejections.append({
-                        "variant_id": variant_id,
-                        "reasons": reasons,
-                        "stage": "sanity",
-                    })
+                    result.rejections.append(
+                        {
+                            "variant_id": variant_id,
+                            "reasons": reasons,
+                            "stage": "sanity",
+                        },
+                    )
                     continue
 
                 result.total_after_sanity += 1
                 all_variants.append(variant)
+                if len(all_variants) >= target:
+                    result.variants = all_variants
+                    result.total_after_gating = len(all_variants)
+                    result.n_batches = (len(all_variants) + config.batch_size - 1) // config.batch_size
+                    return result
 
     result.variants = all_variants
     result.total_after_gating = len(all_variants)  # Updated by gating if enabled

@@ -1,5 +1,4 @@
-"""
-Handlers LLM pour l'optimisation par agents.
+"""Handlers LLM pour l'optimisation par agents.
 
 Ce module contient toute la logique d'optimisation LLM, incluant:
 - Mode single-agent vs multi-agent
@@ -7,13 +6,14 @@ Ce module contient toute la logique d'optimisation LLM, incluant:
 - Gestion des erreurs et logging d'orchestration
 - Configuration et initialisation des agents LLM
 """
+
 from __future__ import annotations
 
 import gc
 import logging
 import random
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -50,8 +50,7 @@ def handle_llm_optimization(
     engine: BacktestEngine,
     status_container: Any,
 ) -> None:
-    """
-    Gestionnaire principal pour l'optimisation LLM.
+    """Gestionnaire principal pour l'optimisation LLM.
 
     Gère à la fois le mode simple et le mode multi-sweep LLM.
     """
@@ -71,7 +70,7 @@ def handle_llm_optimization(
     strategy_keys = state.strategy_keys
     symbols = state.symbols
     timeframes = state.timeframes
-    is_multi_sweep = (len(strategy_keys) > 1 or len(symbols) > 1 or len(timeframes) > 1)
+    is_multi_sweep = len(strategy_keys) > 1 or len(symbols) > 1 or len(timeframes) > 1
 
     session_id = generate_session_id()
     orchestration_logger = OrchestrationLogger(session_id=session_id)
@@ -85,7 +84,7 @@ def handle_llm_optimization(
         )
     except Exception as exc:
         logging.getLogger(__name__).warning(
-            f"Impossible de créer le contexte de comparaison: {exc}"
+            f"Impossible de créer le contexte de comparaison: {exc}",
         )
         comparison_context = None
 
@@ -97,7 +96,7 @@ def handle_llm_optimization(
     max_iterations = min(state.llm_max_iterations, state.max_combos)
 
     # Gestion de la comparaison (section complexe préservée)
-    comparison_summary: List[Dict[str, Any]] = []
+    comparison_summary: list[dict[str, Any]] = []
     should_run_comparison = state.llm_compare_enabled and (
         state.llm_compare_auto_run or st.session_state.get("llm_compare_run_now", False)
     )
@@ -133,11 +132,7 @@ def handle_llm_optimization(
 
     # Enregistrement du run
     run_tracker = get_global_tracker()
-    data_identifier = (
-        f"df_{len(df)}rows_{df.index[0]}_{df.index[-1]}"
-        if len(df) > 0
-        else "empty_df"
-    )
+    data_identifier = f"df_{len(df)}rows_{df.index[0]}_{df.index[-1]}" if len(df) > 0 else "empty_df"
     run_signature = RunSignature(
         strategy_name=state.strategy_key,
         data_path=data_identifier,
@@ -177,12 +172,12 @@ def handle_llm_optimization(
 
 def run_multi_sweep_llm(
     state: SidebarState,
-    strategy_keys: List[str],
-    symbols: List[str],
-    timeframes: List[str],
+    strategy_keys: list[str],
+    symbols: list[str],
+    timeframes: list[str],
     session_id: str,
     orchestration_logger: OrchestrationLogger,
-    comparison_context: Optional[Dict],
+    comparison_context: dict | None,
     max_iterations: int,
     status_container: Any,
 ) -> None:
@@ -206,7 +201,7 @@ def run_multi_sweep_llm(
         f"- {len(strategy_order)} stratégie(s): {', '.join(strategy_order)}\n"
         f"- {len(symbol_order)} token(s): {', '.join(symbol_order)}\n"
         f"- {len(timeframe_order)} timeframe(s): {', '.join(timeframe_order)}\n\n"
-        f"➡️ **{total_combinations} optimisations LLM** seront exécutées en série"
+        f"➡️ **{total_combinations} optimisations LLM** seront exécutées en série",
     )
     st.caption("ℹ️ Ordre d'exécution mélangé automatiquement (anti-biais de position).")
 
@@ -219,7 +214,7 @@ def run_multi_sweep_llm(
     show_detailed_logs = st.checkbox(
         "📝 Afficher logs LLM détaillés en temps réel",
         value=False,
-        help="Active l'affichage des réflexions complètes des agents (peut ralentir l'interface)"
+        help="Active l'affichage des réflexions complètes des agents (peut ralentir l'interface)",
     )
 
     if show_detailed_logs:
@@ -257,7 +252,7 @@ def run_multi_sweep_llm(
                 "timestamp": timestamp,
                 "agent": agent_role,
                 "type": event_type,
-                "details": details
+                "details": details,
             }
             recent_logs.append(log_entry)
 
@@ -268,10 +263,17 @@ def run_multi_sweep_llm(
             # Afficher dans le container
             with logs_container:
                 for i, log in enumerate(recent_logs):
-                    color = "🔵" if "analyst" in log["agent"].lower() else \
-                           "🟢" if "strategist" in log["agent"].lower() else \
-                           "🟡" if "critic" in log["agent"].lower() else \
-                           "🔴" if "validator" in log["agent"].lower() else "⚫"
+                    color = (
+                        "🔵"
+                        if "analyst" in log["agent"].lower()
+                        else "🟢"
+                        if "strategist" in log["agent"].lower()
+                        else "🟡"
+                        if "critic" in log["agent"].lower()
+                        else "🔴"
+                        if "validator" in log["agent"].lower()
+                        else "⚫"
+                    )
 
                     with st.expander(f"{color} {log['timestamp']} - {log['agent']} - {log['type']}", expanded=False):
                         if log["details"]:
@@ -280,7 +282,7 @@ def run_multi_sweep_llm(
         on_orchestration_event = None
 
     idx = 0
-    all_params = getattr(state, 'all_params', {state.strategy_key: state.params})
+    all_params = getattr(state, "all_params", {state.strategy_key: state.params})
 
     for sk in strategy_order:
         for sym in symbol_order:
@@ -298,14 +300,10 @@ def run_multi_sweep_llm(
                 try:
                     # Charger données pour cette combinaison
                     start_str = (
-                        str(state.start_date)
-                        if getattr(state, "use_date_filter", False) and state.start_date
-                        else None
+                        str(state.start_date) if getattr(state, "use_date_filter", False) and state.start_date else None
                     )
                     end_str = (
-                        str(state.end_date)
-                        if getattr(state, "use_date_filter", False) and state.end_date
-                        else None
+                        str(state.end_date) if getattr(state, "use_date_filter", False) and state.end_date else None
                     )
                     combo_df, combo_msg = safe_load_data(sym, tf, start_str, end_str)
                     if combo_df is None:
@@ -347,7 +345,7 @@ def run_multi_sweep_llm(
                             "pnl": combo_best_result.get("total_pnl", 0),
                             "pnl_daily": format_pnl_with_daily(
                                 combo_best_result.get("total_pnl", 0),
-                                compute_period_days_from_df(combo_df)
+                                compute_period_days_from_df(combo_df),
                             ),
                             "sharpe": combo_best_result.get("sharpe_ratio", 0),
                             "max_dd": combo_best_result.get("max_drawdown_pct", 0),
@@ -378,7 +376,7 @@ def run_multi_sweep_llm(
                                 sweep_id=sweep_id,
                                 result=combo_best_result,
                                 metadata=extra_metadata,
-                                mode="llm_individual"
+                                mode="llm_individual",
                             )
                         except Exception as save_exc:
                             st.write(f"⚠️ Échec sauvegarde {sweep_id}: {save_exc}")
@@ -411,7 +409,7 @@ def run_multi_sweep_llm(
                         storage.save_error_result(
                             sweep_id=error_sweep_id,
                             error_info=error_result,
-                            metadata=error_metadata
+                            metadata=error_metadata,
                         )
                     except Exception:
                         pass  # Échec de sauvegarde d'erreur : pas critique
@@ -433,7 +431,7 @@ def run_multi_sweep_llm(
 
         st.write(
             f"🏆 **Meilleur résultat global**: {best_overall['strategy']} × {best_overall['symbol']} × {best_overall['timeframe']}\n\n"
-            f"💰 PnL: ${best_overall['pnl']:.2f} | ⚡ Sharpe: {best_overall['sharpe']:.3f} | 📊 MaxDD: {best_overall['max_dd']:.1f}%"
+            f"💰 PnL: ${best_overall['pnl']:.2f} | ⚡ Sharpe: {best_overall['sharpe']:.3f} | 📊 MaxDD: {best_overall['max_dd']:.1f}%",
         )
 
         # Onglets pour les différentes vues
@@ -451,13 +449,28 @@ def run_multi_sweep_llm(
                 "iteration_count": st.column_config.NumberColumn("Itérations", format="%d"),
             }
             st.dataframe(
-                results_df[["strategy", "symbol", "timeframe", "pnl", "pnl_daily", "sharpe", "max_dd", "trades", "win_rate", "iteration_count"]].sort_values("pnl", ascending=False),
+                results_df[
+                    [
+                        "strategy",
+                        "symbol",
+                        "timeframe",
+                        "pnl",
+                        "pnl_daily",
+                        "sharpe",
+                        "max_dd",
+                        "trades",
+                        "win_rate",
+                        "iteration_count",
+                    ]
+                ].sort_values("pnl", ascending=False),
                 column_config=column_config,
                 width="stretch",
             )
 
             # Paramètres gagnants dans un expander
-            with st.expander(f"🎯 Paramètres gagnants ({best_overall['strategy']} × {best_overall['symbol']} × {best_overall['timeframe']})"):
+            with st.expander(
+                f"🎯 Paramètres gagnants ({best_overall['strategy']} × {best_overall['symbol']} × {best_overall['timeframe']})",
+            ):
                 st.json(best_overall["best_params"])
 
         with tab_heatmap:
@@ -485,7 +498,7 @@ def run_multi_sweep_llm(
         try:
             storage.save_summary_result(
                 sweep_id=f"llm_multi_sweep_summary_{session_id}",
-                metadata=final_metadata
+                metadata=final_metadata,
             )
         except Exception as save_exc:
             st.write(f"⚠️ Échec sauvegarde résumé final: {save_exc}")
@@ -503,7 +516,7 @@ def run_single_llm_optimization(
     engine: BacktestEngine,
     session_id: str,
     orchestration_logger: OrchestrationLogger,
-    comparison_context: Optional[Dict],
+    comparison_context: dict | None,
     max_iterations: int,
     status_container: Any,
 ) -> None:
@@ -571,18 +584,18 @@ def _run_single_llm_combo(
     timeframe: str,
     df: pd.DataFrame,
     engine: BacktestEngine,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     session_id: str,
     orchestration_logger: OrchestrationLogger,
-    comparison_context: Optional[Dict],
+    comparison_context: dict | None,
     max_iterations: int,
-    on_event_callback: Optional[callable] = None,
-) -> Optional[Dict[str, Any]]:
-    """
-    Exécute une optimisation LLM pour une seule combinaison stratégie × symbol × timeframe.
+    on_event_callback: callable | None = None,
+) -> dict[str, Any] | None:
+    """Exécute une optimisation LLM pour une seule combinaison stratégie × symbol × timeframe.
 
     Returns:
         Dict avec les métriques du meilleur résultat, ou None en cas d'échec.
+
     """
     try:
         if state.llm_use_multi_agent:
@@ -660,14 +673,12 @@ def _run_single_llm_combo(
 
 def _handle_llm_comparison(
     state: SidebarState,
-    comparison_summary: List[Dict[str, Any]],
-    comparison_context: Optional[Dict],
+    comparison_summary: list[dict[str, Any]],
+    comparison_context: dict | None,
 ) -> None:
-    """
-    Gère la section complexe de comparaison LLM.
+    """Gère la section complexe de comparaison LLM.
 
     Cette fonction est préservée telle quelle pour maintenir la compatibilité.
     """
     # Code de comparaison complexe préservé
     # (Cette section peut être extraite plus tard si nécessaire)
-    pass

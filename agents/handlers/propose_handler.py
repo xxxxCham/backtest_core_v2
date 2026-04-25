@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any
 
 from utils.observability import get_obs_logger
 
@@ -15,19 +15,21 @@ if TYPE_CHECKING:
 logger = get_obs_logger(__name__)
 
 
-def handle_propose(orch: "Orchestrator") -> None:
+def handle_propose(orch: Orchestrator) -> None:
     """Handle PROPOSE state - Execute Strategist agent."""
     orch._log_event("phase_start", phase="PROPOSE")
     logger.info("Phase PROPOSE: Exécution Agent Strategist")
 
     # Add session tracker summary
     if hasattr(orch, "param_tracker"):
-        setattr(orch.context, "session_params_summary", orch.param_tracker.get_summary())
+        orch.context.session_params_summary = orch.param_tracker.get_summary()
 
     # Execute Strategist
     orch._apply_role_model("strategist")
     orch._log_event(
-        "agent_execute_start", role="strategist", model=orch.llm_client.config.model
+        "agent_execute_start",
+        role="strategist",
+        model=orch.llm_client.config.model,
     )
     t0 = time.time()
     result = orch.strategist.execute(orch.context)
@@ -74,7 +76,8 @@ def handle_propose(orch: "Orchestrator") -> None:
         if orch.param_tracker.was_tested(params):
             duplicates_count += 1
             logger.info(
-                "  Proposition ignorée (déjà testée): %s", proposal.get("name", "N/A")
+                "  Proposition ignorée (déjà testée): %s",
+                proposal.get("name", "N/A"),
             )
             continue
 
@@ -103,7 +106,7 @@ def handle_propose(orch: "Orchestrator") -> None:
     orch.state_machine.transition_to(AgentState.CRITIQUE)
 
 
-def handle_sweep_proposal(orch: "Orchestrator", sweep_request: Dict[str, Any]) -> None:
+def handle_sweep_proposal(orch: Orchestrator, sweep_request: dict[str, Any]) -> None:
     """Handle a sweep request from the Strategist (grid search)."""
     orch._log_event("sweep_request", details=sweep_request)
     logger.info("  Sweep rationale: %s", sweep_request.get("rationale", "N/A"))
@@ -115,7 +118,7 @@ def handle_sweep_proposal(orch: "Orchestrator", sweep_request: Dict[str, Any]) -
             orch._max_sweeps_per_session,
         )
         orch._warnings.append(
-            f"Sweep limit reached ({orch._sweeps_performed}/{orch._max_sweeps_per_session})"
+            f"Sweep limit reached ({orch._sweeps_performed}/{orch._max_sweeps_per_session})",
         )
         orch.context.strategist_proposals = []
         orch.state_machine.transition_to(AgentState.VALIDATE)
@@ -162,7 +165,7 @@ def handle_sweep_proposal(orch: "Orchestrator", sweep_request: Dict[str, Any]) -
                         default=pc.current_value,
                         step=pc.step,
                         param_type="int" if pc.value_type == "int" else "float",
-                    )
+                    ),
                 )
 
         if not param_specs:

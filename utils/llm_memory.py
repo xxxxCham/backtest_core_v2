@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.llm_memory
+"""Module-ID: utils.llm_memory
 
 Purpose: Lightweight memory pour runs LLM - session ephemeral + history JSONL append-only.
 
@@ -27,7 +26,7 @@ import re
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from backtest.result_store import get_saved_runs_dir
 
@@ -43,7 +42,7 @@ def _utc_now_iso() -> str:
     return ts.isoformat().replace("+00:00", "Z")
 
 
-def _safe_segment(value: Optional[str], fallback: str) -> str:
+def _safe_segment(value: str | None, fallback: str) -> str:
     if value is None:
         return fallback
     text = str(value).strip()
@@ -72,16 +71,10 @@ def get_history_path(
     safe_strategy = _safe_segment(strategy, "unknown_strategy")
     safe_symbol = _safe_segment(symbol, "unknown_symbol")
     safe_timeframe = _safe_segment(timeframe, "unknown_timeframe")
-    return (
-        base_dir
-        / HISTORY_DIRNAME
-        / safe_strategy
-        / safe_symbol
-        / f"{safe_timeframe}.jsonl"
-    )
+    return base_dir / HISTORY_DIRNAME / safe_strategy / safe_symbol / f"{safe_timeframe}.jsonl"
 
 
-def extract_date_range(data: Any) -> Tuple[str, str]:
+def extract_date_range(data: Any) -> tuple[str, str]:
     if data is None:
         return "", ""
     try:
@@ -106,7 +99,7 @@ def extract_date_range(data: Any) -> Tuple[str, str]:
     return "", ""
 
 
-def split_date_range(value: Optional[str]) -> Tuple[str, str]:
+def split_date_range(value: str | None) -> tuple[str, str]:
     if not value:
         return "", ""
     text = str(value)
@@ -119,11 +112,11 @@ def split_date_range(value: Optional[str]) -> Tuple[str, str]:
     return text.strip(), ""
 
 
-def _read_json(path: Path) -> Dict[str, Any]:
+def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, dict):
             return data
@@ -132,7 +125,7 @@ def _read_json(path: Path) -> Dict[str, Any]:
     return {}
 
 
-def _write_json(path: Path, payload: Dict[str, Any]) -> None:
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
     _ensure_dir(path.parent)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=True)
@@ -171,7 +164,7 @@ def start_session(
 
 def append_session_iteration(
     session_path: Path,
-    entry: Dict[str, Any],
+    entry: dict[str, Any],
 ) -> None:
     payload = _read_json(session_path)
     iterations = payload.get("iterations", [])
@@ -202,7 +195,7 @@ def delete_session(session_path: Path) -> bool:
 
 def append_history_entry(
     history_path: Path,
-    entry: Dict[str, Any],
+    entry: dict[str, Any],
 ) -> None:
     _ensure_dir(history_path.parent)
     with open(history_path, "a", encoding="utf-8") as f:
@@ -212,12 +205,12 @@ def append_history_entry(
 def load_recent_history_entries(
     history_path: Path,
     limit: int = DEFAULT_MAX_ENTRIES,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     if limit <= 0 or not history_path.exists():
         return []
-    buffer: deque[Dict[str, Any]] = deque(maxlen=limit)
+    buffer: deque[dict[str, Any]] = deque(maxlen=limit)
     try:
-        with open(history_path, "r", encoding="utf-8") as f:
+        with open(history_path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -257,7 +250,7 @@ def build_memory_summary(
     return "\n".join(lines)
 
 
-def _format_history_line(entry: Dict[str, Any]) -> str:
+def _format_history_line(entry: dict[str, Any]) -> str:
     timestamp = entry.get("timestamp") or entry.get("approved_at") or ""
     date = _format_date(timestamp)
 
@@ -323,7 +316,7 @@ def _format_pct(value: Any) -> str:
     return f"{val:.1f}%"
 
 
-def _summarize_params(params: Dict[str, Any], limit: int = 3) -> str:
+def _summarize_params(params: dict[str, Any], limit: int = 3) -> str:
     if not params:
         return ""
     items = sorted(params.items(), key=lambda kv: str(kv[0]))

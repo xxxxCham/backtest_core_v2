@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.emergency_stop
+"""Module-ID: ui.emergency_stop
 
 Purpose: Arrêt unifié du runtime Builder/LLM et nettoyage déterministe.
 
@@ -24,9 +23,10 @@ from __future__ import annotations
 
 import gc
 import logging
+from collections.abc import Callable, Iterable
 
 # pylint: disable=broad-except
-from typing import Any, Callable, Dict, Iterable, Optional
+from typing import Any
 
 import httpx
 
@@ -49,7 +49,7 @@ _SESSION_CONTEXT_KEYS = (
 )
 
 
-def _session_contains(session_state: Optional[Any], key: str) -> bool:
+def _session_contains(session_state: Any | None, key: str) -> bool:
     if session_state is None:
         return False
     try:
@@ -58,7 +58,7 @@ def _session_contains(session_state: Optional[Any], key: str) -> bool:
         return hasattr(session_state, key)
 
 
-def _session_set(session_state: Optional[Any], key: str, value: Any) -> None:
+def _session_set(session_state: Any | None, key: str, value: Any) -> None:
     if session_state is None:
         return
     try:
@@ -72,7 +72,7 @@ def _session_set(session_state: Optional[Any], key: str, value: Any) -> None:
         logger.debug("session_state_set_failed key=%s", key, exc_info=True)
 
 
-def _session_pop(session_state: Optional[Any], key: str) -> bool:
+def _session_pop(session_state: Any | None, key: str) -> bool:
     if session_state is None:
         return False
     try:
@@ -90,7 +90,7 @@ def _session_pop(session_state: Optional[Any], key: str) -> bool:
     return False
 
 
-def _normalize_ollama_hosts(ollama_hosts: Optional[Iterable[str]]) -> list[str]:
+def _normalize_ollama_hosts(ollama_hosts: Iterable[str] | None) -> list[str]:
     ordered: list[str] = []
     seen: set[str] = set()
     for raw_host in ollama_hosts or ():
@@ -114,29 +114,25 @@ def _list_loaded_models_for_host(ollama_host: str) -> list[str]:
     except Exception:  # noqa: BLE001
         return []
     models = payload.get("models", []) or []
-    return [
-        str(model.get("name", "") or "").strip()
-        for model in models
-        if str(model.get("name", "") or "").strip()
-    ]
+    return [str(model.get("name", "") or "").strip() for model in models if str(model.get("name", "") or "").strip()]
 
 
-def _record_component(stats: Dict[str, Any], component: str) -> None:
+def _record_component(stats: dict[str, Any], component: str) -> None:
     components = stats.setdefault("components_cleaned", [])
     if component not in components:
         components.append(component)
 
 
-def _record_error(stats: Dict[str, Any], error: str) -> None:
+def _record_error(stats: dict[str, Any], error: str) -> None:
     stats.setdefault("errors", []).append(error)
 
 
-def _mark_stop_requested(session_state: Optional[Any], stats: Dict[str, Any]) -> None:
+def _mark_stop_requested(session_state: Any | None, stats: dict[str, Any]) -> None:
     mark_ui_stop_requested(session_state)
     _record_component(stats, "session_flags")
 
 
-def _clear_session_context(session_state: Optional[Any], stats: Dict[str, Any]) -> None:
+def _clear_session_context(session_state: Any | None, stats: dict[str, Any]) -> None:
     cleared = 0
     for key in _SESSION_CONTEXT_KEYS:
         cleared += int(_session_pop(session_state, key))
@@ -144,7 +140,7 @@ def _clear_session_context(session_state: Optional[Any], stats: Dict[str, Any]) 
         _record_component(stats, f"session_context_{cleared}")
 
 
-def _cleanup_indicator_cache(stats: Dict[str, Any]) -> None:
+def _cleanup_indicator_cache(stats: dict[str, Any]) -> None:
     try:
         from data.indicator_bank import get_indicator_bank
 
@@ -160,7 +156,7 @@ def _cleanup_indicator_cache(stats: Dict[str, Any]) -> None:
         _record_error(stats, f"indicator_cache: {exc}")
 
 
-def _cleanup_pytorch(stats: Dict[str, Any]) -> None:
+def _cleanup_pytorch(stats: dict[str, Any]) -> None:
     try:
         import torch
     except ImportError:
@@ -182,7 +178,7 @@ def _cleanup_pytorch(stats: Dict[str, Any]) -> None:
         _record_error(stats, f"pytorch: {exc}")
 
 
-def _cleanup_memory_manager(stats: Dict[str, Any]) -> None:
+def _cleanup_memory_manager(stats: dict[str, Any]) -> None:
     try:
         from utils.memory import MemoryManager
 
@@ -197,7 +193,7 @@ def _cleanup_memory_manager(stats: Dict[str, Any]) -> None:
 
 def _run_cache_callbacks(
     callbacks: Iterable[Callable[[], Any]],
-    stats: Dict[str, Any],
+    stats: dict[str, Any],
 ) -> None:
     for callback in callbacks:
         try:
@@ -212,7 +208,7 @@ def _run_cache_callbacks(
 
 def _cleanup_ollama_hosts(
     ollama_hosts: Iterable[str],
-    stats: Dict[str, Any],
+    stats: dict[str, Any],
     *,
     stop_local_servers: bool,
 ) -> None:
@@ -245,7 +241,7 @@ def _cleanup_ollama_hosts(
                     ollama_host=host,
                     owned_only=owned_only,
                 )
-                or 0
+                or 0,
             )
         except Exception as exc:  # noqa: BLE001
             _record_error(stats, f"stop_local_ollama_server[{host}]: {exc}")
@@ -259,7 +255,7 @@ def _cleanup_ollama_hosts(
                         ollama_host=host,
                         owned_only=False,
                     )
-                    or 0
+                    or 0,
                 )
             except Exception as exc:  # noqa: BLE001
                 _record_error(stats, f"stop_local_ollama_server_hard[{host}]: {exc}")
@@ -273,7 +269,7 @@ def _cleanup_ollama_hosts(
             remaining_by_host.pop(host, None)
 
 
-def _collect_process_memory(stats: Dict[str, Any]) -> None:
+def _collect_process_memory(stats: dict[str, Any]) -> None:
     try:
         import psutil
 
@@ -283,20 +279,19 @@ def _collect_process_memory(stats: Dict[str, Any]) -> None:
 
 
 def execute_emergency_stop(
-    session_state: Optional[Any] = None,
+    session_state: Any | None = None,
     *,
-    ollama_hosts: Optional[Iterable[str]] = None,
-    cache_callbacks: Optional[Iterable[Callable[[], Any]]] = None,
+    ollama_hosts: Iterable[str] | None = None,
+    cache_callbacks: Iterable[Callable[[], Any]] | None = None,
     stop_local_servers: bool = True,
-) -> Dict[str, Any]:
-    """
-    Exécute un arrêt unique et déterministe du runtime Builder/LLM.
+) -> dict[str, Any]:
+    """Exécute un arrêt unique et déterministe du runtime Builder/LLM.
 
     `ollama_hosts` permet de nettoyer tous les endpoints réellement utilisés
     par la session. Les callbacks servent uniquement aux caches externes
     (Streamlit, copies temporaires, etc.).
     """
-    stats: Dict[str, Any] = {
+    stats: dict[str, Any] = {
         "components_cleaned": [],
         "errors": [],
         "ram_freed_mb": 0.0,

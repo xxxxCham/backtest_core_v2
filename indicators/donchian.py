@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.donchian
+"""Module-ID: indicators.donchian
 
 Purpose: Indicateur Donchian Channel (breakout) - hauts/bas sur période.
 
@@ -21,7 +20,6 @@ Skip-if: Vous utilisez juste calculate_indicator('donchian').
 """
 
 from dataclasses import dataclass
-from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -30,6 +28,7 @@ import pandas as pd
 @dataclass
 class DonchianSettings:
     """Paramètres Donchian Channel."""
+
     period: int = 20
 
 
@@ -37,9 +36,8 @@ def donchian_channel(
     high: pd.Series | np.ndarray,
     low: pd.Series | np.ndarray,
     period: int = 20,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Calcule Donchian Channel.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Calcule Donchian Channel.
 
     Args:
         high: Prix hauts
@@ -48,6 +46,7 @@ def donchian_channel(
 
     Returns:
         Tuple (upper, middle, lower)
+
     """
     if isinstance(high, pd.Series):
         high_series = high
@@ -66,4 +65,4 @@ def donchian_channel(
     return upper, middle, lower
 
 
-__all__ = ["donchian_channel", "DonchianSettings"]
+__all__ = ["DonchianSettings", "donchian_channel"]

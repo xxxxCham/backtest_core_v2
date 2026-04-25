@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.tma
+"""Module-ID: indicators.tma
 
 Purpose: Triangular Moving Average (TMA).
 """
@@ -43,4 +42,4 @@ register_indicator(
 )
 
 
-__all__ = ["tma", "calculate_tma", "TMASettings"]
+__all__ = ["TMASettings", "calculate_tma", "tma"]

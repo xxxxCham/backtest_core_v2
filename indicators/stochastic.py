@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.stochastic
+"""Module-ID: indicators.stochastic
 
 Purpose: Indicateur Stochastic (%K + %D signal) - timing survente/surachat.
 
@@ -20,22 +19,19 @@ Read-if: Modification périodes K/D, formule %K.
 Skip-if: Vous utilisez juste calculate_indicator('stochastic').
 """
 
-from typing import Tuple, Union
-
 import numpy as np
 import pandas as pd
 
 
 def stochastic(
-    high: Union[pd.Series, np.ndarray],
-    low: Union[pd.Series, np.ndarray],
-    close: Union[pd.Series, np.ndarray],
+    high: pd.Series | np.ndarray,
+    low: pd.Series | np.ndarray,
+    close: pd.Series | np.ndarray,
     k_period: int = 14,
     d_period: int = 3,
     smooth_k: int = 3,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Calcule le Stochastic Oscillator.
+) -> tuple[np.ndarray, np.ndarray]:
+    """Calcule le Stochastic Oscillator.
 
     Formule:
         %K = 100 * (Close - Lowest Low) / (Highest High - Lowest Low)
@@ -57,6 +53,7 @@ def stochastic(
         >>> k, d = stochastic(df["high"], df["low"], df["close"])
         >>> oversold = k < 20
         >>> overbought = k > 80
+
     """
     # Convertir en arrays numpy
     if isinstance(high, pd.Series):
@@ -81,8 +78,8 @@ def stochastic(
     lowest_low = np.full(n, np.nan)
 
     for i in range(k_period - 1, n):
-        highest_high[i] = np.max(high_vals[i - k_period + 1:i + 1])
-        lowest_low[i] = np.min(low_vals[i - k_period + 1:i + 1])
+        highest_high[i] = np.max(high_vals[i - k_period + 1 : i + 1])
+        lowest_low[i] = np.min(low_vals[i - k_period + 1 : i + 1])
 
     # %K brut
     range_hl = highest_high - lowest_low
@@ -108,7 +105,7 @@ def _sma(data: np.ndarray, period: int) -> np.ndarray:
     result = np.full(n, np.nan)
 
     for i in range(period - 1, n):
-        window = data[i - period + 1:i + 1]
+        window = data[i - period + 1 : i + 1]
         valid = window[~np.isnan(window)]
         if len(valid) > 0:
             result[i] = np.mean(valid)
@@ -117,17 +114,16 @@ def _sma(data: np.ndarray, period: int) -> np.ndarray:
 
 
 def stochastic_signal(
-    high: Union[pd.Series, np.ndarray],
-    low: Union[pd.Series, np.ndarray],
-    close: Union[pd.Series, np.ndarray],
+    high: pd.Series | np.ndarray,
+    low: pd.Series | np.ndarray,
+    close: pd.Series | np.ndarray,
     k_period: int = 14,
     d_period: int = 3,
     smooth_k: int = 3,
     oversold: float = 20.0,
     overbought: float = 80.0,
 ) -> np.ndarray:
-    """
-    Génère des signaux basés sur le Stochastic.
+    """Génère des signaux basés sur le Stochastic.
 
     Signaux:
         - +1: %K sort de zone survente (<oversold) et croise %D vers le haut
@@ -144,6 +140,7 @@ def stochastic_signal(
 
     Returns:
         np.ndarray de signaux (-1, 0, +1)
+
     """
     stoch_k, stoch_d = stochastic(high, low, close, k_period, d_period, smooth_k)
 

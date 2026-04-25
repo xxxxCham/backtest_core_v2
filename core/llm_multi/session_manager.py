@@ -4,39 +4,46 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any
 
+from agents.llm_client import LLMConfig, LLMMessage, LLMProvider, create_llm_client
 from agents.llm_config import (
     apply_llm_inference_settings,
     normalize_llm_inference_settings,
     normalize_llm_model_inference_profiles,
 )
-from agents.llm_client import LLMConfig, LLMMessage, LLMProvider, create_llm_client
 from agents.llm_router import (
     LLMTopologyConfig,
     build_single_host_topology,
     normalize_ollama_host,
 )
 from agents.model_config import is_cloud_only_model
-from agents.ollama_manager import ensure_ollama_running, unload_model
+from agents.ollama_manager import ensure_ollama_running, resolve_ollama_request_context, unload_model
 from agents.strategy_builder import generate_random_objective, sanitize_objective_text
 from utils.model_loader import normalize_model_name
 
 from .adapters.strategy_builder_adapter import summarize_builder_session
 from .model_discovery import ModelInventory, discover_local_models
 from .prompt_templates import (
-    build_critic_system_prompt,
-    build_critic_user_prompt,
-    build_idea_system_prompt,
-    build_idea_user_prompt,
-    build_risk_system_prompt,
-    build_risk_user_prompt,
+    build_supervisor_objective_system_prompt,
+    build_supervisor_objective_user_prompt,
+    build_supervisor_review_system_prompt,
+    build_supervisor_review_user_prompt,
 )
 from .registry import resolve_profile_assignments
-from .roles import MULTI_LLM_ROLE_DETAILS, RoleAssignment
-from .router import deterministic_router_decision
+from .roles import (
+    MULTI_LLM_ROLE_DETAILS,
+    RoleAssignment,
+    build_role_rotation_metadata,
+    normalize_role_candidate,
+    resolve_assignment_rotation_index,
+    resolve_assignment_rotation_queue,
+    role_rotation_remainder,
+)
+from .router import deterministic_router_decision, normalize_router_action
 
 logger = logging.getLogger(__name__)
 _RUNTIME_EVENT_HISTORY_LIMIT = 40
@@ -83,7 +90,7 @@ def _extract_objective_text(raw_content: str) -> str:
     return sanitize_objective_text(text)
 
 
-def _parse_role_payload(raw_content: str) -> Dict[str, Any]:
+def _parse_role_payload(raw_content: str) -> dict[str, Any]:
     text = _strip_json_wrappers(raw_content)
     if not text:
         return {}
@@ -94,12 +101,12 @@ def _parse_role_payload(raw_content: str) -> Dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
-def _normalize_text_list(value: Any) -> List[str]:
+def _normalize_text_list(value: Any) -> list[str]:
     if isinstance(value, str):
         normalized = sanitize_objective_text(value)
         return [normalized] if normalized else []
     if isinstance(value, (list, tuple, set)):
-        items: List[str] = []
+        items: list[str] = []
         for raw in value:
             normalized = sanitize_objective_text(raw)
             if normalized:
@@ -108,13 +115,11 @@ def _normalize_text_list(value: Any) -> List[str]:
     return []
 
 
-def _normalize_idea_handoff(raw_content: str) -> Dict[str, Any]:
+def _normalize_objective_handoff(raw_content: str) -> dict[str, Any]:
     payload = _parse_role_payload(raw_content)
     objective = _extract_objective_text(raw_content) if raw_content else ""
     rationale = sanitize_objective_text(
-        payload.get("rationale")
-        or payload.get("hypothesis")
-        or payload.get("thesis")
+        payload.get("rationale") or payload.get("hypothesis") or payload.get("thesis"),
     )
     strategy_family = sanitize_objective_text(payload.get("strategy_family"))
     constraints = _normalize_text_list(payload.get("constraints"))
@@ -127,13 +132,13 @@ def _normalize_idea_handoff(raw_content: str) -> Dict[str, Any]:
     }
 
 
-def _render_builder_objective(handoff: Dict[str, Any], fallback_objective: str) -> str:
+def _render_builder_objective(handoff: dict[str, Any], fallback_objective: str) -> str:
     objective = sanitize_objective_text(handoff.get("objective") or fallback_objective)
     rationale = sanitize_objective_text(handoff.get("rationale"))
     strategy_family = sanitize_objective_text(handoff.get("strategy_family"))
     constraints = _normalize_text_list(handoff.get("constraints"))
 
-    parts: List[str] = [objective] if objective else []
+    parts: list[str] = [objective] if objective else []
     if strategy_family:
         parts.append(f"Strategy family: {strategy_family}.")
     if rationale:
@@ -143,7 +148,7 @@ def _render_builder_objective(handoff: Dict[str, Any], fallback_objective: str) 
     return sanitize_objective_text("\n".join(parts))
 
 
-def _normalize_review_payload(role_output: "RoleOutput") -> Dict[str, Any]:
+def _normalize_review_payload(role_output: RoleOutput) -> dict[str, Any]:
     payload = _parse_role_payload(role_output.content)
     if payload:
         return payload
@@ -151,7 +156,7 @@ def _normalize_review_payload(role_output: "RoleOutput") -> Dict[str, Any]:
     return {"raw_text": text} if text else {}
 
 
-def _compact_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
+def _compact_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
     return {
         "sharpe_ratio": metrics.get("sharpe_ratio"),
         "total_return_pct": metrics.get("total_return_pct"),
@@ -161,12 +166,12 @@ def _compact_metrics(metrics: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _json_clone(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _json_clone(payload: dict[str, Any]) -> dict[str, Any]:
     return json.loads(json.dumps(payload, ensure_ascii=False, default=str))
 
 
-def _dedupe_texts(values: Iterable[Any], *, limit: int = 6) -> List[str]:
-    items: List[str] = []
+def _dedupe_texts(values: Iterable[Any], *, limit: int = 6) -> list[str]:
+    items: list[str] = []
     seen: set[str] = set()
     for raw in values:
         normalized = sanitize_objective_text(raw)
@@ -182,11 +187,10 @@ def _dedupe_texts(values: Iterable[Any], *, limit: int = 6) -> List[str]:
     return items
 
 
-def _compact_history_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+def _compact_history_entry(entry: dict[str, Any]) -> dict[str, Any]:
     shared_memory = entry.get("multi_llm_shared_memory", {}) or {}
-    critic_context = shared_memory.get("critic_context", {}) or {}
-    risk_context = shared_memory.get("risk_context", {}) or {}
-    router_context = shared_memory.get("router_context", {}) or {}
+    supervisor_context = shared_memory.get("supervisor_context", {}) or {}
+    decision_context = shared_memory.get("decision_context", {}) or {}
     router_decision = entry.get("multi_llm_router_decision", {}) or {}
     return {
         "session_num": int(entry.get("session_num", 0) or 0),
@@ -200,18 +204,15 @@ def _compact_history_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
         "best_trades": entry.get("best_trades"),
         "source_label": str(entry.get("source_label", "") or "").strip(),
         "builder_model": str(entry.get("multi_llm_builder_model", "") or "").strip(),
-        "critic_verdict": str(critic_context.get("verdict", "") or "").strip(),
-        "next_focus": _normalize_text_list(critic_context.get("next_focus")),
-        "risk_level": str(risk_context.get("risk_level", "") or "").strip(),
-        "key_risks": _normalize_text_list(risk_context.get("key_risks")),
+        "supervisor_verdict": str(supervisor_context.get("verdict", "") or "").strip(),
+        "next_focus": _normalize_text_list(supervisor_context.get("next_focus")),
+        "risk_level": str(supervisor_context.get("risk_level", "") or "").strip(),
+        "key_risks": _normalize_text_list(supervisor_context.get("key_risks")),
         "router_action": str(
-            router_context.get("action")
-            or router_decision.get("action")
-            or ""
+            decision_context.get("action") or router_decision.get("action") or "",
         ).strip(),
         "router_reason": sanitize_objective_text(
-            router_context.get("reason")
-            or router_decision.get("reason")
+            decision_context.get("reason") or router_decision.get("reason"),
         ),
     }
 
@@ -225,7 +226,7 @@ def _safe_continuity_metric(value: Any) -> float | None:
         return None
 
 
-def _is_successful_continuity_entry(entry: Dict[str, Any]) -> bool:
+def _is_successful_continuity_entry(entry: dict[str, Any]) -> bool:
     status = str(entry.get("status", "") or "").strip().lower()
     if status in {"crash", "crashed", "error", "failed", "failure"}:
         return False
@@ -235,15 +236,9 @@ def _is_successful_continuity_entry(entry: Dict[str, Any]) -> bool:
     )
 
 
-def _build_continuity_context(history_tail: List[Dict[str, Any]]) -> Dict[str, Any]:
-    recent_entries = [
-        _compact_history_entry(item)
-        for item in list(history_tail or [])[-4:]
-        if isinstance(item, dict)
-    ]
-    eligible_entries = [
-        entry for entry in recent_entries if _is_successful_continuity_entry(entry)
-    ]
+def _build_continuity_context(history_tail: list[dict[str, Any]]) -> dict[str, Any]:
+    recent_entries = [_compact_history_entry(item) for item in list(history_tail or [])[-4:] if isinstance(item, dict)]
+    eligible_entries = [entry for entry in recent_entries if _is_successful_continuity_entry(entry)]
     best_recent = max(
         eligible_entries,
         key=lambda item: (
@@ -262,16 +257,8 @@ def _build_continuity_context(history_tail: List[Dict[str, Any]]) -> Dict[str, A
         ),
         default={},
     )
-    carry_over_focus = _dedupe_texts(
-        focus
-        for entry in recent_entries
-        for focus in (entry.get("next_focus") or [])
-    )
-    recurring_risks = _dedupe_texts(
-        risk
-        for entry in recent_entries
-        for risk in (entry.get("key_risks") or [])
-    )
+    carry_over_focus = _dedupe_texts(focus for entry in recent_entries for focus in (entry.get("next_focus") or []))
+    recurring_risks = _dedupe_texts(risk for entry in recent_entries for risk in (entry.get("key_risks") or []))
     return {
         "recent_sessions": recent_entries,
         "best_recent_session": dict(best_recent) if best_recent else {},
@@ -289,9 +276,9 @@ class RoleOutput:
     content: str = ""
     available: bool = False
     error: str = ""
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "role": self.role,
             "model": self.model,
@@ -309,24 +296,20 @@ class MultiLLMCycleResult:
     objective: str
     profile_name: str
     builder_model: str
-    role_assignments: List[RoleAssignment]
-    role_outputs: Dict[str, RoleOutput]
-    router_decision: Dict[str, Any]
-    session_summary: Dict[str, Any]
-    shared_memory: Dict[str, Any]
+    role_assignments: list[RoleAssignment]
+    role_outputs: dict[str, RoleOutput]
+    router_decision: dict[str, Any]
+    session_summary: dict[str, Any]
+    shared_memory: dict[str, Any]
     builder_session: Any = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "objective": self.objective,
             "profile_name": self.profile_name,
             "builder_model": self.builder_model,
-            "role_assignments": [
-                assignment.to_dict() for assignment in self.role_assignments
-            ],
-            "role_outputs": {
-                role: output.to_dict() for role, output in self.role_outputs.items()
-            },
+            "role_assignments": [assignment.to_dict() for assignment in self.role_assignments],
+            "role_outputs": {role: output.to_dict() for role, output in self.role_outputs.items()},
             "router_decision": dict(self.router_decision),
             "session_summary": dict(self.session_summary),
             "shared_memory": dict(self.shared_memory),
@@ -336,7 +319,7 @@ class MultiLLMCycleResult:
 class _ManagedRoleLLMClient:
     """Proxy client that coordinates runtime transitions for one logical role."""
 
-    def __init__(self, manager: "MultiLLMSessionManager", role: str, client: Any) -> None:
+    def __init__(self, manager: MultiLLMSessionManager, role: str, client: Any) -> None:
         self._manager = manager
         self._role = str(role or "").strip()
         self._client = client
@@ -348,7 +331,19 @@ class _ManagedRoleLLMClient:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._client, name)
 
-    def chat(self, messages: List[LLMMessage], **kwargs: Any) -> Any:
+    def _prepare_client_for_mission(self) -> None:
+        current_model = normalize_role_candidate(
+            getattr(self.config, "model", "") if self.config is not None else "",
+        )
+        prepared = self._manager.prepare_role_for_mission(self._role)
+        prepared_model = normalize_role_candidate(prepared.get("model"))
+        if prepared_model and prepared_model != current_model:
+            refreshed_client = self._manager._build_client(self._role)
+            if refreshed_client is not None:
+                self._client = refreshed_client
+
+    def chat(self, messages: list[LLMMessage], **kwargs: Any) -> Any:
+        self._prepare_client_for_mission()
         self._manager.activate_runtime_model_for_role(self._role)
         self._manager.mark_role_signal(
             self._role,
@@ -424,11 +419,12 @@ class _ManagedRoleLLMClient:
 
     def chat_stream(
         self,
-        messages: List[LLMMessage],
+        messages: list[LLMMessage],
         *,
         on_chunk: Callable[[str], None],
         **kwargs: Any,
     ) -> Any:
+        self._prepare_client_for_mission()
         self._manager.activate_runtime_model_for_role(self._role)
         self._manager.mark_role_signal(
             self._role,
@@ -520,33 +516,33 @@ class _ManagedRoleLLMClient:
 
 
 class MultiLLMSessionManager:
-    """Resolve role models and orchestrate idea/build/critic/risk with local routing."""
+    """Resolve role models and orchestrate supervisor/build with local routing."""
 
     def __init__(
         self,
         *,
         profile_name: str,
-        base_llm_config: Optional[LLMConfig] = None,
-        inventory: Optional[ModelInventory] = None,
-        config_path: Optional[str] = None,
-        role_overrides: Optional[Dict[str, str]] = None,
-        llm_topology_config: Optional[LLMTopologyConfig | Dict[str, Any]] = None,
-        inference_global_settings: Optional[Dict[str, Any]] = None,
-        inference_model_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
+        base_llm_config: LLMConfig | None = None,
+        inventory: ModelInventory | None = None,
+        config_path: str | None = None,
+        role_overrides: dict[str, Any] | None = None,
+        llm_topology_config: LLMTopologyConfig | dict[str, Any] | None = None,
+        inference_global_settings: dict[str, Any] | None = None,
+        inference_model_profiles: dict[str, dict[str, Any]] | None = None,
         require_live_ollama: bool = True,
         client_factory: Callable[[LLMConfig], Any] = create_llm_client,
     ) -> None:
         self.base_llm_config = base_llm_config or LLMConfig()
         self.inference_global_settings = normalize_llm_inference_settings(
-            inference_global_settings
+            inference_global_settings,
         )
         self.inference_model_profiles = normalize_llm_model_inference_profiles(
-            inference_model_profiles
+            inference_model_profiles,
         )
         if isinstance(llm_topology_config, dict):
             llm_topology_config = LLMTopologyConfig.from_dict(llm_topology_config)
         self.llm_topology_config = llm_topology_config or build_single_host_topology(
-            primary_host=self.base_llm_config.ollama_host
+            primary_host=self.base_llm_config.ollama_host,
         )
         distinct_hosts = {
             str(getattr(endpoint, "ollama_host", "") or "").strip()
@@ -568,19 +564,20 @@ class MultiLLMSessionManager:
         self.profile_name = str(self.resolution["profile_name"])
         self.client_factory = client_factory
         self._shared_memory = self._new_shared_memory()
-        self._active_ollama_models_by_host: Dict[str, str] = {}
-        self._runtime_flow_events: List[Dict[str, Any]] = []
-        self._role_runtime_state: Dict[str, Dict[str, Any]] = {}
+        self._active_ollama_models_by_host: dict[str, str] = {}
+        self._runtime_flow_events: list[dict[str, Any]] = []
+        self._role_runtime_state: dict[str, dict[str, Any]] = {}
+        self._iteration_pinned: bool = False
 
     @property
-    def assignments(self) -> List[RoleAssignment]:
+    def assignments(self) -> list[RoleAssignment]:
         return list(self.resolution["assignments"])
 
     @property
-    def missing_roles(self) -> List[str]:
+    def missing_roles(self) -> list[str]:
         return list(self.resolution["missing_roles"])
 
-    def _new_shared_memory(self) -> Dict[str, Any]:
+    def _new_shared_memory(self) -> dict[str, Any]:
         return {
             "continuity_context": {
                 "recent_sessions": [],
@@ -603,17 +600,15 @@ class MultiLLMSessionManager:
                 "status": "",
                 "metrics": {},
             },
-            "critic_context": {
+            "supervisor_context": {
                 "verdict": "",
                 "critique": "",
                 "next_focus": [],
-            },
-            "risk_context": {
                 "risk_level": "",
                 "key_risks": [],
                 "mitigations": [],
             },
-            "router_context": {
+            "decision_context": {
                 "action": "",
                 "reason": "",
                 "confidence": 0.0,
@@ -623,10 +618,10 @@ class MultiLLMSessionManager:
     def reset_shared_memory(self) -> None:
         self._shared_memory = self._new_shared_memory()
 
-    def shared_memory_snapshot(self) -> Dict[str, Any]:
+    def shared_memory_snapshot(self) -> dict[str, Any]:
         return _json_clone(self._shared_memory)
 
-    def consume_shared_memory(self) -> Dict[str, Any]:
+    def consume_shared_memory(self) -> dict[str, Any]:
         snapshot = self.shared_memory_snapshot()
         self.reset_shared_memory()
         return snapshot
@@ -640,17 +635,17 @@ class MultiLLMSessionManager:
     def _seed_shared_memory_from_history(
         self,
         *,
-        history_tail: List[Dict[str, Any]],
+        history_tail: list[dict[str, Any]],
     ) -> None:
         self._shared_memory["continuity_context"] = _build_continuity_context(
-            history_tail
+            history_tail,
         )
 
-    def _seed_shared_memory_from_idea(
+    def _seed_shared_memory_from_objective(
         self,
         *,
         objective: str,
-        handoff: Dict[str, Any],
+        handoff: dict[str, Any],
         used_fallback: bool,
     ) -> None:
         self._shared_memory["objective_context"] = {
@@ -664,37 +659,34 @@ class MultiLLMSessionManager:
     def _update_shared_memory_from_session_summary(
         self,
         *,
-        session_summary: Dict[str, Any],
+        session_summary: dict[str, Any],
     ) -> None:
         self._shared_memory["latest_session"] = {
             "status": str(session_summary.get("status", "") or ""),
             "metrics": _compact_metrics(session_summary.get("metrics", {}) or {}),
         }
 
-    def _update_shared_memory_from_reviews(
+    def _update_shared_memory_from_supervisor_review(
         self,
         *,
-        critic_payload: Dict[str, Any],
-        risk_payload: Dict[str, Any],
-        router_decision: Dict[str, Any],
+        supervisor_payload: dict[str, Any],
+        router_decision: dict[str, Any],
     ) -> None:
-        self._shared_memory["critic_context"] = {
-            "verdict": str(critic_payload.get("verdict", "") or "").strip(),
-            "critique": sanitize_objective_text(critic_payload.get("critique")),
-            "next_focus": _normalize_text_list(critic_payload.get("next_focus")),
+        self._shared_memory["supervisor_context"] = {
+            "verdict": str(supervisor_payload.get("verdict", "") or "").strip(),
+            "critique": sanitize_objective_text(supervisor_payload.get("critique")),
+            "next_focus": _normalize_text_list(supervisor_payload.get("next_focus")),
+            "risk_level": str(supervisor_payload.get("risk_level", "") or "").strip(),
+            "key_risks": _normalize_text_list(supervisor_payload.get("key_risks")),
+            "mitigations": _normalize_text_list(supervisor_payload.get("mitigations")),
         }
-        self._shared_memory["risk_context"] = {
-            "risk_level": str(risk_payload.get("risk_level", "") or "").strip(),
-            "key_risks": _normalize_text_list(risk_payload.get("key_risks")),
-            "mitigations": _normalize_text_list(risk_payload.get("mitigations")),
-        }
-        self._shared_memory["router_context"] = {
+        self._shared_memory["decision_context"] = {
             "action": str(router_decision.get("action", "") or "").strip(),
             "reason": sanitize_objective_text(router_decision.get("reason")),
             "confidence": float(router_decision.get("confidence", 0.0) or 0.0),
         }
 
-    def resolve_role_assignment(self, role: str) -> Optional[RoleAssignment]:
+    def resolve_role_assignment(self, role: str) -> RoleAssignment | None:
         for assignment in self.assignments:
             if assignment.role == role:
                 return assignment
@@ -706,8 +698,159 @@ class MultiLLMSessionManager:
             return assignment.resolved_model
         raise RuntimeError(
             "multi_llm_builder_model_unavailable: `builder_llm` must be resolved "
-            "explicitly by the active multi-LLM profile; mono-model fallback disabled"
+            "explicitly by the active multi-LLM profile; mono-model fallback disabled",
         )
+
+    def _sync_assignment_rotation_state(
+        self,
+        assignment: RoleAssignment,
+        *,
+        selected_candidate: str = "",
+        mission_count: int | None = None,
+    ) -> None:
+        queue = resolve_assignment_rotation_queue(assignment)
+        selected = normalize_role_candidate(
+            selected_candidate or assignment.requested_model or assignment.resolved_model,
+        )
+        if not queue and selected:
+            queue = [selected]
+        assignment.metadata = build_role_rotation_metadata(
+            dict(assignment.metadata or {}),
+            queue=queue,
+            selected_candidate=selected,
+            mission_count=mission_count,
+        )
+        assignment.alternatives = role_rotation_remainder(
+            queue,
+            selected,
+        )
+
+    # ── Iteration-level pinning ──────────────────────────────────────────
+    # When pinned, roles keep their current model for all calls within
+    # one Builder iteration.  ``advance_iteration`` rotates every role
+    # once then re-pins.
+
+    def pin_iteration_roles(self) -> None:
+        """Lock current model selection for every role until the next ``advance_iteration``."""
+        self._iteration_pinned = True
+
+    def advance_iteration(self) -> dict[str, dict[str, Any]]:
+        """Rotate every role once, then pin for the new iteration.
+
+        Returns a dict ``{role: prepare_role_for_mission result}`` for logging.
+        """
+        self._iteration_pinned = False
+        results: dict[str, dict[str, Any]] = {}
+        for assignment in self.assignments:
+            if not assignment.available or not assignment.resolved_model:
+                continue
+            queue = resolve_assignment_rotation_queue(assignment)
+            if len(queue) <= 1:
+                continue
+            results[assignment.role] = self.prepare_role_for_mission(assignment.role)
+        self._iteration_pinned = True
+        return results
+
+    def prepare_role_for_mission(self, role: str) -> dict[str, Any]:
+        assignment = self.resolve_role_assignment(role)
+        if assignment is None or not assignment.available or not assignment.resolved_model:
+            return {"role": str(role or "").strip(), "rotated": False, "model": ""}
+
+        queue = resolve_assignment_rotation_queue(assignment)
+        raw_mission_count = dict(assignment.metadata or {}).get("rotation_mission_count", 0)
+        try:
+            mission_count = max(0, int(raw_mission_count))
+        except (TypeError, ValueError):
+            mission_count = 0
+
+        if len(queue) <= 1:
+            self._sync_assignment_rotation_state(
+                assignment,
+                mission_count=mission_count + 1,
+            )
+            return {
+                "role": assignment.role,
+                "rotated": False,
+                "model": assignment.resolved_model,
+                "requested_model": assignment.requested_model,
+                "queue": queue,
+            }
+
+        if mission_count == 0:
+            self._sync_assignment_rotation_state(
+                assignment,
+                mission_count=1,
+            )
+            return {
+                "role": assignment.role,
+                "rotated": False,
+                "model": assignment.resolved_model,
+                "requested_model": assignment.requested_model,
+                "queue": queue,
+            }
+
+        # ── Iteration pin: keep current model, skip rotation ─────────────
+        if self._iteration_pinned:
+            self._sync_assignment_rotation_state(
+                assignment,
+                mission_count=mission_count + 1,
+            )
+            return {
+                "role": assignment.role,
+                "rotated": False,
+                "model": assignment.resolved_model,
+                "requested_model": assignment.requested_model,
+                "queue": queue,
+                "iteration_pinned": True,
+            }
+
+        current_index = resolve_assignment_rotation_index(assignment, queue=queue)
+        for offset in range(1, len(queue) + 1):
+            next_index = (current_index + offset) % len(queue)
+            next_candidate = queue[next_index]
+            if not self._apply_role_candidate(
+                role,
+                next_candidate,
+                reason="scheduled role rotation",
+            ):
+                continue
+            refreshed_assignment = self.resolve_role_assignment(role)
+            if refreshed_assignment is None:
+                break
+            self._sync_assignment_rotation_state(
+                refreshed_assignment,
+                selected_candidate=next_candidate,
+                mission_count=mission_count + 1,
+            )
+            route = self.resolve_role_route(role)
+            self.mark_role_signal(
+                role,
+                signal="rotation_candidate",
+                phase="runtime_prepare",
+                detail=f"rotation to {refreshed_assignment.resolved_model}",
+                model=refreshed_assignment.resolved_model,
+                host=route.ollama_host,
+            )
+            return {
+                "role": refreshed_assignment.role,
+                "rotated": True,
+                "model": refreshed_assignment.resolved_model,
+                "requested_model": refreshed_assignment.requested_model,
+                "queue": queue,
+            }
+
+        self._sync_assignment_rotation_state(
+            assignment,
+            mission_count=mission_count + 1,
+        )
+        return {
+            "role": assignment.role,
+            "rotated": False,
+            "model": assignment.resolved_model,
+            "requested_model": assignment.requested_model,
+            "queue": queue,
+            "rotation_blocked": True,
+        }
 
     def _apply_role_candidate(self, role: str, candidate: str, *, reason: str = "") -> bool:
         assignment = self.resolve_role_assignment(role)
@@ -717,9 +860,24 @@ class MultiLLMSessionManager:
         normalized_candidate = normalize_model_name(str(candidate or "").strip()) or str(candidate or "").strip()
         if not normalized_candidate:
             return False
+        rotation_queue = resolve_assignment_rotation_queue(assignment)
+        if not rotation_queue and normalized_candidate:
+            rotation_queue = [normalized_candidate]
+        raw_mission_count = dict(assignment.metadata or {}).get("rotation_mission_count", 0)
+        try:
+            mission_count = max(0, int(raw_mission_count))
+        except (TypeError, ValueError):
+            mission_count = 0
 
         if is_cloud_only_model(normalized_candidate):
             discovered = self.inventory.find(normalized_candidate) if self.inventory is not None else None
+            request_ctx = resolve_ollama_request_context(
+                getattr(self.inventory, "live_ollama_host", None),
+                model_name=normalized_candidate,
+            )
+            direct_cloud_available = bool(
+                request_ctx.get("direct_cloud") and request_ctx.get("api_key_present"),
+            )
             if discovered is not None and (
                 not self.require_live_ollama
                 or not getattr(self.inventory, "live_ollama_reachable", False)
@@ -736,7 +894,41 @@ class MultiLLMSessionManager:
                 assignment.discovered_path = str(discovered.path or "")
                 assignment.live = bool(discovered.live)
                 assignment.install_required = False
-                assignment.metadata = metadata
+                assignment.metadata = build_role_rotation_metadata(
+                    metadata,
+                    queue=rotation_queue,
+                    selected_candidate=normalized_candidate,
+                    mission_count=mission_count,
+                )
+                assignment.alternatives = role_rotation_remainder(
+                    rotation_queue,
+                    normalized_candidate,
+                )
+                return True
+            if direct_cloud_available:
+                metadata = dict(assignment.metadata or {})
+                metadata["cloud_only"] = True
+                metadata["direct_cloud"] = True
+                metadata["effective_host"] = str(request_ctx.get("effective_host") or "")
+                assignment.requested_model = normalized_candidate
+                assignment.resolved_model = normalized_candidate
+                assignment.available = True
+                assignment.verified = True
+                assignment.source = "ollama_cloud_direct"
+                assignment.reason = reason or "fallback candidate selected"
+                assignment.discovered_path = ""
+                assignment.live = True
+                assignment.install_required = False
+                assignment.metadata = build_role_rotation_metadata(
+                    metadata,
+                    queue=rotation_queue,
+                    selected_candidate=normalized_candidate,
+                    mission_count=mission_count,
+                )
+                assignment.alternatives = role_rotation_remainder(
+                    rotation_queue,
+                    normalized_candidate,
+                )
                 return True
             if self.require_live_ollama and bool(getattr(self.inventory, "live_ollama_reachable", False)):
                 return False
@@ -751,11 +943,27 @@ class MultiLLMSessionManager:
             assignment.discovered_path = ""
             assignment.live = bool(getattr(self.inventory, "live_ollama_reachable", False))
             assignment.install_required = False
-            assignment.metadata = metadata
+            assignment.metadata = build_role_rotation_metadata(
+                metadata,
+                queue=rotation_queue,
+                selected_candidate=normalized_candidate,
+                mission_count=mission_count,
+            )
+            assignment.alternatives = role_rotation_remainder(
+                rotation_queue,
+                normalized_candidate,
+            )
             return True
 
         discovered = self.inventory.find(normalized_candidate) if self.inventory is not None else None
         if discovered is None or not discovered.verified_available:
+            return False
+        if (
+            assignment.backend == "ollama"
+            and self.require_live_ollama
+            and bool(getattr(self.inventory, "live_ollama_reachable", False))
+            and not bool(getattr(discovered, "live", False))
+        ):
             return False
 
         assignment.requested_model = normalized_candidate
@@ -767,7 +975,16 @@ class MultiLLMSessionManager:
         assignment.discovered_path = str(discovered.path or "")
         assignment.live = bool(discovered.live)
         assignment.install_required = False
-        assignment.metadata = dict(discovered.metadata or {})
+        assignment.metadata = build_role_rotation_metadata(
+            dict(discovered.metadata or {}),
+            queue=rotation_queue,
+            selected_candidate=normalized_candidate,
+            mission_count=mission_count,
+        )
+        assignment.alternatives = role_rotation_remainder(
+            rotation_queue,
+            normalized_candidate,
+        )
         return True
 
     def select_next_role_candidate(
@@ -776,13 +993,13 @@ class MultiLLMSessionManager:
         *,
         rejected_model: str = "",
         reason: str = "",
-    ) -> Optional[str]:
+    ) -> str | None:
         assignment = self.resolve_role_assignment(role)
         if assignment is None:
             return None
 
         normalized_rejected = normalize_model_name(
-            str(rejected_model or assignment.resolved_model or assignment.requested_model).strip()
+            str(rejected_model or assignment.resolved_model or assignment.requested_model).strip(),
         )
         remaining = [
             normalize_model_name(str(candidate or "").strip()) or str(candidate or "").strip()
@@ -830,17 +1047,17 @@ class MultiLLMSessionManager:
         gpu_target: str = "",
         reason: str = "",
         unloaded_previous: bool = False,
-        released: Optional[bool] = None,
+        released: bool | None = None,
         phase: str = "",
         status: str = "",
         error: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         payload = {
             "ts": _utc_now_iso(),
             "event": str(event or "").strip(),
             "role": str(role or "").strip(),
             "host": normalize_ollama_host(
-                host or getattr(self.base_llm_config, "ollama_host", None)
+                host or getattr(self.base_llm_config, "ollama_host", None),
             ),
             "model": str(model or "").strip(),
             "previous_model": str(previous_model or "").strip(),
@@ -858,9 +1075,7 @@ class MultiLLMSessionManager:
             payload["error"] = str(error or "").strip()
         self._runtime_flow_events.append(payload)
         if len(self._runtime_flow_events) > _RUNTIME_EVENT_HISTORY_LIMIT:
-            self._runtime_flow_events = self._runtime_flow_events[
-                -_RUNTIME_EVENT_HISTORY_LIMIT:
-            ]
+            self._runtime_flow_events = self._runtime_flow_events[-_RUNTIME_EVENT_HISTORY_LIMIT:]
         return payload
 
     def mark_role_signal(
@@ -873,18 +1088,25 @@ class MultiLLMSessionManager:
         error: str = "",
         model: str = "",
         host: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         assignment = self.resolve_role_assignment(role)
         route = self.resolve_role_route(role)
+        runtime_ctx = self.resolve_role_runtime_request_context(
+            role,
+            assignment=assignment,
+            route=route,
+            model_name=model,
+        )
         normalized_host = normalize_ollama_host(
             host
+            or runtime_ctx["host_effective"]
             or getattr(route, "ollama_host", None)
-            or getattr(self.base_llm_config, "ollama_host", None)
+            or getattr(self.base_llm_config, "ollama_host", None),
         )
         resolved_model = str(
             model
             or (assignment.resolved_model if assignment is not None else "")
-            or self._active_ollama_models_by_host.get(normalized_host, "")
+            or self._active_ollama_models_by_host.get(normalized_host, ""),
         ).strip()
         payload = {
             "ts": _utc_now_iso(),
@@ -915,26 +1137,24 @@ class MultiLLMSessionManager:
         self,
         model_name: str,
         *,
-        ollama_host: Optional[str],
-        gpu_target: Optional[str] = None,
+        ollama_host: str | None,
+        gpu_target: str | None = None,
         role: str = "",
         reason: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         normalized_model = str(model_name or "").strip()
         normalized_host = normalize_ollama_host(
-            ollama_host or getattr(self.base_llm_config, "ollama_host", None)
+            ollama_host or getattr(self.base_llm_config, "ollama_host", None),
         )
         previous_model = self._active_ollama_models_by_host.get(normalized_host, "")
         switched = bool(
-            normalized_model
-            and previous_model
-            and previous_model != normalized_model
+            normalized_model and previous_model and previous_model != normalized_model,
         )
         unloaded_previous = False
 
         if switched:
             unloaded_previous = bool(
-                unload_model(previous_model, ollama_host=normalized_host)
+                unload_model(previous_model, ollama_host=normalized_host),
             )
             logger.info(
                 "multi_llm_runtime_switch host=%s from=%s to=%s gpu=%s unloaded_previous=%s",
@@ -982,14 +1202,19 @@ class MultiLLMSessionManager:
             "reason": str(reason or "").strip(),
         }
 
-    def activate_runtime_model_for_role(self, role: str) -> Dict[str, Any]:
+    def activate_runtime_model_for_role(self, role: str) -> dict[str, Any]:
         assignment = self.resolve_role_assignment(role)
         if assignment is None or assignment.backend != "ollama" or not assignment.resolved_model:
             return {}
         route = self.resolve_role_route(role)
+        runtime_ctx = self.resolve_role_runtime_request_context(
+            role,
+            assignment=assignment,
+            route=route,
+        )
         return self.activate_runtime_model(
-            assignment.resolved_model,
-            ollama_host=route.ollama_host,
+            runtime_ctx["tracking_model"] or assignment.resolved_model,
+            ollama_host=runtime_ctx["host_effective"] or route.ollama_host,
             gpu_target=route.gpu_target or None,
             role=role,
             reason="role_dispatch",
@@ -1000,6 +1225,12 @@ class MultiLLMSessionManager:
         if assignment is None or assignment.backend != "ollama" or not assignment.resolved_model:
             return False
         route = self.resolve_role_route(role)
+        runtime_ctx = self.resolve_role_runtime_request_context(
+            role,
+            assignment=assignment,
+            route=route,
+        )
+        runtime_host = runtime_ctx["host_effective"] or route.ollama_host
         self.mark_role_signal(
             role,
             signal="recovering",
@@ -1007,15 +1238,19 @@ class MultiLLMSessionManager:
             detail="automatic ollama restart requested",
             error=str(error),
             model=assignment.resolved_model,
-            host=route.ollama_host,
+            host=runtime_host,
         )
         try:
             ok, _msg = ensure_ollama_running(
-                ollama_host=route.ollama_host,
+                ollama_host=runtime_host,
                 gpu_target=route.gpu_target or None,
+                model_name=assignment.resolved_model,
             )
         except TypeError:
-            ok, _msg = ensure_ollama_running(ollama_host=route.ollama_host)
+            ok, _msg = ensure_ollama_running(
+                ollama_host=runtime_host,
+                gpu_target=route.gpu_target or None,
+            )
         if not ok:
             self.mark_role_signal(
                 role,
@@ -1024,13 +1259,13 @@ class MultiLLMSessionManager:
                 detail="automatic ollama restart failed",
                 error=str(error),
                 model=assignment.resolved_model,
-                host=route.ollama_host,
+                host=runtime_host,
             )
             return False
-        self.forget_runtime_model(ollama_host=route.ollama_host)
+        self.forget_runtime_model(ollama_host=runtime_host)
         self.activate_runtime_model(
-            assignment.resolved_model,
-            ollama_host=route.ollama_host,
+            runtime_ctx["tracking_model"] or assignment.resolved_model,
+            ollama_host=runtime_host,
             gpu_target=route.gpu_target or None,
             role=role,
             reason="runtime_recovery",
@@ -1041,18 +1276,18 @@ class MultiLLMSessionManager:
             phase="runtime_recovery",
             detail="automatic ollama restart succeeded",
             model=assignment.resolved_model,
-            host=route.ollama_host,
+            host=runtime_host,
         )
         return True
 
     def forget_runtime_model(
         self,
         *,
-        ollama_host: Optional[str],
-        model_name: Optional[str] = None,
+        ollama_host: str | None,
+        model_name: str | None = None,
     ) -> None:
         normalized_host = normalize_ollama_host(
-            ollama_host or getattr(self.base_llm_config, "ollama_host", None)
+            ollama_host or getattr(self.base_llm_config, "ollama_host", None),
         )
         tracked_model = self._active_ollama_models_by_host.get(normalized_host, "")
         normalized_model = str(model_name or "").strip()
@@ -1061,8 +1296,8 @@ class MultiLLMSessionManager:
         if not normalized_model or tracked_model == normalized_model:
             self._active_ollama_models_by_host.pop(normalized_host, None)
 
-    def release_runtime_models(self) -> List[Dict[str, Any]]:
-        releases: List[Dict[str, Any]] = []
+    def release_runtime_models(self) -> list[dict[str, Any]]:
+        releases: list[dict[str, Any]] = []
         for host, model_name in list(self._active_ollama_models_by_host.items()):
             released = bool(unload_model(model_name, ollama_host=host))
             self._append_runtime_flow_event(
@@ -1078,35 +1313,56 @@ class MultiLLMSessionManager:
                     "host": host,
                     "model": model_name,
                     "released": released,
-                }
+                },
             )
         self._active_ollama_models_by_host.clear()
         return releases
 
-    def runtime_flow_snapshot(self) -> Dict[str, Any]:
-        host_gpu_targets: Dict[str, set[str]] = {}
-        host_role_rows: Dict[str, List[str]] = {}
-        role_rows: List[Dict[str, Any]] = []
+    def runtime_flow_snapshot(self) -> dict[str, Any]:
+        host_gpu_targets: dict[str, set[str]] = {}
+        host_logical_routes: dict[str, set[str]] = {}
+        host_role_rows: dict[str, list[str]] = {}
+        role_rows: list[dict[str, Any]] = []
 
         for assignment in self.assignments:
             route = self.resolve_role_route(assignment.role)
-            normalized_host = normalize_ollama_host(route.ollama_host)
-            active_model = self._active_ollama_models_by_host.get(normalized_host, "")
-            role_detail = MULTI_LLM_ROLE_DETAILS.get(assignment.role, {})
-            host_gpu_targets.setdefault(normalized_host, set()).add(
-                str(route.gpu_target or "auto")
+            runtime_ctx = self.resolve_role_runtime_request_context(
+                assignment.role,
+                assignment=assignment,
+                route=route,
             )
-            host_role_rows.setdefault(normalized_host, []).append(assignment.role)
+            rotation_queue = resolve_assignment_rotation_queue(assignment)
+            effective_host = runtime_ctx["host_effective"]
+            logical_host = runtime_ctx["host_route"]
+            active_model = self._active_ollama_models_by_host.get(effective_host, "")
+            role_detail = MULTI_LLM_ROLE_DETAILS.get(assignment.role, {})
+            tracking_model = str(
+                runtime_ctx["tracking_model"] or assignment.resolved_model or assignment.requested_model or "",
+            ).strip()
+            host_gpu_targets.setdefault(effective_host, set()).add(
+                str(route.gpu_target or "auto"),
+            )
+            if logical_host:
+                host_logical_routes.setdefault(effective_host, set()).add(logical_host)
+            host_role_rows.setdefault(effective_host, []).append(assignment.role)
             role_rows.append(
                 {
                     "role": assignment.role,
                     "etape": str(role_detail.get("stage", "") or "").strip() or "-",
                     "modele": assignment.resolved_model or assignment.requested_model or "-",
-                    "host": normalized_host,
+                    "requested_model": assignment.requested_model or "-",
+                    "resolved_model": assignment.resolved_model or "-",
+                    "request_model": runtime_ctx["request_model"] or "-",
+                    "host": effective_host,
+                    "host_effective": effective_host,
+                    "host_logique": logical_host or "-",
+                    "transport": runtime_ctx["transport"],
+                    "direct_cloud": bool(runtime_ctx["direct_cloud"]),
                     "gpu": str(route.gpu_target or "auto"),
+                    "available": bool(assignment.available),
                     "etat": (
                         "actif"
-                        if active_model and active_model == assignment.resolved_model
+                        if active_model and active_model == tracking_model
                         else ("pret" if assignment.available else "indisponible")
                     ),
                     "signal": self._role_runtime_state.get(assignment.role, {}).get("signal", "-"),
@@ -1115,22 +1371,37 @@ class MultiLLMSessionManager:
                     "actif_sur_host": active_model or "-",
                     "source": assignment.source or "-",
                     "fallback": bool(route.fallback_used),
-                }
+                    "rotation_queue": " -> ".join(rotation_queue) if rotation_queue else "-",
+                    "rotation_enabled": len(rotation_queue) > 1,
+                    "rotation_index": resolve_assignment_rotation_index(
+                        assignment,
+                        queue=rotation_queue,
+                    ),
+                    "rotation_calls": int(
+                        dict(assignment.metadata or {}).get("rotation_mission_count", 0) or 0,
+                    ),
+                },
             )
 
         hosts = sorted(
-            set(host_gpu_targets.keys()) | set(self._active_ollama_models_by_host.keys())
+            set(host_gpu_targets.keys()) | set(self._active_ollama_models_by_host.keys()),
         )
-        host_rows: List[Dict[str, Any]] = []
+        host_rows: list[dict[str, Any]] = []
         for host in hosts:
             role_names = host_role_rows.get(host, [])
             host_rows.append(
                 {
                     "host": host,
+                    "transport": (
+                        "cloud_direct"
+                        if str(host or "").strip().startswith("https://ollama.com")
+                        else "local"
+                    ),
+                    "host_logique": ", ".join(sorted(host_logical_routes.get(host, set()))) or "-",
                     "gpu": ", ".join(sorted(host_gpu_targets.get(host, {"auto"}))),
                     "roles": ", ".join(role_names) if role_names else "-",
                     "modele_actif": self._active_ollama_models_by_host.get(host, "-"),
-                }
+                },
             )
 
         return {
@@ -1143,22 +1414,17 @@ class MultiLLMSessionManager:
             "shared_memory": self.shared_memory_snapshot(),
         }
 
-    def build_role_client(self, role: str) -> Optional[Any]:
+    def build_role_client(self, role: str) -> Any | None:
         client = self._build_client(role)
         assignment = self.resolve_role_assignment(role)
-        if (
-            client is not None
-            and assignment is not None
-            and assignment.backend == "ollama"
-        ):
+        if client is not None and assignment is not None and assignment.backend == "ollama":
             return _ManagedRoleLLMClient(self, role, client)
         return client
 
-    def build_builder_phase_clients(self) -> Dict[str, Any]:
-        phase_clients: Dict[str, Any] = {}
+    def build_builder_phase_clients(self) -> dict[str, Any]:
+        phase_clients: dict[str, Any] = {}
         builder_client = self.build_role_client("builder_llm")
-        critic_client = self.build_role_client("critic_llm")
-        risk_client = self.build_role_client("risk_llm")
+        supervisor_client = self.build_role_client("supervisor_llm")
 
         if builder_client is not None:
             for phase in (
@@ -1168,18 +1434,17 @@ class MultiLLMSessionManager:
                 "retry_code",
             ):
                 phase_clients[phase] = builder_client
-        if critic_client is not None:
-            phase_clients["analysis"] = critic_client
-        if risk_client is not None:
-            phase_clients["pre_reflection"] = risk_client
+        if supervisor_client is not None:
+            phase_clients["analysis"] = supervisor_client
+            phase_clients["pre_reflection"] = supervisor_client
         return phase_clients
 
     def resolve_role_route(self, role: str) -> Any:
         base_host = getattr(self.base_llm_config, "ollama_host", None)
         role_key = str(role or "").strip()
-        if role_key == "idea_llm":
+        if role_key == "supervisor_llm":
             return self.llm_topology_config.resolve_builder_phase_route(
-                "objective_gen",
+                "analysis",
                 fallback_host=base_host,
             )
         if role_key == "builder_llm":
@@ -1187,36 +1452,71 @@ class MultiLLMSessionManager:
                 "code",
                 fallback_host=base_host,
             )
-        if role_key == "critic_llm":
-            return self.llm_topology_config.resolve_builder_phase_route(
-                "analysis",
-                fallback_host=base_host,
-            )
-        if role_key == "risk_llm":
-            return self.llm_topology_config.resolve_builder_phase_route(
-                "pre_reflection",
-                fallback_host=base_host,
-            )
         return self.llm_topology_config.resolve_role_route(
             role_key,
             fallback_host=base_host,
         )
 
-    def _build_client(self, role: str) -> Optional[Any]:
+    def resolve_role_runtime_request_context(
+        self,
+        role: str,
+        *,
+        assignment: RoleAssignment | None = None,
+        route: Any | None = None,
+        model_name: str | None = None,
+    ) -> dict[str, Any]:
+        assignment = assignment or self.resolve_role_assignment(role)
+        route = route or self.resolve_role_route(role)
+        host_route = normalize_ollama_host(
+            getattr(route, "ollama_host", None) or getattr(self.base_llm_config, "ollama_host", None),
+        )
+        candidate_model = str(
+            model_name
+            or (assignment.resolved_model if assignment is not None else "")
+            or (assignment.requested_model if assignment is not None else ""),
+        ).strip()
+        request_ctx = resolve_ollama_request_context(
+            getattr(route, "ollama_host", None),
+            model_name=candidate_model,
+        )
+        host_effective = normalize_ollama_host(
+            request_ctx.get("effective_host") or host_route,
+        )
+        request_model = str(
+            request_ctx.get("request_model") or candidate_model,
+        ).strip()
+        tracking_model = str(
+            request_model
+            or candidate_model
+            or (assignment.resolved_model if assignment is not None else "")
+            or (assignment.requested_model if assignment is not None else ""),
+        ).strip()
+        direct_cloud = bool(request_ctx.get("direct_cloud"))
+        return {
+            "host_route": host_route,
+            "host_effective": host_effective,
+            "request_model": request_model,
+            "tracking_model": tracking_model,
+            "direct_cloud": direct_cloud,
+            "transport": "cloud_direct" if direct_cloud else "local",
+        }
+
+    def _build_client(self, role: str) -> Any | None:
         assignment = self.resolve_role_assignment(role)
         if assignment is None or not assignment.available or not assignment.resolved_model:
             return None
         route = self.resolve_role_route(role)
-
-        provider = (
-            LLMProvider.OPENAI
-            if assignment.backend == "openai"
-            else LLMProvider.OLLAMA
+        runtime_ctx = self.resolve_role_runtime_request_context(
+            role,
+            assignment=assignment,
+            route=route,
         )
+
+        provider = LLMProvider.OPENAI if assignment.backend == "openai" else LLMProvider.OLLAMA
         config = LLMConfig(
             provider=provider,
             model=assignment.resolved_model,
-            ollama_host=route.ollama_host,
+            ollama_host=runtime_ctx["host_effective"] or route.ollama_host,
             keep_alive=self.base_llm_config.keep_alive,
             openai_api_key=self.base_llm_config.openai_api_key,
             openai_base_url=self.base_llm_config.openai_base_url,
@@ -1243,34 +1543,32 @@ class MultiLLMSessionManager:
         user_prompt: str,
     ) -> RoleOutput:
         assignment = self.resolve_role_assignment(role)
-        model_name = assignment.resolved_model if assignment else ""
         route = self.resolve_role_route(role)
         client = self.build_role_client(role)
         if client is None:
             return RoleOutput(
                 role=role,
-                model=model_name,
+                model=assignment.resolved_model if assignment else "",
                 available=False,
                 error="role unavailable locally",
             )
-        lifecycle_managed = bool(
-            assignment
-            and assignment.backend == "ollama"
-            and model_name
-        )
-        role_output: Optional[RoleOutput] = None
+        lifecycle_managed = bool(assignment and assignment.backend == "ollama")
+        role_output: RoleOutput | None = None
         unload_attempted = False
         unload_ok = False
+        used_model_name = assignment.resolved_model if assignment else ""
         try:
             response = client.chat(
                 [
                     LLMMessage(role="system", content=system_prompt),
                     LLMMessage(role="user", content=user_prompt),
-                ]
+                ],
             )
+            refreshed_assignment = self.resolve_role_assignment(role)
+            used_model_name = refreshed_assignment.resolved_model if refreshed_assignment else used_model_name
             role_output = RoleOutput(
                 role=role,
-                model=model_name,
+                model=used_model_name,
                 content=response.content,
                 available=True,
                 metadata={
@@ -1283,39 +1581,41 @@ class MultiLLMSessionManager:
                 },
             )
         except Exception as exc:  # noqa: BLE001
+            refreshed_assignment = self.resolve_role_assignment(role)
+            used_model_name = refreshed_assignment.resolved_model if refreshed_assignment else used_model_name
             role_output = RoleOutput(
                 role=role,
-                model=model_name,
+                model=used_model_name,
                 available=True,
                 error=str(exc),
                 metadata={"route": route.to_dict()},
             )
         finally:
-            if lifecycle_managed:
+            if lifecycle_managed and used_model_name:
                 self.mark_role_signal(
                     role,
                     signal="unload_pending",
                     phase="post_call_cleanup",
                     detail="waiting for unload after mission completion",
-                    model=model_name,
+                    model=used_model_name,
                     host=route.ollama_host,
                 )
                 unload_attempted = True
                 unload_ok = bool(
                     unload_model(
-                        model_name,
+                        used_model_name,
                         ollama_host=route.ollama_host,
-                    )
+                    ),
                 )
                 self.forget_runtime_model(
                     ollama_host=route.ollama_host,
-                    model_name=model_name,
+                    model_name=used_model_name,
                 )
                 self._append_runtime_flow_event(
                     event="role_unload",
                     role=role,
                     host=route.ollama_host,
-                    model=model_name,
+                    model=used_model_name,
                     gpu_target=route.gpu_target,
                     reason="post_call_cleanup",
                     released=unload_ok,
@@ -1325,7 +1625,7 @@ class MultiLLMSessionManager:
                     signal="unloaded",
                     phase="post_call_cleanup",
                     detail="model unloaded after mission completion",
-                    model=model_name,
+                    model=used_model_name,
                     host=route.ollama_host,
                     error="" if unload_ok else "unload_failed",
                 )
@@ -1344,9 +1644,9 @@ class MultiLLMSessionManager:
         symbols: Iterable[str],
         timeframes: Iterable[str],
         available_indicators: Iterable[str],
-        history_tail: List[Dict[str, Any]],
-        fallback_objective: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        history_tail: list[dict[str, Any]],
+        fallback_objective: str | None = None,
+    ) -> dict[str, Any]:
         symbols_list = list(symbols)
         timeframes_list = list(timeframes)
         available_indicators_list = list(available_indicators)
@@ -1359,12 +1659,12 @@ class MultiLLMSessionManager:
                 symbol=symbols_list or ["BTCUSDT"],
                 timeframe=timeframes_list or ["1h"],
                 available_indicators=available_indicators_list,
-            )
+            ),
         )
         role_output = self._call_role(
-            "idea_llm",
-            system_prompt=build_idea_system_prompt(),
-            user_prompt=build_idea_user_prompt(
+            "supervisor_llm",
+            system_prompt=build_supervisor_objective_system_prompt(),
+            user_prompt=build_supervisor_objective_user_prompt(
                 symbols=symbols_list,
                 timeframes=timeframes_list,
                 available_indicators=available_indicators_list,
@@ -1373,12 +1673,12 @@ class MultiLLMSessionManager:
             ),
         )
         content = role_output.content.strip()
-        handoff = _normalize_idea_handoff(content)
+        handoff = _normalize_objective_handoff(content)
         objective = _render_builder_objective(handoff, fallback) if content else ""
         if not objective:
             objective = fallback
         role_output.metadata["handoff_payload"] = handoff
-        self._seed_shared_memory_from_idea(
+        self._seed_shared_memory_from_objective(
             objective=objective,
             handoff=handoff,
             used_fallback=(objective == fallback),
@@ -1403,70 +1703,55 @@ class MultiLLMSessionManager:
         objective: str,
         builder_session: Any,
         target_sharpe: float,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         summary = summarize_builder_session(builder_session)
         self._update_shared_memory_from_session_summary(session_summary=summary)
         shared_memory = self.shared_memory_snapshot()
-        critic_output = self._call_role(
-            "critic_llm",
-            system_prompt=build_critic_system_prompt(),
-            user_prompt=build_critic_user_prompt(
+        supervisor_output = self._call_role(
+            "supervisor_llm",
+            system_prompt=build_supervisor_review_system_prompt(),
+            user_prompt=build_supervisor_review_user_prompt(
                 objective=objective,
                 session_summary=summary,
                 shared_memory=shared_memory,
                 continuity_context=shared_memory.get("continuity_context", {}),
+                target_sharpe=target_sharpe,
             ),
         )
-        risk_output = self._call_role(
-            "risk_llm",
-            system_prompt=build_risk_system_prompt(),
-            user_prompt=build_risk_user_prompt(
-                objective=objective,
-                session_summary=summary,
-                shared_memory=shared_memory,
-                continuity_context=shared_memory.get("continuity_context", {}),
-            ),
-        )
-        critic_payload = _normalize_review_payload(critic_output)
-        risk_payload = _normalize_review_payload(risk_output)
-        critic_output.metadata["normalized_review"] = critic_payload
-        risk_output.metadata["normalized_review"] = risk_payload
-        critic_output.metadata["session_summary_in_prompt"] = summary
-        risk_output.metadata["session_summary_in_prompt"] = summary
-        critic_output.metadata["shared_memory_in_prompt"] = shared_memory
-        risk_output.metadata["shared_memory_in_prompt"] = shared_memory
+        supervisor_payload = _normalize_review_payload(supervisor_output)
+        supervisor_output.metadata["normalized_review"] = supervisor_payload
+        supervisor_output.metadata["session_summary_in_prompt"] = summary
+        supervisor_output.metadata["shared_memory_in_prompt"] = shared_memory
         decision = deterministic_router_decision(
             session_status=str(summary.get("status", "") or ""),
             metrics=summary.get("metrics", {}),
             target_sharpe=target_sharpe,
-            critic_summary=json.dumps(critic_payload, ensure_ascii=False),
-            risk_summary=json.dumps(risk_payload, ensure_ascii=False),
+            critic_summary=json.dumps(supervisor_payload, ensure_ascii=False),
+            risk_summary=json.dumps(supervisor_payload, ensure_ascii=False),
         )
-        self._update_shared_memory_from_reviews(
-            critic_payload=critic_payload,
-            risk_payload=risk_payload,
+        supervisor_action = str(supervisor_payload.get("action", "") or "").strip()
+        if supervisor_action:
+            decision["action"] = normalize_router_action(supervisor_action)
+            decision["confidence"] = float(
+                supervisor_payload.get("confidence", decision.get("confidence", 0.0)) or 0.0,
+            )
+            supervisor_reason = sanitize_objective_text(supervisor_payload.get("reason"))
+            if supervisor_reason:
+                decision["reason"] = supervisor_reason
+            decision["decision_source"] = "supervisor_llm"
+        else:
+            decision["decision_source"] = "local_rules"
+        self._update_shared_memory_from_supervisor_review(
+            supervisor_payload=supervisor_payload,
             router_decision=decision,
         )
-        router_output = RoleOutput(
-            role="execution_router_llm",
-            model="deterministic_router",
-            content=json.dumps(decision, ensure_ascii=False),
-            available=True,
-            metadata={
-                "router_mode": "deterministic_only",
-                "decision_source": "local_rules",
-                "critic_summary": critic_payload,
-                "risk_summary": risk_payload,
-                "shared_memory": self.shared_memory_snapshot(),
-            },
-        )
+        supervisor_output.metadata["router_decision"] = dict(decision)
+        supervisor_output.metadata["shared_memory"] = self.shared_memory_snapshot()
 
         return {
             "session_summary": summary,
             "role_outputs": {
-                "critic_llm": critic_output,
-                "risk_llm": risk_output,
-                "execution_router_llm": router_output,
+                "supervisor_llm": supervisor_output,
             },
             "router_decision": decision,
             "shared_memory": self.shared_memory_snapshot(),
@@ -1478,13 +1763,13 @@ class MultiLLMSessionManager:
         symbols: Iterable[str],
         timeframes: Iterable[str],
         available_indicators: Iterable[str],
-        history_tail: List[Dict[str, Any]],
+        history_tail: list[dict[str, Any]],
         target_sharpe: float,
         builder_runner: Callable[[str, str], Any],
-        fallback_objective: Optional[str] = None,
+        fallback_objective: str | None = None,
     ) -> MultiLLMCycleResult:
         try:
-            idea_bundle = self.generate_objective(
+            objective_bundle = self.generate_objective(
                 symbols=symbols,
                 timeframes=timeframes,
                 available_indicators=available_indicators,
@@ -1492,19 +1777,23 @@ class MultiLLMSessionManager:
                 fallback_objective=fallback_objective,
             )
             builder_model = self.resolve_builder_model()
-            session = builder_runner(idea_bundle["objective"], builder_model)
+            session = builder_runner(objective_bundle["objective"], builder_model)
             review_bundle = self.review_builder_session(
-                objective=idea_bundle["objective"],
+                objective=objective_bundle["objective"],
                 builder_session=session,
                 target_sharpe=target_sharpe,
             )
-            role_outputs = {
-                "idea_llm": idea_bundle["role_output"],
-                **review_bundle["role_outputs"],
-            }
+            role_outputs = dict(review_bundle["role_outputs"])
+            supervisor_review_output = role_outputs.get("supervisor_llm")
+            if supervisor_review_output is not None:
+                supervisor_review_output.metadata["objective_output"] = objective_bundle[
+                    "role_output"
+                ].to_dict()
+            else:
+                role_outputs["supervisor_llm"] = objective_bundle["role_output"]
             shared_memory = self.consume_shared_memory()
             return MultiLLMCycleResult(
-                objective=idea_bundle["objective"],
+                objective=objective_bundle["objective"],
                 profile_name=self.profile_name,
                 builder_model=builder_model,
                 role_assignments=self.assignments,

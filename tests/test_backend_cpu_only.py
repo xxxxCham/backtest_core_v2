@@ -1,5 +1,4 @@
-"""
-Tests de non-régression pour le mode CPU-only strict.
+"""Tests de non-régression pour le mode CPU-only strict.
 
 Objectif: Garantir que BACKTEST_BACKEND=cpu ne touche JAMAIS au GPU/CUDA.
 """
@@ -14,6 +13,7 @@ import pytest
 def reset_backend():
     """Reset backend config avant chaque test."""
     from utils.backend_config import reset_backend
+
     reset_backend()
     yield
     reset_backend()
@@ -98,6 +98,7 @@ class TestCPUOnlyMode:
         # Vérifier après
         assert "performance.gpu" not in sys.modules
         from performance.device_backend import ArrayBackend
+
         assert not ArrayBackend().gpu_available
 
 
@@ -140,6 +141,7 @@ class TestBackendConfig:
         # Test avec espaces
         os.environ["BACKTEST_BACKEND"] = "  cpu  "
         from utils.backend_config import reset_backend
+
         reset_backend()
         backend = get_backend()
         assert backend == BackendType.CPU
@@ -199,7 +201,7 @@ def test_numba_thread_context_falls_back_to_current_pool(monkeypatch):
     def _failing_set_num_threads(value: int) -> None:
         if value != state["threads"]:
             raise RuntimeError(
-                "Cannot set NUMBA_NUM_THREADS to a different value once the threads have been launched"
+                "Cannot set NUMBA_NUM_THREADS to a different value once the threads have been launched",
             )
 
     monkeypatch.setattr(sweep_numba, "set_num_threads", _failing_set_num_threads)

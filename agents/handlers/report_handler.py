@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 from utils.observability import get_obs_logger
 
@@ -17,9 +17,9 @@ if TYPE_CHECKING:
 logger = get_obs_logger(__name__)
 
 
-def record_iteration(orch: "Orchestrator", decision: Optional[str] = None) -> None:
+def record_iteration(orch: Orchestrator, decision: str | None = None) -> None:
     """Record current iteration in history."""
-    entry: Dict[str, Any] = {
+    entry: dict[str, Any] = {
         "iteration": orch.state_machine.iteration,
         "timestamp": datetime.now().isoformat(),
         "params": orch.context.current_params.copy(),
@@ -31,7 +31,7 @@ def record_iteration(orch: "Orchestrator", decision: Optional[str] = None) -> No
                 "sharpe_ratio": orch.context.current_metrics.sharpe_ratio,
                 "total_return": orch.context.current_metrics.total_return,
                 "max_drawdown": orch.context.current_metrics.max_drawdown,
-            }
+            },
         )
 
     entry["proposals_count"] = len(orch.context.strategist_proposals)
@@ -54,7 +54,7 @@ def record_iteration(orch: "Orchestrator", decision: Optional[str] = None) -> No
     orch._append_memory_iteration(entry)
 
 
-def generate_final_report(orch: "Orchestrator") -> str:
+def generate_final_report(orch: Orchestrator) -> str:
     """Generate a detailed final report including tracker statistics."""
     lines = [
         "=" * 80,
@@ -84,7 +84,7 @@ def generate_final_report(orch: "Orchestrator") -> str:
             f"  \u00c9tat: {final_state.name}",
             f"  D\u00e9cision: {decision_label}",
             "",
-        ]
+        ],
     )
 
     # Walk-forward status
@@ -95,7 +95,7 @@ def generate_final_report(orch: "Orchestrator") -> str:
                 "  Status: D\u00c9SACTIV\u00c9 AUTOMATIQUEMENT",
                 f"  Raison: {orch.config.walk_forward_disabled_reason}",
                 "",
-            ]
+            ],
         )
     elif orch.config.use_walk_forward:
         lines.extend(
@@ -105,7 +105,7 @@ def generate_final_report(orch: "Orchestrator") -> str:
                 f"  Windows: {orch.config.walk_forward_windows}",
                 f"  Train ratio: {orch.config.train_ratio:.0%}",
                 "",
-            ]
+            ],
         )
 
     # Best results
@@ -116,18 +116,18 @@ def generate_final_report(orch: "Orchestrator") -> str:
                 f"  \U0001f4ca Sharpe Ratio: {orch.context.best_metrics.sharpe_ratio:.3f}",
                 f"  \U0001f4b0 Total Return: {orch.context.best_metrics.total_return:.2%}",
                 f"  \U0001f4c9 Max Drawdown: {orch.context.best_metrics.max_drawdown:.2%}",
-            ]
+            ],
         )
         if hasattr(orch.context.best_metrics, "win_rate"):
             lines.append(
-                f"  \U0001f3af Win Rate: {orch.context.best_metrics.win_rate:.1%}"
+                f"  \U0001f3af Win Rate: {orch.context.best_metrics.win_rate:.1%}",
             )
         lines.extend(
             [
                 f"  \U0001f522 Total Trades: {orch.context.best_metrics.total_trades}",
                 "",
                 "\u2699\ufe0f  Param\u00e8tres optimaux:",
-            ]
+            ],
         )
         for k, v in (orch.context.best_params or {}).items():
             if isinstance(v, float):
@@ -143,10 +143,10 @@ def generate_final_report(orch: "Orchestrator") -> str:
             "\U0001f916 ACTIVIT\u00c9 DES AGENTS",
             "=" * 80,
             "",
-        ]
+        ],
     )
 
-    def _agent_stats(agent: BaseAgent, name: str) -> List[str]:
+    def _agent_stats(agent: BaseAgent, name: str) -> list[str]:
         stats = getattr(agent, "stats", {})
         tokens = stats.get("total_tokens", 0)
         calls = stats.get("execution_count", 0)
@@ -170,7 +170,7 @@ def generate_final_report(orch: "Orchestrator") -> str:
                 "\U0001f4dc HISTORIQUE DES IT\u00c9RATIONS",
                 "=" * 80,
                 "",
-            ]
+            ],
         )
         for i, hist in enumerate(orch.context.iteration_history[-10:], 1):
             iter_num = hist.get("iteration", i)
@@ -184,7 +184,7 @@ def generate_final_report(orch: "Orchestrator") -> str:
                     f"It\u00e9ration #{iter_num}:",
                     f"  Sharpe: {sharpe:.3f} | Return: {ret:.2%}",
                     f"  D\u00e9cision: {hist_decision}",
-                ]
+                ],
             )
             if params and len(params) <= 5:
                 param_str = ", ".join(f"{k}={v}" for k, v in params.items())
@@ -201,10 +201,9 @@ def generate_final_report(orch: "Orchestrator") -> str:
                 "",
                 f"  Nombre de sweeps: {orch._sweeps_performed}",
                 f"  Limite par session: {orch._max_sweeps_per_session}",
-                f"  Combinaisons test\u00e9es via sweeps: "
-                f"{orch._total_combinations_tested - orch._backtests_count}",
+                f"  Combinaisons test\u00e9es via sweeps: {orch._total_combinations_tested - orch._backtests_count}",
                 "",
-            ]
+            ],
         )
 
         if hasattr(orch, "_ranges_tracker"):
@@ -215,7 +214,7 @@ def generate_final_report(orch: "Orchestrator") -> str:
                         "Ranges explor\u00e9es:",
                         ranges_summary,
                         "",
-                    ]
+                    ],
                 )
 
     # Session tracker stats
@@ -229,7 +228,7 @@ def generate_final_report(orch: "Orchestrator") -> str:
                 f"  \u2705 Tests uniques: {orch.param_tracker.get_tested_count()}",
                 f"  \U0001f504 Duplications \u00e9vit\u00e9es: {orch.param_tracker.get_duplicates_prevented()}",
                 "",
-            ]
+            ],
         )
 
         best_sharpe = orch.param_tracker.get_best_params("sharpe_ratio")
@@ -238,7 +237,7 @@ def generate_final_report(orch: "Orchestrator") -> str:
                 [
                     "\U0001f3c5 Meilleur Sharpe Ratio test\u00e9:",
                     f"    Valeur: {best_sharpe.sharpe_ratio:.3f}",
-                ]
+                ],
             )
             if hasattr(best_sharpe, "total_return") and best_sharpe.total_return:
                 lines.append(f"    Return: {best_sharpe.total_return:.2%}")
@@ -258,7 +257,7 @@ def generate_final_report(orch: "Orchestrator") -> str:
                 "\u26a0\ufe0f  AVERTISSEMENTS ET ERREURS",
                 "=" * 80,
                 "",
-            ]
+            ],
         )
         if orch._warnings:
             lines.extend(
@@ -266,7 +265,7 @@ def generate_final_report(orch: "Orchestrator") -> str:
                     "Avertissements:",
                     *[f"  \u26a0\ufe0f  {w}" for w in orch._warnings],
                     "",
-                ]
+                ],
             )
         if orch._errors:
             lines.extend(
@@ -274,14 +273,14 @@ def generate_final_report(orch: "Orchestrator") -> str:
                     "Erreurs:",
                     *[f"  \u274c {e}" for e in orch._errors],
                     "",
-                ]
+                ],
             )
 
     lines.append("=" * 80)
     return "\n".join(lines)
 
 
-def build_result(orch: "Orchestrator") -> "OrchestratorResult":
+def build_result(orch: Orchestrator) -> OrchestratorResult:
     """Build the final orchestration result."""
     from ..orchestrator import OrchestratorResult
 
@@ -300,7 +299,7 @@ def build_result(orch: "Orchestrator") -> "OrchestratorResult":
         success = False
 
     # LLM statistics
-    def _get_agent_stats(agent: BaseAgent) -> Dict[str, int]:
+    def _get_agent_stats(agent: BaseAgent) -> dict[str, int]:
         stats = getattr(agent, "stats", {})
         return {
             "total_tokens": stats.get("total_tokens", 0),
@@ -315,16 +314,16 @@ def build_result(orch: "Orchestrator") -> "OrchestratorResult":
     final_report = generate_final_report(orch)
 
     # Recommendations
-    recommendations: List[str] = []
+    recommendations: list[str] = []
     if hasattr(orch, "param_tracker"):
         duplicates = orch.param_tracker.get_duplicates_prevented()
         if duplicates > 0:
             recommendations.append(
-                f"\u2705 {duplicates} duplications de param\u00e8tres \u00e9vit\u00e9es durant la session"
+                f"\u2705 {duplicates} duplications de param\u00e8tres \u00e9vit\u00e9es durant la session",
             )
         if orch.param_tracker.get_tested_count() > 0:
             recommendations.append(
-                f"\U0001f4ca {orch.param_tracker.get_tested_count()} combinaisons uniques test\u00e9es"
+                f"\U0001f4ca {orch.param_tracker.get_tested_count()} combinaisons uniques test\u00e9es",
             )
 
     return OrchestratorResult(

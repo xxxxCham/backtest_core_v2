@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.memory
+"""Module-ID: utils.memory
 
 Purpose: Gestion mémoire intelligente (nettoyage auto, cache LRU, thresholds Windows).
 
@@ -27,9 +26,10 @@ import logging
 import threading
 import time
 import weakref
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Generator, List, Optional, Set
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +50,9 @@ class MemoryConfig:
 
     # Limites
     max_cache_size_mb: float = 1024.0  # 1 GB
-    max_array_size_mb: float = 512.0   # 512 MB
+    max_array_size_mb: float = 512.0  # 512 MB
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "warning_threshold": self.warning_threshold,
@@ -78,7 +78,7 @@ class MemoryStats:
     cache_hits: int = 0
     cache_misses: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "total_cleanups": self.total_cleanups,
@@ -92,24 +92,23 @@ class MemoryStats:
 
 
 class ManagedCache:
-    """
-    Cache avec gestion automatique de la taille.
+    """Cache avec gestion automatique de la taille.
 
     Éviction LRU quand la taille maximale est atteinte.
     """
 
     def __init__(self, max_size_mb: float = 512.0, name: str = "cache"):
-        """
-        Args:
-            max_size_mb: Taille maximale en MB
-            name: Nom du cache (pour logging)
+        """Args:
+        max_size_mb: Taille maximale en MB
+        name: Nom du cache (pour logging)
+
         """
         self.max_size_bytes = int(max_size_mb * 1024 * 1024)
         self.name = name
 
-        self._cache: Dict[str, Any] = {}
-        self._access_order: List[str] = []
-        self._sizes: Dict[str, int] = {}
+        self._cache: dict[str, Any] = {}
+        self._access_order: list[str] = []
+        self._sizes: dict[str, int] = {}
         self._current_size = 0
         self._lock = threading.Lock()
 
@@ -119,6 +118,7 @@ class ManagedCache:
         """Estime la taille d'un objet en bytes."""
         try:
             import numpy as np
+
             if isinstance(obj, np.ndarray):
                 return obj.nbytes
         except ImportError:
@@ -126,13 +126,15 @@ class ManagedCache:
 
         try:
             import pandas as pd
+
             if isinstance(obj, (pd.DataFrame, pd.Series)):
-                return obj.memory_usage(deep=True).sum() if hasattr(obj, 'memory_usage') else 0
+                return obj.memory_usage(deep=True).sum() if hasattr(obj, "memory_usage") else 0
         except ImportError:
             pass
 
         # Estimation générique
         import sys
+
         return sys.getsizeof(obj)
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -150,11 +152,11 @@ class ManagedCache:
             return default
 
     def set(self, key: str, value: Any) -> bool:
-        """
-        Ajoute une valeur au cache.
+        """Ajoute une valeur au cache.
 
         Returns:
             True si ajouté, False si trop gros
+
         """
         size = self._estimate_size(value)
 
@@ -224,8 +226,7 @@ class ManagedCache:
 
 
 class MemoryManager:
-    """
-    Gestionnaire de mémoire intelligent.
+    """Gestionnaire de mémoire intelligent.
 
     Features:
     - Surveillance automatique de l'usage mémoire
@@ -245,21 +246,22 @@ class MemoryManager:
         >>> with manager.memory_context():
         >>>     # Code gourmand en mémoire
         >>>     pass  # Nettoyage automatique à la sortie
+
     """
 
-    def __init__(self, config: Optional[MemoryConfig] = None):
-        """
-        Args:
-            config: Configuration personnalisée
+    def __init__(self, config: MemoryConfig | None = None):
+        """Args:
+        config: Configuration personnalisée
+
         """
         self.config = config or MemoryConfig()
         self._stats = MemoryStats()
 
-        self._caches: Dict[str, ManagedCache] = {}
-        self._weak_refs: Set[weakref.ref] = set()
-        self._cleanup_callbacks: List[Callable[[], int]] = []
+        self._caches: dict[str, ManagedCache] = {}
+        self._weak_refs: set[weakref.ref] = set()
+        self._cleanup_callbacks: list[Callable[[], int]] = []
 
-        self._auto_cleanup_thread: Optional[threading.Thread] = None
+        self._auto_cleanup_thread: threading.Thread | None = None
         self._running = False
         self._lock = threading.Lock()
 
@@ -272,6 +274,7 @@ class MemoryManager:
         """Vérifie si psutil est disponible."""
         try:
             import psutil
+
             return psutil is not None
         except ImportError:
             return False
@@ -280,6 +283,7 @@ class MemoryManager:
         """Retourne l'usage mémoire en pourcentage."""
         if self._has_psutil:
             import psutil
+
             return psutil.virtual_memory().percent
         return 50.0  # Estimation par défaut
 
@@ -287,6 +291,7 @@ class MemoryManager:
         """Retourne la mémoire disponible en MB."""
         if self._has_psutil:
             import psutil
+
             return psutil.virtual_memory().available / (1024**2)
         return 4096.0  # Estimation 4GB
 
@@ -294,13 +299,13 @@ class MemoryManager:
         """Retourne la mémoire utilisée par le processus en MB."""
         if self._has_psutil:
             import psutil
+
             process = psutil.Process()
             return process.memory_info().rss / (1024**2)
         return 0.0
 
     def create_cache(self, name: str, max_size_mb: float = 512.0) -> ManagedCache:
-        """
-        Crée un cache managé.
+        """Crée un cache managé.
 
         Args:
             name: Nom unique du cache
@@ -308,6 +313,7 @@ class MemoryManager:
 
         Returns:
             ManagedCache instance
+
         """
         with self._lock:
             if name in self._caches:
@@ -318,27 +324,26 @@ class MemoryManager:
             logger.debug(f"Cache '{name}' créé ({max_size_mb:.0f} MB max)")
             return cache
 
-    def get_cache(self, name: str) -> Optional[ManagedCache]:
+    def get_cache(self, name: str) -> ManagedCache | None:
         """Récupère un cache existant."""
         return self._caches.get(name)
 
     def register_cleanup_callback(self, callback: Callable[[], int]) -> None:
-        """
-        Enregistre un callback de nettoyage.
+        """Enregistre un callback de nettoyage.
 
         Le callback doit retourner le nombre de bytes libérés.
         """
         self._cleanup_callbacks.append(callback)
 
     def cleanup(self, aggressive: bool = False) -> int:
-        """
-        Effectue un nettoyage mémoire.
+        """Effectue un nettoyage mémoire.
 
         Args:
             aggressive: Si True, force un nettoyage complet
 
         Returns:
             Bytes libérés (estimation)
+
         """
         bytes_freed = 0
 
@@ -384,7 +389,7 @@ class MemoryManager:
         self._stats.current_usage_mb = self.get_process_memory_mb()
         self._stats.peak_usage_mb = max(
             self._stats.peak_usage_mb,
-            self._stats.current_usage_mb
+            self._stats.current_usage_mb,
         )
 
         logger.debug(f"Cleanup effectué: ~{bytes_freed / (1024**2):.1f} MB libérés")
@@ -431,10 +436,9 @@ class MemoryManager:
     def memory_context(
         self,
         cleanup_after: bool = True,
-        check_before: bool = True
+        check_before: bool = True,
     ) -> Generator[None, None, None]:
-        """
-        Context manager pour opérations gourmandes en mémoire.
+        """Context manager pour opérations gourmandes en mémoire.
 
         Args:
             cleanup_after: Nettoyer à la sortie
@@ -444,6 +448,7 @@ class MemoryManager:
             >>> with manager.memory_context():
             >>>     # Code gourmand
             >>>     result = heavy_computation()
+
         """
         if check_before:
             usage = self.get_memory_usage()
@@ -482,7 +487,7 @@ class MemoryManager:
 
         return self._stats
 
-    def get_cache_summary(self) -> Dict[str, Dict[str, Any]]:
+    def get_cache_summary(self) -> dict[str, dict[str, Any]]:
         """Retourne un résumé de tous les caches."""
         return {
             name: {
@@ -515,7 +520,7 @@ class MemoryManager:
 
 
 # Singleton global
-_memory_manager: Optional[MemoryManager] = None
+_memory_manager: MemoryManager | None = None
 
 
 def get_memory_manager() -> MemoryManager:
@@ -532,10 +537,10 @@ def cleanup_memory(aggressive: bool = False) -> int:
 
 
 __all__ = [
-    "MemoryConfig",
-    "MemoryStats",
     "ManagedCache",
+    "MemoryConfig",
     "MemoryManager",
-    "get_memory_manager",
+    "MemoryStats",
     "cleanup_memory",
+    "get_memory_manager",
 ]

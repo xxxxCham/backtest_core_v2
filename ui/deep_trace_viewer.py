@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.deep_trace_viewer
+"""Module-ID: ui.deep_trace_viewer
 
 Purpose: Visualiseur Deep Trace détaillé pour orchestration LLM - timeline, inspecteur, propositions, state machine, métriques.
 
@@ -23,7 +22,7 @@ Skip-if: Pas d'agents LLM ou monitoring minimal suffisant.
 import math
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -41,7 +40,7 @@ from backtest.result_store import get_saved_runs_dir
 # ============================================================================
 
 
-def _format_float(value: Any, precision: int) -> Optional[str]:
+def _format_float(value: Any, precision: int) -> str | None:
     """Formate un float de facon sure (retourne None si invalide)."""
     if value is None:
         return None
@@ -54,7 +53,7 @@ def _format_float(value: Any, precision: int) -> Optional[str]:
     return f"{parsed:.{precision}f}"
 
 
-def _format_percent(value: Any, precision: int = 2) -> Optional[str]:
+def _format_percent(value: Any, precision: int = 2) -> str | None:
     """Formate un pourcentage de facon sure (retourne None si invalide)."""
     if value is None:
         return None
@@ -94,15 +93,14 @@ def _to_bool(value: Any) -> bool:
     return False
 
 
-def _extract_llm_call_rows(logger: OrchestrationLogger) -> List[Dict[str, Any]]:
-    """
-    Extrait les appels LLM a partir des evenements AGENT_EXECUTE_*.
+def _extract_llm_call_rows(logger: OrchestrationLogger) -> list[dict[str, Any]]:
+    """Extrait les appels LLM a partir des evenements AGENT_EXECUTE_*.
 
     Les modeles sont resolves depuis AGENT_EXECUTE_END.details.model ou, si absent,
     via le dernier AGENT_EXECUTE_START correspondant (iteration + role).
     """
-    rows: List[Dict[str, Any]] = []
-    start_models: Dict[tuple[int, str], List[str]] = {}
+    rows: list[dict[str, Any]] = []
+    start_models: dict[tuple[int, str], list[str]] = {}
 
     for log in logger.logs:
         if log.action_type not in (
@@ -152,7 +150,7 @@ def _extract_llm_call_rows(logger: OrchestrationLogger) -> List[Dict[str, Any]]:
                 "model": model,
                 "success": bool(success),
                 "latency_ms": latency_ms,
-            }
+            },
         )
 
     return rows
@@ -162,8 +160,7 @@ def render_llm_model_stats_panel(
     logger: OrchestrationLogger,
     widget_ns: str = "llm_model_stats",
 ) -> None:
-    """
-    Affiche un panneau detaille des stats modeles LLM:
+    """Affiche un panneau detaille des stats modeles LLM:
     - taux de succes
     - latence d'inference (moyenne, p95)
     - detail par modele, role et iteration
@@ -173,8 +170,7 @@ def render_llm_model_stats_panel(
     rows = _extract_llm_call_rows(logger)
     if not rows:
         st.info(
-            "Aucun appel LLM exploitable dans cette session "
-            "(evenements AGENT_EXECUTE_END absents)."
+            "Aucun appel LLM exploitable dans cette session (evenements AGENT_EXECUTE_END absents).",
         )
         return
 
@@ -212,7 +208,7 @@ def render_llm_model_stats_panel(
         st.warning("Aucune ligne ne correspond aux filtres selectionnes.")
         return
 
-    total_calls = int(len(filtered))
+    total_calls = len(filtered)
     success_calls = int(filtered["success"].sum())
     success_rate = (success_calls / total_calls) if total_calls else 0.0
     avg_latency = _safe_mean_ms(filtered["latency_ms"])
@@ -251,7 +247,7 @@ def render_llm_model_stats_panel(
     per_model["taux_succes"] = per_model["taux_succes"].map(lambda v: f"{v:.1%}")
     for col in ("latence_moy_ms", "p50_ms", "p95_ms"):
         per_model[col] = per_model[col].map(
-            lambda v: "N/A" if pd.isna(v) else f"{float(v):.0f}"
+            lambda v: "N/A" if pd.isna(v) else f"{float(v):.0f}",
         )
     st.dataframe(per_model, width="stretch", hide_index=True)
 
@@ -299,7 +295,7 @@ def render_llm_model_stats_panel(
     role_model["taux_succes"] = role_model["taux_succes"].map(lambda v: f"{v:.1%}")
     for col in ("latence_moy_ms", "p95_ms"):
         role_model[col] = role_model[col].map(
-            lambda v: "N/A" if pd.isna(v) else f"{float(v):.0f}"
+            lambda v: "N/A" if pd.isna(v) else f"{float(v):.0f}",
         )
     st.dataframe(role_model, width="stretch", hide_index=True)
 
@@ -333,7 +329,7 @@ def _get_event_color(action_type: OrchestrationActionType, status: Orchestration
     # Priorité au statut
     if status == OrchestrationStatus.FAILED:
         return "#f8d7da"  # Rouge clair
-    elif status == OrchestrationStatus.COMPLETED:
+    if status == OrchestrationStatus.COMPLETED:
         return "#d4edda"  # Vert clair
 
     # Sinon, couleur par type
@@ -359,7 +355,7 @@ def _format_timestamp(ts_str: str) -> str:
         return ts_str[:12] if len(ts_str) > 12 else ts_str
 
 
-def _get_role_badge_color(role: Optional[str]) -> str:
+def _get_role_badge_color(role: str | None) -> str:
     """Retourne la couleur du badge de rôle."""
     if not role:
         return "#9e9e9e"
@@ -376,13 +372,14 @@ def _get_role_badge_color(role: Optional[str]) -> str:
 # TIMELINE COMPLÈTE
 # ============================================================================
 
-def render_timeline_panel(logger: OrchestrationLogger, filters: Dict[str, Any]):
-    """
-    Affiche la timeline complète des événements avec filtres.
+
+def render_timeline_panel(logger: OrchestrationLogger, filters: dict[str, Any]):
+    """Affiche la timeline complète des événements avec filtres.
 
     Args:
         logger: OrchestrationLogger instance
         filters: Dict avec 'iteration', 'agent', 'event_type', 'level'
+
     """
     st.markdown("### 📋 Timeline des Événements")
 
@@ -406,15 +403,10 @@ def render_timeline_panel(logger: OrchestrationLogger, filters: Dict[str, Any]):
             filtered_logs = [
                 log
                 for log in filtered_logs
-                if log.action_type == OrchestrationActionType.ERROR
-                or log.status == OrchestrationStatus.FAILED
+                if log.action_type == OrchestrationActionType.ERROR or log.status == OrchestrationStatus.FAILED
             ]
         elif level == "WARNING":
-            filtered_logs = [
-                log
-                for log in filtered_logs
-                if log.action_type == OrchestrationActionType.WARNING
-            ]
+            filtered_logs = [log for log in filtered_logs if log.action_type == OrchestrationActionType.WARNING]
 
     if not filtered_logs:
         st.write("Aucun événement ne correspond aux filtres sélectionnés")
@@ -436,7 +428,7 @@ def render_timeline_panel(logger: OrchestrationLogger, filters: Dict[str, Any]):
 
         with st.expander(
             f"🔄 **Itération {iteration}** ({len(iteration_logs)} événements)",
-            expanded=(iteration == max(logs_by_iteration.keys()))
+            expanded=(iteration == max(logs_by_iteration.keys())),
         ):
             for log in iteration_logs:
                 _render_timeline_entry(log)
@@ -542,16 +534,17 @@ def _render_event_details(log: OrchestrationLogEntry):
 # INSPECTEUR LLM
 # ============================================================================
 
+
 def render_llm_inspector_panel(logger: OrchestrationLogger):
-    """
-    Affiche l'inspecteur des échanges LLM par rôle.
-    """
+    """Affiche l'inspecteur des échanges LLM par rôle."""
     st.markdown("### 🤖 Inspecteur LLM")
 
     # Récupérer tous les événements d'agents
     agent_events = [
-        log for log in logger.logs
-        if log.action_type in [
+        log
+        for log in logger.logs
+        if log.action_type
+        in [
             OrchestrationActionType.AGENT_EXECUTE_START,
             OrchestrationActionType.AGENT_EXECUTE_END,
         ]
@@ -580,17 +573,17 @@ def render_llm_inspector_panel(logger: OrchestrationLogger):
                 _render_llm_role_details(role, events_by_role[role])
 
 
-def _render_llm_role_details(role: str, events: List[OrchestrationLogEntry]):
+def _render_llm_role_details(role: str, events: list[OrchestrationLogEntry]):
     """Affiche les détails LLM pour un rôle."""
     # Statistiques globales
     total_calls = len([e for e in events if e.action_type == OrchestrationActionType.AGENT_EXECUTE_END])
-    successful = len([e for e in events if e.action_type == OrchestrationActionType.AGENT_EXECUTE_END and e.details.get("success")])
+    successful = len(
+        [e for e in events if e.action_type == OrchestrationActionType.AGENT_EXECUTE_END and e.details.get("success")],
+    )
 
-    total_latency = sum([
-        e.details.get("latency_ms", 0)
-        for e in events
-        if e.action_type == OrchestrationActionType.AGENT_EXECUTE_END
-    ])
+    total_latency = sum(
+        [e.details.get("latency_ms", 0) for e in events if e.action_type == OrchestrationActionType.AGENT_EXECUTE_END],
+    )
     avg_latency = total_latency / total_calls if total_calls > 0 else 0
 
     col1, col2, col3 = st.columns(3)
@@ -621,7 +614,7 @@ def _render_llm_role_details(role: str, events: List[OrchestrationLogEntry]):
 
         with st.expander(
             f"{status_emoji} **Appel #{i}** - Itération {iteration} - {timestamp} ({latency}ms)",
-            expanded=False
+            expanded=False,
         ):
             st.markdown(f"**Modèle:** `{model}`")
             st.markdown(f"**Itération:** {iteration}")
@@ -638,16 +631,17 @@ def _render_llm_role_details(role: str, events: List[OrchestrationLogEntry]):
 # PROPOSITIONS & TESTS
 # ============================================================================
 
+
 def render_proposals_panel(logger: OrchestrationLogger):
-    """
-    Affiche le panneau Propositions & Tests.
-    """
+    """Affiche le panneau Propositions & Tests."""
     st.markdown("### 💡 Propositions & Tests")
 
     # Récupérer les événements de propositions
     proposal_events = [
-        log for log in logger.logs
-        if log.action_type in [
+        log
+        for log in logger.logs
+        if log.action_type
+        in [
             OrchestrationActionType.PROPOSALS_GENERATED,
             OrchestrationActionType.PROPOSAL_TEST_STARTED,
             OrchestrationActionType.PROPOSAL_TEST_ENDED,
@@ -687,14 +681,16 @@ def render_proposals_panel(logger: OrchestrationLogger):
             sharpe = details.get("sharpe")
             total_return = details.get("total_return")
 
-            test_data.append({
-                "ID": details.get("proposal_id", "N/A"),
-                "Itération": event.iteration,
-                "Testé": "✅" if details.get("tested") else "❌",
-                "Sharpe": f"{sharpe:.3f}" if sharpe is not None else "N/A",
-                "Return": f"{total_return:.2%}" if total_return is not None else "N/A",
-                "Timestamp": _format_timestamp(event.timestamp),
-            })
+            test_data.append(
+                {
+                    "ID": details.get("proposal_id", "N/A"),
+                    "Itération": event.iteration,
+                    "Testé": "✅" if details.get("tested") else "❌",
+                    "Sharpe": f"{sharpe:.3f}" if sharpe is not None else "N/A",
+                    "Return": f"{total_return:.2%}" if total_return is not None else "N/A",
+                    "Timestamp": _format_timestamp(event.timestamp),
+                },
+            )
 
         df = pd.DataFrame(test_data)
         st.dataframe(df, width="stretch", hide_index=True)
@@ -706,16 +702,17 @@ def render_proposals_panel(logger: OrchestrationLogger):
 # STATE MACHINE
 # ============================================================================
 
+
 def render_state_machine_panel(logger: OrchestrationLogger):
-    """
-    Affiche le panneau State Machine.
-    """
+    """Affiche le panneau State Machine."""
     st.markdown("### 🔄 State Machine")
 
     # Récupérer les événements d'états
     state_events = [
-        log for log in logger.logs
-        if log.action_type in [
+        log
+        for log in logger.logs
+        if log.action_type
+        in [
             OrchestrationActionType.STATE_ENTER,
             OrchestrationActionType.STATE_CHANGE,
         ]
@@ -728,7 +725,9 @@ def render_state_machine_panel(logger: OrchestrationLogger):
     # État actuel (dernier STATE_ENTER)
     current_state = "UNKNOWN"
     if state_events:
-        last_enter = next((e for e in reversed(logger.logs) if e.action_type == OrchestrationActionType.STATE_ENTER), None)
+        last_enter = next(
+            (e for e in reversed(logger.logs) if e.action_type == OrchestrationActionType.STATE_ENTER), None,
+        )
         if last_enter:
             current_state = last_enter.details.get("state", "UNKNOWN")
 
@@ -756,12 +755,14 @@ def render_state_machine_panel(logger: OrchestrationLogger):
         transitions_data = []
         for event in reversed(state_changes):
             details = event.details
-            transitions_data.append({
-                "Itération": event.iteration,
-                "De": details.get("state_from", "?"),
-                "Vers": details.get("state_to", "?"),
-                "Timestamp": _format_timestamp(event.timestamp),
-            })
+            transitions_data.append(
+                {
+                    "Itération": event.iteration,
+                    "De": details.get("state_from", "?"),
+                    "Vers": details.get("state_to", "?"),
+                    "Timestamp": _format_timestamp(event.timestamp),
+                },
+            )
 
         df = pd.DataFrame(transitions_data)
         st.dataframe(df, width="stretch", hide_index=True)
@@ -773,34 +774,27 @@ def render_state_machine_panel(logger: OrchestrationLogger):
 # MÉTRIQUES GLOBALES
 # ============================================================================
 
+
 def render_metrics_panel(logger: OrchestrationLogger):
-    """
-    Affiche le panneau Métriques Globales de la session.
-    """
+    """Affiche le panneau Métriques Globales de la session."""
     st.markdown("### 📈 Métriques Globales Session")
 
     # Compter les différents types d'événements
-    llm_calls = len([
-        e for e in logger.logs
-        if e.action_type == OrchestrationActionType.AGENT_EXECUTE_END
-    ])
+    llm_calls = len([e for e in logger.logs if e.action_type == OrchestrationActionType.AGENT_EXECUTE_END])
 
-    backtests_done = len([
-        e for e in logger.logs
-        if e.action_type == OrchestrationActionType.BACKTEST_END
-        and e.details.get("success")
-    ])
+    backtests_done = len(
+        [e for e in logger.logs if e.action_type == OrchestrationActionType.BACKTEST_END and e.details.get("success")],
+    )
 
-    errors_count = len([
-        e for e in logger.logs
-        if e.action_type == OrchestrationActionType.ERROR
-        or e.status == OrchestrationStatus.FAILED
-    ])
+    errors_count = len(
+        [
+            e
+            for e in logger.logs
+            if e.action_type == OrchestrationActionType.ERROR or e.status == OrchestrationStatus.FAILED
+        ],
+    )
 
-    warnings_count = len([
-        e for e in logger.logs
-        if e.action_type == OrchestrationActionType.WARNING
-    ])
+    warnings_count = len([e for e in logger.logs if e.action_type == OrchestrationActionType.WARNING])
 
     # Temps total (si disponible)
     next((e for e in logger.logs if e.action_type == OrchestrationActionType.RUN_START), None)
@@ -829,13 +823,13 @@ def render_metrics_panel(logger: OrchestrationLogger):
     st.markdown("#### 🏆 Meilleur Résultat")
 
     # Chercher dans les événements iteration_recorded
-    iteration_events = [
-        e for e in logger.logs
-        if e.action_type == OrchestrationActionType.ITERATION_RECORDED
-    ]
+    iteration_events = [e for e in logger.logs if e.action_type == OrchestrationActionType.ITERATION_RECORDED]
 
     if iteration_events:
-        best_sharpe = max([e.details.get("sharpe", -999) for e in iteration_events if e.details.get("sharpe") is not None], default=None)
+        best_sharpe = max(
+            [e.details.get("sharpe", -999) for e in iteration_events if e.details.get("sharpe") is not None],
+            default=None,
+        )
 
         if best_sharpe is not None and best_sharpe > -999:
             best_event = next((e for e in iteration_events if e.details.get("sharpe") == best_sharpe), None)
@@ -862,12 +856,13 @@ def render_metrics_panel(logger: OrchestrationLogger):
 # FILTRES
 # ============================================================================
 
-def render_filters_sidebar(logger: OrchestrationLogger) -> Dict[str, Any]:
-    """
-    Affiche les filtres dans la sidebar et retourne les valeurs sélectionnées.
+
+def render_filters_sidebar(logger: OrchestrationLogger) -> dict[str, Any]:
+    """Affiche les filtres dans la sidebar et retourne les valeurs sélectionnées.
 
     Returns:
         Dict avec les filtres sélectionnés
+
     """
     st.sidebar.markdown("### 🔍 Filtres")
 
@@ -876,7 +871,7 @@ def render_filters_sidebar(logger: OrchestrationLogger) -> Dict[str, Any]:
     iteration_filter = st.sidebar.multiselect(
         "Itération",
         ["Toutes"] + [f"Itération {i}" for i in iterations],
-        default=["Toutes"]
+        default=["Toutes"],
     )
 
     # Filtre par agent
@@ -884,7 +879,7 @@ def render_filters_sidebar(logger: OrchestrationLogger) -> Dict[str, Any]:
     agent_filter = st.sidebar.multiselect(
         "Agent",
         ["Tous"] + agents,
-        default=["Tous"]
+        default=["Tous"],
     )
 
     # Filtre par type d'événement
@@ -892,14 +887,14 @@ def render_filters_sidebar(logger: OrchestrationLogger) -> Dict[str, Any]:
     event_type_filter = st.sidebar.multiselect(
         "Type d'événement",
         ["Tous"] + event_types,
-        default=["Tous"]
+        default=["Tous"],
     )
 
     # Filtre par niveau (INFO/WARNING/ERROR)
     level_filter = st.sidebar.selectbox(
         "Niveau",
         ["TOUS", "ERROR", "WARNING"],
-        index=0
+        index=0,
     )
 
     return {
@@ -914,12 +909,13 @@ def render_filters_sidebar(logger: OrchestrationLogger) -> Dict[str, Any]:
 # SESSION SELECTOR & LOADER
 # ============================================================================
 
-def render_session_selector() -> Optional[OrchestrationLogger]:
-    """
-    Affiche un sélecteur de session et permet de charger des traces.
+
+def render_session_selector() -> OrchestrationLogger | None:
+    """Affiche un sélecteur de session et permet de charger des traces.
 
     Returns:
         OrchestrationLogger chargé ou None
+
     """
     st.sidebar.markdown("### 📂 Chargement de Session")
 
@@ -944,7 +940,7 @@ def render_session_selector() -> Optional[OrchestrationLogger]:
         uploaded_file = st.sidebar.file_uploader(
             "Charger un fichier trace (JSON/JSONL)",
             type=["json", "jsonl"],
-            key="trace_uploader"
+            key="trace_uploader",
         )
 
         if uploaded_file:
@@ -967,7 +963,7 @@ def render_session_selector() -> Optional[OrchestrationLogger]:
     selected_session = st.sidebar.selectbox(
         "Sélectionner une session",
         ["-- Sélectionnez --"] + sorted(available_sessions, reverse=True),
-        index=0
+        index=0,
     )
 
     if selected_session == "-- Sélectionnez --":
@@ -988,10 +984,9 @@ def render_session_selector() -> Optional[OrchestrationLogger]:
 # EXPORT
 # ============================================================================
 
-def render_export_panel(logger: OrchestrationLogger, filters: Dict[str, Any]):
-    """
-    Affiche un panneau d'export des logs filtrés.
-    """
+
+def render_export_panel(logger: OrchestrationLogger, filters: dict[str, Any]):
+    """Affiche un panneau d'export des logs filtrés."""
     st.markdown("### 💾 Export")
 
     col1, col2 = st.columns(2)
@@ -1013,12 +1008,13 @@ def render_export_panel(logger: OrchestrationLogger, filters: Dict[str, Any]):
 # VIEWER PRINCIPAL
 # ============================================================================
 
-def render_deep_trace_viewer(logger: Optional[OrchestrationLogger] = None):
-    """
-    Point d'entrée principal pour le Deep Trace Viewer.
+
+def render_deep_trace_viewer(logger: OrchestrationLogger | None = None):
+    """Point d'entrée principal pour le Deep Trace Viewer.
 
     Args:
         logger: Instance OrchestrationLogger (peut être None, auquel cas on charge depuis sélecteur)
+
     """
     st.markdown("## 🔍 Orchestration Deep Trace")
 
@@ -1041,15 +1037,17 @@ def render_deep_trace_viewer(logger: Optional[OrchestrationLogger] = None):
     filters = render_filters_sidebar(logger)
 
     # Onglets principaux
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "Stats modeles LLM",
-        "📋 Timeline",
-        "🤖 Inspecteur LLM",
-        "💡 Propositions",
-        "🔄 State Machine",
-        "📈 Métriques",
-        "💾 Export"
-    ])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
+        [
+            "Stats modeles LLM",
+            "📋 Timeline",
+            "🤖 Inspecteur LLM",
+            "💡 Propositions",
+            "🔄 State Machine",
+            "📈 Métriques",
+            "💾 Export",
+        ],
+    )
 
     with tab1:
         render_llm_model_stats_panel(

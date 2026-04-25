@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.storage
+"""Module-ID: backtest.storage
 
 Purpose: Persister et indexer les résultats de backtests pour rechargement/recherche rapide.
 
@@ -23,6 +22,7 @@ Skip-if: Backtests ponctuels sans sauvegarde.
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -30,7 +30,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import pandas as pd
 
@@ -79,10 +79,9 @@ _NATIVE_EXTRA_METADATA_KEYS = (
 # TEMP DIR FIX (sandbox compatibility)
 # =============================================================================
 
+
 def _ensure_writable_tempdir() -> None:
-    """
-    Assure que tempfile utilise un répertoire writable dans les environnements sandbox.
-    """
+    """Assure que tempfile utilise un répertoire writable dans les environnements sandbox."""
     global _TEMPDIR_READY
     if _TEMPDIR_READY:
         return
@@ -95,7 +94,7 @@ def _ensure_writable_tempdir() -> None:
         os.environ["TEMP"] = str(fallback)
         return fallback
 
-    def _safe_mkdtemp(suffix: Optional[str] = None, prefix: Optional[str] = None, dir: Optional[str] = None) -> str:
+    def _safe_mkdtemp(suffix: str | None = None, prefix: str | None = None, dir: str | None = None) -> str:
         base = Path(dir or tempfile.gettempdir())
         base.mkdir(parents=True, exist_ok=True)
         prefix_val = prefix or "tmp"
@@ -137,16 +136,18 @@ def _ensure_writable_tempdir() -> None:
 
     _TEMPDIR_READY = True
 
+
 # =============================================================================
 # HELPERS
 # =============================================================================
+
 
 def _safe_to_parquet(
     df: pd.DataFrame,
     path: Path,
     *,
-    compression: Optional[str] = None,
-    index: Optional[bool] = None,
+    compression: str | None = None,
+    index: bool | None = None,
 ) -> None:
     try:
         if index is None:
@@ -165,7 +166,7 @@ def _write_dataframe_csv(df: pd.DataFrame, path: Path) -> None:
     df.to_csv(path, index=False, encoding="utf-8")
 
 
-def _load_json_file(path: Path) -> Dict[str, Any]:
+def _load_json_file(path: Path) -> dict[str, Any]:
     return load_metadata_payload(path)
 
 
@@ -201,8 +202,8 @@ def _dump_json(path: Path, payload: Any) -> None:
     )
 
 
-def _extract_result_extra_metadata(meta: Dict[str, Any]) -> Dict[str, Any]:
-    extra: Dict[str, Any] = {}
+def _extract_result_extra_metadata(meta: dict[str, Any]) -> dict[str, Any]:
+    extra: dict[str, Any] = {}
     for key in _NATIVE_EXTRA_METADATA_KEYS:
         value = meta.get(key)
         if value is None or value == "":
@@ -219,11 +220,11 @@ def _has_any_child_metadata(directory: Path) -> bool:
         return False
 
 
-def _is_native_stored_metadata(meta: Dict[str, Any]) -> bool:
+def _is_native_stored_metadata(meta: dict[str, Any]) -> bool:
     return is_native_result_metadata(meta)
 
 
-def _is_v3_stored_metadata(meta: Dict[str, Any]) -> bool:
+def _is_v3_stored_metadata(meta: dict[str, Any]) -> bool:
     return is_v3_result_metadata(meta)
 
 
@@ -235,18 +236,64 @@ def _status_to_store(status: Any) -> str:
     return normalize_status_for_store(status)
 
 
-def _stored_metadata_from_payload(meta: Dict[str, Any], run_id_hint: Optional[str] = None) -> StoredResultMetadata:
+def _coerce_metric_number(value: Any) -> float | None:
+    if value is None or value == "" or isinstance(value, bool):
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    return numeric
+
+
+def _sanitize_pct_metrics_payload(
+    payload: dict[str, Any],
+    *,
+    run_id_hint: str | None = None,
+    context: str,
+) -> dict[str, Any]:
+    sanitized = dict(payload or {})
+    bounded_keys = (
+        ("win_rate_pct", 0.0, 100.0),
+        ("max_drawdown_pct", -100.0, 0.0),
+    )
+    for key, lo, hi in bounded_keys:
+        numeric = _coerce_metric_number(sanitized.get(key))
+        if numeric is None:
+            sanitized.pop(key, None)
+            continue
+        bounded = min(hi, max(lo, numeric))
+        if bounded != numeric:
+            logger.warning(
+                "storage_metric_clamped run=%s context=%s key=%s raw=%s bounded=%s",
+                run_id_hint or "<unknown>",
+                context,
+                key,
+                numeric,
+                bounded,
+            )
+        sanitized[key] = bounded
+    return sanitized
+
+
+def _stored_metadata_from_payload(meta: dict[str, Any], run_id_hint: str | None = None) -> StoredResultMetadata:
     if not (_is_native_stored_metadata(meta) or _is_v3_stored_metadata(meta)):
         raise ValueError("Unsupported stored metadata schema")
 
     row = build_store_row_from_metadata(meta, run_id_hint=run_id_hint)
     metrics = normalize_metrics(
-        {
-            "total_return_pct": row.get("total_return_pct"),
-            "sharpe_ratio": row.get("sharpe_ratio"),
-            "max_drawdown_pct": row.get("max_drawdown_pct"),
-            "total_trades": row.get("n_trades"),
-        },
+        _sanitize_pct_metrics_payload(
+            {
+                "total_return_pct": row.get("total_return_pct"),
+                "sharpe_ratio": row.get("sharpe_ratio"),
+                "max_drawdown_pct": row.get("max_drawdown_pct"),
+                "total_trades": row.get("n_trades"),
+            },
+            run_id_hint=run_id_hint,
+            context="_stored_metadata_from_payload",
+        ),
         "pct",
     )
     extra_metadata = dict(row.get("extra", {}) or {})
@@ -269,8 +316,8 @@ def _stored_metadata_from_payload(meta: Dict[str, Any], run_id_hint: Optional[st
     )
 
 
-def _native_run_missing_files(run_dir: Path) -> List[str]:
-    missing: List[str] = []
+def _native_run_missing_files(run_dir: Path) -> list[str]:
+    missing: list[str] = []
     if not (run_dir / "metadata.json").exists():
         missing.append("metadata.json")
     if not ((run_dir / "equity.parquet").exists() or (run_dir / "equity.csv").exists()):
@@ -286,15 +333,17 @@ def _native_run_missing_files(run_dir: Path) -> List[str]:
 # DATACLASSES
 # =============================================================================
 
+
 @dataclass
 class StoredResultMetadata:
     """Métadonnées d'un résultat sauvegardé."""
+
     run_id: str
     timestamp: str
     strategy: str
     symbol: str
     timeframe: str
-    params: Dict[str, Any]
+    params: dict[str, Any]
     metrics: PerformanceMetricsPct
     n_bars: int
     n_trades: int
@@ -303,18 +352,25 @@ class StoredResultMetadata:
     duration_sec: float
     mode: str = "backtest"
     status: str = "ok"
-    extra_metadata: Dict[str, Any] = field(default_factory=dict)
+    extra_metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dict pour sérialisation."""
         payload = asdict(self)
         payload["metrics"] = normalize_metrics(self.metrics, "pct")
         return payload
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "StoredResultMetadata":
+    def from_dict(cls, data: dict[str, Any]) -> StoredResultMetadata:
         """Crée depuis un dict."""
-        metrics = normalize_metrics(data.get("metrics", {}), "pct")
+        metrics = normalize_metrics(
+            _sanitize_pct_metrics_payload(
+                dict(data.get("metrics", {}) or {}),
+                run_id_hint=str(data.get("run_id") or ""),
+                context="StoredResultMetadata.from_dict",
+            ),
+            "pct",
+        )
         return cls(
             run_id=data["run_id"],
             timestamp=data["timestamp"],
@@ -338,9 +394,9 @@ class StoredResultMetadata:
 # STORAGE ENGINE
 # =============================================================================
 
+
 class ResultStorage:
-    """
-    Gestionnaire de stockage des résultats de backtests.
+    """Gestionnaire de stockage des résultats de backtests.
 
     Features:
     - Sauvegarde automatique avec structure organisée
@@ -362,21 +418,22 @@ class ResultStorage:
         >>>
         >>> # Charger un résultat spécifique
         >>> result = storage.load_result(run_id)
+
     """
 
     def __init__(
         self,
-        storage_dir: Optional[Union[str, Path]] = None,
+        storage_dir: str | Path | None = None,
         auto_save: bool = True,
         compress: bool = False,
     ):
-        """
-        Initialise le gestionnaire de stockage.
+        """Initialise le gestionnaire de stockage.
 
         Args:
             storage_dir: Répertoire de stockage (défaut: backtest_results/)
             auto_save: Activer la sauvegarde automatique
             compress: Compresser les fichiers Parquet
+
         """
         _ensure_writable_tempdir()
 
@@ -394,7 +451,7 @@ class ResultStorage:
         self.index_path = self.storage_dir / "index.json"
 
         # Charger ou créer l'index
-        self._index: Dict[str, StoredResultMetadata] = self._load_index()
+        self._index: dict[str, StoredResultMetadata] = self._load_index()
 
         logger.info(f"ResultStorage initialisé: {self.storage_dir} ({len(self._index)} résultats)")
 
@@ -415,14 +472,18 @@ class ResultStorage:
 
         raise FileNotFoundError(f"Run inexistant: {run_id}")
 
-    def _metadata_from_v3_row(self, row: Dict[str, Any]) -> StoredResultMetadata:
+    def _metadata_from_v3_row(self, row: dict[str, Any]) -> StoredResultMetadata:
         metrics = normalize_metrics(
-            {
-                "total_return_pct": row.get("total_return_pct"),
-                "sharpe_ratio": row.get("sharpe_ratio"),
-                "max_drawdown_pct": row.get("max_drawdown_pct"),
-                "total_trades": row.get("n_trades"),
-            },
+            _sanitize_pct_metrics_payload(
+                {
+                    "total_return_pct": row.get("total_return_pct"),
+                    "sharpe_ratio": row.get("sharpe_ratio"),
+                    "max_drawdown_pct": row.get("max_drawdown_pct"),
+                    "total_trades": row.get("n_trades"),
+                },
+                run_id_hint=str(row.get("run_id") or ""),
+                context="_metadata_from_v3_row",
+            ),
             "pct",
         )
         extra_metadata = dict(row.get("extra", {}) or {})
@@ -477,8 +538,8 @@ class ResultStorage:
     def _build_stored_metadata(self, run_dir: Path) -> StoredResultMetadata:
         return _stored_metadata_from_payload(_load_json_file(run_dir / "metadata.json"), run_id_hint=run_dir.name)
 
-    def _refresh_index_cache(self) -> Dict[str, StoredResultMetadata]:
-        index: Dict[str, StoredResultMetadata] = {}
+    def _refresh_index_cache(self) -> dict[str, StoredResultMetadata]:
+        index: dict[str, StoredResultMetadata] = {}
 
         try:
             v3_df = self._store_v3.query_runs(limit=0, status=None)
@@ -519,11 +580,10 @@ class ResultStorage:
     def save_result(
         self,
         result: RunResult,
-        run_id: Optional[str] = None,
+        run_id: str | None = None,
         auto_cleanup: bool = False,
     ) -> str:
-        """
-        Sauvegarde un résultat de backtest.
+        """Sauvegarde un résultat de backtest.
 
         Args:
             result: RunResult à sauvegarder
@@ -532,20 +592,21 @@ class ResultStorage:
 
         Returns:
             run_id du résultat sauvegardé
+
         """
         try:
             metrics_pct = normalize_metrics(result.metrics, "pct")
             meta_n_bars = result.meta.get("n_bars")
             try:
-                n_bars = int(meta_n_bars) if meta_n_bars is not None else int(len(result.equity))
+                n_bars = int(meta_n_bars) if meta_n_bars is not None else len(result.equity)
             except (TypeError, ValueError):
-                n_bars = int(len(result.equity))
+                n_bars = len(result.equity)
 
             meta_n_trades = result.meta.get("n_trades")
             try:
-                n_trades = int(meta_n_trades) if meta_n_trades is not None else int(len(result.trades))
+                n_trades = int(meta_n_trades) if meta_n_trades is not None else len(result.trades)
             except (TypeError, ValueError):
-                n_trades = int(len(result.trades))
+                n_trades = len(result.trades)
 
             extra_metadata = _extract_result_extra_metadata(result.meta)
             mode = str(result.meta.get("mode") or result.meta.get("origin") or "backtest")
@@ -609,10 +670,9 @@ class ResultStorage:
     def save_sweep_results(
         self,
         sweep_results: SweepResults,
-        sweep_id: Optional[str] = None,
+        sweep_id: str | None = None,
     ) -> str:
-        """
-        Sauvegarde les résultats d'un sweep.
+        """Sauvegarde les résultats d'un sweep.
 
         Args:
             sweep_results: SweepResults à sauvegarder
@@ -620,6 +680,7 @@ class ResultStorage:
 
         Returns:
             sweep_id
+
         """
         if sweep_id is None:
             sweep_id = f"sweep_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -667,8 +728,7 @@ class ResultStorage:
     # =========================================================================
 
     def load_result(self, run_id: str) -> RunResult:
-        """
-        Charge un résultat de backtest.
+        """Charge un résultat de backtest.
 
         Args:
             run_id: ID du run à charger
@@ -678,6 +738,7 @@ class ResultStorage:
 
         Raises:
             FileNotFoundError: Si le run_id n'existe pas
+
         """
         run_dir = self._resolve_run_dir(run_id)
 
@@ -734,7 +795,7 @@ class ResultStorage:
                     "status": metadata.status,
                     "loaded_from_storage": True,
                     "loaded_at": datetime.now().isoformat(),
-                }
+                },
             )
             if metadata.extra_metadata:
                 result.meta.update(metadata.extra_metadata)
@@ -746,15 +807,15 @@ class ResultStorage:
             logger.error(f"❌ Erreur lors du chargement de {run_id}: {e}")
             raise
 
-    def load_sweep_results(self, sweep_id: str) -> Dict[str, Any]:
-        """
-        Charge les résultats d'un sweep.
+    def load_sweep_results(self, sweep_id: str) -> dict[str, Any]:
+        """Charge les résultats d'un sweep.
 
         Args:
             sweep_id: ID du sweep
 
         Returns:
             Dict avec summary et results_df
+
         """
         sweep_dir = self.storage_dir / sweep_id
 
@@ -764,10 +825,11 @@ class ResultStorage:
         try:
             # Charger le résumé
             summary_path = sweep_dir / "summary.json"
-            with open(summary_path, "r", encoding="utf-8") as f:
+            with open(summary_path, encoding="utf-8") as f:
                 summary = json.load(f)
             summary["best_metrics"] = normalize_metrics(
-                summary.get("best_metrics", {}), "pct"
+                summary.get("best_metrics", {}),
+                "pct",
             )
 
             # Charger les résultats
@@ -792,12 +854,11 @@ class ResultStorage:
 
     def list_results(
         self,
-        limit: Optional[int] = None,
+        limit: int | None = None,
         sort_by: str = "timestamp",
         reverse: bool = True,
-    ) -> List[StoredResultMetadata]:
-        """
-        Liste tous les résultats disponibles.
+    ) -> list[StoredResultMetadata]:
+        """Liste tous les résultats disponibles.
 
         Args:
             limit: Limiter le nombre de résultats
@@ -806,6 +867,7 @@ class ResultStorage:
 
         Returns:
             Liste de métadonnées
+
         """
         results = list(self._index.values())
 
@@ -815,12 +877,12 @@ class ResultStorage:
         elif sort_by == "sharpe_ratio":
             results.sort(
                 key=lambda x: x.metrics.get("sharpe_ratio", 0),
-                reverse=reverse
+                reverse=reverse,
             )
         elif sort_by == "total_return":
             results.sort(
                 key=lambda x: x.metrics.get("total_return_pct", 0),
-                reverse=reverse
+                reverse=reverse,
             )
 
         # Limite
@@ -831,17 +893,16 @@ class ResultStorage:
 
     def search_results(
         self,
-        strategy: Optional[str] = None,
-        symbol: Optional[str] = None,
-        timeframe: Optional[str] = None,
-        min_sharpe: Optional[float] = None,
-        max_drawdown: Optional[float] = None,
-        min_trades: Optional[int] = None,
-        date_from: Optional[str] = None,
-        date_to: Optional[str] = None,
-    ) -> List[StoredResultMetadata]:
-        """
-        Recherche des résultats avec filtres.
+        strategy: str | None = None,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        min_sharpe: float | None = None,
+        max_drawdown: float | None = None,
+        min_trades: int | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+    ) -> list[StoredResultMetadata]:
+        """Recherche des résultats avec filtres.
 
         Args:
             strategy: Nom de la stratégie
@@ -855,6 +916,7 @@ class ResultStorage:
 
         Returns:
             Liste de métadonnées filtrées
+
         """
         results = list(self._index.values())
 
@@ -869,16 +931,10 @@ class ResultStorage:
             results = [r for r in results if r.timeframe == timeframe]
 
         if min_sharpe is not None:
-            results = [
-                r for r in results
-                if r.metrics.get("sharpe_ratio", 0) >= min_sharpe
-            ]
+            results = [r for r in results if r.metrics.get("sharpe_ratio", 0) >= min_sharpe]
 
         if max_drawdown is not None:
-            results = [
-                r for r in results
-                if r.metrics.get("max_drawdown_pct", 100) <= max_drawdown
-            ]
+            results = [r for r in results if r.metrics.get("max_drawdown_pct", 100) <= max_drawdown]
 
         if min_trades is not None:
             results = [r for r in results if r.n_trades >= min_trades]
@@ -895,9 +951,8 @@ class ResultStorage:
         self,
         n: int = 10,
         metric: str = "sharpe_ratio",
-    ) -> List[StoredResultMetadata]:
-        """
-        Retourne les N meilleurs résultats selon une métrique.
+    ) -> list[StoredResultMetadata]:
+        """Retourne les N meilleurs résultats selon une métrique.
 
         Args:
             n: Nombre de résultats
@@ -905,11 +960,12 @@ class ResultStorage:
 
         Returns:
             Liste des meilleurs résultats
+
         """
         results = list(self._index.values())
         results.sort(
             key=lambda x: x.metrics.get(metric, float("-inf")),
-            reverse=True
+            reverse=True,
         )
         return results[:n]
 
@@ -918,14 +974,14 @@ class ResultStorage:
     # =========================================================================
 
     def delete_result(self, run_id: str) -> bool:
-        """
-        Supprime un résultat.
+        """Supprime un résultat.
 
         Args:
             run_id: ID du run à supprimer
 
         Returns:
             True si supprimé, False sinon
+
         """
         try:
             run_dir = self._resolve_run_dir(run_id)
@@ -948,14 +1004,14 @@ class ResultStorage:
             return False
 
     def _cleanup_old_results(self, keep_last: int = MAX_RESULTS_TO_KEEP) -> int:
-        """
-        Nettoie les anciens résultats pour éviter l'accumulation.
+        """Nettoie les anciens résultats pour éviter l'accumulation.
 
         Args:
             keep_last: Nombre de résultats à garder
 
         Returns:
             Nombre de résultats supprimés
+
         """
         results = list(self._index.values())
         results.sort(key=lambda x: x.timestamp, reverse=True)
@@ -973,11 +1029,11 @@ class ResultStorage:
         return deleted_count
 
     def clear_all(self) -> bool:
-        """
-        Supprime TOUS les résultats (attention!).
+        """Supprime TOUS les résultats (attention!).
 
         Returns:
             True si succès
+
         """
         try:
             if self.storage_dir.exists():
@@ -998,7 +1054,7 @@ class ResultStorage:
     # INDEX
     # =========================================================================
 
-    def _load_index(self) -> Dict[str, StoredResultMetadata]:
+    def _load_index(self) -> dict[str, StoredResultMetadata]:
         """Charge l'index dérivé depuis SQLite v3 avec fallback legacy."""
         try:
             index = self._refresh_index_cache()
@@ -1012,7 +1068,7 @@ class ResultStorage:
 
         try:
             index_data = _load_json_file(self.index_path)
-            index: Dict[str, StoredResultMetadata] = {}
+            index: dict[str, StoredResultMetadata] = {}
             for run_id, meta_dict in index_data.items():
                 try:
                     metadata = _stored_metadata_from_payload(meta_dict, run_id_hint=run_id)
@@ -1027,10 +1083,7 @@ class ResultStorage:
     def _save_index(self) -> None:
         """Sauvegarde l'index dérivé sur le disque."""
         try:
-            index_data = {
-                run_id: meta.to_dict()
-                for run_id, meta in self._index.items()
-            }
+            index_data = {run_id: meta.to_dict() for run_id, meta in self._index.items()}
 
             _dump_json(self.index_path, index_data)
 
@@ -1038,13 +1091,13 @@ class ResultStorage:
             logger.error(f"❌ Erreur lors de la sauvegarde de l'index: {e}")
 
     def rebuild_index(self) -> int:
-        """
-        Reconstruit l'index en scannant tous les répertoires.
+        """Reconstruit l'index en scannant tous les répertoires.
 
         Utile en cas de corruption ou si des fichiers ont été ajoutés manuellement.
 
         Returns:
             Nombre de résultats indexés
+
         """
         logger.info("🔄 Reconstruction de l'index...")
 
@@ -1063,7 +1116,7 @@ class ResultStorage:
                 continue
             yield metadata_path.parent
 
-    def _build_unified_entry(self, run_dir: Path) -> Dict[str, Any]:
+    def _build_unified_entry(self, run_dir: Path) -> dict[str, Any]:
         rel_path = str(run_dir.relative_to(self.storage_dir)).replace("\\", "/")
         parent_scope = rel_path.split("/", 1)[0] if "/" in rel_path else "."
         metadata_path = run_dir / "metadata.json"
@@ -1105,7 +1158,7 @@ class ResultStorage:
         except (TypeError, ValueError):
             n_trades = 0
 
-        issues: List[str] = []
+        issues: list[str] = []
         if not metrics_path.exists():
             issues.append("metrics.json")
 
@@ -1133,13 +1186,13 @@ class ResultStorage:
             "issues": issues,
         }
 
-    def audit_storage(self, write_report: bool = True) -> Dict[str, Any]:
+    def audit_storage(self, write_report: bool = True) -> dict[str, Any]:
         catalog_dir = self.storage_dir / "_catalog"
         catalog_dir.mkdir(parents=True, exist_ok=True)
 
         entries = [self._build_unified_entry(run_dir) for run_dir in self._iter_metadata_dirs()]
-        containers: List[str] = []
-        unknown_directories: List[str] = []
+        containers: list[str] = []
+        unknown_directories: list[str] = []
 
         for item in self.storage_dir.iterdir():
             if not item.is_dir() or item.name in {"_catalog", "__pycache__"}:
@@ -1175,8 +1228,7 @@ class ResultStorage:
         return report
 
     def build_catalogs(self, force: bool = False) -> Path:
-        """
-        Génère des catalogues CSV pour exploration rapide des résultats.
+        """Génère des catalogues CSV pour exploration rapide des résultats.
 
         `overview.csv` couvre les runs natifs chargeables via `ResultStorage`.
         `unified_overview.csv` consolide aussi les artefacts trouvés récursivement
@@ -1248,7 +1300,7 @@ class ResultStorage:
                     "symbol",
                     "timeframe",
                     "flags_account_ruined",
-                ]
+                ],
             )
 
         df.to_csv(overview_path, index=False, encoding="utf-8")
@@ -1299,9 +1351,8 @@ class ResultStorage:
 
         return overview_path
 
-    def validate_integrity(self, auto_fix: bool = True) -> Dict[str, List[str]]:
-        """
-        Valide la cohérence du stockage et répare si nécessaire.
+    def validate_integrity(self, auto_fix: bool = True) -> dict[str, list[str]]:
+        """Valide la cohérence du stockage et répare si nécessaire.
 
         Vérifications:
         - Index.json cohérent avec les dossiers réels
@@ -1322,12 +1373,13 @@ class ResultStorage:
             >>> report = storage.validate_integrity()
             >>> if report["errors"]:
             ...     print(f"Erreurs: {report['errors']}")
+
         """
         logger.info("🔍 Validation de l'intégrité du stockage...")
 
-        errors: List[str] = []
-        warnings: List[str] = []
-        fixed: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
+        fixed: list[str] = []
 
         # 1. Vérifier que l'index existe
         if not self.index_path.exists():
@@ -1410,8 +1462,7 @@ class ResultStorage:
 
         # Rapport final
         logger.info(
-            f"Validation terminée: {len(errors)} erreurs, "
-            f"{len(warnings)} avertissements, {len(fixed)} réparations"
+            f"Validation terminée: {len(errors)} erreurs, {len(warnings)} avertissements, {len(fixed)} réparations",
         )
 
         return {
@@ -1448,16 +1499,15 @@ class ResultStorage:
 # INSTANCE GLOBALE
 # =============================================================================
 
-_storage_instance: Optional[ResultStorage] = None
+_storage_instance: ResultStorage | None = None
 
 
 def get_storage(
-    storage_dir: Optional[Union[str, Path]] = None,
+    storage_dir: str | Path | None = None,
     auto_save: bool = True,
     compress: bool = False,
 ) -> ResultStorage:
-    """
-    Retourne l'instance globale de ResultStorage (singleton).
+    """Retourne l'instance globale de ResultStorage (singleton).
 
     Args:
         storage_dir: Répertoire de stockage
@@ -1466,6 +1516,7 @@ def get_storage(
 
     Returns:
         ResultStorage instance
+
     """
     global _storage_instance
     if _storage_instance is None:
@@ -1478,7 +1529,7 @@ def get_storage(
 
 
 def migrate_legacy_layout_to_runs_dir(
-    storage_dir: Optional[Union[str, Path]] = None,
+    storage_dir: str | Path | None = None,
     delete_legacy: bool = True,
 ) -> int:
     """Migre manuellement les runs legacy racine vers runs/<run_id>."""

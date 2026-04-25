@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.supertrend
+"""Module-ID: indicators.supertrend
 
 Purpose: Indicateur SuperTrend - suivi tendance basé ATR (très populaire).
 
@@ -21,7 +20,6 @@ Skip-if: Vous utilisez juste calculate_indicator('supertrend').
 """
 
 from dataclasses import dataclass
-from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -32,6 +30,7 @@ from .atr import atr
 @dataclass
 class SuperTrendSettings:
     """Paramètres SuperTrend."""
+
     atr_period: int = 10
     multiplier: float = 3.0
 
@@ -42,9 +41,8 @@ def supertrend(
     close: pd.Series | np.ndarray,
     atr_period: int = 10,
     multiplier: float = 3.0,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Calcule SuperTrend.
+) -> tuple[np.ndarray, np.ndarray]:
+    """Calcule SuperTrend.
 
     Args:
         high: Prix hauts
@@ -56,6 +54,7 @@ def supertrend(
     Returns:
         Tuple (supertrend_values, trend_direction)
         - trend_direction: 1 = haussier, -1 = baissier
+
     """
     if isinstance(high, pd.Series):
         high = high.values
@@ -113,15 +112,14 @@ def supertrend(
             else:
                 trend_direction[i] = 1
                 supertrend_values[i] = final_lower[i]
-        else:  # Was bearish
-            if close[i] >= final_upper[i]:
-                trend_direction[i] = 1
-                supertrend_values[i] = final_lower[i]
-            else:
-                trend_direction[i] = -1
-                supertrend_values[i] = final_upper[i]
+        elif close[i] >= final_upper[i]:
+            trend_direction[i] = 1
+            supertrend_values[i] = final_lower[i]
+        else:
+            trend_direction[i] = -1
+            supertrend_values[i] = final_upper[i]
 
     return supertrend_values, trend_direction
 
 
-__all__ = ["supertrend", "SuperTrendSettings"]
+__all__ = ["SuperTrendSettings", "supertrend"]

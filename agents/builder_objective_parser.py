@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.builder_objective_parser
+"""Module-ID: agents.builder_objective_parser
 
 Purpose: Parsing et nettoyage des objectifs Builder, canonicalisation
 des noms d'indicateurs et extraction d'indicateurs depuis du texte libre.
@@ -11,10 +10,9 @@ Skip-if: Vous n'utilisez pas le Strategy Builder.
 
 from __future__ import annotations
 
-import re
-from typing import Any, Dict, List, Optional, Tuple
-
 import logging
+import re
+from typing import Any
 
 from agents.builder_ast_utils import (
     _LOG_PREFIX_RE,
@@ -139,7 +137,7 @@ def sanitize_objective_text(objective: Any, *, enable_leakage_filter: bool = Tru
             if len(embedded) >= 20:
                 text = embedded
 
-    cleaned_lines: List[str] = []
+    cleaned_lines: list[str] = []
     in_traceback_block = False
     for raw_line in text.splitlines():
         line = raw_line.strip()
@@ -195,6 +193,7 @@ def sanitize_objective_text(objective: Any, *, enable_leakage_filter: bool = Tru
         cleaned = cleaned[:4000].rstrip()
     return cleaned
 
+
 def _strip_objective_prompt_leakage(text: str) -> str:
     """Retire les restes de méta-consignes quand le LLM recopie le prompt."""
     if not text:
@@ -206,7 +205,7 @@ def _strip_objective_prompt_leakage(text: str) -> str:
 
     anchored = normalized
     anchor_found = False
-    best_start: Optional[int] = None
+    best_start: int | None = None
     best_value = normalized
     for pattern in _OBJECTIVE_START_PATTERNS:
         match = pattern.search(normalized)
@@ -219,7 +218,7 @@ def _strip_objective_prompt_leakage(text: str) -> str:
             anchor_found = True
     anchored = best_value
 
-    kept_sentences: List[str] = []
+    kept_sentences: list[str] = []
     for sentence in re.split(r"(?<=[.!?])\s+", anchored):
         line = str(sentence or "").strip()
         if not line:
@@ -235,6 +234,7 @@ def _strip_objective_prompt_leakage(text: str) -> str:
     if anchor_found:
         return re.sub(r"\s+", " ", anchored).strip()
     return ""
+
 
 def _looks_like_prompt_instruction_leakage(text: str) -> bool:
     """Détecte si un objectif ressemble encore à une réponse de prompt contaminée."""
@@ -272,11 +272,12 @@ def _looks_like_prompt_instruction_leakage(text: str) -> bool:
         return True
     return False
 
+
 def _canonicalize_indicator_name(
     name: Any,
     *,
-    known: Optional[set[str]] = None,
-) -> Optional[str]:
+    known: set[str] | None = None,
+) -> str | None:
     """Ramène les alias fréquents Builder vers un nom d'indicateur du registre."""
     raw = str(name or "").strip().lower()
     if not raw:
@@ -294,6 +295,7 @@ def _canonicalize_indicator_name(
         return normalized
     return None
 
+
 def _indicator_phrase_pattern(phrase: str) -> str:
     normalized = str(phrase or "").strip().lower().replace("-", "_").replace(" ", "_")
     parts = [re.escape(part) for part in normalized.split("_") if part]
@@ -301,22 +303,19 @@ def _indicator_phrase_pattern(phrase: str) -> str:
         return ""
     return r"(?<![A-Za-z0-9])" + r"[\s_\-]*".join(parts) + r"(?![A-Za-z0-9])"
 
+
 def _extract_indicator_names_from_text(
     text: Any,
     *,
-    available_indicators: Optional[List[str]] = None,
-) -> List[str]:
+    available_indicators: list[str] | None = None,
+) -> list[str]:
     raw_text = str(text or "")
     if not raw_text.strip():
         return []
 
     known_names = [
         str(ind or "").strip().lower()
-        for ind in (
-            available_indicators
-            if available_indicators is not None
-            else list_indicators()
-        )
+        for ind in (available_indicators if available_indicators is not None else list_indicators())
         if str(ind or "").strip()
     ]
     known_set = set(known_names)
@@ -324,7 +323,7 @@ def _extract_indicator_names_from_text(
         return []
 
     lowered = raw_text.lower()
-    hits: List[Tuple[int, str]] = []
+    hits: list[tuple[int, str]] = []
     candidates = set(known_set) | set(_INDICATOR_CANONICAL_ALIASES.keys())
     for candidate in candidates:
         normalized = _canonicalize_indicator_name(candidate, known=known_set)
@@ -337,17 +336,18 @@ def _extract_indicator_names_from_text(
         if match:
             hits.append((match.start(), normalized))
 
-    ordered: List[str] = []
+    ordered: list[str] = []
     for _position, indicator_name in sorted(hits, key=lambda item: (item[0], item[1])):
         if indicator_name not in ordered:
             ordered.append(indicator_name)
     return ordered
 
+
 def _extract_objective_indicator_names(
     objective: Any,
     *,
-    available_indicators: Optional[List[str]] = None,
-) -> List[str]:
+    available_indicators: list[str] | None = None,
+) -> list[str]:
     text = sanitize_objective_text(objective, enable_leakage_filter=False)
     if not text:
         text = str(objective or "").strip()
@@ -371,22 +371,19 @@ def _extract_objective_indicator_names(
         available_indicators=available_indicators,
     )
 
+
 def _build_indicator_override_reason(
-    objective_indicators: List[str],
-    proposal_indicators: List[str],
+    objective_indicators: list[str],
+    proposal_indicators: list[str],
 ) -> str:
     objective_set = set(objective_indicators)
     proposal_set = set(proposal_indicators)
     added = [ind for ind in proposal_indicators if ind not in objective_set]
     removed = [ind for ind in objective_indicators if ind not in proposal_set]
     if added and removed:
-        return (
-            "semi_open_replace:"
-            f" removed={','.join(removed)} added={','.join(added)}"
-        )
+        return f"semi_open_replace: removed={','.join(removed)} added={','.join(added)}"
     if added:
         return f"semi_open_add: added={','.join(added)}"
     if removed:
         return f"semi_open_remove: removed={','.join(removed)}"
     return ""
-

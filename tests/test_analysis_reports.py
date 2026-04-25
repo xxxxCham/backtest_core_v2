@@ -10,8 +10,8 @@ from backtest.result_store import (
     get_artifacts_root_dir,
     get_builder_sessions_dir,
     get_output_root_dir,
-    get_results_analysis_dir,
     get_profiling_results_dir,
+    get_results_analysis_dir,
     get_results_archive_dir,
     get_results_organized_dir,
     get_saved_runs_dir,
@@ -19,10 +19,19 @@ from backtest.result_store import (
     get_workspace_results_analysis_dir,
     get_workspace_results_root_dir,
 )
-from tools.analyze_results import extract_all_results, refresh_analysis_artifacts
+from tools.analyze_results import export_top_configs, extract_all_results, refresh_analysis_artifacts
 
 
-def _write_run(root: Path, run_id: str, *, strategy: str, symbol: str, timeframe: str, total_return_pct: float, ruined: bool = False) -> None:
+def _write_run(
+    root: Path,
+    run_id: str,
+    *,
+    strategy: str,
+    symbol: str,
+    timeframe: str,
+    total_return_pct: float,
+    ruined: bool = False,
+) -> None:
     run_dir = root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -69,9 +78,26 @@ def test_extract_all_results_reads_metadata(tmp_path: Path) -> None:
 def test_refresh_analysis_artifacts_generates_html_and_top_csv(tmp_path: Path, monkeypatch) -> None:
     results_root = tmp_path / "backtest_results"
     workspace_analysis_dir = tmp_path / "workspace" / "backtest_results" / "_analysis"
-    _write_run(results_root, "run_profitable", strategy="ema_cross", symbol="BTCUSDC", timeframe="1h", total_return_pct=18.0)
-    _write_run(results_root, "run_profitable_dup", strategy="ema_cross", symbol="BTCUSDC", timeframe="1h", total_return_pct=18.0)
-    _write_run(results_root, "run_negative", strategy="rsi_reversal", symbol="ETHUSDC", timeframe="4h", total_return_pct=-4.0, ruined=True)
+    _write_run(
+        results_root, "run_profitable", strategy="ema_cross", symbol="BTCUSDC", timeframe="1h", total_return_pct=18.0,
+    )
+    _write_run(
+        results_root,
+        "run_profitable_dup",
+        strategy="ema_cross",
+        symbol="BTCUSDC",
+        timeframe="1h",
+        total_return_pct=18.0,
+    )
+    _write_run(
+        results_root,
+        "run_negative",
+        strategy="rsi_reversal",
+        symbol="ETHUSDC",
+        timeframe="4h",
+        total_return_pct=-4.0,
+        ruined=True,
+    )
 
     monkeypatch.setenv("BACKTEST_RESULTS_DIR", str(results_root))
     monkeypatch.setenv("BACKTEST_ARTIFACTS_DIR", str(results_root))
@@ -147,6 +173,17 @@ def test_refresh_analysis_artifacts_handles_nested_params(tmp_path: Path, monkey
     assert stats["mirrored_files"] == []
 
 
+def test_export_top_configs_writes_header_even_when_empty(tmp_path: Path) -> None:
+    output_path = tmp_path / "analysis_top_configs.csv"
+
+    written = export_top_configs([], output_path=output_path, top_n=10)
+
+    assert written == output_path
+    rows = output_path.read_text(encoding="utf-8").splitlines()
+    assert rows
+    assert rows[0].startswith("rank,strategy,symbol,timeframe,run_id")
+
+
 def test_artifact_helpers_default_under_results_dir(tmp_path: Path, monkeypatch) -> None:
     results_root = tmp_path / "backtest_results"
     monkeypatch.setenv("BACKTEST_RESULTS_DIR", str(results_root))
@@ -195,7 +232,7 @@ def test_load_project_env_fallback_reads_dotenv_without_python_dotenv(tmp_path: 
             [
                 f"BACKTEST_RESULTS_DIR={results_root}",
                 f"BACKTEST_ARTIFACTS_DIR={artifacts_root}",
-            ]
+            ],
         ),
         encoding="utf-8",
     )

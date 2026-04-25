@@ -1,5 +1,4 @@
-"""
-Page Streamlit dédiée à l'édition des plages de paramètres.
+"""Page Streamlit dédiée à l'édition des plages de paramètres.
 
 Cette page peut être lancée:
 1. Standalone: streamlit run ui/pages/range_editor_page.py
@@ -12,10 +11,14 @@ Usage:
 import sys
 from pathlib import Path
 
-import streamlit as st
-
 # Ajouter le répertoire parent au path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from utils.observability import init_logging
+
+init_logging()
+
+import streamlit as st
 
 from ui.range_editor import render_range_editor
 
@@ -127,12 +130,13 @@ def main():
         page_title="Éditeur de Plages - Backtest Core",
         page_icon="⚙️",
         layout="wide",
-        initial_sidebar_state="expanded"
+        initial_sidebar_state="expanded",
     )
     _render_page_navigation()
 
     # CSS personnalisé
-    st.markdown("""
+    st.markdown(
+        """
     <style>
         .stApp {
             max-width: 100%;
@@ -152,14 +156,16 @@ def main():
             margin-bottom: 1rem;
         }
     </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     # Avertissement en en-tête
     st.title("⚙️ Éditeur de plages")
     st.caption("Ajustez les bornes, steps et valeurs par défaut sans quitter l'interface principale.")
     st.warning(
         "⚠️ **Attention**: Les modifications des plages affectent toutes les stratégies utilisant ces paramètres. "
-        "Une sauvegarde automatique (.bak) est créée avant chaque modification."
+        "Une sauvegarde automatique (.bak) est créée avant chaque modification.",
     )
 
     # Rendu de l'éditeur
@@ -168,8 +174,9 @@ def main():
     st.markdown("---")
     st.caption(
         "💡 Astuce: utilisez la recherche pour filtrer rapidement les paramètres. "
-        "Les modifications s'appliqueront aux nouveaux backtests."
+        "Les modifications s'appliqueront aux nouveaux backtests.",
     )
+
 
 if __name__ == "__main__":
     main()

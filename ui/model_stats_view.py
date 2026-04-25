@@ -1,6 +1,4 @@
-"""
-Builder model statistics page backed by persisted autonomous Builder history.
-"""
+"""Builder model statistics page backed by persisted autonomous Builder history."""
 
 from __future__ import annotations
 
@@ -11,10 +9,11 @@ import os
 import threading
 import time
 from collections import Counter
+from collections.abc import Iterable, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -28,7 +27,7 @@ _MODEL_STATS_STATE_FILE = SANDBOX_ROOT / "_model_stats_state.json"
 _MODEL_STATS_ARCHIVE_DIR = SANDBOX_ROOT / "_model_stats_archives"
 _MODEL_STATS_VERSION = "1.0"
 _MODEL_STATS_STATE_LOCK = threading.Lock()
-_BUILDER_MODEL_PRIORITY_COLUMNS: Tuple[str, ...] = (
+_BUILDER_MODEL_PRIORITY_COLUMNS: tuple[str, ...] = (
     "model",
     "success_rate_pct",
     "negative_rate_pct",
@@ -54,7 +53,10 @@ _BUILDER_MODEL_PRIORITY_COLUMNS: Tuple[str, ...] = (
     "best_sharpe",
     "avg_trades",
     "max_trades",
+    "avg_session_duration_s",
     "avg_duration_s",
+    "sessions_per_hour",
+    "expected_return_per_hour_pct",
     "multi_llm_sessions",
     "single_llm_sessions",
     "source_modes",
@@ -66,7 +68,7 @@ _BUILDER_MODEL_PRIORITY_COLUMNS: Tuple[str, ...] = (
     "first_session_id",
     "last_session_id",
 )
-_SESSION_PRIORITY_COLUMNS: Tuple[str, ...] = (
+_SESSION_PRIORITY_COLUMNS: tuple[str, ...] = (
     "session_num",
     "session_id",
     "status",
@@ -82,6 +84,9 @@ _SESSION_PRIORITY_COLUMNS: Tuple[str, ...] = (
     "orchestration_mode",
     "multi_llm_profile",
     "builder_model",
+    "session_duration_seconds",
+    "start_time",
+    "end_time",
     "objective",
 )
 
@@ -90,7 +95,7 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def _default_active_window() -> Dict[str, Any]:
+def _default_active_window() -> dict[str, Any]:
     return {
         "reset_at": "",
         "last_reset_session_num": 0,
@@ -99,7 +104,7 @@ def _default_active_window() -> Dict[str, Any]:
     }
 
 
-def _default_model_stats_state() -> Dict[str, Any]:
+def _default_model_stats_state() -> dict[str, Any]:
     return {
         "version": _MODEL_STATS_VERSION,
         "updated_at": "",
@@ -108,7 +113,7 @@ def _default_model_stats_state() -> Dict[str, Any]:
     }
 
 
-def _sanitize_model_stats_state(payload: Any) -> Dict[str, Any]:
+def _sanitize_model_stats_state(payload: Any) -> dict[str, Any]:
     state = _default_model_stats_state()
     if not isinstance(payload, dict):
         return state
@@ -136,7 +141,7 @@ def _build_unique_tmp_path(target_path: Path) -> Path:
     return target_path.with_name(f"{target_path.name}{suffix}")
 
 
-def _write_json_atomically(target_path: Path, payload: Dict[str, Any]) -> None:
+def _write_json_atomically(target_path: Path, payload: dict[str, Any]) -> None:
     target_path.parent.mkdir(parents=True, exist_ok=True)
     serialized = json.dumps(payload, indent=2, ensure_ascii=False, default=str)
 
@@ -155,7 +160,7 @@ def _write_json_atomically(target_path: Path, payload: Dict[str, Any]) -> None:
 
 def load_autonomous_history(
     state_path: Path = _AUTONOMOUS_SUPERVISOR_STATE_FILE,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     try:
         payload = json.loads(state_path.read_text(encoding="utf-8"))
     except Exception:
@@ -169,7 +174,7 @@ def load_autonomous_history(
 
 def load_model_stats_state(
     state_path: Path = _MODEL_STATS_STATE_FILE,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     try:
         payload = json.loads(state_path.read_text(encoding="utf-8"))
     except Exception:
@@ -178,10 +183,10 @@ def load_model_stats_state(
 
 
 def save_model_stats_state(
-    state: Dict[str, Any],
+    state: dict[str, Any],
     *,
     state_path: Path = _MODEL_STATS_STATE_FILE,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     sanitized = _sanitize_model_stats_state(state)
     sanitized["updated_at"] = _utc_now_iso()
     _write_json_atomically(state_path, sanitized)
@@ -195,7 +200,7 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def _safe_float(value: Any) -> Optional[float]:
+def _safe_float(value: Any) -> float | None:
     try:
         parsed = float(value)
     except Exception:
@@ -213,13 +218,43 @@ def _normalize_text_label(value: Any, *, fallback: str = "-") -> str:
     return normalized or fallback
 
 
-def _round_or_none(value: Optional[float], ndigits: int = 2) -> Optional[float]:
+def _round_or_none(value: float | None, ndigits: int = 2) -> float | None:
     if value is None or not math.isfinite(value):
         return None
     return round(value, ndigits)
 
 
-def _ordered_builder_model_columns(columns: Sequence[str]) -> List[str]:
+def _parse_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(text)
+    except Exception:
+        return None
+
+
+def _duration_from_record_payload(payload: dict[str, Any]) -> float | None:
+    for key in ("session_duration_seconds", "duration_seconds", "duration"):
+        duration = _safe_float(payload.get(key))
+        if duration is not None and duration >= 0:
+            return duration
+
+    start_dt = _parse_datetime(payload.get("start_time") or payload.get("started_at"))
+    end_dt = _parse_datetime(payload.get("end_time") or payload.get("finished_at"))
+    if start_dt is None or end_dt is None:
+        return None
+    duration = (end_dt - start_dt).total_seconds()
+    return duration if duration >= 0 and math.isfinite(duration) else None
+
+
+def _ordered_builder_model_columns(columns: Sequence[str]) -> list[str]:
     ordered = [column for column in _BUILDER_MODEL_PRIORITY_COLUMNS if column in columns]
     trailing = [column for column in columns if column not in ordered]
     return ordered + trailing
@@ -231,7 +266,7 @@ def _reorder_builder_model_frame(frame: pd.DataFrame) -> pd.DataFrame:
     return frame.loc[:, _ordered_builder_model_columns(list(frame.columns))]
 
 
-def _ordered_session_columns(columns: Sequence[str]) -> List[str]:
+def _ordered_session_columns(columns: Sequence[str]) -> list[str]:
     ordered = [column for column in _SESSION_PRIORITY_COLUMNS if column in columns]
     trailing = [column for column in columns if column not in ordered]
     return ordered + trailing
@@ -241,14 +276,12 @@ def _reorder_session_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty or "session_num" not in frame.columns:
         return frame
     ordered_columns = [
-        column
-        for column in _ordered_session_columns(list(frame.columns))
-        if column != "last_runtime_traceback_tail"
+        column for column in _ordered_session_columns(list(frame.columns)) if column != "last_runtime_traceback_tail"
     ]
     return frame.loc[:, ordered_columns]
 
 
-def _load_session_summary(summary_path: Path) -> Optional[Dict[str, Any]]:
+def _load_session_summary(summary_path: Path) -> dict[str, Any] | None:
     try:
         payload = json.loads(summary_path.read_text(encoding="utf-8"))
     except Exception:
@@ -257,11 +290,11 @@ def _load_session_summary(summary_path: Path) -> Optional[Dict[str, Any]]:
 
 
 def _extract_last_runtime_feedback_from_summary(
-    summary: Dict[str, Any],
-) -> Dict[str, Any]:
+    summary: dict[str, Any],
+) -> dict[str, Any]:
     runtime_error = str(summary.get("last_runtime_error") or "").strip()
     runtime_traceback_tail = str(
-        summary.get("last_runtime_traceback_tail") or ""
+        summary.get("last_runtime_traceback_tail") or "",
     ).strip()
     runtime_iteration = _safe_int(summary.get("last_runtime_error_iteration"), 0)
     if runtime_error or runtime_traceback_tail:
@@ -284,7 +317,7 @@ def _extract_last_runtime_feedback_from_summary(
             continue
         runtime_error = str(backtest_feedback.get("runtime_error") or "").strip()
         runtime_traceback_tail = str(
-            backtest_feedback.get("runtime_traceback_tail") or ""
+            backtest_feedback.get("runtime_traceback_tail") or "",
         ).strip()
         if runtime_error or runtime_traceback_tail:
             return {
@@ -301,10 +334,10 @@ def _extract_last_runtime_feedback_from_summary(
 
 
 def _resolve_entry_runtime_feedback(
-    entry: Dict[str, Any],
+    entry: dict[str, Any],
     *,
-    summary_cache: Optional[Dict[str, Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
+    summary_cache: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     runtime_error = str(entry.get("last_runtime_error") or "").strip()
     runtime_traceback_tail = str(entry.get("last_runtime_traceback_tail") or "").strip()
     runtime_iteration = _safe_int(entry.get("last_runtime_error_iteration"), 0)
@@ -342,19 +375,19 @@ def _resolve_entry_runtime_feedback(
     return resolved
 
 
-def _mean_or_none(values: Sequence[float], ndigits: int = 2) -> Optional[float]:
+def _mean_or_none(values: Sequence[float], ndigits: int = 2) -> float | None:
     if not values:
         return None
     return _round_or_none(sum(values) / len(values), ndigits)
 
 
-def _median_or_none(values: Sequence[float], ndigits: int = 2) -> Optional[float]:
+def _median_or_none(values: Sequence[float], ndigits: int = 2) -> float | None:
     if not values:
         return None
     return _round_or_none(float(median(values)), ndigits)
 
 
-def _latest_session_num(history: Iterable[Dict[str, Any]]) -> int:
+def _latest_session_num(history: Iterable[dict[str, Any]]) -> int:
     latest = 0
     for entry in history:
         latest = max(latest, _safe_int(entry.get("session_num"), 0))
@@ -362,28 +395,27 @@ def _latest_session_num(history: Iterable[Dict[str, Any]]) -> int:
 
 
 def _extract_active_entries(
-    history: List[Dict[str, Any]],
-    state: Dict[str, Any],
-) -> List[Dict[str, Any]]:
+    history: list[dict[str, Any]],
+    state: dict[str, Any],
+) -> list[dict[str, Any]]:
     active_window = state.get("active_window") if isinstance(state, dict) else {}
     baseline = 0
     if isinstance(active_window, dict):
         baseline = _safe_int(active_window.get("last_reset_session_num"), 0)
     if baseline <= 0:
         return list(history or [])
-    return [
-        entry
-        for entry in list(history or [])
-        if _safe_int(entry.get("session_num"), 0) > baseline
-    ]
+    return [entry for entry in list(history or []) if _safe_int(entry.get("session_num"), 0) > baseline]
 
 
-def _build_record(entry: Dict[str, Any], *, model: str) -> Dict[str, Any]:
+def _build_record(entry: dict[str, Any], *, model: str) -> dict[str, Any]:
     instrumentation_summary = (
         dict(entry.get("instrumentation_summary", {}) or {})
         if isinstance(entry.get("instrumentation_summary"), dict)
         else {}
     )
+    start_time = _normalize_text_label(entry.get("start_time") or entry.get("started_at"), fallback="")
+    end_time = _normalize_text_label(entry.get("end_time") or entry.get("finished_at"), fallback="")
+    session_duration_seconds = _duration_from_record_payload(entry)
     return {
         "model": _normalize_model_label(model),
         "session_num": _safe_int(entry.get("session_num"), 0),
@@ -392,7 +424,10 @@ def _build_record(entry: Dict[str, Any], *, model: str) -> Dict[str, Any]:
         "best_return": _safe_float(entry.get("best_return")),
         "best_sharpe": _safe_float(entry.get("best_sharpe")),
         "best_trades": _safe_float(entry.get("best_trades")),
-        "duration": _safe_float(entry.get("duration")),
+        "duration": session_duration_seconds,
+        "session_duration_seconds": session_duration_seconds,
+        "start_time": start_time,
+        "end_time": end_time,
         "symbol": _normalize_text_label(entry.get("symbol")),
         "timeframe": _normalize_text_label(entry.get("timeframe")),
         "source_mode": _normalize_text_label(entry.get("source_mode")),
@@ -406,17 +441,17 @@ def _build_record(entry: Dict[str, Any], *, model: str) -> Dict[str, Any]:
     }
 
 
-def extract_builder_model_records(history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def extract_builder_model_records(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
-        _build_record(entry, model=entry.get("multi_llm_builder_model"))
+        _build_record(entry, model=entry.get("multi_llm_builder_model") or entry.get("model_name"))
         for entry in list(history or [])
         if isinstance(entry, dict)
     ]
 
 
-def _compact_session_rows(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    rows: List[Dict[str, Any]] = []
-    runtime_feedback_cache: Dict[str, Dict[str, Any]] = {}
+def _compact_session_rows(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    runtime_feedback_cache: dict[str, dict[str, Any]] = {}
     for entry in list(entries or []):
         if not isinstance(entry, dict):
             continue
@@ -424,6 +459,8 @@ def _compact_session_rows(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]
             entry,
             summary_cache=runtime_feedback_cache,
         )
+        start_time = _normalize_text_label(entry.get("start_time") or entry.get("started_at"), fallback="")
+        end_time = _normalize_text_label(entry.get("end_time") or entry.get("finished_at"), fallback="")
         rows.append(
             {
                 "session_num": _safe_int(entry.get("session_num"), 0),
@@ -434,7 +471,7 @@ def _compact_session_rows(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]
                 "best_return_pct": _safe_float(entry.get("best_return")),
                 "best_sharpe": _safe_float(entry.get("best_sharpe")),
                 "best_telemetry_score": _safe_float(
-                    entry.get("best_telemetry_score", entry.get("best_score"))
+                    entry.get("best_telemetry_score", entry.get("best_score")),
                 ),
                 "best_trades": _safe_float(entry.get("best_trades")),
                 "symbol": _normalize_text_label(entry.get("symbol")),
@@ -443,9 +480,12 @@ def _compact_session_rows(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]
                 "orchestration_mode": _normalize_text_label(entry.get("orchestration_mode")),
                 "multi_llm_profile": _normalize_text_label(entry.get("multi_llm_profile")),
                 "builder_model": _normalize_model_label(entry.get("multi_llm_builder_model")),
+                "session_duration_seconds": _duration_from_record_payload(entry),
+                "start_time": start_time,
+                "end_time": end_time,
                 "objective": _normalize_text_label(entry.get("objective"), fallback=""),
                 "last_runtime_traceback_tail": runtime_feedback.get("last_runtime_traceback_tail"),
-            }
+            },
         )
     rows.sort(
         key=lambda row: (row.get("session_num") or 0, row.get("session_id") or ""),
@@ -454,8 +494,8 @@ def _compact_session_rows(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     return rows
 
 
-def aggregate_model_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    buckets: Dict[str, Dict[str, Any]] = {}
+def aggregate_model_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    buckets: dict[str, dict[str, Any]] = {}
 
     for record in list(records or []):
         model = _normalize_model_label(record.get("model"))
@@ -490,9 +530,7 @@ def aggregate_model_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any
 
         session_num = _safe_int(record.get("session_num"), 0)
         session_id = _normalize_text_label(record.get("session_id"), fallback="")
-        if bucket["first_session_num"] is None or (
-            session_num and session_num < bucket["first_session_num"]
-        ):
+        if bucket["first_session_num"] is None or (session_num and session_num < bucket["first_session_num"]):
             bucket["first_session_num"] = session_num
             bucket["first_session_id"] = session_id
         if bucket["last_session_num"] is None or session_num >= bucket["last_session_num"]:
@@ -537,9 +575,22 @@ def aggregate_model_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any
         bucket["symbols"].add(_normalize_text_label(record.get("symbol")))
         bucket["timeframes"].add(_normalize_text_label(record.get("timeframe")))
 
-    rows: List[Dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     for model, bucket in buckets.items():
         total = int(bucket["count"])
+        avg_return_pct = _mean_or_none(bucket["returns"], 2)
+        avg_duration_s = _mean_or_none(bucket["durations"], 1)
+        positive_rate_pct = _round_or_none((bucket["positive"] / total) * 100.0, 2) if total else None
+        sessions_per_hour = (
+            _round_or_none(3600.0 / avg_duration_s, 3)
+            if avg_duration_s is not None and avg_duration_s > 0
+            else None
+        )
+        expected_return_per_hour_pct = (
+            _round_or_none(avg_return_pct * sessions_per_hour * (positive_rate_pct / 100.0), 2)
+            if avg_return_pct is not None and sessions_per_hour is not None and positive_rate_pct is not None
+            else None
+        )
         rows.append(
             {
                 "model": model,
@@ -552,12 +603,8 @@ def aggregate_model_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any
                 "max_iterations_status": int(bucket["status_counts"].get("max_iterations", 0)),
                 "error_status": int(bucket["status_counts"].get("error", 0)),
                 "crash_status": int(bucket["status_counts"].get("crash", 0)),
-                "positive_rate_pct": _round_or_none((bucket["positive"] / total) * 100.0, 2)
-                if total
-                else None,
-                "negative_rate_pct": _round_or_none((bucket["negative"] / total) * 100.0, 2)
-                if total
-                else None,
+                "positive_rate_pct": positive_rate_pct,
+                "negative_rate_pct": _round_or_none((bucket["negative"] / total) * 100.0, 2) if total else None,
                 "success_rate_pct": _round_or_none(
                     (bucket["status_counts"].get("success", 0) / total) * 100.0,
                     2,
@@ -582,24 +629,19 @@ def aggregate_model_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any
                 )
                 if total
                 else None,
-                "avg_return_pct": _mean_or_none(bucket["returns"], 2),
+                "avg_return_pct": avg_return_pct,
                 "median_return_pct": _median_or_none(bucket["returns"], 2),
-                "best_return_pct": _round_or_none(max(bucket["returns"]), 2)
-                if bucket["returns"]
-                else None,
-                "worst_return_pct": _round_or_none(min(bucket["returns"]), 2)
-                if bucket["returns"]
-                else None,
+                "best_return_pct": _round_or_none(max(bucket["returns"]), 2) if bucket["returns"] else None,
+                "worst_return_pct": _round_or_none(min(bucket["returns"]), 2) if bucket["returns"] else None,
                 "avg_sharpe": _mean_or_none(bucket["sharpes"], 3),
                 "median_sharpe": _median_or_none(bucket["sharpes"], 3),
-                "best_sharpe": _round_or_none(max(bucket["sharpes"]), 3)
-                if bucket["sharpes"]
-                else None,
+                "best_sharpe": _round_or_none(max(bucket["sharpes"]), 3) if bucket["sharpes"] else None,
                 "avg_trades": _mean_or_none(bucket["trades"], 1),
-                "max_trades": _round_or_none(max(bucket["trades"]), 1)
-                if bucket["trades"]
-                else None,
-                "avg_duration_s": _mean_or_none(bucket["durations"], 1),
+                "max_trades": _round_or_none(max(bucket["trades"]), 1) if bucket["trades"] else None,
+                "avg_session_duration_s": avg_duration_s,
+                "avg_duration_s": avg_duration_s,
+                "sessions_per_hour": sessions_per_hour,
+                "expected_return_per_hour_pct": expected_return_per_hour_pct,
                 "multi_llm_sessions": int(bucket["multi_llm"]),
                 "single_llm_sessions": int(bucket["single_llm"]),
                 "source_modes": ", ".join(sorted(bucket["source_modes"])) or "-",
@@ -610,22 +652,25 @@ def aggregate_model_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any
                 "last_session_num": bucket["last_session_num"],
                 "first_session_id": bucket["first_session_id"],
                 "last_session_id": bucket["last_session_id"],
-            }
+            },
         )
 
     rows.sort(
         key=lambda row: (
-            -_safe_int(row.get("sessions"), 0),
+            -(1 if row.get("expected_return_per_hour_pct") is not None else 0),
+            -(float(row.get("expected_return_per_hour_pct") or 0.0)),
+            -(1 if row.get("sessions_per_hour") is not None else 0),
             -_safe_int(row.get("positive_returns"), 0),
             -(1 if row.get("avg_return_pct") is not None else 0),
             -(float(row.get("avg_return_pct") or 0.0)),
+            -_safe_int(row.get("sessions"), 0),
             str(row.get("model", "") or ""),
-        )
+        ),
     )
     return rows
 
 
-def summarize_window(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
+def summarize_window(entries: list[dict[str, Any]]) -> dict[str, Any]:
     status_counts = Counter(
         _normalize_text_label(entry.get("status"), fallback="inconnu").lower()
         for entry in list(entries or [])
@@ -639,8 +684,8 @@ def summarize_window(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
     multi_llm_sessions = 0
     single_llm_sessions = 0
     instrumented_sessions = 0
-    fallback_rates: List[float] = []
-    repair_rates: List[float] = []
+    fallback_rates: list[float] = []
+    repair_rates: list[float] = []
 
     for entry in list(entries or []):
         if not isinstance(entry, dict):
@@ -693,11 +738,11 @@ def summarize_window(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def build_model_stats_report(
-    history: List[Dict[str, Any]],
+    history: list[dict[str, Any]],
     *,
-    state: Optional[Dict[str, Any]] = None,
+    state: dict[str, Any] | None = None,
     scope: str = "active",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     sanitized_state = _sanitize_model_stats_state(state or _default_model_stats_state())
     active_entries = _extract_active_entries(history, sanitized_state)
     target_entries = active_entries if scope == "active" else list(history or [])
@@ -715,13 +760,13 @@ def build_model_stats_report(
 
 
 def _archive_meta_from_report(
-    report: Dict[str, Any],
+    report: dict[str, Any],
     *,
     archive_id: str,
     archived_at: str,
     note: str,
     archive_path: Path,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     overview = report.get("overview", {}) if isinstance(report, dict) else {}
     entries = report.get("entries", []) if isinstance(report, dict) else []
     first_session_num = min((_safe_int(item.get("session_num"), 0) for item in entries), default=0)
@@ -748,13 +793,13 @@ def _archive_meta_from_report(
 
 
 def archive_active_window(
-    history: List[Dict[str, Any]],
+    history: list[dict[str, Any]],
     *,
-    state: Optional[Dict[str, Any]] = None,
+    state: dict[str, Any] | None = None,
     note: str = "",
     state_path: Path = _MODEL_STATS_STATE_FILE,
     archive_dir: Path = _MODEL_STATS_ARCHIVE_DIR,
-) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     sanitized_state = _sanitize_model_stats_state(state or _default_model_stats_state())
     report = build_model_stats_report(history, state=sanitized_state, scope="active")
     active_entries = report.get("entries", []) or []
@@ -799,10 +844,10 @@ def archive_active_window(
 
 
 def load_archive_payload(
-    archive_meta: Dict[str, Any],
+    archive_meta: dict[str, Any],
     *,
     root_dir: Path = ROOT_DIR,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     archive_path = root_dir / str(archive_meta.get("path") or "")
     try:
         return json.loads(archive_path.read_text(encoding="utf-8"))
@@ -810,7 +855,7 @@ def load_archive_payload(
         return {}
 
 
-def _rows_to_csv(rows: List[Dict[str, Any]]) -> str:
+def _rows_to_csv(rows: list[dict[str, Any]]) -> str:
     if not rows:
         return ""
     frame = pd.DataFrame(rows)
@@ -819,7 +864,7 @@ def _rows_to_csv(rows: List[Dict[str, Any]]) -> str:
     return buffer.getvalue()
 
 
-def _format_reset_caption(state: Dict[str, Any]) -> str:
+def _format_reset_caption(state: dict[str, Any]) -> str:
     active_window = state.get("active_window") or {}
     reset_at = str(active_window.get("reset_at") or "").strip()
     reset_session_num = _safe_int(active_window.get("last_reset_session_num"), 0)
@@ -833,7 +878,7 @@ def _format_reset_caption(state: Dict[str, Any]) -> str:
     return " | ".join(pieces)
 
 
-def _render_overview_cards(overview: Dict[str, Any], *, archives_count: int) -> None:
+def _render_overview_cards(overview: dict[str, Any], *, archives_count: int) -> None:
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     with col1:
         st.metric("Sessions", int(overview.get("sessions", 0) or 0))
@@ -870,17 +915,14 @@ def _render_overview_cards(overview: Dict[str, Any], *, archives_count: int) -> 
         repair_rate = _safe_float(overview.get("avg_trace_repair_rate"))
         summary = "n/a"
         if fallback_rate is not None or repair_rate is not None:
-            summary = (
-                f"fb {float(fallback_rate or 0.0) * 100:.1f}% | "
-                f"rep {float(repair_rate or 0.0) * 100:.1f}%"
-            )
+            summary = f"fb {float(fallback_rate or 0.0) * 100:.1f}% | rep {float(repair_rate or 0.0) * 100:.1f}%"
         st.metric("Flux moyen", summary)
 
 
 def _render_table_section(
     *,
     title: str,
-    rows: List[Dict[str, Any]],
+    rows: list[dict[str, Any]],
     csv_name: str,
     empty_message: str,
 ) -> None:
@@ -894,7 +936,7 @@ def _render_table_section(
         frame = _reorder_builder_model_frame(frame)
     elif title == "Sessions Builder brutes":
         frame = _reorder_session_frame(frame)
-    st.dataframe(frame, use_container_width=True, hide_index=True)
+    st.dataframe(frame, width="stretch", hide_index=True)
     st.download_button(
         f"⬇️ Export CSV - {title}",
         data=_rows_to_csv(rows if title == "Sessions Builder brutes" else frame.to_dict(orient="records")),
@@ -904,12 +946,11 @@ def _render_table_section(
     )
 
 
-def _render_session_runtime_error_panel(rows: List[Dict[str, Any]]) -> None:
+def _render_session_runtime_error_panel(rows: list[dict[str, Any]]) -> None:
     persisted_errors = [
         row
         for row in list(rows or [])
-        if str(row.get("last_runtime_error") or "").strip()
-        or str(row.get("last_runtime_traceback_tail") or "").strip()
+        if str(row.get("last_runtime_error") or "").strip() or str(row.get("last_runtime_traceback_tail") or "").strip()
     ]
     st.markdown("#### Dernier runtime error persisté")
     if not persisted_errors:
@@ -933,7 +974,7 @@ def _render_session_runtime_error_panel(rows: List[Dict[str, Any]]) -> None:
     )
     st.caption(
         "Erreur relue depuis l'historique autonome persistant, avec fallback sur "
-        "`session_summary.json` de la session correspondante."
+        "`session_summary.json` de la session correspondante.",
     )
     if selected_row.get("last_runtime_error"):
         st.code(str(selected_row.get("last_runtime_error")), language="text")
@@ -941,7 +982,7 @@ def _render_session_runtime_error_panel(rows: List[Dict[str, Any]]) -> None:
         st.code(str(selected_row.get("last_runtime_traceback_tail")), language="text")
 
 
-def _render_archives_section(state: Dict[str, Any]) -> None:
+def _render_archives_section(state: dict[str, Any]) -> None:
     archives = list(state.get("archives", []) or [])
     st.markdown("### Archives de statistiques")
     if not archives:
@@ -949,7 +990,7 @@ def _render_archives_section(state: Dict[str, Any]) -> None:
         return
 
     archive_frame = pd.DataFrame(archives)
-    st.dataframe(archive_frame, use_container_width=True, hide_index=True)
+    st.dataframe(archive_frame, width="stretch", hide_index=True)
 
     selected_archive = st.selectbox(
         "Archive à inspecter",
@@ -957,8 +998,7 @@ def _render_archives_section(state: Dict[str, Any]) -> None:
         format_func=lambda item: (
             f"{item.get('created_at', '')} | "
             f"{item.get('sessions', 0)} sessions | "
-            f"{item.get('id', '')}"
-            + (f" | {item.get('note')}" if item.get("note") else "")
+            f"{item.get('id', '')}" + (f" | {item.get('note')}" if item.get("note") else "")
         ),
         key="builder_model_stats_archive_select",
     )
@@ -968,8 +1008,7 @@ def _render_archives_section(state: Dict[str, Any]) -> None:
         return
 
     st.caption(
-        "Archive sélectionnée : "
-        + (str(selected_archive.get("path") or "").strip() or "(chemin indisponible)")
+        "Archive sélectionnée : " + (str(selected_archive.get("path") or "").strip() or "(chemin indisponible)"),
     )
 
     json_payload = json.dumps(archive_payload, indent=2, ensure_ascii=False)
@@ -995,13 +1034,26 @@ def _render_archives_section(state: Dict[str, Any]) -> None:
 
     if archive_builder_rows:
         st.markdown("#### Builder models archivés")
-        st.dataframe(archive_builder_frame, use_container_width=True, hide_index=True)
+        st.dataframe(archive_builder_frame, width="stretch", hide_index=True)
+
+
+def _consume_pending_archive_notice() -> dict[str, Any] | None:
+    pending_notice = st.session_state.pop(
+        "builder_model_stats_pending_archive_notice",
+        None,
+    )
+    clear_note = bool(
+        st.session_state.pop("builder_model_stats_clear_archive_note", False),
+    )
+    if clear_note:
+        st.session_state["builder_model_stats_archive_note"] = ""
+    return pending_notice if isinstance(pending_notice, dict) else None
 
 
 def render_model_stats_page() -> None:
     st.title("📊 Statistiques des modèles")
     st.caption(
-        "Périmètre strictement limité au mode Builder autonome et à son historique persistant."
+        "Périmètre strictement limité au mode Builder autonome et à son historique persistant.",
     )
 
     history = load_autonomous_history()
@@ -1010,7 +1062,7 @@ def render_model_stats_page() -> None:
 
     st.info(
         f"Source actuelle : `{_AUTONOMOUS_SUPERVISOR_STATE_FILE}`."
-        " Aucune donnée du mode optimisation LLM n'est agrégée ici."
+        " Aucune donnée du mode optimisation LLM n'est agrégée ici.",
     )
     st.caption(_format_reset_caption(state))
 
@@ -1018,9 +1070,7 @@ def render_model_stats_page() -> None:
         "Périmètre affiché",
         options=("active", "full"),
         format_func=lambda value: (
-            "Fenêtre active (depuis le dernier reset)"
-            if value == "active"
-            else "Historique Builder persistant complet"
+            "Fenêtre active (depuis le dernier reset)" if value == "active" else "Historique Builder persistant complet"
         ),
         horizontal=True,
         key="builder_model_stats_scope",
@@ -1032,6 +1082,13 @@ def render_model_stats_page() -> None:
 
     st.markdown("---")
     st.markdown("## Gestion de la fenêtre active")
+    pending_archive_notice = _consume_pending_archive_notice()
+    if pending_archive_notice:
+        st.success(
+            "Archive créée : "
+            f"{pending_archive_notice.get('id')} "
+            f"({pending_archive_notice.get('sessions', 0)} sessions).",
+        )
     note = st.text_input(
         "Note d'archive / contexte de reset",
         value="",
@@ -1039,7 +1096,7 @@ def render_model_stats_page() -> None:
         help="Exemple : refonte scoring, nouveau prompt Builder, changement du contrat de validation.",
     )
     st.caption(
-        "Le reset archive la fenêtre active actuelle, puis redémarre les nouvelles stats Builder à partir du dernier numéro de session observé."
+        "Le reset archive la fenêtre active actuelle, puis redémarre les nouvelles stats Builder à partir du dernier numéro de session observé.",
     )
     if st.button(
         "🗃️ Archiver puis reset des statistiques Builder",
@@ -1055,12 +1112,11 @@ def render_model_stats_page() -> None:
         if archive_meta is None:
             st.info("Aucune session Builder active à archiver pour le moment.")
         else:
-            st.session_state["builder_model_stats_archive_note"] = ""
-            st.session_state["builder_model_stats_last_archive_id"] = archive_meta.get("id", "")
-            st.success(
-                "Archive créée : "
-                f"{archive_meta.get('id')} ({archive_meta.get('sessions', 0)} sessions)."
-            )
+            st.session_state["builder_model_stats_pending_archive_notice"] = {
+                "id": archive_meta.get("id", ""),
+                "sessions": int(archive_meta.get("sessions", 0) or 0),
+            }
+            st.session_state["builder_model_stats_clear_archive_note"] = True
             st.rerun()
 
     tabs = st.tabs(["Builder models", "Sessions", "Archives"])

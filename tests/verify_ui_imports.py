@@ -1,5 +1,4 @@
-"""
-Script de vérification des imports pour l'UI Streamlit.
+"""Script de vérification des imports pour l'UI Streamlit.
 Vérifie que tous les imports critiques fonctionnent.
 """
 

@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.metrics_tier_s
+"""Module-ID: backtest.metrics_tier_s
 
 Purpose: Calcul des métriques avancées (Sortino, Calmar, SQN, Recovery Factor, Ulcer Index, etc.) pour analyse institutionnelle.
 
@@ -21,7 +20,7 @@ Skip-if: Vous n'utilisez que les métriques standards (Sharpe, Sortino basique).
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -29,6 +28,7 @@ import pandas as pd
 # Import optionnel de tabulate pour tableaux formatés
 try:
     from tabulate import tabulate
+
     TABULATE_AVAILABLE = True
 except ImportError:
     TABULATE_AVAILABLE = False
@@ -68,9 +68,9 @@ class TierSMetrics:
 
     # Qualité
     tier_s_score: float  # Score composite 0-100
-    tier_s_grade: str    # A, B, C, D, F
+    tier_s_grade: str  # A, B, C, D, F
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "sortino_ratio": self.sortino_ratio,
@@ -92,10 +92,9 @@ def sortino_ratio(
     returns: pd.Series,
     risk_free: float = 0.0,
     periods_per_year: int = 365 * 24,
-    target_return: float = 0.0
+    target_return: float = 0.0,
 ) -> float:
-    """
-    Ratio de Sortino amélioré.
+    """Ratio de Sortino amélioré.
 
     Ne pénalise que la volatilité baissière (downside deviation).
 
@@ -109,6 +108,7 @@ def sortino_ratio(
 
     Returns:
         Ratio de Sortino annualisé
+
     """
     if returns.empty or len(returns) < 2:
         return 0.0
@@ -126,12 +126,12 @@ def sortino_ratio(
     # Downside deviation - version Numba optimisée (10× speedup)
     downside_deviation = _sortino_downside_deviation_numba(
         returns_clean.values,
-        target_period
+        target_period,
     )
 
     if downside_deviation <= 1e-10:
         # Pas de volatilité baissière significative
-        return float('inf') if mean_excess > 0 else 0.0
+        return float("inf") if mean_excess > 0 else 0.0
 
     # Annualisation
     sortino = (mean_excess * np.sqrt(periods_per_year)) / downside_deviation
@@ -142,10 +142,9 @@ def sortino_ratio(
 def calmar_ratio(
     returns: pd.Series,
     equity: pd.Series,
-    periods_per_year: int = 365 * 24
+    periods_per_year: int = 365 * 24,
 ) -> float:
-    """
-    Ratio de Calmar: CAGR / Max Drawdown absolu.
+    """Ratio de Calmar: CAGR / Max Drawdown absolu.
 
     Mesure le rendement par unité de drawdown maximum.
     Bon indicateur de la relation risque/rendement sur le long terme.
@@ -160,6 +159,7 @@ def calmar_ratio(
 
     Note:
         Version optimisée Numba pour calcul running_max (100× speedup)
+
     """
     if returns.empty or equity.empty:
         return 0.0
@@ -185,7 +185,7 @@ def calmar_ratio(
     max_dd = abs(np.min(drawdown))
 
     if max_dd <= 1e-10:
-        return float('inf') if cagr > 0 else 0.0
+        return float("inf") if cagr > 0 else 0.0
 
     calmar = cagr / max_dd
 
@@ -193,8 +193,7 @@ def calmar_ratio(
 
 
 def sqn(trades_pnl: pd.Series, min_trades: int = 30) -> float:
-    """
-    System Quality Number (SQN) de Van Tharp.
+    """System Quality Number (SQN) de Van Tharp.
 
     Mesure la qualité d'un système de trading.
     Formula: √N × (Mean R / StdDev R)
@@ -214,6 +213,7 @@ def sqn(trades_pnl: pd.Series, min_trades: int = 30) -> float:
 
     Returns:
         SQN (plafonné à 10 pour éviter les outliers)
+
     """
     if trades_pnl.empty or len(trades_pnl) < min_trades:
         return 0.0
@@ -234,10 +234,9 @@ def sqn(trades_pnl: pd.Series, min_trades: int = 30) -> float:
 
 def recovery_factor(
     equity: pd.Series,
-    initial_capital: float
+    initial_capital: float,
 ) -> float:
-    """
-    Recovery Factor: Net Profit / Max Drawdown absolu.
+    """Recovery Factor: Net Profit / Max Drawdown absolu.
 
     Mesure combien de fois le système a récupéré son pire drawdown.
 
@@ -250,6 +249,7 @@ def recovery_factor(
 
     Note:
         Version optimisée Numba (100× plus rapide)
+
     """
     if equity.empty:
         return 0.0
@@ -259,8 +259,7 @@ def recovery_factor(
 
 
 def ulcer_index(equity: pd.Series) -> float:
-    """
-    Ulcer Index: Mesure du stress lié aux drawdowns.
+    """Ulcer Index: Mesure du stress lié aux drawdowns.
 
     Plus sensible aux drawdowns prolongés que le max drawdown simple.
     Formula: √(Σ D² / N) où D = drawdown en %
@@ -273,6 +272,7 @@ def ulcer_index(equity: pd.Series) -> float:
 
     Note:
         Version optimisée Numba (100× plus rapide)
+
     """
     if equity.empty or len(equity) < 2:
         return 0.0
@@ -285,10 +285,9 @@ def martin_ratio(
     returns: pd.Series,
     equity: pd.Series,
     risk_free: float = 0.0,
-    periods_per_year: int = 365 * 24
+    periods_per_year: int = 365 * 24,
 ) -> float:
-    """
-    Martin Ratio (UPI - Ulcer Performance Index).
+    """Martin Ratio (UPI - Ulcer Performance Index).
 
     Ratio rendement/ulcer index. Alternative au Sharpe utilisant
     l'Ulcer Index comme mesure de risque.
@@ -303,6 +302,7 @@ def martin_ratio(
 
     Returns:
         Martin Ratio (plus haut = mieux)
+
     """
     if returns.empty or equity.empty:
         return 0.0
@@ -322,14 +322,13 @@ def martin_ratio(
     ui = ulcer_index(equity)
 
     if ui <= 1e-10:
-        return float('inf') if excess_return > 0 else 0.0
+        return float("inf") if excess_return > 0 else 0.0
 
     return float(np.clip(excess_return / ui, -100, 100))
 
 
 def gain_pain_ratio(trades_pnl: pd.Series) -> float:
-    """
-    Gain/Pain Ratio: Somme des gains / Somme des pertes.
+    """Gain/Pain Ratio: Somme des gains / Somme des pertes.
 
     Simple mais efficace pour évaluer l'asymétrie gains/pertes.
 
@@ -338,6 +337,7 @@ def gain_pain_ratio(trades_pnl: pd.Series) -> float:
 
     Returns:
         Gain/Pain ratio (> 1 = profitable)
+
     """
     if trades_pnl.empty:
         return 0.0
@@ -346,17 +346,16 @@ def gain_pain_ratio(trades_pnl: pd.Series) -> float:
     losses = abs(trades_pnl[trades_pnl < 0].sum())
 
     if losses <= 1e-10:
-        return float('inf') if gains > 0 else 1.0
+        return float("inf") if gains > 0 else 1.0
 
     return float(gains / losses)
 
 
 def r_multiple_stats(
     trades_pnl: pd.Series,
-    initial_risk_per_trade: float
-) -> Tuple[float, float]:
-    """
-    Statistiques R-Multiple.
+    initial_risk_per_trade: float,
+) -> tuple[float, float]:
+    """Statistiques R-Multiple.
 
     R = Profit / Risque Initial
     Permet de normaliser les trades par rapport au risque.
@@ -367,6 +366,7 @@ def r_multiple_stats(
 
     Returns:
         Tuple (avg_r_multiple, expectancy_r)
+
     """
     if trades_pnl.empty or initial_risk_per_trade <= 0:
         return 0.0, 0.0
@@ -393,10 +393,9 @@ def outlier_adjusted_sharpe(
     returns: pd.Series,
     risk_free: float = 0.0,
     periods_per_year: int = 365 * 24,
-    percentile_cutoff: float = 2.5
+    percentile_cutoff: float = 2.5,
 ) -> float:
-    """
-    Sharpe Ratio ajusté pour les outliers.
+    """Sharpe Ratio ajusté pour les outliers.
 
     Exclut les rendements extrêmes qui peuvent fausser le ratio.
 
@@ -408,6 +407,7 @@ def outlier_adjusted_sharpe(
 
     Returns:
         Sharpe ratio ajusté
+
     """
     if returns.empty or len(returns) < 10:
         return 0.0
@@ -437,9 +437,8 @@ def outlier_adjusted_sharpe(
     return float(np.clip(sharpe, -100, 100))
 
 
-def calculate_tier_s_score(metrics: Dict[str, float]) -> Tuple[float, str]:
-    """
-    Calcule un score composite Tier S (0-100) et une note (A-F).
+def calculate_tier_s_score(metrics: dict[str, float]) -> tuple[float, str]:
+    """Calcule un score composite Tier S (0-100) et une note (A-F).
 
     Pondération:
     - Sortino: 20%
@@ -454,7 +453,9 @@ def calculate_tier_s_score(metrics: Dict[str, float]) -> Tuple[float, str]:
 
     Returns:
         Tuple (score 0-100, grade A-F)
+
     """
+
     # Normalisation des métriques (0-100 chacune)
     def normalize(value: float, bad: float, good: float) -> float:
         if good == bad:
@@ -509,12 +510,11 @@ def calculate_tier_s_metrics(
     equity: pd.Series,
     trades_pnl: pd.Series,
     initial_capital: float = 10000.0,
-    initial_risk_per_trade: Optional[float] = None,
+    initial_risk_per_trade: float | None = None,
     periods_per_year: int = 365 * 24,
-    risk_free: float = 0.0
+    risk_free: float = 0.0,
 ) -> TierSMetrics:
-    """
-    Calcule toutes les métriques Tier S.
+    """Calcule toutes les métriques Tier S.
 
     Args:
         returns: Série de rendements
@@ -527,6 +527,7 @@ def calculate_tier_s_metrics(
 
     Returns:
         TierSMetrics avec toutes les métriques
+
     """
     # Calcul individuel de chaque métrique
     sortino = sortino_ratio(returns, risk_free, periods_per_year)
@@ -574,8 +575,7 @@ def calculate_tier_s_metrics(
 
 
 def format_tier_s_report(metrics: TierSMetrics, use_table: bool = True) -> str:
-    """
-    Formate un rapport des métriques Tier S.
+    """Formate un rapport des métriques Tier S.
 
     Args:
         metrics: Métriques Tier S à formater
@@ -583,13 +583,14 @@ def format_tier_s_report(metrics: TierSMetrics, use_table: bool = True) -> str:
 
     Returns:
         Rapport formaté en texte
+
     """
     grade_colors = {"A": "🟢", "B": "🔵", "C": "🟡", "D": "🟠", "F": "🔴"}
     grade_emoji = grade_colors.get(metrics.tier_s_grade, "⚪")
 
     if TABULATE_AVAILABLE and use_table:
         # Version avec tabulate (format tableau élégant)
-        header = f"\n{'='*70}\n  MÉTRIQUES TIER S (INSTITUTIONNEL)\n{'='*70}"
+        header = f"\n{'=' * 70}\n  MÉTRIQUES TIER S (INSTITUTIONNEL)\n{'=' * 70}"
         grade_line = f"\n  GRADE: {grade_emoji} {metrics.tier_s_grade}  |  SCORE: {metrics.tier_s_score:.1f}/100\n"
 
         # Tableau des ratios de risque
@@ -619,20 +620,19 @@ def format_tier_s_report(metrics: TierSMetrics, use_table: bool = True) -> str:
         ]
 
         report = header + grade_line
-        report += f"\n{'─'*70}\n  RATIOS DE RISQUE AJUSTÉ\n{'─'*70}\n"
+        report += f"\n{'─' * 70}\n  RATIOS DE RISQUE AJUSTÉ\n{'─' * 70}\n"
         report += tabulate(risk_ratios, tablefmt="simple", colalign=("left", "right"))
-        report += f"\n\n{'─'*70}\n  RÉCUPÉRATION & STRESS\n{'─'*70}\n"
+        report += f"\n\n{'─' * 70}\n  RÉCUPÉRATION & STRESS\n{'─' * 70}\n"
         report += tabulate(recovery, tablefmt="simple", colalign=("left", "right"))
-        report += f"\n\n{'─'*70}\n  R-MULTIPLE\n{'─'*70}\n"
+        report += f"\n\n{'─' * 70}\n  R-MULTIPLE\n{'─' * 70}\n"
         report += tabulate(r_multiple, tablefmt="simple", colalign=("left", "right"))
-        report += f"\n\n{'─'*70}\n  AJUSTEMENTS\n{'─'*70}\n"
+        report += f"\n\n{'─' * 70}\n  AJUSTEMENTS\n{'─' * 70}\n"
         report += tabulate(adjustments, tablefmt="simple", colalign=("left", "right"))
-        report += f"\n{'='*70}\n"
+        report += f"\n{'=' * 70}\n"
 
         return report
-    else:
-        # Fallback: version ASCII originale
-        report = f"""
+    # Fallback: version ASCII originale
+    report = f"""
 ╔══════════════════════════════════════════════════════════╗
 ║          MÉTRIQUES TIER S (INSTITUTIONNEL)               ║
 ╠══════════════════════════════════════════════════════════╣
@@ -657,20 +657,20 @@ def format_tier_s_report(metrics: TierSMetrics, use_table: bool = True) -> str:
 ║   Outlier-Adj Sharpe:  {metrics.outlier_adjusted_sharpe:>10.3f}                     ║
 ╚══════════════════════════════════════════════════════════╝
 """
-        return report
+    return report
 
 
 __all__ = [
     "TierSMetrics",
     "calculate_tier_s_metrics",
-    "format_tier_s_report",
-    "sortino_ratio",
     "calmar_ratio",
-    "sqn",
-    "recovery_factor",
-    "ulcer_index",
-    "martin_ratio",
+    "format_tier_s_report",
     "gain_pain_ratio",
-    "r_multiple_stats",
+    "martin_ratio",
     "outlier_adjusted_sharpe",
+    "r_multiple_stats",
+    "recovery_factor",
+    "sortino_ratio",
+    "sqn",
+    "ulcer_index",
 ]

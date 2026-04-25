@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.bollinger
+"""Module-ID: indicators.bollinger
 
 Purpose: Indicateur Bandes de Bollinger (volatilité + centre) vectorisé.
 
@@ -21,7 +20,6 @@ Skip-if: Vous utilisez juste calculate_indicator('bollinger').
 """
 
 from dataclasses import dataclass
-from typing import Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -42,13 +40,12 @@ class BollingerSettings:
 
 
 def bollinger_bands(
-    close: Union[pd.Series, np.ndarray],
+    close: pd.Series | np.ndarray,
     period: int = 20,
     std_dev: float = 2.0,
-    settings: BollingerSettings = None
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Calcule les Bandes de Bollinger.
+    settings: BollingerSettings = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Calcule les Bandes de Bollinger.
 
     Args:
         close: Prix de clôture
@@ -59,6 +56,7 @@ def bollinger_bands(
     Returns:
         Tuple (upper_band, middle_band, lower_band) - np.ndarray de même longueur que close
         Les premières (period-1) valeurs seront NaN.
+
     """
     # Utiliser settings si fourni
     if settings is not None:
@@ -92,12 +90,11 @@ def bollinger_bands(
 
 
 def bollinger_bandwidth(
-    close: Union[pd.Series, np.ndarray],
+    close: pd.Series | np.ndarray,
     period: int = 20,
-    std_dev: float = 2.0
+    std_dev: float = 2.0,
 ) -> np.ndarray:
-    """
-    Calcule le Bollinger Bandwidth (largeur relative des bandes).
+    """Calcule le Bollinger Bandwidth (largeur relative des bandes).
 
     Formule: (Upper - Lower) / Middle * 100
 
@@ -109,19 +106,18 @@ def bollinger_bandwidth(
     bandwidth = np.where(
         middle != 0,
         (upper - lower) / middle * 100,
-        0.0
+        0.0,
     )
 
     return bandwidth
 
 
 def bollinger_percent_b(
-    close: Union[pd.Series, np.ndarray],
+    close: pd.Series | np.ndarray,
     period: int = 20,
-    std_dev: float = 2.0
+    std_dev: float = 2.0,
 ) -> np.ndarray:
-    """
-    Calcule le %B (position du prix dans les bandes).
+    """Calcule le %B (position du prix dans les bandes).
 
     Formule: (Price - Lower) / (Upper - Lower)
 
@@ -141,10 +137,10 @@ def bollinger_percent_b(
     percent_b = np.where(
         band_width != 0,
         (close - lower) / band_width,
-        0.5
+        0.5,
     )
 
     return percent_b
 
 
-__all__ = ["bollinger_bands", "BollingerSettings", "bollinger_bandwidth", "bollinger_percent_b"]
+__all__ = ["BollingerSettings", "bollinger_bands", "bollinger_bandwidth", "bollinger_percent_b"]

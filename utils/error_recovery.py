@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.error_recovery
+"""Module-ID: utils.error_recovery
 
 Purpose: Error Recovery - retry avec backoff exponentiel et classification erreurs.
 
@@ -26,30 +25,33 @@ import functools
 import logging
 import time
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class ErrorCategory(Enum):
     """Catégorie d'erreur pour déterminer la stratégie de récupération."""
-    TRANSIENT = "transient"      # Erreur temporaire, retry possible
-    PERMANENT = "permanent"      # Erreur permanente, pas de retry
-    RESOURCE = "resource"        # Erreur ressource (mémoire, disk)
-    NETWORK = "network"          # Erreur réseau
-    VALIDATION = "validation"    # Erreur de validation
-    UNKNOWN = "unknown"          # Erreur inconnue
+
+    TRANSIENT = "transient"  # Erreur temporaire, retry possible
+    PERMANENT = "permanent"  # Erreur permanente, pas de retry
+    RESOURCE = "resource"  # Erreur ressource (mémoire, disk)
+    NETWORK = "network"  # Erreur réseau
+    VALIDATION = "validation"  # Erreur de validation
+    UNKNOWN = "unknown"  # Erreur inconnue
 
 
 @dataclass
 class ErrorInfo:
     """Informations sur une erreur capturée."""
+
     exception: Exception
     category: ErrorCategory
     timestamp: float
-    context: Dict[str, Any] = field(default_factory=dict)
+    context: dict[str, Any] = field(default_factory=dict)
     traceback_str: str = ""
     attempt: int = 1
 
@@ -61,6 +63,7 @@ class ErrorInfo:
 @dataclass
 class RetryConfig:
     """Configuration du retry."""
+
     max_attempts: int = 3
     initial_delay: float = 1.0
     max_delay: float = 60.0
@@ -68,14 +71,14 @@ class RetryConfig:
     jitter: bool = True
 
     # Erreurs à retrier
-    retry_exceptions: Tuple[Type[Exception], ...] = (
+    retry_exceptions: tuple[type[Exception], ...] = (
         ConnectionError,
         TimeoutError,
         OSError,
     )
 
     # Erreurs à ne jamais retrier
-    no_retry_exceptions: Tuple[Type[Exception], ...] = (
+    no_retry_exceptions: tuple[type[Exception], ...] = (
         ValueError,
         TypeError,
         KeyError,
@@ -87,7 +90,7 @@ class ErrorClassifier:
     """Classifie les erreurs par catégorie."""
 
     # Mapping par défaut type d'exception -> catégorie
-    DEFAULT_MAPPING: Dict[Type[Exception], ErrorCategory] = {
+    DEFAULT_MAPPING: dict[type[Exception], ErrorCategory] = {
         ConnectionError: ErrorCategory.NETWORK,
         TimeoutError: ErrorCategory.NETWORK,
         MemoryError: ErrorCategory.RESOURCE,
@@ -98,24 +101,24 @@ class ErrorClassifier:
         AttributeError: ErrorCategory.PERMANENT,
     }
 
-    def __init__(self, custom_mapping: Optional[Dict[Type[Exception], ErrorCategory]] = None):
-        """
-        Args:
-            custom_mapping: Mapping personnalisé type -> catégorie
+    def __init__(self, custom_mapping: dict[type[Exception], ErrorCategory] | None = None):
+        """Args:
+        custom_mapping: Mapping personnalisé type -> catégorie
+
         """
         self.mapping = {**self.DEFAULT_MAPPING}
         if custom_mapping:
             self.mapping.update(custom_mapping)
 
     def classify(self, exc: Exception) -> ErrorCategory:
-        """
-        Classifie une exception.
+        """Classifie une exception.
 
         Args:
             exc: Exception à classifier
 
         Returns:
             Catégorie de l'erreur
+
         """
         # Vérifier le type exact
         exc_type = type(exc)
@@ -148,8 +151,7 @@ class ErrorClassifier:
 
 
 class RetryHandler:
-    """
-    Gestionnaire de retry avec exponential backoff.
+    """Gestionnaire de retry avec exponential backoff.
 
     Example:
         >>> handler = RetryHandler(max_attempts=3)
@@ -160,28 +162,29 @@ class RetryHandler:
         >>>
         >>> # Ou manuellement:
         >>> result = handler.execute(unstable_function, arg1, arg2)
+
     """
 
     def __init__(
         self,
-        config: Optional[RetryConfig] = None,
-        classifier: Optional[ErrorClassifier] = None,
-        on_retry: Optional[Callable[[ErrorInfo], None]] = None,
-        on_failure: Optional[Callable[[ErrorInfo], None]] = None,
+        config: RetryConfig | None = None,
+        classifier: ErrorClassifier | None = None,
+        on_retry: Callable[[ErrorInfo], None] | None = None,
+        on_failure: Callable[[ErrorInfo], None] | None = None,
     ):
-        """
-        Args:
-            config: Configuration du retry
-            classifier: Classifier d'erreurs
-            on_retry: Callback appelé avant chaque retry
-            on_failure: Callback appelé après échec final
+        """Args:
+        config: Configuration du retry
+        classifier: Classifier d'erreurs
+        on_retry: Callback appelé avant chaque retry
+        on_failure: Callback appelé après échec final
+
         """
         self.config = config or RetryConfig()
         self.classifier = classifier or ErrorClassifier()
         self.on_retry = on_retry
         self.on_failure = on_failure
 
-        self._errors: List[ErrorInfo] = []
+        self._errors: list[ErrorInfo] = []
 
     def _calculate_delay(self, attempt: int) -> float:
         """Calcule le délai avant le prochain retry."""
@@ -190,7 +193,8 @@ class RetryHandler:
 
         if self.config.jitter:
             import random
-            delay *= (0.5 + random.random())
+
+            delay *= 0.5 + random.random()
 
         return delay
 
@@ -215,11 +219,10 @@ class RetryHandler:
         self,
         func: Callable,
         *args,
-        context: Optional[Dict[str, Any]] = None,
-        **kwargs
+        context: dict[str, Any] | None = None,
+        **kwargs,
     ) -> Any:
-        """
-        Exécute une fonction avec retry.
+        """Exécute une fonction avec retry.
 
         Args:
             func: Fonction à exécuter
@@ -232,10 +235,11 @@ class RetryHandler:
 
         Raises:
             Exception: Dernière exception si tous les retries échouent
+
         """
         context = context or {}
         attempt = 0
-        last_error: Optional[ErrorInfo] = None
+        last_error: ErrorInfo | None = None
 
         while attempt < self.config.max_attempts:
             attempt += 1
@@ -255,7 +259,7 @@ class RetryHandler:
                 last_error = error_info
 
                 logger.warning(
-                    f"Attempt {attempt}/{self.config.max_attempts} failed: {exc}"
+                    f"Attempt {attempt}/{self.config.max_attempts} failed: {exc}",
                 )
 
                 if not self._should_retry(exc, attempt):
@@ -281,20 +285,22 @@ class RetryHandler:
         raise last_error.exception if last_error else RuntimeError("No attempts made")
 
     def retry(self, func: Callable) -> Callable:
-        """
-        Décorateur pour ajouter retry à une fonction.
+        """Décorateur pour ajouter retry à une fonction.
 
         Example:
             >>> @retry_handler.retry
             >>> def my_function():
             >>>     ...
+
         """
+
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             return self.execute(func, *args, **kwargs)
+
         return wrapper
 
-    def get_errors(self) -> List[ErrorInfo]:
+    def get_errors(self) -> list[ErrorInfo]:
         """Retourne l'historique des erreurs."""
         return list(self._errors)
 
@@ -304,15 +310,14 @@ class RetryHandler:
 
 
 class RecoveryStrategy:
-    """
-    Stratégie de récupération pour erreurs spécifiques.
+    """Stratégie de récupération pour erreurs spécifiques.
 
     Définit des actions de récupération personnalisées.
     """
 
     def __init__(self):
         """Initialise les stratégies."""
-        self._strategies: Dict[ErrorCategory, Callable[[ErrorInfo], bool]] = {}
+        self._strategies: dict[ErrorCategory, Callable[[ErrorInfo], bool]] = {}
         self._setup_defaults()
 
     def _setup_defaults(self):
@@ -321,6 +326,7 @@ class RecoveryStrategy:
         def handle_resource(error: ErrorInfo) -> bool:
             """Gère les erreurs de ressources."""
             import gc
+
             gc.collect()
 
             logger.info("Memory cleared for recovery")
@@ -344,26 +350,26 @@ class RecoveryStrategy:
     def register(
         self,
         category: ErrorCategory,
-        handler: Callable[[ErrorInfo], bool]
+        handler: Callable[[ErrorInfo], bool],
     ):
-        """
-        Enregistre une stratégie de récupération.
+        """Enregistre une stratégie de récupération.
 
         Args:
             category: Catégorie d'erreur
             handler: Fonction de récupération (retourne True si récupéré)
+
         """
         self._strategies[category] = handler
 
     def recover(self, error: ErrorInfo) -> bool:
-        """
-        Tente de récupérer d'une erreur.
+        """Tente de récupérer d'une erreur.
 
         Args:
             error: Information sur l'erreur
 
         Returns:
             True si récupération réussie
+
         """
         handler = self._strategies.get(error.category)
 
@@ -379,14 +385,14 @@ class RecoveryStrategy:
 
 # Décorateurs utilitaires
 
+
 def with_retry(
     max_attempts: int = 3,
     delay: float = 1.0,
-    exceptions: Tuple[Type[Exception], ...] = (Exception,),
-    on_retry: Optional[Callable] = None,
+    exceptions: tuple[type[Exception], ...] = (Exception,),
+    on_retry: Callable | None = None,
 ):
-    """
-    Décorateur pour ajouter retry à une fonction.
+    """Décorateur pour ajouter retry à une fonction.
 
     Args:
         max_attempts: Nombre max de tentatives
@@ -398,6 +404,7 @@ def with_retry(
         >>> @with_retry(max_attempts=3, delay=1.0)
         >>> def unstable_api_call():
         >>>     ...
+
     """
     config = RetryConfig(
         max_attempts=max_attempts,
@@ -422,6 +429,7 @@ def retry_on_memory_error(func: Callable) -> Callable:
 
     def on_retry(error: ErrorInfo):
         import gc
+
         gc.collect()
 
     handler = RetryHandler(config=config, on_retry=on_retry)
@@ -430,11 +438,11 @@ def retry_on_memory_error(func: Callable) -> Callable:
 
 __all__ = [
     "ErrorCategory",
-    "ErrorInfo",
-    "RetryConfig",
     "ErrorClassifier",
-    "RetryHandler",
+    "ErrorInfo",
     "RecoveryStrategy",
-    "with_retry",
+    "RetryConfig",
+    "RetryHandler",
     "retry_on_memory_error",
+    "with_retry",
 ]

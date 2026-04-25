@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.builder_state
+"""Module-ID: agents.builder_state
 
 Purpose: Shared Builder session/iteration state types.
 """
@@ -9,12 +8,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from agents.builder_feedback import (
     IterationPhaseFeedback,
     coerce_iteration_phase_feedback,
 )
+
 
 @dataclass
 class BuilderIteration:
@@ -23,25 +23,25 @@ class BuilderIteration:
     iteration: int
     hypothesis: str = ""
     code: str = ""
-    backtest_result: Optional[Any] = None
-    error: Optional[str] = None
+    backtest_result: Any | None = None
+    error: str | None = None
     analysis: str = ""
     decision: str = ""  # "continue", "accept", "stop"
     change_type: str = ""  # "logic", "params", "both"
     diagnostic_category: str = ""  # computed by compute_diagnostic()
-    diagnostic_detail: Dict[str, Any] = field(default_factory=dict)
+    diagnostic_detail: dict[str, Any] = field(default_factory=dict)
     phase_feedback: IterationPhaseFeedback = field(
-        default_factory=IterationPhaseFeedback
+        default_factory=IterationPhaseFeedback,
     )
     timestamp: datetime = field(default_factory=datetime.now)
     is_fallback: bool = False  # True if deterministic fallback was used
-    used_indicators: List[str] = field(default_factory=list)
+    used_indicators: list[str] = field(default_factory=list)
     perf_score: float = 0.0  # median generate_signals time in ms (micro-benchmark)
     code_quality_score: float = 1.0  # 0–1 composite quality (speed + repair count)
 
     def __post_init__(self) -> None:
         self.phase_feedback = coerce_iteration_phase_feedback(
-            self.phase_feedback
+            self.phase_feedback,
         )
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -60,7 +60,7 @@ class IterationContext:
 
     __slots__ = ("_it",)
 
-    def __init__(self, iteration: Optional[BuilderIteration] = None) -> None:
+    def __init__(self, iteration: BuilderIteration | None = None) -> None:
         self._it = iteration
 
     # --- Existence -----------------------------------------------------------
@@ -70,7 +70,7 @@ class IterationContext:
         return self._it is not None
 
     @property
-    def raw(self) -> Optional[BuilderIteration]:
+    def raw(self) -> BuilderIteration | None:
         """Accès direct (pour les rares cas où l'objet brut est nécessaire)."""
         return self._it
 
@@ -96,7 +96,7 @@ class IterationContext:
         return (self._it.diagnostic_category or "").strip().lower() if self._it else ""
 
     @property
-    def diagnostic_detail(self) -> Dict[str, Any]:
+    def diagnostic_detail(self) -> dict[str, Any]:
         if self._it and self._it.diagnostic_detail:
             return dict(self._it.diagnostic_detail)
         return {}
@@ -106,15 +106,15 @@ class IterationContext:
         return str(self.diagnostic_detail.get("severity", "")).strip().lower()
 
     @property
-    def diagnostic_actions(self) -> List[str]:
+    def diagnostic_actions(self) -> list[str]:
         return self.diagnostic_detail.get("actions", [])
 
     @property
-    def diagnostic_donts(self) -> List[str]:
+    def diagnostic_donts(self) -> list[str]:
         return self.diagnostic_detail.get("donts", [])
 
     @property
-    def used_indicators(self) -> List[str]:
+    def used_indicators(self) -> list[str]:
         if self._it and self._it.used_indicators:
             return list(self._it.used_indicators)
         return []
@@ -129,7 +129,7 @@ class IterationContext:
         return self._it is not None and self._it.backtest_result is not None
 
     @property
-    def metrics(self) -> Dict[str, Any]:
+    def metrics(self) -> dict[str, Any]:
         if self.has_backtest:
             m = self._it.backtest_result.metrics  # type: ignore[union-attr]
             return m if isinstance(m, dict) else {}
@@ -137,7 +137,7 @@ class IterationContext:
 
     # --- Phase feedback ------------------------------------------------------
     @property
-    def phase_feedback_dict(self) -> Dict[str, Any]:
+    def phase_feedback_dict(self) -> dict[str, Any]:
         if self._it is None:
             return {}
         raw = self._it.phase_feedback
@@ -145,12 +145,12 @@ class IterationContext:
         return d if isinstance(d, dict) else {}
 
     @property
-    def backtest_feedback(self) -> Dict[str, Any]:
+    def backtest_feedback(self) -> dict[str, Any]:
         bf = self.phase_feedback_dict.get("backtest", {})
         return bf if isinstance(bf, dict) else {}
 
     @property
-    def stagnation(self) -> Dict[str, Any]:
+    def stagnation(self) -> dict[str, Any]:
         s = self.phase_feedback_dict.get("stagnation", {})
         return s if isinstance(s, dict) else {}
 
@@ -173,16 +173,16 @@ class BuilderSession:
     session_id: str
     objective: str
     session_dir: Path
-    available_indicators: List[str] = field(default_factory=list)
+    available_indicators: list[str] = field(default_factory=list)
 
     # État
-    iterations: List[BuilderIteration] = field(default_factory=list)
-    best_iteration: Optional[BuilderIteration] = None
+    iterations: list[BuilderIteration] = field(default_factory=list)
+    best_iteration: BuilderIteration | None = None
     best_sharpe: float = float("-inf")
     best_score: float = float("-inf")  # Telemetry only, no longer drives loop decisions.
     status: str = "running"  # "running", "success", "failed", "max_iterations"
     auto_reset_count: int = 0
-    recovery_events: List[Dict[str, Any]] = field(default_factory=list)
+    recovery_events: list[dict[str, Any]] = field(default_factory=list)
 
     # Configuration
     max_iterations: int = 10
@@ -199,27 +199,28 @@ class BuilderSession:
     slippage_bps: float = 5.0
     initial_capital: float = 10000.0
     direction_constraint: str = "long_short"
-    objective_indicators: List[str] = field(default_factory=list)
+    objective_indicators: list[str] = field(default_factory=list)
     indicator_lock_mode: str = ""
     universe_mode: str = "canonical"
     universe_purpose: str = "builder"
     universe_strategy_type: str = ""
-    universe_meta: Dict[str, Any] = field(default_factory=dict)
+    universe_meta: dict[str, Any] = field(default_factory=dict)
     builder_execution_mode: str = "mono_single_llm"
     orchestration_mode: str = "single_llm"
     instrumentation_enabled: bool = False
-    instrumentation_summary: Dict[str, Any] = field(default_factory=dict)
-    ablation_config: Dict[str, bool] = field(default_factory=dict)
+    instrumentation_summary: dict[str, Any] = field(default_factory=dict)
+    ablation_config: dict[str, bool] = field(default_factory=dict)
     pipeline_traces_path: str = ""
-    restriction_events: Dict[str, int] = field(default_factory=dict)
+    restriction_events: dict[str, int] = field(default_factory=dict)
     model_name: str = ""
     multi_llm_profile: str = ""
-    multi_llm_role_overrides: Dict[str, Any] = field(default_factory=dict)
-    multi_llm_assignments: List[Dict[str, Any]] = field(default_factory=list)
+    multi_llm_role_overrides: dict[str, Any] = field(default_factory=dict)
+    multi_llm_assignments: list[dict[str, Any]] = field(default_factory=list)
+    cross_session_memory: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _iteration_is_recovery_anchor(
-    iteration: Optional[BuilderIteration],
+    iteration: BuilderIteration | None,
     *,
     allow_fallback: bool = False,
 ) -> bool:
@@ -235,7 +236,7 @@ def _iteration_is_recovery_anchor(
     return True
 
 
-def compute_session_generation_stats(session: BuilderSession) -> Dict[str, Any]:
+def compute_session_generation_stats(session: BuilderSession) -> dict[str, Any]:
     """Calcule les statistiques canonique vs déterministe d'une session.
 
     Retourne un dict avec ``total``, ``canonical`` (LLM),
@@ -257,8 +258,8 @@ def compute_session_generation_stats(session: BuilderSession) -> Dict[str, Any]:
 
 def _select_session_recovery_anchor(
     session: BuilderSession,
-    last_iteration: Optional[BuilderIteration] = None,
-) -> tuple[Optional[BuilderIteration], str]:
+    last_iteration: BuilderIteration | None = None,
+) -> tuple[BuilderIteration | None, str]:
     """Choisit le meilleur ancrage disponible pour un auto-reset de session."""
     if _iteration_is_recovery_anchor(session.best_iteration):
         return session.best_iteration, "best_iteration"
@@ -278,5 +279,3 @@ def _select_session_recovery_anchor(
             return candidate, "history_fallback"
 
     return None, "none"
-
-

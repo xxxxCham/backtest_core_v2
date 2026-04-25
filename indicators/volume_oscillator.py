@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.volume_oscillator
+"""Module-ID: indicators.volume_oscillator
 
 Purpose: Oscillateur volume - compare MMA court vs long du volume.
 
@@ -55,8 +54,7 @@ def volume_oscillator(
     method: str = "ema",
     settings: VolumeOscillatorSettings | None = None,
 ) -> np.ndarray:
-    """
-    Compute the Volume Oscillator (percent).
+    """Compute the Volume Oscillator (percent).
 
     Args:
         volume: Volume series
@@ -67,6 +65,7 @@ def volume_oscillator(
 
     Returns:
         Oscillator values in percent
+
     """
     if settings is not None:
         short_period = settings.short_period
@@ -88,8 +87,7 @@ def volume_oscillator(
 
 
 def calculate_volume_oscillator(df: pd.DataFrame, **params) -> np.ndarray:
-    """
-    Wrapper for registry calculation.
+    """Wrapper for registry calculation.
 
     Params:
         short_period: Short MA period (default: 14)
@@ -114,7 +112,7 @@ register_indicator(
 
 
 __all__ = [
-    "volume_oscillator",
-    "calculate_volume_oscillator",
     "VolumeOscillatorSettings",
+    "calculate_volume_oscillator",
+    "volume_oscillator",
 ]

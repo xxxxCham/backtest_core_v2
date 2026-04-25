@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.adx
+"""Module-ID: indicators.adx
 
 Purpose: Indicateur ADX (force tendance) + DI+ (haussier) + DI- (baissier).
 
@@ -20,19 +19,16 @@ Read-if: Modification période, lissage ADX.
 Skip-if: Vous utilisez juste calculate_indicator('adx').
 """
 
-from typing import Dict, Tuple, Union
-
 import numpy as np
 import pandas as pd
 
 
 def directional_movement(
-    high: Union[pd.Series, np.ndarray],
-    low: Union[pd.Series, np.ndarray],
-    close: Union[pd.Series, np.ndarray]
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Calcule les mouvements directionnels (+DM, -DM) et True Range.
+    high: pd.Series | np.ndarray,
+    low: pd.Series | np.ndarray,
+    close: pd.Series | np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Calcule les mouvements directionnels (+DM, -DM) et True Range.
 
     Args:
         high: Série des plus hauts
@@ -41,6 +37,7 @@ def directional_movement(
 
     Returns:
         Tuple (+DM, -DM, TR)
+
     """
     # Convertir en arrays
     if isinstance(high, pd.Series):
@@ -58,8 +55,8 @@ def directional_movement(
     for i in range(1, n):
         tr[i] = max(
             high[i] - low[i],
-            abs(high[i] - close[i-1]),
-            abs(low[i] - close[i-1])
+            abs(high[i] - close[i - 1]),
+            abs(low[i] - close[i - 1]),
         )
 
     # Directional Movement
@@ -67,8 +64,8 @@ def directional_movement(
     minus_dm = np.zeros(n)
 
     for i in range(1, n):
-        up_move = high[i] - high[i-1]
-        down_move = low[i-1] - low[i]
+        up_move = high[i] - high[i - 1]
+        down_move = low[i - 1] - low[i]
 
         if up_move > down_move and up_move > 0:
             plus_dm[i] = up_move
@@ -80,10 +77,9 @@ def directional_movement(
 
 def smooth_directional(
     values: np.ndarray,
-    period: int
+    period: int,
 ) -> np.ndarray:
-    """
-    Applique le lissage Wilder (type EMA avec alpha = 1/period).
+    """Applique le lissage Wilder (type EMA avec alpha = 1/period).
 
     Args:
         values: Valeurs à lisser
@@ -91,28 +87,28 @@ def smooth_directional(
 
     Returns:
         Valeurs lissées
+
     """
     n = len(values)
     smoothed = np.zeros(n)
 
     # Première valeur = somme des N premières valeurs
-    smoothed[period-1] = np.sum(values[:period])
+    smoothed[period - 1] = np.sum(values[:period])
 
     # Lissage Wilder: new = prev - (prev/period) + current
     for i in range(period, n):
-        smoothed[i] = smoothed[i-1] - (smoothed[i-1] / period) + values[i]
+        smoothed[i] = smoothed[i - 1] - (smoothed[i - 1] / period) + values[i]
 
     return smoothed
 
 
 def adx(
-    high: Union[pd.Series, np.ndarray],
-    low: Union[pd.Series, np.ndarray],
-    close: Union[pd.Series, np.ndarray],
-    period: int = 14
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Calcule l'ADX (Average Directional Index) et les DI.
+    high: pd.Series | np.ndarray,
+    low: pd.Series | np.ndarray,
+    close: pd.Series | np.ndarray,
+    period: int = 14,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Calcule l'ADX (Average Directional Index) et les DI.
 
     Args:
         high: Série des plus hauts
@@ -127,6 +123,7 @@ def adx(
         >>> adx_val, plus_di, minus_di = adx(df["high"], df["low"], df["close"])
         >>> # Tendance forte si adx_val > 25
         >>> # Tendance haussière si plus_di > minus_di
+
     """
     # Mouvements directionnels et True Range
     plus_dm, minus_dm, tr = directional_movement(high, low, close)
@@ -154,23 +151,22 @@ def adx(
 
     # Première valeur ADX = moyenne des N premiers DX
     if 2 * period - 1 < n:
-        adx_values[2*period-2] = np.mean(dx[period-1:2*period-1])
+        adx_values[2 * period - 2] = np.mean(dx[period - 1 : 2 * period - 1])
 
         # Lissage pour le reste
-        for i in range(2*period-1, n):
-            adx_values[i] = (adx_values[i-1] * (period-1) + dx[i]) / period
+        for i in range(2 * period - 1, n):
+            adx_values[i] = (adx_values[i - 1] * (period - 1) + dx[i]) / period
 
     return adx_values, plus_di, minus_di
 
 
 def adx_trend_strength(
-    high: Union[pd.Series, np.ndarray],
-    low: Union[pd.Series, np.ndarray],
-    close: Union[pd.Series, np.ndarray],
-    period: int = 14
+    high: pd.Series | np.ndarray,
+    low: pd.Series | np.ndarray,
+    close: pd.Series | np.ndarray,
+    period: int = 14,
 ) -> np.ndarray:
-    """
-    Retourne uniquement la valeur ADX (force de tendance).
+    """Retourne uniquement la valeur ADX (force de tendance).
 
     Args:
         high, low, close: Séries OHLC
@@ -178,20 +174,20 @@ def adx_trend_strength(
 
     Returns:
         Array ADX
+
     """
     adx_val, _, _ = adx(high, low, close, period)
     return adx_val
 
 
 def adx_signal(
-    high: Union[pd.Series, np.ndarray],
-    low: Union[pd.Series, np.ndarray],
-    close: Union[pd.Series, np.ndarray],
+    high: pd.Series | np.ndarray,
+    low: pd.Series | np.ndarray,
+    close: pd.Series | np.ndarray,
     period: int = 14,
-    adx_threshold: float = 25.0
+    adx_threshold: float = 25.0,
 ) -> np.ndarray:
-    """
-    Génère des signaux de trading basés sur ADX/DI.
+    """Génère des signaux de trading basés sur ADX/DI.
 
     Logique:
     - +1: ADX > seuil ET +DI > -DI ET +DI croise -DI à la hausse
@@ -205,6 +201,7 @@ def adx_signal(
 
     Returns:
         Array de signaux
+
     """
     adx_val, plus_di, minus_di = adx(high, low, close, period)
 
@@ -216,19 +213,18 @@ def adx_signal(
             continue  # Pas de tendance suffisante
 
         # Croisement +DI au-dessus de -DI
-        if plus_di[i] > minus_di[i] and plus_di[i-1] <= minus_di[i-1]:
+        if plus_di[i] > minus_di[i] and plus_di[i - 1] <= minus_di[i - 1]:
             signals[i] = 1
         # Croisement -DI au-dessus de +DI
-        elif minus_di[i] > plus_di[i] and minus_di[i-1] <= plus_di[i-1]:
+        elif minus_di[i] > plus_di[i] and minus_di[i - 1] <= plus_di[i - 1]:
             signals[i] = -1
 
     return signals
 
 
 # Pour le registre d'indicateurs
-def calculate_adx(df: pd.DataFrame, params: Dict) -> Dict[str, np.ndarray]:
-    """
-    Fonction wrapper pour le registre d'indicateurs.
+def calculate_adx(df: pd.DataFrame, params: dict) -> dict[str, np.ndarray]:
+    """Fonction wrapper pour le registre d'indicateurs.
 
     Args:
         df: DataFrame OHLCV
@@ -236,24 +232,28 @@ def calculate_adx(df: pd.DataFrame, params: Dict) -> Dict[str, np.ndarray]:
 
     Returns:
         Dict avec adx, plus_di, minus_di
+
     """
     period = int(params.get("period", 14))
 
     adx_val, plus_di, minus_di = adx(
-        df["high"], df["low"], df["close"], period
+        df["high"],
+        df["low"],
+        df["close"],
+        period,
     )
 
     return {
         "adx": adx_val,
         "plus_di": plus_di,
-        "minus_di": minus_di
+        "minus_di": minus_di,
     }
 
 
 __all__ = [
     "adx",
-    "adx_trend_strength",
     "adx_signal",
+    "adx_trend_strength",
+    "calculate_adx",
     "directional_movement",
-    "calculate_adx"
 ]

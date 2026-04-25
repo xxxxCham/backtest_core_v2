@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.strategist
+"""Module-ID: agents.strategist
 
 Purpose: Proposer des ajustements créatifs mais réalistes des paramètres basés sur l'analyse.
 
@@ -23,7 +22,7 @@ Skip-if: Vous ne touchez qu'à analyze/critique/validate.
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -45,6 +44,7 @@ logger = get_obs_logger(__name__)
 
 class ExpectedImpact(BaseModel):
     """Impact attendu d'une proposition."""
+
     sharpe_ratio: str = ""
     drawdown: str = ""
     trade_frequency: str = ""
@@ -52,15 +52,16 @@ class ExpectedImpact(BaseModel):
 
 class ProposalItem(BaseModel):
     """Une proposition de paramètres du Strategist."""
+
     id: int
     name: str = Field(..., min_length=1)
     priority: str = Field(default="MEDIUM", pattern="^(HIGH|MEDIUM|LOW)$")
     risk_level: str = Field(default="MEDIUM", pattern="^(LOW|MEDIUM|HIGH)$")
-    parameters: Dict[str, Any]
+    parameters: dict[str, Any]
     rationale: str = Field(..., min_length=5)
-    changes_from_current: Optional[Dict[str, Any]] = None
-    expected_impact: Optional[ExpectedImpact] = None
-    risks: List[str] = Field(default_factory=list)
+    changes_from_current: dict[str, Any] | None = None
+    expected_impact: ExpectedImpact | None = None
+    risks: list[str] = Field(default_factory=list)
 
     @field_validator("priority", "risk_level", mode="before")
     @classmethod
@@ -72,7 +73,8 @@ class ProposalItem(BaseModel):
 
 class SweepRequest(BaseModel):
     """Requête de grid search du Strategist."""
-    ranges: Dict[str, Dict[str, float]]
+
+    ranges: dict[str, dict[str, float]]
     rationale: str = Field(..., min_length=5)
     optimize_for: str = "sharpe_ratio"
     max_combinations: int = Field(default=100, ge=1, le=10000)
@@ -80,17 +82,17 @@ class SweepRequest(BaseModel):
 
 class StrategistResponse(BaseModel):
     """Structure de réponse complète du Strategist."""
+
     analysis_summary: str = ""
     optimization_strategy: str = ""
-    proposals: List[ProposalItem] = Field(default_factory=list)
-    sweep: Optional[SweepRequest] = None
+    proposals: list[ProposalItem] = Field(default_factory=list)
+    sweep: SweepRequest | None = None
     constraints_respected: bool = True
     fallback_recommendation: str = ""
 
 
 class StrategistAgent(BaseAgent):
-    """
-    Agent Strategist - Expert en optimisation de stratégies.
+    """Agent Strategist - Expert en optimisation de stratégies.
 
     Propose:
     - Ajustements de paramètres basés sur l'analyse
@@ -159,14 +161,14 @@ Respond ONLY in valid JSON format with this exact structure:
 }"""
 
     def execute(self, context: AgentContext) -> AgentResult:
-        """
-        Génère des propositions de paramètres.
+        """Génère des propositions de paramètres.
 
         Args:
             context: Contexte avec rapport analyst
 
         Returns:
             Liste de propositions ordonnées
+
         """
         start_time = time.time()
 
@@ -254,7 +256,6 @@ Respond ONLY in valid JSON format with this exact structure:
 
     def _build_proposal_prompt(self, context: AgentContext) -> str:
         """Construit le prompt de proposition via template Jinja2."""
-
         # Convertir MetricsSnapshot en dict pour le template
         current_metrics_dict = None
         if context.current_metrics:
@@ -283,7 +284,7 @@ Respond ONLY in valid JSON format with this exact structure:
             "min_trades": context.min_trades,
             "iteration_history": context.iteration_history,
             # Résumé des paramètres déjà testés dans cette session
-            "session_params_summary": getattr(context, 'session_params_summary', None),
+            "session_params_summary": getattr(context, "session_params_summary", None),
             "memory_summary": context.memory_summary,
             "strategy_indicators_context": context.strategy_indicators_context,
             "readonly_indicators_context": context.readonly_indicators_context,
@@ -294,11 +295,10 @@ Respond ONLY in valid JSON format with this exact structure:
 
     def _validate_and_fix_proposals(
         self,
-        proposals: List[Dict[str, Any]],
+        proposals: list[dict[str, Any]],
         context: AgentContext,
-    ) -> List[Dict[str, Any]]:
-        """
-        Valide et corrige les propositions.
+    ) -> list[dict[str, Any]]:
+        """Valide et corrige les propositions.
 
         S'assure que tous les paramètres respectent les contraintes.
         """
@@ -323,14 +323,18 @@ Respond ONLY in valid JSON format with this exact structure:
                 if spec.min_value is not None and value < spec.min_value:
                     logger.warning(
                         "param_clamped_min name=%s value=%s min=%s",
-                        param_name, value, spec.min_value,
+                        param_name,
+                        value,
+                        spec.min_value,
                     )
                     value = spec.min_value
 
                 if spec.max_value is not None and value > spec.max_value:
                     logger.warning(
                         "param_clamped_max name=%s value=%s max=%s",
-                        param_name, value, spec.max_value,
+                        param_name,
+                        value,
+                        spec.max_value,
                     )
                     value = spec.max_value
 
@@ -348,7 +352,7 @@ Respond ONLY in valid JSON format with this exact structure:
                 if param_name not in fixed_params:
                     fixed_params[param_name] = context.current_params.get(
                         param_name,
-                        specs_dict[param_name].current_value
+                        specs_dict[param_name].current_value,
                     )
 
             if fixed_params:

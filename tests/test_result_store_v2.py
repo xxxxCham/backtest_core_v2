@@ -17,7 +17,7 @@ def _sample_run_result():
         [
             {"entry_time": str(index[1]), "exit_time": str(index[2]), "pnl": 20.0},
             {"entry_time": str(index[3]), "exit_time": str(index[4]), "pnl": 40.0},
-        ]
+        ],
     )
     metrics = {
         "total_return_pct": 1.0,
@@ -99,10 +99,10 @@ def test_result_store_walk_forward_and_golden_set(tmp_path):
                         "train_sharpe": 1.1,
                         "test_sharpe": 0.8,
                         "overfitting_ratio": 1.3,
-                    }
-                ]
-            }
-        }
+                    },
+                ],
+            },
+        },
     }
 
     fold_records = store.save_walk_forward_folds(
@@ -196,8 +196,8 @@ def test_result_store_migrate_legacy_store_imports_runs_and_is_idempotent(tmp_pa
                 "total_return_pct": 12.5,
                 "sharpe_ratio": 1.8,
                 "parent_run_id": "",
-            }
-        ]
+            },
+        ],
     ).to_csv(root / "index.csv", index=False)
 
     (root / "index.json").write_text(
@@ -210,7 +210,12 @@ def test_result_store_migrate_legacy_store_imports_runs_and_is_idempotent(tmp_pa
                     "symbol": "ETHUSDT",
                     "timeframe": "4h",
                     "params": {"period": 14},
-                    "metrics": {"total_return_pct": 3.2, "sharpe_ratio": 0.9, "max_drawdown_pct": -6.0, "total_trades": 2},
+                    "metrics": {
+                        "total_return_pct": 3.2,
+                        "sharpe_ratio": 0.9,
+                        "max_drawdown_pct": -6.0,
+                        "total_trades": 2,
+                    },
                     "n_bars": 250,
                     "n_trades": 2,
                     "period_start": "2026-01-01T00:00:00+00:00",
@@ -218,8 +223,8 @@ def test_result_store_migrate_legacy_store_imports_runs_and_is_idempotent(tmp_pa
                     "duration_sec": 1.5,
                     "mode": "backtest",
                     "status": "ok",
-                    "extra_metadata": {"source": "legacy"}
-                }
+                    "extra_metadata": {"source": "legacy"},
+                },
             },
             indent=2,
         ),

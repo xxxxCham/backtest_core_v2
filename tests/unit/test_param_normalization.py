@@ -15,7 +15,7 @@ def test_normalize_param_ranges_clamps_and_counts():
             default=1.5,
             step=0.5,
             param_type="float",
-        )
+        ),
     }
     ranges = {
         "k_sl": {"min": 0.0, "max": 2.0, "step": 0.5},
@@ -41,7 +41,7 @@ def test_normalize_param_grid_values_filters_out_of_bounds():
             default=1.5,
             step=0.5,
             param_type="float",
-        )
+        ),
     }
     grid = {"k_sl": [0.0, 0.5, 1.0, 5.0]}
 

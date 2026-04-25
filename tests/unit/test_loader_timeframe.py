@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from cli.commands import _resolve_data_path
-from data.loader import _timeframe_to_timedelta
+from data.loader import _scan_data_files_for_dir, _timeframe_to_timedelta
 from utils.config import _default_data_dir
 
 
@@ -60,3 +60,20 @@ def test_resolve_data_path_uses_loader_resolved_dir(
     monkeypatch.setattr("data.loader._get_data_dir", lambda: resolved_dir)
 
     assert _resolve_data_path("BTCUSDC_1h.parquet") == target_file
+
+
+def test_scan_data_files_for_dir_ignores_non_market_artifacts(tmp_path: Path) -> None:
+    valid = tmp_path / "BTCUSDC_1h.parquet"
+    valid.write_text("stub", encoding="utf-8")
+
+    ignored_vscode_dir = tmp_path / ".vscode"
+    ignored_vscode_dir.mkdir()
+    (ignored_vscode_dir / "extensions.json").write_text("{}", encoding="utf-8")
+
+    ignored_misc = tmp_path / "notes.json"
+    ignored_misc.write_text("{}", encoding="utf-8")
+
+    invalid_name = tmp_path / "BTCUSDC_backup.parquet"
+    invalid_name.write_text("stub", encoding="utf-8")
+
+    assert _scan_data_files_for_dir(str(tmp_path)) == (valid,)

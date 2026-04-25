@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.pi_cycle
+"""Module-ID: indicators.pi_cycle
 
 Purpose: Indicateur Pi Cycle BTC - SMA(111) croise au-dessus 2*SMA(350).
 
@@ -55,11 +54,11 @@ def pi_cycle(
     long_multiplier: float = 2.0,
     settings: PiCycleSettings | None = None,
 ) -> dict[str, np.ndarray]:
-    """
-    Compute Pi Cycle moving averages and cross signal.
+    """Compute Pi Cycle moving averages and cross signal.
 
     Returns:
         Dict with short_ma, long_ma, and signal (+1/-1/0)
+
     """
     if settings is not None:
         short_period = settings.short_period
@@ -91,8 +90,7 @@ def pi_cycle(
 
 
 def calculate_pi_cycle(df: pd.DataFrame, **params) -> dict[str, np.ndarray]:
-    """
-    Wrapper for registry calculation.
+    """Wrapper for registry calculation.
 
     Params:
         short_period: Short SMA period (default: 111)
@@ -117,7 +115,7 @@ register_indicator(
 
 
 __all__ = [
-    "pi_cycle",
-    "calculate_pi_cycle",
     "PiCycleSettings",
+    "calculate_pi_cycle",
+    "pi_cycle",
 ]

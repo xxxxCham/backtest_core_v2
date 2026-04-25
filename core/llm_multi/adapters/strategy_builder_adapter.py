@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 
-def extract_builder_metrics(session: Any) -> Dict[str, Any]:
+def extract_builder_metrics(session: Any) -> dict[str, Any]:
     """Extract the most relevant deterministic metrics from a builder session."""
-
     if session is None:
         return {}
 
@@ -25,7 +24,7 @@ def extract_builder_metrics(session: Any) -> Dict[str, Any]:
     return metrics
 
 
-def summarize_builder_session(session: Any) -> Dict[str, Any]:
+def summarize_builder_session(session: Any) -> dict[str, Any]:
     metrics = extract_builder_metrics(session)
     return {
         "session_id": getattr(session, "session_id", ""),

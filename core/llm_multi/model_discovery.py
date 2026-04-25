@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 
 import httpx
 
@@ -53,19 +54,19 @@ def _alias_variants(name: str) -> set[str]:
     return {alias for alias in aliases if alias}
 
 
-def _role_hints_for_name(name: str) -> List[str]:
+def _role_hints_for_name(name: str) -> list[str]:
     lowered = canonical_model_name(name)
     hints: set[str] = set()
     if any(token in lowered for token in ("qwen", "gemma", "mistral", "deepseek", "llama", "alia")):
-        hints.add("idea_llm")
+        hints.add("supervisor_llm")
     if any(token in lowered for token in ("coder", "code", "qwen3-coder", "gpt-oss")):
         hints.add("builder_llm")
     if any(token in lowered for token in ("r1", "qwq", "critic", "think")):
-        hints.add("critic_llm")
-    if any(token in lowered for token in ("finance", "risk", "fin-llama", "dragon")):
-        hints.add("risk_llm")
+        hints.add("supervisor_llm")
+    if any(token in lowered for token in ("finance", "risk", "fin-o1", "dragon")):
+        hints.add("supervisor_llm")
     if any(token in lowered for token in ("micro", "nano", "flash", "7b", "8b", "router", "orchestrator")):
-        hints.add("execution_router_llm")
+        hints.add("supervisor_llm")
     return sorted(hints)
 
 
@@ -80,15 +81,15 @@ class DiscoveredModel:
     path: str = ""
     exists_on_disk: bool = False
     live: bool = False
-    aliases: List[str] = field(default_factory=list)
-    role_hints: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    aliases: list[str] = field(default_factory=list)
+    role_hints: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def matches(self, requested_name: str) -> bool:
         target = canonical_model_name(requested_name)
         return target in {canonical_model_name(alias) for alias in self.aliases}
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "backend": self.backend,
@@ -107,14 +108,14 @@ class DiscoveredModel:
 class ModelInventory:
     """Structured inventory of all discovered local models."""
 
-    discovered_models: List[DiscoveredModel]
-    scanned_roots: List[str]
-    missing_roots: List[str]
-    warnings: List[str] = field(default_factory=list)
+    discovered_models: list[DiscoveredModel]
+    scanned_roots: list[str]
+    missing_roots: list[str]
+    warnings: list[str] = field(default_factory=list)
     live_ollama_host: str = ""
     live_ollama_reachable: bool = False
 
-    def find(self, requested_name: str) -> Optional[DiscoveredModel]:
+    def find(self, requested_name: str) -> DiscoveredModel | None:
         target = canonical_model_name(requested_name)
         if not target:
             return None
@@ -130,13 +131,13 @@ class ModelInventory:
                 0 if model.verified_available else 1,
                 0 if model.live else 1,
                 model.name.lower(),
-            )
+            ),
         )
         return exact_matches[0]
 
-    def summary(self) -> Dict[str, Any]:
+    def summary(self) -> dict[str, Any]:
         verified = [model for model in self.discovered_models if model.verified_available]
-        by_backend: Dict[str, int] = {}
+        by_backend: dict[str, int] = {}
         for model in verified:
             by_backend[model.backend] = by_backend.get(model.backend, 0) + 1
         return {
@@ -151,21 +152,21 @@ class ModelInventory:
             "warnings": list(self.warnings),
         }
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "summary": self.summary(),
             "models": [model.to_dict() for model in self.discovered_models],
         }
 
 
-def _preferred_search_roots(extra_roots: Optional[Iterable[str | Path]] = None) -> List[Path]:
-    roots: List[Path] = [get_ollama_models_root(), *get_model_library_roots(), *DEFAULT_MODEL_SEARCH_ROOTS]
+def _preferred_search_roots(extra_roots: Iterable[str | Path] | None = None) -> list[Path]:
+    roots: list[Path] = [get_ollama_models_root(), *get_model_library_roots(), *DEFAULT_MODEL_SEARCH_ROOTS]
     models_json_path = get_models_json_path()
     roots.append(models_json_path.parent)
     if extra_roots:
         roots.extend(Path(root) for root in extra_roots)
 
-    ordered: List[Path] = []
+    ordered: list[Path] = []
     seen: set[str] = set()
     for root in roots:
         normalized = str(root).strip()
@@ -180,7 +181,7 @@ def _preferred_search_roots(extra_roots: Optional[Iterable[str | Path]] = None) 
 
 
 def _merge_model_candidate(
-    registry: Dict[str, DiscoveredModel],
+    registry: dict[str, DiscoveredModel],
     model: DiscoveredModel,
 ) -> None:
     key = canonical_model_name(model.name)
@@ -194,18 +195,19 @@ def _merge_model_candidate(
     existing.aliases = sorted(set(existing.aliases) | set(model.aliases))
     existing.role_hints = sorted(set(existing.role_hints) | set(model.role_hints))
     existing.metadata.update({k: v for k, v in model.metadata.items() if v not in (None, "")})
+    was_verified = existing.verified_available
     existing.verified_available = existing.verified_available or model.verified_available
     existing.exists_on_disk = existing.exists_on_disk or model.exists_on_disk
     existing.live = existing.live or model.live
     if model.path and (not existing.path or model.verified_available):
         existing.path = model.path
-    if model.verified_available and not existing.verified_available:
+    if model.verified_available and not was_verified:
         existing.source = model.source
         existing.backend = model.backend
 
 
 def _register_model(
-    registry: Dict[str, DiscoveredModel],
+    registry: dict[str, DiscoveredModel],
     *,
     name: str,
     backend: str,
@@ -214,7 +216,7 @@ def _register_model(
     path: str = "",
     exists_on_disk: bool = False,
     live: bool = False,
-    metadata: Optional[Dict[str, Any]] = None,
+    metadata: dict[str, Any] | None = None,
 ) -> None:
     aliases = sorted(_alias_variants(name))
     if metadata:
@@ -236,15 +238,10 @@ def _register_model(
     _merge_model_candidate(registry, model)
 
 
-def _discover_from_models_json(registry: Dict[str, DiscoveredModel]) -> None:
+def _discover_from_models_json(registry: dict[str, DiscoveredModel]) -> None:
     payload = load_models_json(force_reload=True)
     for entry in payload.get("ollama_models", []):
-        name = (
-            entry.get("ollama_name")
-            or entry.get("model_name")
-            or entry.get("id")
-            or entry.get("name")
-        )
+        name = entry.get("ollama_name") or entry.get("model_name") or entry.get("id") or entry.get("name")
         if not name:
             continue
         candidate_path = str(entry.get("path") or entry.get("backup_path") or "").strip()
@@ -258,6 +255,22 @@ def _discover_from_models_json(registry: Dict[str, DiscoveredModel]) -> None:
             path=candidate_path,
             exists_on_disk=exists_on_disk,
             metadata=entry,
+        )
+
+    for entry in payload.get("cloud_models", []):
+        name = entry.get("ollama_name") or entry.get("model_name") or entry.get("id") or entry.get("name")
+        if not name:
+            continue
+        _register_model(
+            registry,
+            name=name,
+            backend=str(entry.get("backend") or "ollama"),
+            source="models_json_cloud",
+            verified_available=True,
+            path="",
+            exists_on_disk=False,
+            live=False,
+            metadata={**entry, "cloud_only": True},
         )
 
     for entry in payload.get("huggingface_models", []):
@@ -278,7 +291,7 @@ def _discover_from_models_json(registry: Dict[str, DiscoveredModel]) -> None:
         )
 
 
-def _discover_from_ollama_manifests(registry: Dict[str, DiscoveredModel], root: Path) -> None:
+def _discover_from_ollama_manifests(registry: dict[str, DiscoveredModel], root: Path) -> None:
     manifest_root = root / "manifests"
     if not manifest_root.exists():
         return
@@ -308,7 +321,7 @@ def _discover_from_ollama_manifests(registry: Dict[str, DiscoveredModel], root: 
         )
 
 
-def _discover_from_huggingface_root(registry: Dict[str, DiscoveredModel], root: Path) -> None:
+def _discover_from_huggingface_root(registry: dict[str, DiscoveredModel], root: Path) -> None:
     if not root.exists():
         return
     for candidate in root.iterdir():
@@ -333,7 +346,7 @@ def _discover_from_huggingface_root(registry: Dict[str, DiscoveredModel], root: 
 
 
 def _iter_generic_model_files(root: Path, max_depth: int = 2) -> Iterable[Path]:
-    results: List[Path] = []
+    results: list[Path] = []
     if not root.exists():
         return results
     for base, dirs, files in os.walk(root):
@@ -352,7 +365,7 @@ def _iter_generic_model_files(root: Path, max_depth: int = 2) -> Iterable[Path]:
     return results
 
 
-def _discover_from_generic_roots(registry: Dict[str, DiscoveredModel], roots: Iterable[Path]) -> None:
+def _discover_from_generic_roots(registry: dict[str, DiscoveredModel], roots: Iterable[Path]) -> None:
     for root in roots:
         if not root.exists():
             continue
@@ -365,9 +378,7 @@ def _discover_from_generic_roots(registry: Dict[str, DiscoveredModel], roots: It
             else:
                 name = marker.stem
             backend = (
-                "huggingface"
-                if marker.suffix.lower() == ".safetensors" or marker.name == "config.json"
-                else "gguf"
+                "huggingface" if marker.suffix.lower() == ".safetensors" or marker.name == "config.json" else "gguf"
             )
             _register_model(
                 registry,
@@ -381,11 +392,24 @@ def _discover_from_generic_roots(registry: Dict[str, DiscoveredModel], roots: It
             )
 
 
+def _is_ollama_models_root(root: Path) -> bool:
+    normalized = str(root).lower().replace("/", "\\")
+    return (
+        "models\\ollama" in normalized
+        or "ollama\\models" in normalized
+        or (root.name.lower() == "models" and root.parent.name.lower() == "ollama")
+    )
+
+
+def _is_huggingface_models_root(root: Path) -> bool:
+    return "models\\huggingface" in str(root).lower().replace("/", "\\")
+
+
 def _discover_from_live_ollama(
-    registry: Dict[str, DiscoveredModel],
+    registry: dict[str, DiscoveredModel],
     *,
     ollama_host: str,
-    warnings: List[str],
+    warnings: list[str],
 ) -> bool:
     host = str(ollama_host or os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")).rstrip("/")
     try:
@@ -415,33 +439,31 @@ def _discover_from_live_ollama(
 
 def discover_local_models(
     *,
-    extra_roots: Optional[Iterable[str | Path]] = None,
-    ollama_host: Optional[str] = None,
+    extra_roots: Iterable[str | Path] | None = None,
+    ollama_host: str | None = None,
     include_live_ollama: bool = True,
 ) -> ModelInventory:
     """Build an inventory of local models across known roots and catalogs."""
-
     roots = _preferred_search_roots(extra_roots)
     scanned_roots = [str(root) for root in roots]
     missing_roots = [str(root) for root in roots if not root.exists()]
-    warnings: List[str] = []
-    registry: Dict[str, DiscoveredModel] = {}
+    warnings: list[str] = []
+    registry: dict[str, DiscoveredModel] = {}
 
     _discover_from_models_json(registry)
 
     for root in roots:
-        root_str = str(root).lower().replace("/", "\\")
-        if "models\\ollama" in root_str:
+        if _is_ollama_models_root(root):
             _discover_from_ollama_manifests(registry, root)
-        elif "models\\huggingface" in root_str:
+        elif _is_huggingface_models_root(root):
             _discover_from_huggingface_root(registry, root)
 
     generic_roots = [
         root
         for root in roots
         if root.exists()
-        and "models\\ollama" not in str(root).lower().replace("/", "\\")
-        and "models\\huggingface" not in str(root).lower().replace("/", "\\")
+        and not _is_ollama_models_root(root)
+        and not _is_huggingface_models_root(root)
     ]
     _discover_from_generic_roots(registry, generic_roots)
 

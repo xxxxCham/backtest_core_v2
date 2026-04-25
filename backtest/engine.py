@@ -1,7 +1,4 @@
-
-
-"""
-Backtest Core - Backtest Engine
+"""Backtest Core - Backtest Engine
 ===============================
 
 Moteur de backtesting simplifié et robuste.
@@ -17,10 +14,10 @@ Pipeline:
 
 from __future__ import annotations
 
+import time
 from contextlib import nullcontext
 from dataclasses import dataclass, field
-import time
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -36,6 +33,7 @@ try:
         calculate_returns_fast,
         simulate_trades_fast,
     )
+
     USE_FAST_SIMULATOR = True
 except ImportError:
     USE_FAST_SIMULATOR = False
@@ -62,8 +60,7 @@ _default_logger = get_obs_logger(__name__)
 
 @dataclass
 class RunResult:
-    """
-    Résultat d'exécution d'un backtest.
+    """Résultat d'exécution d'un backtest.
 
     Attributes:
         equity: Courbe d'équité (pd.Series indexée par datetime)
@@ -71,13 +68,15 @@ class RunResult:
         trades: DataFrame des trades exécutés
         metrics: Dict des métriques de performance calculées
         meta: Métadonnées d'exécution (durée, paramètres, etc.)
+
     """
+
     equity: pd.Series
     returns: pd.Series
     trades: pd.DataFrame
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    meta: Dict[str, Any] = field(default_factory=dict)
-    _dict_cache: Optional[Dict[str, Any]] = field(default=None, init=False, repr=False)
+    metrics: dict[str, Any] = field(default_factory=dict)
+    meta: dict[str, Any] = field(default_factory=dict)
+    _dict_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
         """Validation des données."""
@@ -89,29 +88,29 @@ class RunResult:
             raise TypeError("trades doit être un pd.DataFrame")
         self._dict_cache = None
 
-    def to_dict(self, include_timeseries: bool = False) -> Dict[str, Any]:
-        """
-        Convertit en dictionnaire (lazy loading pour performances).
+    def to_dict(self, include_timeseries: bool = False) -> dict[str, Any]:
+        """Convertit en dictionnaire (lazy loading pour performances).
 
         Args:
             include_timeseries: Inclure equity/returns complets (coûteux, ~5-10ms)
 
         Returns:
             Dict avec métriques + optionnellement timeseries
+
         """
         if self._dict_cache and not include_timeseries:
             return self._dict_cache
 
         result = {
-            'metrics': self.metrics,
-            'meta': self.meta,
-            'n_trades': len(self.trades)
+            "metrics": self.metrics,
+            "meta": self.meta,
+            "n_trades": len(self.trades),
         }
 
         if include_timeseries:
-            result['equity'] = self.equity.to_dict()
-            result['returns'] = self.returns.to_dict()
-            result['trades'] = self.trades.to_dict('records')
+            result["equity"] = self.equity.to_dict()
+            result["returns"] = self.returns.to_dict()
+            result["trades"] = self.trades.to_dict("records")
 
         if not include_timeseries:
             self._dict_cache = result
@@ -138,8 +137,7 @@ Win Rate: {win_rate:.1f}%
 
 
 class BacktestEngine:
-    """
-    Moteur de backtesting principal.
+    """Moteur de backtesting principal.
 
     Orchestrateur simplifié qui exécute le pipeline complet:
     données → indicateurs → signaux → trades → métriques
@@ -162,40 +160,39 @@ class BacktestEngine:
     def __init__(
         self,
         initial_capital: float = 10000.0,
-        config: Optional[Config] = None,
-        run_id: Optional[str] = None,
+        config: Config | None = None,
+        run_id: str | None = None,
     ):
-        """
-        Initialise le moteur.
+        """Initialise le moteur.
 
         Args:
             initial_capital: Capital de départ
             config: Configuration (optionnel)
             run_id: Identifiant de corrélation (généré si None)
+
         """
         self.initial_capital = initial_capital
         self.config = config or Config()
         self.run_id = run_id or generate_run_id()
         self.logger = get_obs_logger(__name__, run_id=self.run_id)
-        self.last_run_meta: Dict[str, Any] = {}
-        self.counters: Optional[PerfCounters] = None
+        self.last_run_meta: dict[str, Any] = {}
+        self.counters: PerfCounters | None = None
 
         self.logger.info("BacktestEngine init capital=%s", initial_capital)
 
     def run(
         self,
         df: pd.DataFrame,
-        strategy: Union[StrategyBase, str],
-        params: Optional[Dict[str, Any]] = None,
+        strategy: StrategyBase | str,
+        params: dict[str, Any] | None = None,
         *,
         symbol: str = "UNKNOWN",
         timeframe: str = "1m",
         seed: int = 42,
         silent_mode: bool = False,
-        fast_metrics: bool = True  # ⚡ Performance: 536 bt/s (True) vs 85 bt/s (False)
+        fast_metrics: bool = True,  # ⚡ Performance: 536 bt/s (True) vs 85 bt/s (False)
     ) -> RunResult:
-        """
-        Exécute un backtest complet.
+        """Exécute un backtest complet.
 
         Args:
             df: DataFrame OHLCV avec colonnes (open, high, low, close, volume)
@@ -212,6 +209,7 @@ class BacktestEngine:
 
         Raises:
             ValueError: Si données ou paramètres invalides
+
         """
         # Initialiser counters et contexte
         counters_enabled = not silent_mode
@@ -226,16 +224,18 @@ class BacktestEngine:
         if use_trace_spans:
             self.logger = self.logger.with_context(symbol=symbol, timeframe=timeframe)
         if not silent_mode:
-            self.logger.info("pipeline_start strategy=%s bars=%s",
-                             strategy if isinstance(strategy, str) else getattr(strategy, 'name', 'custom'),
-                             len(df))
+            self.logger.info(
+                "pipeline_start strategy=%s bars=%s",
+                strategy if isinstance(strategy, str) else getattr(strategy, "name", "custom"),
+                len(df),
+            )
 
         # Stratégies de test: métriques canoniques uniquement (pas d'alias legacy)
         strategy_key_input = strategy if isinstance(strategy, str) else None
         canonical_metrics = bool(
             strategy_key_input
             and isinstance(strategy_key_input, str)
-            and strategy_key_input.lower().startswith("test_")
+            and strategy_key_input.lower().startswith("test_"),
         )
 
         # Seed pour déterminisme
@@ -260,7 +260,7 @@ class BacktestEngine:
                 "fees_bps": self.config.fees_bps,
                 "slippage_bps": self.config.slippage_bps,
                 **strategy.default_params,
-                **(params or {})
+                **(params or {}),
             }
 
             self.logger.debug("params=%s", final_params)
@@ -268,7 +268,11 @@ class BacktestEngine:
             # 4. Calculer les indicateurs requis
             if self.counters is not None:
                 self.counters.start("indicators")
-            with trace_span(self.logger, "indicators", count=len(strategy.required_indicators)) if use_trace_spans else nullcontext():
+            with (
+                trace_span(self.logger, "indicators", count=len(strategy.required_indicators))
+                if use_trace_spans
+                else nullcontext()
+            ):
                 indicators = self._calculate_indicators(df, strategy, final_params)
             if self.counters is not None:
                 self.counters.stop("indicators")
@@ -291,6 +295,21 @@ class BacktestEngine:
                 self.counters.stop("signals")
                 self.counters.increment("signals_count", n_signals)
             self.logger.debug("signals_generated count=%s", n_signals)
+
+            # ── Guard défensif : neutraliser NaN/Inf dans les signaux ──
+            # Les stratégies générées par le Builder peuvent produire des
+            # valeurs non finies qui provoquent un segfault dans Numba JIT.
+            if hasattr(signals, "values"):
+                sig_arr = signals.values
+            else:
+                sig_arr = np.asarray(signals)
+            bad_mask = ~np.isfinite(sig_arr)
+            if bad_mask.any():
+                signals = signals.copy() if hasattr(signals, "copy") else sig_arr.copy()
+                if hasattr(signals, "values"):
+                    signals.values[bad_mask] = 0.0
+                else:
+                    signals[bad_mask] = 0.0
 
             # 6. Simuler les trades (utilise version rapide si disponible)
             if self.counters is not None:
@@ -359,7 +378,7 @@ class BacktestEngine:
             if account_ruined:
                 self.logger.warning(
                     "account_ruined_detected invalidating_performance_metrics original_sharpe=%.2f",
-                    metrics.get("sharpe_ratio", 0)
+                    metrics.get("sharpe_ratio", 0),
                 )
                 # Forcer métriques de performance à zéro pour cohérence
                 metrics["sharpe_ratio"] = -20.0  # Pénalité maximale
@@ -373,7 +392,7 @@ class BacktestEngine:
             try:
                 period_days = max(
                     1,
-                    int((df.index[-1] - df.index[0]).total_seconds() / 86400)
+                    int((df.index[-1] - df.index[0]).total_seconds() / 86400),
                 )
                 bars_per_day = periods_per_year / 365
                 expected_bars = period_days * bars_per_day
@@ -427,13 +446,16 @@ class BacktestEngine:
                 returns=returns,
                 trades=trades_df,
                 metrics=metrics,
-                meta=meta
+                meta=meta,
             )
 
             if not silent_mode:
                 self.logger.info(
                     "pipeline_end duration_ms=%.1f trades=%s sharpe=%.2f pnl=%.2f",
-                    total_ms, len(trades_df), metrics.get('sharpe_ratio', 0), metrics.get('total_pnl', 0)
+                    total_ms,
+                    len(trades_df),
+                    metrics.get("sharpe_ratio", 0),
+                    metrics.get("total_pnl", 0),
                 )
 
             return result
@@ -449,11 +471,10 @@ class BacktestEngine:
     def _validate_inputs(
         self,
         df: pd.DataFrame,
-        strategy: Union[StrategyBase, str],
-        params: Optional[Dict[str, Any]]
+        strategy: StrategyBase | str,
+        params: dict[str, Any] | None,
     ) -> None:
         """Valide les entrées du backtest."""
-
         # Validation DataFrame
         if df.empty:
             raise ValueError("DataFrame vide")
@@ -489,8 +510,8 @@ class BacktestEngine:
         self,
         df: pd.DataFrame,
         strategy: StrategyBase,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
         """Calcule les indicateurs requis par la stratégie."""
         return self._calculate_indicators(df, strategy, params)
 
@@ -498,8 +519,8 @@ class BacktestEngine:
         self,
         df: pd.DataFrame,
         strategy: StrategyBase,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
         """Internal — use calculate_indicators() instead."""
         indicators = {}
         gpu_queues = None
@@ -514,7 +535,10 @@ class BacktestEngine:
 
             try:
                 result = calculate_indicator(
-                    indicator_name, df, indicator_params, gpu_queues=gpu_queues
+                    indicator_name,
+                    df,
+                    indicator_params,
+                    gpu_queues=gpu_queues,
                 )
                 indicators[indicator_name] = result
             except Exception as exc:
@@ -525,7 +549,7 @@ class BacktestEngine:
                     exc,
                 )
                 raise RuntimeError(
-                    f"Échec calcul indicateur requis '{indicator_name}': {exc}"
+                    f"Échec calcul indicateur requis '{indicator_name}': {exc}",
                 ) from exc
 
         return indicators
@@ -533,10 +557,9 @@ class BacktestEngine:
     def _extract_indicator_params(
         self,
         indicator_name: str,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
         """Extrait les paramètres spécifiques à un indicateur."""
-
         # Mapping des préfixes de paramètres
         prefix_map = {
             "bollinger": ["bb_", "bollinger_"],
@@ -553,7 +576,7 @@ class BacktestEngine:
             for prefix in prefixes:
                 if key.startswith(prefix):
                     # Enlever le préfixe
-                    param_name = key[len(prefix):]
+                    param_name = key[len(prefix) :]
                     indicator_params[param_name] = value
                     break
 
@@ -562,7 +585,7 @@ class BacktestEngine:
             "bollinger": ["period", "std_dev"],
             "atr": ["period", "method"],
             "rsi": ["period"],
-            "ema": ["period"]
+            "ema": ["period"],
         }
 
         for param in direct_params.get(indicator_name, []):
@@ -581,10 +604,9 @@ class BacktestEngine:
         trades_df: pd.DataFrame,
         initial_capital: float,
         periods_per_year: int,
-        benchmark_prices: Optional[pd.Series] = None,
-    ) -> Dict[str, Any]:
-        """
-        Calcule UNIQUEMENT les métriques essentielles pour sweeps rapides.
+        benchmark_prices: pd.Series | None = None,
+    ) -> dict[str, Any]:
+        """Calcule UNIQUEMENT les métriques essentielles pour sweeps rapides.
 
         Version ultra-optimisée qui évite les resamples et calculs lourds.
         ~50× plus rapide que calculate_metrics standard.
@@ -690,7 +712,7 @@ class BacktestEngine:
         tf = timeframe.strip()
         if len(tf) < 2:
             raise ValueError(
-                f"Timeframe invalide: '{timeframe}'. Format attendu: <nombre><unité> (ex: 1m, 5m, 1h, 1d, 1w, 1M)."
+                f"Timeframe invalide: '{timeframe}'. Format attendu: <nombre><unité> (ex: 1m, 5m, 1h, 1d, 1w, 1M).",
             )
 
         unit = tf[-1]
@@ -698,7 +720,7 @@ class BacktestEngine:
             amount = int(tf[:-1])
         except ValueError as exc:
             raise ValueError(
-                f"Timeframe invalide: '{timeframe}'. Format attendu: <nombre><unité> (ex: 1m, 5m, 1h, 1d, 1w, 1M)."
+                f"Timeframe invalide: '{timeframe}'. Format attendu: <nombre><unité> (ex: 1m, 5m, 1h, 1d, 1w, 1M).",
             ) from exc
 
         if amount <= 0:
@@ -716,7 +738,7 @@ class BacktestEngine:
             periods = 12 / amount
         else:
             raise ValueError(
-                f"Timeframe invalide: '{timeframe}'. Unités supportées: m, h, d, w, M."
+                f"Timeframe invalide: '{timeframe}'. Unités supportées: m, h, d, w, M.",
             )
 
         return max(1, int(round(periods)))
@@ -731,8 +753,7 @@ class BacktestEngine:
         strategy_name: str,
         timeframe: str = "1h",
     ) -> None:
-        """
-        Pré-initialise le moteur pour un sweep massif.
+        """Pré-initialise le moteur pour un sweep massif.
 
         Élimine les coûts récurrents: lookup stratégie, validation,
         logger, PerfCounters. Appelé UNE SEULE FOIS avant la boucle.
@@ -741,6 +762,7 @@ class BacktestEngine:
             df: DataFrame OHLCV (constant pendant le sweep)
             strategy_name: Nom de la stratégie
             timeframe: Timeframe des données
+
         """
         # Cache la stratégie instanciée
         self._sweep_strategy = self._get_strategy_by_name(strategy_name)
@@ -771,10 +793,9 @@ class BacktestEngine:
 
     def run_sweep_iteration(
         self,
-        params: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """
-        Exécute UN backtest en mode sweep ultra-rapide.
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Exécute UN backtest en mode sweep ultra-rapide.
 
         Pas de: validation, logger, PerfCounters, strategy lookup,
         RunResult object, safe_run_backtest wrapper.
@@ -784,6 +805,7 @@ class BacktestEngine:
 
         Returns:
             Dict minimal avec métriques essentielles
+
         """
         strategy = self._sweep_strategy
         df = self._sweep_df
@@ -870,10 +892,9 @@ class BacktestEngine:
 def quick_backtest(
     df: pd.DataFrame,
     strategy_name: str = "bollinger_atr",
-    **params
+    **params,
 ) -> RunResult:
-    """
-    Lance un backtest rapide avec paramètres par défaut.
+    """Lance un backtest rapide avec paramètres par défaut.
 
     Usage:
         result = quick_backtest(df, "bollinger_atr", leverage=3)

@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.builder_diagnostics
+"""Module-ID: agents.builder_diagnostics
 
 Purpose: Fonctions de diagnostic déterministe et scoring Builder, extraites
          de strategy_builder.py. Source de vérité unique pour les helpers de
@@ -17,7 +16,7 @@ Skip-if: Vous ne touchez pas à la boucle itérative du builder.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any
 
 from agents.builder_constants import (
     MAX_DRAWDOWN_PCT_FOR_ACCEPT,
@@ -33,13 +32,25 @@ if TYPE_CHECKING:
     from agents.builder_state import BuilderIteration
 
 
+_METRIC_ALIASES: dict[str, tuple[str, ...]] = {
+    "total_trades": ("trades",),
+    "win_rate_pct": ("win_rate",),
+}
+
+
 # ---------------------------------------------------------------------------
 # Helpers de métriques
 # ---------------------------------------------------------------------------
 
-def _metric_float(metrics: Dict[str, Any], key: str, default: float = 0.0) -> float:
+
+def _metric_float(metrics: dict[str, Any], key: str, default: float = 0.0) -> float:
     """Lecture float robuste d'une métrique sans écraser les zéros valides."""
     value = metrics.get(key, default)
+    if value is default:
+        for alias in _METRIC_ALIASES.get(key, ()):
+            if alias in metrics:
+                value = metrics.get(alias, default)
+                break
     if value is None:
         return float(default)
     try:
@@ -48,7 +59,23 @@ def _metric_float(metrics: Dict[str, Any], key: str, default: float = 0.0) -> fl
         return float(default)
 
 
-def _is_ruined_metrics(metrics: Dict[str, Any]) -> bool:
+def _metric_int(metrics: dict[str, Any], key: str, default: int = 0) -> int:
+    """Lecture int robuste d'une métrique sans crasher sur des chaînes."""
+    value = metrics.get(key, default)
+    if value is default:
+        for alias in _METRIC_ALIASES.get(key, ()):
+            if alias in metrics:
+                value = metrics.get(alias, default)
+                break
+    if value is None:
+        return int(default)
+    try:
+        return int(float(value))
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
+        return int(default)
+
+
+def _is_ruined_metrics(metrics: dict[str, Any]) -> bool:
     """Détecte une configuration ruinée à partir des métriques de backtest."""
     ret = _metric_float(metrics, "total_return_pct", 0.0)
     max_dd = abs(_metric_float(metrics, "max_drawdown_pct", 0.0))
@@ -64,11 +91,12 @@ def _clamp(value: float, min_value: float, max_value: float) -> float:
 # Score de télémétrie Builder
 # ---------------------------------------------------------------------------
 
+
 def compute_builder_telemetry_score(
-    metrics: Dict[str, Any],
+    metrics: dict[str, Any],
     *,
     target_sharpe: float = 1.0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Score composite de télémétrie Builder.
 
     Ce score reste purement informatif: il n'oriente plus l'acceptation, la
@@ -115,10 +143,10 @@ def compute_builder_telemetry_score(
 
 
 def compute_continuous_builder_score(
-    metrics: Dict[str, Any],
+    metrics: dict[str, Any],
     *,
     target_sharpe: float = 1.0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Alias de compatibilité vers ``compute_builder_telemetry_score()``."""
     return compute_builder_telemetry_score(
         metrics,
@@ -127,7 +155,7 @@ def compute_continuous_builder_score(
 
 
 def _telemetry_score_from_metrics(
-    metrics: Dict[str, Any],
+    metrics: dict[str, Any],
     *,
     target_sharpe: float = 1.0,
 ) -> float:
@@ -136,7 +164,7 @@ def _telemetry_score_from_metrics(
         compute_builder_telemetry_score(
             metrics,
             target_sharpe=target_sharpe,
-        ).get("score", -100.0)
+        ).get("score", -100.0),
     )
 
 
@@ -144,8 +172,9 @@ def _telemetry_score_from_metrics(
 # Ranking et sélection d'itérations
 # ---------------------------------------------------------------------------
 
+
 def _ranking_sharpe(
-    metrics: Dict[str, Any],
+    metrics: dict[str, Any],
     *,
     target_sharpe: float = 1.0,
 ) -> float:
@@ -157,7 +186,7 @@ def _ranking_sharpe(
 
 
 def _builder_iteration_selection_key(
-    metrics: Dict[str, Any],
+    metrics: dict[str, Any],
     *,
     is_fallback: bool = False,
     target_sharpe: float = 1.0,
@@ -202,13 +231,12 @@ def _builder_iteration_selection_key(
     )
 
 
-def _metrics_fingerprint(metrics: Dict[str, Any]) -> str:
+def _metrics_fingerprint(metrics: dict[str, Any]) -> str:
     """Retourne un fingerprint stable des métriques clés pour détecter la stagnation."""
     keys = ("total_return_pct", "max_drawdown_pct", "total_trades", "win_rate_pct", "profit_factor")
     parts = []
     for k in keys:
-        v = metrics.get(k, 0) or 0
-        parts.append(f"{k}={float(v):.4f}")
+        parts.append(f"{k}={_metric_float(metrics, k, 0.0):.4f}")
     return "|".join(parts)
 
 
@@ -216,8 +244,9 @@ def _metrics_fingerprint(metrics: Dict[str, Any]) -> str:
 # Critères d'acceptation et progression
 # ---------------------------------------------------------------------------
 
+
 def _is_accept_candidate(
-    metrics: Dict[str, Any],
+    metrics: dict[str, Any],
     *,
     target_sharpe: float,
 ) -> tuple[bool, str]:
@@ -243,7 +272,7 @@ def _is_accept_candidate(
     return True, "ok"
 
 
-def _is_positive_progress_iteration(metrics: Dict[str, Any]) -> bool:
+def _is_positive_progress_iteration(metrics: dict[str, Any]) -> bool:
     """Détermine si une itération compte comme "positive" pour la progression."""
     if _is_ruined_metrics(metrics):
         return False
@@ -252,7 +281,7 @@ def _is_positive_progress_iteration(metrics: Dict[str, Any]) -> bool:
     return ret > 0.0 and trades >= MIN_TRADES_FOR_POSITIVE_PROGRESS
 
 
-def _count_positive_iterations(iterations: "List[BuilderIteration]") -> int:
+def _count_positive_iterations(iterations: list[BuilderIteration]) -> int:
     """Compte les itérations backtestées positives dans l'historique de session.
 
     Fallback iterations with positive metrics are counted towards the quota,
@@ -273,9 +302,8 @@ def _count_positive_iterations(iterations: "List[BuilderIteration]") -> int:
             if is_positive and fallback_positive_count < MAX_POSITIVE_FALLBACK_COUNT:
                 count += 1
                 fallback_positive_count += 1
-        else:
-            if is_positive:
-                count += 1
+        elif is_positive:
+            count += 1
 
     return count
 
@@ -289,13 +317,13 @@ def _required_positive_count_for_iteration(iteration_index: int) -> int:
 # Diagnostic déterministe
 # ---------------------------------------------------------------------------
 
+
 def compute_diagnostic(
-    metrics: Dict[str, Any],
-    iteration_history: List[Dict[str, Any]],
+    metrics: dict[str, Any],
+    iteration_history: list[dict[str, Any]],
     target_sharpe: float = 1.0,
-) -> Dict[str, Any]:
-    """
-    Diagnostic déterministe basé sur les métriques de backtest et l'historique.
+) -> dict[str, Any]:
+    """Diagnostic déterministe basé sur les métriques de backtest et l'historique.
 
     Classifie le problème principal, grade chaque dimension (profitabilité,
     risque, efficacité, qualité signaux), recommande le type de modification
@@ -305,19 +333,19 @@ def compute_diagnostic(
     créative plutôt que sur l'identification du problème.
     """
     # --- Extraction sécurisée ---
-    n = metrics.get("total_trades", 0) or 0
-    sharpe = metrics.get("sharpe_ratio", 0) or 0
-    sortino = metrics.get("sortino_ratio", 0) or 0
-    calmar = metrics.get("calmar_ratio", 0) or 0
-    ret = metrics.get("total_return_pct", 0) or 0
-    dd = abs(metrics.get("max_drawdown_pct", 0) or 0)
-    wr = metrics.get("win_rate_pct", 0) or 0
-    pf = metrics.get("profit_factor", 0) or 0
-    exp = metrics.get("expectancy", 0) or 0
-    avg_w = metrics.get("avg_win", 0) or 0
-    avg_l = abs(metrics.get("avg_loss", 0) or 0)
-    vol = metrics.get("volatility_annual", 0) or 0
-    _rr = metrics.get("risk_reward_ratio", 0) or 0  # noqa: F841
+    n = _metric_int(metrics, "total_trades", 0)
+    sharpe = _metric_float(metrics, "sharpe_ratio", 0.0)
+    sortino = _metric_float(metrics, "sortino_ratio", 0.0)
+    calmar = _metric_float(metrics, "calmar_ratio", 0.0)
+    ret = _metric_float(metrics, "total_return_pct", 0.0)
+    dd = abs(_metric_float(metrics, "max_drawdown_pct", 0.0))
+    wr = _metric_float(metrics, "win_rate_pct", 0.0)
+    pf = _metric_float(metrics, "profit_factor", 0.0)
+    exp = _metric_float(metrics, "expectancy", 0.0)
+    avg_w = _metric_float(metrics, "avg_win", 0.0)
+    avg_l = abs(_metric_float(metrics, "avg_loss", 0.0))
+    vol = _metric_float(metrics, "volatility_annual", 0.0)
+    _rr = _metric_float(metrics, "risk_reward_ratio", 0.0)
 
     # --- Score card A/B/C/D/F ---
     def _g(v, thresholds):
@@ -514,20 +542,13 @@ def compute_diagnostic(
         recent = (prev_cats[-2:] + [cat]) if len(prev_cats) >= 2 else []
         if len(recent) == 3 and len(set(recent)) == 1 and recent[0]:
             trend = "stagnated"
-            trend_detail = (
-                f"Même problème '{cat}' 3× de suite — changer d'approche"
-            )
+            trend_detail = f"Même problème '{cat}' 3× de suite — changer d'approche"
 
         # Oscillation: sharpe en zigzag
         if len(prev_sharpes) >= 2:
-            ds = [
-                prev_sharpes[j + 1] - prev_sharpes[j]
-                for j in range(len(prev_sharpes) - 1)
-            ]
+            ds = [prev_sharpes[j + 1] - prev_sharpes[j] for j in range(len(prev_sharpes) - 1)]
             ds.append(sharpe - prev_sharpes[-1])
-            if len(ds) >= 2 and all(
-                (ds[k] > 0) != (ds[k + 1] > 0) for k in range(len(ds) - 1)
-            ):
+            if len(ds) >= 2 and all((ds[k] > 0) != (ds[k + 1] > 0) for k in range(len(ds) - 1)):
                 trend = "oscillating"
                 trend_detail = "Zigzag — stabiliser les modifications"
 

@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.app
+"""Module-ID: ui.app
 
 Purpose: Application Streamlit principale - UI orchestration, page config, sidebar/main/results.
 
@@ -333,15 +332,9 @@ def main() -> None:
 
         explicit_mode = str(st.session_state.get("optimization_mode", "") or "").strip()
         builder_autonomous_flag = bool(
-            st.session_state.get("builder_autonomous", False)
+            st.session_state.get("builder_autonomous", False),
         )
-        if (
-            not explicit_mode
-            or (
-                explicit_mode == "🏗️ Strategy Builder"
-                and not builder_autonomous_flag
-            )
-        ):
+        if not explicit_mode or (explicit_mode == "🏗️ Strategy Builder" and not builder_autonomous_flag):
             restore_builder_autonomous_ui_state_from_runtime()
     except Exception:
         pass
@@ -358,6 +351,7 @@ def main() -> None:
         sidebar_state = render_sidebar()
     except Exception as e:
         import traceback
+
         _clear_execution_lock()
         st.error(f"❌ Exception sidebar: {e}")
         st.code(traceback.format_exc())

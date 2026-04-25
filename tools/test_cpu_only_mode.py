@@ -1,5 +1,4 @@
-"""
-Script de validation du mode CPU-ONLY
+"""Script de validation du mode CPU-ONLY
 ======================================
 
 Ce script teste que le backtesting fonctionne en mode CPU-only strict,
@@ -38,6 +37,7 @@ print()
 # Charger .env (CRITICAL: AVANT tout import backtest)
 try:
     from dotenv import load_dotenv
+
     env_path = Path(__file__).parent / ".env"
     if env_path.exists():
         load_dotenv(env_path)
@@ -99,10 +99,12 @@ try:
 
     # Import backtest engine
     from backtest.engine import BacktestEngine
+
     print("  ✅ backtest.engine importé")
 
     # Import simulateurs fast (Numba)
     from backtest.simulator_fast import HAS_NUMBA
+
     if not HAS_NUMBA:
         print("  ⚠️  Numba non disponible (performance dégradée)")
     else:
@@ -129,7 +131,7 @@ n_candles = 10000
 dates = pd.date_range(
     start=datetime.now() - timedelta(days=200),
     periods=n_candles,
-    freq="30min"
+    freq="30min",
 )
 
 # Prix aléatoire avec tendance (simule BTC)
@@ -138,13 +140,16 @@ price_base = 45000
 price_walk = np.cumsum(np.random.randn(n_candles) * 100)
 prices = price_base + price_walk
 
-df = pd.DataFrame({
-    "open": prices + np.random.uniform(-50, 50, n_candles),
-    "high": prices + np.random.uniform(50, 150, n_candles),
-    "low": prices + np.random.uniform(-150, -50, n_candles),
-    "close": prices,
-    "volume": np.random.uniform(100, 1000, n_candles),
-}, index=dates)
+df = pd.DataFrame(
+    {
+        "open": prices + np.random.uniform(-50, 50, n_candles),
+        "high": prices + np.random.uniform(50, 150, n_candles),
+        "low": prices + np.random.uniform(-150, -50, n_candles),
+        "close": prices,
+        "volume": np.random.uniform(100, 1000, n_candles),
+    },
+    index=dates,
+)
 
 print(f"  ✅ {len(df):,} candles générés ({df.index[0]} → {df.index[-1]})")
 print()
@@ -185,13 +190,14 @@ try:
     elapsed_ms = (time.perf_counter() - start) * 1000
 
     if elapsed_ms < 5.0:  # Cache hit devrait être < 5ms
-        print(f"  ✅ Cache hit confirmé: {elapsed_ms:.2f}ms (vs ~{elapsed_ms*10:.0f}ms sans cache)")
+        print(f"  ✅ Cache hit confirmé: {elapsed_ms:.2f}ms (vs ~{elapsed_ms * 10:.0f}ms sans cache)")
     else:
         print(f"  ⚠️  Cache potentiellement non utilisé ({elapsed_ms:.1f}ms)")
 
 except Exception as e:
     print(f"  ❌ Erreur calcul indicateurs: {e}")
     import traceback
+
     traceback.print_exc()
     sys.exit(1)
 
@@ -222,7 +228,7 @@ try:
         df=df,
         strategy=strategy,
         params=params,
-        silent_mode=True
+        silent_mode=True,
     )
     elapsed_ms = (time.perf_counter() - start) * 1000
 
@@ -243,6 +249,7 @@ try:
 except Exception as e:
     print(f"  ❌ Erreur backtest: {e}")
     import traceback
+
     traceback.print_exc()
     sys.exit(1)
 

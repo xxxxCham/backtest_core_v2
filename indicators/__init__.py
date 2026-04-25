@@ -1,5 +1,4 @@
-"""
-Backtest Core - Indicators Package
+"""Backtest Core - Indicators Package
 ==================================
 
 Indicateurs techniques vectorisés avec NumPy.
@@ -29,13 +28,18 @@ from .coppock_curve import (
 )
 from .donchian import DonchianSettings, donchian_channel
 from .dpo import DPOSettings, calculate_dpo, dpo
-from .ema import EMASettings, ema, sma
 from .elder_ray import ElderRaySettings, calculate_elder_ray, elder_ray
+from .ema import EMASettings, ema, sma
 from .eom import EOMSettings, calculate_eom, eom
 from .fear_greed import (
     FearGreedSettings,
     calculate_fear_greed,
     fear_greed_index,
+)
+from .fibonacci import (
+    FibonacciSettings,
+    calculate_fibonacci_levels,
+    fibonacci_levels,
 )
 from .fisher_transform import (
     FisherTransformSettings,
@@ -46,11 +50,6 @@ from .force_index import (
     ForceIndexSettings,
     calculate_force_index,
     force_index,
-)
-from .fibonacci import (
-    FibonacciSettings,
-    calculate_fibonacci_levels,
-    fibonacci_levels,
 )
 from .fva import calculate_fva
 from .fvg import calculate_fvg_bearish, calculate_fvg_bullish, fvg
@@ -96,11 +95,11 @@ from .standard_deviation import (
 from .stoch_rsi import calculate_stoch_rsi, stoch_rsi_signal, stochastic_rsi
 from .stochastic import stochastic, stochastic_signal
 from .supertrend import SuperTrendSettings, supertrend
-from .tma import TMASettings, calculate_tma, tma
-from .tsi import TSISettings, calculate_tsi, tsi
 
 # FairValOseille indicators (03/01/2026)
 from .swing import calculate_swing_high, calculate_swing_low, swing
+from .tma import TMASettings, calculate_tma, tma
+from .tsi import TSISettings, calculate_tsi, tsi
 from .ultimate_oscillator import (
     UltimateOscillatorSettings,
     calculate_ultimate_oscillator,
@@ -114,11 +113,11 @@ from .volume_oscillator import (
     volume_oscillator,
 )
 from .vortex import calculate_vortex, vortex, vortex_signal
-from .wma import WMASettings, calculate_wma, wma
 
 # Indicateurs ajoutés 12/12/2025
 from .vwap import VWAPSettings, vwap
 from .williams_r import WilliamsRSettings, williams_r
+from .wma import WMASettings, calculate_wma, wma
 
 __all__ = [
     # Indicateurs de base

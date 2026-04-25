@@ -1,5 +1,4 @@
-"""
-agents.handlers - Extracted handler functions for Orchestrator states.
+"""agents.handlers - Extracted handler functions for Orchestrator states.
 
 Each handler receives the Orchestrator instance and manages one state transition.
 """
@@ -20,19 +19,19 @@ from .report_handler import build_result, generate_final_report, record_iteratio
 from .validate_handler import handle_validate
 
 __all__ = [
-    "handle_init",
-    "validate_config",
+    "build_result",
     "compute_walk_forward_metrics",
     "ensure_indicator_context",
+    "generate_final_report",
+    "get_best_tested_config",
     "handle_analyze",
+    "handle_critique",
+    "handle_init",
+    "handle_iterate",
     "handle_propose",
     "handle_sweep_proposal",
-    "handle_critique",
-    "test_proposals",
     "handle_validate",
-    "handle_iterate",
-    "get_best_tested_config",
-    "generate_final_report",
-    "build_result",
     "record_iteration",
+    "test_proposals",
+    "validate_config",
 ]

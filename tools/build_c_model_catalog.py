@@ -4,9 +4,10 @@ import argparse
 import copy
 import json
 from collections import OrderedDict
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 HF_ARCHIVE_SPECS: list[dict[str, Any]] = [
     {
@@ -457,8 +458,14 @@ def build_catalog(
             legacy_entry = alias_entries[0]
 
         manifest_sizes = [float(item.get("size_gb") or 0.0) for item in group["manifests"]]
-        manifest_paths = [str(item.get("manifest_path") or "") for item in group["manifests"] if item.get("manifest_path")]
-        entry = _rebase_entry_paths(legacy_entry, gguf_root=gguf_root, hf_root=hf_root) if legacy_entry else _default_catalog_entry(canonical_name, group["manifests"][0])
+        manifest_paths = [
+            str(item.get("manifest_path") or "") for item in group["manifests"] if item.get("manifest_path")
+        ]
+        entry = (
+            _rebase_entry_paths(legacy_entry, gguf_root=gguf_root, hf_root=hf_root)
+            if legacy_entry
+            else _default_catalog_entry(canonical_name, group["manifests"][0])
+        )
 
         exact_ollama_name = str(entry.get("ollama_name") or canonical_name)
         canonical_name_map[canonical_name.lower()] = exact_ollama_name
@@ -491,7 +498,7 @@ def build_catalog(
     if missing_hf_targets:
         missing_text = "\n".join(f"- {path}" for path in missing_hf_targets)
         raise FileNotFoundError(
-            "Missing required HuggingFace archives on destination root:\n" + missing_text
+            "Missing required HuggingFace archives on destination root:\n" + missing_text,
         )
 
     payload["version"] = str(payload.get("version") or "3.0")

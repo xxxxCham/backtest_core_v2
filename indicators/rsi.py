@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.rsi
+"""Module-ID: indicators.rsi
 
 Purpose: Indicateur RSI (Relative Strength Index) momentum vectorisé.
 
@@ -21,7 +20,6 @@ Skip-if: Vous utilisez juste calculate_indicator('rsi').
 """
 
 from dataclasses import dataclass
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -40,17 +38,16 @@ class RSISettings:
             raise ValueError(f"period doit être >= 1, reçu: {self.period}")
         if not 0 <= self.oversold < self.overbought <= 100:
             raise ValueError(
-                f"Niveaux invalides: oversold={self.oversold}, overbought={self.overbought}"
+                f"Niveaux invalides: oversold={self.oversold}, overbought={self.overbought}",
             )
 
 
 def rsi(
-    close: Union[pd.Series, np.ndarray],
+    close: pd.Series | np.ndarray,
     period: int = 14,
-    settings: RSISettings = None
+    settings: RSISettings = None,
 ) -> np.ndarray:
-    """
-    Calcule le Relative Strength Index.
+    """Calcule le Relative Strength Index.
 
     Args:
         close: Prix de clôture
@@ -60,6 +57,7 @@ def rsi(
     Returns:
         Array RSI de valeurs entre 0 et 100.
         Les premières 'period' valeurs seront NaN.
+
     """
     # Utiliser settings si fourni
     if settings is not None:
@@ -110,13 +108,12 @@ def rsi(
 
 
 def rsi_signal(
-    close: Union[pd.Series, np.ndarray],
+    close: pd.Series | np.ndarray,
     period: int = 14,
     overbought: float = 70.0,
-    oversold: float = 30.0
+    oversold: float = 30.0,
 ) -> np.ndarray:
-    """
-    Génère des signaux de trading basés sur le RSI.
+    """Génère des signaux de trading basés sur le RSI.
 
     Args:
         close: Prix de clôture
@@ -126,6 +123,7 @@ def rsi_signal(
 
     Returns:
         Array de signaux: 1 (achat), -1 (vente), 0 (neutre)
+
     """
     rsi_values = rsi(close, period)
 
@@ -141,12 +139,11 @@ def rsi_signal(
 
 
 def rsi_divergence(
-    close: Union[pd.Series, np.ndarray],
+    close: pd.Series | np.ndarray,
     period: int = 14,
-    lookback: int = 14
+    lookback: int = 14,
 ) -> np.ndarray:
-    """
-    Détecte les divergences RSI/Prix.
+    """Détecte les divergences RSI/Prix.
 
     Retourne:
         1 = Divergence haussière (prix plus bas, RSI plus haut)
@@ -176,4 +173,4 @@ def rsi_divergence(
     return divergence
 
 
-__all__ = ["rsi", "RSISettings", "rsi_signal", "rsi_divergence"]
+__all__ = ["RSISettings", "rsi", "rsi_divergence", "rsi_signal"]

@@ -299,3 +299,11 @@ analysis_top_configs.csv
 
 # Codex local state
 .codex/
+
+# Local one-off scripts, logs and run outputs
+/_*.py
+/_*.txt
+/_grad_*.txt
+/runs/
+/docs/terminal*.txt
+/catalog/graduation_results/graduation_full_progress.json

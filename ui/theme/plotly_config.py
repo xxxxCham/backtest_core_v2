@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.theme.plotly_config
+"""Module-ID: ui.theme.plotly_config
 
 Purpose: Configuration Plotly centralisée - layouts, grilles, fonts, thèmes.
 
@@ -22,7 +21,7 @@ Skip-if: Vous appelez juste get_layout_config().
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import plotly.graph_objects as go
 
@@ -33,7 +32,7 @@ from .colors import ColorPalette, get_color, get_colors
 # ============================================================================
 
 # Config par défaut pour st.plotly_chart
-PLOTLY_CHART_CONFIG: Dict[str, Any] = {
+PLOTLY_CHART_CONFIG: dict[str, Any] = {
     "scrollZoom": True,
     "displayModeBar": True,
     "modeBarButtonsToRemove": ["lasso2d", "select2d"],
@@ -48,14 +47,14 @@ RESAMPLER_THRESHOLD = 100_000
 # LAYOUT CONFIGS
 # ============================================================================
 
+
 def get_layout_config(
     height: int = 520,
-    title: Optional[str] = None,
+    title: str | None = None,
     show_legend: bool = True,
-    palette: Optional[ColorPalette] = None,
-) -> Dict[str, Any]:
-    """
-    Retourne la configuration de layout Plotly standard.
+    palette: ColorPalette | None = None,
+) -> dict[str, Any]:
+    """Retourne la configuration de layout Plotly standard.
 
     Args:
         height: Hauteur du graphique
@@ -65,6 +64,7 @@ def get_layout_config(
 
     Returns:
         Dict de configuration pour fig.update_layout()
+
     """
     colors = get_colors(palette)
 
@@ -105,12 +105,11 @@ def get_layout_config(
 
 
 def get_axis_config(
-    title: Optional[str] = None,
+    title: str | None = None,
     show_grid: bool = True,
-    palette: Optional[ColorPalette] = None,
-) -> Dict[str, Any]:
-    """
-    Retourne la configuration d'axe Plotly.
+    palette: ColorPalette | None = None,
+) -> dict[str, Any]:
+    """Retourne la configuration d'axe Plotly.
 
     Args:
         title: Titre de l'axe
@@ -119,6 +118,7 @@ def get_axis_config(
 
     Returns:
         Dict de configuration pour xaxis/yaxis
+
     """
     grid_color = get_color("grid_color", palette)
     text_color = get_color("text_secondary", palette)
@@ -139,9 +139,8 @@ def get_axis_config(
     return config
 
 
-def get_colorscale_diverging(palette: Optional[ColorPalette] = None) -> list:
-    """
-    Retourne une échelle de couleurs divergente (rouge-blanc-vert).
+def get_colorscale_diverging(palette: ColorPalette | None = None) -> list:
+    """Retourne une échelle de couleurs divergente (rouge-blanc-vert).
     Utilisé pour heatmaps PnL.
     """
     down = get_color("chart_down", palette)
@@ -156,7 +155,7 @@ def get_colorscale_diverging(palette: Optional[ColorPalette] = None) -> list:
 
 def get_colorscale_sequential(
     color_key: str = "primary",
-    palette: Optional[ColorPalette] = None
+    palette: ColorPalette | None = None,
 ) -> list:
     """Retourne une échelle de couleurs séquentielle."""
     base = get_color(color_key, palette)
@@ -170,13 +169,14 @@ def get_colorscale_sequential(
 # APPLICATION DE THÈME
 # ============================================================================
 
-def apply_dark_theme(fig: go.Figure, palette: Optional[ColorPalette] = None) -> None:
-    """
-    Applique le thème dark à une figure Plotly.
+
+def apply_dark_theme(fig: go.Figure, palette: ColorPalette | None = None) -> None:
+    """Applique le thème dark à une figure Plotly.
 
     Args:
         fig: Figure Plotly à modifier
         palette: Palette de couleurs
+
     """
     colors = get_colors(palette)
 
@@ -195,12 +195,11 @@ def apply_dark_theme(fig: go.Figure, palette: Optional[ColorPalette] = None) -> 
 def apply_chart_layout(
     fig: go.Figure,
     height: int = 520,
-    y_title: Optional[str] = None,
-    x_title: Optional[str] = None,
-    palette: Optional[ColorPalette] = None,
+    y_title: str | None = None,
+    x_title: str | None = None,
+    palette: ColorPalette | None = None,
 ) -> None:
-    """
-    Applique le layout complet à une figure.
+    """Applique le layout complet à une figure.
 
     Args:
         fig: Figure Plotly
@@ -208,6 +207,7 @@ def apply_chart_layout(
         y_title: Titre axe Y
         x_title: Titre axe X
         palette: Palette
+
     """
     layout = get_layout_config(height=height, palette=palette)
     fig.update_layout(**layout)
@@ -224,12 +224,12 @@ def apply_chart_layout(
 
 
 def apply_axis_interaction(fig: go.Figure, lock_x: bool = False) -> None:
-    """
-    Configure les interactions de zoom/pan sur les axes.
+    """Configure les interactions de zoom/pan sur les axes.
 
     Args:
         fig: Figure Plotly
         lock_x: Verrouiller l'axe X (pour comparaisons)
+
     """
     if lock_x:
         fig.update_xaxes(fixedrange=True)
@@ -240,7 +240,8 @@ def apply_axis_interaction(fig: go.Figure, lock_x: bool = False) -> None:
 # CANDLESTICK CONFIG
 # ============================================================================
 
-def get_candlestick_colors(palette: Optional[ColorPalette] = None) -> Dict[str, str]:
+
+def get_candlestick_colors(palette: ColorPalette | None = None) -> dict[str, str]:
     """Retourne les couleurs pour candlesticks."""
     return {
         "increasing_line_color": get_color("candle_up", palette),
@@ -250,7 +251,7 @@ def get_candlestick_colors(palette: Optional[ColorPalette] = None) -> Dict[str, 
     }
 
 
-def get_volume_colors(palette: Optional[ColorPalette] = None) -> Dict[str, str]:
+def get_volume_colors(palette: ColorPalette | None = None) -> dict[str, str]:
     """Retourne les couleurs pour barres de volume."""
     return {
         "up": get_color("candle_up", palette),
@@ -262,12 +263,12 @@ def get_volume_colors(palette: Optional[ColorPalette] = None) -> Dict[str, str]:
 # TRADE MARKERS CONFIG
 # ============================================================================
 
+
 def get_entry_marker_config(
     side: str = "LONG",
-    palette: Optional[ColorPalette] = None
-) -> Dict[str, Any]:
-    """
-    Retourne la configuration de marqueur d'entrée.
+    palette: ColorPalette | None = None,
+) -> dict[str, Any]:
+    """Retourne la configuration de marqueur d'entrée.
 
     Args:
         side: "LONG" ou "SHORT"
@@ -275,6 +276,7 @@ def get_entry_marker_config(
 
     Returns:
         Dict pour marker=dict(...)
+
     """
     color = get_color("entry_long" if side == "LONG" else "entry_short", palette)
     return {
@@ -287,10 +289,9 @@ def get_entry_marker_config(
 
 def get_exit_marker_config(
     pnl: float,
-    palette: Optional[ColorPalette] = None
-) -> Dict[str, Any]:
-    """
-    Retourne la configuration de marqueur de sortie.
+    palette: ColorPalette | None = None,
+) -> dict[str, Any]:
+    """Retourne la configuration de marqueur de sortie.
 
     Args:
         pnl: Profit/Loss du trade
@@ -298,6 +299,7 @@ def get_exit_marker_config(
 
     Returns:
         Dict pour marker=dict(...)
+
     """
     color = get_color("exit_profit" if pnl >= 0 else "exit_loss", palette)
     return {
@@ -312,12 +314,12 @@ def get_exit_marker_config(
 # INDICATOR LINE CONFIG
 # ============================================================================
 
+
 def get_indicator_line_config(
     indicator: str,
-    palette: Optional[ColorPalette] = None
-) -> Dict[str, Any]:
-    """
-    Retourne la configuration de ligne pour un indicateur.
+    palette: ColorPalette | None = None,
+) -> dict[str, Any]:
+    """Retourne la configuration de ligne pour un indicateur.
 
     Args:
         indicator: Nom de l'indicateur (bb_mid, ema_fast, etc.)
@@ -325,6 +327,7 @@ def get_indicator_line_config(
 
     Returns:
         Dict pour line=dict(...)
+
     """
     color = get_color(indicator, palette)
 

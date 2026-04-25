@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.roc
+"""Module-ID: indicators.roc
 
 Purpose: Indicateur ROC (Rate of Change) - changement % prix.
 
@@ -29,6 +28,7 @@ import pandas as pd
 @dataclass
 class ROCSettings:
     """Paramètres ROC."""
+
     period: int = 12
 
 
@@ -36,8 +36,7 @@ def roc(
     close: pd.Series | np.ndarray,
     period: int = 12,
 ) -> np.ndarray:
-    """
-    Calcule Rate of Change.
+    """Calcule Rate of Change.
 
     Args:
         close: Prix de clôture
@@ -45,6 +44,7 @@ def roc(
 
     Returns:
         ROC en pourcentage
+
     """
     if isinstance(close, pd.Series):
         close = close.values
@@ -56,4 +56,4 @@ def roc(
     return roc_values
 
 
-__all__ = ["roc", "ROCSettings"]
+__all__ = ["ROCSettings", "roc"]

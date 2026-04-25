@@ -71,6 +71,13 @@ BOTH MODE:
 {% endfor %}
 {% endif %}
 
+{% if cross_session_memory_prompt %}
+## CROSS-SESSION MEMORY SNAPSHOT ({{ cross_session_memory_count|default(0) }})
+- This is long-horizon Builder memory from earlier relevant sessions.
+- Treat success cards as implementation anchors and failure cards as anti-patterns to avoid.
+{{ cross_session_memory_prompt }}
+{% endif %}
+
 ## ENGINE USAGE RULES
 - SINGLE-POSITION SIMULATOR: the engine holds at most ONE position at a time.
   A +1.0 while already long = ignored. A -1.0 while already short = ignored.

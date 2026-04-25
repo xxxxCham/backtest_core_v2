@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.builder_loop
+"""Module-ID: agents.builder_loop
 
 Purpose: Internal Builder V2 iteration loop.
 
@@ -12,7 +11,7 @@ from __future__ import annotations
 
 import math
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -56,7 +55,7 @@ from agents.strategy_builder import logger
 def _record_policy_restrictions(
     builder: Any,
     iteration_trace: Any,
-    restrictions: List[PolicyRestriction],
+    restrictions: list[PolicyRestriction],
 ) -> None:
     for restriction in restrictions:
         builder.instrumentation.record_restriction(
@@ -78,11 +77,19 @@ def run_builder_loop_v2(
     del thought_stream
     session_id = session.session_id
     max_iterations = session.max_iterations
-    last_iteration: Optional[BuilderIteration] = None
+    last_iteration: BuilderIteration | None = None
     consecutive_failures = 0
     fallback_count = 0  # compteur de fallbacks déterministes dans la session
 
     for i in range(1, max_iterations + 1):
+        # ── Multi-LLM: fix models for this iteration, rotate between iterations ──
+        _mlm = getattr(builder, "_multi_llm_manager", None)
+        if _mlm is not None:
+            if i == 1:
+                _mlm.pin_iteration_roles()
+            else:
+                _mlm.advance_iteration()
+
         iteration = BuilderIteration(iteration=i)
         # ── Instrumentation: début d'itération ──
         _itrace = builder.instrumentation.begin_iteration(i, session_id)
@@ -100,10 +107,7 @@ def run_builder_loop_v2(
                     session,
                     iteration_num=i,
                     trigger="consecutive_failures",
-                    reason=(
-                        f"{consecutive_failures} échecs consécutifs "
-                        f"(seuil={MAX_CONSECUTIVE_FAILURES})"
-                    ),
+                    reason=(f"{consecutive_failures} échecs consécutifs (seuil={MAX_CONSECUTIVE_FAILURES})"),
                     last_iteration=last_iteration,
                     consecutive_failures=consecutive_failures,
                     fallback_count=fallback_count,
@@ -111,7 +115,7 @@ def run_builder_loop_v2(
             )
             if recovered:
                 iteration.phase_feedback.setdefault("session_reset", {}).update(
-                    reset_event
+                    reset_event,
                 )
                 builder._emit_progress(
                     "warning",
@@ -144,10 +148,7 @@ def run_builder_loop_v2(
                     session,
                     iteration_num=i,
                     trigger="deterministic_fallbacks",
-                    reason=(
-                        f"{fallback_count} fallbacks déterministes "
-                        f"(seuil={MAX_DETERMINISTIC_FALLBACKS})"
-                    ),
+                    reason=(f"{fallback_count} fallbacks déterministes (seuil={MAX_DETERMINISTIC_FALLBACKS})"),
                     last_iteration=last_iteration,
                     consecutive_failures=consecutive_failures,
                     fallback_count=fallback_count,
@@ -155,15 +156,12 @@ def run_builder_loop_v2(
             )
             if recovered:
                 iteration.phase_feedback.setdefault("session_reset", {}).update(
-                    reset_event
+                    reset_event,
                 )
                 builder._emit_progress(
                     "warning",
                     iteration=i,
-                    message=(
-                        "Auto-reset Builder: saturation fallback detectee, "
-                        "redemarrage sur une base plus saine."
-                    ),
+                    message=("Auto-reset Builder: saturation fallback detectee, redemarrage sur une base plus saine."),
                 )
             else:
                 builder._emit_progress(
@@ -188,11 +186,7 @@ def run_builder_loop_v2(
                 "phase_start",
                 iteration=i,
                 phase="proposal",
-                detail=(
-                    "avec resultats precedents"
-                    if last_iteration is not None
-                    else "premiere iteration"
-                ),
+                detail=("avec resultats precedents" if last_iteration is not None else "premiere iteration"),
                 prev_metrics=(
                     dict(last_iteration.backtest_result.metrics)
                     if last_iteration is not None
@@ -203,7 +197,8 @@ def run_builder_loop_v2(
             )
             t0 = time.perf_counter()
             proposal, proposal_feedback = builder._ask_proposal(
-                session, last_iteration
+                session,
+                last_iteration,
             )
             proposal_feedback = dict(proposal_feedback or {})
             iteration.phase_feedback["proposal"] = proposal_feedback
@@ -215,9 +210,7 @@ def run_builder_loop_v2(
                     "warning",
                     iteration=i,
                     phase="proposal",
-                    message=(
-                        "Proposition invalide apres retry contractuel - fallback deterministe"
-                    ),
+                    message=("Proposition invalide apres retry contractuel - fallback deterministe"),
                 )
                 issues = _proposal_issues(proposal)
                 proposal_feedback["issues_after_retry"] = issues
@@ -243,14 +236,13 @@ def run_builder_loop_v2(
                         phase="proposal",
                     )
 
-            branch_specs: List[Dict[str, str]] = []
-            proposal_candidates: List[Dict[str, Any]] = []
-            if (
-                _should_enable_stagnation_branching(last_iteration)
-                and builder.ablation.is_enabled("stagnation_branching")
+            branch_specs: list[dict[str, str]] = []
+            proposal_candidates: list[dict[str, Any]] = []
+            if _should_enable_stagnation_branching(last_iteration) and builder.ablation.is_enabled(
+                "stagnation_branching",
             ):
                 branch_specs = _build_stagnation_branch_specs(
-                    _previous_iteration_indicators(last_iteration)
+                    _previous_iteration_indicators(last_iteration),
                 )
                 for spec in branch_specs:
                     candidate_proposal, candidate_feedback = builder._ask_proposal(
@@ -263,7 +255,7 @@ def run_builder_loop_v2(
                             "branch_label": spec["label"],
                             "proposal": candidate_proposal,
                             "proposal_feedback": candidate_feedback,
-                        }
+                        },
                     )
                 iteration.phase_feedback["proposal"] = {
                     "phase": "proposal",
@@ -284,10 +276,10 @@ def run_builder_loop_v2(
                         "branch_label": "main",
                         "proposal": proposal,
                         "proposal_feedback": proposal_feedback,
-                    }
+                    },
                 )
                 proposal["change_type"] = _normalize_change_type(
-                    proposal.get("change_type", "logic")
+                    proposal.get("change_type", "logic"),
                 )
                 policy_ct = _policy_change_type_override(
                     session=session,
@@ -311,13 +303,15 @@ def run_builder_loop_v2(
             for candidate in proposal_candidates:
                 candidate_used = candidate["proposal"].get("used_indicators", [])
                 unknown = [
-                    ind for ind in candidate_used
+                    ind
+                    for ind in candidate_used
                     if ind.lower() not in (x.lower() for x in builder.available_indicators)
                 ]
                 if unknown:
                     logger.warning("builder_unknown_indicators unknown=%s", unknown)
                     candidate["proposal"]["used_indicators"] = [
-                        ind for ind in candidate_used
+                        ind
+                        for ind in candidate_used
                         if ind.lower() in (x.lower() for x in builder.available_indicators)
                     ]
                 builder._emit_progress(
@@ -363,7 +357,7 @@ def run_builder_loop_v2(
             builder._emit_progress("phase_start", iteration=i, phase="code")
             t0 = time.perf_counter()
 
-            branch_outcomes: List[Dict[str, Any]] = []
+            branch_outcomes: list[dict[str, Any]] = []
             for candidate in proposal_candidates:
                 candidate_outcome, fallback_count = builder._execute_proposal_candidate(
                     session=session,
@@ -451,7 +445,7 @@ def run_builder_loop_v2(
             _perf_bench = _cfb.get("perf_benchmark") or {}
             iteration.perf_score = float(_perf_bench.get("median_ms", 0.0) or 0.0)
             iteration.code_quality_score = float(
-                selected_outcome.get("code_quality_score", 1.0) or 1.0
+                selected_outcome.get("code_quality_score", 1.0) or 1.0,
             )
             builder._persist_session_strategy_code(session, code)
             iteration.phase_feedback["proposal"] = selected_outcome.get("proposal_feedback", {})
@@ -465,7 +459,11 @@ def run_builder_loop_v2(
                             "used_indicators": (outcome.get("proposal") or {}).get("used_indicators", []),
                             "rank_score": outcome.get("rank_score"),
                             "sharpe": outcome.get("sharpe"),
-                            "return_pct": ((outcome.get("metrics") or {}).get("total_return_pct") if outcome.get("metrics") else None),
+                            "return_pct": (
+                                (outcome.get("metrics") or {}).get("total_return_pct")
+                                if outcome.get("metrics")
+                                else None
+                            ),
                             "error": outcome.get("error"),
                             "is_fallback": outcome.get("is_fallback", False),
                         }
@@ -519,20 +517,18 @@ def run_builder_loop_v2(
                 win_rate_pct=bt_result.metrics.get("win_rate_pct", 0.0),
                 profit_factor=bt_result.metrics.get("profit_factor", 0.0),
                 max_drawdown_pct=bt_result.metrics.get("max_drawdown_pct", 0.0),
-                evaluation_mode=(
-                    iteration.phase_feedback.get("backtest", {}).get("mode", "single")
-                ),
+                evaluation_mode=(iteration.phase_feedback.get("backtest", {}).get("mode", "single")),
                 sweep_total_tested=int(
                     iteration.phase_feedback.get("backtest", {}).get(
                         "sweep_total_tested",
                         0,
                     )
-                    or 0
+                    or 0,
                 ),
                 backtest_skipped=bool(
                     iteration.phase_feedback.get("precheck", {}).get(
-                        "backtest_skipped"
-                    )
+                        "backtest_skipped",
+                    ),
                 ),
                 branch_label=selected_outcome.get("branch_label", ""),
                 detail=(
@@ -570,7 +566,7 @@ def run_builder_loop_v2(
                     "drawdown_excess_pct": score_payload.get("drawdown_excess_pct"),
                     "components": score_payload.get("components"),
                     "penalties": score_payload.get("penalties"),
-                }
+                },
             )
             if math.isfinite(sharpe) and sharpe > session.best_sharpe:
                 session.best_sharpe = sharpe
@@ -597,7 +593,7 @@ def run_builder_loop_v2(
 
             if should_promote_best:
                 session.best_score = float(
-                    score_payload.get("score", float("-inf")) or float("-inf")
+                    score_payload.get("score", float("-inf")) or float("-inf"),
                 )
                 session.best_iteration = iteration
 
@@ -605,12 +601,10 @@ def run_builder_loop_v2(
             cur_fp = _metrics_fingerprint(metrics_cur)
             if last_iteration and last_iteration.backtest_result:
                 prev_fp = _metrics_fingerprint(
-                    last_iteration.backtest_result.metrics or {}
+                    last_iteration.backtest_result.metrics or {},
                 )
                 if cur_fp == prev_fp:
-                    iteration.phase_feedback.setdefault("stagnation", {})[
-                        "identical_metrics"
-                    ] = True
+                    iteration.phase_feedback.setdefault("stagnation", {})["identical_metrics"] = True
                     builder._emit_progress(
                         "warning",
                         iteration=i,
@@ -622,7 +616,8 @@ def run_builder_loop_v2(
                     )
                     logger.warning(
                         "builder_iter_%d_stagnation fingerprint=%s",
-                        i, cur_fp,
+                        i,
+                        cur_fp,
                     )
                     # Injecter un signal fort dans la proposition pour
                     # forcer le LLM à changer d'approche à l'itération suivante
@@ -632,22 +627,21 @@ def run_builder_loop_v2(
             logger.info("builder_iter_%d_diagnostic", i)
             diag_history = [
                 {
-                    "sharpe": (
-                        it.backtest_result.metrics.get("sharpe_ratio", 0)
-                        if it.backtest_result else 0
-                    ),
+                    "sharpe": (it.backtest_result.metrics.get("sharpe_ratio", 0) if it.backtest_result else 0),
                     "diagnostic_category": it.diagnostic_category,
                 }
                 for it in session.iterations
             ]
             diag = compute_diagnostic(
-                bt_result.metrics, diag_history, session.target_sharpe,
+                bt_result.metrics,
+                diag_history,
+                session.target_sharpe,
             )
             iteration.diagnostic_category = diag["category"]
             iteration.diagnostic_detail = diag
             if not iteration.change_type:
                 iteration.change_type = _normalize_change_type(
-                    diag.get("change_type", "logic")
+                    diag.get("change_type", "logic"),
                 )
             builder._emit_progress(
                 "diagnostic",
@@ -667,11 +661,9 @@ def run_builder_loop_v2(
                 enabled=builder.ablation.is_enabled("positive_progress_gate"),
             )
             if positive_gate_policy.feedback is not None:
-                decision_feedback.positive_progress_gate = (
-                    positive_gate_policy.feedback
-                )
+                decision_feedback.positive_progress_gate = positive_gate_policy.feedback
                 iteration.phase_feedback.setdefault("decision", {}).update(
-                    decision_feedback.to_dict()
+                    decision_feedback.to_dict(),
                 )
 
             if positive_gate_policy.triggered:
@@ -685,8 +677,7 @@ def run_builder_loop_v2(
                     )
                 if gate_feedback is not None:
                     logger.info(
-                        "builder_iter_%d_positive_gate_stop observed=%d required=%d "
-                        "llm=%d fallback=%d",
+                        "builder_iter_%d_positive_gate_stop observed=%d required=%d llm=%d fallback=%d",
                         i,
                         gate_feedback.observed_positive,
                         gate_feedback.required_positive,
@@ -730,14 +721,18 @@ def run_builder_loop_v2(
 
             logger.info(
                 "builder_iter_%d_analysis diag=%s sev=%s",
-                i, diag["category"], diag["severity"],
+                i,
+                diag["category"],
+                diag["severity"],
             )
             builder._emit_progress("phase_start", iteration=i, phase="analysis")
             pre_reflection_text = ""
             t0 = time.perf_counter()
             if builder.ablation.is_enabled("llm_analysis"):
                 analysis, decision = builder._ask_analysis(
-                    session, iteration, diag,
+                    session,
+                    iteration,
+                    diag,
                     pre_reflection=pre_reflection_text,
                 )
             else:
@@ -748,12 +743,14 @@ def run_builder_loop_v2(
                 _rule_ct = str(diag.get("change_type", "") or "")
                 _target = float(session.target_sharpe or 1.0)
                 # Score multi-critères: accepter si sharpe atteint + au moins 2 critères secondaires
-                _criteria_met = sum([
-                    _rule_sharpe >= _target,        # critère principal
-                    _rule_wr >= 0.38,               # taux de victoire viable
-                    _rule_dd <= 0.30,               # drawdown maîtrisé
-                    _rule_pf >= 1.1,                # profit factor positif
-                ])
+                _criteria_met = sum(
+                    [
+                        _rule_sharpe >= _target,  # critère principal
+                        _rule_wr >= 0.38,  # taux de victoire viable
+                        _rule_dd <= 0.30,  # drawdown maîtrisé
+                        _rule_pf >= 1.1,  # profit factor positif
+                    ],
+                )
                 if _rule_ct == "accept" or (_rule_sharpe >= _target and _criteria_met >= 2):
                     decision = "accept"
                 elif i >= max_iterations:
@@ -787,7 +784,7 @@ def run_builder_loop_v2(
             decision_payload = decision_feedback.to_dict()
             if decision_payload:
                 iteration.phase_feedback.setdefault("decision", {}).update(
-                    decision_payload
+                    decision_payload,
                 )
 
             if decision_policy.stagnation_warning_message:
@@ -809,8 +806,7 @@ def run_builder_loop_v2(
                     message=decision_policy.stop_override_warning_message,
                 )
                 logger.info(
-                    "builder_iter_%d_stop_overridden successful_iters=%d "
-                    "best_sharpe=%.3f target=%.3f",
+                    "builder_iter_%d_stop_overridden successful_iters=%d best_sharpe=%.3f target=%.3f",
                     i,
                     decision_policy.successful_iterations,
                     session.best_sharpe,
@@ -824,8 +820,7 @@ def run_builder_loop_v2(
                     message=decision_policy.accept_override_warning_message,
                 )
                 logger.info(
-                    "builder_iter_%d_accept_overridden reason=%s trades=%d "
-                    "best_sharpe=%.3f target=%.3f max_dd=%.2f",
+                    "builder_iter_%d_accept_overridden reason=%s trades=%d best_sharpe=%.3f target=%.3f max_dd=%.2f",
                     i,
                     decision_policy.accept_reason,
                     decision_policy.trades,
@@ -859,12 +854,13 @@ def run_builder_loop_v2(
                     _itrace,
                     decision,
                     overridden=bool(
-                        _dec_fb.get("stop_overridden")
-                        or _dec_fb.get("accept_overridden")
+                        _dec_fb.get("stop_overridden") or _dec_fb.get("accept_overridden"),
                     ),
                     override_reason=(
-                        "stop_overridden" if _dec_fb.get("stop_overridden")
-                        else "accept_overridden" if _dec_fb.get("accept_overridden")
+                        "stop_overridden"
+                        if _dec_fb.get("stop_overridden")
+                        else "accept_overridden"
+                        if _dec_fb.get("accept_overridden")
                         else ""
                     ),
                 )
@@ -875,15 +871,13 @@ def run_builder_loop_v2(
                     detected=bool(_stag_fb.get("identical_metrics")),
                     circuit_breaker=bool(_stag_cb.get("triggered")),
                     branching=bool(
-                        iteration.phase_feedback.get("proposal", {}).get("branching_enabled")
+                        iteration.phase_feedback.get("proposal", {}).get("branching_enabled"),
                     ),
                     branch_count=len(
-                        iteration.phase_feedback.get("proposal", {}).get("candidates", [])
+                        iteration.phase_feedback.get("proposal", {}).get("candidates", []),
                     ),
                 )
-                _itrace.is_best_so_far = (
-                    session.best_iteration is iteration
-                )
+                _itrace.is_best_so_far = session.best_iteration is iteration
                 builder.instrumentation.finalize_iteration(_itrace)
 
             session.iterations.append(iteration)
@@ -900,7 +894,9 @@ def run_builder_loop_v2(
 
             logger.info(
                 "builder_iter_%d_done sharpe=%.3f decision=%s",
-                i, sharpe, decision,
+                i,
+                sharpe,
+                decision,
             )
 
             if decision == "accept":
@@ -931,8 +927,7 @@ def run_builder_loop_v2(
                 session.status = "success" if best_ok else "failed"
                 if not best_ok:
                     logger.info(
-                        "builder_iter_%d_stop_rejected_success reason=%s "
-                        "best_sharpe=%.3f",
+                        "builder_iter_%d_stop_rejected_success reason=%s best_sharpe=%.3f",
                         i,
                         best_reason,
                         session.best_sharpe,
@@ -952,7 +947,9 @@ def run_builder_loop_v2(
             consecutive_failures += 1
             logger.error(
                 "builder_iter_%d_error error=%s\n%s",
-                i, e, _safe_format_exception(e),
+                i,
+                e,
+                _safe_format_exception(e),
             )
             # ── Instrumentation: erreur d'itération ──
             if builder.instrumentation.enabled:

@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.config
+"""Module-ID: utils.config
 
 Purpose: Configuration centralisée du moteur (data_dir, frais, slippage, etc.).
 
@@ -28,8 +27,7 @@ from typing import Any, Optional
 
 
 def _default_data_dir() -> Path:
-    """
-    Résout un data_dir portable:
+    """Résout un data_dir portable:
     utilise d'abord la résolution canonique du loader central, puis fallback env.
     """
     try:
@@ -50,8 +48,7 @@ def _default_data_dir() -> Path:
 
 @dataclass
 class Config:
-    """
-    Configuration globale du moteur de backtest.
+    """Configuration globale du moteur de backtest.
 
     Attributes:
         data_dir: Répertoire des données OHLCV
@@ -60,6 +57,7 @@ class Config:
         fees_bps: Frais en points de base (10 = 0.1%)
         slippage_bps: Slippage en points de base
         seed: Seed pour reproductibilité
+
     """
 
     # Chemins
@@ -92,7 +90,7 @@ class Config:
     @classmethod
     def from_file(cls, path: Path) -> "Config":
         """Charge la configuration depuis un fichier JSON."""
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         return cls(**data)
 
@@ -119,25 +117,25 @@ class Config:
 SAFE_RANGES_PRESET = {
     "bollinger": {
         "period": {"min": 10, "max": 50, "default": 20},
-        "std_dev": {"min": 1.5, "max": 3.0, "default": 2.0}
+        "std_dev": {"min": 1.5, "max": 3.0, "default": 2.0},
     },
     "atr": {
-        "period": {"min": 7, "max": 21, "default": 14}
+        "period": {"min": 7, "max": 21, "default": 14},
     },
     "rsi": {
         "period": {"min": 7, "max": 21, "default": 14},
         "overbought": {"min": 65, "max": 80, "default": 70},
-        "oversold": {"min": 20, "max": 35, "default": 30}
+        "oversold": {"min": 20, "max": 35, "default": 30},
     },
     "ema": {
         "fast_period": {"min": 5, "max": 20, "default": 12},
-        "slow_period": {"min": 15, "max": 50, "default": 26}
+        "slow_period": {"min": 15, "max": 50, "default": 26},
     },
     "strategy": {
         "entry_z": {"min": 1.5, "max": 3.0, "default": 2.0},
         "k_sl": {"min": 1.0, "max": 3.0, "default": 1.5},
-        "leverage": {"min": 1, "max": 10, "default": 1}
-    }
+        "leverage": {"min": 1, "max": 10, "default": 1},
+    },
 }
 
 
@@ -147,8 +145,7 @@ def parameter_values(
     granularity: float = 0.5,
     max_values: int = 4,
 ) -> list[float]:
-    """
-    Génère les valeurs de paramètre selon la granularité.
+    """Génère les valeurs de paramètre selon la granularité.
 
     Logique inspirée de ThreadX pour limiter l'explosion combinatoire:
     - granularity=0: maximum de valeurs (finesse maximale)
@@ -163,6 +160,7 @@ def parameter_values(
 
     Returns:
         Liste de valeurs échantillonnées
+
     """
     import numpy as np
 
@@ -188,4 +186,4 @@ def parameter_values(
     return [round(v, 4) for v in values]
 
 
-__all__ = ["Config", "SAFE_RANGES_PRESET", "parameter_values"]
+__all__ = ["SAFE_RANGES_PRESET", "Config", "parameter_values"]

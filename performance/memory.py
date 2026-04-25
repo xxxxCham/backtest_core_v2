@@ -1,5 +1,4 @@
-"""
-Module-ID: performance.memory
+"""Module-ID: performance.memory
 
 Purpose: Gestion intelligente mémoire - chunking, préchargement, auto-cleanup.
 
@@ -28,10 +27,11 @@ import sys
 import tempfile
 import time
 import weakref
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Generator, List, Optional, TypeVar
+from typing import Any, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 # psutil pour monitoring mémoire
 try:
     import psutil
+
     HAS_PSUTIL = True
 except ImportError:
     HAS_PSUTIL = False
@@ -51,6 +52,7 @@ T = TypeVar("T")
 @dataclass
 class MemoryStats:
     """Statistiques mémoire."""
+
     used_gb: float
     available_gb: float
     total_gb: float
@@ -72,14 +74,13 @@ def get_memory_info() -> MemoryStats:
             percent=mem.percent,
             process_rss_gb=rss,
         )
-    else:
-        return MemoryStats(
-            used_gb=0.0,
-            available_gb=8.0,
-            total_gb=8.0,
-            percent=0.0,
-            process_rss_gb=0.0,
-        )
+    return MemoryStats(
+        used_gb=0.0,
+        available_gb=8.0,
+        total_gb=8.0,
+        percent=0.0,
+        process_rss_gb=0.0,
+    )
 
 
 def get_available_ram_gb() -> float:
@@ -91,22 +92,20 @@ def get_object_size_mb(obj: Any) -> float:
     """Estime la taille d'un objet en MB."""
     if isinstance(obj, pd.DataFrame):
         return obj.memory_usage(deep=True).sum() / (1024**2)
-    elif isinstance(obj, np.ndarray):
+    if isinstance(obj, np.ndarray):
         return obj.nbytes / (1024**2)
-    elif isinstance(obj, (list, tuple)):
+    if isinstance(obj, (list, tuple)):
         return sum(get_object_size_mb(item) for item in obj) + sys.getsizeof(obj) / (1024**2)
-    elif isinstance(obj, dict):
+    if isinstance(obj, dict):
         size = sys.getsizeof(obj)
         for k, v in obj.items():
             size += sys.getsizeof(k) + get_object_size_mb(v) * (1024**2)
         return size / (1024**2)
-    else:
-        return sys.getsizeof(obj) / (1024**2)
+    return sys.getsizeof(obj) / (1024**2)
 
 
 class ChunkedProcessor:
-    """
-    Processeur qui divise les données en chunks pour économiser la mémoire.
+    """Processeur qui divise les données en chunks pour économiser la mémoire.
 
     Utile pour traiter de grands DataFrames sans saturer la RAM.
 
@@ -119,21 +118,22 @@ class ChunkedProcessor:
         ...     results.append(result)
         >>>
         >>> final = pd.concat(results)
+
     """
 
     def __init__(
         self,
         chunk_size: int = 10000,
         overlap: int = 0,
-        memory_limit_gb: Optional[float] = None,
+        memory_limit_gb: float | None = None,
     ):
-        """
-        Initialise le processeur de chunks.
+        """Initialise le processeur de chunks.
 
         Args:
             chunk_size: Nombre de lignes par chunk
             overlap: Chevauchement entre chunks (pour indicateurs rolling)
             memory_limit_gb: Limite mémoire optionnelle
+
         """
         self.chunk_size = chunk_size
         self.overlap = overlap
@@ -160,10 +160,9 @@ class ChunkedProcessor:
     def iter_chunks(
         self,
         df: pd.DataFrame,
-        copy: bool = False
+        copy: bool = False,
     ) -> Generator[pd.DataFrame, None, None]:
-        """
-        Itère sur les chunks d'un DataFrame.
+        """Itère sur les chunks d'un DataFrame.
 
         Args:
             df: DataFrame à diviser
@@ -171,6 +170,7 @@ class ChunkedProcessor:
 
         Yields:
             Chunks du DataFrame
+
         """
         n_rows = len(df)
 
@@ -192,10 +192,9 @@ class ChunkedProcessor:
         self,
         df: pd.DataFrame,
         func: Callable[[pd.DataFrame], T],
-        combine_func: Optional[Callable[[List[T]], T]] = None,
+        combine_func: Callable[[list[T]], T] | None = None,
     ) -> T:
-        """
-        Traite un DataFrame par chunks et combine les résultats.
+        """Traite un DataFrame par chunks et combine les résultats.
 
         Args:
             df: DataFrame à traiter
@@ -204,53 +203,53 @@ class ChunkedProcessor:
 
         Returns:
             Résultat combiné
+
         """
         results = []
 
         for i, chunk in enumerate(self.iter_chunks(df)):
-            logger.debug(f"Processing chunk {i+1}, size={len(chunk)}")
+            logger.debug(f"Processing chunk {i + 1}, size={len(chunk)}")
             result = func(chunk)
             results.append(result)
 
         if combine_func:
             return combine_func(results)
-        else:
-            # Par défaut, concat si DataFrames, sinon list
-            if results and isinstance(results[0], pd.DataFrame):
-                return pd.concat(results, ignore_index=True)
-            return results  # type: ignore
+        # Par défaut, concat si DataFrames, sinon list
+        if results and isinstance(results[0], pd.DataFrame):
+            return pd.concat(results, ignore_index=True)
+        return results  # type: ignore
 
 
 class MemoryManager:
-    """
-    Gestionnaire de mémoire avec limites et nettoyage automatique.
+    """Gestionnaire de mémoire avec limites et nettoyage automatique.
 
     Example:
         >>> with MemoryManager(limit_gb=8.0, auto_gc=True) as mm:
         ...     data = load_large_data()
         ...     results = process(data)
         ...     mm.check_and_cleanup()  # Nettoie si nécessaire
+
     """
 
     def __init__(
         self,
-        limit_gb: Optional[float] = None,
+        limit_gb: float | None = None,
         auto_gc: bool = True,
         gc_threshold_percent: float = 80.0,
     ):
-        """
-        Initialise le gestionnaire mémoire.
+        """Initialise le gestionnaire mémoire.
 
         Args:
             limit_gb: Limite mémoire en GB (None = pas de limite)
             auto_gc: Activer garbage collection automatique
             gc_threshold_percent: Seuil de mémoire pour déclencher GC
+
         """
         self.limit_gb = limit_gb
         self.auto_gc = auto_gc
         self.gc_threshold = gc_threshold_percent
 
-        self._tracked_objects: List[weakref.ref] = []
+        self._tracked_objects: list[weakref.ref] = []
         self._start_memory: float = 0.0
         self._gc_count: int = 0
 
@@ -267,34 +266,33 @@ class MemoryManager:
 
         end_memory = get_memory_info().process_rss_gb
         logger.debug(
-            f"MemoryManager: début={self._start_memory:.2f}GB, "
-            f"fin={end_memory:.2f}GB, GC={self._gc_count}"
+            f"MemoryManager: début={self._start_memory:.2f}GB, fin={end_memory:.2f}GB, GC={self._gc_count}",
         )
 
         return False
 
     def track(self, obj: Any) -> Any:
-        """
-        Track un objet pour nettoyage automatique.
+        """Track un objet pour nettoyage automatique.
 
         Args:
             obj: Objet à tracker
 
         Returns:
             L'objet lui-même
+
         """
         self._tracked_objects.append(weakref.ref(obj))
         return obj
 
     def check_and_cleanup(self, force: bool = False) -> bool:
-        """
-        Vérifie la mémoire et nettoie si nécessaire.
+        """Vérifie la mémoire et nettoie si nécessaire.
 
         Args:
             force: Forcer le nettoyage même si sous le seuil
 
         Returns:
             True si nettoyage effectué
+
         """
         mem = get_memory_info()
 
@@ -315,7 +313,7 @@ class MemoryManager:
 
         return False
 
-    def get_usage(self) -> Dict[str, float]:
+    def get_usage(self) -> dict[str, float]:
         """Retourne les stats d'usage mémoire."""
         mem = get_memory_info()
         return {
@@ -328,8 +326,7 @@ class MemoryManager:
 
 
 class DataFrameCache:
-    """
-    Cache intelligent pour DataFrames avec gestion mémoire.
+    """Cache intelligent pour DataFrames avec gestion mémoire.
 
     Supporte le spillage sur disque si la mémoire est saturée.
 
@@ -340,30 +337,31 @@ class DataFrameCache:
         >>> cache.put("eth_1h", eth_df)
         >>>
         >>> btc = cache.get("btc_1h")
+
     """
 
     def __init__(
         self,
         max_memory_gb: float = 2.0,
         spill_to_disk: bool = True,
-        cache_dir: Optional[str] = None,
+        cache_dir: str | None = None,
     ):
-        """
-        Initialise le cache.
+        """Initialise le cache.
 
         Args:
             max_memory_gb: Mémoire max pour le cache
             spill_to_disk: Écrire sur disque si mémoire saturée
             cache_dir: Répertoire pour fichiers temporaires
+
         """
         self.max_memory_gb = max_memory_gb
         self.spill_to_disk = spill_to_disk
         self.cache_dir = Path(cache_dir) if cache_dir else Path(tempfile.gettempdir()) / "backtest_cache"
 
-        self._memory_cache: Dict[str, pd.DataFrame] = {}
-        self._disk_cache: Dict[str, Path] = {}
-        self._access_times: Dict[str, float] = {}
-        self._sizes: Dict[str, float] = {}  # en MB
+        self._memory_cache: dict[str, pd.DataFrame] = {}
+        self._disk_cache: dict[str, Path] = {}
+        self._access_times: dict[str, float] = {}
+        self._sizes: dict[str, float] = {}  # en MB
 
         # Créer le répertoire cache
         if spill_to_disk:
@@ -390,12 +388,12 @@ class DataFrameCache:
             del self._memory_cache[lru_key]
 
     def put(self, key: str, df: pd.DataFrame):
-        """
-        Ajoute un DataFrame au cache.
+        """Ajoute un DataFrame au cache.
 
         Args:
             key: Clé unique
             df: DataFrame à cacher
+
         """
         size_mb = get_object_size_mb(df)
 
@@ -415,15 +413,15 @@ class DataFrameCache:
                 pass
             del self._disk_cache[key]
 
-    def get(self, key: str) -> Optional[pd.DataFrame]:
-        """
-        Récupère un DataFrame du cache.
+    def get(self, key: str) -> pd.DataFrame | None:
+        """Récupère un DataFrame du cache.
 
         Args:
             key: Clé du DataFrame
 
         Returns:
             DataFrame ou None si non trouvé
+
         """
         # Vérifier cache mémoire
         if key in self._memory_cache:
@@ -464,7 +462,7 @@ class DataFrameCache:
                 pass
         self._disk_cache.clear()
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """Retourne les statistiques du cache."""
         return {
             "memory_items": len(self._memory_cache),
@@ -477,16 +475,17 @@ class DataFrameCache:
 
 # ======================== Fonctions utilitaires ========================
 
+
 @contextmanager
 def memory_efficient_mode():
-    """
-    Context manager pour mode économie mémoire.
+    """Context manager pour mode économie mémoire.
 
     Active GC agressif et réduit les allocations.
 
     Example:
         >>> with memory_efficient_mode():
         ...     process_large_data()
+
     """
     # Sauvegarder les seuils GC
     old_thresholds = gc.get_threshold()
@@ -503,8 +502,7 @@ def memory_efficient_mode():
 
 
 def optimize_dataframe(df: pd.DataFrame, inplace: bool = False) -> pd.DataFrame:
-    """
-    Optimise la mémoire d'un DataFrame en réduisant les types.
+    """Optimise la mémoire d'un DataFrame en réduisant les types.
 
     Args:
         df: DataFrame à optimiser
@@ -512,6 +510,7 @@ def optimize_dataframe(df: pd.DataFrame, inplace: bool = False) -> pd.DataFrame:
 
     Returns:
         DataFrame optimisé
+
     """
     if not inplace:
         df = df.copy()
@@ -541,8 +540,7 @@ def estimate_memory_needed(
     n_strategies: int,
     n_indicators: int = 5,
 ) -> float:
-    """
-    Estime la mémoire nécessaire pour un backtest.
+    """Estime la mémoire nécessaire pour un backtest.
 
     Args:
         n_rows: Nombre de lignes de données
@@ -551,6 +549,7 @@ def estimate_memory_needed(
 
     Returns:
         Estimation en GB
+
     """
     # Base: ~100 bytes par ligne pour OHLCV
     base_data_mb = n_rows * 100 / (1024**2)

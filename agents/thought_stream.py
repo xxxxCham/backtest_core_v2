@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.thought_stream
+"""Module-ID: agents.thought_stream
 
 Purpose: Flux live canonique du Strategy Builder.
          Rend un fichier Markdown de session courante pour le terminal dedie.
@@ -17,10 +16,11 @@ from __future__ import annotations
 import math
 import shutil
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional
+from typing import Any
 
 from backtest.result_store import get_builder_sessions_dir
 
@@ -65,9 +65,9 @@ class BuilderLiveEvent:
     phase: str = ""
     status: str = ""
     message: str = ""
-    payload: Dict[str, Any] = field(default_factory=dict)
+    payload: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "event": str(self.event or ""),
             "timestamp": str(self.timestamp or ""),
@@ -91,8 +91,8 @@ class ThoughtStream:
         objective: str,
         model: str,
         *,
-        path: Optional[Path] = None,
-        archive_dir: Optional[Path] = None,
+        path: Path | None = None,
+        archive_dir: Path | None = None,
     ):
         self.session_id = str(session_id or "")
         self.objective = str(objective or "")
@@ -147,7 +147,7 @@ class ThoughtStream:
                 timestamp=_now_iso(),
                 session_id=self.session_id,
                 message=str(message or ""),
-            )
+            ),
         )
 
     def stage_update(
@@ -169,7 +169,7 @@ class ThoughtStream:
                 status=str(status or ""),
                 message=str(detail or ""),
                 payload={"detail": str(detail or "")},
-            )
+            ),
         )
 
     def session_end(
@@ -189,7 +189,7 @@ class ThoughtStream:
                     "best_sharpe": float(best_sharpe or 0.0),
                     "total_iterations": int(total_iters or 0),
                 },
-            )
+            ),
         )
 
     def stream_chunk(self, phase: str, chunk: str) -> None:
@@ -215,7 +215,7 @@ class ThoughtStream:
                 phase_icon, phase_label = _stream_phase_label(phase_name)
                 self._append(
                     f"[STREAM] {phase_icon} {phase_label} — flux LLM en cours "
-                    "(verbatim masque dans le flux canonique)\n"
+                    "(verbatim masque dans le flux canonique)\n",
                 )
             elif not self._stream_phase:
                 self._stream_phase = phase_name
@@ -253,7 +253,7 @@ class ThoughtStream:
         phase_icon, phase_label = _stream_phase_label(self._stream_phase)
         self._append(
             f"[STREAM] {phase_icon} {phase_label} - "
-            f"{char_count} caracteres recus (verbatim masque dans le flux canonique)\n"
+            f"{char_count} caracteres recus (verbatim masque dans le flux canonique)\n",
         )
 
     def _archive_current_session(self) -> None:
@@ -295,7 +295,7 @@ class ThoughtStream:
             or event.get("branch_label")
             or payload.get("selected_branch_label")
             or payload.get("branch_label")
-            or ""
+            or "",
         )
         message = str(event.get("message", "") or "").strip()
         phase = str(event.get("phase", "") or "")
@@ -306,11 +306,7 @@ class ThoughtStream:
             return ""
         if event_name == "iteration_start":
             total = int(payload.get("max_iterations", 0) or 0)
-            return (
-                f"\n{'-' * 68}\n"
-                f"  ITERATION {iteration}/{total or '?'}\n"
-                f"{'-' * 68}\n"
-            )
+            return f"\n{'-' * 68}\n  ITERATION {iteration}/{total or '?'}\n{'-' * 68}\n"
         if event_name == "proposal_candidate":
             proposal = dict(payload.get("proposal") or {})
             return self._render_proposal_block(
@@ -328,7 +324,9 @@ class ThoughtStream:
                 footer=message,
             )
         if event_name in {"phase_start", "phase_done"}:
-            icon = _LIVE_STREAM_STATUS_ICONS.get(status or ("start" if event_name == "phase_start" else "done"), "[INFO]")
+            icon = _LIVE_STREAM_STATUS_ICONS.get(
+                status or ("start" if event_name == "phase_start" else "done"), "[INFO]",
+            )
             phase_icon, phase_label = _stream_phase_label(phase)
             detail = str(payload.get("detail", "") or "").strip()
             suffix = _branch_suffix(branch_label)
@@ -389,11 +387,7 @@ class ThoughtStream:
             total_iterations = int(payload.get("total_iterations", 0) or 0)
             best_sharpe = payload.get("best_sharpe")
             ended_at = _format_datetime(event.get("timestamp"))
-            line = (
-                f"\n{'=' * 68}\n"
-                f"  SESSION TERMINEE - {status or 'n/a'}\n"
-                f"  ITERATIONS : {total_iterations}\n"
-            )
+            line = f"\n{'=' * 68}\n  SESSION TERMINEE - {status or 'n/a'}\n  ITERATIONS : {total_iterations}\n"
             try:
                 line += f"  BEST SHARPE: {float(best_sharpe):.3f}\n"
             except Exception:
@@ -454,10 +448,9 @@ class ThoughtStream:
     def _append(self, text: str) -> None:
         if not text:
             return
-        with self._lock:
-            with open(self.path, "a", encoding="utf-8") as handle:
-                handle.write(text)
-                handle.flush()
+        with self._lock, open(self.path, "a", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
 
 
 def _trunc(text: Any, max_len: int = 140) -> str:

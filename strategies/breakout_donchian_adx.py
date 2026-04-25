@@ -1,23 +1,23 @@
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from utils.parameters import ParameterSpec
 from strategies.base import StrategyBase, register_strategy
+from utils.parameters import ParameterSpec
 
 
-@register_strategy('breakout_donchian_adx')
+@register_strategy("breakout_donchian_adx")
 class BreakoutDonchianAdxStrategy(StrategyBase):
     def __init__(self):
         super().__init__(name="breakout_donchian_adx_rsi")
 
     @property
-    def required_indicators(self) -> List[str]:
-        return ['donchian', 'adx', 'rsi', 'atr']
+    def required_indicators(self) -> list[str]:
+        return ["donchian", "adx", "rsi", "atr"]
 
     @property
-    def default_params(self) -> Dict[str, Any]:
+    def default_params(self) -> dict[str, Any]:
         return {
             "donchian_period": 20,
             "adx_period": 14,
@@ -33,7 +33,7 @@ class BreakoutDonchianAdxStrategy(StrategyBase):
         }
 
     @property
-    def parameter_specs(self) -> Dict[str, ParameterSpec]:
+    def parameter_specs(self) -> dict[str, ParameterSpec]:
         return {
             "donchian_period": ParameterSpec(
                 name="donchian_period",
@@ -127,33 +127,33 @@ class BreakoutDonchianAdxStrategy(StrategyBase):
             ),
         }
 
-    def generate_signals(self, df: pd.DataFrame, indicators: Dict[str, Any], params: Dict[str, Any]) -> pd.Series:
+    def generate_signals(self, df: pd.DataFrame, indicators: dict[str, Any], params: dict[str, Any]) -> pd.Series:
         n = len(df)
         signals = pd.Series(0.0, index=df.index, dtype=np.float64)
-        warmup = int(params.get('warmup', 50))
-        stop_atr_mult = float(params.get('stop_atr_mult', 1.5))
-        tp_atr_mult = float(params.get('tp_atr_mult', 3.0))
-        adx_threshold = float(params.get('adx_threshold', 18.0))
+        warmup = int(params.get("warmup", 50))
+        stop_atr_mult = float(params.get("stop_atr_mult", 1.5))
+        tp_atr_mult = float(params.get("tp_atr_mult", 3.0))
+        adx_threshold = float(params.get("adx_threshold", 18.0))
         rsi_oversold = float(params.get("rsi_oversold", 30.0))
         rsi_overbought = float(params.get("rsi_overbought", 70.0))
-        close = np.nan_to_num(df['close'].values.astype(np.float64))
+        close = np.nan_to_num(df["close"].values.astype(np.float64))
         if len(close) < warmup + 2:
             return signals
-        atr_raw = indicators.get('atr')
+        atr_raw = indicators.get("atr")
         if isinstance(atr_raw, np.ndarray):
             atr = np.nan_to_num(atr_raw.astype(np.float64))
         else:
             atr = np.full(n, 0.0)
-        dc_raw = indicators.get('donchian')
+        dc_raw = indicators.get("donchian")
         if isinstance(dc_raw, dict):
-            dc_upper = np.nan_to_num(dc_raw.get('upper', np.full(n, np.inf)).astype(np.float64))
-            dc_lower = np.nan_to_num(dc_raw.get('lower', np.full(n, -np.inf)).astype(np.float64))
+            dc_upper = np.nan_to_num(dc_raw.get("upper", np.full(n, np.inf)).astype(np.float64))
+            dc_lower = np.nan_to_num(dc_raw.get("lower", np.full(n, -np.inf)).astype(np.float64))
         else:
             dc_upper = np.full(n, np.inf)
             dc_lower = np.full(n, -np.inf)
-        adx_raw = indicators.get('adx')
+        adx_raw = indicators.get("adx")
         if isinstance(adx_raw, dict):
-            adx = np.nan_to_num(adx_raw.get('adx', np.zeros(n))).astype(np.float64)
+            adx = np.nan_to_num(adx_raw.get("adx", np.zeros(n))).astype(np.float64)
         else:
             adx = np.full(n, 0.0)
         rsi_raw = indicators.get("rsi")
@@ -161,25 +161,17 @@ class BreakoutDonchianAdxStrategy(StrategyBase):
             rsi = np.nan_to_num(rsi_raw.astype(np.float64))
         else:
             rsi = np.full(n, 50.0)
-        df.loc[:, 'bb_stop_long'] = np.nan
-        df.loc[:, 'bb_tp_long'] = np.nan
-        df.loc[:, 'bb_stop_short'] = np.nan
-        df.loc[:, 'bb_tp_short'] = np.nan
+        df.loc[:, "bb_stop_long"] = np.nan
+        df.loc[:, "bb_tp_long"] = np.nan
+        df.loc[:, "bb_stop_short"] = np.nan
+        df.loc[:, "bb_tp_short"] = np.nan
         dc_upper_prev = np.roll(dc_upper, 1)
         dc_lower_prev = np.roll(dc_lower, 1)
         dc_upper_prev[:1] = dc_upper[:1]
         dc_lower_prev[:1] = dc_lower[:1]
         # Filtre RSI pour éviter les cassures trop extrêmes.
-        long_cond = (
-            (close > dc_upper_prev)
-            & (adx >= adx_threshold)
-            & (rsi <= rsi_overbought)
-        )
-        short_cond = (
-            (close < dc_lower_prev)
-            & (adx >= adx_threshold)
-            & (rsi >= rsi_oversold)
-        )
+        long_cond = (close > dc_upper_prev) & (adx >= adx_threshold) & (rsi <= rsi_overbought)
+        short_cond = (close < dc_lower_prev) & (adx >= adx_threshold) & (rsi >= rsi_oversold)
         long_prev = np.roll(long_cond, 1)
         short_prev = np.roll(short_cond, 1)
         long_prev[:1] = False
@@ -190,10 +182,9 @@ class BreakoutDonchianAdxStrategy(StrategyBase):
         short_entry[:warmup] = False
         signals[long_entry] = 1.0
         signals[short_entry] = -1.0
-        df.loc[long_entry, 'bb_stop_long'] = close[long_entry] - stop_atr_mult * atr[long_entry]
-        df.loc[long_entry, 'bb_tp_long'] = close[long_entry] + tp_atr_mult * atr[long_entry]
-        df.loc[short_entry, 'bb_stop_short'] = close[short_entry] + stop_atr_mult * atr[short_entry]
-        df.loc[short_entry, 'bb_tp_short'] = close[short_entry] - tp_atr_mult * atr[short_entry]
+        df.loc[long_entry, "bb_stop_long"] = close[long_entry] - stop_atr_mult * atr[long_entry]
+        df.loc[long_entry, "bb_tp_long"] = close[long_entry] + tp_atr_mult * atr[long_entry]
+        df.loc[short_entry, "bb_stop_short"] = close[short_entry] + stop_atr_mult * atr[short_entry]
+        df.loc[short_entry, "bb_tp_short"] = close[short_entry] - tp_atr_mult * atr[short_entry]
         signals.iloc[:warmup] = 0.0
         return signals
-

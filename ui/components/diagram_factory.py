@@ -1,5 +1,4 @@
-"""
-Factory pour la génération de diagrammes de stratégies.
+"""Factory pour la génération de diagrammes de stratégies.
 
 Ce module centralise la logique commune des 8 fonctions _render_*_diagram
 en utilisant le pattern Factory pour réduire la duplication de code (~860 lignes → ~350 lignes).
@@ -29,7 +28,7 @@ Créé le 23/01/2026 - Phase 3 refactoring charts.py
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -40,13 +39,17 @@ from plotly.subplots import make_subplots
 # Import du système de thème centralisé
 try:
     from ui.theme import get_color, get_colors
+
     THEME_AVAILABLE = True
 except ImportError:
     THEME_AVAILABLE = False
+
     def get_color(name: str, default: str = "#ffffff") -> str:
         return default
-    def get_colors() -> Dict[str, str]:
+
+    def get_colors() -> dict[str, str]:
         return {}
+
 
 # Configuration Plotly par défaut
 PLOTLY_CHART_CONFIG = {
@@ -68,18 +71,19 @@ DEFAULT_LAYOUT = {
 # DATACLASSES DE CONFIGURATION
 # ============================================================================
 
+
 @dataclass
 class DiagramConfig:
     """Configuration pour un diagramme de stratégie."""
 
     rows: int = 1
     cols: int = 1
-    row_heights: Optional[List[float]] = None
-    subplot_titles: Optional[Tuple[str, ...]] = None
+    row_heights: list[float] | None = None
+    subplot_titles: tuple[str, ...] | None = None
     shared_xaxes: bool = True
     vertical_spacing: float = 0.08
     height: int = 500
-    title: Optional[str] = None
+    title: str | None = None
 
     def __post_init__(self):
         if self.row_heights is None and self.rows > 1:
@@ -94,9 +98,9 @@ class TraceConfig:
     name: str
     color_key: str  # Clé dans le système de couleurs
     width: float = 1.5
-    dash: Optional[str] = None  # "solid", "dot", "dash", "dashdot"
-    fill: Optional[str] = None  # "tozeroy", "tonexty", etc.
-    fillcolor: Optional[str] = None
+    dash: str | None = None  # "solid", "dot", "dash", "dashdot"
+    fill: str | None = None  # "tozeroy", "tonexty", etc.
+    fillcolor: str | None = None
     opacity: float = 1.0
     mode: str = "lines"  # "lines", "markers", "lines+markers"
     row: int = 1
@@ -121,7 +125,8 @@ class MarkerConfig:
 # PALETTE DE COULEURS (avec fallback)
 # ============================================================================
 
-def _get_palette() -> Dict[str, str]:
+
+def _get_palette() -> dict[str, str]:
     """Retourne la palette de couleurs active."""
     if THEME_AVAILABLE:
         return get_colors()
@@ -161,15 +166,16 @@ def _get_color(key: str, default: str = "#ffffff") -> str:
 # CRÉATION DE FIGURE
 # ============================================================================
 
+
 def create_base_figure(config: DiagramConfig) -> go.Figure:
-    """
-    Crée une figure Plotly de base avec configuration optionnelle de subplots.
+    """Crée une figure Plotly de base avec configuration optionnelle de subplots.
 
     Args:
         config: Configuration du diagramme
 
     Returns:
         Figure Plotly configurée
+
     """
     if config.rows > 1 or config.cols > 1:
         fig = make_subplots(
@@ -191,13 +197,13 @@ def apply_standard_layout(
     config: DiagramConfig,
     dark_theme: bool = True,
 ) -> None:
-    """
-    Applique le layout standard à une figure.
+    """Applique le layout standard à une figure.
 
     Args:
         fig: Figure Plotly
         config: Configuration du diagramme
         dark_theme: Activer le thème sombre
+
     """
     layout_update = {
         "height": config.height,
@@ -244,12 +250,12 @@ def _apply_axis_interaction(fig: go.Figure) -> None:
 # DONNÉES SYNTHÉTIQUES
 # ============================================================================
 
+
 def create_synthetic_price(
     n: int = 160,
     seed: int = 42,
-) -> Tuple[np.ndarray, np.ndarray, pd.Series]:
-    """
-    Génère des données de prix synthétiques pour les diagrammes.
+) -> tuple[np.ndarray, np.ndarray, pd.Series]:
+    """Génère des données de prix synthétiques pour les diagrammes.
 
     Args:
         n: Nombre de points
@@ -257,6 +263,7 @@ def create_synthetic_price(
 
     Returns:
         Tuple (x, price_array, price_series)
+
     """
     np.random.seed(seed)
     x = np.arange(n)
@@ -271,13 +278,13 @@ def create_synthetic_price(
 # CALCULS D'INDICATEURS
 # ============================================================================
 
+
 def calculate_bollinger(
     price_series: pd.Series,
     period: int,
     num_std: float = 2.0,
-) -> Tuple[pd.Series, pd.Series, pd.Series]:
-    """
-    Calcule les bandes de Bollinger.
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Calcule les bandes de Bollinger.
 
     Args:
         price_series: Série de prix
@@ -286,6 +293,7 @@ def calculate_bollinger(
 
     Returns:
         Tuple (upper, middle, lower)
+
     """
     middle = price_series.rolling(window=period, min_periods=1).mean()
     std = price_series.rolling(window=period, min_periods=1).std().fillna(0)
@@ -299,8 +307,7 @@ def calculate_atr(
     period: int,
     volatility_factor: float = 0.6,
 ) -> pd.Series:
-    """
-    Calcule l'ATR simplifié pour les diagrammes.
+    """Calcule l'ATR simplifié pour les diagrammes.
 
     Args:
         price_series: Série de prix
@@ -309,17 +316,21 @@ def calculate_atr(
 
     Returns:
         Série ATR
+
     """
     n = len(price_series)
     high = price_series + volatility_factor + 0.3 * np.sin(np.linspace(0, 8 * np.pi, n))
     low = price_series - volatility_factor - 0.3 * np.sin(np.linspace(0, 8 * np.pi, n))
     prev_close = price_series.shift(1).fillna(price_series.iloc[0])
 
-    tr = pd.concat([
-        (high - low).abs(),
-        (high - prev_close).abs(),
-        (low - prev_close).abs(),
-    ], axis=1).max(axis=1)
+    tr = pd.concat(
+        [
+            (high - low).abs(),
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
 
     return tr.ewm(span=period, adjust=False).mean()
 
@@ -334,8 +345,8 @@ def calculate_rsi(price_series: pd.Series, period: int) -> pd.Series:
     delta = price_series.diff().fillna(0)
     gains = delta.clip(lower=0)
     losses = -delta.clip(upper=0)
-    avg_gain = gains.ewm(alpha=1/period, adjust=False).mean()
-    avg_loss = losses.ewm(alpha=1/period, adjust=False).mean().replace(0, 1e-6)
+    avg_gain = gains.ewm(alpha=1 / period, adjust=False).mean()
+    avg_loss = losses.ewm(alpha=1 / period, adjust=False).mean().replace(0, 1e-6)
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
@@ -345,7 +356,7 @@ def calculate_macd(
     fast_period: int,
     slow_period: int,
     signal_period: int,
-) -> Tuple[pd.Series, pd.Series]:
+) -> tuple[pd.Series, pd.Series]:
     """Calcule le MACD et sa ligne signal."""
     ema_fast = price_series.ewm(span=fast_period, adjust=False).mean()
     ema_slow = price_series.ewm(span=slow_period, adjust=False).mean()
@@ -358,6 +369,7 @@ def calculate_macd(
 # AJOUT DE TRACES
 # ============================================================================
 
+
 def add_price_trace(
     fig: go.Figure,
     x: np.ndarray,
@@ -369,7 +381,9 @@ def add_price_trace(
     """Ajoute une trace de prix."""
     color = _get_color("price_line", "#90caf9")
     trace = go.Scatter(
-        x=x, y=price, name=name,
+        x=x,
+        y=price,
+        name=name,
         line=dict(color=color, width=1.5),
     )
     if row > 1 or col > 1:
@@ -393,15 +407,21 @@ def add_bollinger_traces(
 
     traces = [
         go.Scatter(
-            x=x, y=upper, name="BB Upper",
+            x=x,
+            y=upper,
+            name="BB Upper",
             line=dict(color=palette.get("bb_upper", "#ff9800"), width=1.2),
         ),
         go.Scatter(
-            x=x, y=middle, name="BB Middle",
+            x=x,
+            y=middle,
+            name="BB Middle",
             line=dict(color=palette.get("bb_middle", "#9c27b0"), width=1.4, dash="dot"),
         ),
         go.Scatter(
-            x=x, y=lower, name="BB Lower",
+            x=x,
+            y=lower,
+            name="BB Lower",
             line=dict(color=palette.get("bb_lower", "#4caf50"), width=1.2),
             fill="tonexty" if show_fill else None,
             fillcolor="rgba(156, 39, 176, 0.1)" if show_fill else None,
@@ -419,7 +439,7 @@ def add_atr_panel(
     fig: go.Figure,
     x: np.ndarray,
     atr_values: pd.Series,
-    threshold: Optional[float] = None,
+    threshold: float | None = None,
     row: int = 2,
     col: int = 1,
 ) -> None:
@@ -428,19 +448,24 @@ def add_atr_panel(
 
     fig.add_trace(
         go.Scatter(
-            x=x, y=atr_values, name="ATR",
+            x=x,
+            y=atr_values,
+            name="ATR",
             line=dict(color=palette.get("atr_line", "#ff5252"), width=1.5),
         ),
-        row=row, col=col,
+        row=row,
+        col=col,
     )
 
     if threshold is not None:
         fig.add_hline(
-            y=threshold, line_dash="dot",
+            y=threshold,
+            line_dash="dot",
             line_color=palette.get("atr_threshold", "#ffeb3b"),
             annotation_text="Seuil ATR",
             annotation_position="top left",
-            row=row, col=col,
+            row=row,
+            col=col,
         )
 
 
@@ -458,25 +483,32 @@ def add_rsi_panel(
 
     fig.add_trace(
         go.Scatter(
-            x=x, y=rsi_values, name="RSI",
+            x=x,
+            y=rsi_values,
+            name="RSI",
             line=dict(color=palette.get("rsi_line", "#9c27b0"), width=1.6),
         ),
-        row=row, col=col,
+        row=row,
+        col=col,
     )
 
     fig.add_hline(
-        y=oversold, line_dash="dot",
+        y=oversold,
+        line_dash="dot",
         line_color=palette.get("rsi_oversold", "#4caf50"),
         annotation_text="Oversold",
         annotation_position="bottom left",
-        row=row, col=col,
+        row=row,
+        col=col,
     )
     fig.add_hline(
-        y=overbought, line_dash="dot",
+        y=overbought,
+        line_dash="dot",
         line_color=palette.get("rsi_overbought", "#f44336"),
         annotation_text="Overbought",
         annotation_position="top left",
-        row=row, col=col,
+        row=row,
+        col=col,
     )
 
 
@@ -493,17 +525,23 @@ def add_macd_panel(
 
     fig.add_trace(
         go.Scatter(
-            x=x, y=macd_line, name="MACD",
+            x=x,
+            y=macd_line,
+            name="MACD",
             line=dict(color=palette.get("macd_line", "#2196f3"), width=1.6),
         ),
-        row=row, col=col,
+        row=row,
+        col=col,
     )
     fig.add_trace(
         go.Scatter(
-            x=x, y=signal_line, name="Signal",
+            x=x,
+            y=signal_line,
+            name="Signal",
             line=dict(color=palette.get("macd_signal", "#ff9800"), width=1.4),
         ),
-        row=row, col=col,
+        row=row,
+        col=col,
     )
 
 
@@ -522,11 +560,15 @@ def add_ema_traces(
 
     traces = [
         go.Scatter(
-            x=x, y=ema_fast, name=fast_label,
+            x=x,
+            y=ema_fast,
+            name=fast_label,
             line=dict(color=palette.get("ema_fast", "#00bcd4"), width=1.5),
         ),
         go.Scatter(
-            x=x, y=ema_slow, name=slow_label,
+            x=x,
+            y=ema_slow,
+            name=slow_label,
             line=dict(color=palette.get("ema_slow", "#ff9800"), width=1.5),
         ),
     ]
@@ -548,18 +590,30 @@ def add_atr_channel_traces(
     """Ajoute les traces de canal ATR."""
     palette = _get_palette()
 
-    fig.add_trace(go.Scatter(
-        x=x, y=upper, name="Canal haut",
-        line=dict(color=palette.get("atr_channel_upper", "#ff9800"), width=1.2),
-    ))
-    fig.add_trace(go.Scatter(
-        x=x, y=center, name="EMA centre",
-        line=dict(color=palette.get("ema_center", "#9c27b0"), width=1.4, dash="dot"),
-    ))
-    fig.add_trace(go.Scatter(
-        x=x, y=lower, name="Canal bas",
-        line=dict(color=palette.get("atr_channel_lower", "#4caf50"), width=1.2),
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=upper,
+            name="Canal haut",
+            line=dict(color=palette.get("atr_channel_upper", "#ff9800"), width=1.2),
+        ),
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=center,
+            name="EMA centre",
+            line=dict(color=palette.get("ema_center", "#9c27b0"), width=1.4, dash="dot"),
+        ),
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=lower,
+            name="Canal bas",
+            line=dict(color=palette.get("atr_channel_lower", "#4caf50"), width=1.2),
+        ),
+    )
 
 
 def add_entry_marker(
@@ -577,7 +631,9 @@ def add_entry_marker(
     symbol = "triangle-up" if is_long else "triangle-down"
 
     trace = go.Scatter(
-        x=[x], y=[y], name=name,
+        x=[x],
+        y=[y],
+        name=name,
         mode="markers",
         marker=dict(color=color, symbol=symbol, size=14),
     )
@@ -600,7 +656,8 @@ def add_stop_loss_line(
     palette = _get_palette()
 
     trace = go.Scatter(
-        x=[x_start, x_end], y=[y_value, y_value],
+        x=[x_start, x_end],
+        y=[y_value, y_value],
         name="Stop Loss",
         line=dict(color=palette.get("stop_loss", "#f44336"), width=2, dash="dash"),
     )
@@ -623,7 +680,8 @@ def add_take_profit_line(
     palette = _get_palette()
 
     trace = go.Scatter(
-        x=[x_start, x_end], y=[y_value, y_value],
+        x=[x_start, x_end],
+        y=[y_value, y_value],
         name="Take Profit",
         line=dict(color=palette.get("take_profit", "#00e676"), width=2, dash="dash"),
     )
@@ -638,20 +696,21 @@ def add_take_profit_line(
 # RENDU STREAMLIT
 # ============================================================================
 
+
 def render_diagram(
     fig: go.Figure,
     key: str,
-    caption: Optional[str] = None,
-    help_text: Optional[str] = None,
+    caption: str | None = None,
+    help_text: str | None = None,
 ) -> None:
-    """
-    Effectue le rendu final du diagramme avec Streamlit.
+    """Effectue le rendu final du diagramme avec Streamlit.
 
     Args:
         fig: Figure Plotly configurée
         key: Clé unique Streamlit
         caption: Texte de légende (paramètres)
         help_text: Texte d'aide Markdown
+
     """
     st.plotly_chart(fig, width="stretch", key=key, config=PLOTLY_CHART_CONFIG)
 
@@ -666,20 +725,21 @@ def render_diagram(
 # FACTORY FUNCTIONS - DIAGRAMMES COMPLETS
 # ============================================================================
 
+
 def create_bollinger_atr_diagram(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     key: str,
     n: int = 160,
     variant: str = "standard",  # "standard", "v2", "v3", "long_test"
 ) -> None:
-    """
-    Factory pour les diagrammes Bollinger + ATR.
+    """Factory pour les diagrammes Bollinger + ATR.
 
     Args:
         params: Paramètres de la stratégie
         key: Clé unique Streamlit
         n: Nombre de points
         variant: Type de diagramme ("standard", "v2", "v3", "long_test")
+
     """
     x, price, price_series = create_synthetic_price(n)
 
@@ -710,13 +770,13 @@ def create_bollinger_atr_diagram(
         tp_level = float(params.get("tp_level", 1.0))
 
         bb_range = (bb_upper - bb_lower).mean()
-        entry_y = bb_lower.iloc[n//2] + entry_level * bb_range
-        sl_y = bb_lower.iloc[n//2] + sl_level * bb_range
-        tp_y = bb_lower.iloc[n//2] + tp_level * bb_range
+        entry_y = bb_lower.iloc[n // 2] + entry_level * bb_range
+        sl_y = bb_lower.iloc[n // 2] + sl_level * bb_range
+        tp_y = bb_lower.iloc[n // 2] + tp_level * bb_range
 
-        add_entry_marker(fig, n//2, entry_y, "Entrée")
-        add_stop_loss_line(fig, sl_y, n//2, n-1)
-        add_take_profit_line(fig, tp_y, n//2, n-1)
+        add_entry_marker(fig, n // 2, entry_y, "Entrée")
+        add_stop_loss_line(fig, sl_y, n // 2, n - 1)
+        add_take_profit_line(fig, tp_y, n // 2, n - 1)
 
         apply_standard_layout(fig, config)
         caption = f"bb_period={bb_period}, entry={entry_level:.2f}, sl={sl_level:.2f}, tp={tp_level:.2f}"
@@ -762,7 +822,7 @@ def create_bollinger_atr_diagram(
 
 
 def create_ema_cross_diagram(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     key: str,
     n: int = 160,
 ) -> None:
@@ -787,14 +847,15 @@ def create_ema_cross_diagram(
 
     apply_standard_layout(fig, config)
     render_diagram(
-        fig, key,
+        fig,
+        key,
         caption=f"fast_period={fast_period}, slow_period={slow_period}",
         help_text="- fast_period: EMA rapide\n- slow_period: EMA lente\n- Signal sur croisement",
     )
 
 
 def create_macd_cross_diagram(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     key: str,
     n: int = 160,
 ) -> None:
@@ -820,14 +881,15 @@ def create_macd_cross_diagram(
 
     apply_standard_layout(fig, config)
     render_diagram(
-        fig, key,
+        fig,
+        key,
         caption=f"fast_period={fast_period}, slow_period={slow_period}, signal_period={signal_period}",
         help_text="- fast/slow_period: EMAs du MACD\n- signal_period: lissage\n- Signal sur croisement",
     )
 
 
 def create_rsi_reversal_diagram(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     key: str,
     n: int = 160,
 ) -> None:
@@ -853,14 +915,15 @@ def create_rsi_reversal_diagram(
 
     apply_standard_layout(fig, config)
     render_diagram(
-        fig, key,
+        fig,
+        key,
         caption=f"rsi_period={rsi_period}, oversold={oversold:.0f}, overbought={overbought:.0f}",
         help_text="- rsi_period: fenêtre RSI\n- oversold/overbought: seuils de signal",
     )
 
 
 def create_atr_channel_diagram(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     key: str,
     n: int = 160,
 ) -> None:
@@ -888,7 +951,8 @@ def create_atr_channel_diagram(
 
     apply_standard_layout(fig, config)
     render_diagram(
-        fig, key,
+        fig,
+        key,
         caption=f"atr_period={atr_period}, atr_mult={atr_mult:.2f}",
         help_text="- atr_period: fenêtre ATR/EMA\n- atr_mult: largeur du canal",
     )
@@ -916,11 +980,10 @@ DIAGRAM_FACTORIES = {
 
 def render_strategy_diagram(
     strategy_key: str,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     key: str,
 ) -> bool:
-    """
-    Point d'entrée principal pour rendre un diagramme de stratégie.
+    """Point d'entrée principal pour rendre un diagramme de stratégie.
 
     Args:
         strategy_key: Clé de la stratégie
@@ -929,6 +992,7 @@ def render_strategy_diagram(
 
     Returns:
         True si le diagramme a été rendu, False sinon
+
     """
     factory = DIAGRAM_FACTORIES.get(strategy_key)
 

@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.amplitude_hunter
+"""Module-ID: indicators.amplitude_hunter
 
 Purpose: Score l'extrémité plage intrabar vs baseline roulante - détecte amp volatilé.
 
@@ -46,11 +45,11 @@ def amplitude_hunter(
     period: int = 20,
     settings: AmplitudeHunterSettings | None = None,
 ) -> dict[str, np.ndarray]:
-    """
-    Compute amplitude score based on range percent and rolling z-score.
+    """Compute amplitude score based on range percent and rolling z-score.
 
     Returns:
         Dict with range_pct and score
+
     """
     if settings is not None:
         period = settings.period
@@ -84,8 +83,7 @@ def amplitude_hunter(
 
 
 def calculate_amplitude_hunter(df: pd.DataFrame, **params) -> dict[str, np.ndarray]:
-    """
-    Wrapper for registry calculation.
+    """Wrapper for registry calculation.
 
     Params:
         period: Rolling window length (default: 20)
@@ -108,7 +106,7 @@ register_indicator(
 
 
 __all__ = [
+    "AmplitudeHunterSettings",
     "amplitude_hunter",
     "calculate_amplitude_hunter",
-    "AmplitudeHunterSettings",
 ]

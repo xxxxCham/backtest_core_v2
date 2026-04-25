@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.execution
+"""Module-ID: backtest.execution
 
 Purpose: Modéliser l'exécution réaliste (spread bid/ask, slippage, latence, impact marché).
 
@@ -22,7 +21,7 @@ Skip-if: Backtests académiques (IDEAL model suffisant).
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -38,6 +37,7 @@ try:
         high_low_spread,
         roll_spread,
     )
+
     USE_FAST_EXECUTION = True
     logger.debug(f"Execution optimizations: Numba={'available' if HAS_NUMBA else 'unavailable'}")
 except ImportError:
@@ -48,16 +48,16 @@ except ImportError:
 
 class ExecutionModel(Enum):
     """Modèles d'exécution disponibles."""
-    IDEAL = "ideal"           # Exécution instantanée au prix demandé
-    FIXED = "fixed"           # Spread/slippage fixes
-    DYNAMIC = "dynamic"       # Spread/slippage dynamiques
-    REALISTIC = "realistic"   # Modèle complet avec impact
+
+    IDEAL = "ideal"  # Exécution instantanée au prix demandé
+    FIXED = "fixed"  # Spread/slippage fixes
+    DYNAMIC = "dynamic"  # Spread/slippage dynamiques
+    REALISTIC = "realistic"  # Modèle complet avec impact
 
 
 @dataclass
 class ExecutionConfig:
-    """
-    Configuration du modèle d'exécution.
+    """Configuration du modèle d'exécution.
 
     Attributes:
         model: Type de modèle d'exécution
@@ -71,7 +71,9 @@ class ExecutionConfig:
         max_spread_bps: Spread maximum
         volatility_window: Fenêtre pour calcul volatilité
         volume_window: Fenêtre pour calcul volume moyen
+
     """
+
     model: ExecutionModel = ExecutionModel.DYNAMIC
 
     # Paramètres fixes
@@ -96,14 +98,14 @@ class ExecutionConfig:
 
     # Facteurs de scaling
     volatility_spread_factor: float = 2.0  # Multiplie la volatilité normalisée
-    volume_slippage_factor: float = 1.5    # Impact du ratio de volume
+    volume_slippage_factor: float = 1.5  # Impact du ratio de volume
 
     # Optional partial fills (only for REALISTIC)
     partial_fill_prob: float = 0.0
     partial_fill_min: float = 0.5
     partial_fill_max: float = 1.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "model": self.model.value,
@@ -123,8 +125,7 @@ class ExecutionConfig:
 
 @dataclass
 class ExecutionResult:
-    """
-    Résultat d'une exécution.
+    """Résultat d'une exécution.
 
     Attributes:
         executed_price: Prix d'exécution final
@@ -134,7 +135,9 @@ class ExecutionResult:
         market_impact: Impact de marché en valeur absolue
         latency_bars: Nombre de barres de latence appliquées
         total_cost_bps: Coût total en basis points
+
     """
+
     executed_price: float
     requested_price: float
     spread_cost: float = 0.0
@@ -156,7 +159,7 @@ class ExecutionResult:
             return 0.0
         return (self.total_cost / self.requested_price) * 10000
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "executed_price": self.executed_price,
@@ -172,8 +175,7 @@ class ExecutionResult:
 
 
 class ExecutionEngine:
-    """
-    Moteur d'exécution réaliste.
+    """Moteur d'exécution réaliste.
 
     Calcule les prix d'exécution en tenant compte du spread,
     slippage, latence et impact de marché.
@@ -183,32 +185,33 @@ class ExecutionEngine:
         >>> engine = ExecutionEngine(config)
         >>> engine.prepare(df)  # Précalcule volatilité, volume
         >>> result = engine.execute_order(price=100.0, side=1, bar_idx=50)
+
     """
 
-    def __init__(self, config: Optional[ExecutionConfig] = None):
-        """
-        Initialise le moteur d'exécution.
+    def __init__(self, config: ExecutionConfig | None = None):
+        """Initialise le moteur d'exécution.
 
         Args:
             config: Configuration d'exécution (défaut: ExecutionConfig())
+
         """
         self.config = config or ExecutionConfig()
         self._prepared = False
 
         # Données précalculées
-        self._volatility: Optional[np.ndarray] = None
-        self._normalized_volatility: Optional[np.ndarray] = None
-        self._volume_ratio: Optional[np.ndarray] = None
+        self._volatility: np.ndarray | None = None
+        self._normalized_volatility: np.ndarray | None = None
+        self._volume_ratio: np.ndarray | None = None
         self._bar_duration_ms: float = 0.0
 
         logger.debug(f"ExecutionEngine initialisé: {self.config.model.value}")
 
     def prepare(self, df: pd.DataFrame) -> None:
-        """
-        Précalcule les métriques nécessaires à partir des données OHLCV.
+        """Précalcule les métriques nécessaires à partir des données OHLCV.
 
         Args:
             df: DataFrame OHLCV avec colonnes 'close', 'high', 'low', 'volume'
+
         """
         n = len(df)
 
@@ -249,7 +252,8 @@ class ExecutionEngine:
                     p90 = np.percentile(vol_slice, 90)
                     self._normalized_volatility = np.clip(
                         (self._volatility - p10) / (p90 - p10 + 1e-10),
-                        0, 1
+                        0,
+                        1,
                     )
                 else:
                     # Fenêtre trop grande, utiliser des valeurs par défaut
@@ -275,7 +279,7 @@ class ExecutionEngine:
 
             # Ratio = volume_courant / volume_moyen
             # Faible volume = plus de slippage
-            with np.errstate(divide='ignore', invalid='ignore'):
+            with np.errstate(divide="ignore", invalid="ignore"):
                 volume_ratio = volumes / avg_volume
                 # Inverser: faible volume = ratio > 1 = plus de slippage
                 self._volume_ratio = np.where(volume_ratio > 0, 1.0 / volume_ratio, 1.0)
@@ -303,12 +307,12 @@ class ExecutionEngine:
             vol_factor = self._normalized_volatility[bar_idx]
             # Plus de volatilité = plus de spread
             spread_adjustment = vol_factor * self.config.volatility_spread_factor
-            base_spread *= (1 + spread_adjustment)
+            base_spread *= 1 + spread_adjustment
 
         return np.clip(
             base_spread,
             self.config.min_spread_bps,
-            self.config.max_spread_bps
+            self.config.max_spread_bps,
         )
 
     def _calculate_slippage_bps(self, bar_idx: int, size: float = 1.0) -> float:
@@ -330,7 +334,7 @@ class ExecutionEngine:
         return np.clip(
             base_slippage,
             self.config.min_slippage_bps,
-            self.config.max_slippage_bps
+            self.config.max_slippage_bps,
         )
 
     def _calculate_market_impact_bps(self, size: float, price: float) -> float:
@@ -355,10 +359,9 @@ class ExecutionEngine:
         price: float,
         side: int,
         bar_idx: int,
-        size: float = 1.0
+        size: float = 1.0,
     ) -> ExecutionResult:
-        """
-        Simule l'exécution d'un ordre.
+        """Simule l'exécution d'un ordre.
 
         Args:
             price: Prix demandé (mid-price)
@@ -368,6 +371,7 @@ class ExecutionEngine:
 
         Returns:
             ExecutionResult avec tous les détails d'exécution
+
         """
         if not self._prepared and self.config.model in (ExecutionModel.DYNAMIC, ExecutionModel.REALISTIC):
             logger.warning("ExecutionEngine non préparé - utilisation valeurs fixes")
@@ -402,7 +406,7 @@ class ExecutionEngine:
             if np.random.random() < self.config.partial_fill_prob:
                 fill_ratio = np.random.uniform(
                     self.config.partial_fill_min,
-                    self.config.partial_fill_max
+                    self.config.partial_fill_max,
                 )
                 filled_size = size * fill_ratio
 
@@ -417,9 +421,8 @@ class ExecutionEngine:
             fill_ratio=fill_ratio,
         )
 
-    def get_bid_ask(self, mid_price: float, bar_idx: int) -> Tuple[float, float]:
-        """
-        Calcule les prix bid/ask à partir du mid-price.
+    def get_bid_ask(self, mid_price: float, bar_idx: int) -> tuple[float, float]:
+        """Calcule les prix bid/ask à partir du mid-price.
 
         Args:
             mid_price: Prix médian
@@ -427,6 +430,7 @@ class ExecutionEngine:
 
         Returns:
             Tuple (bid, ask)
+
         """
         spread_bps = self._calculate_spread_bps(bar_idx)
         half_spread = mid_price * (spread_bps / 10000) / 2
@@ -436,7 +440,7 @@ class ExecutionEngine:
 
         return bid, ask
 
-    def get_execution_stats(self) -> Dict[str, Any]:
+    def get_execution_stats(self) -> dict[str, Any]:
         """Retourne les statistiques d'exécution."""
         stats = {
             "model": self.config.model.value,
@@ -455,8 +459,7 @@ class ExecutionEngine:
 
 
 class SpreadCalculator:
-    """
-    Calculateur de spread bid/ask.
+    """Calculateur de spread bid/ask.
 
     Fournit plusieurs méthodes pour estimer le spread:
     - Fixe
@@ -474,10 +477,9 @@ class SpreadCalculator:
     def volatility_spread(
         returns: np.ndarray,
         base_bps: float = 5.0,
-        vol_factor: float = 2.0
+        vol_factor: float = 2.0,
     ) -> np.ndarray:
-        """
-        Spread basé sur la volatilité récente.
+        """Spread basé sur la volatilité récente.
 
         Args:
             returns: Array des rendements
@@ -486,6 +488,7 @@ class SpreadCalculator:
 
         Returns:
             Array des spreads en BPS
+
         """
         vol = np.abs(returns) * 10000  # En BPS
         return np.maximum(base_bps, vol * vol_factor)
@@ -493,10 +496,9 @@ class SpreadCalculator:
     @staticmethod
     def roll_spread(
         closes: np.ndarray,
-        window: int = 20
+        window: int = 20,
     ) -> np.ndarray:
-        """
-        Estimateur de Roll pour le spread bid/ask.
+        """Estimateur de Roll pour le spread bid/ask.
 
         Basé sur l'autocovariance des rendements.
         Roll (1984): spread = 2 * sqrt(-cov(r_t, r_{t-1}))
@@ -510,6 +512,7 @@ class SpreadCalculator:
 
         Notes:
             Utilise implémentation optimisée (Numba si disponible, sinon pandas rolling)
+
         """
         returns = np.zeros(len(closes))
         returns[1:] = np.diff(closes) / closes[:-1]
@@ -533,10 +536,9 @@ class SpreadCalculator:
     def high_low_spread(
         highs: np.ndarray,
         lows: np.ndarray,
-        closes: np.ndarray = None  # Pas utilisé mais gardé pour compatibilité API
+        closes: np.ndarray = None,  # Pas utilisé mais gardé pour compatibilité API
     ) -> np.ndarray:
-        """
-        Estimateur Corwin-Schultz basé sur High-Low.
+        """Estimateur Corwin-Schultz basé sur High-Low.
 
         Args:
             highs: Array des hauts
@@ -548,6 +550,7 @@ class SpreadCalculator:
 
         Notes:
             Utilise implémentation optimisée (Numba si disponible, sinon boucle Python)
+
         """
         # Utiliser version optimisée si disponible (Numba JIT-compiled)
         if USE_FAST_EXECUTION and HAS_NUMBA:
@@ -560,10 +563,10 @@ class SpreadCalculator:
 
         for i in range(2, n):
             # Beta = (ln(H_t/L_t))^2 + (ln(H_{t-1}/L_{t-1}))^2
-            beta = (np.log(highs[i] / lows[i])) ** 2 + (np.log(highs[i-1] / lows[i-1])) ** 2
+            beta = (np.log(highs[i] / lows[i])) ** 2 + (np.log(highs[i - 1] / lows[i - 1])) ** 2
 
             # Gamma = (ln(max(H_t, H_{t-1}) / min(L_t, L_{t-1})))^2
-            gamma = (np.log(max(highs[i], highs[i-1]) / min(lows[i], lows[i-1]))) ** 2
+            gamma = (np.log(max(highs[i], highs[i - 1]) / min(lows[i], lows[i - 1]))) ** 2
 
             # Alpha
             denom = 3.0 - 2.0 * sqrt_2
@@ -580,8 +583,7 @@ class SpreadCalculator:
 
 
 class SlippageCalculator:
-    """
-    Calculateur de slippage.
+    """Calculateur de slippage.
 
     Fournit plusieurs modèles de slippage:
     - Fixe
@@ -600,10 +602,9 @@ class SlippageCalculator:
         order_size: float,
         avg_volume: float,
         base_bps: float = 3.0,
-        impact_factor: float = 0.1
+        impact_factor: float = 0.1,
     ) -> float:
-        """
-        Slippage basé sur le ratio taille_ordre / volume_moyen.
+        """Slippage basé sur le ratio taille_ordre / volume_moyen.
 
         Args:
             order_size: Taille de l'ordre
@@ -613,6 +614,7 @@ class SlippageCalculator:
 
         Returns:
             Slippage en BPS
+
         """
         if avg_volume <= 0:
             return base_bps
@@ -624,10 +626,9 @@ class SlippageCalculator:
     def volatility_slippage(
         volatility: float,
         base_bps: float = 3.0,
-        vol_multiplier: float = 100.0
+        vol_multiplier: float = 100.0,
     ) -> float:
-        """
-        Slippage basé sur la volatilité.
+        """Slippage basé sur la volatilité.
 
         Args:
             volatility: Volatilité (écart-type des rendements)
@@ -636,6 +637,7 @@ class SlippageCalculator:
 
         Returns:
             Slippage en BPS
+
         """
         return base_bps + volatility * vol_multiplier
 
@@ -645,10 +647,9 @@ class SlippageCalculator:
         daily_volume: float,
         daily_volatility: float,
         eta: float = 0.1,
-        gamma: float = 0.5
+        gamma: float = 0.5,
     ) -> float:
-        """
-        Modèle d'impact de marché Almgren-Chriss.
+        """Modèle d'impact de marché Almgren-Chriss.
 
         Temporary impact = eta * sigma * (Q / V)^gamma
 
@@ -661,6 +662,7 @@ class SlippageCalculator:
 
         Returns:
             Impact temporaire en fraction de prix
+
         """
         if daily_volume <= 0:
             return 0.0
@@ -673,10 +675,9 @@ def create_execution_engine(
     spread_bps: float = 5.0,
     slippage_bps: float = 3.0,
     latency_ms: float = 50.0,
-    **kwargs
+    **kwargs,
 ) -> ExecutionEngine:
-    """
-    Factory pour créer un ExecutionEngine configuré.
+    """Factory pour créer un ExecutionEngine configuré.
 
     Args:
         model: Type de modèle ('ideal', 'fixed', 'dynamic', 'realistic')
@@ -692,6 +693,7 @@ def create_execution_engine(
         >>> engine = create_execution_engine(model="dynamic", spread_bps=3.0)
         >>> engine.prepare(df)
         >>> result = engine.execute_order(price=100, side=1, bar_idx=50)
+
     """
     model_enum = ExecutionModel(model.lower())
 
@@ -700,19 +702,19 @@ def create_execution_engine(
         spread_bps=spread_bps,
         slippage_bps=slippage_bps,
         latency_ms=latency_ms,
-        **kwargs
+        **kwargs,
     )
 
     return ExecutionEngine(config)
 
 
 __all__ = [
-    "ExecutionModel",
     "ExecutionConfig",
-    "ExecutionResult",
     "ExecutionEngine",
-    "SpreadCalculator",
+    "ExecutionModel",
+    "ExecutionResult",
     "SlippageCalculator",
+    "SpreadCalculator",
     "create_execution_engine",
 ]
 

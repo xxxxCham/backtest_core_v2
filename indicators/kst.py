@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.kst
+"""Module-ID: indicators.kst
 
 Purpose: Know Sure Thing (KST) oscillator.
 """
@@ -66,4 +65,4 @@ register_indicator(
 )
 
 
-__all__ = ["kst", "calculate_kst", "KSTSettings"]
+__all__ = ["KSTSettings", "calculate_kst", "kst"]

@@ -1,17 +1,15 @@
-"""
-Module d'intégration du cache amélioré dans helpers.py
+"""Module d'intégration du cache amélioré dans helpers.py
 
 Ajoute les fonctions de cache TTL intelligent pour remplacer le cache session state basique.
 """
 
+
 def integrate_cache_manager_into_load_selected_data():
-    """
-    Code d'intégration pour load_selected_data avec cache manager.
+    """Code d'intégration pour load_selected_data avec cache manager.
 
     Cette fonction montre comment modifier load_selected_data pour utiliser
     le cache manager au lieu du cache session state basique.
     """
-
     # Code à intégrer dans load_selected_data de helpers.py :
     integration_code = """
 def load_selected_data(
@@ -52,10 +50,7 @@ def load_selected_data(
 
 
 def add_cache_cleanup_to_sidebar():
-    """
-    Code d'ajout d'un bouton de nettoyage cache dans la sidebar.
-    """
-
+    """Code d'ajout d'un bouton de nettoyage cache dans la sidebar."""
     cleanup_code = """
     # Ajout dans sidebar.py - section debug
     if st.sidebar.button("🗑️ Nettoyer cache données"):

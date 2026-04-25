@@ -1,5 +1,4 @@
-"""
-Backtest Core - Strategies Package.
+"""Backtest Core - Strategies Package.
 
 Imports are best-effort to avoid hard failures when optional strategy files
 are missing in a local workspace.
@@ -22,17 +21,17 @@ from .indicators_mapping import (
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "STRATEGY_INDICATORS_MAP",
     "StrategyBase",
     "StrategyResult",
-    "get_strategy",
-    "list_strategies",
-    "get_required_indicators",
     "get_all_indicators",
+    "get_required_indicators",
+    "get_strategy",
     "get_strategy_info",
-    "STRATEGY_INDICATORS_MAP",
+    "list_strategies",
 ]
 
-_OPTIONAL_STRATEGY_IMPORT_ERRORS: Dict[str, str] = {}
+_OPTIONAL_STRATEGY_IMPORT_ERRORS: dict[str, str] = {}
 
 
 def _optional_strategy(module_name: str, class_name: str) -> None:
@@ -43,14 +42,10 @@ def _optional_strategy(module_name: str, class_name: str) -> None:
     except ModuleNotFoundError as exc:
         # Silence only true "module not found" for optional modules.
         if exc.name == full_module_name:
-            _OPTIONAL_STRATEGY_IMPORT_ERRORS[module_name] = (
-                f"module_missing:{full_module_name}"
-            )
+            _OPTIONAL_STRATEGY_IMPORT_ERRORS[module_name] = f"module_missing:{full_module_name}"
             logger.debug("Optional strategy module not found: %s", full_module_name)
             return
-        _OPTIONAL_STRATEGY_IMPORT_ERRORS[module_name] = (
-            f"dependency_missing:{exc.name}"
-        )
+        _OPTIONAL_STRATEGY_IMPORT_ERRORS[module_name] = f"dependency_missing:{exc.name}"
         logger.warning(
             "Optional strategy '%s' skipped due to missing dependency '%s'",
             module_name,
@@ -58,9 +53,7 @@ def _optional_strategy(module_name: str, class_name: str) -> None:
         )
         return
     except Exception as exc:
-        _OPTIONAL_STRATEGY_IMPORT_ERRORS[module_name] = (
-            f"import_error:{type(exc).__name__}:{exc}"
-        )
+        _OPTIONAL_STRATEGY_IMPORT_ERRORS[module_name] = f"import_error:{type(exc).__name__}:{exc}"
         logger.warning(
             "Optional strategy '%s' import failed (%s: %s)",
             module_name,
@@ -72,9 +65,7 @@ def _optional_strategy(module_name: str, class_name: str) -> None:
     try:
         cls = getattr(module, class_name)
     except AttributeError:
-        _OPTIONAL_STRATEGY_IMPORT_ERRORS[module_name] = (
-            f"class_missing:{class_name}"
-        )
+        _OPTIONAL_STRATEGY_IMPORT_ERRORS[module_name] = f"class_missing:{class_name}"
         logger.warning(
             "Optional strategy module '%s' loaded but class '%s' is missing",
             full_module_name,
@@ -86,7 +77,7 @@ def _optional_strategy(module_name: str, class_name: str) -> None:
     __all__.append(class_name)
 
 
-def get_optional_strategy_import_errors() -> Dict[str, str]:
+def get_optional_strategy_import_errors() -> dict[str, str]:
     """Retourne l'état des imports optionnels non chargés."""
     return dict(_OPTIONAL_STRATEGY_IMPORT_ERRORS)
 

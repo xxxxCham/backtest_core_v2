@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
 from utils.observability import get_obs_logger
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 logger = get_obs_logger(__name__)
 
 
-def get_best_tested_config(orch: "Orchestrator") -> Optional[Dict[str, Any]]:
+def get_best_tested_config(orch: Orchestrator) -> dict[str, Any] | None:
     """Return the best tested configuration from proposals."""
     best = None
     best_sharpe = float("-inf")
@@ -37,7 +37,7 @@ def get_best_tested_config(orch: "Orchestrator") -> Optional[Dict[str, Any]]:
     return best
 
 
-def handle_iterate(orch: "Orchestrator") -> None:
+def handle_iterate(orch: Orchestrator) -> None:
     """Handle ITERATE state - Prepare next iteration."""
     orch._log_event("phase_start", phase="ITERATE")
     logger.info("Phase ITERATE: Préparation itération suivante")
@@ -69,9 +69,7 @@ def handle_iterate(orch: "Orchestrator") -> None:
         )
 
     # Check combination budget
-    if (
-        not orch._unlimited_iterations
-    ) and orch._total_combinations_tested >= orch.config.max_iterations:
+    if (not orch._unlimited_iterations) and orch._total_combinations_tested >= orch.config.max_iterations:
         logger.warning(
             "Budget épuisé: %d combos testées (limite: %d, dont %d sweeps)",
             orch._total_combinations_tested,
@@ -79,7 +77,7 @@ def handle_iterate(orch: "Orchestrator") -> None:
             orch._sweeps_performed,
         )
         orch._warnings.append(
-            f"Budget épuisé: {orch._total_combinations_tested}/{orch.config.max_iterations} combos"
+            f"Budget épuisé: {orch._total_combinations_tested}/{orch.config.max_iterations} combos",
         )
         # Transition to REJECTED because budget is exhausted
         orch.state_machine.transition_to(AgentState.REJECTED)

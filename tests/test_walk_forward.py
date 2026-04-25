@@ -1,5 +1,4 @@
-"""
-Tests unitaires — Walk-Forward Analysis (backtest.walk_forward)
+"""Tests unitaires — Walk-Forward Analysis (backtest.walk_forward)
 
 Objectifs :
 1. WFA off → zéro overhead, résultat identique.
@@ -25,10 +24,10 @@ from backtest.walk_forward import (
     run_walk_forward,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_ohlcv(n: int = 500, seed: int = 42) -> pd.DataFrame:
     """Crée un DataFrame OHLCV synthétique de *n* barres.
@@ -59,6 +58,7 @@ def _make_ohlcv(n: int = 500, seed: int = 42) -> pd.DataFrame:
 # Tests — check_wfa_feasibility
 # ---------------------------------------------------------------------------
 
+
 class TestCheckFeasibility:
     """Cas de garde-fou avant exécution."""
 
@@ -86,6 +86,7 @@ class TestCheckFeasibility:
 # Tests — WalkForwardConfig
 # ---------------------------------------------------------------------------
 
+
 class TestWalkForwardConfig:
     """Vérifie que la config est immuable et les défauts raisonnables."""
 
@@ -106,6 +107,7 @@ class TestWalkForwardConfig:
 # Tests — run_walk_forward (pipeline complet)
 # ---------------------------------------------------------------------------
 
+
 class TestRunWalkForward:
     """Pipeline split → run → aggregate."""
 
@@ -121,7 +123,10 @@ class TestRunWalkForward:
             min_test_bars=20,
         )
         summary = run_walk_forward(
-            df500, "ema_cross", {"fast_period": 10, "slow_period": 25}, config=cfg
+            df500,
+            "ema_cross",
+            {"fast_period": 10, "slow_period": 25},
+            config=cfg,
         )
 
         assert isinstance(summary, WalkForwardSummary)
@@ -138,13 +143,15 @@ class TestRunWalkForward:
             min_test_bars=20,
         )
         summary = run_walk_forward(
-            df500, "ema_cross", {"fast_period": 10, "slow_period": 25}, config=cfg
+            df500,
+            "ema_cross",
+            {"fast_period": 10, "slow_period": 25},
+            config=cfg,
         )
 
         for fold in summary.folds:
             assert fold.test_start >= fold.train_end, (
-                f"Look-ahead détecté fold {fold.fold_id}: "
-                f"test_start={fold.test_start} < train_end={fold.train_end}"
+                f"Look-ahead détecté fold {fold.fold_id}: test_start={fold.test_start} < train_end={fold.train_end}"
             )
 
     def test_folds_sequential(self, df500):
@@ -156,7 +163,10 @@ class TestRunWalkForward:
             min_test_bars=15,
         )
         summary = run_walk_forward(
-            df500, "ema_cross", {"fast_period": 10, "slow_period": 25}, config=cfg
+            df500,
+            "ema_cross",
+            {"fast_period": 10, "slow_period": 25},
+            config=cfg,
         )
 
         for i in range(1, len(summary.folds)):
@@ -174,13 +184,15 @@ class TestRunWalkForward:
             expanding=True,
         )
         summary = run_walk_forward(
-            df500, "ema_cross", {"fast_period": 10, "slow_period": 25}, config=cfg
+            df500,
+            "ema_cross",
+            {"fast_period": 10, "slow_period": 25},
+            config=cfg,
         )
 
         for fold in summary.folds:
             assert fold.train_start == 0, (
-                f"Expanding mode : train_start devrait être 0, "
-                f"got {fold.train_start} (fold {fold.fold_id})"
+                f"Expanding mode : train_start devrait être 0, got {fold.train_start} (fold {fold.fold_id})"
             )
 
     def test_too_few_bars_returns_empty(self):
@@ -193,7 +205,10 @@ class TestRunWalkForward:
             min_test_bars=50,
         )
         summary = run_walk_forward(
-            tiny_df, "ema_cross", {"fast_period": 5, "slow_period": 12}, config=cfg
+            tiny_df,
+            "ema_cross",
+            {"fast_period": 5, "slow_period": 12},
+            config=cfg,
         )
 
         assert summary.n_valid_folds == 0
@@ -207,7 +222,10 @@ class TestRunWalkForward:
             min_test_bars=20,
         )
         summary = run_walk_forward(
-            df500, "ema_cross", {"fast_period": 10, "slow_period": 25}, config=cfg
+            df500,
+            "ema_cross",
+            {"fast_period": 10, "slow_period": 25},
+            config=cfg,
         )
 
         assert isinstance(summary.avg_train_sharpe, float)
@@ -220,6 +238,7 @@ class TestRunWalkForward:
 # ---------------------------------------------------------------------------
 # Tests — Sérialisation
 # ---------------------------------------------------------------------------
+
 
 class TestSerialization:
     """to_dict() et to_agent_metrics() doivent être stables."""
@@ -234,15 +253,26 @@ class TestSerialization:
             min_test_bars=20,
         )
         return run_walk_forward(
-            df, "ema_cross", {"fast_period": 10, "slow_period": 25}, config=cfg
+            df,
+            "ema_cross",
+            {"fast_period": 10, "slow_period": 25},
+            config=cfg,
         )
 
     def test_to_dict_keys(self, summary):
         d = summary.to_dict()
         expected_keys = {
-            "config", "n_valid_folds", "avg_train_sharpe", "avg_test_sharpe",
-            "avg_overfitting_ratio", "degradation_pct", "test_stability_std",
-            "is_robust", "confidence_score", "total_time_ms", "folds",
+            "config",
+            "n_valid_folds",
+            "avg_train_sharpe",
+            "avg_test_sharpe",
+            "avg_overfitting_ratio",
+            "degradation_pct",
+            "test_stability_std",
+            "is_robust",
+            "confidence_score",
+            "total_time_ms",
+            "folds",
         }
         assert expected_keys.issubset(d.keys())
         assert isinstance(d["folds"], list)
@@ -250,8 +280,12 @@ class TestSerialization:
     def test_to_agent_metrics_keys(self, summary):
         m = summary.to_agent_metrics()
         expected = {
-            "train_sharpe", "test_sharpe", "overfitting_ratio",
-            "classic_ratio", "degradation_pct", "test_stability_std",
+            "train_sharpe",
+            "test_sharpe",
+            "overfitting_ratio",
+            "classic_ratio",
+            "degradation_pct",
+            "test_stability_std",
             "n_valid_folds",
         }
         assert expected == set(m.keys())
@@ -269,12 +303,14 @@ class TestSerialization:
 # Tests — Non-régression (WFA off)
 # ---------------------------------------------------------------------------
 
+
 class TestWFAOff:
     """WFA désactivé = aucun impact fonctionnel."""
 
     def test_wfa_off_same_as_direct_backtest(self):
         """Un backtest direct doit donner les mêmes métriques
-        qu'un run sans WFA."""
+        qu'un run sans WFA.
+        """
         from backtest.engine import BacktestEngine
 
         df = _make_ohlcv(500, seed=42)
@@ -285,11 +321,54 @@ class TestWFAOff:
         direct = engine.run(df, "ema_cross", params, silent_mode=True)
 
         # WFA off (via check_feasibility → False)
-        ok, _ = check_wfa_feasibility(len(df), WalkForwardConfig(
-            n_folds=20, min_train_bars=200, min_test_bars=100
-        ))
+        ok, _ = check_wfa_feasibility(
+            len(df),
+            WalkForwardConfig(
+                n_folds=20,
+                min_train_bars=200,
+                min_test_bars=100,
+            ),
+        )
         assert ok is False, "Config devrait rendre WFA infaisable sur 500 barres"
 
         # Le code appelant vérifie feasibility et n'appelle PAS run_walk_forward
         # → le backtest direct est utilisé → pas d'impact perf ni fonctionnel.
         assert direct.metrics.get("sharpe_ratio") is not None
+
+
+class TestValidationMetrics:
+    """Régressions ciblées sur backtest.validation."""
+
+    def test_validation_overfitting_ratio_penalizes_negative_test_sharpe(self):
+        from backtest.validation import ValidationFold
+
+        fold = ValidationFold(
+            fold_id=0,
+            train_start=0,
+            train_end=100,
+            test_start=100,
+            test_end=150,
+            train_metrics={"sharpe_ratio": 1.2},
+            test_metrics={"sharpe_ratio": -0.4},
+        )
+
+        assert fold.overfitting_ratio == 999.0
+
+    def test_calculate_walk_forward_metrics_keeps_zero_ratio_fold(self):
+        from backtest.validation import ValidationFold, calculate_walk_forward_metrics
+
+        result = calculate_walk_forward_metrics(
+            [
+                ValidationFold(
+                    fold_id=0,
+                    train_start=0,
+                    train_end=100,
+                    test_start=100,
+                    test_end=150,
+                    train_metrics={"sharpe_ratio": 0.0, "total_return_pct": 0.0},
+                    test_metrics={"sharpe_ratio": 1.0, "total_return_pct": 2.0},
+                ),
+            ],
+        )
+
+        assert result.avg_overfitting_ratio == 0.0

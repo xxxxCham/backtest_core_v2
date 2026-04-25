@@ -160,6 +160,14 @@ Required behavior:
 - Note: beat this configuration OR explain why the new hypothesis is a stronger foundation.
 {% endif %}
 
+{% if cross_session_memory_prompt %}
+## CROSS-SESSION MEMORY ({{ cross_session_memory_count|default(0) }})
+- These cards come from previous Builder sessions judged relevant by objective/market similarity.
+- Reuse patterns that worked in similar contexts, and avoid repeating failure cards with cosmetic tweaks only.
+- If a failure card looks similar to your current idea, change the indicator set, the regime logic, or the strategy family materially.
+{{ cross_session_memory_prompt }}
+{% endif %}
+
 ## HARD RULES
 - SINGLE-POSITION SIMULATOR: the engine holds at most ONE position at a time.
   Design entries as clean triggers, not continuous conditions. A +1.0 while already long is ignored.

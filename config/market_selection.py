@@ -1,5 +1,4 @@
-"""
-Module-ID: config.market_selection
+"""Module-ID: config.market_selection
 
 Purpose: Config centralisée et logique canonique de sélection des marchés
          (tokens × timeframes) pour Builder / validation / graduation.
@@ -30,14 +29,15 @@ import logging
 import math
 import os
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 _CONFIG_PATH = Path(__file__).parent / "market_selection.json"
-_CONFIG_CACHE: Dict[str, Any] | None = None
+_CONFIG_CACHE: dict[str, Any] | None = None
 logger = logging.getLogger(__name__)
 
 UNIVERSE_MODE_CANONICAL = "canonical"
@@ -48,7 +48,7 @@ UNIVERSE_MODE_OPTIONS = (
 )
 
 _LIQUIDITY_RANK = {"high": 3, "medium": 2, "low": 1}
-_DEFAULT_UNIVERSE_CONFIG: Dict[str, Any] = {
+_DEFAULT_UNIVERSE_CONFIG: dict[str, Any] = {
     "default_mode": UNIVERSE_MODE_CANONICAL,
     "purpose_defaults": {
         "builder": UNIVERSE_MODE_CANONICAL,
@@ -92,21 +92,28 @@ _STRATEGY_TYPE_ALIASES = {
     "reversion": "mean_reversion",
     "mr": "mean_reversion",
 }
-_STRATEGY_TYPE_PATTERNS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+_STRATEGY_TYPE_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("scalping", ("scalp", "scalping", "court terme", "rapide")),
     ("breakout", ("breakout", "cassure", "donchian", "sortie de range", "sortie range")),
     ("momentum", ("momentum", "directionnel", "acceleration", "accélération", "roc")),
     ("trend", ("trend", "tendance", "trend-following", "trend following", "suivi de tendance", "suivre")),
     (
         "mean_reversion",
-        ("mean reversion", "mean_reversion", "mean-reversion", "retour a la moyenne", "retour à la moyenne", "survente", "surachat"),
+        (
+            "mean reversion",
+            "mean_reversion",
+            "mean-reversion",
+            "retour a la moyenne",
+            "retour à la moyenne",
+            "survente",
+            "surachat",
+        ),
     ),
 )
 
 
-def get_market_config() -> Dict[str, Any]:
-    """
-    Charge la config de sélection marché depuis JSON + overrides env vars.
+def get_market_config() -> dict[str, Any]:
+    """Charge la config de sélection marché depuis JSON + overrides env vars.
 
     Returns:
         Dictionnaire avec clés: defaults, diversity, hints, potential_tokens
@@ -118,6 +125,7 @@ def get_market_config() -> Dict[str, Any]:
         - BACKTEST_DEFAULT_SYMBOL: Override defaults.symbol
         - BACKTEST_DEFAULT_TIMEFRAME: Override defaults.timeframe
         - BACKTEST_DIVERSITY_WINDOW: Override diversity.window_size (int)
+
     """
     global _CONFIG_CACHE
 
@@ -128,7 +136,7 @@ def get_market_config() -> Dict[str, Any]:
     if not _CONFIG_PATH.exists():
         raise FileNotFoundError(
             f"Config marché manquante: {_CONFIG_PATH}\n"
-            "Créer config/market_selection.json avec defaults/diversity/hints/potential_tokens."
+            "Créer config/market_selection.json avec defaults/diversity/hints/potential_tokens.",
         )
 
     with open(_CONFIG_PATH, encoding="utf-8") as f:
@@ -161,18 +169,18 @@ def get_default_timeframe() -> str:
     return str(get_market_config()["defaults"]["timeframe"])
 
 
-def get_potential_tokens() -> List[str]:
+def get_potential_tokens() -> list[str]:
     """Retourne la liste des tokens à potentiel (blue-chip)."""
     return list(get_market_config()["potential_tokens"])
 
 
-def get_universe_config() -> Dict[str, Any]:
+def get_universe_config() -> dict[str, Any]:
     """Retourne la configuration de l'univers marché avec fallbacks conservateurs."""
     payload = get_market_config().get("universe", {})
     if not isinstance(payload, dict):
         payload = {}
 
-    merged: Dict[str, Any] = dict(_DEFAULT_UNIVERSE_CONFIG)
+    merged: dict[str, Any] = dict(_DEFAULT_UNIVERSE_CONFIG)
     for key, default_value in _DEFAULT_UNIVERSE_CONFIG.items():
         candidate_value = payload.get(key)
         if isinstance(default_value, dict):
@@ -207,30 +215,24 @@ def normalize_universe_mode(
     return UNIVERSE_MODE_CANONICAL
 
 
-def get_canonical_tokens() -> List[str]:
+def get_canonical_tokens() -> list[str]:
     """Retourne l'univers canonique ordonné utilisé pour les runs robustes."""
     universe_cfg = get_universe_config()
     explicit_tokens = universe_cfg.get("canonical_tokens", [])
     if isinstance(explicit_tokens, list):
         normalized_explicit = [
-            str(token or "").strip().upper()
-            for token in explicit_tokens
-            if str(token or "").strip()
+            str(token or "").strip().upper() for token in explicit_tokens if str(token or "").strip()
         ]
         if normalized_explicit:
             return list(dict.fromkeys(normalized_explicit))
 
     source = str(universe_cfg.get("canonical_source", "postfilter_benchmarks_union") or "").strip().lower()
     if source == "potential_tokens":
-        return [
-            str(token or "").strip().upper()
-            for token in get_potential_tokens()
-            if str(token or "").strip()
-        ]
+        return [str(token or "").strip().upper() for token in get_potential_tokens() if str(token or "").strip()]
 
     payload = get_postfilter_benchmark_config()
     benchmarks = payload.get("benchmarks", {}) if isinstance(payload, dict) else {}
-    ordered_tokens: List[str] = []
+    ordered_tokens: list[str] = []
     if isinstance(benchmarks, dict):
         benchmark_names = get_postfilter_benchmark_names()
         if not benchmark_names:
@@ -245,14 +247,10 @@ def get_canonical_tokens() -> List[str]:
     if ordered_tokens:
         return list(dict.fromkeys(ordered_tokens))
 
-    return [
-        str(token or "").strip().upper()
-        for token in get_potential_tokens()
-        if str(token or "").strip()
-    ]
+    return [str(token or "").strip().upper() for token in get_potential_tokens() if str(token or "").strip()]
 
 
-def get_postfilter_benchmark_config() -> Dict[str, Any]:
+def get_postfilter_benchmark_config() -> dict[str, Any]:
     """Retourne la configuration des benchmarks canoniques de post-filtrage."""
     payload = get_market_config().get("postfilter_benchmarks", {})
     if not isinstance(payload, dict):
@@ -260,7 +258,7 @@ def get_postfilter_benchmark_config() -> Dict[str, Any]:
     return payload
 
 
-def get_postfilter_benchmark_names() -> List[str]:
+def get_postfilter_benchmark_names() -> list[str]:
     """Retourne la liste ordonnée des benchmarks canoniques à utiliser."""
     payload = get_postfilter_benchmark_config()
     names = payload.get("default_benchmark_names", [])
@@ -284,9 +282,8 @@ def get_hints_confidence_boost() -> float:
     return float(get_market_config()["hints"]["confidence_boost"])
 
 
-def get_token_profile(symbol: str) -> Dict[str, Any]:
-    """
-    Retourne le profil d'un token (volatilité, liquidité, stratégies recommandées).
+def get_token_profile(symbol: str) -> dict[str, Any]:
+    """Retourne le profil d'un token (volatilité, liquidité, stratégies recommandées).
 
     Args:
         symbol: Symbole du token (ex: "BTCUSDC")
@@ -294,6 +291,7 @@ def get_token_profile(symbol: str) -> Dict[str, Any]:
     Returns:
         Dict avec keys: volatility, liquidity, strategies
         Retourne un profil par défaut si le token n'est pas trouvé
+
     """
     config = get_market_config()
     profiles = config.get("token_profiles", {})
@@ -303,21 +301,21 @@ def get_token_profile(symbol: str) -> Dict[str, Any]:
     default_profile = {
         "volatility": "medium",
         "liquidity": "low",
-        "strategies": []
+        "strategies": [],
     }
 
     return profiles.get(symbol.upper(), default_profile)
 
 
-def get_strategy_requirements(strategy_type: str) -> Dict[str, Any]:
-    """
-    Retourne les exigences pour un type de stratégie.
+def get_strategy_requirements(strategy_type: str) -> dict[str, Any]:
+    """Retourne les exigences pour un type de stratégie.
 
     Args:
         strategy_type: Type de stratégie (scalping, breakout, momentum, trend, mean_reversion)
 
     Returns:
         Dict avec keys: volatility_preferred, liquidity_min, timeframes
+
     """
     config = get_market_config()
     requirements = config.get("strategy_requirements", {})
@@ -326,7 +324,7 @@ def get_strategy_requirements(strategy_type: str) -> Dict[str, Any]:
     default_reqs = {
         "volatility_preferred": ["medium"],
         "liquidity_min": "medium",
-        "timeframes": ["1h", "4h"]
+        "timeframes": ["1h", "4h"],
     }
 
     normalized_type = infer_strategy_type(strategy_type=strategy_type)
@@ -341,8 +339,7 @@ def infer_strategy_type(
     strategy_key: str = "",
     objective: str = "",
 ) -> str:
-    """
-    Infère un type de stratégie simple et stable.
+    """Infère un type de stratégie simple et stable.
 
     Retourne l'un des types connus (`scalping`, `breakout`, `momentum`,
     `trend`, `mean_reversion`) ou `unknown`.
@@ -382,7 +379,7 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
     return parsed
 
 
-def _timeframe_to_timedelta(timeframe: str) -> Optional[pd.Timedelta]:
+def _timeframe_to_timedelta(timeframe: str) -> pd.Timedelta | None:
     raw = str(timeframe or "").strip()
     if len(raw) < 2:
         return None
@@ -423,19 +420,19 @@ def _max_contiguous_segment_bars(df: pd.DataFrame, timeframe: str) -> int:
         return 0
     expected = _timeframe_to_timedelta(timeframe)
     if expected is None:
-        return int(len(df))
+        return len(df)
     idx = getattr(df, "index", None)
     if not isinstance(idx, pd.DatetimeIndex) or len(idx) <= 1:
-        return int(len(df))
+        return len(df)
     diffs = idx[1:] - idx[:-1]
     major_gap = diffs > (expected * 3)
     if not np.any(major_gap):
-        return int(len(df))
+        return len(df)
     cut_positions = np.where(major_gap)[0]
     starts = [0, *[int(pos) + 1 for pos in cut_positions]]
     ends = [*[int(pos) + 1 for pos in cut_positions], len(df)]
     lengths = [int(end - start) for start, end in zip(starts, ends)]
-    return max(lengths) if lengths else int(len(df))
+    return max(lengths) if lengths else len(df)
 
 
 def _volatility_bucket(volatility_annual_pct: float) -> str:
@@ -529,28 +526,20 @@ def _compute_annualized_volatility_pct(df: pd.DataFrame, timeframe: str, window_
 
 
 def _normalize_market_pairs(
-    symbols: List[str],
-    timeframes: List[str],
-) -> List[Tuple[str, str]]:
+    symbols: list[str],
+    timeframes: list[str],
+) -> list[tuple[str, str]]:
     clean_symbols = list(
-        dict.fromkeys(
-            str(symbol or "").strip().upper()
-            for symbol in symbols
-            if str(symbol or "").strip()
-        )
+        dict.fromkeys(str(symbol or "").strip().upper() for symbol in symbols if str(symbol or "").strip()),
     )
     clean_timeframes = list(
-        dict.fromkeys(
-            str(timeframe or "").strip()
-            for timeframe in timeframes
-            if str(timeframe or "").strip()
-        )
+        dict.fromkeys(str(timeframe or "").strip() for timeframe in timeframes if str(timeframe or "").strip()),
     )
     return [(symbol, timeframe) for symbol in clean_symbols for timeframe in clean_timeframes]
 
 
 def evaluate_market_dataset(
-    df: Optional[pd.DataFrame],
+    df: pd.DataFrame | None,
     *,
     symbol: str,
     timeframe: str,
@@ -559,8 +548,8 @@ def evaluate_market_dataset(
     strategy_type: str = "",
     strategy_key: str = "",
     objective: str = "",
-    token_profile: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    token_profile: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Évalue l'éligibilité d'un marché à partir des données locales disponibles."""
     normalized_symbol = str(symbol or "").strip().upper()
     normalized_timeframe = str(timeframe or "").strip()
@@ -570,11 +559,7 @@ def evaluate_market_dataset(
         strategy_key=strategy_key,
         objective=objective,
     )
-    profile = (
-        dict(token_profile)
-        if isinstance(token_profile, dict)
-        else get_token_profile(normalized_symbol)
-    )
+    profile = dict(token_profile) if isinstance(token_profile, dict) else get_token_profile(normalized_symbol)
     requirements = get_strategy_requirements(normalized_strategy)
     universe_cfg = get_universe_config()
     local_filters = dict(universe_cfg.get("local_filters", {}) or {})
@@ -584,7 +569,7 @@ def evaluate_market_dataset(
         from data.config import get_min_period_days_for_timeframes
 
         timeframe_min_days = int(
-            get_min_period_days_for_timeframes([normalized_timeframe])
+            get_min_period_days_for_timeframes([normalized_timeframe]),
         )
     except Exception:
         timeframe_min_days = 30
@@ -594,7 +579,7 @@ def evaluate_market_dataset(
         int(_safe_float(local_filters.get("min_segment_bars_floor"), 300)),
     )
     timeframe_segment_overrides = dict(
-        local_filters.get("canonical_min_segment_bars_by_timeframe", {}) or {}
+        local_filters.get("canonical_min_segment_bars_by_timeframe", {}) or {},
     )
     canonical_segment_days_multiplier = max(
         0.25,
@@ -603,8 +588,8 @@ def evaluate_market_dataset(
     recommended_segment_bars = int(
         math.ceil(
             max(1.0, float(timeframe_min_days) * canonical_segment_days_multiplier)
-            * _bars_per_day(normalized_timeframe)
-        )
+            * _bars_per_day(normalized_timeframe),
+        ),
     )
     min_segment_bars_required = (
         max(min_segment_bars_floor, recommended_segment_bars)
@@ -645,7 +630,7 @@ def evaluate_market_dataset(
         int(_safe_float(local_filters.get("volatility_window_bars"), 96)),
     )
 
-    applied_criteria: Dict[str, Any] = {
+    applied_criteria: dict[str, Any] = {
         "purpose": str(purpose or "builder"),
         "universe_mode": normalized_mode,
         "strategy_type": normalized_strategy,
@@ -662,7 +647,7 @@ def evaluate_market_dataset(
         "volatility_window_bars": volatility_window_bars,
     }
 
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "accepted": False,
         "symbol": normalized_symbol,
         "timeframe": normalized_timeframe,
@@ -696,7 +681,7 @@ def evaluate_market_dataset(
         return result
 
     local_metrics = result["local_metrics"]
-    n_bars = int(len(df))
+    n_bars = len(df)
     local_metrics["n_bars"] = n_bars
     local_metrics["listing_age_days"] = _compute_listing_age_days(df, normalized_timeframe)
     local_metrics["max_contiguous_bars"] = _max_contiguous_segment_bars(df, normalized_timeframe)
@@ -717,23 +702,23 @@ def evaluate_market_dataset(
         local_metrics["liquidity_metric_used"] = "median_volume"
         local_metrics["liquidity_metric_value"] = local_metrics["median_volume"]
 
-    exclusion_reasons: List[str] = result["exclusion_reasons"]
-    warnings: List[str] = result["warnings"]
+    exclusion_reasons: list[str] = result["exclusion_reasons"]
+    warnings: list[str] = result["warnings"]
 
     if n_bars < min_segment_bars_floor:
         exclusion_reasons.append(
-            f"dataset insufficient ({n_bars} bars < {min_segment_bars_floor})"
+            f"dataset insufficient ({n_bars} bars < {min_segment_bars_floor})",
         )
 
     if local_metrics["max_contiguous_bars"] < min_segment_bars_required:
         exclusion_reasons.append(
             "continuous segment insufficient "
-            f"({local_metrics['max_contiguous_bars']} bars < {min_segment_bars_required})"
+            f"({local_metrics['max_contiguous_bars']} bars < {min_segment_bars_required})",
         )
 
     if local_metrics["tradable_ratio"] < min_tradable_ratio_hard:
         exclusion_reasons.append(
-            f"tradable ratio too low ({local_metrics['tradable_ratio']:.1%} < {min_tradable_ratio_hard:.0%})"
+            f"tradable ratio too low ({local_metrics['tradable_ratio']:.1%} < {min_tradable_ratio_hard:.0%})",
         )
 
     canonical_tokens = set(applied_criteria["canonical_tokens"] or [])
@@ -741,22 +726,15 @@ def evaluate_market_dataset(
         if normalized_symbol not in canonical_tokens:
             exclusion_reasons.append("outside canonical universe")
 
-    if (
-        normalized_mode == UNIVERSE_MODE_CANONICAL
-        and local_metrics["listing_age_days"] < min_listing_age_days
-    ):
+    if normalized_mode == UNIVERSE_MODE_CANONICAL and local_metrics["listing_age_days"] < min_listing_age_days:
         exclusion_reasons.append(
-            "listing too recent "
-            f"({local_metrics['listing_age_days']:.1f}d < {min_listing_age_days:.1f}d)"
+            f"listing too recent ({local_metrics['listing_age_days']:.1f}d < {min_listing_age_days:.1f}d)",
         )
 
-    if (
-        normalized_mode == UNIVERSE_MODE_CANONICAL
-        and local_metrics["tradable_ratio"] < min_tradable_ratio_canonical
-    ):
+    if normalized_mode == UNIVERSE_MODE_CANONICAL and local_metrics["tradable_ratio"] < min_tradable_ratio_canonical:
         exclusion_reasons.append(
             "tradable ratio below canonical threshold "
-            f"({local_metrics['tradable_ratio']:.1%} < {min_tradable_ratio_canonical:.0%})"
+            f"({local_metrics['tradable_ratio']:.1%} < {min_tradable_ratio_canonical:.0%})",
         )
 
     if normalized_mode == UNIVERSE_MODE_CANONICAL:
@@ -764,12 +742,11 @@ def evaluate_market_dataset(
             if local_metrics["median_dollar_volume"] < min_median_dollar_volume:
                 exclusion_reasons.append(
                     "median dollar volume insufficient "
-                    f"({local_metrics['median_dollar_volume']:.0f} < {min_median_dollar_volume:.0f})"
+                    f"({local_metrics['median_dollar_volume']:.0f} < {min_median_dollar_volume:.0f})",
                 )
         elif local_metrics["median_volume"] < min_median_volume:
             exclusion_reasons.append(
-                "median volume insufficient "
-                f"({local_metrics['median_volume']:.0f} < {min_median_volume:.0f})"
+                f"median volume insufficient ({local_metrics['median_volume']:.0f} < {min_median_volume:.0f})",
             )
         else:
             warnings.append("median dollar volume unavailable, fallback to median volume")
@@ -781,8 +758,7 @@ def evaluate_market_dataset(
         and local_metrics["volatility_bucket"] not in preferred_volatility
     ):
         exclusion_reasons.append(
-            "volatility profile mismatch "
-            f"({local_metrics['volatility_bucket']} not in {preferred_volatility})"
+            f"volatility profile mismatch ({local_metrics['volatility_bucket']} not in {preferred_volatility})",
         )
 
     market_cap_enabled = bool(secondary_filters.get("market_cap_enabled", False))
@@ -795,7 +771,7 @@ def evaluate_market_dataset(
             warnings.append("market cap unavailable, ignored")
         elif market_cap < market_cap_min:
             warnings.append(
-                f"market cap below secondary threshold ({market_cap:.0f} < {market_cap_min:.0f})"
+                f"market cap below secondary threshold ({market_cap:.0f} < {market_cap_min:.0f})",
             )
 
     liquidity_rank = _LIQUIDITY_RANK.get(str(profile.get("liquidity", "low")).strip().lower(), 1)
@@ -821,15 +797,15 @@ def evaluate_market_dataset(
 
 def filter_market_universe(
     *,
-    symbols: List[str],
-    timeframes: List[str],
+    symbols: list[str],
+    timeframes: list[str],
     universe_mode: Any = None,
     purpose: str = "builder",
     strategy_type: str = "",
     strategy_key: str = "",
     objective: str = "",
-    data_loader: Optional[Callable[[str, str], Optional[pd.DataFrame]]] = None,
-) -> Dict[str, Any]:
+    data_loader: Callable[[str, str], pd.DataFrame | None] | None = None,
+) -> dict[str, Any]:
     """Filtre un univers marché avec des règles partagées Builder/validation."""
     normalized_mode = normalize_universe_mode(universe_mode, purpose=purpose)
     normalized_strategy = infer_strategy_type(
@@ -843,8 +819,8 @@ def filter_market_universe(
 
         data_loader = load_ohlcv
 
-    eligible_pairs: List[Dict[str, Any]] = []
-    excluded_pairs: List[Dict[str, Any]] = []
+    eligible_pairs: list[dict[str, Any]] = []
+    excluded_pairs: list[dict[str, Any]] = []
     canonical_tokens = set(get_canonical_tokens()) if normalized_mode == UNIVERSE_MODE_CANONICAL else set()
 
     for order, (symbol, timeframe) in enumerate(pairs):
@@ -856,7 +832,7 @@ def filter_market_universe(
                     "accepted": False,
                     "order": order,
                     "exclusion_reasons": ["outside canonical universe"],
-                }
+                },
             )
             continue
         try:
@@ -869,7 +845,7 @@ def filter_market_universe(
                     "accepted": False,
                     "order": order,
                     "exclusion_reasons": [f"data load failed: {exc}"],
-                }
+                },
             )
             continue
 
@@ -893,23 +869,23 @@ def filter_market_universe(
         key=lambda item: (
             -_safe_float(item.get("quality_score"), 0.0),
             int(item.get("order", 0)),
-        )
+        ),
     )
     ordered_symbols = list(
         dict.fromkeys(
             str(item.get("symbol") or "").strip().upper()
             for item in eligible_pairs
             if str(item.get("symbol") or "").strip()
-        )
+        ),
     )
     ordered_timeframes = list(
         dict.fromkeys(
             str(item.get("timeframe") or "").strip()
             for item in eligible_pairs
             if str(item.get("timeframe") or "").strip()
-        )
+        ),
     )
-    exclusion_summary: Dict[str, int] = {}
+    exclusion_summary: dict[str, int] = {}
     for item in excluded_pairs:
         for reason in list(item.get("exclusion_reasons", []) or []):
             exclusion_summary[reason] = int(exclusion_summary.get(reason, 0)) + 1
@@ -938,11 +914,10 @@ def filter_market_universe(
 
 
 def rank_tokens_for_strategy(
-    candidate_tokens: List[str],
+    candidate_tokens: list[str],
     strategy_type: str,
-) -> List[str]:
-    """
-    Trie les tokens par pertinence pour un type de stratégie donné.
+) -> list[str]:
+    """Trie les tokens par pertinence pour un type de stratégie donné.
 
     Args:
         candidate_tokens: Liste de tokens candidats
@@ -950,13 +925,14 @@ def rank_tokens_for_strategy(
 
     Returns:
         Liste de tokens triés par pertinence décroissante
+
     """
     reqs = get_strategy_requirements(strategy_type)
     preferred_volatility = reqs.get("volatility_preferred", ["medium"])
     min_liquidity = reqs.get("liquidity_min", "medium")
 
     # Score de pertinence pour chaque token
-    scored_tokens: List[Tuple[str, int]] = []
+    scored_tokens: list[tuple[str, int]] = []
 
     for token in candidate_tokens:
         profile = get_token_profile(token)

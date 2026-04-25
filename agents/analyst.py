@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.analyst
+"""Module-ID: agents.analyst
 
 Purpose: Analyser quantitativement les résultats de backtest et diagnostiquer les forces/faiblesses.
 
@@ -24,7 +23,7 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -43,14 +42,17 @@ logger = get_obs_logger(__name__)
 
 # === Modèles Pydantic pour validation ===
 
+
 class MetricAssessment(BaseModel):
     """Évaluation d'une métrique individuelle."""
+
     value: float
     assessment: str = Field(..., min_length=1)
 
 
 class KeyMetricsAssessment(BaseModel):
     """Évaluation des métriques clés."""
+
     sharpe_ratio: MetricAssessment
     max_drawdown: MetricAssessment
     win_rate: MetricAssessment
@@ -62,19 +64,20 @@ class AnalysisResponse(BaseModel):
 
     Utilise Pydantic pour validation robuste et typée.
     """
+
     summary: str = Field(..., min_length=10)
     performance_rating: str = Field(..., pattern="^(EXCELLENT|GOOD|FAIR|POOR|CRITICAL)$")
     risk_rating: str = Field(..., pattern="^(LOW|MODERATE|HIGH|EXTREME)$")
     overfitting_risk: str = Field(..., pattern="^(LOW|MODERATE|HIGH|CRITICAL)$")
-    strengths: List[str] = Field(default_factory=list)
-    weaknesses: List[str] = Field(default_factory=list)
-    concerns: List[str] = Field(default_factory=list)
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
+    concerns: list[str] = Field(default_factory=list)
     key_metrics_assessment: KeyMetricsAssessment
-    recommendations: List[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
     proceed_to_optimization: bool
     reasoning: str = Field(..., min_length=10)
 
-    @field_validator('strengths', 'weaknesses', 'concerns', 'recommendations', mode='after')
+    @field_validator("strengths", "weaknesses", "concerns", "recommendations", mode="after")
     @classmethod
     def validate_non_empty_strings(cls, v):
         """Valide que les items de liste ne sont pas vides."""
@@ -87,8 +90,7 @@ class AnalysisResponse(BaseModel):
 
 
 class AnalystAgent(BaseAgent):
-    """
-    Agent Analyst - Expert en analyse quantitative.
+    """Agent Analyst - Expert en analyse quantitative.
 
     Analyse:
     - Performance absolue (rendement, sharpe, etc.)
@@ -146,14 +148,14 @@ Respond ONLY in valid JSON format with this exact structure:
 }"""
 
     def execute(self, context: AgentContext) -> AgentResult:
-        """
-        Exécute l'analyse quantitative.
+        """Exécute l'analyse quantitative.
 
         Args:
             context: Contexte avec métriques
 
         Returns:
             Rapport d'analyse
+
         """
         start_time = time.time()
 
@@ -188,7 +190,7 @@ Respond ONLY in valid JSON format with this exact structure:
             logger.error(f"Parse JSON crash: {e}")
             return AgentResult.failure_result(
                 self.role,
-                f"Exception parse JSON: {type(e).__name__} - {str(e)}",
+                f"Exception parse JSON: {type(e).__name__} - {e!s}",
                 execution_time_ms=execution_time,
                 raw_llm_response=response,
             )
@@ -235,7 +237,6 @@ Respond ONLY in valid JSON format with this exact structure:
 
     def _build_analysis_prompt(self, context: AgentContext) -> str:
         """Construit le prompt d'analyse via template Jinja2."""
-
         # Convertir MetricsSnapshot en dict pour le template
         current_metrics_dict = None
         if context.current_metrics:
@@ -280,7 +281,7 @@ Respond ONLY in valid JSON format with this exact structure:
         # Rendre le template
         return render_prompt("analyst.jinja2", template_context)
 
-    def _validate_analysis(self, analysis: Dict[str, Any]) -> List[str]:
+    def _validate_analysis(self, analysis: dict[str, Any]) -> list[str]:
         """Valide la structure de l'analyse avec Pydantic.
 
         Args:
@@ -288,6 +289,7 @@ Respond ONLY in valid JSON format with this exact structure:
 
         Returns:
             Liste d'erreurs (vide si validation réussie)
+
         """
         try:
             # Validation Pydantic - lève ValidationError si invalide
@@ -296,7 +298,7 @@ Respond ONLY in valid JSON format with this exact structure:
             # Validation réussie
             logger.debug(
                 f"Analyse validée avec succès: {validated.performance_rating} "
-                f"performance, {validated.risk_rating} risk"
+                f"performance, {validated.risk_rating} risk",
             )
             return []  # Aucune erreur
 
@@ -309,7 +311,7 @@ Respond ONLY in valid JSON format with this exact structure:
                 error_type = error["type"]
 
                 errors.append(
-                    f"Champ '{field_path}': {error_msg} (type: {error_type})"
+                    f"Champ '{field_path}': {error_msg} (type: {error_type})",
                 )
 
             logger.warning(f"Validation Pydantic échouée: {len(errors)} erreur(s)")
@@ -318,4 +320,4 @@ Respond ONLY in valid JSON format with this exact structure:
         except Exception as e:
             # Erreur inattendue
             logger.error(f"Erreur inattendue lors validation Pydantic: {e}")
-            return [f"Erreur validation: {type(e).__name__} - {str(e)}"]
+            return [f"Erreur validation: {type(e).__name__} - {e!s}"]

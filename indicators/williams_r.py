@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.williams_r
+"""Module-ID: indicators.williams_r
 
 Purpose: Indicateur Williams %R - oscillateur momentum surachat/survente.
 
@@ -29,6 +28,7 @@ import pandas as pd
 @dataclass
 class WilliamsRSettings:
     """Paramètres Williams %R."""
+
     period: int = 14
 
 
@@ -38,8 +38,7 @@ def williams_r(
     close: pd.Series | np.ndarray,
     period: int = 14,
 ) -> np.ndarray:
-    """
-    Calcule Williams %R.
+    """Calcule Williams %R.
 
     Formula: %R = (Highest High - Close) / (Highest High - Lowest Low) * -100
 
@@ -51,6 +50,7 @@ def williams_r(
 
     Returns:
         Valeurs entre -100 (survente) et 0 (surachat)
+
     """
     if isinstance(high, pd.Series):
         high_series = high
@@ -73,10 +73,10 @@ def williams_r(
     williams_values = np.where(
         range_hl != 0,
         ((highest_high - close) / range_hl) * -100.0,
-        -50.0
+        -50.0,
     )
 
     return williams_values
 
 
-__all__ = ["williams_r", "WilliamsRSettings"]
+__all__ = ["WilliamsRSettings", "williams_r"]

@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.pareto
+"""Module-ID: backtest.pareto
 
 Purpose: Optimiser multi-objectif avec détection domination Pareto et early stopping automatique.
 
@@ -23,8 +22,9 @@ Skip-if: Single-objectif uniquement (sweep/optuna simple).
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -33,25 +33,25 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ParetoPoint:
-    """
-    Point dans l'espace des objectifs.
+    """Point dans l'espace des objectifs.
 
     Attributes:
         params: Paramètres de la stratégie
         objectives: Dict des valeurs d'objectifs (nom -> valeur)
         metadata: Données additionnelles
+
     """
-    params: Dict[str, Any]
-    objectives: Dict[str, float]
-    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    params: dict[str, Any]
+    objectives: dict[str, float]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         """Convertit les objectifs en float."""
         self.objectives = {k: float(v) for k, v in self.objectives.items()}
 
-    def dominates(self, other: "ParetoPoint", directions: Dict[str, int]) -> bool:
-        """
-        Vérifie si ce point domine l'autre.
+    def dominates(self, other: ParetoPoint, directions: dict[str, int]) -> bool:
+        """Vérifie si ce point domine l'autre.
 
         Un point A domine B si:
         - A est au moins aussi bon que B sur tous les objectifs
@@ -63,6 +63,7 @@ class ParetoPoint:
 
         Returns:
             True si self domine other
+
         """
         dominated_keys = set(self.objectives.keys()) & set(other.objectives.keys())
 
@@ -77,12 +78,12 @@ class ParetoPoint:
             if self_val < other_val:
                 at_least_as_good = False
                 break
-            elif self_val > other_val:
+            if self_val > other_val:
                 strictly_better = True
 
         return at_least_as_good and strictly_better
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "params": self.params,
@@ -93,27 +94,27 @@ class ParetoPoint:
 
 @dataclass
 class ParetoFrontier:
-    """
-    Frontière de Pareto dynamique.
+    """Frontière de Pareto dynamique.
 
     Maintient l'ensemble des points non-dominés.
     """
-    directions: Dict[str, int] = field(default_factory=dict)
-    points: List[ParetoPoint] = field(default_factory=list)
+
+    directions: dict[str, int] = field(default_factory=dict)
+    points: list[ParetoPoint] = field(default_factory=list)
 
     def __post_init__(self):
         """Initialise les directions par défaut."""
         # Objectifs standards
         default_directions = {
-            "sharpe_ratio": 1,      # Maximiser
-            "sortino_ratio": 1,     # Maximiser
-            "total_return": 1,      # Maximiser
-            "profit_factor": 1,     # Maximiser
-            "win_rate": 1,          # Maximiser
-            "max_drawdown": -1,     # Minimiser
-            "volatility": -1,       # Minimiser
-            "sqn": 1,               # Maximiser
-            "calmar_ratio": 1,      # Maximiser
+            "sharpe_ratio": 1,  # Maximiser
+            "sortino_ratio": 1,  # Maximiser
+            "total_return": 1,  # Maximiser
+            "profit_factor": 1,  # Maximiser
+            "win_rate": 1,  # Maximiser
+            "max_drawdown": -1,  # Minimiser
+            "volatility": -1,  # Minimiser
+            "sqn": 1,  # Maximiser
+            "calmar_ratio": 1,  # Maximiser
         }
 
         for key, direction in default_directions.items():
@@ -121,8 +122,7 @@ class ParetoFrontier:
                 self.directions[key] = direction
 
     def add_point(self, point: ParetoPoint) -> bool:
-        """
-        Ajoute un point à la frontière si non-dominé.
+        """Ajoute un point à la frontière si non-dominé.
 
         Met à jour la frontière en supprimant les points dominés.
 
@@ -131,6 +131,7 @@ class ParetoFrontier:
 
         Returns:
             True si le point a été ajouté (non-dominé)
+
         """
         # Vérifier si le nouveau point est dominé
         for existing in self.points:
@@ -138,10 +139,7 @@ class ParetoFrontier:
                 return False
 
         # Supprimer les points dominés par le nouveau
-        self.points = [
-            p for p in self.points
-            if not point.dominates(p, self.directions)
-        ]
+        self.points = [p for p in self.points if not point.dominates(p, self.directions)]
 
         # Ajouter le nouveau point
         self.points.append(point)
@@ -154,7 +152,7 @@ class ParetoFrontier:
                 return True
         return False
 
-    def get_best(self, objective: str) -> Optional[ParetoPoint]:
+    def get_best(self, objective: str) -> ParetoPoint | None:
         """Retourne le meilleur point pour un objectif donné."""
         if not self.points:
             return None
@@ -163,21 +161,20 @@ class ParetoFrontier:
 
         return max(
             self.points,
-            key=lambda p: p.objectives.get(objective, float('-inf')) * direction
+            key=lambda p: p.objectives.get(objective, float("-inf")) * direction,
         )
 
     def size(self) -> int:
         """Retourne le nombre de points sur la frontière."""
         return len(self.points)
 
-    def to_list(self) -> List[Dict[str, Any]]:
+    def to_list(self) -> list[dict[str, Any]]:
         """Convertit la frontière en liste de dicts."""
         return [p.to_dict() for p in self.points]
 
 
 class ParetoPruner:
-    """
-    Pruner basé sur la dominance de Pareto.
+    """Pruner basé sur la dominance de Pareto.
 
     Permet d'arrêter l'évaluation de combinaisons de paramètres
     qui sont clairement dominées.
@@ -195,21 +192,22 @@ class ParetoPruner:
         >>>     # Évaluation complète
         >>>     full_result = full_evaluate(params)
         >>>     pruner.report(params, full_result)
+
     """
 
     def __init__(
         self,
-        objectives: List[str],
-        directions: Optional[Dict[str, int]] = None,
+        objectives: list[str],
+        directions: dict[str, int] | None = None,
         prune_threshold: float = 0.8,
         min_frontier_size: int = 5,
     ):
-        """
-        Args:
-            objectives: Liste des objectifs à optimiser
-            directions: Dict objectif -> direction (1=max, -1=min)
-            prune_threshold: Seuil de pruning (0-1)
-            min_frontier_size: Taille min de frontière avant pruning
+        """Args:
+        objectives: Liste des objectifs à optimiser
+        directions: Dict objectif -> direction (1=max, -1=min)
+        prune_threshold: Seuil de pruning (0-1)
+        min_frontier_size: Taille min de frontière avant pruning
+
         """
         self.objectives = objectives
         self.prune_threshold = prune_threshold
@@ -226,11 +224,10 @@ class ParetoPruner:
 
     def should_prune(
         self,
-        partial_objectives: Dict[str, float],
-        params: Optional[Dict[str, Any]] = None
+        partial_objectives: dict[str, float],
+        params: dict[str, Any] | None = None,
     ) -> bool:
-        """
-        Détermine si une combinaison devrait être pruned.
+        """Détermine si une combinaison devrait être pruned.
 
         Args:
             partial_objectives: Estimation partielle des objectifs
@@ -238,6 +235,7 @@ class ParetoPruner:
 
         Returns:
             True si la combinaison devrait être ignorée
+
         """
         self._total_evaluated += 1
 
@@ -262,12 +260,11 @@ class ParetoPruner:
 
     def report(
         self,
-        params: Dict[str, Any],
-        objectives: Dict[str, float],
-        metadata: Optional[Dict[str, Any]] = None
+        params: dict[str, Any],
+        objectives: dict[str, float],
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
-        """
-        Rapporte les résultats complets d'une évaluation.
+        """Rapporte les résultats complets d'une évaluation.
 
         Args:
             params: Paramètres évalués
@@ -276,6 +273,7 @@ class ParetoPruner:
 
         Returns:
             True si le point a été ajouté à la frontière
+
         """
         self._total_reported += 1
 
@@ -291,12 +289,12 @@ class ParetoPruner:
         """Retourne la frontière de Pareto."""
         return self.frontier
 
-    def get_best_params(self, objective: str) -> Optional[Dict[str, Any]]:
+    def get_best_params(self, objective: str) -> dict[str, Any] | None:
         """Retourne les meilleurs paramètres pour un objectif."""
         best = self.frontier.get_best(objective)
         return best.params if best else None
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Retourne les statistiques de pruning."""
         return {
             "total_evaluated": self._total_evaluated,
@@ -308,8 +306,7 @@ class ParetoPruner:
 
 
 class MultiObjectiveOptimizer:
-    """
-    Optimiseur multi-objectif avec Pareto pruning.
+    """Optimiseur multi-objectif avec Pareto pruning.
 
     Combine grid search avec pruning intelligent pour
     réduire le nombre d'évaluations nécessaires.
@@ -325,41 +322,41 @@ class MultiObjectiveOptimizer:
         >>>     evaluate_fn=run_backtest,
         >>>     quick_evaluate_fn=quick_backtest,  # Optional
         >>> )
+
     """
 
     def __init__(
         self,
-        objectives: List[str],
-        directions: Optional[Dict[str, int]] = None,
+        objectives: list[str],
+        directions: dict[str, int] | None = None,
         prune_threshold: float = 0.7,
         min_samples_before_prune: int = 10,
     ):
-        """
-        Args:
-            objectives: Objectifs à optimiser
-            directions: Directions d'optimisation
-            prune_threshold: Agressivité du pruning
-            min_samples_before_prune: Échantillons minimum avant pruning
+        """Args:
+        objectives: Objectifs à optimiser
+        directions: Directions d'optimisation
+        prune_threshold: Agressivité du pruning
+        min_samples_before_prune: Échantillons minimum avant pruning
+
         """
         self.objectives = objectives
         self.directions = directions or {}
         self.prune_threshold = prune_threshold
         self.min_samples_before_prune = min_samples_before_prune
 
-        self._pruner: Optional[ParetoPruner] = None
-        self._results: List[Dict[str, Any]] = []
+        self._pruner: ParetoPruner | None = None
+        self._results: list[dict[str, Any]] = []
 
     def optimize(
         self,
-        param_grid: Dict[str, List[Any]],
-        evaluate_fn: Callable[[Dict[str, Any]], Dict[str, float]],
-        quick_evaluate_fn: Optional[Callable[[Dict[str, Any]], Dict[str, float]]] = None,
-        constraints_fn: Optional[Callable[[Dict[str, Any]], bool]] = None,
-        progress_callback: Optional[Callable[[int, int, Dict], None]] = None,
-        max_evaluations: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        """
-        Exécute l'optimisation multi-objectif.
+        param_grid: dict[str, list[Any]],
+        evaluate_fn: Callable[[dict[str, Any]], dict[str, float]],
+        quick_evaluate_fn: Callable[[dict[str, Any]], dict[str, float]] | None = None,
+        constraints_fn: Callable[[dict[str, Any]], bool] | None = None,
+        progress_callback: Callable[[int, int, dict], None] | None = None,
+        max_evaluations: int | None = None,
+    ) -> dict[str, Any]:
+        """Exécute l'optimisation multi-objectif.
 
         Args:
             param_grid: Grille de paramètres
@@ -371,6 +368,7 @@ class MultiObjectiveOptimizer:
 
         Returns:
             Dict avec frontier, stats, all_results
+
         """
         # Initialiser le pruner
         self._pruner = ParetoPruner(
@@ -411,19 +409,25 @@ class MultiObjectiveOptimizer:
                 result = evaluate_fn(params)
                 self._pruner.report(params, result, {"index": evaluated})
 
-                self._results.append({
-                    "params": params,
-                    "objectives": result,
-                    "on_frontier": True,  # Sera mis à jour
-                })
+                self._results.append(
+                    {
+                        "params": params,
+                        "objectives": result,
+                        "on_frontier": True,  # Sera mis à jour
+                    },
+                )
 
                 evaluated += 1
 
                 if progress_callback:
-                    progress_callback(i + 1, total, {
-                        "status": "evaluated",
-                        "frontier_size": self._pruner.frontier.size(),
-                    })
+                    progress_callback(
+                        i + 1,
+                        total,
+                        {
+                            "status": "evaluated",
+                            "frontier_size": self._pruner.frontier.size(),
+                        },
+                    )
 
             except Exception as e:
                 logger.warning(f"Évaluation échouée pour {params}: {e}")
@@ -442,16 +446,13 @@ class MultiObjectiveOptimizer:
                 "pruned": pruned,
             },
             "all_results": self._results,
-            "best_per_objective": {
-                obj: self._pruner.get_best_params(obj)
-                for obj in self.objectives
-            },
+            "best_per_objective": {obj: self._pruner.get_best_params(obj) for obj in self.objectives},
         }
 
     def _generate_combinations(
         self,
-        param_grid: Dict[str, List[Any]]
-    ) -> List[Dict[str, Any]]:
+        param_grid: dict[str, list[Any]],
+    ) -> list[dict[str, Any]]:
         """Génère toutes les combinaisons de paramètres."""
         import itertools
 
@@ -469,13 +470,12 @@ class MultiObjectiveOptimizer:
 
 
 def pareto_optimize(
-    param_grid: Dict[str, List[Any]],
-    evaluate_fn: Callable[[Dict[str, Any]], Dict[str, float]],
-    objectives: List[str] = ["sharpe_ratio", "max_drawdown"],
-    **kwargs
-) -> Dict[str, Any]:
-    """
-    Fonction utilitaire pour optimisation Pareto rapide.
+    param_grid: dict[str, list[Any]],
+    evaluate_fn: Callable[[dict[str, Any]], dict[str, float]],
+    objectives: list[str] = ["sharpe_ratio", "max_drawdown"],
+    **kwargs,
+) -> dict[str, Any]:
+    """Fonction utilitaire pour optimisation Pareto rapide.
 
     Args:
         param_grid: Grille de paramètres
@@ -492,6 +492,7 @@ def pareto_optimize(
         >>>     evaluate_fn=lambda p: backtest(p).metrics,
         >>> )
         >>> print(f"Frontier size: {len(results['frontier'])}")
+
     """
     optimizer = MultiObjectiveOptimizer(objectives=objectives, **kwargs)
     return optimizer.optimize(param_grid, evaluate_fn)
@@ -504,9 +505,9 @@ def pareto_optimize(
 
 
 __all__ = [
-    "ParetoPoint",
-    "ParetoFrontier",
-    "ParetoPruner",
     "MultiObjectiveOptimizer",
+    "ParetoFrontier",
+    "ParetoPoint",
+    "ParetoPruner",
     "pareto_optimize",
 ]

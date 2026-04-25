@@ -1,5 +1,4 @@
-"""
-Module-ID: catalog.strategy_catalog
+"""Module-ID: catalog.strategy_catalog
 
 Purpose: Lightweight, versioned strategy catalog (lifecycle categories + tags).
 
@@ -12,15 +11,19 @@ Inputs: JSON file (config/strategy_catalog.json)
 Outputs: Updated catalog JSON
 """
 
+# pylint: disable=broad-exception-caught
+
+# ruff: noqa: BLE001
+
 from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional
-
+from typing import Any
 
 CATALOG_SCHEMA_VERSION = 1
 DEFAULT_CATALOG_PATH = Path("config/strategy_catalog.json")
@@ -65,16 +68,16 @@ class StrategyInstance:
     params_hash: str
     category: str = "p1_builder_inbox"
     status: str = "active"
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     note: str = ""
-    builder_state: Optional[str] = None
-    last_metrics_snapshot: Optional[Dict[str, Any]] = None
+    builder_state: str | None = None
+    last_metrics_snapshot: dict[str, Any] | None = None
     source: str = "registry"
-    meta: Optional[Dict[str, Any]] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    meta: dict[str, Any] | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "strategy_name": self.strategy_name,
@@ -120,7 +123,7 @@ def _normalize_value(value: Any) -> Any:
     return str(value)
 
 
-def compute_params_hash(params: Optional[Dict[str, Any]]) -> str:
+def compute_params_hash(params: dict[str, Any] | None) -> str:
     if not params:
         return "none"
     normalized = _normalize_value(params)
@@ -134,6 +137,7 @@ def build_entry_id(strategy_name: str, symbol: str, timeframe: str, params_hash:
 
 def _sha1(text: str) -> str:
     import hashlib
+
     return hashlib.sha1(text.encode("utf-8")).hexdigest()
 
 
@@ -157,8 +161,8 @@ def _first_non_empty(mapping: Mapping[str, Any], *keys: str) -> Any:
     return None
 
 
-def _collect_prefixed_mapping(mapping: Mapping[str, Any], prefix: str) -> Dict[str, Any]:
-    collected: Dict[str, Any] = {}
+def _collect_prefixed_mapping(mapping: Mapping[str, Any], prefix: str) -> dict[str, Any]:
+    collected: dict[str, Any] = {}
     for key, value in mapping.items():
         if not isinstance(key, str) or not key.startswith(prefix):
             continue
@@ -171,8 +175,8 @@ def _collect_prefixed_mapping(mapping: Mapping[str, Any], prefix: str) -> Dict[s
     return collected
 
 
-def _merge_tags(*tag_groups: Iterable[str]) -> List[str]:
-    merged: List[str] = []
+def _merge_tags(*tag_groups: Iterable[str]) -> list[str]:
+    merged: list[str] = []
     for group in tag_groups:
         for tag in group or []:
             value = str(tag or "").strip()
@@ -182,7 +186,7 @@ def _merge_tags(*tag_groups: Iterable[str]) -> List[str]:
     return merged
 
 
-def _fallback_params_hash(params: Optional[Dict[str, Any]], fallback_key: Optional[str] = None) -> str:
+def _fallback_params_hash(params: dict[str, Any] | None, fallback_key: str | None = None) -> str:
     params_hash = compute_params_hash(params)
     if params_hash != "none":
         return params_hash
@@ -192,7 +196,7 @@ def _fallback_params_hash(params: Optional[Dict[str, Any]], fallback_key: Option
     return "none"
 
 
-def _coerce_boolish(value: Any) -> Optional[bool]:
+def _coerce_boolish(value: Any) -> bool | None:
     if _is_missing(value):
         return None
     if isinstance(value, bool):
@@ -205,7 +209,7 @@ def _coerce_boolish(value: Any) -> Optional[bool]:
     return bool(value)
 
 
-def _ensure_catalog_shape(raw: Dict[str, Any]) -> Dict[str, Any]:
+def _ensure_catalog_shape(raw: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raw = {}
     schema_version = int(raw.get("schema_version", CATALOG_SCHEMA_VERSION))
@@ -219,7 +223,7 @@ def _ensure_catalog_shape(raw: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def read_catalog(path: Optional[Path] = None) -> Dict[str, Any]:
+def read_catalog(path: Path | None = None) -> dict[str, Any]:
     catalog_path = Path(path or DEFAULT_CATALOG_PATH)
     if not catalog_path.exists():
         return _ensure_catalog_shape({})
@@ -230,7 +234,7 @@ def read_catalog(path: Optional[Path] = None) -> Dict[str, Any]:
     return _ensure_catalog_shape(raw)
 
 
-def write_catalog(payload: Dict[str, Any], path: Optional[Path] = None) -> None:
+def write_catalog(payload: dict[str, Any], path: Path | None = None) -> None:
     catalog_path = Path(path or DEFAULT_CATALOG_PATH)
     catalog_path.parent.mkdir(parents=True, exist_ok=True)
     safe_payload = _ensure_catalog_shape(payload)
@@ -241,7 +245,7 @@ def write_catalog(payload: Dict[str, Any], path: Optional[Path] = None) -> None:
     )
 
 
-def _normalize_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_entry(entry: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(entry, dict):
         entry = {}
     strategy_name = str(entry.get("strategy_name", "") or "").strip()
@@ -282,7 +286,7 @@ def _normalize_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
         "params_hash": params_hash,
         "category": category,
         "status": status,
-        "tags": [str(t) for t in tags if str(t).strip()],
+        "tags": _merge_tags(tags),
         "note": note,
         "builder_state": builder_state,
         "last_metrics_snapshot": last_metrics_snapshot,
@@ -295,14 +299,14 @@ def _normalize_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
 
 def list_entries(
     *,
-    path: Optional[Path] = None,
-    categories: Optional[Iterable[str]] = None,
-    tags: Optional[Iterable[str]] = None,
-    status: Optional[str] = "active",
-    symbol: Optional[str] = None,
-    timeframe: Optional[str] = None,
-    strategy_name: Optional[str] = None,
-) -> List[Dict[str, Any]]:
+    path: Path | None = None,
+    categories: Iterable[str] | None = None,
+    tags: Iterable[str] | None = None,
+    status: str | None = "active",
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    strategy_name: str | None = None,
+) -> list[dict[str, Any]]:
     catalog = read_catalog(path)
     entries = [_normalize_entry(e) for e in catalog.get("entries", [])]
 
@@ -311,10 +315,7 @@ def list_entries(
         entries = [e for e in entries if e.get("category") in wanted]
     if tags:
         wanted_tags = {str(t).strip() for t in tags if str(t).strip()}
-        entries = [
-            e for e in entries
-            if wanted_tags.intersection(set(e.get("tags", [])))
-        ]
+        entries = [e for e in entries if wanted_tags.intersection(set(e.get("tags", [])))]
     if status:
         entries = [e for e in entries if e.get("status") == status]
     if symbol:
@@ -327,7 +328,7 @@ def list_entries(
     return entries
 
 
-def get_entry(entry_id: str, *, path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+def get_entry(entry_id: str, *, path: Path | None = None) -> dict[str, Any] | None:
     if not entry_id:
         return None
     catalog = read_catalog(path)
@@ -338,31 +339,56 @@ def get_entry(entry_id: str, *, path: Optional[Path] = None) -> Optional[Dict[st
     return None
 
 
-def upsert_entry(entry: Dict[str, Any], *, path: Optional[Path] = None) -> Dict[str, Any]:
-    catalog = read_catalog(path)
-    entries = [_normalize_entry(e) for e in catalog.get("entries", [])]
-    new_entry = _normalize_entry(entry)
-    now = _now_iso()
+def _merge_entry_for_upsert(
+    existing: dict[str, Any] | None,
+    new_entry: dict[str, Any],
+    *,
+    now: str,
+) -> dict[str, Any]:
+    normalized = _normalize_entry(new_entry)
+    if not existing:
+        normalized["created_at"] = normalized.get("created_at") or now
+        normalized["updated_at"] = now
+        return normalized
 
-    by_id = {e["id"]: e for e in entries}
-    existing = by_id.get(new_entry["id"])
-    if existing:
-        created_at = existing.get("created_at") or now
-        merged = {**existing, **new_entry}
-        merged["created_at"] = created_at
-        merged["updated_at"] = now
-        by_id[new_entry["id"]] = merged
-    else:
-        new_entry["created_at"] = new_entry.get("created_at") or now
-        new_entry["updated_at"] = now
-        by_id[new_entry["id"]] = new_entry
+    merged = {**existing, **normalized}
+    merged["created_at"] = existing.get("created_at") or now
+    merged["updated_at"] = now
+    return merged
+
+
+def _upsert_entries_into_catalog(catalog: dict[str, Any], entries: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    current_entries = [_normalize_entry(entry) for entry in catalog.get("entries", [])]
+    by_id = {entry["id"]: entry for entry in current_entries}
+    now = _now_iso()
+    saved_entries: list[dict[str, Any]] = []
+
+    for raw_entry in entries:
+        normalized = _normalize_entry(raw_entry)
+        merged = _merge_entry_for_upsert(by_id.get(normalized["id"]), normalized, now=now)
+        by_id[normalized["id"]] = merged
+        saved_entries.append(merged)
 
     catalog["entries"] = list(by_id.values())
+    return saved_entries
+
+
+def upsert_entries(entries: Iterable[dict[str, Any]], *, path: Path | None = None) -> list[dict[str, Any]]:
+    pending_entries = list(entries)
+    if not pending_entries:
+        return []
+
+    catalog = read_catalog(path)
+    saved_entries = _upsert_entries_into_catalog(catalog, pending_entries)
     write_catalog(catalog, path)
-    return by_id[new_entry["id"]]
+    return saved_entries
 
 
-def move_entries(entry_ids: Iterable[str], category: str, *, path: Optional[Path] = None) -> int:
+def upsert_entry(entry: dict[str, Any], *, path: Path | None = None) -> dict[str, Any]:
+    return upsert_entries([entry], path=path)[0]
+
+
+def move_entries(entry_ids: Iterable[str], category: str, *, path: Path | None = None) -> int:
     if category not in CATEGORY_ORDER:
         raise ValueError(f"Invalid category: {category}")
     catalog = read_catalog(path)
@@ -379,7 +405,7 @@ def move_entries(entry_ids: Iterable[str], category: str, *, path: Optional[Path
     return changed
 
 
-def tag_entries(entry_ids: Iterable[str], tag: str, *, path: Optional[Path] = None) -> int:
+def tag_entries(entry_ids: Iterable[str], tag: str, *, path: Path | None = None) -> int:
     tag = str(tag).strip()
     if not tag:
         return 0
@@ -400,7 +426,7 @@ def tag_entries(entry_ids: Iterable[str], tag: str, *, path: Optional[Path] = No
     return changed
 
 
-def note_entry(entry_id: str, note: str, *, path: Optional[Path] = None) -> bool:
+def note_entry(entry_id: str, note: str, *, path: Path | None = None) -> bool:
     if not entry_id:
         return False
     catalog = read_catalog(path)
@@ -417,7 +443,7 @@ def note_entry(entry_id: str, note: str, *, path: Optional[Path] = None) -> bool
     return updated
 
 
-def archive_entries(entry_ids: Iterable[str], *, path: Optional[Path] = None) -> int:
+def archive_entries(entry_ids: Iterable[str], *, path: Path | None = None) -> int:
     catalog = read_catalog(path)
     entries = [_normalize_entry(e) for e in catalog.get("entries", [])]
     ids = {str(eid).strip() for eid in entry_ids if str(eid).strip()}
@@ -432,7 +458,7 @@ def archive_entries(entry_ids: Iterable[str], *, path: Optional[Path] = None) ->
     return changed
 
 
-def _auto_shortlist_ok(metrics: Dict[str, Any], target_sharpe: Optional[float]) -> bool:
+def _auto_shortlist_ok(metrics: dict[str, Any], target_sharpe: float | None) -> bool:
     if not metrics:
         return False
     sharpe = _float(metrics.get("sharpe_ratio") or metrics.get("sharpe") or 0.0, 0.0)
@@ -444,7 +470,7 @@ def _auto_shortlist_ok(metrics: Dict[str, Any], target_sharpe: Optional[float]) 
         total_return *= 100.0
     trades = int(metrics.get("total_trades") or metrics.get("trades") or 0)
     max_dd = abs(
-        _float(metrics.get("max_drawdown_pct") or metrics.get("max_drawdown") or 0.0, 0.0)
+        _float(metrics.get("max_drawdown_pct") or metrics.get("max_drawdown") or 0.0, 0.0),
     )
     profit_factor = _float(metrics.get("profit_factor") or 0.0, 0.0)
     required_sharpe = target_sharpe if target_sharpe is not None else 1.0
@@ -474,11 +500,223 @@ def _float(value: Any, default: float) -> float:
         return default
 
 
+def compute_builder_candidate_params_hash(
+    params: dict[str, Any] | None,
+    *,
+    session_id: str,
+    iteration_num: int,
+) -> str:
+    fallback_key = f"{str(session_id or '').strip()}:{int(iteration_num or 0)}"
+    return _fallback_params_hash(params, fallback_key=fallback_key)
+
+
+def build_builder_candidate_entry_id(
+    *,
+    session_id: str,
+    symbol: str,
+    timeframe: str,
+    iteration_num: int,
+    params_hash: str,
+) -> str:
+    safe_symbol = str(symbol or "UNKNOWN").strip() or "UNKNOWN"
+    safe_timeframe = str(timeframe or "1h").strip() or "1h"
+    candidate_scope = f"builder:{str(session_id or '').strip()}:{int(iteration_num or 0)}"
+    return f"builder_generated|{safe_symbol}|{safe_timeframe}|{params_hash}|{candidate_scope}"
+
+
+def _builder_iteration_phase_feedback(iteration: Any) -> dict[str, Any]:
+    raw = getattr(iteration, "phase_feedback", None)
+    if hasattr(raw, "to_dict"):
+        try:
+            payload = raw.to_dict()
+            return payload if isinstance(payload, dict) else {}
+        except Exception:
+            return {}
+    return dict(raw or {}) if isinstance(raw, dict) else {}
+
+
+def _builder_iteration_backtest_feedback(iteration: Any) -> dict[str, Any]:
+    feedback = _builder_iteration_phase_feedback(iteration).get("backtest", {})
+    return dict(feedback or {}) if isinstance(feedback, dict) else {}
+
+
+def _builder_iteration_metrics(iteration: Any) -> dict[str, Any]:
+    result = getattr(iteration, "backtest_result", None)
+    if result is None:
+        return {}
+    metrics = getattr(result, "metrics", None)
+    if isinstance(metrics, dict):
+        return dict(metrics)
+    if hasattr(metrics, "to_dict"):
+        try:
+            payload = metrics.to_dict()
+            return payload if isinstance(payload, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _builder_iteration_params(iteration: Any) -> dict[str, Any]:
+    result = getattr(iteration, "backtest_result", None)
+    if result is not None:
+        meta = getattr(result, "meta", {}) or {}
+        if isinstance(meta, dict):
+            params = meta.get("params")
+            if isinstance(params, dict) and params:
+                return dict(params)
+    feedback = _builder_iteration_backtest_feedback(iteration)
+    params_used = feedback.get("params_used")
+    if isinstance(params_used, dict) and params_used:
+        return dict(params_used)
+    return {}
+
+
+def _builder_iteration_num(iteration: Any) -> int:
+    try:
+        return int(getattr(iteration, "iteration", 0) or 0)
+    except Exception:
+        return 0
+
+
+def _builder_iteration_return_pct(iteration: Any) -> float:
+    metrics = _builder_iteration_metrics(iteration)
+    return _float(
+        metrics.get("total_return_pct", metrics.get("return_pct")),
+        float("-inf"),
+    )
+
+
+def _builder_iteration_sort_key(iteration: Any) -> tuple[float, ...]:
+    metrics = _builder_iteration_metrics(iteration)
+    return_pct = _builder_iteration_return_pct(iteration)
+    sharpe = _float(metrics.get("sharpe_ratio", metrics.get("sharpe")), float("-inf"))
+    profit_factor = _float(metrics.get("profit_factor"), float("-inf"))
+    trades = _float(metrics.get("total_trades", metrics.get("trades")), -1.0)
+    return (
+        1.0 if return_pct > 0.0 else 0.0,
+        return_pct,
+        sharpe,
+        profit_factor,
+        trades,
+        float(_builder_iteration_num(iteration)),
+    )
+
+
+def _select_builder_catalog_iterations(session: Any) -> tuple[list[Any], str]:
+    iterations = [iteration for iteration in list(getattr(session, "iterations", []) or []) if iteration is not None]
+    positive_iterations = [iteration for iteration in iterations if _builder_iteration_return_pct(iteration) > 0.0]
+    if positive_iterations:
+        positive_iterations.sort(key=_builder_iteration_sort_key, reverse=True)
+        return positive_iterations, "positive"
+
+    best_iteration = getattr(session, "best_iteration", None)
+    if best_iteration is None and iterations:
+        best_iteration = max(iterations, key=_builder_iteration_sort_key)
+    return ([best_iteration] if best_iteration is not None else []), "fallback"
+
+
+def _build_builder_iteration_catalog_entry(
+    session: Any,
+    iteration: Any,
+    *,
+    selection_scope: str,
+    positive_iteration_nums: list[int],
+) -> dict[str, Any]:
+    session_id = str(getattr(session, "session_id", "") or "").strip()
+    symbol = str(getattr(session, "symbol", "") or "UNKNOWN").strip() or "UNKNOWN"
+    timeframe = str(getattr(session, "timeframe", "") or "1h").strip() or "1h"
+    status = str(getattr(session, "status", "") or "")
+    builder_state = "completed"
+    if status == "running":
+        builder_state = "in_progress"
+    elif status in ("failed", "max_iterations"):
+        builder_state = "stopped"
+
+    iteration_num = _builder_iteration_num(iteration)
+    metrics = _builder_iteration_metrics(iteration)
+    params = _builder_iteration_params(iteration)
+    params_hash = compute_builder_candidate_params_hash(
+        params,
+        session_id=session_id,
+        iteration_num=iteration_num,
+    )
+    entry_id = build_builder_candidate_entry_id(
+        session_id=session_id,
+        symbol=symbol,
+        timeframe=timeframe,
+        iteration_num=iteration_num,
+        params_hash=params_hash,
+    )
+    return_pct = _builder_iteration_return_pct(iteration)
+    category = "p2_positive_observed" if return_pct > 0.0 else "p1_builder_inbox"
+
+    tags = ["builder_out", "builder_iteration"]
+    if return_pct > 0.0:
+        tags.append("positive_return")
+    if _auto_shortlist_ok(metrics, getattr(session, "target_sharpe", None)):
+        tags.append("auto_shortlist_pass")
+    if selection_scope == "fallback":
+        tags.append("builder_session_fallback")
+    universe_mode = str(getattr(session, "universe_mode", "") or "").strip()
+    if universe_mode:
+        tags.append(f"universe_{universe_mode}")
+
+    strategy_file = ""
+    session_dir = getattr(session, "session_dir", None)
+    if isinstance(session_dir, Path):
+        versioned = session_dir / f"strategy_v{iteration_num}.py"
+        latest = session_dir / "strategy.py"
+        selected_path = versioned if iteration_num > 0 and versioned.exists() else latest if latest.exists() else None
+        if selected_path is not None:
+            strategy_file = str(selected_path)
+
+    note_parts = [f"session_id: {session_id}", f"iteration: {iteration_num}"]
+    objective = str(getattr(session, "objective", "") or "").strip()
+    if objective:
+        note_parts.append(objective[:300])
+
+    return {
+        "id": entry_id,
+        "strategy_name": "builder_generated",
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "params_hash": params_hash,
+        "category": category,
+        "status": "active",
+        "builder_state": builder_state,
+        "source": "builder",
+        "tags": tags,
+        "note": " | ".join(note_parts),
+        "last_metrics_snapshot": metrics or None,
+        "meta": {
+            "session_id": session_id,
+            "builder_session_id": session_id,
+            "builder_iteration": iteration_num,
+            "candidate_id": f"builder:{session_id}:{iteration_num}" if iteration_num > 0 else session_id,
+            "selection_scope": selection_scope,
+            "positive_return_pct": return_pct if return_pct > 0.0 else None,
+            "source_symbol": symbol,
+            "source_timeframe": timeframe,
+            "source_params": params or None,
+            "strategy_file": strategy_file or None,
+            "builder_objective": objective or None,
+            "session_status": status or None,
+            "best_sharpe": getattr(session, "best_sharpe", None),
+            "total_iterations": len(getattr(session, "iterations", []) or []),
+            "session_positive_iteration_count": len(positive_iteration_nums),
+            "session_positive_iterations": positive_iteration_nums,
+            "universe_mode": universe_mode,
+            "universe_purpose": str(getattr(session, "universe_purpose", "") or ""),
+            "universe_strategy_type": str(getattr(session, "universe_strategy_type", "") or ""),
+        },
+    }
+
+
 def build_entry_from_saved_run(
     saved_run: Mapping[str, Any],
     *,
     category: str = "p3_benchmark_consensus",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Normalise un run sauvegardé/artefact en entrée du strategy catalog."""
     if category not in CATEGORY_ORDER:
         raise ValueError(f"Invalid category: {category}")
@@ -491,9 +729,12 @@ def build_entry_from_saved_run(
     source_path = str(_first_non_empty(payload, "path") or "").strip()
     artifact_type = str(_first_non_empty(payload, "artifact_type") or "saved_run").strip()
     schema = str(_first_non_empty(payload, "schema") or "").strip()
-    mode = str(
-        _first_non_empty(payload, "mode") or _first_non_empty(payload, "origin") or "backtest"
-    ).strip() or "backtest"
+    mode = (
+        str(
+            _first_non_empty(payload, "mode") or _first_non_empty(payload, "origin") or "backtest",
+        ).strip()
+        or "backtest"
+    )
     source_status = str(_first_non_empty(payload, "status") or "unknown").strip().lower() or "unknown"
 
     if source_status in {"partial", "failed", "error", "stopped", "interrupted"}:
@@ -502,12 +743,12 @@ def build_entry_from_saved_run(
     params_raw = payload.get("params")
     params = dict(params_raw or {}) if isinstance(params_raw, dict) else _collect_prefixed_mapping(payload, "params_")
     metrics_raw = payload.get("metrics")
-    metrics = dict(metrics_raw or {}) if isinstance(metrics_raw, dict) else _collect_prefixed_mapping(payload, "metrics_")
+    metrics = (
+        dict(metrics_raw or {}) if isinstance(metrics_raw, dict) else _collect_prefixed_mapping(payload, "metrics_")
+    )
     extra_raw = payload.get("extra_metadata")
     extra_metadata = (
-        dict(extra_raw or {})
-        if isinstance(extra_raw, dict)
-        else _collect_prefixed_mapping(payload, "extra_")
+        dict(extra_raw or {}) if isinstance(extra_raw, dict) else _collect_prefixed_mapping(payload, "extra_")
     )
 
     params_hash = _fallback_params_hash(
@@ -537,7 +778,7 @@ def build_entry_from_saved_run(
     note_parts.append(f"source_mode: {mode}")
     note_parts.append(f"artifact: {artifact_type}")
 
-    meta: Dict[str, Any] = {
+    meta: dict[str, Any] = {
         "source_run_id": run_id or None,
         "source_path": source_path or None,
         "source_artifact_type": artifact_type,
@@ -580,98 +821,159 @@ def build_entry_from_saved_run(
     }
 
 
+def prepare_saved_run_entry(
+    saved_run: Mapping[str, Any],
+    *,
+    target_category: str = "p3_benchmark_consensus",
+    existing_entry: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    entry = build_entry_from_saved_run(saved_run, category=target_category)
+    if not existing_entry:
+        return entry
+
+    existing = _normalize_entry(dict(existing_entry))
+    existing_category = existing.get("category")
+    if existing_category in CATEGORY_ORDER:
+        if CATEGORY_ORDER.index(existing_category) > CATEGORY_ORDER.index(target_category):
+            entry["category"] = existing_category
+    entry["tags"] = _merge_tags(existing.get("tags") or [], entry.get("tags") or [])
+    if existing.get("note"):
+        entry["note"] = existing["note"]
+    existing_meta = existing.get("meta") or {}
+    merged_meta = dict(existing_meta) if isinstance(existing_meta, dict) else {}
+    merged_meta.update(entry.get("meta") or {})
+    entry["meta"] = merged_meta
+    if existing.get("builder_state"):
+        entry["builder_state"] = existing.get("builder_state")
+    if existing.get("last_metrics_snapshot") and not entry.get("last_metrics_snapshot"):
+        entry["last_metrics_snapshot"] = existing.get("last_metrics_snapshot")
+    return entry
+
+
+def upsert_from_saved_runs(
+    saved_runs: Iterable[Mapping[str, Any]],
+    *,
+    target_category: str = "p3_benchmark_consensus",
+    path: Path | None = None,
+) -> list[dict[str, Any]]:
+    pending_runs = list(saved_runs)
+    if not pending_runs:
+        return []
+
+    catalog = read_catalog(path)
+    existing_entries = [_normalize_entry(entry) for entry in catalog.get("entries", [])]
+    existing_by_id = {entry["id"]: entry for entry in existing_entries}
+    prepared_entries: list[dict[str, Any]] = []
+
+    for saved_run in pending_runs:
+        base_entry = build_entry_from_saved_run(saved_run, category=target_category)
+        prepared = prepare_saved_run_entry(
+            saved_run,
+            target_category=target_category,
+            existing_entry=existing_by_id.get(base_entry["id"]),
+        )
+        prepared_entries.append(prepared)
+        existing_by_id[prepared["id"]] = _normalize_entry(prepared)
+
+    saved_entries = _upsert_entries_into_catalog(catalog, prepared_entries)
+    write_catalog(catalog, path)
+    return saved_entries
+
+
 def upsert_from_saved_run(
     saved_run: Mapping[str, Any],
     *,
     target_category: str = "p3_benchmark_consensus",
-    path: Optional[Path] = None,
-) -> Dict[str, Any]:
+    path: Path | None = None,
+) -> dict[str, Any]:
     """Promeut un run sauvegardé vers le strategy catalog existant."""
-    entry = build_entry_from_saved_run(saved_run, category=target_category)
-    existing = get_entry(entry["id"], path=path)
-    if existing:
-        existing_category = existing.get("category")
-        if existing_category in CATEGORY_ORDER:
-            if CATEGORY_ORDER.index(existing_category) > CATEGORY_ORDER.index(target_category):
-                entry["category"] = existing_category
-        entry["tags"] = _merge_tags(existing.get("tags") or [], entry.get("tags") or [])
-        if existing.get("note"):
-            entry["note"] = existing["note"]
-        existing_meta = existing.get("meta") or {}
-        merged_meta = dict(existing_meta) if isinstance(existing_meta, dict) else {}
-        merged_meta.update(entry.get("meta") or {})
-        entry["meta"] = merged_meta
-        if existing.get("builder_state"):
-            entry["builder_state"] = existing.get("builder_state")
-        if existing.get("last_metrics_snapshot") and not entry.get("last_metrics_snapshot"):
-            entry["last_metrics_snapshot"] = existing.get("last_metrics_snapshot")
-    return upsert_entry(entry, path=path)
+    return upsert_from_saved_runs(
+        [saved_run],
+        target_category=target_category,
+        path=path,
+    )[0]
 
 
-def upsert_from_builder_session(session: Any, *, path: Optional[Path] = None) -> Dict[str, Any]:
-    """Create or update a catalog entry from a builder session object."""
+def upsert_from_builder_session(session: Any, *, path: Path | None = None) -> dict[str, Any]:
+    """Create or update canonical catalog entries from a builder session object."""
     session_id = str(getattr(session, "session_id", "") or "").strip()
-    symbol = str(getattr(session, "symbol", "") or "UNKNOWN").strip()
-    timeframe = str(getattr(session, "timeframe", "") or "1h").strip()
-    status = str(getattr(session, "status", "") or "")
-    builder_state = "completed"
-    if status == "running":
-        builder_state = "in_progress"
-    elif status in ("failed", "max_iterations"):
-        builder_state = "stopped"
+    desired_iterations, selection_scope = _select_builder_catalog_iterations(session)
+    positive_iteration_nums = sorted(
+        _builder_iteration_num(iteration)
+        for iteration in list(getattr(session, "iterations", []) or [])
+        if _builder_iteration_return_pct(iteration) > 0.0
+    )
 
-    best_iter = getattr(session, "best_iteration", None)
-    best_metrics = {}
-    best_params = {}
-    if best_iter and getattr(best_iter, "backtest_result", None):
-        metrics = getattr(best_iter.backtest_result, "metrics", None)
-        if isinstance(metrics, dict):
-            best_metrics = metrics
-        elif hasattr(metrics, "to_dict"):
-            best_metrics = metrics.to_dict()
-        meta = getattr(best_iter.backtest_result, "meta", {}) or {}
-        if isinstance(meta, dict):
-            best_params = meta.get("params", {}) or {}
+    if not desired_iterations:
+        raise ValueError(f"Builder session has no catalogable iteration: session_id={session_id or '<missing>'}")
 
-    params_hash = _fallback_params_hash(best_params, fallback_key=session_id)
-    entry_id = build_entry_id("builder_generated", symbol, timeframe, params_hash)
+    catalog = read_catalog(path)
+    existing_entries = [_normalize_entry(entry) for entry in catalog.get("entries", [])]
+    existing_by_id = {entry["id"]: entry for entry in existing_entries}
 
-    category = "p1_builder_inbox"
-    if _auto_shortlist_ok(best_metrics, getattr(session, "target_sharpe", None)):
-        category = "p2_positive_observed"
+    stale_entry_ids: list[str] = []
+    for existing in existing_entries:
+        if existing.get("source") != "builder":
+            continue
+        meta = existing.get("meta") or {}
+        if not isinstance(meta, dict):
+            continue
+        existing_session_id = str(
+            meta.get("builder_session_id") or meta.get("session_id") or "",
+        ).strip()
+        if existing_session_id != session_id:
+            continue
+        stale_entry_ids.append(str(existing.get("id") or ""))
 
-    existing = get_entry(entry_id, path=path)
-    if existing:
-        existing_category = existing.get("category")
-        if existing_category in CATEGORY_ORDER:
-            if CATEGORY_ORDER.index(existing_category) >= CATEGORY_ORDER.index("p3_benchmark_consensus"):
-                category = existing_category
+    pending_entries: list[dict[str, Any]] = []
+    active_ids: set[str] = set()
+    for iteration in desired_iterations:
+        entry = _build_builder_iteration_catalog_entry(
+            session,
+            iteration,
+            selection_scope=selection_scope,
+            positive_iteration_nums=positive_iteration_nums,
+        )
+        existing = existing_by_id.get(entry["id"])
+        if existing:
+            existing_category = existing.get("category")
+            if existing_category in CATEGORY_ORDER and CATEGORY_ORDER.index(existing_category) >= CATEGORY_ORDER.index(
+                "p3_benchmark_consensus",
+            ):
+                entry["category"] = existing_category
+            entry["tags"] = _merge_tags(existing.get("tags") or [], entry.get("tags") or [])
+            existing_meta = existing.get("meta") or {}
+            if isinstance(existing_meta, dict):
+                merged_meta = dict(existing_meta)
+                merged_meta.update(entry.get("meta") or {})
+                entry["meta"] = merged_meta
+            if existing.get("note"):
+                entry["note"] = existing["note"]
+        pending_entries.append(entry)
+        active_ids.add(entry["id"])
+        existing_by_id[entry["id"]] = _normalize_entry(entry)
 
-    entry = {
-        "id": entry_id,
-        "strategy_name": "builder_generated",
-        "symbol": symbol,
-        "timeframe": timeframe,
-        "params_hash": params_hash,
-        "category": category,
-        "status": "active",
-        "builder_state": builder_state,
-        "source": "builder",
-        "tags": ["builder_out"],
-        "note": str(getattr(session, "objective", "") or "")[:400],
-        "last_metrics_snapshot": best_metrics or None,
-        "meta": {
-            "session_id": session_id,
-            "best_sharpe": getattr(session, "best_sharpe", None),
-            "total_iterations": len(getattr(session, "iterations", []) or []),
-            "universe_mode": str(getattr(session, "universe_mode", "") or ""),
-            "universe_purpose": str(getattr(session, "universe_purpose", "") or ""),
-            "universe_strategy_type": str(
-                getattr(session, "universe_strategy_type", "") or ""
-            ),
-        },
-    }
-    universe_mode = str(getattr(session, "universe_mode", "") or "").strip()
-    if universe_mode:
-        entry["tags"].append(f"universe_{universe_mode}")
-    return upsert_entry(entry, path=path)
+    stale_ids = [entry_id for entry_id in stale_entry_ids if entry_id and entry_id not in active_ids]
+    if stale_ids:
+        for stale_id in stale_ids:
+            existing = existing_by_id.get(stale_id)
+            if not existing:
+                continue
+            archived_entry = dict(existing)
+            archived_entry["status"] = "archived"
+            pending_entries.append(archived_entry)
+
+    saved_entries = _upsert_entries_into_catalog(catalog, pending_entries)
+    write_catalog(catalog, path)
+    saved_active_entries = [entry for entry in saved_entries if entry.get("id") in active_ids]
+
+    saved_active_entries.sort(
+        key=lambda entry: (
+            1.0 if _float((entry.get("last_metrics_snapshot") or {}).get("total_return_pct"), float("-inf")) > 0.0 else 0.0,
+            _float((entry.get("last_metrics_snapshot") or {}).get("total_return_pct"), float("-inf")),
+            _float((entry.get("last_metrics_snapshot") or {}).get("sharpe_ratio"), float("-inf")),
+            _float((entry.get("meta") or {}).get("builder_iteration"), 0.0),
+        ),
+        reverse=True,
+    )
+    return saved_active_entries[0]

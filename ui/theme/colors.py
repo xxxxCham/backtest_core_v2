@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.theme.colors
+"""Module-ID: ui.theme.colors
 
 Purpose: Système de couleurs centralisé pour toute l'application.
 
@@ -24,14 +23,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional
 
 # ============================================================================
 # ENUMS
 # ============================================================================
 
+
 class ThemeMode(Enum):
     """Mode de thème global."""
+
     LIGHT = "light"
     DARK = "dark"
     AUTO = "auto"
@@ -39,6 +39,7 @@ class ThemeMode(Enum):
 
 class ColorPalette(Enum):
     """Palettes de couleurs disponibles."""
+
     DEFAULT = "default"
     OCEAN = "ocean"
     FOREST = "forest"
@@ -52,7 +53,7 @@ class ColorPalette(Enum):
 # DÉFINITION DES PALETTES
 # ============================================================================
 
-PALETTES: Dict[ColorPalette, Dict[str, str]] = {
+PALETTES: dict[ColorPalette, dict[str, str]] = {
     ColorPalette.DEFAULT: {
         # Couleurs sémantiques
         "primary": "#2196f3",
@@ -61,31 +62,26 @@ PALETTES: Dict[ColorPalette, Dict[str, str]] = {
         "warning": "#ff9800",
         "error": "#f44336",
         "info": "#00bcd4",
-
         # Arrière-plans
         "background": "#0e1117",
         "surface": "#1e2130",
         "surface_variant": "#262b3d",
-
         # Textes
         "text": "#fafafa",
         "text_primary": "#a8b2d1",
         "text_secondary": "#b0b0b0",
         "text_muted": "#6c7086",
-
         # Charts - Trading
         "chart_up": "#26a69a",
         "chart_down": "#ef5350",
         "candle_up": "#26a69a",
         "candle_down": "#ef5350",
-
         # Charts - Equity
         "equity_line": "#26a69a",
         "equity_fill": "rgba(38, 166, 154, 0.15)",
         "drawdown_line": "#ef5350",
         "drawdown_fill": "rgba(239, 83, 80, 0.3)",
         "capital_line": "rgba(200, 200, 200, 0.5)",
-
         # Charts - Trades
         "entry_long": "#42a5f5",
         "entry_short": "#ab47bc",
@@ -93,7 +89,6 @@ PALETTES: Dict[ColorPalette, Dict[str, str]] = {
         "exit_loss": "#f44336",
         "stop_loss": "#ef5350",
         "take_profit": "#4caf50",
-
         # Charts - Indicateurs
         "bb_mid": "#ffa726",
         "bb_bands": "#42a5f5",
@@ -113,7 +108,6 @@ PALETTES: Dict[ColorPalette, Dict[str, str]] = {
         "atr_channel_lower": "#26a69a",
         "stoch_k": "#42a5f5",
         "stoch_d": "#ffb74d",
-
         # Charts - Diagrammes stratégies
         "price_line": "#e0e0e0",
         "bollinger_low": "rgba(100, 160, 200, 0.6)",
@@ -126,19 +120,16 @@ PALETTES: Dict[ColorPalette, Dict[str, str]] = {
         "entry_level_short": "rgba(171, 71, 188, 0.9)",
         "annotation_stop": "#ef9a9a",
         "annotation_tp": "#81c784",
-
         # UI - Grilles et bordures
         "grid_color": "rgba(128, 128, 128, 0.1)",
         "border": "rgba(128, 128, 128, 0.3)",
         "divider": "rgba(128, 128, 128, 0.2)",
-
         # Agents LLM
         "agent_analyst": "#42a5f5",
         "agent_strategist": "#4caf50",
         "agent_critic": "#ff9800",
         "agent_validator": "#ab47bc",
     },
-
     ColorPalette.OCEAN: {
         "primary": "#0077b6",
         "secondary": "#00b4d8",
@@ -205,7 +196,6 @@ PALETTES: Dict[ColorPalette, Dict[str, str]] = {
         "agent_critic": "#ffd166",
         "agent_validator": "#7209b7",
     },
-
     ColorPalette.FOREST: {
         "primary": "#2d6a4f",
         "secondary": "#40916c",
@@ -272,7 +262,6 @@ PALETTES: Dict[ColorPalette, Dict[str, str]] = {
         "agent_critic": "#e9c46a",
         "agent_validator": "#9b2226",
     },
-
     ColorPalette.SUNSET: {
         "primary": "#ff6b6b",
         "secondary": "#feca57",
@@ -339,7 +328,6 @@ PALETTES: Dict[ColorPalette, Dict[str, str]] = {
         "agent_critic": "#feca57",
         "agent_validator": "#ff6b6b",
     },
-
     ColorPalette.CYBERPUNK: {
         "primary": "#00ffff",
         "secondary": "#ff00ff",
@@ -406,7 +394,6 @@ PALETTES: Dict[ColorPalette, Dict[str, str]] = {
         "agent_critic": "#ffff00",
         "agent_validator": "#ff00ff",
     },
-
     ColorPalette.MONOCHROME: {
         "primary": "#888888",
         "secondary": "#666666",
@@ -473,14 +460,13 @@ PALETTES: Dict[ColorPalette, Dict[str, str]] = {
         "agent_critic": "#c0c0c0",
         "agent_validator": "#666666",
     },
-
     ColorPalette.TRADING: {
         # Palette optimisée pour le trading avec contrastes forts
         "primary": "#2196f3",
         "secondary": "#ff9800",
         "success": "#00e676",  # Vert vif profits
         "warning": "#ffab00",
-        "error": "#ff5252",    # Rouge vif pertes
+        "error": "#ff5252",  # Rouge vif pertes
         "info": "#40c4ff",
         "background": "#0d1117",
         "surface": "#161b22",
@@ -577,11 +563,10 @@ def get_theme_mode() -> ThemeMode:
 
 def get_color(
     name: str,
-    palette: Optional[ColorPalette] = None,
-    fallback: str = "#888888"
+    palette: ColorPalette | None = None,
+    fallback: str = "#888888",
 ) -> str:
-    """
-    Récupère une couleur par son nom.
+    """Récupère une couleur par son nom.
 
     Args:
         name: Nom de la couleur (ex: "success", "chart_up", "equity_line")
@@ -590,21 +575,22 @@ def get_color(
 
     Returns:
         Code couleur hex ou rgba
+
     """
     p = palette or _active_palette
     colors = PALETTES.get(p, PALETTES[ColorPalette.DEFAULT])
     return colors.get(name, fallback)
 
 
-def get_colors(palette: Optional[ColorPalette] = None) -> Dict[str, str]:
-    """
-    Retourne toutes les couleurs d'une palette.
+def get_colors(palette: ColorPalette | None = None) -> dict[str, str]:
+    """Retourne toutes les couleurs d'une palette.
 
     Args:
         palette: Palette à utiliser (None = palette active)
 
     Returns:
         Dictionnaire complet des couleurs
+
     """
     p = palette or _active_palette
     return PALETTES.get(p, PALETTES[ColorPalette.DEFAULT]).copy()
@@ -619,7 +605,8 @@ def get_palette_names() -> list[str]:
 # HELPERS SPÉCIALISÉS
 # ============================================================================
 
-def get_profit_color(pnl: float, palette: Optional[ColorPalette] = None) -> str:
+
+def get_profit_color(pnl: float, palette: ColorPalette | None = None) -> str:
     """Retourne la couleur appropriée pour un PnL (profit/perte)."""
     return get_color("success" if pnl >= 0 else "error", palette)
 
@@ -627,27 +614,26 @@ def get_profit_color(pnl: float, palette: Optional[ColorPalette] = None) -> str:
 def get_trade_color(
     side: str,
     action: str,
-    pnl: Optional[float] = None,
-    palette: Optional[ColorPalette] = None
+    pnl: float | None = None,
+    palette: ColorPalette | None = None,
 ) -> str:
-    """
-    Retourne la couleur pour un trade.
+    """Retourne la couleur pour un trade.
 
     Args:
         side: "LONG" ou "SHORT"
         action: "entry" ou "exit"
         pnl: PnL pour les exits (détermine profit/loss)
         palette: Palette à utiliser
+
     """
     if action == "entry":
         return get_color("entry_long" if side == "LONG" else "entry_short", palette)
-    else:
-        if pnl is not None:
-            return get_color("exit_profit" if pnl >= 0 else "exit_loss", palette)
-        return get_color("text_secondary", palette)
+    if pnl is not None:
+        return get_color("exit_profit" if pnl >= 0 else "exit_loss", palette)
+    return get_color("text_secondary", palette)
 
 
-def get_agent_color(agent_role: str, palette: Optional[ColorPalette] = None) -> str:
+def get_agent_color(agent_role: str, palette: ColorPalette | None = None) -> str:
     """Retourne la couleur pour un agent LLM."""
     role_map = {
         "analyst": "agent_analyst",
@@ -662,6 +648,7 @@ def get_agent_color(agent_role: str, palette: Optional[ColorPalette] = None) -> 
 # ============================================================================
 # DATACLASS POUR CONFIGURATION CHARTS
 # ============================================================================
+
 
 @dataclass
 class ChartColorConfig:
@@ -683,7 +670,7 @@ class ChartColorConfig:
     background: str = ""
 
     @classmethod
-    def from_palette(cls, palette: Optional[ColorPalette] = None) -> "ChartColorConfig":
+    def from_palette(cls, palette: ColorPalette | None = None) -> ChartColorConfig:
         """Crée une config depuis une palette."""
         return cls(
             candle_up=get_color("candle_up", palette),

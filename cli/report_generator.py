@@ -1,5 +1,4 @@
-"""
-Module-ID: cli.report_generator
+"""Module-ID: cli.report_generator
 
 Purpose: Génération de rapports et exports (HTML, CSV, Excel).
 
@@ -19,7 +18,6 @@ Skip-if: Utilisation des exports existants.
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import pandas as pd
 
@@ -114,9 +112,9 @@ HTML_TEMPLATE_FOOTER = """
 # EXPORT HTML
 # =============================================================================
 
+
 def export_html(data: dict, output_path: Path, title: str = "Rapport de Backtest") -> Path:
-    """
-    Exporte des résultats en HTML formaté.
+    """Exporte des résultats en HTML formaté.
 
     Args:
         data: Dictionnaire des résultats
@@ -125,6 +123,7 @@ def export_html(data: dict, output_path: Path, title: str = "Rapport de Backtest
 
     Returns:
         Path du fichier créé
+
     """
     html_parts = [HTML_TEMPLATE_HEADER.format(title=title)]
 
@@ -133,8 +132,8 @@ def export_html(data: dict, output_path: Path, title: str = "Rapport de Backtest
     result_type = data.get("type", "backtest")
 
     html_parts.append(f"<h1>📊 {title}</h1>")
-    html_parts.append(f'<p><strong>Stratégie:</strong> {strategy}</p>')
-    html_parts.append(f'<p><strong>Type:</strong> {result_type}</p>')
+    html_parts.append(f"<p><strong>Stratégie:</strong> {strategy}</p>")
+    html_parts.append(f"<p><strong>Type:</strong> {result_type}</p>")
 
     # Section métriques
     metrics = data.get("metrics", data.get("best_metrics", {}))
@@ -163,12 +162,12 @@ def export_html(data: dict, output_path: Path, title: str = "Rapport de Backtest
                 elif key == "sharpe_ratio":
                     css_class = "positive" if value >= 1 else "negative" if value < 0 else ""
 
-                html_parts.append(f'''
+                html_parts.append(f"""
                     <div class="metric">
                         <div class="metric-value {css_class}">{formatted}</div>
                         <div class="metric-label">{label}</div>
                     </div>
-                ''')
+                """)
 
         html_parts.append("</div></div>")
 
@@ -228,9 +227,9 @@ def export_html(data: dict, output_path: Path, title: str = "Rapport de Backtest
 # EXPORT CSV
 # =============================================================================
 
+
 def export_csv(data: dict, output_path: Path) -> Path:
-    """
-    Exporte des résultats en CSV.
+    """Exporte des résultats en CSV.
 
     Args:
         data: Dictionnaire des résultats
@@ -238,6 +237,7 @@ def export_csv(data: dict, output_path: Path) -> Path:
 
     Returns:
         Path du fichier créé
+
     """
     results = data.get("results", [])
 
@@ -262,9 +262,9 @@ def export_csv(data: dict, output_path: Path) -> Path:
 # EXPORT EXCEL
 # =============================================================================
 
+
 def export_excel(data: dict, output_path: Path) -> Path:
-    """
-    Exporte des résultats en Excel avec plusieurs feuilles.
+    """Exporte des résultats en Excel avec plusieurs feuilles.
 
     Args:
         data: Dictionnaire des résultats
@@ -275,13 +275,14 @@ def export_excel(data: dict, output_path: Path) -> Path:
 
     Raises:
         ImportError: Si openpyxl n'est pas installé
+
     """
     try:
         import openpyxl  # noqa: F401
     except ImportError:
         raise ImportError("openpyxl requis pour export Excel: pip install openpyxl")
 
-    with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         results = data.get("results", [])
 
         if results:
@@ -327,18 +328,18 @@ def export_excel(data: dict, output_path: Path) -> Path:
 # GÉNÉRATION RAPPORT COMPLET
 # =============================================================================
 
+
 def generate_backtest_report(
     metrics: dict,
     params: dict,
-    trades: List[dict] = None,
-    equity_curve: List[float] = None,
+    trades: list[dict] = None,
+    equity_curve: list[float] = None,
     strategy: str = "Unknown",
     symbol: str = "Unknown",
     timeframe: str = "Unknown",
-    output_dir: Optional[Path] = None
-) -> Dict[str, Path]:
-    """
-    Génère un rapport complet de backtest (HTML + CSV).
+    output_dir: Path | None = None,
+) -> dict[str, Path]:
+    """Génère un rapport complet de backtest (HTML + CSV).
 
     Args:
         metrics: Métriques de performance
@@ -352,6 +353,7 @@ def generate_backtest_report(
 
     Returns:
         Dict avec paths des fichiers générés {html, csv, json}
+
     """
     if output_dir is None:
         output_dir = get_results_root_dir()
@@ -400,16 +402,15 @@ def generate_backtest_report(
 
 
 def generate_sweep_report(
-    results: List[dict],
+    results: list[dict],
     best_params: dict,
     best_metrics: dict,
     strategy: str,
     total_combinations: int,
     total_time: float,
-    output_dir: Optional[Path] = None
-) -> Dict[str, Path]:
-    """
-    Génère un rapport complet de sweep/optimisation.
+    output_dir: Path | None = None,
+) -> dict[str, Path]:
+    """Génère un rapport complet de sweep/optimisation.
 
     Args:
         results: Liste des résultats {params, metrics}
@@ -422,6 +423,7 @@ def generate_sweep_report(
 
     Returns:
         Dict avec paths des fichiers générés
+
     """
     if output_dir is None:
         output_dir = get_results_root_dir()

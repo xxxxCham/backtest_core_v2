@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.llm_config
+"""Module-ID: agents.llm_config
 
 Purpose: Configuration et logique métier pour les providers LLM.
          Extraction de la logique depuis ui/sidebar.py (DDD refactoring).
@@ -25,7 +24,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from utils.model_loader import normalize_model_name
 
@@ -39,6 +38,7 @@ try:
         get_global_model_config,
         set_global_model_config,
     )
+
     LLM_AVAILABLE = True
     LLM_IMPORT_ERROR = None
 except ImportError as e:
@@ -62,7 +62,7 @@ DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 RECOMMENDED_FOR_STRATEGY = [
     "gemma4:26b",
     "gemma4:31b",
-    "qwen3.5:35b",
+    "qwen3.6:35b",
     "lfm2:24b",
     "devstral-small-2:24b",
     "qwen2.5:32b",
@@ -77,15 +77,15 @@ OPENAI_MODELS = [
 ]
 
 # Modèles à exclure par défaut des sélections aléatoires
-EXCLUDED_HEAVY_MODELS: Set[str] = {"deepseek-r1:70b"}
+EXCLUDED_HEAVY_MODELS: set[str] = {"deepseek-r1:70b"}
 
 DEFAULT_LLM_INFERENCE_MODE = "global"
-DEFAULT_LLM_INFERENCE_SETTINGS: Dict[str, Any] = {
+DEFAULT_LLM_INFERENCE_SETTINGS: dict[str, Any] = {
     "temperature": 0.7,
     "max_tokens": 2000,
     "num_ctx": None,
 }
-BUILTIN_LLM_INFERENCE_PROFILES: Dict[str, Dict[str, Any]] = {
+BUILTIN_LLM_INFERENCE_PROFILES: dict[str, dict[str, Any]] = {
     "deepseek-coder-33b-local:latest": {
         "temperature": 0.15,
         "max_tokens": 4096,
@@ -98,15 +98,17 @@ BUILTIN_LLM_INFERENCE_PROFILES: Dict[str, Dict[str, Any]] = {
 # DATA CLASSES
 # ============================================================================
 
+
 @dataclass
 class LLMConfigOptions:
     """Options disponibles pour la configuration LLM."""
-    available: bool = False
-    import_error: Optional[str] = None
 
-    providers: List[str] = field(default_factory=lambda: ["Ollama (Local)", "OpenAI"])
-    ollama_models: List[str] = field(default_factory=list)
-    openai_models: List[str] = field(default_factory=lambda: OPENAI_MODELS.copy())
+    available: bool = False
+    import_error: str | None = None
+
+    providers: list[str] = field(default_factory=lambda: ["Ollama (Local)", "OpenAI"])
+    ollama_models: list[str] = field(default_factory=list)
+    openai_models: list[str] = field(default_factory=lambda: OPENAI_MODELS.copy())
 
     ollama_connected: bool = False
     default_ollama_host: str = DEFAULT_OLLAMA_HOST
@@ -115,9 +117,10 @@ class LLMConfigOptions:
 @dataclass
 class ModelSizeFilter:
     """Configuration du filtrage par taille de modèle."""
+
     limit_small: bool = False  # < 20B
     limit_large: bool = False  # >= 20B
-    excluded_models: Set[str] = field(default_factory=lambda: EXCLUDED_HEAVY_MODELS.copy())
+    excluded_models: set[str] = field(default_factory=lambda: EXCLUDED_HEAVY_MODELS.copy())
 
 
 def _coerce_temperature(value: Any, default: float) -> float:
@@ -136,7 +139,7 @@ def _coerce_max_tokens(value: Any, default: int) -> int:
     return max(1, resolved)
 
 
-def _coerce_num_ctx(value: Any) -> Optional[int]:
+def _coerce_num_ctx(value: Any) -> int | None:
     if value in (None, "", 0, "0"):
         return None
     try:
@@ -147,10 +150,10 @@ def _coerce_num_ctx(value: Any) -> Optional[int]:
 
 
 def normalize_llm_inference_settings(
-    raw_settings: Optional[Dict[str, Any]] = None,
+    raw_settings: dict[str, Any] | None = None,
     *,
-    defaults: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    defaults: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     base = dict(DEFAULT_LLM_INFERENCE_SETTINGS)
     if isinstance(defaults, dict):
         base.update(defaults)
@@ -163,9 +166,9 @@ def normalize_llm_inference_settings(
 
 
 def normalize_llm_model_inference_profiles(
-    raw_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
-) -> Dict[str, Dict[str, Any]]:
-    normalized: Dict[str, Dict[str, Any]] = {}
+    raw_profiles: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, dict[str, Any]]:
+    normalized: dict[str, dict[str, Any]] = {}
 
     for raw_name, raw_settings in BUILTIN_LLM_INFERENCE_PROFILES.items():
         model_name = normalize_model_name(str(raw_name or "").strip())
@@ -189,11 +192,11 @@ def normalize_llm_model_inference_profiles(
 
 
 def resolve_llm_inference_settings(
-    model_name: Optional[str],
+    model_name: str | None,
     *,
-    global_settings: Optional[Dict[str, Any]] = None,
-    model_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
+    global_settings: dict[str, Any] | None = None,
+    model_profiles: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     resolved_global = normalize_llm_inference_settings(global_settings)
     resolved_profiles = normalize_llm_model_inference_profiles(model_profiles)
     normalized_model_name = normalize_model_name(str(model_name or "").strip())
@@ -210,9 +213,9 @@ def resolve_llm_inference_settings(
 def apply_llm_inference_settings(
     config: Any,
     *,
-    model_name: Optional[str] = None,
-    global_settings: Optional[Dict[str, Any]] = None,
-    model_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
+    model_name: str | None = None,
+    global_settings: dict[str, Any] | None = None,
+    model_profiles: dict[str, dict[str, Any]] | None = None,
 ) -> Any:
     if config is None:
         return None
@@ -235,15 +238,16 @@ def apply_llm_inference_settings(
 # MODEL SIZE UTILITIES
 # ============================================================================
 
-def extract_model_size_b(model_name: str) -> Optional[float]:
-    """
-    Extrait la taille en milliards de paramètres d'un nom de modèle.
+
+def extract_model_size_b(model_name: str) -> float | None:
+    """Extrait la taille en milliards de paramètres d'un nom de modèle.
 
     Args:
         model_name: Nom du modèle (ex: "llama3.3:70b", "qwen2.5:14b")
 
     Returns:
         Taille en milliards (ex: 70.0, 14.0) ou None si non trouvé
+
     """
     match = re.search(r"(\d+(?:\.\d+)?)b", model_name.lower())
     if match:
@@ -252,8 +256,7 @@ def extract_model_size_b(model_name: str) -> Optional[float]:
 
 
 def is_model_under_limit(model_name: str, limit: float) -> bool:
-    """
-    Vérifie si un modèle est sous une limite de taille.
+    """Vérifie si un modèle est sous une limite de taille.
 
     Args:
         model_name: Nom du modèle
@@ -261,6 +264,7 @@ def is_model_under_limit(model_name: str, limit: float) -> bool:
 
     Returns:
         True si modèle < limite, False sinon
+
     """
     size = extract_model_size_b(model_name)
     if size is None:
@@ -269,8 +273,7 @@ def is_model_under_limit(model_name: str, limit: float) -> bool:
 
 
 def is_model_over_limit(model_name: str, limit: float) -> bool:
-    """
-    Vérifie si un modèle est au-dessus d'une limite de taille.
+    """Vérifie si un modèle est au-dessus d'une limite de taille.
 
     Args:
         model_name: Nom du modèle
@@ -278,6 +281,7 @@ def is_model_over_limit(model_name: str, limit: float) -> bool:
 
     Returns:
         True si modèle >= limite, False sinon
+
     """
     size = extract_model_size_b(model_name)
     if size is None:
@@ -286,11 +290,10 @@ def is_model_over_limit(model_name: str, limit: float) -> bool:
 
 
 def filter_models_by_size(
-    models: List[str],
-    size_filter: ModelSizeFilter
-) -> List[str]:
-    """
-    Filtre une liste de modèles selon les critères de taille.
+    models: list[str],
+    size_filter: ModelSizeFilter,
+) -> list[str]:
+    """Filtre une liste de modèles selon les critères de taille.
 
     Args:
         models: Liste des noms de modèles
@@ -298,6 +301,7 @@ def filter_models_by_size(
 
     Returns:
         Liste filtrée des modèles
+
     """
     # Exclure les modèles interdits
     filtered = [m for m in models if m not in size_filter.excluded_models]
@@ -324,30 +328,33 @@ def filter_models_by_size(
 # OLLAMA UTILITIES
 # ============================================================================
 
+
 def is_ollama_available() -> bool:
-    """
-    Vérifie si Ollama est disponible et connecté.
+    """Vérifie si Ollama est disponible et connecté.
 
     Returns:
         True si Ollama répond, False sinon
+
     """
     try:
         import httpx
+
         response = httpx.get(f"{DEFAULT_OLLAMA_HOST}/api/tags", timeout=2.0)
         return response.status_code == 200
     except Exception:
         return False
 
 
-def list_available_ollama_models() -> List[str]:
-    """
-    Liste les modèles Ollama installés localement.
+def list_available_ollama_models() -> list[str]:
+    """Liste les modèles Ollama installés localement.
 
     Returns:
         Liste des noms de modèles disponibles
+
     """
     try:
         import httpx
+
         response = httpx.get(f"{DEFAULT_OLLAMA_HOST}/api/tags", timeout=5.0)
         if response.status_code == 200:
             data = response.json()
@@ -359,17 +366,18 @@ def list_available_ollama_models() -> List[str]:
 
 
 def ensure_ollama_running() -> tuple[bool, str]:
-    """
-    Tente de démarrer Ollama s'il n'est pas en cours d'exécution.
+    """Tente de démarrer Ollama s'il n'est pas en cours d'exécution.
 
     Returns:
         Tuple (success, message)
+
     """
     if is_ollama_available():
         return True, "Ollama déjà connecté"
 
     try:
         import subprocess
+
         subprocess.Popen(
             ["ollama", "serve"],
             stdout=subprocess.DEVNULL,
@@ -378,6 +386,7 @@ def ensure_ollama_running() -> tuple[bool, str]:
 
         # Attendre un peu et vérifier
         import time
+
         for _ in range(10):
             time.sleep(0.5)
             if is_ollama_available():
@@ -392,12 +401,13 @@ def ensure_ollama_running() -> tuple[bool, str]:
 # CONFIGURATION FUNCTIONS
 # ============================================================================
 
+
 def get_llm_options() -> LLMConfigOptions:
-    """
-    Récupère toutes les options disponibles pour la configuration LLM.
+    """Récupère toutes les options disponibles pour la configuration LLM.
 
     Returns:
         LLMConfigOptions avec providers, modèles, et état de connexion
+
     """
     options = LLMConfigOptions(
         available=LLM_AVAILABLE,
@@ -416,14 +426,14 @@ def get_llm_options() -> LLMConfigOptions:
 
 
 def get_model_display_name(model_name: str) -> str:
-    """
-    Génère un nom d'affichage avec badge de catégorie.
+    """Génère un nom d'affichage avec badge de catégorie.
 
     Args:
         model_name: Nom brut du modèle
 
     Returns:
         Nom avec badge (ex: "[L] qwen2.5:14b", "[H] llama3.3:70b")
+
     """
     if not LLM_AVAILABLE or KNOWN_MODELS is None:
         return model_name
@@ -439,30 +449,30 @@ def get_model_display_name(model_name: str) -> str:
     return normalized_name
 
 
-def create_display_mappings(model_names: List[str]) -> tuple[Dict[str, str], Dict[str, str]]:
-    """
-    Crée les mappings nom ↔ affichage pour une liste de modèles.
+def create_display_mappings(model_names: list[str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Crée les mappings nom ↔ affichage pour une liste de modèles.
 
     Args:
         model_names: Liste des noms de modèles
 
     Returns:
         Tuple (name_to_display, display_to_name)
+
     """
     name_to_display = {n: get_model_display_name(n) for n in model_names}
     display_to_name = {v: k for k, v in name_to_display.items()}
     return name_to_display, display_to_name
 
 
-def validate_llm_config(config: Any) -> tuple[bool, Optional[str]]:
-    """
-    Valide une configuration LLM.
+def validate_llm_config(config: Any) -> tuple[bool, str | None]:
+    """Valide une configuration LLM.
 
     Args:
         config: Configuration LLM à valider
 
     Returns:
         Tuple (is_valid, error_message)
+
     """
     if config is None:
         return False, "Configuration LLM non définie"
@@ -470,7 +480,7 @@ def validate_llm_config(config: Any) -> tuple[bool, Optional[str]]:
     if not LLM_AVAILABLE:
         return False, f"Module LLM non disponible: {LLM_IMPORT_ERROR}"
 
-    if not hasattr(config, 'provider') or not hasattr(config, 'model'):
+    if not hasattr(config, "provider") or not hasattr(config, "model"):
         return False, "Configuration LLM invalide (provider/model manquant)"
 
     if config.provider == LLMProvider.OLLAMA:
@@ -478,7 +488,7 @@ def validate_llm_config(config: Any) -> tuple[bool, Optional[str]]:
             return False, "Ollama non connecté"
 
     if config.provider == LLMProvider.OPENAI:
-        if not hasattr(config, 'openai_api_key') or not config.openai_api_key:
+        if not hasattr(config, "openai_api_key") or not config.openai_api_key:
             return False, "Clé API OpenAI manquante"
 
     return True, None
@@ -488,13 +498,12 @@ def create_llm_config(
     provider: str,
     model: str,
     ollama_host: str = DEFAULT_OLLAMA_HOST,
-    api_key: Optional[str] = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
-    num_ctx: Optional[int] = None,
-) -> Optional[Any]:
-    """
-    Crée une configuration LLM.
+    api_key: str | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    num_ctx: int | None = None,
+) -> Any | None:
+    """Crée une configuration LLM.
 
     Args:
         provider: "Ollama (Local)" ou "OpenAI"
@@ -504,6 +513,7 @@ def create_llm_config(
 
     Returns:
         LLMConfig ou None si indisponible
+
     """
     if not LLM_AVAILABLE or LLMConfig is None:
         return None
@@ -525,26 +535,25 @@ def create_llm_config(
             ),
             num_ctx=_coerce_num_ctx(num_ctx),
         )
-    else:
-        if not api_key:
-            return None
-        return LLMConfig(
-            provider=LLMProvider.OPENAI,
-            model=model,
-            openai_api_key=api_key,
-        )
+    if not api_key:
+        return None
+    return LLMConfig(
+        provider=LLMProvider.OPENAI,
+        model=model,
+        openai_api_key=api_key,
+    )
 
 
 # ============================================================================
 # MULTI-MODEL ROLE CONFIGURATION
 # ============================================================================
 
+
 def get_optimal_models_for_role(
     role: str,
-    available_models: List[str]
-) -> List[str]:
-    """
-    Retourne les modèles optimaux pour un rôle d'agent.
+    available_models: list[str],
+) -> list[str]:
+    """Retourne les modèles optimaux pour un rôle d'agent.
 
     Args:
         role: "analyst", "strategist", "critic", ou "validator"
@@ -552,6 +561,7 @@ def get_optimal_models_for_role(
 
     Returns:
         Liste de modèles recommandés (max 3)
+
     """
     # Configuration optimale basée sur benchmarks
     optimal_config = {
@@ -572,12 +582,11 @@ def get_optimal_models_for_role(
 
 
 def normalize_model_selection(
-    selection: List[str],
-    display_to_name: Dict[str, str],
-    available_models: List[str]
-) -> List[str]:
-    """
-    Normalise une sélection de modèles (display → name, filtrage).
+    selection: list[str],
+    display_to_name: dict[str, str],
+    available_models: list[str],
+) -> list[str]:
+    """Normalise une sélection de modèles (display → name, filtrage).
 
     Args:
         selection: Liste de noms d'affichage sélectionnés
@@ -586,6 +595,7 @@ def normalize_model_selection(
 
     Returns:
         Liste de noms de modèles normalisés et validés
+
     """
     names = [display_to_name.get(m, m) for m in selection]
     return [n for n in names if n in available_models]

@@ -1,6 +1,5 @@
 # ruff: noqa: I001
-"""
-Module-ID: agents.builder_proposal_helpers
+"""Module-ID: agents.builder_proposal_helpers
 
 Purpose: Normalisation, validation et sanitisation des propositions LLM
          du Strategy Builder, ainsi que helpers de sweep paramétrique.
@@ -17,10 +16,8 @@ import itertools
 import json
 import os
 import re
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, cast
 
-import numpy as np
-import pandas as pd
 
 from agents.builder_ast_utils import (
     _extract_default_params_signature,
@@ -37,10 +34,8 @@ from agents.builder_constants import (
     ERR_DSL,
     ERR_JSON,
     ERR_PARAM,
-    ERR_SIG,
 )
 from agents.builder_text_utils import (
-    _err,
     _format_python_dict_literal,
 )
 
@@ -103,13 +98,14 @@ _BUILDER_SWEEP_EXCLUDED_PARAMS = frozenset(
         "warmup",
         "fees_bps",
         "slippage_bps",
-    }
+    },
 )
 
 
 # ---------------------------------------------------------------------------
 # Utilitaires de base
 # ---------------------------------------------------------------------------
+
 
 def _normalize_change_type(change_type: Any) -> str:
     """Normalise le type de changement dans {logic, params, both, accept}."""
@@ -125,8 +121,8 @@ def _normalize_change_type(change_type: Any) -> str:
     return "logic"
 
 
-def _dedupe_preserve_order(values: List[Any]) -> List[Any]:
-    deduped: List[Any] = []
+def _dedupe_preserve_order(values: list[Any]) -> list[Any]:
+    deduped: list[Any] = []
     for value in values:
         if value not in deduped:
             deduped.append(value)
@@ -232,7 +228,8 @@ def _infer_direction_constraint_from_objective(objective: Any) -> str:
 # Normalisation / sanitation des propositions
 # ---------------------------------------------------------------------------
 
-def _normalize_proposal_keys(proposal: Dict[str, Any]) -> Dict[str, Any]:
+
+def _normalize_proposal_keys(proposal: dict[str, Any]) -> dict[str, Any]:
     """Normalise les clés JSON d'une proposition LLM (case-insensitive)."""
     if not proposal:
         return proposal
@@ -253,21 +250,18 @@ def _normalize_proposal_keys(proposal: Dict[str, Any]) -> Dict[str, Any]:
     }
     lower_map = {k.lower(): v for k, v in _CANONICAL.items()}
 
-    normalized: Dict[str, Any] = {}
+    normalized: dict[str, Any] = {}
     for key, value in proposal.items():
         canonical = lower_map.get(key.lower().replace(" ", "_"), key)
         normalized[canonical] = value
 
     if isinstance(normalized.get("parameter_specs"), dict):
-        normalized_specs: Dict[str, Any] = {}
+        normalized_specs: dict[str, Any] = {}
         for param_name, raw_spec in normalized["parameter_specs"].items():
             if not isinstance(raw_spec, dict):
                 normalized_specs[param_name] = raw_spec
                 continue
-            spec_lower = {
-                str(k).strip().lower().replace(" ", "_"): v
-                for k, v in raw_spec.items()
-            }
+            spec_lower = {str(k).strip().lower().replace(" ", "_"): v for k, v in raw_spec.items()}
             normalized_specs[param_name] = {
                 "min": spec_lower.get("min", spec_lower.get("min_val", spec_lower.get("min_value"))),
                 "max": spec_lower.get("max", spec_lower.get("max_val", spec_lower.get("max_value"))),
@@ -279,7 +273,7 @@ def _normalize_proposal_keys(proposal: Dict[str, Any]) -> Dict[str, Any]:
 
     if "change_type" in normalized:
         normalized["change_type"] = _normalize_change_type(
-            normalized.get("change_type", "")
+            normalized.get("change_type", ""),
         )
     else:
         normalized["change_type"] = "logic"
@@ -345,11 +339,11 @@ def _looks_pathological_param_name(name: str) -> bool:
     return False
 
 
-def _sanitize_param_mapping(raw: Any) -> Dict[str, Any]:
+def _sanitize_param_mapping(raw: Any) -> dict[str, Any]:
     """Conserve uniquement les paramètres au nom raisonnable."""
     if not isinstance(raw, dict):
         return {}
-    cleaned: Dict[str, Any] = {}
+    cleaned: dict[str, Any] = {}
     for key, value in raw.items():
         if not isinstance(key, str):
             continue
@@ -361,12 +355,12 @@ def _sanitize_param_mapping(raw: Any) -> Dict[str, Any]:
 
 
 def _sanitize_proposal_payload(
-    proposal: Dict[str, Any],
+    proposal: dict[str, Any],
     *,
-    available_indicators: List[str],
+    available_indicators: list[str],
     objective: str = "",
-    direction_constraint: Optional[str] = None,
-) -> Dict[str, Any]:
+    direction_constraint: str | None = None,
+) -> dict[str, Any]:
     """Nettoie/sauve une proposition LLM sans relâcher le contrat final."""
     if not isinstance(proposal, dict):
         return {}
@@ -386,23 +380,15 @@ def _sanitize_proposal_payload(
         "parameter_specs",
         "direction_constraint",
     }
-    cleaned: Dict[str, Any] = {
-        k: v for k, v in proposal.items() if k in allowed
-    }
+    cleaned: dict[str, Any] = {k: v for k, v in proposal.items() if k in allowed}
 
     if not cleaned.get("entry_long_logic"):
         cleaned["entry_long_logic"] = str(
-            proposal.get("long_logic")
-            or proposal.get("long_entry")
-            or proposal.get("long")
-            or ""
+            proposal.get("long_logic") or proposal.get("long_entry") or proposal.get("long") or "",
         ).strip()
     if not cleaned.get("entry_short_logic"):
         cleaned["entry_short_logic"] = str(
-            proposal.get("short_logic")
-            or proposal.get("short_entry")
-            or proposal.get("short")
-            or ""
+            proposal.get("short_logic") or proposal.get("short_entry") or proposal.get("short") or "",
         ).strip()
     if not cleaned.get("exit_logic"):
         cleaned["exit_logic"] = "sortie sur signal inverse"
@@ -420,7 +406,7 @@ def _sanitize_proposal_payload(
         available_indicators=available_indicators,
     )
     used = cleaned.get("used_indicators", [])
-    normalized_used: List[str] = []
+    normalized_used: list[str] = []
     if isinstance(used, list):
         for item in used:
             ind = _canonicalize_indicator_name(item, known=known)
@@ -444,9 +430,21 @@ def _sanitize_proposal_payload(
     if "leverage" not in specs:
         specs["leverage"] = {"min": 1, "max": 2, "default": default_params["leverage"], "type": "int", "step": 1}
     if "stop_atr_mult" not in specs:
-        specs["stop_atr_mult"] = {"min": 1.0, "max": 2.0, "default": default_params["stop_atr_mult"], "type": "float", "step": 0.1}
+        specs["stop_atr_mult"] = {
+            "min": 1.0,
+            "max": 2.0,
+            "default": default_params["stop_atr_mult"],
+            "type": "float",
+            "step": 0.1,
+        }
     if "tp_atr_mult" not in specs:
-        specs["tp_atr_mult"] = {"min": 2.0, "max": 4.5, "default": default_params["tp_atr_mult"], "type": "float", "step": 0.1}
+        specs["tp_atr_mult"] = {
+            "min": 2.0,
+            "max": 4.5,
+            "default": default_params["tp_atr_mult"],
+            "type": "float",
+            "step": 0.1,
+        }
     cleaned["parameter_specs"] = specs
 
     cleaned["change_type"] = _normalize_change_type(cleaned.get("change_type", "logic"))
@@ -454,13 +452,17 @@ def _sanitize_proposal_payload(
     if not cleaned["hypothesis"]:
         cleaned["hypothesis"] = "Ajustement structurel basé sur le diagnostic précédent."
     raw_override_reason = str(
-        cleaned.get("indicator_override_reason", "") or ""
+        cleaned.get("indicator_override_reason", "") or "",
     ).strip()
 
     cleaned["strategy_name"] = str(cleaned.get("strategy_name", "builder_strategy") or "builder_strategy").strip()
-    effective_direction = str(
-        direction_constraint or _infer_direction_constraint_from_objective(objective)
-    ).strip().lower()
+    effective_direction = (
+        str(
+            direction_constraint or _infer_direction_constraint_from_objective(objective),
+        )
+        .strip()
+        .lower()
+    )
     if effective_direction not in {"long_only", "short_only", "long_short"}:
         effective_direction = "long_short"
     cleaned["direction_constraint"] = effective_direction
@@ -468,7 +470,7 @@ def _sanitize_proposal_payload(
     if objective_locked_indicators:
         objective_set = set(objective_locked_indicators)
         proposal_indicators = _normalize_required_indicator_names(
-            cast(Optional[List[str]], cleaned.get("used_indicators"))
+            cast("list[str] | None", cleaned.get("used_indicators")),
         )
         added = [ind for ind in proposal_indicators if ind not in objective_set]
         removed = [ind for ind in objective_locked_indicators if ind not in set(proposal_indicators)]
@@ -485,12 +487,9 @@ def _sanitize_proposal_payload(
             cleaned.pop("indicator_override_reason", None)
         elif allows_semi_open_override:
             cleaned["used_indicators"] = proposal_indicators
-            cleaned["indicator_override_reason"] = (
-                raw_override_reason
-                or _build_indicator_override_reason(
-                    objective_locked_indicators,
-                    proposal_indicators,
-                )
+            cleaned["indicator_override_reason"] = raw_override_reason or _build_indicator_override_reason(
+                objective_locked_indicators,
+                proposal_indicators,
             )
         else:
             cleaned["used_indicators"] = list(objective_locked_indicators)
@@ -532,7 +531,7 @@ def _sanitize_proposal_payload(
     return cleaned
 
 
-def _is_empty_proposal(proposal: Dict[str, Any]) -> bool:
+def _is_empty_proposal(proposal: dict[str, Any]) -> bool:
     """Vérifie si une proposition LLM est vide ou inutilisable."""
     if not proposal:
         return True
@@ -549,6 +548,7 @@ def _is_empty_proposal(proposal: Dict[str, Any]) -> bool:
 # Sweep paramétrique Builder
 # ---------------------------------------------------------------------------
 
+
 def _coerce_builder_sweep_value(value: Any, param_type: str) -> Any:
     normalized_type = str(param_type or "").strip().lower()
     if normalized_type == "bool":
@@ -562,8 +562,8 @@ def _coerce_builder_sweep_value(value: Any, param_type: str) -> Any:
 def _build_builder_sweep_values(
     param_name: str,
     default_value: Any,
-    spec: Dict[str, Any],
-) -> List[Any]:
+    spec: dict[str, Any],
+) -> list[Any]:
     param_type = str(spec.get("type", "") or "").strip().lower()
     if param_name in _BUILDER_SWEEP_EXCLUDED_PARAMS:
         return [default_value]
@@ -585,14 +585,14 @@ def _build_builder_sweep_values(
 
     try:
         default_numeric = float(
-            default_value if default_value is not None else spec.get("default")  # type: ignore[arg-type]
+            default_value if default_value is not None else spec.get("default"),  # type: ignore[arg-type]
         )
     except (ValueError, TypeError):
         default_numeric = float(spec.get("default", min_v) or min_v)  # type: ignore[arg-type]
 
     default_numeric = min(max(default_numeric, min_v), max_v)
 
-    step_numeric: Optional[float] = None
+    step_numeric: float | None = None
     if spec.get("step") is not None:
         try:
             step_numeric = float(spec.get("step"))  # type: ignore[arg-type]
@@ -611,15 +611,12 @@ def _build_builder_sweep_values(
         raw_values = [default_numeric, min_v, max_v]
 
     coerced = _dedupe_preserve_order(
-        [
-            _coerce_builder_sweep_value(value, param_type)
-            for value in raw_values
-        ]
+        [_coerce_builder_sweep_value(value, param_type) for value in raw_values],
     )
     return coerced[:3] if coerced else [default_value]
 
 
-def _build_builder_sweep_plan(proposal: Dict[str, Any]) -> Dict[str, Any]:
+def _build_builder_sweep_plan(proposal: dict[str, Any]) -> dict[str, Any]:
     change_type = _normalize_change_type(proposal.get("change_type", "logic"))
     if change_type == "accept":
         return {
@@ -641,7 +638,7 @@ def _build_builder_sweep_plan(proposal: Dict[str, Any]) -> Dict[str, Any]:
             "param_names": [],
         }
 
-    sweep_candidates: List[tuple[str, List[Any]]] = []
+    sweep_candidates: list[tuple[str, list[Any]]] = []
     for param_name, spec in parameter_specs.items():
         if not isinstance(spec, dict):
             continue
@@ -659,14 +656,11 @@ def _build_builder_sweep_plan(proposal: Dict[str, Any]) -> Dict[str, Any]:
             "param_names": [],
         }
 
-    selected: List[tuple[str, List[Any]]] = []
+    selected: list[tuple[str, list[Any]]] = []
     current_combinations = 1
     for param_name, values in sweep_candidates[:_BUILDER_SWEEP_MAX_PARAMS]:
         limited_values = list(values[:3])
-        while (
-            len(limited_values) > 1
-            and current_combinations * len(limited_values) > _BUILDER_SWEEP_MAX_COMBINATIONS
-        ):
+        while len(limited_values) > 1 and current_combinations * len(limited_values) > _BUILDER_SWEEP_MAX_COMBINATIONS:
             limited_values = limited_values[:-1]
         if len(limited_values) <= 1:
             continue
@@ -684,7 +678,7 @@ def _build_builder_sweep_plan(proposal: Dict[str, Any]) -> Dict[str, Any]:
 
     param_names = [param_name for param_name, _ in selected]
     parameter_values = {param_name: list(values) for param_name, values in selected}
-    param_grid: List[Dict[str, Any]] = []
+    param_grid: list[dict[str, Any]] = []
     for combo in itertools.product(*(values for _, values in selected)):
         params = dict(default_params)
         for param_name, value in zip(param_names, combo):
@@ -704,17 +698,19 @@ def _build_builder_sweep_plan(proposal: Dict[str, Any]) -> Dict[str, Any]:
 # Fallback déterministe de proposition
 # ---------------------------------------------------------------------------
 
+
 def _build_deterministic_proposal_fallback(
     *,
     objective: str,
-    available_indicators: List[str],
-    last_iteration: "Union[BuilderIteration, Any, None]" = None,
-    ctx: "Optional[Any]" = None,
-) -> Dict[str, Any]:
+    available_indicators: list[str],
+    last_iteration: BuilderIteration | Any | None = None,
+    ctx: Any | None = None,
+) -> dict[str, Any]:
     """Construit une proposition contractuelle minimale quand le LLM dérape."""
     # Accepte IterationContext ou BuilderIteration (import tardif pour éviter circularité)
     if ctx is None:
         from agents.builder_state import IterationContext
+
         ctx = last_iteration if isinstance(last_iteration, IterationContext) else IterationContext(last_iteration)
     objective_indicators = _extract_objective_indicator_names(
         objective,
@@ -724,10 +720,7 @@ def _build_deterministic_proposal_fallback(
     if objective_indicators:
         used = objective_indicators[:5]
     else:
-        preferred = [
-            x for x in ["rsi", "ema", "atr", "bollinger", "supertrend", "adx", "stochastic"]
-            if x in known
-        ]
+        preferred = [x for x in ["rsi", "ema", "atr", "bollinger", "supertrend", "adx", "stochastic"] if x in known]
         used = preferred[:3] if len(preferred) >= 3 else (preferred or known[:2] or ["atr"])
 
     change_type = "logic"
@@ -765,9 +758,10 @@ def _build_deterministic_proposal_fallback(
 # Validation de proposition
 # ---------------------------------------------------------------------------
 
-def _proposal_issues(proposal: Dict[str, Any]) -> List[str]:
+
+def _proposal_issues(proposal: dict[str, Any]) -> list[str]:
     """Retourne la liste des raisons rendant une proposition invalide."""
-    issues: List[str] = []
+    issues: list[str] = []
     if not proposal:
         issues.append("empty_payload")
         return issues
@@ -856,14 +850,14 @@ def _proposal_issues(proposal: Dict[str, Any]) -> List[str]:
     if ct not in ("logic", "params", "both", "accept"):
         issues.append("invalid_change_type")
 
-    dedup: List[str] = []
+    dedup: list[str] = []
     for issue in issues:
         if issue not in dedup:
             dedup.append(issue)
     return dedup
 
 
-def _proposal_has_placeholder_fields(proposal: Dict[str, Any]) -> bool:
+def _proposal_has_placeholder_fields(proposal: dict[str, Any]) -> bool:
     """Détecte les placeholders sur les champs critiques d'une proposition."""
     critical_fields = (
         "hypothesis",
@@ -878,12 +872,12 @@ def _proposal_has_placeholder_fields(proposal: Dict[str, Any]) -> bool:
     return False
 
 
-def _is_invalid_proposal(proposal: Dict[str, Any]) -> bool:
+def _is_invalid_proposal(proposal: dict[str, Any]) -> bool:
     """Validation minimale d'une proposition avant phase code."""
     return bool(_proposal_issues(proposal))
 
 
-def _proposal_error_code(issues: List[str]) -> str:
+def _proposal_error_code(issues: list[str]) -> str:
     """Mappe les issues de proposition vers un code d'erreur stable."""
     if not issues:
         return ""
@@ -896,28 +890,24 @@ def _proposal_error_code(issues: List[str]) -> str:
 
 
 def _proposal_reuses_previous_indicator_set(
-    proposal: Dict[str, Any],
+    proposal: dict[str, Any],
     previous_indicators: tuple[str, ...],
 ) -> bool:
     """Retourne True si la proposition recycle exactement le même set d'indicateurs."""
     if not previous_indicators:
         return False
-    current = {
-        str(ind).strip().lower()
-        for ind in proposal.get("used_indicators", [])
-        if str(ind).strip()
-    }
+    current = {str(ind).strip().lower() for ind in proposal.get("used_indicators", []) if str(ind).strip()}
     previous = {str(ind).strip().lower() for ind in previous_indicators if str(ind).strip()}
     return bool(current) and current == previous
 
 
 def _proposal_has_meaningful_param_delta(
     previous_code: str,
-    proposal: Dict[str, Any],
+    proposal: dict[str, Any],
 ) -> bool:
     """Indique si une proposition params-only change réellement default_params."""
     previous_params = _sanitize_param_mapping(
-        _extract_default_params_signature(previous_code)
+        _extract_default_params_signature(previous_code),
     )
     current_params = _sanitize_param_mapping(proposal.get("default_params"))
     if not current_params:
@@ -927,19 +917,13 @@ def _proposal_has_meaningful_param_delta(
 
 def _proposal_changes_indicator_set_in_params_mode(
     previous_code: str,
-    proposal: Dict[str, Any],
+    proposal: dict[str, Any],
 ) -> bool:
     """Détecte une proposition params-only qui change en réalité les indicateurs."""
     previous_indicators = {
-        str(ind).strip().lower()
-        for ind in _extract_required_indicators_signature(previous_code)
-        if str(ind).strip()
+        str(ind).strip().lower() for ind in _extract_required_indicators_signature(previous_code) if str(ind).strip()
     }
-    current_indicators = {
-        str(ind).strip().lower()
-        for ind in proposal.get("used_indicators", [])
-        if str(ind).strip()
-    }
+    current_indicators = {str(ind).strip().lower() for ind in proposal.get("used_indicators", []) if str(ind).strip()}
     if not previous_indicators or not current_indicators:
         return False
     return current_indicators != previous_indicators
@@ -968,8 +952,8 @@ def _params_only_contract_respected(previous_code: str, new_code: str) -> tuple[
 
 def _rewrite_default_params_from_proposal(
     previous_code: str,
-    proposal: Dict[str, Any],
-) -> Optional[str]:
+    proposal: dict[str, Any],
+) -> str | None:
     """Réécrit uniquement default_params dans un code existant (mode params-only)."""
     default_params = proposal.get("default_params")
     if not isinstance(default_params, dict) or not default_params:
@@ -977,7 +961,7 @@ def _rewrite_default_params_from_proposal(
 
     pattern = re.compile(
         r"(?ms)^(\s*)(def\s+default_params\s*\(\s*self\s*\)\s*(?:->\s*[^:\n]+)?\s*:)\n"
-        r".*?(?=^\1(?:def\s+|@property)|^\s*class\s+|\Z)"
+        r".*?(?=^\1(?:def\s+|@property)|^\s*class\s+|\Z)",
     )
     match = pattern.search(previous_code)
     if not match:
@@ -997,9 +981,9 @@ def _rewrite_default_params_from_proposal(
 
     replacement = f"{indent}{def_header}\n{return_stmt}"
 
-    patched = previous_code[:match.start()] + replacement + previous_code[match.end():]
+    patched = previous_code[: match.start()] + replacement + previous_code[match.end() :]
     return patched
 
 
 # Nécessaire pour le type hint forward reference
-from agents.builder_state import BuilderIteration as BuilderIteration  # noqa: E402, F401
+from agents.builder_state import BuilderIteration as BuilderIteration  # noqa: E402

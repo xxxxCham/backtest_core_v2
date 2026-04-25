@@ -1,5 +1,4 @@
-"""
-Module-ID: performance.device_backend
+"""Module-ID: performance.device_backend
 
 Purpose: Backend abstrait NumPy (CPU-only) pour calculs vectorisés.
 
@@ -26,7 +25,7 @@ import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -35,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 class DeviceType(Enum):
     """Type de device pour les calculs."""
+
     CPU = "cpu"
     GPU = "gpu"
     AUTO = "auto"
@@ -43,11 +43,12 @@ class DeviceType(Enum):
 @dataclass
 class DeviceInfo:
     """Informations sur un device."""
+
     device_type: DeviceType
     name: str
-    memory_total: Optional[int] = None  # En bytes
-    memory_free: Optional[int] = None
-    compute_capability: Optional[Tuple[int, int]] = None
+    memory_total: int | None = None  # En bytes
+    memory_free: int | None = None
+    compute_capability: tuple[int, int] | None = None
 
     def __str__(self) -> str:
         if self.device_type == DeviceType.CPU:
@@ -57,16 +58,15 @@ class DeviceInfo:
 
 
 class ArrayBackend:
-    """
-    Backend abstrait pour calculs sur arrays.
+    """Backend abstrait pour calculs sur arrays.
 
     Fournit une API unifiée compatible NumPy.
     """
 
-    _instance: Optional["ArrayBackend"] = None
+    _instance: ArrayBackend | None = None
     _initialized: bool = False
 
-    def __new__(cls) -> "ArrayBackend":
+    def __new__(cls) -> ArrayBackend:
         """Singleton pattern."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -80,7 +80,7 @@ class ArrayBackend:
         self._device_type = DeviceType.CPU
         self._np = np  # NumPy uniquement (CPU-only)
         self._gpu_available = False
-        self._device_info: Optional[DeviceInfo] = None
+        self._device_info: DeviceInfo | None = None
 
         # CPU-only strict: initialiser le backend CPU uniquement
         self._setup_cpu()
@@ -116,22 +116,21 @@ class ArrayBackend:
 
     @property
     def xp(self):
-        """
-        Retourne le module array (NumPy).
+        """Retourne le module array (NumPy).
 
         Utilisez comme: backend.xp.array([1,2,3])
         """
         return self._np
 
     def use_device(self, device: DeviceType) -> bool:
-        """
-        Change le device actif.
+        """Change le device actif.
 
         Args:
             device: Type de device souhaité
 
         Returns:
             True si le changement a réussi
+
         """
         if device == DeviceType.AUTO:
             device = DeviceType.CPU
@@ -146,12 +145,12 @@ class ArrayBackend:
 
     @contextmanager
     def device_context(self, device: DeviceType):
-        """
-        Context manager pour changer temporairement de device.
+        """Context manager pour changer temporairement de device.
 
         Example:
             >>> with backend.device_context(DeviceType.GPU):
             >>>     result = backend.xp.sum(data)
+
         """
         old_device = self._device_type
         old_np = self._np
@@ -272,8 +271,7 @@ class ArrayBackend:
     # === Rolling Operations ===
 
     def rolling_mean(self, data: Any, window: int) -> Any:
-        """
-        Moyenne mobile.
+        """Moyenne mobile.
 
         Note: Cette opération est optimisée pour GPU via convolution.
         """
@@ -282,24 +280,22 @@ class ArrayBackend:
 
         # Utiliser convolve pour efficacité
         kernel = self._np.ones(window) / window
-        result = self._np.convolve(data, kernel, mode='full')[:len(data)]
-        result[:window-1] = self._np.nan
+        result = self._np.convolve(data, kernel, mode="full")[: len(data)]
+        result[: window - 1] = self._np.nan
 
         return result
 
     def rolling_std(self, data: Any, window: int) -> Any:
-        """
-        Écart-type mobile.
-        """
+        """Écart-type mobile."""
         n = len(data)
         if n < window:
             return self._np.full(n, self._np.nan)
 
         result = self._np.empty(n)
-        result[:window-1] = self._np.nan
+        result[: window - 1] = self._np.nan
 
         for i in range(window - 1, n):
-            result[i] = self._np.std(data[i-window+1:i+1])
+            result[i] = self._np.std(data[i - window + 1 : i + 1])
 
         return result
 
@@ -310,10 +306,10 @@ class ArrayBackend:
             return self._np.full(n, self._np.nan)
 
         result = self._np.empty(n)
-        result[:window-1] = self._np.nan
+        result[: window - 1] = self._np.nan
 
         for i in range(window - 1, n):
-            result[i] = self._np.max(data[i-window+1:i+1])
+            result[i] = self._np.max(data[i - window + 1 : i + 1])
 
         return result
 
@@ -324,10 +320,10 @@ class ArrayBackend:
             return self._np.full(n, self._np.nan)
 
         result = self._np.empty(n)
-        result[:window-1] = self._np.nan
+        result[: window - 1] = self._np.nan
 
         for i in range(window - 1, n):
-            result[i] = self._np.min(data[i-window+1:i+1])
+            result[i] = self._np.min(data[i - window + 1 : i + 1])
 
         return result
 
@@ -346,6 +342,7 @@ class ArrayBackend:
     def memory_info(self) -> dict:
         """Retourne les infos mémoire du device."""
         import psutil
+
         mem = psutil.virtual_memory()
         return {
             "device": "CPU",
@@ -356,11 +353,11 @@ class ArrayBackend:
 
     def clear_memory(self):
         """Libère la mémoire (CPU-only)."""
-        return None
+        return
 
 
 # Singleton global
-_backend: Optional[ArrayBackend] = None
+_backend: ArrayBackend | None = None
 
 
 def get_backend() -> ArrayBackend:
@@ -372,14 +369,14 @@ def get_backend() -> ArrayBackend:
 
 
 def use_gpu(enable: bool = True) -> bool:
-    """
-    Active ou désactive l'utilisation du GPU.
+    """Active ou désactive l'utilisation du GPU.
 
     Args:
         enable: True pour GPU, False pour CPU
 
     Returns:
         True si le changement a réussi
+
     """
     backend = get_backend()
     device = DeviceType.GPU if enable else DeviceType.CPU
@@ -423,15 +420,15 @@ def array_like(data, dtype=None):
 
 
 __all__ = [
-    "DeviceType",
-    "DeviceInfo",
     "ArrayBackend",
+    "DeviceInfo",
+    "DeviceType",
+    "array_like",
+    "cpu_context",
     "get_backend",
-    "use_gpu",
-    "use_cpu",
-    "is_gpu_available",
     "get_device_info",
     "gpu_context",
-    "cpu_context",
-    "array_like",
+    "is_gpu_available",
+    "use_cpu",
+    "use_gpu",
 ]

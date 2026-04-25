@@ -1,5 +1,4 @@
-"""
-Module: data.token_classification
+"""Module: data.token_classification
 
 Purpose: Classification automatique des tokens par volatilité (ATR historique).
 
@@ -12,7 +11,7 @@ Functions:
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -23,14 +22,22 @@ from utils.log import get_logger
 logger = get_logger(__name__)
 
 
-def load_token_profiles() -> Dict:
+def _normalize_symbol(symbol: str) -> str:
+    return str(symbol or "").strip().upper()
+
+
+def _normalize_archetype(archetype: str) -> str:
+    return str(archetype or "").strip().lower()
+
+
+def load_token_profiles() -> dict[str, Any]:
     """Charge la configuration des profils de tokens depuis JSON."""
     config_path = Path(__file__).parent.parent / "config" / "token_profiles.json"
     if not config_path.exists():
         logger.warning(f"Fichier token_profiles.json introuvable : {config_path}")
         return {"profiles": {}, "archetype_recommendations": {}}
 
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -39,9 +46,8 @@ def calculate_token_volatility(
     timeframe: str = "1d",
     period_days: int = 30,
     atr_period: int = 14,
-) -> Optional[float]:
-    """
-    Calcule la volatilité moyenne d'un token via ATR (Average True Range).
+) -> float | None:
+    """Calcule la volatilité moyenne d'un token via ATR (Average True Range).
 
     Args:
         symbol: Token à analyser (ex: "BTCUSDC")
@@ -51,6 +57,7 @@ def calculate_token_volatility(
 
     Returns:
         ATR moyen en % du prix (ex: 4.2 = 4.2% de volatilité daily), ou None si erreur
+
     """
     try:
         # Charger données historiques
@@ -74,7 +81,12 @@ def calculate_token_volatility(
 
         # ATR en % du prix (normalize par le close moyen)
         avg_price = df["close"].mean()
-        atr_pct = (atr.mean() / avg_price) * 100
+        atr_mean = atr.dropna().mean()
+        if not np.isfinite(avg_price) or avg_price <= 0 or not np.isfinite(atr_mean):
+            logger.warning(f"Volatilité non calculable pour {symbol}/{timeframe}")
+            return None
+
+        atr_pct = (atr_mean / avg_price) * 100
 
         logger.info(f"{symbol} volatilité (ATR {atr_period}d): {atr_pct:.2f}%")
         return float(atr_pct)
@@ -89,8 +101,7 @@ def classify_token(
     use_historical: bool = False,
     timeframe: str = "1d",
 ) -> str:
-    """
-    Classe un token selon sa volatilité.
+    """Classe un token selon sa volatilité.
 
     Args:
         symbol: Token à classer
@@ -99,20 +110,23 @@ def classify_token(
 
     Returns:
         Profil du token: "high_volatility", "medium_volatility", "low_volatility"
+
     """
     config = load_token_profiles()
     profiles = config.get("profiles", {})
+    normalized_symbol = _normalize_symbol(symbol)
 
     # Méthode 1 : Liste manuelle (rapide)
     if not use_historical:
         for profile_name, profile_data in profiles.items():
-            if symbol in profile_data.get("tokens", []):
+            tokens = {_normalize_symbol(token) for token in profile_data.get("tokens", [])}
+            if normalized_symbol in tokens:
                 return profile_name
         # Fallback : medium par défaut
         return "medium_volatility"
 
     # Méthode 2 : Calcul historique (précis mais lent)
-    atr_pct = calculate_token_volatility(symbol, timeframe)
+    atr_pct = calculate_token_volatility(normalized_symbol, timeframe)
     if atr_pct is None:
         # Fallback sur liste manuelle
         return classify_token(symbol, use_historical=False)
@@ -120,18 +134,16 @@ def classify_token(
     # Classification par seuils
     if atr_pct >= 4.0:
         return "high_volatility"
-    elif atr_pct >= 2.0:
+    if atr_pct >= 2.0:
         return "medium_volatility"
-    else:
-        return "low_volatility"
+    return "low_volatility"
 
 
 def get_tokens_by_profile(
     profile: str,
     fallback_to_all: bool = True,
-) -> List[str]:
-    """
-    Retourne la liste des tokens d'un profil donné.
+) -> list[str]:
+    """Retourne la liste des tokens d'un profil donné.
 
     Args:
         profile: Profil recherché ("high_volatility", "medium_volatility", "low_volatility", "any")
@@ -139,78 +151,83 @@ def get_tokens_by_profile(
 
     Returns:
         Liste des tokens du profil
+
     """
     config = load_token_profiles()
     profiles = config.get("profiles", {})
+    normalized_profile = str(profile or "").strip()
 
-    if profile == "any" or profile not in profiles:
+    if normalized_profile == "any" or normalized_profile not in profiles:
         if fallback_to_all:
             # Retourner tous les tokens de tous les profils
             all_tokens = []
             for profile_data in profiles.values():
-                all_tokens.extend(profile_data.get("tokens", []))
-            return list(set(all_tokens))  # Dédupliquer
+                all_tokens.extend(_normalize_symbol(token) for token in profile_data.get("tokens", []))
+            return sorted(set(all_tokens))
         return []
 
-    return profiles[profile].get("tokens", [])
+    return sorted(_normalize_symbol(token) for token in profiles[normalized_profile].get("tokens", []))
 
 
-def get_recommended_timeframes(archetype: str) -> List[str]:
-    """
-    Retourne les timeframes recommandés pour un archetype de stratégie.
+def get_recommended_timeframes(archetype: str) -> list[str]:
+    """Retourne les timeframes recommandés pour un archetype de stratégie.
 
     Args:
         archetype: Type de stratégie ("scalping", "day_trading", "swing", "trend_following", etc.)
 
     Returns:
         Liste des timeframes recommandés (ex: ["3m", "5m"])
+
     """
     config = load_token_profiles()
     recommendations = config.get("archetype_recommendations", {})
+    normalized_archetype = _normalize_archetype(archetype)
 
-    if archetype not in recommendations:
+    if normalized_archetype not in recommendations:
         logger.warning(f"Archetype inconnu: {archetype}, fallback TFs génériques")
         return ["15m", "1h", "4h"]  # Fallback générique
 
-    return recommendations[archetype].get("timeframes", ["1h"])
+    return recommendations[normalized_archetype].get("timeframes", ["1h"])
 
 
 def get_preferred_timeframe(archetype: str) -> str:
-    """
-    Retourne le timeframe préféré pour un archetype.
+    """Retourne le timeframe préféré pour un archetype.
 
     Args:
         archetype: Type de stratégie
 
     Returns:
         Timeframe préféré (ex: "3m", "1h")
+
     """
     config = load_token_profiles()
     recommendations = config.get("archetype_recommendations", {})
+    normalized_archetype = _normalize_archetype(archetype)
 
-    if archetype not in recommendations:
+    if normalized_archetype not in recommendations:
         return "1h"  # Fallback
 
-    return recommendations[archetype].get("preferred_tf", "1h")
+    return recommendations[normalized_archetype].get("preferred_tf", "1h")
 
 
 def get_recommended_token_profile(archetype: str) -> str:
-    """
-    Retourne le profil de token recommandé pour un archetype.
+    """Retourne le profil de token recommandé pour un archetype.
 
     Args:
         archetype: Type de stratégie
 
     Returns:
         Profil recommandé ("high_volatility", "medium_volatility", "low_volatility", "any")
+
     """
     config = load_token_profiles()
     recommendations = config.get("archetype_recommendations", {})
+    normalized_archetype = _normalize_archetype(archetype)
 
-    if archetype not in recommendations:
+    if normalized_archetype not in recommendations:
         return "any"
 
-    return recommendations[archetype].get("token_profile", "any")
+    return recommendations[normalized_archetype].get("token_profile", "any")
 
 
 if __name__ == "__main__":

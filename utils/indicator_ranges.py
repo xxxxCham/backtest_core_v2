@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.indicator_ranges
+"""Module-ID: utils.indicator_ranges
 
 Purpose: Charge plages paramétriques d'indicateurs depuis config/indicator_ranges.toml.
 
@@ -23,7 +22,7 @@ Skip-if: Vous appelez load_indicator_ranges() en tant qu'utilisateur.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional, TypedDict, Union
+from typing import TypedDict
 
 try:
     import tomllib
@@ -32,8 +31,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for older Python
 
 
 class ParamSpec(TypedDict, total=False):
-    """
-    Spécification d'un paramètre d'indicateur.
+    """Spécification d'un paramètre d'indicateur.
 
     Attributes:
         min: Valeur minimale
@@ -43,22 +41,23 @@ class ParamSpec(TypedDict, total=False):
         description: Description du paramètre
         options: Liste d'options valides (pour paramètres catégoriels)
         type: Type explicite ("string", "bool", etc.)
+
     """
-    min: Union[int, float]
-    max: Union[int, float]
-    step: Union[int, float]
-    default: Union[int, float, str, bool]
+
+    min: int | float
+    max: int | float
+    step: int | float
+    default: int | float | str | bool
     description: str
-    options: List[str]
+    options: list[str]
     type: str
 
 
-_INDICATOR_RANGES_CACHE: Optional[Dict[str, Dict[str, ParamSpec]]] = None
+_INDICATOR_RANGES_CACHE: dict[str, dict[str, ParamSpec]] | None = None
 
 
-def load_indicator_ranges(path: Optional[Path] = None) -> Dict[str, Dict[str, ParamSpec]]:
-    """
-    Load indicator ranges from TOML.
+def load_indicator_ranges(path: Path | None = None) -> dict[str, dict[str, ParamSpec]]:
+    """Load indicator ranges from TOML.
 
     Args:
         path: Optional custom path to the TOML file.
@@ -73,6 +72,7 @@ def load_indicator_ranges(path: Optional[Path] = None) -> Dict[str, Dict[str, Pa
 
     Note:
         Results are cached when path=None for performance.
+
     """
     global _INDICATOR_RANGES_CACHE
 
@@ -86,7 +86,7 @@ def load_indicator_ranges(path: Optional[Path] = None) -> Dict[str, Dict[str, Pa
     if not path.exists():
         raise FileNotFoundError(
             f"Fichier de configuration introuvable: {path}\n"
-            f"Créez le fichier config/indicator_ranges.toml ou spécifiez un chemin valide."
+            f"Créez le fichier config/indicator_ranges.toml ou spécifiez un chemin valide.",
         )
 
     try:
@@ -94,17 +94,15 @@ def load_indicator_ranges(path: Optional[Path] = None) -> Dict[str, Dict[str, Pa
             data = tomllib.load(handle)
     except PermissionError as e:
         raise PermissionError(
-            f"Accès refusé au fichier: {path}\n"
-            f"Vérifiez les permissions du fichier."
+            f"Accès refusé au fichier: {path}\nVérifiez les permissions du fichier.",
         ) from e
-    except (tomllib.TOMLDecodeError if hasattr(tomllib, 'TOMLDecodeError') else Exception) as e:
+    except tomllib.TOMLDecodeError if hasattr(tomllib, "TOMLDecodeError") else Exception as e:
         raise ValueError(
-            f"Fichier TOML corrompu ou invalide: {path}\n"
-            f"Erreur de parsing: {e}"
+            f"Fichier TOML corrompu ou invalide: {path}\nErreur de parsing: {e}",
         ) from e
     except Exception as e:
         raise RuntimeError(
-            f"Erreur inattendue lors du chargement de {path}: {e}"
+            f"Erreur inattendue lors du chargement de {path}: {e}",
         ) from e
 
     if use_cache:
@@ -115,10 +113,9 @@ def load_indicator_ranges(path: Optional[Path] = None) -> Dict[str, Dict[str, Pa
 
 def get_indicator_param_specs(
     indicator_name: str,
-    ranges: Optional[Dict[str, Dict[str, ParamSpec]]] = None
-) -> Dict[str, ParamSpec]:
-    """
-    Return parameter specs for a single indicator.
+    ranges: dict[str, dict[str, ParamSpec]] | None = None,
+) -> dict[str, ParamSpec]:
+    """Return parameter specs for a single indicator.
 
     Args:
         indicator_name: Nom de l'indicateur (case-insensitive).
@@ -132,6 +129,7 @@ def get_indicator_param_specs(
         >>> specs = get_indicator_param_specs("rsi")
         >>> specs["period"]["default"]
         14
+
     """
     if ranges is None:
         ranges = load_indicator_ranges()
@@ -139,4 +137,4 @@ def get_indicator_param_specs(
     return ranges.get(indicator_name.lower(), {})
 
 
-__all__ = ["load_indicator_ranges", "get_indicator_param_specs", "ParamSpec"]
+__all__ = ["ParamSpec", "get_indicator_param_specs", "load_indicator_ranges"]

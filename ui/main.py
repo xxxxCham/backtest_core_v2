@@ -1,5 +1,4 @@
-"""
-UI Streamlit principale pour le moteur de backtest.
+"""UI Streamlit principale pour le moteur de backtest.
 
 PROTECTION WINDOWS SPAWN:
 Ce module crée des ProcessPoolExecutor pour les sweeps grille.
@@ -7,6 +6,7 @@ Sous Windows, multiprocessing utilise 'spawn' qui ré-exécute le module.
 Les workers IMPORTENT ce fichier mais NE DOIVENT PAS exécuter Streamlit.
 Protection: Tout code Streamlit est dans main() appelé uniquement par __main__.
 """
+
 # ruff: noqa: I001,BLE001,SLF001
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ import time
 import traceback
 from collections import deque
 from itertools import chain, islice, product
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -104,11 +104,13 @@ from ui.state import (
 from utils.run_tracker import RunSignature, get_global_tracker
 
 
+logger = logging.getLogger(__name__)
+
 MAIN_ACTION_BAR_CSS = """
 <style>
 div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) {
     border: 1px solid rgba(59, 130, 246, 0.24);
-    border-radius: 20px;
+    border-radius: 16px;
     padding: 1.05rem 1.05rem 0.45rem 1.05rem;
     background:
         radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 42%),
@@ -143,6 +145,7 @@ div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) h3 {
 # Fonction _run_backtest_multiprocess SUPPRIMÉE (obsolète)
 # Utilisez run_backtest_worker de backtest.worker à la place
 # Voir commit pour restauration si nécessaire
+
 
 def _apply_thread_limit(thread_limit: int, label: str = "") -> None:
     if thread_limit <= 0:
@@ -185,6 +188,7 @@ def _init_sweep_worker(thread_limit: int) -> None:
     # Forcer avec threadpoolctl (plus efficace que les env vars seules)
     try:
         import threadpoolctl
+
         info_before = threadpoolctl.threadpool_info()
         threadpoolctl.threadpool_limits(limits=max(1, thread_limit), user_api="blas")
         info_after = threadpoolctl.threadpool_info()
@@ -211,14 +215,14 @@ def _timeframe_to_minutes(timeframe: str) -> int:
     return amount * multipliers.get(unit, 60)
 
 
-def _build_multi_sweep_plan(symbols: List[str], timeframes: List[str]) -> List[tuple[str, str]]:
+def _build_multi_sweep_plan(symbols: list[str], timeframes: list[str]) -> list[tuple[str, str]]:
     """Construit un plan multi-sweep avec un ordre stable et léger."""
     combos = [(symbol, tf) for symbol in symbols for tf in timeframes]
     combos.sort(key=lambda item: (_timeframe_to_minutes(item[1]), item[0]), reverse=True)
     return combos
 
 
-def _estimate_grid_size(param_ranges: Dict[str, Any]) -> int:
+def _estimate_grid_size(param_ranges: dict[str, Any]) -> int:
     """Estime le nombre de combinaisons de la grille sans la matérialiser."""
     if not param_ranges:
         return 1
@@ -236,12 +240,11 @@ def _estimate_grid_size(param_ranges: Dict[str, Any]) -> int:
             pmin, pmax, step = r["min"], r["max"], r["step"]
             if isinstance(pmin, int) and isinstance(step, int):
                 count = max(1, ((int(pmax) - int(pmin)) // max(1, int(step))) + 1)
+            elif float(step) <= 0:
+                count = 1
             else:
-                if float(step) <= 0:
-                    count = 1
-                else:
-                    span = float(pmax) - float(pmin)
-                    count = int(math.floor(span / float(step))) + 1
+                span = float(pmax) - float(pmin)
+                count = int(math.floor(span / float(step))) + 1
             total *= max(1, int(count))
         except Exception:
             total *= 1
@@ -260,9 +263,9 @@ def _compute_max_safe_combos(total_sweeps: int, max_combos: int) -> int:
 
 
 def _build_param_combo_iter(
-    params: Dict[str, Any],
-    param_ranges: Dict[str, Any],
-    max_runs: Optional[int],
+    params: dict[str, Any],
+    param_ranges: dict[str, Any],
+    max_runs: int | None,
 ) -> tuple[Any, int, int]:
     """Construit un itérateur lazy de combinaisons + stats."""
     param_names = list(param_ranges.keys())
@@ -280,7 +283,7 @@ def _build_param_combo_iter(
                     values = list(range(int(pmin), int(pmax) + 1, max(1, int(step))))
                 else:
                     values = list(
-                        np.arange(float(pmin), float(pmax) + float(step) / 2, float(step))
+                        np.arange(float(pmin), float(pmax) + float(step) / 2, float(step)),
                     )
                     values = [round(v, 2) for v in values if v <= pmax]
 
@@ -290,12 +293,10 @@ def _build_param_combo_iter(
             param_values_lists.append(values)
 
         total_combinations = max(
-            1, math.prod(len(values) for values in param_values_lists)
+            1,
+            math.prod(len(values) for values in param_values_lists),
         )
-        combo_iter = (
-            {**params, **dict(zip(param_names, combo))}
-            for combo in product(*param_values_lists)
-        )
+        combo_iter = ({**params, **dict(zip(param_names, combo))} for combo in product(*param_values_lists))
     else:
         total_combinations = 1
         combo_iter = iter([params.copy()])  # type: ignore[assignment]
@@ -312,22 +313,21 @@ def _build_param_combo_iter(
 def _run_grid_numba_summary(
     *,
     df: pd.DataFrame,
-    engine: "BacktestEngine",  # type: ignore[valid-type]
+    engine: BacktestEngine,  # type: ignore[valid-type]
     strategy_key: str,
     symbol: str,
     timeframe: str,
-    params: Dict[str, Any],
-    param_ranges: Dict[str, Any],
-    max_runs: Optional[int],
+    params: dict[str, Any],
+    param_ranges: dict[str, Any],
+    max_runs: int | None,
     debug_enabled: bool,
     progress_placeholder: Any,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Extension hook: optional fast-path for Numba sweeps.
 
     By default this workspace keeps the historical sequential path unless a
     caller explicitly monkeypatches or replaces this helper.
     """
-
     _ = (
         df,
         engine,
@@ -345,16 +345,16 @@ def _run_grid_numba_summary(
 
 def _run_grid_sequential(
     df: pd.DataFrame,
-    engine: "BacktestEngine",  # type: ignore[valid-type]
+    engine: BacktestEngine,  # type: ignore[valid-type]
     strategy_key: str,
     symbol: str,
     timeframe: str,
-    params: Dict[str, Any],
-    param_ranges: Dict[str, Any],
-    max_runs: Optional[int],
+    params: dict[str, Any],
+    param_ranges: dict[str, Any],
+    max_runs: int | None,
     debug_enabled: bool,
     progress_placeholder: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Exécute une grille séquentielle et retourne le meilleur résultat."""
     if st.session_state.get("stop_requested", False):
         return {
@@ -389,8 +389,8 @@ def _run_grid_sequential(
         max_runs=max_runs,
     )
 
-    best_params: Dict[str, Any] = {}
-    best_metrics: Dict[str, Any] = {}
+    best_params: dict[str, Any] = {}
+    best_metrics: dict[str, Any] = {}
     best_score = (float("-inf"), float("-inf"))
     completed = 0
     failed = 0
@@ -436,7 +436,7 @@ def _run_grid_sequential(
         now = time.perf_counter()
         if completed == 1 or completed % 200 == 0 or now - last_render >= 5.0:
             progress_placeholder.caption(
-                f"Grille en cours: {completed}/{total_runs} (max {total_combinations:,})"
+                f"Grille en cours: {completed}/{total_runs} (max {total_combinations:,})",
             )
             last_render = now
 
@@ -456,10 +456,9 @@ def _build_multi_sweep_grid_entry(
     strategy_key: str,
     symbol: str,
     timeframe: str,
-    sweep_summary: Dict[str, Any],
-) -> Dict[str, Any]:
+    sweep_summary: dict[str, Any],
+) -> dict[str, Any]:
     """Normalize one multi-sweep result row for downstream rendering/tests."""
-
     stopped = bool(sweep_summary.get("stopped", False))
     status = "stopped" if stopped else "completed"
     return {
@@ -482,7 +481,6 @@ def _describe_grid_completion(
     results_count: int,
 ) -> tuple[str, str]:
     """Return UI status level + message for grid completion summaries."""
-
     if grid_interrupted and results_count <= 0:
         return "warning", "Optimisation interrompue avant tout résultat."
     if grid_interrupted:
@@ -495,16 +493,16 @@ def _run_grid_parallel_basic(
     strategy_key: str,
     symbol: str,
     timeframe: str,
-    params: Dict[str, Any],
-    param_ranges: Dict[str, Any],
-    max_runs: Optional[int],
+    params: dict[str, Any],
+    param_ranges: dict[str, Any],
+    max_runs: int | None,
     initial_capital: float,
     n_workers: int,
     worker_thread_limit: int,
     debug_enabled: bool,
     progress_placeholder: Any,
     stats_placeholder: Any,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Exécute une grille en parallèle (pool par sweep) avec progress live."""
     from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 
@@ -523,8 +521,8 @@ def _run_grid_parallel_basic(
     fast_metrics = total_runs >= fast_threshold
 
     monitor = ProgressMonitor(total_runs=total_runs)
-    best_params: Dict[str, Any] = {}
-    best_metrics: Dict[str, Any] = {}
+    best_params: dict[str, Any] = {}
+    best_metrics: dict[str, Any] = {}
     best_score = (float("-inf"), float("-inf"))
 
     completed = 0
@@ -532,7 +530,7 @@ def _run_grid_parallel_basic(
     last_render = time.perf_counter()
 
     max_inflight = max(1, min(total_runs, n_workers * 2))
-    pending: Dict[Any, Dict[str, Any]] = {}
+    pending: dict[Any, dict[str, Any]] = {}
 
     def submit_next(executor: ProcessPoolExecutor) -> bool:
         try:
@@ -590,8 +588,7 @@ def _run_grid_parallel_basic(
                         "win_rate": result.get("win_rate", 0.0),
                         "profit_factor": result.get("profit_factor", 0.0),
                     }
-                    score = (metrics.get("sharpe_ratio", float("-inf")),
-                             metrics.get("total_pnl", float("-inf")))
+                    score = (metrics.get("sharpe_ratio", float("-inf")), metrics.get("total_pnl", float("-inf")))
                     if score > best_score:
                         best_score = score
                         best_params = param_combo
@@ -608,7 +605,7 @@ def _run_grid_parallel_basic(
                         stats_placeholder.caption(
                             f"⚡ {completed}/{total_runs} | "
                             f"Sharpe {best_metrics.get('sharpe_ratio', 0):.2f} | "
-                            f"PnL ${best_metrics.get('total_pnl', 0):,.2f}"
+                            f"PnL ${best_metrics.get('total_pnl', 0):,.2f}",
                         )
                     last_render = now
 
@@ -626,7 +623,7 @@ def _inject_main_action_bar_styles() -> None:
     st.markdown(MAIN_ACTION_BAR_CSS, unsafe_allow_html=True)
 
 
-def _extract_topology_hosts(topology: Any) -> List[str]:
+def _extract_topology_hosts(topology: Any) -> list[str]:
     if topology is None:
         return []
 
@@ -636,7 +633,7 @@ def _extract_topology_hosts(topology: Any) -> List[str]:
     if not isinstance(endpoints, dict):
         return []
 
-    hosts: List[str] = []
+    hosts: list[str] = []
     for endpoint in endpoints.values():
         if isinstance(endpoint, dict):
             host = str(endpoint.get("ollama_host", "") or "").strip()
@@ -647,7 +644,7 @@ def _extract_topology_hosts(topology: Any) -> List[str]:
     return hosts
 
 
-def _collect_runtime_cleanup_hosts(state: SidebarState) -> List[str]:
+def _collect_runtime_cleanup_hosts(state: SidebarState) -> list[str]:
     candidates = [
         str(getattr(state, "builder_ollama_host", "") or "").strip(),
         str(st.session_state.get("exec_llm_ollama_host", "") or "").strip(),
@@ -656,10 +653,10 @@ def _collect_runtime_cleanup_hosts(state: SidebarState) -> List[str]:
     if llm_config is not None:
         candidates.append(str(getattr(llm_config, "ollama_host", "") or "").strip())
     candidates.extend(
-        _extract_topology_hosts(getattr(state, "llm_topology_config", None))
+        _extract_topology_hosts(getattr(state, "llm_topology_config", None)),
     )
 
-    ordered: List[str] = []
+    ordered: list[str] = []
     seen: set[str] = set()
     for host in candidates:
         normalized = host.rstrip("/")
@@ -693,18 +690,15 @@ def _execute_clean_stop(state: SidebarState) -> None:
         ),
     )
 
-    if (
-        state.optimization_mode == BUILDER_OPTIMIZATION_MODE
-        or bool(st.session_state.get("builder_autonomous", False))
-    ):
+    if state.optimization_mode == BUILDER_OPTIMIZATION_MODE or bool(st.session_state.get("builder_autonomous", False)):
         try:
             mark_builder_autonomous_runtime_stopped(
                 reason="manual_stop",
                 manual_stop=True,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             cleanup_stats.setdefault("errors", []).append(
-                f"builder_runtime_stop: {exc}"
+                f"builder_runtime_stop: {exc}",
             )
 
     _reset_builder_runtime_state()
@@ -713,27 +707,17 @@ def _execute_clean_stop(state: SidebarState) -> None:
     cleaned_components = len(cleanup_stats.get("components_cleaned", []))
     error_count = len(cleanup_stats.get("errors", []))
     unloaded_by_host = [
-        f"{host}: {count}"
-        for host, count in dict(cleanup_stats.get("ollama_unloaded", {}) or {}).items()
+        f"{host}: {count}" for host, count in dict(cleanup_stats.get("ollama_unloaded", {}) or {}).items()
     ]
     hard_stopped_hosts = [
-        f"{host}: {count}"
-        for host, count in dict(cleanup_stats.get("ollama_stopped", {}) or {}).items()
+        f"{host}: {count}" for host, count in dict(cleanup_stats.get("ollama_stopped", {}) or {}).items()
     ]
     remaining_hosts = [
         f"{host}: {', '.join(models[:3])}"
         for host, models in dict(cleanup_stats.get("ollama_remaining", {}) or {}).items()
     ]
-    host_summary = (
-        " | ".join(unloaded_by_host)
-        if unloaded_by_host
-        else "aucun endpoint Ollama actif détecté"
-    )
-    hard_stop_summary = (
-        " | ".join(hard_stopped_hosts)
-        if hard_stopped_hosts
-        else "aucun daemon Ollama local à couper"
-    )
+    host_summary = " | ".join(unloaded_by_host) if unloaded_by_host else "aucun endpoint Ollama actif détecté"
+    hard_stop_summary = " | ".join(hard_stopped_hosts) if hard_stopped_hosts else "aucun daemon Ollama local à couper"
     st.session_state["main_action_feedback"] = {
         "tone": "success" if error_count == 0 else "warning",
         "message": (
@@ -745,28 +729,19 @@ def _execute_clean_stop(state: SidebarState) -> None:
             f"erreurs: {error_count} | "
             f"déchargement Ollama: {host_summary} | "
             f"arrêt dur: {hard_stop_summary}"
-            + (
-                f" | modèles restants: {' | '.join(remaining_hosts)}"
-                if remaining_hosts
-                else ""
-            )
+            + (f" | modèles restants: {' | '.join(remaining_hosts)}" if remaining_hosts else "")
         ),
     }
 
 
 def _process_load_request(state: SidebarState) -> None:
-    is_builder_autonomous = (
-        state.optimization_mode == BUILDER_OPTIMIZATION_MODE
-        and bool(state.builder_autonomous)
-    )
+    is_builder_autonomous = state.optimization_mode == BUILDER_OPTIMIZATION_MODE and bool(state.builder_autonomous)
     if is_builder_autonomous and (not state.symbol or not state.timeframe):
         st.session_state["ohlcv_df"] = None
-        st.session_state["ohlcv_status_msg"] = (
-            "Mode autonome actif: aucune présélection requise."
-        )
+        st.session_state["ohlcv_status_msg"] = "Mode autonome actif: aucune présélection requise."
         st.info(
             "Mode autonome actif: aucun token/timeframe n'est requis. "
-            "Le Builder choisira un marché valide au lancement."
+            "Le Builder choisira un marché valide au lancement.",
         )
         return
 
@@ -782,7 +757,7 @@ def _process_load_request(state: SidebarState) -> None:
             st.session_state["ohlcv_status_msg"] = f"Présélection ignorée: {msg}"
             st.warning(
                 f"Présélection {state.symbol or '—'} {state.timeframe or '—'} rejetée: {msg}. "
-                "Le Builder autonome choisira un autre marché valide au lancement."
+                "Le Builder autonome choisira un autre marché valide au lancement.",
             )
         else:
             st.error(f"Erreur chargement: {msg}")
@@ -802,7 +777,7 @@ def _queue_main_run_action(fallback_optimization_mode: str = "") -> None:
         apply_pending_sidebar_config()
 
     optimization_mode = str(
-        st.session_state.get("optimization_mode", fallback_optimization_mode) or ""
+        st.session_state.get("optimization_mode", fallback_optimization_mode) or "",
     )
     arm_ui_run_request(
         st.session_state,
@@ -835,14 +810,14 @@ def render_primary_action_bar(state: SidebarState) -> None:
     pending = bool(st.session_state.get("config_pending_changes", False))
     is_running = bool(st.session_state.get("is_running", False))
     run_label = get_run_label_for_mode(
-        str(st.session_state.get("optimization_mode", state.optimization_mode))
+        str(st.session_state.get("optimization_mode", state.optimization_mode)),
     )
 
     st.markdown('<div class="bc-main-actions-anchor"></div>', unsafe_allow_html=True)
     st.markdown("### Actions d'exécution")
     if pending:
         st.caption(
-            "⚠️ Modifications non appliquées: elles seront appliquées au prochain chargement ou lancement."
+            "⚠️ Modifications non appliquées: elles seront appliquées au prochain chargement ou lancement.",
         )
     else:
         st.caption("Configuration prête pour chargement, lancement ou arrêt propre.")
@@ -898,7 +873,7 @@ def render_controls() -> tuple[bool, Any]:
         """
 Interface avec validation des paramètres et feedback utilisateur.
 Le système de granularité limite le nombre de valeurs testables.
-"""
+""",
     )
 
     ensure_ui_execution_state_defaults(st.session_state)
@@ -911,6 +886,8 @@ Le système de granularité limite le nombre de valeurs testables.
 
 
 def render_setup_previews(state: SidebarState) -> None:
+    if state.optimization_mode == BUILDER_OPTIMIZATION_MODE:
+        return
     st.markdown("---")
     st.subheader("Schema indicateurs & parametres")
     if state.strategy_instance is None:
@@ -1013,7 +990,7 @@ def _abort_main_run(
 def _finalize_run_result(
     result: Any,
     df: Any,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     origin: str,
     *,
     attach_wfa: Any,
@@ -1064,15 +1041,14 @@ def _run_grid_search_mode(
     # Alias closures to their original names used throughout the body
     _resolve_workers = resolve_workers
     _resolve_threads = resolve_threads
-    _format_combo_limit = format_combo_limit
     _attach_wfa_metrics = attach_wfa_metrics
 
     n_workers_effective = _resolve_workers(n_workers)
     # Lire threads depuis UI ou fallback env
     try:
-        worker_thread_limit = int(st.session_state.get(
-            "grid_worker_threads",
-            int(os.environ.get("BACKTEST_WORKER_THREADS", "1"))))
+        worker_thread_limit = int(
+            st.session_state.get("grid_worker_threads", int(os.environ.get("BACKTEST_WORKER_THREADS", "1"))),
+        )
     except (TypeError, ValueError):
         worker_thread_limit = 1
     worker_thread_limit = _resolve_threads(worker_thread_limit)
@@ -1081,7 +1057,7 @@ def _run_grid_search_mode(
     with st.spinner("📊 Génération de la grille..."):
         try:
             param_names = list(param_ranges.keys())
-            param_values_lists: List[List[Any]] = []
+            param_values_lists: list[list[Any]] = []
 
             if param_names:
                 for pname in param_names:
@@ -1092,17 +1068,16 @@ def _run_grid_search_mode(
                         pmin, pmax, step = r["min"], r["max"], r["step"]
 
                         if isinstance(pmin, int) and isinstance(step, int):
-                            built: List[Any] = list(range(int(pmin), int(pmax) + 1, int(step)))
+                            built: list[Any] = list(range(int(pmin), int(pmax) + 1, int(step)))
                         else:
                             _arr = np.arange(float(pmin), float(pmax) + float(step) / 2, float(step))  # type: ignore[arg-type]
                             built = [round(float(v), 2) for v in _arr if v <= pmax]
 
-                        values_for_param: List[Any] = built
+                        values_for_param: list[Any] = built
+                    elif isinstance(_raw_values, (list, tuple)):
+                        values_for_param = list(_raw_values)
                     else:
-                        if isinstance(_raw_values, (list, tuple)):
-                            values_for_param = list(_raw_values)
-                        else:
-                            values_for_param = [_raw_values]
+                        values_for_param = [_raw_values]
 
                     if not values_for_param:
                         values_for_param = [pmin]
@@ -1110,12 +1085,10 @@ def _run_grid_search_mode(
                     param_values_lists.append(values_for_param)
 
                 total_combinations = max(
-                    1, math.prod(len(values) for values in param_values_lists)
+                    1,
+                    math.prod(len(values) for values in param_values_lists),
                 )
-                combo_iter = (
-                    {**params, **dict(zip(param_names, combo))}
-                    for combo in product(*param_values_lists)
-                )
+                combo_iter = ({**params, **dict(zip(param_names, combo))} for combo in product(*param_values_lists))
             else:
                 total_combinations = 1
                 combo_iter = iter([params.copy()])  # type: ignore[assignment]
@@ -1128,7 +1101,10 @@ def _run_grid_search_mode(
                     f"Grille: {total_runs:,} / {total_combinations:,} combinaisons ({n_workers_effective} workers × {worker_thread_limit} threads)",
                 )
             else:
-                show_status("info", f"Grille: {total_runs:,} combinaisons ({n_workers_effective} workers × {worker_thread_limit} threads)")
+                show_status(
+                    "info",
+                    f"Grille: {total_runs:,} combinaisons ({n_workers_effective} workers × {worker_thread_limit} threads)",
+                )
 
         except Exception as exc:
             _abort_main_run(status_container, f"Échec génération grille: {exc}")
@@ -1156,7 +1132,7 @@ def _run_grid_search_mode(
     sweep_placeholder = st.empty()
 
     logger = logging.getLogger(__name__)
-    error_counts: Dict[str, int] = {}
+    error_counts: dict[str, int] = {}
     error_logged: set[str] = set()
     try:
         error_log_limit = int(os.environ.get("BACKTEST_SWEEP_ERROR_LOG_LIMIT", "3"))
@@ -1166,15 +1142,13 @@ def _run_grid_search_mode(
     st.markdown("### 📊 Progression en temps réel")
     render_progress_monitor(monitor, monitor_placeholder)
 
-    def _normalize_param_combo(param_combo: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            k: float(v) if hasattr(v, "item") else v for k, v in param_combo.items()
-        }
+    def _normalize_param_combo(param_combo: dict[str, Any]) -> dict[str, Any]:
+        return {k: float(v) if hasattr(v, "item") else v for k, v in param_combo.items()}
 
-    def _params_to_str(param_combo: Dict[str, Any]) -> str:
+    def _params_to_str(param_combo: dict[str, Any]) -> str:
         return str(_normalize_param_combo(param_combo))
 
-    def run_single_backtest(param_combo: Dict[str, Any]):
+    def run_single_backtest(param_combo: dict[str, Any]):
         try:
             # ✅ CRITIQUE: Utiliser fast_metrics pour sweeps séquentiels aussi
             result_i, msg_i = safe_run_backtest(
@@ -1223,8 +1197,8 @@ def _run_grid_search_mode(
             }
 
     def record_sweep_result(
-        result: Dict[str, Any],
-        fallback_params: Dict[str, Any],
+        result: dict[str, Any],
+        fallback_params: dict[str, Any],
     ) -> str:
         param_combo_result = result.get("params_dict") or fallback_params
         params_str = result.get("params") or _params_to_str(param_combo_result)
@@ -1236,7 +1210,9 @@ def _run_grid_search_mode(
                 "sharpe_ratio": result.get("sharpe", 0.0),
                 "total_pnl": result.get("total_pnl", 0.0),
                 "theoretical_pnl": result.get("theoretical_pnl", 0.0),
-                "total_return_pct": result.get("total_pnl", 0.0) / state.initial_capital * 100 if state.initial_capital else 0.0,
+                "total_return_pct": result.get("total_pnl", 0.0) / state.initial_capital * 100
+                if state.initial_capital
+                else 0.0,
                 "max_drawdown": abs(result.get("max_dd", 0.0)),
                 "win_rate": result.get("win_rate", 0.0),
                 "total_trades": result.get("trades", 0),
@@ -1263,6 +1239,7 @@ def _run_grid_search_mode(
     last_render_time = time.perf_counter()
     start_time = time.perf_counter()
     from utils.sweep_diagnostics import SweepDiagnostics
+
     diag = SweepDiagnostics(run_id=f"grid_{strategy_key}")
 
     def run_sequential_combos(combo_source, key_prefix: str) -> None:
@@ -1293,11 +1270,15 @@ def _run_grid_search_mode(
 
                     # Barre de progression simple (pas d'HTML custom lourd)
                     st.progress(progress_pct / 100.0)
-                    st.text(f"⚡ {completed:,}/{total_runs:,} runs ({progress_pct:.1f}%) | {rate:.1f} bt/s | ETA: {int(remaining//60)}m{int(remaining % 60)}s")
+                    st.text(
+                        f"⚡ {completed:,}/{total_runs:,} runs ({progress_pct:.1f}%) | {rate:.1f} bt/s | ETA: {int(remaining // 60)}m{int(remaining % 60)}s",
+                    )
 
                     # Afficher uniquement le meilleur PnL (pas de graphiques ni tableaux)
-                    if hasattr(sweep_monitor, '_results') and sweep_monitor._results:
-                        best_result = max(sweep_monitor._results, key=lambda r: r.metrics.get("total_pnl", float("-inf")))
+                    if hasattr(sweep_monitor, "_results") and sweep_monitor._results:
+                        best_result = max(
+                            sweep_monitor._results, key=lambda r: r.metrics.get("total_pnl", float("-inf")),
+                        )
                         best_pnl = best_result.metrics.get("total_pnl", 0)
                         pnl_color = "green" if best_pnl > 0 else "red"
                         st.markdown(f"💰 **Meilleur PnL**: :{pnl_color}[**${best_pnl:+,.2f}**]")
@@ -1331,7 +1312,7 @@ def _run_grid_search_mode(
         # Après: n_workers × 8 = 192 tâches pour 24 workers (workers toujours alimentés)
         max_inflight = max(1, min(total_runs, n_workers_effective * 8))
         pending = {}
-        failed_pending: List[Any] = []
+        failed_pending: list[Any] = []
         pool_failed = False
         pool_fail_reason = None
         pool_error: Exception | None = None
@@ -1357,7 +1338,7 @@ def _run_grid_search_mode(
                 debug_enabled,
                 worker_thread_limit,
                 fast_metrics,  # ✅ CRITIQUE: Activer métriques rapides pour sweeps
-                False,         # is_path (DataFrame fourni directement, pas un chemin)
+                False,  # is_path (DataFrame fourni directement, pas un chemin)
             ),
         )
 
@@ -1392,8 +1373,7 @@ def _run_grid_search_mode(
                         stalled = (now - pool_start_time) >= stall_threshold_sec
                     else:
                         avg_duration = (
-                            sum(recent_durations_sec) / len(recent_durations_sec)
-                            if recent_durations_sec else 0.0
+                            sum(recent_durations_sec) / len(recent_durations_sec) if recent_durations_sec else 0.0
                         )
                         stall_threshold_sec = max(
                             stall_timeout_sec,
@@ -1405,7 +1385,7 @@ def _run_grid_search_mode(
                         pool_failed = True
                         pool_fail_reason = "stall"
                         pool_error = TimeoutError(
-                            f"Aucune completion depuis {stall_threshold_sec:.0f}s"
+                            f"Aucune completion depuis {stall_threshold_sec:.0f}s",
                         )
                         diag.log_stall(stall_threshold_sec, len(pending))
                         logger.error(
@@ -1440,7 +1420,7 @@ def _run_grid_search_mode(
                                     pool_fail_reason = "pickle"
                                     pool_error = RuntimeError(
                                         "Erreur de pickling détectée - Streamlit a rechargé le module. "
-                                        "Relancez le sweep après le rechargement."
+                                        "Relancez le sweep après le rechargement.",
                                     )
                                     logger.error(
                                         "Erreur de pickling répétée (%d fois), arrêt du sweep.",
@@ -1484,7 +1464,7 @@ def _run_grid_search_mode(
                                 pool_failed = True
                                 pool_fail_reason = "pickle"
                                 pool_error = RuntimeError(
-                                    "Erreur de pickling - le module a été rechargé pendant le sweep."
+                                    "Erreur de pickling - le module a été rechargé pendant le sweep.",
                                 )
                                 failed_pending.append(param_combo)
                                 should_record = False
@@ -1522,11 +1502,15 @@ def _run_grid_search_mode(
 
                             # Barre de progression simple (pas d'HTML custom lourd)
                             st.progress(progress_pct / 100.0)
-                            st.text(f"⚡ {completed:,}/{total_runs:,} runs ({progress_pct:.1f}%) | {rate:.1f} bt/s | ETA: {int(remaining//60)}m{int(remaining % 60)}s")
+                            st.text(
+                                f"⚡ {completed:,}/{total_runs:,} runs ({progress_pct:.1f}%) | {rate:.1f} bt/s | ETA: {int(remaining // 60)}m{int(remaining % 60)}s",
+                            )
 
                             # Afficher uniquement le meilleur PnL (pas de graphiques ni tableaux)
-                            if hasattr(sweep_monitor, '_results') and sweep_monitor._results:
-                                best_result = max(sweep_monitor._results, key=lambda r: r.metrics.get("total_pnl", float("-inf")))
+                            if hasattr(sweep_monitor, "_results") and sweep_monitor._results:
+                                best_result = max(
+                                    sweep_monitor._results, key=lambda r: r.metrics.get("total_pnl", float("-inf")),
+                                )
                                 best_pnl = best_result.metrics.get("total_pnl", 0)
                                 pnl_color = "green" if best_pnl > 0 else "red"
                                 st.markdown(f"💰 **Meilleur PnL**: :{pnl_color}[**${best_pnl:+,.2f}**]")
@@ -1620,9 +1604,7 @@ def _run_grid_search_mode(
         )
 
         trades_values = results_df["trades"].values
-        fractional = [
-            x for x in trades_values if isinstance(x, float) and not x.is_integer()
-        ]
+        fractional = [x for x in trades_values if isinstance(x, float) and not x.is_integer()]
         if fractional:
             logger.warning(
                 "   ⚠️  %s valeurs fractionnaires détectées: %s",
@@ -1638,17 +1620,15 @@ def _run_grid_search_mode(
         total_errors = sum(error_counts.values())
         with st.expander("❌ Erreurs (extraits)", expanded=True):
             st.caption(
-                f"{total_errors} erreurs detectees. "
-                "Consultez le terminal pour les premiers messages."
+                f"{total_errors} erreurs detectees. Consultez le terminal pour les premiers messages.",
             )
             error_items = sorted(
-                error_counts.items(), key=lambda item: item[1], reverse=True
+                error_counts.items(),
+                key=lambda item: item[1],
+                reverse=True,
             )
             error_df = pd.DataFrame(
-                [
-                    {"error": msg, "count": count}
-                    for msg, count in error_items[:10]
-                ]
+                [{"error": msg, "count": count} for msg, count in error_items[:10]],
             )
             st.dataframe(error_df, use_container_width=True)
 
@@ -1673,7 +1653,7 @@ def _run_grid_search_mode(
                 st.text(f"  Min: {valid_results['trades'].min()}")
                 st.text(f"  Max: {valid_results['trades'].max()}")
                 st.text(
-                    f"  Mean: {valid_results['trades'].mean():.2f}"
+                    f"  Mean: {valid_results['trades'].mean():.2f}",
                 )
 
         st.dataframe(valid_results.head(10), use_container_width=True)
@@ -1694,36 +1674,32 @@ def _run_grid_search_mode(
         if result is not None:
             _finalize_run_result(result, df, best_params, "grid", attach_wfa=_attach_wfa_metrics)
     else:
+
         def _grid_diagnostic():
             st.markdown("### 🔍 Diagnostic")
             st.warning(
-                f"Sur {len(results_list)} combinaisons évaluées, "
-                f"toutes ont échoué."
+                f"Sur {len(results_list)} combinaisons évaluées, toutes ont échoué.",
             )
             if error_items:
                 top_error, top_count = error_items[0]
                 st.error(
-                    f"**Erreur principale** ({top_count} occurrences sur {sum(error_counts.values())} erreurs):"
+                    f"**Erreur principale** ({top_count} occurrences sur {sum(error_counts.values())} erreurs):",
                 )
                 st.code(top_error, language="text")
             elif results_list:
-                errors_in_results = [
-                    r.get("error") for r in results_list if r.get("error")
-                ]
+                errors_in_results = [r.get("error") for r in results_list if r.get("error")]
                 if errors_in_results:
                     st.error("**Première erreur détectée:**")
                     st.code(errors_in_results[0], language="text")
                     if len(errors_in_results) > 1:
-                        st.caption(f"+ {len(errors_in_results)-1} autres erreurs similaires")
+                        st.caption(f"+ {len(errors_in_results) - 1} autres erreurs similaires")
                 else:
                     st.info(
                         "Aucune erreur explicite, mais les résultats sont invalides. "
-                        "Vérifiez que les données OHLCV sont chargées et valides."
+                        "Vérifiez que les données OHLCV sont chargées et valides.",
                     )
 
         _abort_main_run(status_container, "Aucun résultat valide", extra=_grid_diagnostic)
-
-
 
 
 def _run_llm_optimization_mode(
@@ -1769,13 +1745,15 @@ def _run_llm_optimization_mode(
 
     if not LLM_AVAILABLE:
         _abort_main_run(
-            status_container, "Module agents LLM non disponible",
+            status_container,
+            "Module agents LLM non disponible",
             extra=lambda: st.code(LLM_IMPORT_ERROR),
         )
 
     if llm_config is None:
         _abort_main_run(
-            status_container, "Configuration LLM incomplète",
+            status_container,
+            "Configuration LLM incomplète",
             extra=lambda: st.info("Configurez le provider LLM dans la sidebar"),
         )
 
@@ -1806,7 +1784,7 @@ def _run_llm_optimization_mode(
 
     max_iterations = min(llm_max_iterations, max_combos)
 
-    comparison_summary: List[Dict[str, Any]] = []
+    comparison_summary: list[dict[str, Any]] = []
     should_run_comparison = llm_compare_enabled and (
         llm_compare_auto_run or st.session_state.get("llm_compare_run_now", False)
     )
@@ -1820,9 +1798,9 @@ def _run_llm_optimization_mode(
             start_str = str(state.start_date) if state.start_date else None
             end_str = str(state.end_date) if state.end_date else None
             progress_bar = st.progress(0)
-            comparison_results: List[Dict[str, Any]] = []
-            comparison_errors: List[str] = []
-            data_cache: Dict[tuple[str, str], pd.DataFrame] = {}
+            comparison_results: list[dict[str, Any]] = []
+            comparison_errors: list[str] = []
+            data_cache: dict[tuple[str, str], pd.DataFrame] = {}
 
             for token in llm_compare_tokens:
                 for tf in llm_compare_timeframes:
@@ -1864,7 +1842,7 @@ def _run_llm_optimization_mode(
                         )
                         if result_cmp is None:
                             comparison_errors.append(
-                                f"{strategy_name_cmp} {token}/{tf}: {status}"
+                                f"{strategy_name_cmp} {token}/{tf}: {status}",
                             )
                         else:
                             comparison_results.append(
@@ -1874,7 +1852,7 @@ def _run_llm_optimization_mode(
                                     "timeframe": tf,
                                     "metrics": result_cmp.metrics,
                                     "trades": len(result_cmp.trades),
-                                }
+                                },
                             )
                         run_index += 1
                         if total_runs > 0:
@@ -1884,9 +1862,7 @@ def _run_llm_optimization_mode(
 
             if comparison_errors:
                 st.warning(
-                    "Comparaison: "
-                    + "; ".join(comparison_errors[:8])
-                    + (" ..." if len(comparison_errors) > 8 else "")
+                    "Comparaison: " + "; ".join(comparison_errors[:8]) + (" ..." if len(comparison_errors) > 8 else ""),
                 )
 
             if comparison_results:
@@ -1897,7 +1873,7 @@ def _run_llm_optimization_mode(
                     expected_runs=len(valid_pairs),
                 )
                 st.caption(
-                    f"Runs effectues: {len(comparison_results)} / {total_runs}"
+                    f"Runs effectues: {len(comparison_results)} / {total_runs}",
                 )
                 st.dataframe(pd.DataFrame(comparison_summary), use_container_width=True)
 
@@ -1907,9 +1883,9 @@ def _run_llm_optimization_mode(
                         {
                             "name": row["strategy"],
                             "metrics": {
-                                llm_compare_metric: row.get(llm_compare_metric)
+                                llm_compare_metric: row.get(llm_compare_metric),
                             },
-                        }
+                        },
                     )
                 render_comparison_chart(
                     chart_rows,
@@ -1925,7 +1901,7 @@ def _run_llm_optimization_mode(
                             st.warning("LLM indisponible pour la justification.")
                         else:
                             summary_lines = [
-                                "strategy | runs | sharpe | return_pct | max_drawdown | win_rate"
+                                "strategy | runs | sharpe | return_pct | max_drawdown | win_rate",
                             ]
                             for row in comparison_summary:
                                 summary_lines.append(
@@ -1934,7 +1910,7 @@ def _run_llm_optimization_mode(
                                     f"{row.get('sharpe_ratio', float('nan')):.2f} | "
                                     f"{row.get('total_return_pct', float('nan')):.2f} | "
                                     f"{row.get('max_drawdown', float('nan')):.2f} | "
-                                    f"{row.get('win_rate', float('nan')):.1f}"
+                                    f"{row.get('win_rate', float('nan')):.1f}",
                                 )
 
                             system_prompt = (
@@ -1977,8 +1953,8 @@ def _run_llm_optimization_mode(
     **Stratégie:** `{strategy_key}`
     **Paramètres initiaux:** `{params}`
     **Max itérations:** {llm_max_iterations}
-    **Walk-Forward:** {'✅' if llm_use_walk_forward else '❌'}
-    """
+    **Walk-Forward:** {"✅" if llm_use_walk_forward else "❌"}
+    """,
         )
 
         st.markdown("**Bornes des paramètres:**")
@@ -1991,8 +1967,7 @@ def _run_llm_optimization_mode(
                 st.info("ℹ️ **Espace continu** : exploration adaptative par LLM")
             else:
                 st.caption(
-                    "📊 Espace discret estimé: "
-                    f"~{llm_space_stats.total_combinations:,} combinaisons"
+                    f"📊 Espace discret estimé: ~{llm_space_stats.total_combinations:,} combinaisons",
                 )
                 st.caption("_(Le LLM explore de façon intelligente sans énumérer)_")
 
@@ -2003,11 +1978,7 @@ def _run_llm_optimization_mode(
     orchestrator = None
 
     run_tracker = get_global_tracker()
-    data_identifier = (
-        f"df_{len(df)}rows_{df.index[0]}_{df.index[-1]}"
-        if len(df) > 0
-        else "empty_df"
-    )
+    data_identifier = f"df_{len(df)}rows_{df.index[0]}_{df.index[-1]}" if len(df) > 0 else "empty_df"
     run_signature = RunSignature(
         strategy_name=strategy_key,
         data_path=data_identifier,
@@ -2026,7 +1997,7 @@ def _run_llm_optimization_mode(
             if llm_use_multi_agent:
                 live_events_placeholder = st.empty()
                 live_viewer = LiveOrchestrationViewer(  # type: ignore[misc]
-                    container_key="live_orch_viewer_multi"
+                    container_key="live_orch_viewer_multi",
                 )
 
                 def on_orchestration_event(entry):
@@ -2078,7 +2049,7 @@ def _run_llm_optimization_mode(
         n_workers_effective = _resolve_workers(n_workers)
         st.caption(
             f"Limite: {_format_combo_limit(max_combos)} backtests max, "
-            f"{n_workers_effective} workers, {max_iterations} iterations max"
+            f"{n_workers_effective} workers, {max_iterations} iterations max",
         )
 
         if orchestrator is None:
@@ -2095,19 +2066,18 @@ def _run_llm_optimization_mode(
 
             if orchestrator_result.errors:
                 st.warning(
-                    f"Orchestration errors: {len(orchestrator_result.errors)}"
+                    f"Orchestration errors: {len(orchestrator_result.errors)}",
                 )
             if orchestrator_result.warnings:
                 st.warning(
-                    f"Orchestration warnings: {len(orchestrator_result.warnings)}"
+                    f"Orchestration warnings: {len(orchestrator_result.warnings)}",
                 )
 
             if orchestrator_result.success:
                 st.success("Optimisation multi-agents terminee")
             else:
                 st.warning(
-                    "Optimisation multi-agents terminee "
-                    f"(decision: {orchestrator_result.decision})"
+                    f"Optimisation multi-agents terminee (decision: {orchestrator_result.decision})",
                 )
 
             if orchestrator_result.final_params:
@@ -2162,10 +2132,10 @@ def _run_llm_optimization_mode(
         max_iterations = min(llm_max_iterations, max_combos)
 
         live_viewer = LiveOrchestrationViewer(  # type: ignore[misc]
-            container_key="live_orch_viewer"
+            container_key="live_orch_viewer",
         )
 
-        def on_orchestration_event(entry):  # noqa: F811  # pylint: disable=function-redefined
+        def on_orchestration_event(entry):  # pylint: disable=function-redefined
             live_viewer.add_event(entry)
             live_viewer.render(live_events_placeholder, show_header=True)
 
@@ -2175,14 +2145,14 @@ def _run_llm_optimization_mode(
         st.caption(
             "🔧 Limite: "
             f"{_format_combo_limit(max_combos)} backtests max, {n_workers_effective} workers, "
-            f"{max_iterations} itérations max"
+            f"{max_iterations} itérations max",
         )
 
         try:
             with live_status:
                 st.write("🤖 **Agent LLM actif** - Optimisation autonome")
                 st.write(
-                    f"📊 Stratégie: `{strategy_key}` | Modèle: `{llm_model}`"
+                    f"📊 Stratégie: `{strategy_key}` | Modèle: `{llm_model}`",
                 )
 
                 session = strategist.optimize(  # type: ignore[union-attr]
@@ -2195,16 +2165,13 @@ def _run_llm_optimization_mode(
                 )
 
                 live_status.update(
-                    label=(
-                        "✅ Optimisation terminée en "
-                        f"{session.current_iteration} itérations"
-                    ),
+                    label=(f"✅ Optimisation terminée en {session.current_iteration} itérations"),
                     state="complete",
                     expanded=False,
                 )
 
             st.success(
-                f"✅ Optimisation terminée en {session.current_iteration} itérations"
+                f"✅ Optimisation terminée en {session.current_iteration} itérations",
             )
 
             with st.expander("📝 Historique des itérations", expanded=True):
@@ -2212,9 +2179,9 @@ def _run_llm_optimization_mode(
                     icon = "🟢" if exp.sharpe_ratio > 0 else "🔴"
                     col_it1, col_it2, col_it3 = st.columns([2, 1, 1])
                     with col_it1:
-                        st.markdown(f"**Itération {i+1}** {icon}")
+                        st.markdown(f"**Itération {i + 1}** {icon}")
                         st.caption(
-                            f"Params: `{exp.request.parameters}`"
+                            f"Params: `{exp.request.parameters}`",
                         )
                     with col_it2:
                         st.metric("Sharpe", f"{exp.sharpe_ratio:.3f}")
@@ -2230,7 +2197,7 @@ def _run_llm_optimization_mode(
                 st.markdown("---")
 
                 tab_simple, tab_deep = st.tabs(
-                    ["📋 Logs d'orchestration", "🔍 Deep Trace (avancé)"]
+                    ["📋 Logs d'orchestration", "🔍 Deep Trace (avancé)"],
                 )
 
                 with tab_simple:
@@ -2242,11 +2209,11 @@ def _run_llm_optimization_mode(
                 with tab_deep:
                     if LLM_AVAILABLE:
                         render_deep_trace_viewer(  # type: ignore[misc]
-                            logger=orchestration_logger
+                            logger=orchestration_logger,
                         )
                     else:
                         st.warning(
-                            "Module LLM non disponible pour Deep Trace avancé"
+                            "Module LLM non disponible pour Deep Trace avancé",
                         )
 
             st.markdown("---")
@@ -2272,8 +2239,8 @@ def _run_llm_optimization_mode(
                     initial_sharpe = session.all_results[0].sharpe_ratio
                     best_sharpe = session.best_result.sharpe_ratio
                     improvement = (
-                        (best_sharpe - initial_sharpe) / abs(initial_sharpe) * 100
-                    ) if initial_sharpe != 0 else 0
+                        ((best_sharpe - initial_sharpe) / abs(initial_sharpe) * 100) if initial_sharpe != 0 else 0
+                    )
 
                     st.metric(
                         "Amélioration Sharpe",
@@ -2300,8 +2267,10 @@ def _run_llm_optimization_mode(
 
         except Exception as exc:
             _abort_main_run(
-                status_container, f"Erreur optimisation LLM: {exc}",
-                live_status=live_status, tb=True,
+                status_container,
+                f"Erreur optimisation LLM: {exc}",
+                live_status=live_status,
+                tb=True,
             )
 
 
@@ -2312,10 +2281,7 @@ def render_main(
 ) -> None:
     # Guard against stale lock states after an upstream interruption (sidebar/import errors).
     execution_phase = get_ui_execution_phase(st.session_state)
-    if (
-        execution_phase in {UI_EXECUTION_PHASE_LAUNCH_PENDING, UI_EXECUTION_PHASE_RUNNING}
-        and not run_button
-    ):
+    if execution_phase in {UI_EXECUTION_PHASE_LAUNCH_PENDING, UI_EXECUTION_PHASE_RUNNING} and not run_button:
         if not should_preserve_builder_launch(state, st.session_state):
             clear_execution_state(st.session_state)
 
@@ -2387,7 +2353,7 @@ def render_main(
         symbol_value: str,
         timeframe_value: str,
         show_ui: bool = True,
-    ) -> tuple[pd.DataFrame, Optional[Dict[str, Any]]]:
+    ) -> tuple[pd.DataFrame, dict[str, Any] | None]:
         filtered_df, stab_info = apply_auto_market_stabilization_filter(
             raw_df,
             enabled=auto_stabilization_enabled,
@@ -2402,7 +2368,7 @@ def render_main(
             if show_ui:
                 st.caption(
                     f"🛡️ Stabilisation {symbol_value}/{timeframe_value}: "
-                    f"-{stab_info.get('cut_bars', 0)} barres, départ {stab_info.get('start_ts', 'n/a')}"
+                    f"-{stab_info.get('cut_bars', 0)} barres, départ {stab_info.get('start_ts', 'n/a')}",
                 )
             return filtered_df, stab_info
         return raw_df, None
@@ -2410,8 +2376,8 @@ def render_main(
     def _attach_wfa_metrics(
         run_result: Any,
         run_df: pd.DataFrame,
-        run_params: Dict[str, Any],
-    ) -> tuple[Any, Optional[Any], str]:
+        run_params: dict[str, Any],
+    ) -> tuple[Any, Any | None, str]:
         if not state.use_walk_forward:
             return run_result, None, ""
         summary, message = safe_run_walk_forward(
@@ -2434,11 +2400,7 @@ def render_main(
         sharpe_component = max(0.0, min(1.0, (test_sharpe + 2.0) / 4.0))
         ratio_component = max(0.0, min(1.0, 1.0 - max(0.0, robust_ratio - 1.0) / 2.0))
         degradation_component = max(0.0, min(1.0, 1.0 - degradation / 100.0))
-        anti_overfit_score = (
-            0.4 * sharpe_component
-            + 0.35 * ratio_component
-            + 0.25 * degradation_component
-        )
+        anti_overfit_score = 0.4 * sharpe_component + 0.35 * ratio_component + 0.25 * degradation_component
 
         run_result.metrics["wfa_enabled"] = True
         run_result.metrics["wfa_is_robust"] = bool(summary.is_robust)
@@ -2453,12 +2415,16 @@ def render_main(
         run_result.meta["walk_forward"] = summary.to_dict()
 
         verdict = "✅ robuste" if summary.is_robust else "⚠️ overfitting probable"
-        return run_result, summary, (
-            f"WFA {verdict} | folds={summary.n_valid_folds} | "
-            f"test_sharpe={summary.avg_test_sharpe:.2f} | "
-            f"ratio={summary.avg_overfitting_ratio:.2f} | "
-            f"dégradation={summary.degradation_pct:.1f}% | "
-            f"anti_overfit={anti_overfit_score:.2f}"
+        return (
+            run_result,
+            summary,
+            (
+                f"WFA {verdict} | folds={summary.n_valid_folds} | "
+                f"test_sharpe={summary.avg_test_sharpe:.2f} | "
+                f"ratio={summary.avg_overfitting_ratio:.2f} | "
+                f"dégradation={summary.degradation_pct:.1f}% | "
+                f"anti_overfit={anti_overfit_score:.2f}"
+            ),
         )
 
     if not run_button and optimization_mode == BUILDER_OPTIMIZATION_MODE:
@@ -2470,9 +2436,7 @@ def render_main(
         resume_autonomous, _runtime_state = should_auto_resume_builder_autonomous(state)
         runtime_pid = int((_runtime_state or {}).get("pid") or 0)
         same_process_runtime_active = (
-            bool(st.session_state.get("is_running"))
-            and runtime_pid > 0
-            and runtime_pid == os.getpid()
+            bool(st.session_state.get("is_running")) and runtime_pid > 0 and runtime_pid == os.getpid()
         )
         if resume_autonomous and not same_process_runtime_active:
             if not bool(getattr(state, "builder_autonomous", False)):
@@ -2501,11 +2465,12 @@ def render_main(
 
             if not is_valid:
                 _abort_main_run(
-                    status_container, "Paramètres invalides",
+                    status_container,
+                    "Paramètres invalides",
                     extra=lambda: [st.error(f"  • {e}") for e in errors],
                 )
 
-        is_multi_sweep = (len(state.symbols) > 1 or len(state.timeframes) > 1)
+        is_multi_sweep = len(state.symbols) > 1 or len(state.timeframes) > 1
         if is_multi_sweep and optimization_mode in ("Backtest Simple", "Grille de Paramètres"):
             sweep_plan = _build_multi_sweep_plan(state.symbols, state.timeframes)
             total_sweeps = len(sweep_plan)
@@ -2516,12 +2481,12 @@ def render_main(
                 f"- {len(state.symbols)} token(s)\n"
                 f"- {len(state.timeframes)} timeframe(s)\n"
                 f"- {total_sweeps} sweep(s) au total\n\n"
-                "Exécution **un par un** pour éviter la saturation mémoire."
+                "Exécution **un par un** pour éviter la saturation mémoire.",
             )
 
             with st.expander("📋 Plan des sweeps", expanded=False):
                 plan_df = pd.DataFrame(
-                    [{"symbol": sym, "timeframe": tf} for sym, tf in sweep_plan]
+                    [{"symbol": sym, "timeframe": tf} for sym, tf in sweep_plan],
                 )
                 st.dataframe(plan_df, width="stretch")
 
@@ -2533,7 +2498,7 @@ def render_main(
                         st.session_state.get(
                             "grid_worker_threads",
                             int(os.environ.get("BACKTEST_WORKER_THREADS", "1")),
-                        )
+                        ),
                     )
                 except (TypeError, ValueError):
                     worker_thread_limit = 1
@@ -2545,7 +2510,7 @@ def render_main(
 
             overall_progress = st.progress(0.0)
             status_placeholder = st.empty()
-            sweep_results: List[Dict[str, Any]] = []
+            sweep_results: list[dict[str, Any]] = []
             logger = logging.getLogger(__name__)
 
             start_str = None
@@ -2560,18 +2525,20 @@ def render_main(
                     break
 
                 status_placeholder.info(
-                    f"⏳ Sweep {idx}/{total_sweeps}: {strategy_key} × {sym} × {tf}"
+                    f"⏳ Sweep {idx}/{total_sweeps}: {strategy_key} × {sym} × {tf}",
                 )
 
                 df, msg = safe_load_data(sym, tf, start=start_str, end=end_str)
                 if df is None:
-                    sweep_results.append({
-                        "strategy": strategy_key,
-                        "symbol": sym,
-                        "timeframe": tf,
-                        "status": "error",
-                        "error": msg,
-                    })
+                    sweep_results.append(
+                        {
+                            "strategy": strategy_key,
+                            "symbol": sym,
+                            "timeframe": tf,
+                            "status": "error",
+                            "error": msg,
+                        },
+                    )
                     overall_progress.progress(idx / total_sweeps)
                     continue
 
@@ -2596,22 +2563,26 @@ def render_main(
                     )
 
                     if result is None:
-                        sweep_results.append({
-                            "strategy": strategy_key,
-                            "symbol": sym,
-                            "timeframe": tf,
-                            "status": "error",
-                            "error": result_msg,
-                        })
+                        sweep_results.append(
+                            {
+                                "strategy": strategy_key,
+                                "symbol": sym,
+                                "timeframe": tf,
+                                "status": "error",
+                                "error": result_msg,
+                            },
+                        )
                     else:
-                        sweep_results.append({
-                            "strategy": strategy_key,
-                            "symbol": sym,
-                            "timeframe": tf,
-                            "status": "ok",
-                            "best_params": result.meta.get("params", params),
-                            "metrics": result.metrics or {},
-                        })
+                        sweep_results.append(
+                            {
+                                "strategy": strategy_key,
+                                "symbol": sym,
+                                "timeframe": tf,
+                                "status": "ok",
+                                "best_params": result.meta.get("params", params),
+                                "metrics": result.metrics or {},
+                            },
+                        )
                         _maybe_auto_save_run(result)
                 else:
                     progress_placeholder = st.empty()
@@ -2648,17 +2619,19 @@ def render_main(
                     progress_placeholder.empty()
                     stats_placeholder.empty()
 
-                    sweep_results.append({
-                        "strategy": strategy_key,
-                        "symbol": sym,
-                        "timeframe": tf,
-                        "status": "ok",
-                        "best_params": sweep_summary.get("best_params", {}),
-                        "metrics": sweep_summary.get("best_metrics", {}),
-                        "completed": sweep_summary.get("completed", 0),
-                        "failed": sweep_summary.get("failed", 0),
-                        "total_runs": sweep_summary.get("total_runs", 0),
-                    })
+                    sweep_results.append(
+                        {
+                            "strategy": strategy_key,
+                            "symbol": sym,
+                            "timeframe": tf,
+                            "status": "ok",
+                            "best_params": sweep_summary.get("best_params", {}),
+                            "metrics": sweep_summary.get("best_metrics", {}),
+                            "completed": sweep_summary.get("completed", 0),
+                            "failed": sweep_summary.get("failed", 0),
+                            "total_runs": sweep_summary.get("total_runs", 0),
+                        },
+                    )
 
                 # Nettoyage mémoire entre sweeps
                 try:
@@ -2678,20 +2651,22 @@ def render_main(
                 summary_rows = []
                 for item in sweep_results:
                     metrics = item.get("metrics", {}) or {}
-                    summary_rows.append({
-                        "strategy": item.get("strategy"),
-                        "symbol": item.get("symbol"),
-                        "timeframe": item.get("timeframe"),
-                        "status": item.get("status"),
-                        "total_pnl": metrics.get("total_pnl", 0.0),
-                        "sharpe_ratio": metrics.get("sharpe_ratio", 0.0),
-                        "max_drawdown": metrics.get("max_drawdown_pct", metrics.get("max_drawdown", 0.0)),
-                        "win_rate": metrics.get("win_rate_pct", metrics.get("win_rate", 0.0)),
-                        "total_runs": item.get("total_runs"),
-                        "completed": item.get("completed"),
-                        "failed": item.get("failed"),
-                        "error": item.get("error"),
-                    })
+                    summary_rows.append(
+                        {
+                            "strategy": item.get("strategy"),
+                            "symbol": item.get("symbol"),
+                            "timeframe": item.get("timeframe"),
+                            "status": item.get("status"),
+                            "total_pnl": metrics.get("total_pnl", 0.0),
+                            "sharpe_ratio": metrics.get("sharpe_ratio", 0.0),
+                            "max_drawdown": metrics.get("max_drawdown_pct", metrics.get("max_drawdown", 0.0)),
+                            "win_rate": metrics.get("win_rate_pct", metrics.get("win_rate", 0.0)),
+                            "total_runs": item.get("total_runs"),
+                            "completed": item.get("completed"),
+                            "failed": item.get("failed"),
+                            "error": item.get("error"),
+                        },
+                    )
 
                 results_df = pd.DataFrame(summary_rows)
                 st.markdown("### ✅ Résumé Multi-Sweep")
@@ -2702,11 +2677,11 @@ def render_main(
                     best_row = ok_df.loc[ok_df["total_pnl"].idxmax()]
                     st.success(
                         f"🏆 Meilleur résultat: {best_row['symbol']} {best_row['timeframe']} "
-                        f"| PnL ${best_row['total_pnl']:,.2f} | Sharpe {best_row['sharpe_ratio']:.2f}"
+                        f"| PnL ${best_row['total_pnl']:,.2f} | Sharpe {best_row['sharpe_ratio']:.2f}",
                     )
 
                     tab_table, tab_heatmap, tab_rank = st.tabs(
-                        ["📊 Tableau", "🔥 Heatmap", "🏆 Classement"]
+                        ["📊 Tableau", "🔥 Heatmap", "🏆 Classement"],
                     )
                     with tab_table:
                         st.dataframe(ok_df, width="stretch")
@@ -2759,11 +2734,12 @@ def render_main(
                     data_dir_hint = None
                 _data_hint = data_dir_hint
                 _abort_main_run(
-                    status_container, f"Échec chargement: {data_msg}",
+                    status_container,
+                    f"Échec chargement: {data_msg}",
                     extra=lambda: st.info(
                         f"💡 Vérifiez les fichiers dans `{_data_hint}`"
                         if _data_hint
-                        else "💡 Vérifiez la configuration de vos chemins de données."
+                        else "💡 Vérifiez la configuration de vos chemins de données.",
                     ),
                 )
 
@@ -2805,19 +2781,28 @@ def render_main(
             with status_container:
                 show_status("success", f"Backtest terminé: {result_msg}")
             _finalize_run_result(
-                result, df, result.meta.get("params", params), "backtest",
-                attach_wfa=_attach_wfa_metrics, status_container=status_container,
+                result,
+                df,
+                result.meta.get("params", params),
+                "backtest",
+                attach_wfa=_attach_wfa_metrics,
+                status_container=status_container,
             )
 
         elif optimization_mode == "Grille de Paramètres":
             _run_grid_search_mode(
-                df=df, engine=engine, state=state,
+                df=df,
+                engine=engine,
+                state=state,
                 status_container=status_container,
-                strategy_key=strategy_key, params=params,
+                strategy_key=strategy_key,
+                params=params,
                 param_ranges=param_ranges,
-                symbol=symbol, timeframe=timeframe,
+                symbol=symbol,
+                timeframe=timeframe,
                 debug_enabled=debug_enabled,
-                n_workers=n_workers, max_combos=max_combos,
+                n_workers=n_workers,
+                max_combos=max_combos,
                 resolve_workers=_resolve_workers,
                 resolve_threads=_resolve_threads,
                 format_combo_limit=_format_combo_limit,
@@ -2826,13 +2811,19 @@ def render_main(
 
         elif optimization_mode == "🤖 Optimisation LLM":
             _run_llm_optimization_mode(
-                df=df, engine=engine, state=state,
+                df=df,
+                engine=engine,
+                state=state,
                 status_container=status_container,
-                strategy_key=strategy_key, params=params,
-                symbol=symbol, timeframe=timeframe,
+                strategy_key=strategy_key,
+                params=params,
+                symbol=symbol,
+                timeframe=timeframe,
                 debug_enabled=debug_enabled,
-                n_workers=n_workers, max_combos=max_combos,
-                llm_config=llm_config, llm_model=llm_model,
+                n_workers=n_workers,
+                max_combos=max_combos,
+                llm_config=llm_config,
+                llm_model=llm_model,
                 llm_max_iterations=llm_max_iterations,
                 llm_use_multi_agent=llm_use_multi_agent,
                 llm_use_walk_forward=llm_use_walk_forward,

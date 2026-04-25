@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.llm_client
+"""Module-ID: agents.llm_client
 
 Purpose: Client LLM unifié supportant Ollama (local) et OpenAI (cloud) avec abstraction commune.
 
@@ -21,19 +20,26 @@ Skip-if: Vous appelez juste le client via create_llm_client().
 """
 
 from __future__ import annotations
-# pylint: disable=broad-except
 
+# pylint: disable=broad-except
 import json
 import os
 import threading
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import httpx
 
+import agents.ollama_manager as ollama_manager_module
+from agents.ollama_runtime import (
+    get_ollama_cloud_runtime_model_candidates,
+    is_ollama_model_not_found_response,
+    resolve_ollama_request_context,
+)
 from backtest.errors import LLMUnavailableError
 from utils.observability import get_obs_logger
 
@@ -46,6 +52,7 @@ class StreamAbortRequest(Exception):
 
 class LLMProvider(Enum):
     """Fournisseurs LLM supportés."""
+
     OLLAMA = "ollama"
     OPENAI = "openai"
 
@@ -61,21 +68,21 @@ class LLMConfig:
     ollama_host: str = "http://127.0.0.1:11434"
 
     # OpenAI
-    openai_api_key: Optional[str] = None
+    openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
 
     # Paramètres de génération
     temperature: float = 0.7
     max_tokens: int = 2000
-    num_ctx: Optional[int] = None
+    num_ctx: int | None = None
     top_p: float = 0.9
 
     # Ollama keep_alive (ex: "20m", "0m" pour décharger immédiatement)
-    keep_alive: Optional[str] = None
+    keep_alive: str | None = None
 
     # Désactiver le mode "thinking" des modèles (gemma4, qwen3, etc.)
     # False = pas de <think> tags, None = laisser le modèle décider
-    think: Optional[bool] = False
+    think: bool | None = False
 
     # Retry/timeout
     # Note: 600s (10min) par défaut pour supporter les modèles de raisonnement
@@ -98,11 +105,7 @@ class LLMConfig:
             openai_base_url=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
             temperature=float(os.environ.get("BACKTEST_LLM_TEMPERATURE", "0.7")),
             max_tokens=int(os.environ.get("BACKTEST_LLM_MAX_TOKENS", "2000")),
-            num_ctx=(
-                int(os.environ["BACKTEST_LLM_NUM_CTX"])
-                if os.environ.get("BACKTEST_LLM_NUM_CTX")
-                else None
-            ),
+            num_ctx=(int(os.environ["BACKTEST_LLM_NUM_CTX"]) if os.environ.get("BACKTEST_LLM_NUM_CTX") else None),
         )
 
 
@@ -113,7 +116,7 @@ class LLMMessage:
     role: str  # "system", "user", "assistant"
     content: str
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> dict[str, str]:
         return {"role": self.role, "content": self.content}
 
 
@@ -132,9 +135,9 @@ class LLMResponse:
     latency_ms: float = 0.0
 
     # Parsing
-    raw_response: Dict[str, Any] = field(default_factory=dict)
-    parsed_json: Optional[Dict[str, Any]] = None
-    parse_error: Optional[str] = None
+    raw_response: dict[str, Any] = field(default_factory=dict)
+    parsed_json: dict[str, Any] | None = None
+    parse_error: str | None = None
 
     # Streaming abort (répétition détectée en cours de génération)
     aborted: bool = False
@@ -144,9 +147,8 @@ class LLMResponse:
         """Vérifie si la réponse est valide."""
         return bool(self.content) and self.parse_error is None
 
-    def parse_json(self) -> Optional[Dict[str, Any]]:
-        """
-        Tente de parser le contenu comme JSON.
+    def parse_json(self) -> dict[str, Any] | None:
+        """Tente de parser le contenu comme JSON.
 
         Gère les cas où le JSON est dans un bloc markdown ```json ... ```
         """
@@ -164,7 +166,8 @@ class LLMResponse:
 
         # Chercher un bloc JSON dans markdown
         import re
-        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
+
+        json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", content)
         if json_match:
             try:
                 self.parsed_json = json.loads(json_match.group(1))
@@ -173,7 +176,7 @@ class LLMResponse:
                 self.parse_error = f"JSON invalide dans bloc markdown: {e}"
 
         # Chercher un objet JSON dans le texte
-        json_match = re.search(r'\{[\s\S]*\}', content)
+        json_match = re.search(r"\{[\s\S]*\}", content)
         if json_match:
             try:
                 self.parsed_json = json.loads(json_match.group())
@@ -196,13 +199,12 @@ class LLMClient(ABC):
     @abstractmethod
     def chat(
         self,
-        messages: List[LLMMessage],
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        messages: list[LLMMessage],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """
-        Envoie une conversation au LLM.
+        """Envoie une conversation au LLM.
 
         Args:
             messages: Liste de messages
@@ -212,6 +214,7 @@ class LLMClient(ABC):
 
         Returns:
             Réponse du LLM
+
         """
 
     @abstractmethod
@@ -221,11 +224,10 @@ class LLMClient(ABC):
     def simple_chat(
         self,
         user_message: str,
-        system_prompt: Optional[str] = None,
+        system_prompt: str | None = None,
         **kwargs,
     ) -> LLMResponse:
-        """
-        Chat simplifié avec un seul message.
+        """Chat simplifié avec un seul message.
 
         Args:
             user_message: Message utilisateur
@@ -234,6 +236,7 @@ class LLMClient(ABC):
 
         Returns:
             Réponse du LLM
+
         """
         messages = []
         if system_prompt:
@@ -243,7 +246,7 @@ class LLMClient(ABC):
         return self.chat(messages, **kwargs)
 
     @property
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """Statistiques d'utilisation."""
         return {
             "total_tokens": self._total_tokens,
@@ -258,8 +261,7 @@ class LLMClient(ABC):
 
 
 def _is_reasoning_model(model_name: str) -> bool:
-    """
-    Détecte si un modèle est un modèle de raisonnement qui peut prendre plus de temps.
+    """Détecte si un modèle est un modèle de raisonnement qui peut prendre plus de temps.
 
     Les modèles de raisonnement comme deepseek-r1, qwq, o1, etc. peuvent prendre
     5-15 minutes pour raisonner sur des tâches complexes.
@@ -277,8 +279,7 @@ def _is_reasoning_model(model_name: str) -> bool:
 
 
 def _get_adaptive_timeout(config: LLMConfig) -> float:
-    """
-    Retourne un timeout adapté au type de modèle.
+    """Retourne un timeout adapté au type de modèle.
 
     - Modèles de raisonnement: 15 minutes (900s)
     - Modèles standards: timeout configuré
@@ -296,10 +297,34 @@ class OllamaClient(LLMClient):
         super().__init__(config)
         # Timeout adaptatif selon le type de modèle
         adaptive_timeout = _get_adaptive_timeout(config)
-        self._http_client = httpx.Client(timeout=adaptive_timeout)
+        self._request_ctx = resolve_ollama_request_context(
+            config.ollama_host,
+            model_name=config.model,
+        )
+        self._request_ollama_host = str(
+            self._request_ctx["effective_host"] or config.ollama_host,
+        ).rstrip("/")
+        self._request_model = str(
+            self._request_ctx["request_model"] or config.model,
+        ).strip() or config.model
+        self._request_model_candidates = [
+            candidate
+            for candidate in get_ollama_cloud_runtime_model_candidates(
+                config.model,
+                direct_cloud=bool(self._request_ctx.get("direct_cloud")),
+            )
+            if str(candidate or "").strip()
+        ]
+        if self._request_model not in self._request_model_candidates:
+            self._request_model_candidates.insert(0, self._request_model)
+        client_kwargs: dict[str, Any] = {"timeout": adaptive_timeout}
+        headers = dict(self._request_ctx.get("headers", {}) or {})
+        if headers:
+            client_kwargs["headers"] = headers
+        self._http_client = httpx.Client(**client_kwargs)
         self._adaptive_timeout = adaptive_timeout
         self._stream_lock = threading.Lock()
-        self._active_stream_response: Optional[httpx.Response] = None
+        self._active_stream_response: httpx.Response | None = None
         self._stream_abort_requested = False
 
     def _register_active_stream_response(self, response: httpx.Response) -> None:
@@ -334,9 +359,9 @@ class OllamaClient(LLMClient):
             pass
         return True
 
-    def _messages_to_prompt(self, messages: List[LLMMessage], json_mode: bool) -> str:
+    def _messages_to_prompt(self, messages: list[LLMMessage], json_mode: bool) -> str:
         """Convertit une conversation en prompt simple pour /api/generate."""
-        lines: List[str] = []
+        lines: list[str] = []
         for msg in messages:
             role = (msg.role or "user").strip().lower()
             if role == "system":
@@ -353,19 +378,35 @@ class OllamaClient(LLMClient):
         lines.append("Assistant:")
         return "\n".join(lines).strip()
 
+    def _request_model_sequence(self) -> list[str]:
+        sequence = [self._request_model]
+        sequence.extend(
+            candidate for candidate in self._request_model_candidates if candidate != self._request_model
+        )
+        return sequence
+
+    def _promote_request_model(self, model_name: str) -> None:
+        candidate = str(model_name or "").strip()
+        if not candidate:
+            return
+        self._request_model = candidate
+        self._request_model_candidates = [candidate] + [
+            item for item in self._request_model_candidates if item != candidate
+        ]
+
     def _chat_via_generate(
         self,
-        messages: List[LLMMessage],
-        temperature: Optional[float],
-        max_tokens: Optional[int],
+        messages: list[LLMMessage],
+        temperature: float | None,
+        max_tokens: int | None,
         json_mode: bool,
     ) -> LLMResponse:
         """Fallback Ollama via /api/generate quand /api/chat est indisponible."""
-        url = f"{self.config.ollama_host}/api/generate"
+        url = f"{self._request_ollama_host}/api/generate"
         prompt = self._messages_to_prompt(messages, json_mode)
 
         payload = {
-            "model": self.config.model,
+            "model": self._request_model,
             "prompt": prompt,
             "stream": False,
             "options": self._build_ollama_options(
@@ -374,8 +415,7 @@ class OllamaClient(LLMClient):
             ),
         }
 
-        if self.config.keep_alive is not None:
-            payload["keep_alive"] = self.config.keep_alive
+        self._inject_keep_alive(payload)
         if self.config.think is not None:
             payload["think"] = self.config.think
         if json_mode:
@@ -383,12 +423,26 @@ class OllamaClient(LLMClient):
 
         start_time = time.time()
         try:
-            response = self._http_client.post(
-                url,
-                json=payload,
-                timeout=self._adaptive_timeout,
-            )
-            response.raise_for_status()
+            response = None
+            for candidate_model in self._request_model_sequence():
+                payload["model"] = candidate_model
+                response = self._http_client.post(
+                    url,
+                    json=payload,
+                    timeout=self._adaptive_timeout,
+                )
+                body = str(getattr(response, "text", "") or "")
+                if is_ollama_model_not_found_response(response.status_code, body):
+                    continue
+                response.raise_for_status()
+                self._promote_request_model(candidate_model)
+                break
+            if response is None:
+                raise RuntimeError("generate fallback failed: no request candidate available")
+            if is_ollama_model_not_found_response(response.status_code, getattr(response, "text", "")):
+                raise RuntimeError(
+                    f"generate fallback failed: modèle introuvable pour {self.config.model}",
+                )
         except Exception as exc:
             logger.warning("Ollama /api/generate échoué: %s", exc)
             return LLMResponse(
@@ -432,36 +486,26 @@ class OllamaClient(LLMClient):
         except Exception:  # noqa: BLE001
             pass
 
+    def _inject_keep_alive(self, payload: dict) -> None:
+        """Injecte keep_alive dans le payload si configuré."""
+        if self.config.keep_alive is not None:
+            payload["keep_alive"] = self.config.keep_alive
+
     def is_available(self) -> bool:
         """Vérifie si Ollama est disponible."""
-        try:
-            response = self._http_client.get(
-                f"{self.config.ollama_host}/api/tags",
-                timeout=5.0,
-            )
-            return response.status_code == 200
-        except Exception as e:
-            logger.warning(f"Ollama non disponible: {e}")
-            return False
+        return ollama_manager_module.is_ollama_available(self._request_ollama_host)
 
-    def list_models(self) -> List[str]:
+    def list_models(self) -> list[str]:
         """Liste les modèles disponibles dans Ollama."""
-        try:
-            response = self._http_client.get(f"{self.config.ollama_host}/api/tags")
-            if response.status_code == 200:
-                data = response.json()
-                return [m["name"] for m in data.get("models", [])]
-        except Exception as e:
-            logger.error(f"Erreur liste modèles Ollama: {e}")
-        return []
+        return ollama_manager_module.list_ollama_models(self._request_ollama_host)
 
     def _build_ollama_options(
         self,
         *,
-        temperature: Optional[float],
-        max_tokens: Optional[int],
-    ) -> Dict[str, Any]:
-        options: Dict[str, Any] = {
+        temperature: float | None,
+        max_tokens: int | None,
+    ) -> dict[str, Any]:
+        options: dict[str, Any] = {
             "temperature": self.config.temperature if temperature is None else temperature,
             "num_predict": self.config.max_tokens if max_tokens is None else max_tokens,
             "top_p": self.config.top_p,
@@ -472,18 +516,17 @@ class OllamaClient(LLMClient):
 
     def chat(
         self,
-        messages: List[LLMMessage],
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        messages: list[LLMMessage],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         json_mode: bool = False,
     ) -> LLMResponse:
         """Envoie une conversation à Ollama."""
-
-        url = f"{self.config.ollama_host}/api/chat"
+        url = f"{self._request_ollama_host}/api/chat"
         use_generate_fallback = False
 
         payload = {
-            "model": self.config.model,
+            "model": self._request_model,
             "messages": [m.to_dict() for m in messages],
             "stream": False,
             "options": self._build_ollama_options(
@@ -492,8 +535,7 @@ class OllamaClient(LLMClient):
             ),
         }
 
-        if self.config.keep_alive is not None:
-            payload["keep_alive"] = self.config.keep_alive
+        self._inject_keep_alive(payload)
         if self.config.think is not None:
             payload["think"] = self.config.think
         if json_mode:
@@ -506,25 +548,36 @@ class OllamaClient(LLMClient):
                 # Log avec timeout adaptatif pour information
                 if attempt == 0:
                     logger.info(
-                        f"🤖 Interrogation {self.config.model} (timeout: {self._adaptive_timeout:.0f}s)..."
+                        f"🤖 Interrogation {self.config.model} (timeout: {self._adaptive_timeout:.0f}s)...",
                     )
 
                 if use_generate_fallback:
                     return self._chat_via_generate(messages, temperature, max_tokens, json_mode)
 
-                response = self._http_client.post(
-                    url,
-                    json=payload,
-                    timeout=self._adaptive_timeout,
-                )
-                if response.status_code == 404:
-                    logger.warning(
-                        "Ollama /api/chat introuvable (404). Fallback vers /api/generate."
+                response = None
+                for candidate_model in self._request_model_sequence():
+                    payload["model"] = candidate_model
+                    response = self._http_client.post(
+                        url,
+                        json=payload,
+                        timeout=self._adaptive_timeout,
                     )
-                    use_generate_fallback = True
-                    return self._chat_via_generate(messages, temperature, max_tokens, json_mode)
-
-                response.raise_for_status()
+                    body = str(getattr(response, "text", "") or "")
+                    if is_ollama_model_not_found_response(response.status_code, body):
+                        continue
+                    if response.status_code == 404:
+                        logger.warning(
+                            "Ollama /api/chat introuvable (404). Fallback vers /api/generate.",
+                        )
+                        use_generate_fallback = True
+                        return self._chat_via_generate(messages, temperature, max_tokens, json_mode)
+                    response.raise_for_status()
+                    self._promote_request_model(candidate_model)
+                    break
+                if response is None:
+                    raise RuntimeError("no Ollama request candidate available")
+                if is_ollama_model_not_found_response(response.status_code, getattr(response, "text", "")):
+                    raise RuntimeError(f"model request failed for {self.config.model}: no alias accepted")
 
                 data = response.json()
                 latency = (time.time() - start_time) * 1000
@@ -556,12 +609,10 @@ class OllamaClient(LLMClient):
             except httpx.TimeoutException:
                 elapsed = time.time() - start_time
                 logger.warning(
-                    f"⏱️ Timeout Ollama après {elapsed:.1f}s "
-                    f"(tentative {attempt + 1}/{self.config.max_retries})"
+                    f"⏱️ Timeout Ollama après {elapsed:.1f}s (tentative {attempt + 1}/{self.config.max_retries})",
                 )
                 logger.info(
-                    f"💡 Le modèle {self.config.model} peut prendre du temps pour raisonner. "
-                    f"Patience..."
+                    f"💡 Le modèle {self.config.model} peut prendre du temps pour raisonner. Patience...",
                 )
                 if attempt < self.config.max_retries - 1:
                     time.sleep(self.config.retry_delay_seconds * (attempt + 1))
@@ -580,11 +631,11 @@ class OllamaClient(LLMClient):
 
     def chat_stream(
         self,
-        messages: List[LLMMessage],
+        messages: list[LLMMessage],
         *,
-        on_chunk: Optional[Callable[[str], None]] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        on_chunk: Callable[[str], None] | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         json_mode: bool = False,
     ) -> LLMResponse:
         """Chat avec streaming token par token via l'API Ollama native.
@@ -602,9 +653,9 @@ class OllamaClient(LLMClient):
                 json_mode=json_mode,
             )
 
-        url = f"{self.config.ollama_host}/api/chat"
+        url = f"{self._request_ollama_host}/api/chat"
         payload = {
-            "model": self.config.model,
+            "model": self._request_model,
             "messages": [m.to_dict() for m in messages],
             "stream": True,
             "options": self._build_ollama_options(
@@ -612,62 +663,87 @@ class OllamaClient(LLMClient):
                 max_tokens=max_tokens,
             ),
         }
-        if self.config.keep_alive is not None:
-            payload["keep_alive"] = self.config.keep_alive
+        self._inject_keep_alive(payload)
         if self.config.think is not None:
             payload["think"] = self.config.think
         if json_mode:
             payload["format"] = "json"
 
         start_time = time.time()
-        full_content: List[str] = []
+        full_content: list[str] = []
         prompt_tokens = 0
         completion_tokens = 0
         _stream_aborted = False
 
         logger.info(
             "🤖 Interrogation streaming %s (timeout: %.0fs)...",
-            self.config.model, self._adaptive_timeout,
+            self.config.model,
+            self._adaptive_timeout,
         )
 
         try:
-            with self._http_client.stream(
-                "POST", url, json=payload, timeout=self._adaptive_timeout,
-            ) as response:
-                self._register_active_stream_response(response)
-                try:
-                    response.raise_for_status()
-                    for line in response.iter_lines():
-                        if self._is_stream_abort_requested():
-                            _stream_aborted = True
-                            break
-                        if not line:
-                            continue
-                        try:
-                            data = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
-                        chunk = data.get("message", {}).get("content", "")
-                        if chunk:
-                            full_content.append(chunk)
-                            try:
-                                on_chunk(chunk)
-                            except StreamAbortRequest:
-                                # Le guard a détecté une boucle de répétition — on coupe proprement
+            accepted_stream = False
+            for candidate_model in self._request_model_sequence():
+                payload["model"] = candidate_model
+                with self._http_client.stream(
+                    "POST",
+                    url,
+                    json=payload,
+                    timeout=self._adaptive_timeout,
+                ) as response:
+                    self._register_active_stream_response(response)
+                    try:
+                        if response.status_code >= 400:
+                            body = response.read().decode("utf-8", errors="ignore")
+                            if is_ollama_model_not_found_response(response.status_code, body):
+                                continue
+                            if response.status_code == 404:
                                 logger.warning(
-                                    "stream_repetition_abort model=%s chars_received=%d",
-                                    self.config.model, sum(len(c) for c in full_content),
+                                    "Ollama /api/chat introuvable (404). Fallback vers /api/generate.",
                                 )
+                                return self.chat(
+                                    messages,
+                                    temperature=temperature,
+                                    max_tokens=max_tokens,
+                                    json_mode=json_mode,
+                                )
+                            response.raise_for_status()
+                        self._promote_request_model(candidate_model)
+                        accepted_stream = True
+                        for line in response.iter_lines():
+                            if self._is_stream_abort_requested():
                                 _stream_aborted = True
                                 break
-                            except Exception:  # noqa: BLE001
-                                pass  # callback UI peut échouer sans casser le stream
-                        if data.get("done", False):
-                            prompt_tokens = data.get("prompt_eval_count", 0)
-                            completion_tokens = data.get("eval_count", 0)
-                            break
-                finally:
-                    self._clear_active_stream_response()
+                            if not line:
+                                continue
+                            try:
+                                data = json.loads(line)
+                            except json.JSONDecodeError:
+                                continue
+                            chunk = data.get("message", {}).get("content", "")
+                            if chunk:
+                                full_content.append(chunk)
+                                try:
+                                    on_chunk(chunk)
+                                except StreamAbortRequest:
+                                    logger.warning(
+                                        "stream_repetition_abort model=%s chars_received=%d",
+                                        self.config.model,
+                                        sum(len(c) for c in full_content),
+                                    )
+                                    _stream_aborted = True
+                                    break
+                                except Exception:  # noqa: BLE001
+                                    pass
+                            if data.get("done", False):
+                                prompt_tokens = data.get("prompt_eval_count", 0)
+                                completion_tokens = data.get("eval_count", 0)
+                                break
+                        break
+                    finally:
+                        self._clear_active_stream_response()
+            if not accepted_stream:
+                raise RuntimeError(f"stream request failed for {self.config.model}: no alias accepted")
         except Exception as exc:
             if self._consume_stream_abort_requested():
                 logger.info(
@@ -753,20 +829,19 @@ class OpenAIClient(LLMClient):
 
     def chat(
         self,
-        messages: List[LLMMessage],
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        messages: list[LLMMessage],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         json_mode: bool = False,
     ) -> LLMResponse:
         """Envoie une conversation à OpenAI."""
-
         url = f"{self.config.openai_base_url}/chat/completions"
 
         payload = {
             "model": self.config.model,
             "messages": [m.to_dict() for m in messages],
-            "temperature": temperature or self.config.temperature,
-            "max_tokens": max_tokens or self.config.max_tokens,
+            "temperature": self.config.temperature if temperature is None else temperature,
+            "max_tokens": self.config.max_tokens if max_tokens is None else max_tokens,
             "top_p": self.config.top_p,
         }
 
@@ -813,7 +888,7 @@ class OpenAIClient(LLMClient):
 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429:  # Rate limit
-                    wait_time = self.config.retry_delay_seconds * (2 ** attempt)
+                    wait_time = self.config.retry_delay_seconds * (2**attempt)
                     logger.warning(f"Rate limit OpenAI, attente {wait_time}s")
                     time.sleep(wait_time)
                 else:
@@ -832,20 +907,19 @@ class OpenAIClient(LLMClient):
         )
 
 
-def create_llm_client(config: Optional[LLMConfig] = None) -> LLMClient:
-    """
-    Factory pour créer le bon client LLM.
+def create_llm_client(config: LLMConfig | None = None) -> LLMClient:
+    """Factory pour créer le bon client LLM.
 
     Args:
         config: Configuration (ou depuis env si None)
 
     Returns:
         Client LLM approprié
+
     """
     if config is None:
         config = LLMConfig.from_env()
 
     if config.provider == LLMProvider.OPENAI:
         return OpenAIClient(config)
-    else:
-        return OllamaClient(config)
+    return OllamaClient(config)

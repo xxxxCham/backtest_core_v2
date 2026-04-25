@@ -1,44 +1,68 @@
 {
   "recent_runs": [
     [
+      "obv",
+      "stochastic",
+      "stoch_rsi",
       "rsi",
       "atr"
     ],
     [
-      "rsi",
-      "atr"
+      "macd",
+      "adx",
+      "atr",
+      "stochastic"
     ],
     [
+      "vwap",
+      "atr",
+      "ema",
+      "directional_bias"
+    ],
+    [
+      "momentum",
+      "cmf",
       "rsi",
       "atr",
-      "ema"
+      "supertrend"
     ],
-    [],
     [
-      "rsi",
+      "momentum",
+      "cmf",
+      "supertrend",
+      "vwap",
+      "volume_oscillator",
       "atr"
     ],
     [
-      "rsi",
+      "momentum"
+    ],
+    [
+      "bollinger",
+      "cmf",
+      "volume_oscillator",
       "atr"
     ],
     [
-      "rsi",
-      "atr"
-    ],
-    [
-      "rsi",
-      "atr"
-    ],
-    [
-      "rsi",
+      "momentum",
+      "cmf",
+      "donchian",
+      "directional_bias",
+      "pivot_points",
       "atr",
-      "bollinger"
+      "hma",
+      "sma"
     ],
     [
+      "momentum",
+      "atr",
       "rsi",
-      "atr"
-    ]
+      "vwap",
+      "volume_oscillator",
+      "donchian",
+      "swing"
+    ],
+    []
   ],
   "recent_families": [
     [
@@ -46,42 +70,51 @@
       "breakout"
     ],
     [
-      "mean-reversion",
-      "breakout"
+      "trend-following",
+      "breakout",
+      "mean-reversion"
     ],
     [
+      "scalping",
+      "breakout",
+      "trend-following"
+    ],
+    [
+      "momentum",
       "mean-reversion",
       "breakout",
       "trend-following"
     ],
-    [],
     [
-      "mean-reversion",
+      "momentum",
+      "trend-following",
+      "scalping",
       "breakout"
+    ],
+    [
+      "momentum"
     ],
     [
       "mean-reversion",
       "breakout"
     ],
     [
-      "mean-reversion",
-      "breakout"
+      "momentum",
+      "breakout",
+      "trend-following"
     ],
     [
+      "momentum",
+      "breakout",
       "mean-reversion",
-      "breakout"
+      "scalping"
     ],
-    [
-      "mean-reversion",
-      "breakout"
-    ],
-    [
-      "mean-reversion",
-      "breakout"
-    ]
+    []
   ],
   "banned_indicators": {
-    "rsi": 3,
-    "atr": 3
+    "momentum": 1,
+    "atr": 1,
+    "rsi": 2,
+    "cmf": 3
   }
 }

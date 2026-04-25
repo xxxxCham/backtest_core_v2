@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.session_param_tracker
+"""Module-ID: utils.session_param_tracker
 
 Purpose: Déduplie paramètres testés DANS UNE SESSION d'optimisation (vs run_tracker cross-sessions).
 
@@ -24,7 +23,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from utils.log import get_logger
 
@@ -35,10 +34,10 @@ logger = get_logger(__name__)
 class TestedParams:
     """Représente une combinaison de paramètres testée."""
 
-    params: Dict[str, Any]
+    params: dict[str, Any]
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    sharpe_ratio: Optional[float] = None
-    total_return: Optional[float] = None
+    sharpe_ratio: float | None = None
+    total_return: float | None = None
 
     def compute_hash(self) -> str:
         """Calcule un hash unique pour cette combinaison de paramètres."""
@@ -46,7 +45,7 @@ class TestedParams:
         normalized = json.dumps(self.params, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(normalized.encode()).hexdigest()[:12]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "params": self.params,
@@ -58,8 +57,7 @@ class TestedParams:
 
 
 class SessionParameterTracker:
-    """
-    Tracker de paramètres pour UNE session d'optimisation.
+    """Tracker de paramètres pour UNE session d'optimisation.
 
     Usage dans l'optimisation LLM:
         # Au début de l'optimisation
@@ -74,16 +72,16 @@ class SessionParameterTracker:
             tracker.register(params, result)
     """
 
-    def __init__(self, session_id: Optional[str] = None):
-        """
-        Initialise le tracker pour une session.
+    def __init__(self, session_id: str | None = None):
+        """Initialise le tracker pour une session.
 
         Args:
             session_id: Identifiant de la session (auto-généré si None)
+
         """
         self.session_id = session_id or f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        self.tested_params: List[TestedParams] = []
-        self.tested_hashes: Set[str] = set()
+        self.tested_params: list[TestedParams] = []
+        self.tested_hashes: set[str] = set()
 
         # Stats
         self.session_start = datetime.now()
@@ -92,15 +90,15 @@ class SessionParameterTracker:
 
         logger.info(f"📊 Nouvelle session de tracking: {self.session_id}")
 
-    def was_tested(self, params: Dict[str, Any]) -> bool:
-        """
-        Vérifie si cette combinaison de paramètres a déjà été testée DANS CETTE SESSION.
+    def was_tested(self, params: dict[str, Any]) -> bool:
+        """Vérifie si cette combinaison de paramètres a déjà été testée DANS CETTE SESSION.
 
         Args:
             params: Dictionnaire des paramètres à vérifier
 
         Returns:
             True si déjà testé, False sinon
+
         """
         test_params = TestedParams(params=params)
         param_hash = test_params.compute_hash()
@@ -108,8 +106,7 @@ class SessionParameterTracker:
         if param_hash in self.tested_hashes:
             self.duplicates_prevented += 1
             logger.warning(
-                f"⚠️ Paramètres DÉJÀ TESTÉS dans cette session! "
-                f"Hash: {param_hash} | Params: {params}"
+                f"⚠️ Paramètres DÉJÀ TESTÉS dans cette session! Hash: {param_hash} | Params: {params}",
             )
             return True
 
@@ -117,22 +114,22 @@ class SessionParameterTracker:
 
     def register(
         self,
-        params: Dict[str, Any],
-        sharpe_ratio: Optional[float] = None,
-        total_return: Optional[float] = None
+        params: dict[str, Any],
+        sharpe_ratio: float | None = None,
+        total_return: float | None = None,
     ) -> None:
-        """
-        Enregistre une nouvelle combinaison de paramètres testée.
+        """Enregistre une nouvelle combinaison de paramètres testée.
 
         Args:
             params: Paramètres testés
             sharpe_ratio: Sharpe ratio obtenu (optionnel)
             total_return: Rendement total obtenu (optionnel)
+
         """
         tested = TestedParams(
             params=params,
             sharpe_ratio=sharpe_ratio,
-            total_return=total_return
+            total_return=total_return,
         )
 
         param_hash = tested.compute_hash()
@@ -149,18 +146,18 @@ class SessionParameterTracker:
         sharpe_str = f"{sharpe_ratio:.3f}" if sharpe_ratio is not None else "N/A"
         logger.info(
             f"✅ Paramètres enregistrés ({self.total_tests}/{self.total_tests}): "
-            f"Hash={param_hash} | Sharpe={sharpe_str}"
+            f"Hash={param_hash} | Sharpe={sharpe_str}",
         )
 
-    def get_best_params(self, metric: str = "sharpe_ratio") -> Optional[TestedParams]:
-        """
-        Retourne les meilleurs paramètres selon la métrique.
+    def get_best_params(self, metric: str = "sharpe_ratio") -> TestedParams | None:
+        """Retourne les meilleurs paramètres selon la métrique.
 
         Args:
             metric: "sharpe_ratio" ou "total_return"
 
         Returns:
             TestedParams avec la meilleure performance, ou None si aucun
+
         """
         if not self.tested_params:
             return None
@@ -181,13 +178,12 @@ class SessionParameterTracker:
         """Nombre de duplications évitées."""
         return self.duplicates_prevented
 
-    def get_all_params(self) -> List[Dict[str, Any]]:
+    def get_all_params(self) -> list[dict[str, Any]]:
         """Retourne toutes les combinaisons testées (pour analyse)."""
         return [tp.params for tp in self.tested_params]
 
     def get_summary(self) -> str:
-        """
-        Retourne un résumé de la session pour les LLMs.
+        """Retourne un résumé de la session pour les LLMs.
 
         Format utilisable par les LLMs pour éviter les duplications.
         """
@@ -225,19 +221,17 @@ class SessionParameterTracker:
 
         if best_sharpe:
             summary.append(
-                f"  Meilleur Sharpe: {best_sharpe.sharpe_ratio:.3f} "
-                f"avec {json.dumps(best_sharpe.params)}"
+                f"  Meilleur Sharpe: {best_sharpe.sharpe_ratio:.3f} avec {json.dumps(best_sharpe.params)}",
             )
 
         if best_return:
             summary.append(
-                f"  Meilleur Return: {best_return.total_return:.2%} "
-                f"avec {json.dumps(best_return.params)}"
+                f"  Meilleur Return: {best_return.total_return:.2%} avec {json.dumps(best_return.params)}",
             )
 
         return "\n".join(summary)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Exporte la session complète en dict (pour sauvegarde)."""
         return {
             "session_id": self.session_id,

@@ -1,5 +1,4 @@
-"""
-Exemple d'intégration du pattern st.form() dans l'UI Streamlit.
+"""Exemple d'intégration du pattern st.form() dans l'UI Streamlit.
 
 USAGE:
     streamlit run ui/main_with_form.py
@@ -22,7 +21,7 @@ Avantages:
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 import streamlit as st
 
@@ -40,11 +39,11 @@ from ui.helpers import (
 
 
 def render_run_button() -> bool:
-    """
-    Affiche le bouton Run dans la zone principale.
+    """Affiche le bouton Run dans la zone principale.
 
     Returns:
         True si le bouton est cliqué
+
     """
     # Vérifier si config validée
     cfg_validated = st.session_state.get("cfg_validated", False)
@@ -60,21 +59,21 @@ def render_run_button() -> bool:
             "🚀 Lancer le Backtest",
             type="primary",
             width="stretch",
-            disabled=not cfg_validated
+            disabled=not cfg_validated,
         )
 
     return run_clicked
 
 
-def execute_backtest_with_frozen_config(cfg_frozen: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """
-    Exécute le backtest avec une configuration figée.
+def execute_backtest_with_frozen_config(cfg_frozen: dict[str, Any]) -> dict[str, Any] | None:
+    """Exécute le backtest avec une configuration figée.
 
     Args:
         cfg_frozen: Configuration immutable
 
     Returns:
         Résultats du backtest ou None si erreur
+
     """
     try:
         # === PHASE 1: CHARGEMENT DONNÉES ===
@@ -114,7 +113,7 @@ def execute_backtest_with_frozen_config(cfg_frozen: Dict[str, Any]) -> Optional[
                 params,
                 cfg_frozen["symbol"],
                 cfg_frozen["timeframe"],
-                silent_mode=False
+                silent_mode=False,
             )
 
             bt_duration = time.time() - start_bt
@@ -134,17 +133,18 @@ def execute_backtest_with_frozen_config(cfg_frozen: Dict[str, Any]) -> Optional[
 
     except Exception as e:
         import traceback
+
         show_status("error", f"Erreur exécution: {e}")
         st.code(traceback.format_exc())
         return None
 
 
-def render_backtest_results(backtest_output: Dict[str, Any]) -> None:
-    """
-    Affiche les résultats du backtest.
+def render_backtest_results(backtest_output: dict[str, Any]) -> None:
+    """Affiche les résultats du backtest.
 
     Args:
         backtest_output: Sortie de execute_backtest_with_frozen_config
+
     """
     result = backtest_output["result"]
     config = backtest_output["config"]
@@ -179,9 +179,7 @@ def render_backtest_results(backtest_output: Dict[str, Any]) -> None:
 
 
 def main():
-    """
-    Point d'entrée principal de l'application.
-    """
+    """Point d'entrée principal de l'application."""
     st.set_page_config(
         page_title="Backtest Engine - Pattern Form",
         page_icon="📊",
@@ -200,8 +198,7 @@ def main():
     if config_validated:
         cfg = st.session_state.get("cfg_draft", {})
         st.write(
-            f"✅ Configuration validée: {cfg.get('strategy_key')} | "
-            f"{cfg.get('symbol')} | {cfg.get('timeframe')}"
+            f"✅ Configuration validée: {cfg.get('strategy_key')} | {cfg.get('symbol')} | {cfg.get('timeframe')}",
         )
     else:
         st.write("💡 Configurez et validez les paramètres dans la sidebar →")

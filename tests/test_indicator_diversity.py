@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List
 
 import pytest
 
@@ -20,7 +19,8 @@ import pytest
 # Helper : stub indicator_history sans toucher le disque du projet
 # ---------------------------------------------------------------------------
 
-@pytest.fixture()
+
+@pytest.fixture
 def tmp_policy(tmp_path: Path):
     """Retourne une politique générique avec history_file dans tmp_path."""
     return {
@@ -39,10 +39,11 @@ def tmp_policy(tmp_path: Path):
     }
 
 
-@pytest.fixture()
+@pytest.fixture
 def history_mod():
     """Importe config.indicator_history (doit être importable depuis le workspace)."""
     import config.indicator_history as mod
+
     return mod
 
 
@@ -50,8 +51,8 @@ def history_mod():
 # 1. Persistance JSON
 # ===========================================================================
 
-class TestPersistenceJSON:
 
+class TestPersistenceJSON:
     def test_load_empty_when_file_missing(self, history_mod, tmp_policy):
         """load_history retourne un historique vide si le fichier n'existe pas."""
         h = history_mod.load_history(tmp_policy)
@@ -74,7 +75,9 @@ class TestPersistenceJSON:
     def test_save_atomic_does_not_corrupt(self, history_mod, tmp_policy, tmp_path):
         """Deux save_history consécutifs ne corrompent pas le fichier."""
         history_mod.save_history({"recent_runs": [["rsi"]], "recent_families": [], "banned_indicators": {}}, tmp_policy)
-        history_mod.save_history({"recent_runs": [["rsi"], ["macd"]], "recent_families": [], "banned_indicators": {}}, tmp_policy)
+        history_mod.save_history(
+            {"recent_runs": [["rsi"], ["macd"]], "recent_families": [], "banned_indicators": {}}, tmp_policy,
+        )
         loaded = history_mod.load_history(tmp_policy)
         assert len(loaded["recent_runs"]) == 2
 
@@ -103,8 +106,8 @@ class TestPersistenceJSON:
 # 2. Bannissements
 # ===========================================================================
 
-class TestBanLogic:
 
+class TestBanLogic:
     def test_ban_triggered_at_threshold(self, history_mod, tmp_policy):
         """Un indicateur apparaissant ban_threshold fois est banni."""
         pol = dict(tmp_policy)
@@ -125,7 +128,7 @@ class TestBanLogic:
         """
         pol = {
             "enabled": True,
-            "history_length": 2,    # fenêtre courte : les 2 runs "rsi" tombent vite
+            "history_length": 2,  # fenêtre courte : les 2 runs "rsi" tombent vite
             "ban_threshold": 2,
             "ban_duration": 2,
             "family_penalty_runs": 2,
@@ -178,8 +181,8 @@ class TestBanLogic:
 # 3. Sélection diversifiée par familles
 # ===========================================================================
 
-class TestFamilyDiversity:
 
+class TestFamilyDiversity:
     def test_get_recent_families_deduplicates(self, history_mod, tmp_policy):
         """get_recent_families retourne des familles distinctes."""
         pol = dict(tmp_policy)
@@ -228,10 +231,11 @@ class TestFamilyDiversity:
 # 4. Pénalité de répétition dans rank_indicator_selection
 # ===========================================================================
 
-class TestRankIndicatorSelection:
 
+class TestRankIndicatorSelection:
     def _rank(self, indicators, **kwargs):
         from agents.indicator_context import rank_indicator_selection
+
         return rank_indicator_selection(indicators, **kwargs)
 
     def test_banned_indicators_removed(self):
@@ -257,8 +261,9 @@ class TestRankIndicatorSelection:
             inter_session_penalty=5.0,  # pénalité forte pour le test
         )
         # "rsi" devrait être plus bas avec pénalité
-        assert with_penalty.index("rsi") >= baseline.index("rsi") or \
-               with_penalty.index("rsi") > 0  # au moins non en tête si pénalité forte
+        assert (
+            with_penalty.index("rsi") >= baseline.index("rsi") or with_penalty.index("rsi") > 0
+        )  # au moins non en tête si pénalité forte
 
     def test_novelty_bonus_raises_rank(self):
         """Un indicateur jamais vu reçoit un bonus et monte dans le classement."""
@@ -278,12 +283,13 @@ class TestRankIndicatorSelection:
         """Les indicateurs d'une famille récente reçoivent un malus."""
         from agents.indicator_context import rank_indicator_selection
         from config.indicator_history import build_indicator_to_family_map
+
         fam_map = build_indicator_to_family_map()
         if not fam_map:
             pytest.skip("build_indicator_to_family_map returned empty (import issue in test env)")
 
         # Trouver des indicateurs de familles différentes
-        family_to_inds: Dict[str, List[str]] = {}
+        family_to_inds: dict[str, list[str]] = {}
         for ind, fam in fam_map.items():
             family_to_inds.setdefault(fam, []).append(ind)
 
@@ -303,8 +309,7 @@ class TestRankIndicatorSelection:
             session_seed="family-test",
         )
         # L'indicateur de la famille pénalisée doit être derrière
-        assert ranked.index(neutral_ind) < ranked.index(penalized_ind) or \
-               ranked[-1] == penalized_ind
+        assert ranked.index(neutral_ind) < ranked.index(penalized_ind) or ranked[-1] == penalized_ind
 
     def test_empty_available_returns_empty(self):
         """rank_indicator_selection avec liste vide retourne liste vide."""
@@ -322,11 +327,12 @@ class TestRankIndicatorSelection:
 # 5. load_policy avec valeurs par défaut
 # ===========================================================================
 
-class TestLoadPolicy:
 
+class TestLoadPolicy:
     def test_load_policy_returns_defaults_when_missing(self, history_mod, tmp_path, monkeypatch):
         """load_policy retourne les valeurs par défaut si le fichier est absent."""
         from config import indicator_history as mod
+
         # Patcher _policy_file pour pointer vers un fichier inexistant
         monkeypatch.setattr(mod, "_policy_file", lambda: tmp_path / "no_policy.json")
         monkeypatch.setattr(mod, "_policy_cache", None)
@@ -338,6 +344,7 @@ class TestLoadPolicy:
     def test_load_policy_merges_with_defaults(self, history_mod, tmp_path, monkeypatch):
         """load_policy fusionne les valeurs présentes avec les defaults."""
         from config import indicator_history as mod
+
         policy_path = tmp_path / "my_policy.json"
         policy_path.write_text(json.dumps({"ban_threshold": 7, "history_length": 20}), encoding="utf-8")
         monkeypatch.setattr(mod, "_policy_file", lambda: policy_path)

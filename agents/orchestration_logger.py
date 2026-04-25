@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.orchestration_logger
+"""Module-ID: agents.orchestration_logger
 
 Purpose: Tracer toutes les actions des agents LLM en JSONL avec auto-save thread-safe et callback UI.
 
@@ -24,11 +23,12 @@ Skip-if: Vous ne debuggez pas l'orchestration.
 
 import json
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from backtest.result_store import get_saved_runs_dir
 from utils.log import get_logger
@@ -37,9 +37,7 @@ logger = get_logger(__name__)
 
 
 class OrchestrationActionType(Enum):
-    """
-
-Types d'actions d'orchestration."""
+    """Types d'actions d'orchestration."""
 
     # Cycle de vie orchestration
     RUN_START = "run_start"
@@ -131,13 +129,13 @@ class OrchestrationLogEntry:
 
     timestamp: str
     action_type: OrchestrationActionType
-    agent: Optional[str] = None  # Analyst, Strategist, Critic, Validator
+    agent: str | None = None  # Analyst, Strategist, Critic, Validator
     status: OrchestrationStatus = OrchestrationStatus.PENDING
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
     iteration: int = 0
-    session_id: Optional[str] = None
+    session_id: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire pour sérialisation."""
         return {
             "timestamp": self.timestamp,
@@ -161,16 +159,15 @@ class OrchestrationLogEntry:
         """Retourne l'emoji approprié."""
         if self.status == OrchestrationStatus.COMPLETED:
             return "✅"
-        elif self.status == OrchestrationStatus.FAILED:
+        if self.status == OrchestrationStatus.FAILED:
             return "❌"
-        elif self.status == OrchestrationStatus.VALIDATED:
+        if self.status == OrchestrationStatus.VALIDATED:
             return "✔️"
-        elif self.status == OrchestrationStatus.REJECTED:
+        if self.status == OrchestrationStatus.REJECTED:
             return "❌"
-        elif self.status == OrchestrationStatus.IN_PROGRESS:
+        if self.status == OrchestrationStatus.IN_PROGRESS:
             return "⏳"
-        else:
-            return "⏹️"
+        return "⏹️"
 
     def _get_status_str(self) -> str:
         """Retourne une chaîne de statut formatée."""
@@ -178,14 +175,14 @@ class OrchestrationLogEntry:
             # Formater les détails importants
             if "strategy" in self.details:
                 return f"Strategy={self.details['strategy']}"
-            elif "indicator" in self.details:
+            if "indicator" in self.details:
                 return f"Indicator={self.details['indicator']}"
-            elif "params" in self.details:
-                param_str = str(self.details['params'])[:50]
+            if "params" in self.details:
+                param_str = str(self.details["params"])[:50]
                 return f"Params={param_str}..."
-            elif "result" in self.details:
-                result = self.details['result']
-                if isinstance(result, dict) and 'sharpe' in result:
+            if "result" in self.details:
+                result = self.details["result"]
+                if isinstance(result, dict) and "sharpe" in result:
                     return f"Sharpe={result['sharpe']:.2f}"
         return self.status.value
 
@@ -195,22 +192,22 @@ class OrchestrationLogger:
 
     def __init__(
         self,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
         auto_save: bool = True,
-        save_path: Optional[Path] = None,
-        on_event: Optional[Callable] = None,
+        save_path: Path | None = None,
+        on_event: Callable | None = None,
     ):
-        """
-        Initialize le logger d'orchestration.
+        """Initialize le logger d'orchestration.
 
         Args:
             session_id: ID unique de session (généré auto si None)
             auto_save: Si True, sauvegarde auto toutes les 10 entrées
             save_path: Chemin personnalisé pour les logs (défaut: runs/{session_id}/trace.jsonl)
             on_event: Callback appelé à chaque nouvel événement (pour UI temps réel)
+
         """
         self.session_id = session_id or self._generate_session_id()
-        self.logs: List[OrchestrationLogEntry] = []
+        self.logs: list[OrchestrationLogEntry] = []
         self.current_iteration = 0
         self._lock = threading.Lock()
         self._auto_save = auto_save
@@ -255,7 +252,7 @@ class OrchestrationLogger:
         self._notify_event(entry)
         self._maybe_auto_save()
 
-    def log_analysis_start(self, agent: str, details: Optional[Dict] = None):
+    def log_analysis_start(self, agent: str, details: dict | None = None):
         """Log le début d'une analyse."""
         entry = OrchestrationLogEntry(
             timestamp=self._now(),
@@ -264,7 +261,7 @@ class OrchestrationLogger:
             status=OrchestrationStatus.IN_PROGRESS,
             details=details or {},
             iteration=self.current_iteration,
-            session_id=self.session_id
+            session_id=self.session_id,
         )
         self._add_entry(entry)
         logger.info(f"[{agent}] Analysis started - Iteration {self.current_iteration}")
@@ -272,8 +269,8 @@ class OrchestrationLogger:
     def log_analysis_complete(
         self,
         agent: str,
-        results: Dict[str, Any],
-        status: OrchestrationStatus = OrchestrationStatus.COMPLETED
+        results: dict[str, Any],
+        status: OrchestrationStatus = OrchestrationStatus.COMPLETED,
     ):
         """Log la fin d'une analyse."""
         entry = OrchestrationLogEntry(
@@ -283,7 +280,7 @@ class OrchestrationLogger:
             status=status,
             details={"results": results},
             iteration=self.current_iteration,
-            session_id=self.session_id
+            session_id=self.session_id,
         )
         self._add_entry(entry)
         logger.info(f"[{agent}] Analysis complete - Status: {status.value}")
@@ -292,7 +289,7 @@ class OrchestrationLogger:
         self,
         agent: str,
         strategy_name: str,
-        reason: str
+        reason: str,
     ):
         """Log la sélection d'une stratégie."""
         entry = OrchestrationLogEntry(
@@ -302,7 +299,7 @@ class OrchestrationLogger:
             status=OrchestrationStatus.COMPLETED,
             details={"strategy": strategy_name, "reason": reason},
             iteration=self.current_iteration,
-            session_id=self.session_id
+            session_id=self.session_id,
         )
         self._add_entry(entry)
         logger.info(f"[{agent}] Strategy selected: {strategy_name} - {reason}")
@@ -313,7 +310,7 @@ class OrchestrationLogger:
         old_strategy: str,
         new_strategy: str,
         reason: str,
-        status: OrchestrationStatus = OrchestrationStatus.PENDING
+        status: OrchestrationStatus = OrchestrationStatus.PENDING,
     ):
         """Log une modification de stratégie."""
         entry = OrchestrationLogEntry(
@@ -324,10 +321,10 @@ class OrchestrationLogger:
             details={
                 "old_strategy": old_strategy,
                 "new_strategy": new_strategy,
-                "reason": reason
+                "reason": reason,
             },
             iteration=self.current_iteration,
-            session_id=self.session_id
+            session_id=self.session_id,
         )
         self._add_entry(entry)
         logger.info(f"[{agent}] Strategy changed: {old_strategy} → {new_strategy}")
@@ -336,9 +333,9 @@ class OrchestrationLogger:
         self,
         agent: str,
         indicator: str,
-        old_values: Dict[str, Any],
-        new_values: Dict[str, Any],
-        reason: str
+        old_values: dict[str, Any],
+        new_values: dict[str, Any],
+        reason: str,
     ):
         """Log un changement de valeurs d'indicateurs."""
         entry = OrchestrationLogEntry(
@@ -350,10 +347,10 @@ class OrchestrationLogger:
                 "indicator": indicator,
                 "old_values": old_values,
                 "new_values": new_values,
-                "reason": reason
+                "reason": reason,
             },
             iteration=self.current_iteration,
-            session_id=self.session_id
+            session_id=self.session_id,
         )
         self._add_entry(entry)
         logger.info(f"[{agent}] Indicator {indicator} values changed")
@@ -362,9 +359,9 @@ class OrchestrationLogger:
         self,
         agent: str,
         indicator: str,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         reason: str,
-        status: OrchestrationStatus = OrchestrationStatus.PENDING
+        status: OrchestrationStatus = OrchestrationStatus.PENDING,
     ):
         """Log l'ajout d'un nouvel indicateur."""
         entry = OrchestrationLogEntry(
@@ -375,10 +372,10 @@ class OrchestrationLogger:
             details={
                 "indicator": indicator,
                 "params": params,
-                "reason": reason
+                "reason": reason,
             },
             iteration=self.current_iteration,
-            session_id=self.session_id
+            session_id=self.session_id,
         )
         self._add_entry(entry)
         logger.info(f"[{agent}] New indicator proposed: {indicator}")
@@ -388,7 +385,7 @@ class OrchestrationLogger:
         agent: str,
         indicator: str,
         is_valid: bool,
-        message: str
+        message: str,
     ):
         """Log la validation d'un indicateur."""
         status = OrchestrationStatus.VALIDATED if is_valid else OrchestrationStatus.REJECTED
@@ -400,10 +397,10 @@ class OrchestrationLogger:
             details={
                 "indicator": indicator,
                 "is_valid": is_valid,
-                "message": message
+                "message": message,
             },
             iteration=self.current_iteration,
-            session_id=self.session_id
+            session_id=self.session_id,
         )
         self._add_entry(entry)
         logger.info(f"[{agent}] Indicator {indicator} validation: {is_valid}")
@@ -411,9 +408,9 @@ class OrchestrationLogger:
     def log_backtest_launch(
         self,
         agent: str,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         combination_id: int,
-        total_combinations: int
+        total_combinations: int,
     ):
         """Log le lancement d'un backtest."""
         entry = OrchestrationLogEntry(
@@ -424,10 +421,10 @@ class OrchestrationLogger:
             details={
                 "params": params,
                 "combination_id": combination_id,
-                "total_combinations": total_combinations
+                "total_combinations": total_combinations,
             },
             iteration=self.current_iteration,
-            session_id=self.session_id
+            session_id=self.session_id,
         )
         self._add_entry(entry)
         logger.info(f"[{agent}] Backtest launched: {combination_id}/{total_combinations}")
@@ -435,9 +432,9 @@ class OrchestrationLogger:
     def log_backtest_complete(
         self,
         agent: str,
-        params: Dict[str, Any],
-        results: Dict[str, Any],
-        combination_id: int
+        params: dict[str, Any],
+        results: dict[str, Any],
+        combination_id: int,
     ):
         """Log la fin d'un backtest."""
         entry = OrchestrationLogEntry(
@@ -448,24 +445,24 @@ class OrchestrationLogger:
             details={
                 "params": params,
                 "results": results,
-                "combination_id": combination_id
+                "combination_id": combination_id,
             },
             iteration=self.current_iteration,
-            session_id=self.session_id
+            session_id=self.session_id,
         )
         self._add_entry(entry)
 
         # Extraire métriques clés
-        pnl = results.get('pnl', 0)
-        sharpe = results.get('sharpe', 0)
+        pnl = results.get("pnl", 0)
+        sharpe = results.get("sharpe", 0)
         logger.info(f"[{agent}] Backtest #{combination_id} complete - PnL: {pnl:.2f}, Sharpe: {sharpe:.2f}")
 
     def log_backtest_failed(
         self,
         agent: str,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         error: str,
-        combination_id: int
+        combination_id: int,
     ):
         """Log l'échec d'un backtest."""
         entry = OrchestrationLogEntry(
@@ -476,10 +473,10 @@ class OrchestrationLogger:
             details={
                 "params": params,
                 "error": error,
-                "combination_id": combination_id
+                "combination_id": combination_id,
             },
             iteration=self.current_iteration,
-            session_id=self.session_id
+            session_id=self.session_id,
         )
         self._add_entry(entry)
         logger.error(f"[{agent}] Backtest #{combination_id} failed: {error}")
@@ -489,7 +486,7 @@ class OrchestrationLogger:
         agent: str,
         decision_type: str,  # "continue", "stop", "change_approach"
         reason: str,
-        details: Optional[Dict] = None
+        details: dict | None = None,
     ):
         """Log une décision d'agent."""
         action_map = {
@@ -505,7 +502,7 @@ class OrchestrationLogger:
             status=OrchestrationStatus.COMPLETED,
             details={"reason": reason, **(details or {})},
             iteration=self.current_iteration,
-            session_id=self.session_id
+            session_id=self.session_id,
         )
         self._add_entry(entry)
         logger.info(f"[{agent}] Decision: {decision_type} - {reason}")
@@ -515,13 +512,13 @@ class OrchestrationLogger:
         self.current_iteration += 1
         logger.info(f"=== Iteration {self.current_iteration} START ===")
 
-    def log(self, event_type: str, data: Dict[str, Any]) -> None:
-        """
-        API générique pour logger un événement (compatible avec orchestrator).
+    def log(self, event_type: str, data: dict[str, Any]) -> None:
+        """API générique pour logger un événement (compatible avec orchestrator).
 
         Args:
             event_type: Type d'événement (str)
             data: Données de l'événement incluant tous les champs
+
         """
         # Essayer de mapper le type à un enum
         try:
@@ -542,11 +539,11 @@ class OrchestrationLogger:
         )
         self._add_entry(entry)
 
-    def add_event(self, event_type: str, data: Dict[str, Any]) -> None:
+    def add_event(self, event_type: str, data: dict[str, Any]) -> None:
         """Alias pour log() (API alternative)."""
         self.log(event_type, data)
 
-    def append(self, data: Dict[str, Any]) -> None:
+    def append(self, data: dict[str, Any]) -> None:
         """Alias pour log() qui extrait event_type du dict."""
         event_type = data.get("event_type", "warning")
         self.log(event_type, data)
@@ -566,24 +563,24 @@ class OrchestrationLogger:
             except Exception as e:
                 logger.debug(f"Auto-save failed: {e}")
 
-    def get_logs_for_iteration(self, iteration: int) -> List[OrchestrationLogEntry]:
+    def get_logs_for_iteration(self, iteration: int) -> list[OrchestrationLogEntry]:
         """Récupère les logs d'une itération spécifique."""
         return [log for log in self.logs if log.iteration == iteration]
 
-    def get_logs_by_agent(self, agent: str) -> List[OrchestrationLogEntry]:
+    def get_logs_by_agent(self, agent: str) -> list[OrchestrationLogEntry]:
         """Récupère tous les logs d'un agent spécifique."""
         return [log for log in self.logs if log.agent == agent]
 
-    def get_logs_by_type(self, action_type: OrchestrationActionType) -> List[OrchestrationLogEntry]:
+    def get_logs_by_type(self, action_type: OrchestrationActionType) -> list[OrchestrationLogEntry]:
         """Récupère tous les logs d'un type d'action."""
         return [log for log in self.logs if log.action_type == action_type]
 
-    def save_to_file(self, filepath: Optional[Path] = None):
-        """
-        Sauvegarde les logs dans un fichier JSON (legacy, préférer save_to_jsonl).
+    def save_to_file(self, filepath: Path | None = None):
+        """Sauvegarde les logs dans un fichier JSON (legacy, préférer save_to_jsonl).
 
         Args:
             filepath: Chemin du fichier JSON (défaut: orchestration_logs_{session}.json)
+
         """
         if filepath is None:
             filepath = Path(f"orchestration_logs_{self.session_id}.json")
@@ -592,7 +589,7 @@ class OrchestrationLogger:
             "session_id": self.session_id,
             "total_iterations": self.current_iteration,
             "total_logs": len(self.logs),
-            "logs": [log.to_dict() for log in self.logs]
+            "logs": [log.to_dict() for log in self.logs],
         }
 
         with open(filepath, "w", encoding="utf-8") as f:
@@ -600,12 +597,12 @@ class OrchestrationLogger:
 
         logger.info(f"Logs saved to {filepath}")
 
-    def save_to_jsonl(self, filepath: Optional[Path] = None):
-        """
-        Sauvegarde les logs en format JSONL (une ligne par événement).
+    def save_to_jsonl(self, filepath: Path | None = None):
+        """Sauvegarde les logs en format JSONL (une ligne par événement).
 
         Args:
             filepath: Chemin du fichier JSONL (défaut: runs/{session}/trace.jsonl)
+
         """
         if filepath is None:
             filepath = self._save_path
@@ -628,38 +625,36 @@ class OrchestrationLogger:
             }
             f.write(json.dumps(header, ensure_ascii=False) + "\n")
 
-            for log in logs_snapshot:
-                f.write(json.dumps(log.to_dict(), ensure_ascii=False) + "\n")
+            f.writelines(json.dumps(log.to_dict(), ensure_ascii=False) + "\n" for log in logs_snapshot)
 
         logger.debug(f"Logs saved to {filepath} ({total_logs} entries)")
 
     @classmethod
     def load_from_file(cls, filepath: Path) -> "OrchestrationLogger":
-        """
-        Charge les logs depuis un fichier JSON ou JSONL.
+        """Charge les logs depuis un fichier JSON ou JSONL.
 
         Args:
             filepath: Chemin vers le fichier JSON/JSONL
 
         Returns:
             Instance OrchestrationLogger avec les logs chargés
+
         """
         if not filepath.exists():
             raise FileNotFoundError(f"File not found: {filepath}")
 
         # Détecter le format
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             first_line = f.readline().strip()
 
         if filepath.suffix == ".jsonl" or first_line.startswith('{"event_type"'):
             return cls._load_from_jsonl(filepath)
-        else:
-            return cls._load_from_json(filepath)
+        return cls._load_from_json(filepath)
 
     @classmethod
     def _load_from_jsonl(cls, filepath: Path) -> "OrchestrationLogger":
         """Charge depuis un fichier JSONL."""
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             lines = f.readlines()
 
         if not lines:
@@ -694,7 +689,7 @@ class OrchestrationLogger:
     @classmethod
     def _load_from_json(cls, filepath: Path) -> "OrchestrationLogger":
         """Charge depuis un fichier JSON (legacy)."""
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             data = json.load(f)
 
         session_id = data.get("session_id", "unknown")
@@ -753,16 +748,17 @@ class OrchestrationLogger:
 
 
 # Instance globale (optionnelle)
-_global_logger: Optional[OrchestrationLogger] = None
+_global_logger: OrchestrationLogger | None = None
 
 
 def generate_session_id() -> str:
     """Génère un ID de session unique."""
     from datetime import datetime
+
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def get_orchestration_logger(session_id: Optional[str] = None) -> OrchestrationLogger:
+def get_orchestration_logger(session_id: str | None = None) -> OrchestrationLogger:
     """Récupère ou crée le logger d'orchestration global."""
     global _global_logger
     if _global_logger is None:
@@ -778,9 +774,9 @@ def reset_orchestration_logger():
 
 __all__ = [
     "OrchestrationActionType",
-    "OrchestrationStatus",
     "OrchestrationLogEntry",
     "OrchestrationLogger",
+    "OrchestrationStatus",
     "generate_session_id",
     "get_orchestration_logger",
     "reset_orchestration_logger",

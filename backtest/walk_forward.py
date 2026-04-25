@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.walk_forward
+"""Module-ID: backtest.walk_forward
 
 Purpose: Pipeline Walk-Forward Analysis (WFA) standalone — split / run / aggregate.
 
@@ -29,7 +28,10 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from strategies.base import StrategyBase
 
 import numpy as np
 import pandas as pd
@@ -58,6 +60,7 @@ class WalkForwardConfig:
 
     Example:
         >>> cfg = WalkForwardConfig(n_folds=5, train_ratio=0.7)
+
     """
 
     n_folds: int = 5
@@ -89,8 +92,8 @@ class FoldResult:
     test_end: int
 
     # Métriques — None si le fold a échoué
-    train_metrics: Optional[Dict[str, Any]] = None
-    test_metrics: Optional[Dict[str, Any]] = None
+    train_metrics: dict[str, Any] | None = None
+    test_metrics: dict[str, Any] | None = None
 
     # Timing
     execution_time_ms: float = 0.0
@@ -118,22 +121,16 @@ class FoldResult:
             return 999.0 if train_s > 0 else 1.0
         return train_s / test_s
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "fold_id": self.fold_id,
             "train_range": [self.train_start, self.train_end],
             "test_range": [self.test_start, self.test_end],
             "train_bars": self.train_bars,
             "test_bars": self.test_bars,
-            "train_sharpe": (
-                self.train_metrics.get("sharpe_ratio", 0) if self.train_metrics else None
-            ),
-            "test_sharpe": (
-                self.test_metrics.get("sharpe_ratio", 0) if self.test_metrics else None
-            ),
-            "overfitting_ratio": (
-                round(self.overfitting_ratio, 3) if self.is_valid else None
-            ),
+            "train_sharpe": (self.train_metrics.get("sharpe_ratio", 0) if self.train_metrics else None),
+            "test_sharpe": (self.test_metrics.get("sharpe_ratio", 0) if self.test_metrics else None),
+            "overfitting_ratio": (round(self.overfitting_ratio, 3) if self.is_valid else None),
             "execution_time_ms": round(self.execution_time_ms, 1),
         }
 
@@ -149,7 +146,7 @@ class WalkForwardSummary:
     """
 
     config: WalkForwardConfig
-    folds: List[FoldResult] = field(default_factory=list)
+    folds: list[FoldResult] = field(default_factory=list)
 
     # Agrégats
     avg_train_sharpe: float = 0.0
@@ -166,7 +163,7 @@ class WalkForwardSummary:
     # Timing
     total_time_ms: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Sérialise en dict (JSON-friendly)."""
         return {
             "config": {
@@ -187,7 +184,7 @@ class WalkForwardSummary:
             "folds": [f.to_dict() for f in self.folds],
         }
 
-    def to_agent_metrics(self) -> Dict[str, Any]:
+    def to_agent_metrics(self) -> dict[str, Any]:
         """Convertit en format WalkForwardMetrics (compatibilité agents)."""
         return {
             "train_sharpe": float(self.avg_train_sharpe),
@@ -221,8 +218,8 @@ def _make_validator(cfg: WalkForwardConfig) -> WalkForwardValidator:
 def _run_single_fold(
     df: pd.DataFrame,
     fold_vf: Any,  # ValidationFold from validation.py
-    strategy_name: str,
-    params: Dict[str, Any],
+    strategy_name: StrategyBase | str,
+    params: dict[str, Any],
     initial_capital: float,
     config: Any,
 ) -> FoldResult:
@@ -244,8 +241,8 @@ def _run_single_fold(
 
     try:
         # Slice sans .copy() — le moteur lit mais ne mute pas le DataFrame
-        train_slice = df.iloc[fold_vf.train_start:fold_vf.train_end]
-        test_slice = df.iloc[fold_vf.test_start:fold_vf.test_end]
+        train_slice = df.iloc[fold_vf.train_start : fold_vf.train_end]
+        test_slice = df.iloc[fold_vf.test_start : fold_vf.test_end]
 
         # Backtest train
         train_result = engine.run(
@@ -274,7 +271,7 @@ def _run_single_fold(
     return fold_result
 
 
-def _aggregate(folds: List[FoldResult], cfg: WalkForwardConfig) -> WalkForwardSummary:
+def _aggregate(folds: list[FoldResult], cfg: WalkForwardConfig) -> WalkForwardSummary:
     """Agrège les résultats de tous les folds en un WalkForwardSummary.
 
     Utilise NumPy pour les calculs vectorisés.
@@ -292,10 +289,12 @@ def _aggregate(folds: List[FoldResult], cfg: WalkForwardConfig) -> WalkForwardSu
         )
 
     train_sharpes = np.array(
-        [f.train_metrics.get("sharpe_ratio", 0) for f in valid], dtype=np.float64
+        [f.train_metrics.get("sharpe_ratio", 0) for f in valid],
+        dtype=np.float64,
     )
     test_sharpes = np.array(
-        [f.test_metrics.get("sharpe_ratio", 0) for f in valid], dtype=np.float64
+        [f.test_metrics.get("sharpe_ratio", 0) for f in valid],
+        dtype=np.float64,
     )
 
     avg_train = float(np.mean(train_sharpes))
@@ -357,10 +356,10 @@ def _aggregate(folds: List[FoldResult], cfg: WalkForwardConfig) -> WalkForwardSu
 
 def run_walk_forward(
     df: pd.DataFrame,
-    strategy_name: str,
-    params: Dict[str, Any],
+    strategy_name: StrategyBase | str,
+    params: dict[str, Any],
     *,
-    config: Optional[WalkForwardConfig] = None,
+    config: WalkForwardConfig | None = None,
     initial_capital: float = 10000.0,
     engine_config: Any = None,
 ) -> WalkForwardSummary:
@@ -384,12 +383,16 @@ def run_walk_forward(
         >>> cfg = WalkForwardConfig(n_folds=5, train_ratio=0.7)
         >>> summary = run_walk_forward(df, "ema_cross", {"fast": 12, "slow": 26}, config=cfg)
         >>> print(summary.is_robust, summary.avg_test_sharpe)
+
     """
     cfg = config or WalkForwardConfig()
 
     logger.debug(
         "wfa_start strategy=%s n_folds=%d train_ratio=%.2f bars=%d",
-        strategy_name, cfg.n_folds, cfg.train_ratio, len(df),
+        strategy_name,
+        cfg.n_folds,
+        cfg.train_ratio,
+        len(df),
     )
 
     t_pipeline = time.perf_counter()
@@ -400,7 +403,8 @@ def run_walk_forward(
     validation_folds = validator.split(df)
     logger.debug(
         "wfa_split folds_generated=%d elapsed_ms=%.1f",
-        len(validation_folds), (time.perf_counter() - t0) * 1000,
+        len(validation_folds),
+        (time.perf_counter() - t0) * 1000,
     )
 
     if not validation_folds:
@@ -409,7 +413,7 @@ def run_walk_forward(
 
     # 2. RUN — exécuter chaque fold séquentiellement
     t0 = time.perf_counter()
-    fold_results: List[FoldResult] = []
+    fold_results: list[FoldResult] = []
     for vf in validation_folds:
         fr = _run_single_fold(
             df=df,
@@ -428,7 +432,8 @@ def run_walk_forward(
             fr.execution_time_ms,
         )
     logger.debug(
-        "wfa_folds_done elapsed_ms=%.1f", (time.perf_counter() - t0) * 1000
+        "wfa_folds_done elapsed_ms=%.1f",
+        (time.perf_counter() - t0) * 1000,
     )
 
     # 3. AGGREGATE — calcul des métriques globales
@@ -436,12 +441,12 @@ def run_walk_forward(
     summary = _aggregate(fold_results, cfg)
     summary.total_time_ms = (time.perf_counter() - t_pipeline) * 1000
     logger.debug(
-        "wfa_aggregate elapsed_ms=%.1f", (time.perf_counter() - t0) * 1000
+        "wfa_aggregate elapsed_ms=%.1f",
+        (time.perf_counter() - t0) * 1000,
     )
 
     logger.info(
-        "wfa_done n_valid=%d/%d avg_test_sharpe=%.3f robust=%s "
-        "degradation=%.1f%% confidence=%.3f total_ms=%.0f",
+        "wfa_done n_valid=%d/%d avg_test_sharpe=%.3f robust=%s degradation=%.1f%% confidence=%.3f total_ms=%.0f",
         summary.n_valid_folds,
         len(validation_folds),
         summary.avg_test_sharpe,
@@ -456,8 +461,8 @@ def run_walk_forward(
 
 def check_wfa_feasibility(
     n_bars: int,
-    config: Optional[WalkForwardConfig] = None,
-) -> Tuple[bool, str]:
+    config: WalkForwardConfig | None = None,
+) -> tuple[bool, str]:
     """Vérifie si une WFA est réalisable sans charger les données.
 
     Garde-fou léger (pas de lecture DataFrame).
@@ -468,6 +473,7 @@ def check_wfa_feasibility(
 
     Returns:
         (feasible, message)
+
     """
     cfg = config or WalkForwardConfig()
     min_bars_needed = cfg.n_folds * (cfg.min_train_bars + cfg.min_test_bars)

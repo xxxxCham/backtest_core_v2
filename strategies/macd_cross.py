@@ -1,5 +1,4 @@
-"""
-Module-ID: strategies.macd_cross
+"""Module-ID: strategies.macd_cross
 
 Purpose: Stratégie momentum basée sur croisement de MACD et signal line.
 
@@ -20,7 +19,7 @@ Read-if: Modification logique croisement MACD, seuils, ou signal.
 Skip-if: Vous ne changez que d'autres stratégies.
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -31,8 +30,7 @@ from utils.parameters import ParameterSpec
 
 @register_strategy("macd_cross")
 class MACDCrossStrategy(StrategyBase):
-    """
-    Stratégie de croisement MACD.
+    """Stratégie de croisement MACD.
 
     Signaux:
         - LONG (+1): MACD croise Signal vers le haut (golden cross)
@@ -49,12 +47,12 @@ class MACDCrossStrategy(StrategyBase):
         super().__init__(name)
 
     @property
-    def required_indicators(self) -> List[str]:
+    def required_indicators(self) -> list[str]:
         """Indicateurs requis par la stratégie."""
         return ["macd"]
 
     @property
-    def default_params(self) -> Dict[str, Any]:
+    def default_params(self) -> dict[str, Any]:
         """Paramètres par défaut."""
         return {
             "fast_period": 12,
@@ -64,7 +62,7 @@ class MACDCrossStrategy(StrategyBase):
         }
 
     @property
-    def parameter_specs(self) -> Dict[str, ParameterSpec]:
+    def parameter_specs(self) -> dict[str, ParameterSpec]:
         """Spécifications des paramètres pour l'UI et l'optimisation."""
         return {
             "fast_period": ParameterSpec(
@@ -73,7 +71,7 @@ class MACDCrossStrategy(StrategyBase):
                 max_val=30,
                 default=12,
                 param_type="int",
-                description="Période EMA rapide"
+                description="Période EMA rapide",
             ),
             "slow_period": ParameterSpec(
                 name="slow_period",
@@ -81,7 +79,7 @@ class MACDCrossStrategy(StrategyBase):
                 max_val=50,
                 default=26,
                 param_type="int",
-                description="Période EMA lente"
+                description="Période EMA lente",
             ),
             "signal_period": ParameterSpec(
                 name="signal_period",
@@ -89,7 +87,7 @@ class MACDCrossStrategy(StrategyBase):
                 max_val=20,
                 default=9,
                 param_type="int",
-                description="Période ligne signal"
+                description="Période ligne signal",
             ),
             "leverage": ParameterSpec(
                 name="leverage",
@@ -105,8 +103,8 @@ class MACDCrossStrategy(StrategyBase):
     def get_indicator_params(
         self,
         indicator_name: str,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
         """Mappe les parametres de la strategie vers les indicateurs."""
         if indicator_name == "macd":
             return {
@@ -119,11 +117,10 @@ class MACDCrossStrategy(StrategyBase):
     def generate_signals(
         self,
         df: pd.DataFrame,
-        indicators: Dict[str, Any],
-        params: Dict[str, Any]
+        indicators: dict[str, Any],
+        params: dict[str, Any],
     ) -> pd.Series:
-        """
-        Génère les signaux de trading basés sur les croisements MACD.
+        """Génère les signaux de trading basés sur les croisements MACD.
 
         Args:
             df: DataFrame OHLCV
@@ -133,6 +130,7 @@ class MACDCrossStrategy(StrategyBase):
 
         Returns:
             Series de signaux (-1, 0, +1)
+
         """
         signals = pd.Series(0.0, index=df.index)
 
@@ -205,11 +203,10 @@ class MACDCrossStrategy(StrategyBase):
     def run(
         self,
         df: pd.DataFrame,
-        indicators: Dict[str, Any],
-        params: Dict[str, Any] = None
+        indicators: dict[str, Any],
+        params: dict[str, Any] = None,
     ) -> StrategyResult:
-        """
-        Exécute la stratégie.
+        """Exécute la stratégie.
 
         Args:
             df: DataFrame OHLCV
@@ -218,6 +215,7 @@ class MACDCrossStrategy(StrategyBase):
 
         Returns:
             StrategyResult avec signaux et métadonnées
+
         """
         if params is None:
             params = self.default_params
@@ -239,7 +237,7 @@ class MACDCrossStrategy(StrategyBase):
                 "fast_period": params.get("fast_period", 12),
                 "slow_period": params.get("slow_period", 26),
                 "signal_period": params.get("signal_period", 9),
-            }
+            },
         )
 
         return self._last_result

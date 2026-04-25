@@ -3,34 +3,14 @@
   "description": "Preset utilisateur derive de robustes_ML via la configuration Expert Multi-Role.",
   "derived_from": "robustes_ML",
   "roles": {
-    "idea_llm": {
-      "backend": "ollama",
-      "preferred_models": [
-        "gpt-oss:20b",
-        "qwen3-coder:30b",
-        "nemotron-3-nano:30b",
-        "mistral:22b",
-        "mistral:7b-instruct",
-        "llama3.3:70b-instruct-q4_K_M"
-      ],
-      "fallback_models": [
-        "gemma4:26b",
-        "deepseek-moe-16b-local"
-      ],
-      "required": true,
-      "description": "Recent generalist ideation stack for diverse but testable objectives.",
-      "random_pool_models": [
-        "gpt-oss:20b",
-        "qwen3-coder:30b",
-        "nemotron-3-nano:30b",
-        "mistral:22b",
-        "mistral:7b-instruct",
-        "llama3.3:70b-instruct-q4_K_M"
-      ]
-    },
     "builder_llm": {
       "backend": "ollama",
       "preferred_models": [
+        "gpt-oss:20b",
+        "deepseek-r1:8b",
+        "nemotron-cascade-14b-local"
+      ],
+      "random_pool_models": [
         "gpt-oss:20b",
         "deepseek-r1:8b",
         "nemotron-cascade-14b-local"
@@ -40,65 +20,45 @@
         "gpt-oss:20b"
       ],
       "required": true,
-      "description": "Recent local coding stack for Builder code generation and refactors.",
-      "random_pool_models": [
-        "gpt-oss:20b",
-        "deepseek-r1:8b",
-        "nemotron-cascade-14b-local"
-      ]
+      "description": "Ecrit et ajuste la strategie."
     },
-    "critic_llm": {
+    "supervisor_llm": {
       "backend": "ollama",
       "preferred_models": [
         "gpt-oss:20b",
-        "qwen2.5:32b",
+        "qwen3-coder:30b",
         "nemotron-3-nano:30b",
-        "deepseek-moe-16b-local"
-      ],
-      "fallback_models": [
-        "deepseek-r1:32b",
-        "qwq:32b"
-      ],
-      "required": true,
-      "description": "Combines recent general reasoning with proven critique fallbacks.",
-      "random_pool_models": [
-        "gpt-oss:20b",
-        "qwen2.5:32b",
-        "nemotron-3-nano:30b",
-        "deepseek-moe-16b-local"
-      ]
-    },
-    "risk_llm": {
-      "backend": "ollama",
-      "preferred_models": [
-        "deepseek-r1-distill:14b",
-        "deepseek-moe-16b-local",
         "mistral:22b",
-        "nemotron-cascade-14b-local"
+        "mistral:7b-instruct",
+        "llama3.3:70b-instruct-q4_K_M",
+        "qwen2.5:32b",
+        "deepseek-moe-16b-local",
+        "deepseek-r1-distill:14b",
+        "nemotron-cascade-14b-local",
+        "nemotron-orchestrator-8b"
+      ],
+      "random_pool_models": [
+        "gpt-oss:20b",
+        "qwen3-coder:30b",
+        "nemotron-3-nano:30b",
+        "mistral:22b",
+        "mistral:7b-instruct",
+        "llama3.3:70b-instruct-q4_K_M",
+        "qwen2.5:32b",
+        "deepseek-moe-16b-local",
+        "deepseek-r1-distill:14b",
+        "nemotron-cascade-14b-local",
+        "nemotron-orchestrator-8b"
       ],
       "fallback_models": [
+        "gemma4:26b",
+        "deepseek-moe-16b-local",
+        "deepseek-r1:32b",
+        "qwq:32b",
         "deepseek-r1-distill:14b"
       ],
       "required": true,
-      "description": "Keeps the risk role finance-aware while staying fully local.",
-      "random_pool_models": [
-        "deepseek-r1-distill:14b",
-        "deepseek-moe-16b-local",
-        "mistral:22b",
-        "nemotron-cascade-14b-local"
-      ]
-    },
-    "execution_router_llm": {
-      "backend": "ollama",
-      "preferred_models": [
-        "nemotron-orchestrator-8b",
-        "mistral:7b-instruct"
-      ],
-      "fallback_models": [
-        "deepseek-moe-16b-local"
-      ],
-      "required": false,
-      "description": "Legacy LLM router kept for audit only; the simple multi-LLM mode now uses a deterministic local router."
+      "description": "Fusionne generation objectif, critique, risque et decision de boucle."
     }
   },
   "updated_at": "2026-03-15T23:51:13Z",

@@ -1,5 +1,4 @@
-"""
-Module-ID: strategies.scalping_bollinger_vwap_atr
+"""Module-ID: strategies.scalping_bollinger_vwap_atr
 
 Purpose: Scalping mean-reversion avec Bollinger (extrêmes) filtré par VWAP,
 et gestion du risque via stop/take-profit ATR.
@@ -15,7 +14,7 @@ Outputs: pd.Series signaux (+1, -1, 0) en impulsions.
 Dependencies: strategies.base, utils.parameters
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -33,8 +32,7 @@ def _as_float_array(value: Any, *, nan: float = 0.0) -> np.ndarray:
 
 @register_strategy("scalping_bollinger_vwap_atr")
 class ScalpingBollingerVwapAtrStrategy(StrategyBase):
-    """
-    Scalping Bollinger + VWAP avec stops/take-profits ATR.
+    """Scalping Bollinger + VWAP avec stops/take-profits ATR.
 
     Contrat moteur:
     - Les signaux sont des impulsions (+1 / -1 / 0).
@@ -58,11 +56,11 @@ class ScalpingBollingerVwapAtrStrategy(StrategyBase):
         super().__init__(name="Scalping BB+VWAP+ATR")
 
     @property
-    def required_indicators(self) -> List[str]:
+    def required_indicators(self) -> list[str]:
         return ["bollinger", "vwap", "atr"]
 
     @property
-    def default_params(self) -> Dict[str, Any]:
+    def default_params(self) -> dict[str, Any]:
         return {
             # Indicators
             "bb_period": 20,
@@ -80,7 +78,7 @@ class ScalpingBollingerVwapAtrStrategy(StrategyBase):
         }
 
     @property
-    def parameter_specs(self) -> Dict[str, ParameterSpec]:
+    def parameter_specs(self) -> dict[str, ParameterSpec]:
         return {
             "bb_period": ParameterSpec(
                 name="bb_period",
@@ -160,8 +158,8 @@ class ScalpingBollingerVwapAtrStrategy(StrategyBase):
     def get_indicator_params(
         self,
         indicator_name: str,
-        params: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
         if indicator_name == "bollinger":
             return {
                 "period": int(params.get("bb_period", 20)),
@@ -177,8 +175,8 @@ class ScalpingBollingerVwapAtrStrategy(StrategyBase):
     def generate_signals(
         self,
         df: pd.DataFrame,
-        indicators: Dict[str, Any],
-        params: Dict[str, Any],
+        indicators: dict[str, Any],
+        params: dict[str, Any],
     ) -> pd.Series:
         signals = pd.Series(0.0, index=df.index, dtype=np.float64, name="signals")
 
@@ -273,4 +271,3 @@ class ScalpingBollingerVwapAtrStrategy(StrategyBase):
 
 
 __all__ = ["ScalpingBollingerVwapAtrStrategy"]
-

@@ -1,48 +1,48 @@
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from utils.parameters import ParameterSpec
 from strategies.base import StrategyBase, register_strategy
+from utils.parameters import ParameterSpec
 
 
-@register_strategy('trend_supertrend')
+@register_strategy("trend_supertrend")
 class TrendSupertrendStrategy(StrategyBase):
     def __init__(self):
-        super().__init__(name='trend_supertrend_rsi')
+        super().__init__(name="trend_supertrend_rsi")
 
     @property
-    def required_indicators(self) -> List[str]:
-        return ['supertrend', 'adx', 'rsi', 'atr']
+    def required_indicators(self) -> list[str]:
+        return ["supertrend", "adx", "rsi", "atr"]
 
     @property
-    def default_params(self) -> Dict[str, Any]:
+    def default_params(self) -> dict[str, Any]:
         return {
             "supertrend_atr_period": 10,
             "supertrend_multiplier": 3.0,
             "adx_period": 14,
             "atr_period": 14,
-            'leverage': 1,
-            'rsi_period': 14,
+            "leverage": 1,
+            "rsi_period": 14,
             "rsi_long_threshold": 50.0,
             "rsi_short_threshold": 50.0,
             "adx_entry_threshold": 30.0,
             "adx_exit_threshold": 25.0,
-            'stop_atr_mult': 1.75,
-            'tp_atr_mult': 4.5,
-            'warmup': 50,
+            "stop_atr_mult": 1.75,
+            "tp_atr_mult": 4.5,
+            "warmup": 50,
         }
 
     @property
-    def parameter_specs(self) -> Dict[str, ParameterSpec]:
+    def parameter_specs(self) -> dict[str, ParameterSpec]:
         return {
-            'rsi_period': ParameterSpec(
-                name='rsi_period',
+            "rsi_period": ParameterSpec(
+                name="rsi_period",
                 min_val=5,
                 max_val=50,
                 default=14,
-                param_type='int',
+                param_type="int",
                 step=1,
             ),
             "supertrend_atr_period": ParameterSpec(
@@ -109,43 +109,43 @@ class TrendSupertrendStrategy(StrategyBase):
                 param_type="float",
                 step=0.5,
             ),
-            'stop_atr_mult': ParameterSpec(
-                name='stop_atr_mult',
+            "stop_atr_mult": ParameterSpec(
+                name="stop_atr_mult",
                 min_val=0.5,
                 max_val=4.0,
                 default=1.75,
-                param_type='float',
+                param_type="float",
                 step=0.1,
             ),
-            'tp_atr_mult': ParameterSpec(
-                name='tp_atr_mult',
+            "tp_atr_mult": ParameterSpec(
+                name="tp_atr_mult",
                 min_val=1.0,
                 max_val=10.0,
                 default=4.5,
-                param_type='float',
+                param_type="float",
                 step=0.1,
             ),
-            'leverage': ParameterSpec(
-                name='leverage',
+            "leverage": ParameterSpec(
+                name="leverage",
                 min_val=1,
                 max_val=2,
                 default=1,
-                param_type='int',
+                param_type="int",
                 step=1,
                 optimize=False,
             ),
         }
 
-    def generate_signals(self, df: pd.DataFrame, indicators: Dict[str, Any], params: Dict[str, Any]) -> pd.Series:
+    def generate_signals(self, df: pd.DataFrame, indicators: dict[str, Any], params: dict[str, Any]) -> pd.Series:
         signals = pd.Series(0.0, index=df.index, dtype=np.float64)
         n = len(df)
-        warmup = int(params.get('warmup', 50))
+        warmup = int(params.get("warmup", 50))
 
         # wrap indicators
-        st = np.nan_to_num(indicators['supertrend']["direction"])
-        adx_val = np.nan_to_num(indicators['adx']["adx"])
-        rsi = np.nan_to_num(indicators['rsi'])
-        atr = np.nan_to_num(indicators['atr'])
+        st = np.nan_to_num(indicators["supertrend"]["direction"])
+        adx_val = np.nan_to_num(indicators["adx"]["adx"])
+        rsi = np.nan_to_num(indicators["rsi"])
+        atr = np.nan_to_num(indicators["atr"])
         close = df["close"].values
         adx_entry_threshold = float(params.get("adx_entry_threshold", 30.0))
         adx_exit_threshold = float(params.get("adx_exit_threshold", 25.0))

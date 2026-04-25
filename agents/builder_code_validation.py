@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.builder_code_validation
+"""Module-ID: agents.builder_code_validation
 
 Purpose: Builder generated-code validation subsystem.
 """
@@ -9,9 +8,7 @@ from __future__ import annotations
 import ast
 import builtins
 import re
-from typing import Any, Dict, List, Optional
-
-from indicators.registry import list_indicators
+from typing import Any
 
 from agents.builder_ast_utils import (
     _collect_bound_names,
@@ -27,12 +24,11 @@ from agents.builder_ast_utils import (
     _is_params_get_call,
     _is_params_subscript,
     _is_scalar_cast_call,
-    _iter_child_nodes_excluding_nested_scopes,
-    _iter_generated_class_methods,
     _iter_generate_signals_functions,
+    _iter_generated_class_methods,
 )
 from agents.builder_constants import GENERATED_CLASS_NAME
-
+from indicators.registry import list_indicators
 
 ERR_CLASS = "CLASS001"
 
@@ -80,7 +76,7 @@ _DICT_INDICATOR_NAMES = {
 }
 
 
-_DICT_INDICATOR_ALLOWED_KEYS: Dict[str, set[str]] = {
+_DICT_INDICATOR_ALLOWED_KEYS: dict[str, set[str]] = {
     "bollinger": {"upper", "middle", "lower"},
     "macd": {"macd", "signal", "histogram"},
     "stochastic": {"stoch_k", "stoch_d"},
@@ -215,11 +211,7 @@ def _is_allowed_import(module_name: str) -> bool:
 def _get_known_indicator_names() -> set[str]:
     """Retourne les noms d'indicateurs du registre, en minuscules."""
     try:
-        return {
-            str(ind or "").strip().lower()
-            for ind in list_indicators()
-            if str(ind or "").strip()
-        }
+        return {str(ind or "").strip().lower() for ind in list_indicators() if str(ind or "").strip()}
     except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
         return set(_DICT_INDICATOR_NAMES)
 
@@ -238,11 +230,7 @@ def _extract_required_indicators_from_ast(tree: ast.AST) -> set[str]:
                 if not isinstance(sub, ast.Return):
                     continue
                 if isinstance(sub.value, ast.List):
-                    return {
-                        _const_value(elt)
-                        for elt in sub.value.elts
-                        if isinstance(_const_value(elt), str)
-                    }
+                    return {_const_value(elt) for elt in sub.value.elts if isinstance(_const_value(elt), str)}
     return set()
 
 
@@ -256,9 +244,7 @@ def _has_warmup_guard(tree: ast.AST) -> bool:
             for tgt in targets:
                 if not isinstance(tgt, ast.Subscript):
                     continue
-                is_signals = (
-                    isinstance(tgt.value, ast.Name) and tgt.value.id == "signals"
-                )
+                is_signals = isinstance(tgt.value, ast.Name) and tgt.value.id == "signals"
                 is_signals_iloc = (
                     isinstance(tgt.value, ast.Attribute)
                     and tgt.value.attr == "iloc"
@@ -301,8 +287,8 @@ def _dict_indicator_allowed_keys_hint(indicator_name: str) -> str:
 
 def _binding_info_for_expr(
     node: ast.AST,
-    bindings: Dict[str, Dict[str, Any]],
-) -> Optional[Dict[str, Any]]:
+    bindings: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
     """Retourne le binding connu pour une expression simple d'indicateur."""
     if isinstance(node, ast.Name):
         return bindings.get(node.id)
@@ -333,7 +319,7 @@ def _binding_info_for_expr(
     return None
 
 
-def _binding_expr_label(node: ast.AST, binding: Optional[Dict[str, Any]] = None) -> str:
+def _binding_expr_label(node: ast.AST, binding: dict[str, Any] | None = None) -> str:
     """Construit un libellé court pour les messages d'erreur AST."""
     if isinstance(node, ast.Name):
         return node.id
@@ -402,15 +388,12 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
                     ):
                         return False, _err(
                             ERR_SIG,
-                            "Boucle indexée avec `signals.iloc[i]` interdite. "
-                            "Utiliser des masques vectorisés.",
+                            "Boucle indexée avec `signals.iloc[i]` interdite. Utiliser des masques vectorisés.",
                         )
 
             # -- SIG001-and/or : opérateurs scalaires ``and``/``or`` ---
             if isinstance(node, ast.BoolOp) and isinstance(node.op, (ast.And, ast.Or)):
-                has_compare = any(
-                    isinstance(v, ast.Compare) for v in node.values
-                )
+                has_compare = any(isinstance(v, ast.Compare) for v in node.values)
                 if has_compare:
                     bad_op = "and" if isinstance(node.op, ast.And) else "or"
                     good_op = "&" if bad_op == "and" else "|"
@@ -430,21 +413,16 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
                 ):
                     return False, _err(
                         ERR_SIG,
-                        "Accès `signals.loc[...]` interdit. "
-                        "Utiliser `signals[mask] = 1.0` (masques vectorisés).",
+                        "Accès `signals.loc[...]` interdit. Utiliser `signals[mask] = 1.0` (masques vectorisés).",
                     )
 
             # -- SIG001-isnull/notnull ---
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                 if node.func.attr in {"isnull", "notnull", "isna", "notna"}:
-                    if (
-                        isinstance(node.func.value, ast.Name)
-                        and node.func.value.id == "signals"
-                    ):
+                    if isinstance(node.func.value, ast.Name) and node.func.value.id == "signals":
                         return False, _err(
                             ERR_SIG,
-                            f"`signals.{node.func.attr}()` interdit. "
-                            "Utiliser `signals != 0` ou `signals == 0`.",
+                            f"`signals.{node.func.attr}()` interdit. Utiliser `signals != 0` ou `signals == 0`.",
                         )
 
             # Warmup checks sur assignations
@@ -455,9 +433,7 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
                         continue
 
                     # Pattern signals[...] ou signals.iloc[...]
-                    is_signals_sub = (
-                        isinstance(tgt.value, ast.Name) and tgt.value.id == "signals"
-                    )
+                    is_signals_sub = isinstance(tgt.value, ast.Name) and tgt.value.id == "signals"
                     is_signals_loc_sub = (
                         isinstance(tgt.value, ast.Attribute)
                         and tgt.value.attr == "loc"
@@ -497,8 +473,7 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
             if isinstance(node, ast.While):
                 return False, _err(
                     ERR_SIG,
-                    "Boucle `while` interdite dans generate_signals. "
-                    "Utiliser une logique vectorisée.",
+                    "Boucle `while` interdite dans generate_signals. Utiliser une logique vectorisée.",
                 )
 
     # -- SIG001-diff : np.diff sans np.insert (longueur n-1) ---
@@ -522,13 +497,13 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
         return True, ""
 
     # var_name -> {"kind": "array|dict|values", "indicator": Optional[str]}
-    bindings: Dict[str, Dict[str, Any]] = {}
+    bindings: dict[str, dict[str, Any]] = {}
 
     for fn in _iter_generate_signals_functions(tree):
         # Pass 1: collect bindings
         for node in ast.walk(fn):
-            targets: List[ast.Name] = []
-            value: Optional[ast.AST] = None
+            targets: list[ast.Name] = []
+            value: ast.AST | None = None
 
             if isinstance(node, ast.Assign):
                 value = node.value
@@ -545,7 +520,7 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                 continue
 
             ind_name = _indicator_name_from_subscript(value)
-            kind: Optional[str] = None
+            kind: str | None = None
             if ind_name is not None:
                 kind = "dict" if ind_name.lower() in _DICT_INDICATOR_NAMES else "array"
             elif _is_np_nan_to_num_call(value) and getattr(value, "args", None):
@@ -555,16 +530,14 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                     if ind_name.lower() in _DICT_INDICATOR_NAMES:
                         return (
                             False,
-                            f"Usage invalide: np.nan_to_num(indicators['{ind_name}']) "
-                            "(indicator dict).",
+                            f"Usage invalide: np.nan_to_num(indicators['{ind_name}']) (indicator dict).",
                         )
                     kind = "array"
                 elif isinstance(arg0, ast.Name) and arg0.id in bindings:
                     if bindings[arg0.id]["kind"] == "dict":
                         return (
                             False,
-                            f"Usage invalide: np.nan_to_num({arg0.id}) alors que "
-                            f"{arg0.id} est un indicator dict.",
+                            f"Usage invalide: np.nan_to_num({arg0.id}) alors que {arg0.id} est un indicator dict.",
                         )
                     kind = "array"
             elif isinstance(value, ast.Attribute) and value.attr == "values":
@@ -592,9 +565,13 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                 value_binding = _binding_info_for_expr(node.func.value, bindings)
                 if value_binding and value_binding["kind"] == "dict" and attr not in {"get"}:
                     label = _binding_expr_label(node.func.value, value_binding)
-                    hint_key = _dict_indicator_allowed_keys_hint(
-                        str(value_binding.get("indicator") or label)
-                    ).split(",")[0].strip()
+                    hint_key = (
+                        _dict_indicator_allowed_keys_hint(
+                            str(value_binding.get("indicator") or label),
+                        )
+                        .split(",")[0]
+                        .strip()
+                    )
                     if hint_key:
                         return (
                             False,
@@ -602,10 +579,7 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                             "un indicator dict. Extraire une sous-clé puis travailler "
                             f"sur le ndarray correspondant (ex: {label}['{hint_key}']).",
                         )
-                if (
-                    attr in {"shift", "rolling", "ewm"}
-                    and isinstance(node.func.value, ast.Name)
-                ):
+                if attr in {"shift", "rolling", "ewm"} and isinstance(node.func.value, ast.Name):
                     var = node.func.value.id
                     b = bindings.get(var)
                     if b and b["kind"] in {"array", "values"}:
@@ -631,8 +605,7 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                         if b and b["kind"] == "dict":
                             return (
                                 False,
-                                f"Usage invalide: np.nan_to_num({arg0.id}) alors que "
-                                f"{arg0.id} est un indicator dict.",
+                                f"Usage invalide: np.nan_to_num({arg0.id}) alors que {arg0.id} est un indicator dict.",
                             )
 
             # .iloc/.loc/.iat/.at sur indicateurs ndarray/dict
@@ -664,8 +637,7 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                         if b["kind"] in {"array", "values"} and isinstance(node.slice, ast.Tuple):
                             return (
                                 False,
-                                f"Usage invalide: indexation multi-dim `{var}[..., ...]` "
-                                "sur indicateur 1D.",
+                                f"Usage invalide: indexation multi-dim `{var}[..., ...]` sur indicateur 1D.",
                             )
                         if b["kind"] in {"array", "values"} and isinstance(key, str):
                             return (
@@ -697,8 +669,7 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                         if isinstance(key, (int, float)):
                             return (
                                 False,
-                                f"Usage invalide: indicators['{ind_name}'][{key}] — "
-                                "utiliser des sous-clés string.",
+                                f"Usage invalide: indicators['{ind_name}'][{key}] — utiliser des sous-clés string.",
                             )
                         if isinstance(key, str) and not _dict_indicator_key_is_valid(ind_name, key):
                             hint = _dict_indicator_allowed_keys_hint(ind_name)
@@ -720,8 +691,7 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                         if isinstance(key, (int, float)):
                             return (
                                 False,
-                                f"Usage invalide: indicators.get('{get_name}')[{key}] — "
-                                "utiliser des sous-clés string.",
+                                f"Usage invalide: indicators.get('{get_name}')[{key}] — utiliser des sous-clés string.",
                             )
                         if isinstance(key, str) and not _dict_indicator_key_is_valid(get_name, key):
                             hint = _dict_indicator_allowed_keys_hint(get_name)
@@ -744,9 +714,13 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                     binding = _binding_info_for_expr(operand, bindings)
                     if binding and binding["kind"] == "dict":
                         label = _binding_expr_label(operand, binding)
-                        hint_key = _dict_indicator_allowed_keys_hint(
-                            str(binding.get("indicator") or label)
-                        ).split(",")[0].strip()
+                        hint_key = (
+                            _dict_indicator_allowed_keys_hint(
+                                str(binding.get("indicator") or label),
+                            )
+                            .split(",")[0]
+                            .strip()
+                        )
                         return (
                             False,
                             f"Usage invalide: comparaison `{label} ...` alors que "
@@ -759,9 +733,13 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                     binding = _binding_info_for_expr(operand, bindings)
                     if binding and binding["kind"] == "dict":
                         label = _binding_expr_label(operand, binding)
-                        hint_key = _dict_indicator_allowed_keys_hint(
-                            str(binding.get("indicator") or label)
-                        ).split(",")[0].strip()
+                        hint_key = (
+                            _dict_indicator_allowed_keys_hint(
+                                str(binding.get("indicator") or label),
+                            )
+                            .split(",")[0]
+                            .strip()
+                        )
                         return (
                             False,
                             f"Usage invalide: opération arithmétique sur `{label}` "
@@ -774,9 +752,13 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                         binding = _binding_info_for_expr(operand, bindings)
                         if binding and binding["kind"] == "dict":
                             label = _binding_expr_label(operand, binding)
-                            hint_key = _dict_indicator_allowed_keys_hint(
-                                str(binding.get("indicator") or label)
-                            ).split(",")[0].strip()
+                            hint_key = (
+                                _dict_indicator_allowed_keys_hint(
+                                    str(binding.get("indicator") or label),
+                                )
+                                .split(",")[0]
+                                .strip()
+                            )
                             return (
                                 False,
                                 f"Usage invalide: opérateur logique bitwise appliqué à `{label}` "
@@ -804,9 +786,13 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                     binding = _binding_info_for_expr(operand, bindings)
                     if binding and binding["kind"] == "dict":
                         label = _binding_expr_label(operand, binding)
-                        hint_key = _dict_indicator_allowed_keys_hint(
-                            str(binding.get("indicator") or label)
-                        ).split(",")[0].strip()
+                        hint_key = (
+                            _dict_indicator_allowed_keys_hint(
+                                str(binding.get("indicator") or label),
+                            )
+                            .split(",")[0]
+                            .strip()
+                        )
                         return (
                             False,
                             f"Usage invalide: test booléen direct sur `{label}` "
@@ -818,9 +804,13 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                 binding = _binding_info_for_expr(node.test, bindings)
                 if binding and binding["kind"] == "dict":
                     label = _binding_expr_label(node.test, binding)
-                    hint_key = _dict_indicator_allowed_keys_hint(
-                        str(binding.get("indicator") or label)
-                    ).split(",")[0].strip()
+                    hint_key = (
+                        _dict_indicator_allowed_keys_hint(
+                            str(binding.get("indicator") or label),
+                        )
+                        .split(",")[0]
+                        .strip()
+                    )
                     return (
                         False,
                         f"Usage invalide: condition `{label}` alors que `{label}` est un "
@@ -831,8 +821,7 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
 
 
 def validate_generated_code(code: str) -> tuple[bool, str]:
-    """
-    Valide le code Python généré avant écriture/exécution.
+    """Valide le code Python généré avant écriture/exécution.
 
     Vérifie :
     1. Syntaxe Python valide (ast.parse)
@@ -842,6 +831,7 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
 
     Returns:
         (is_valid, error_message)
+
     """
     # 1. Syntaxe
     try:
@@ -851,8 +841,13 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
 
     # 1b. Sécurité sandbox prioritaire
     dangerous_patterns = [
-        "os.system", "subprocess", "eval(", "exec(",
-        "__import__", "shutil.rmtree", "open(",
+        "os.system",
+        "subprocess",
+        "eval(",
+        "exec(",
+        "__import__",
+        "shutil.rmtree",
+        "open(",
     ]
     code_lower = code.lower()
     for pattern in dangerous_patterns:
@@ -876,10 +871,7 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
                 )
 
     # 2. Vérifier la classe attendue
-    class_names = [
-        node.name for node in ast.walk(tree)
-        if isinstance(node, ast.ClassDef)
-    ]
+    class_names = [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
     if GENERATED_CLASS_NAME not in class_names:
         return False, _err(
             ERR_CLASS,
@@ -893,24 +885,12 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
 
     # 3a. Héritage strict StrategyBase (après vérif structure minimale)
     class_node = next(
-        (
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ClassDef) and node.name == GENERATED_CLASS_NAME
-        ),
+        (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and node.name == GENERATED_CLASS_NAME),
         None,
     )
     if class_node is not None:
-        base_names = {
-            getattr(base, "id", None)
-            for base in class_node.bases
-            if isinstance(base, ast.Name)
-        }
-        base_names.update(
-            getattr(base, "attr", None)
-            for base in class_node.bases
-            if isinstance(base, ast.Attribute)
-        )
+        base_names = {getattr(base, "id", None) for base in class_node.bases if isinstance(base, ast.Name)}
+        base_names.update(getattr(base, "attr", None) for base in class_node.bases if isinstance(base, ast.Attribute))
         if "StrategyBase" not in base_names:
             return False, _err(
                 ERR_CLASS,
@@ -925,8 +905,7 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
             False,
             _err(
                 ERR_CLASS,
-                "Signature invalide: generate_signals doit accepter "
-                "(self, df, indicators, params).",
+                "Signature invalide: generate_signals doit accepter (self, df, indicators, params).",
             ),
         )
 
@@ -950,7 +929,7 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
                             "default_params invalide: `return "
                             f"{name_id}` référence un nom non défini. "
                             "Retourner un dict explicite (ex: {'leverage': 1, ...}) "
-                            "ou un attribut `self.<...>`."
+                            "ou un attribut `self.<...>`.",
                         ),
                     )
 
@@ -989,10 +968,8 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
                 {
                     name
                     for name in load_names
-                    if name in known_indicator_names
-                    and name not in arg_names
-                    and name not in bound_names
-                }
+                    if name in known_indicator_names and name not in arg_names and name not in bound_names
+                },
             )
             if missing_indicators:
                 indicator_name = missing_indicators[0]
@@ -1017,19 +994,14 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
                     False,
                     _err(
                         ERR_AST,
-                        f"Placeholder `...` interdit dans `{item.name}`. "
-                        "Fournir une logique complète.",
+                        f"Placeholder `...` interdit dans `{item.name}`. Fournir une logique complète.",
                     ),
                 )
         load_names, _store_names = _collect_name_load_store_sets(item)
         bound_names = _collect_bound_names(item)
         allowed_names = bound_names | module_bound_names | builtin_names
         missing_names = sorted(
-            {
-                name
-                for name in load_names
-                if name not in allowed_names and not name.startswith("__")
-            }
+            {name for name in load_names if name not in allowed_names and not name.startswith("__")},
         )
         if missing_names:
             missing_name = missing_names[0]
@@ -1037,8 +1009,7 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
                 False,
                 _err(
                     ERR_CLASS,
-                    f"NameError probable: `{missing_name}` utilisé dans "
-                    f"`{item.name}` sans définition locale.",
+                    f"NameError probable: `{missing_name}` utilisé dans `{item.name}` sans définition locale.",
                 ),
             )
 
@@ -1067,9 +1038,7 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
         for sub in ast.walk(item):
             if isinstance(sub, ast.Assign):
                 targets = sub.targets
-            elif isinstance(sub, ast.AnnAssign):
-                targets = [sub.target]
-            elif isinstance(sub, ast.AugAssign):
+            elif isinstance(sub, ast.AnnAssign) or isinstance(sub, ast.AugAssign):
                 targets = [sub.target]
             else:
                 continue
@@ -1077,8 +1046,7 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
                 if isinstance(target, ast.Name) and target.id in {"np", "pd"}:
                     return False, _err(
                         ERR_CLASS,
-                        f"Alias réservé `{target.id}` écrasé dans `{item.name}`. "
-                        f"Ne jamais réassigner `{target.id}`.",
+                        f"Alias réservé `{target.id}` écrasé dans `{item.name}`. Ne jamais réassigner `{target.id}`.",
                     )
 
     # 3g. Écriture df limitée aux colonnes SL/TP autorisées
@@ -1144,14 +1112,15 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
     used_indicators = _collect_indicator_names(tree) | _collect_indicator_names_in_class(tree)
     if known_indicators and used_indicators:
         unknown = sorted(
-            {
-                name for name in used_indicators
-                if name.lower() not in known_indicators
-            }
+            {name for name in used_indicators if name.lower() not in known_indicators},
         )
         if unknown:
             ohlcv_and_runtime_cols = {
-                "open", "high", "low", "close", "volume",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
                 *_BUILDER_ALLOWED_WRITE_DF_COLUMNS,
             }
             wrong_df_cols = [name for name in unknown if name.lower() in ohlcv_and_runtime_cols]
@@ -1169,11 +1138,7 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
                 for name in unknown
                 if name.lower() in _INDICATOR_ALIAS_HINTS
             ]
-            hint_suffix = (
-                f" Corrections possibles: {', '.join(hints)}."
-                if hints
-                else ""
-            )
+            hint_suffix = f" Corrections possibles: {', '.join(hints)}." if hints else ""
             return (
                 False,
                 "Indicateur(s) inconnu(s) via indicators détecté(s): "
@@ -1183,15 +1148,14 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
 
     df_indexed = re.findall(r"df\s*\[\s*['\"]([^'\"]+)['\"]\s*\]", code)
     bad_df_cols = sorted(
-        {col for col in df_indexed if col.lower() in known_indicators}
+        {col for col in df_indexed if col.lower() in known_indicators},
     )
     if bad_df_cols:
         return (
             False,
             _err(
                 ERR_IND,
-                "Accès indicateur invalide via df[...] détecté: "
-                f"{bad_df_cols}. Utiliser indicators['name'].",
+                f"Accès indicateur invalide via df[...] détecté: {bad_df_cols}. Utiliser indicators['name'].",
             ),
         )
 
@@ -1200,7 +1164,7 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
     if known_indicators:
         declared_indicators = _extract_required_indicators_from_ast(tree)
         unknown_declared = sorted(
-            {name for name in declared_indicators if name.lower() not in known_indicators}
+            {name for name in declared_indicators if name.lower() not in known_indicators},
         )
         if unknown_declared:
             hints = [
@@ -1208,18 +1172,14 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
                 for name in unknown_declared
                 if name.lower() in _INDICATOR_ALIAS_HINTS
             ]
-            hint_suffix = (
-                f" Corrections possibles: {', '.join(hints)}."
-                if hints
-                else ""
-            )
+            hint_suffix = f" Corrections possibles: {', '.join(hints)}." if hints else ""
             _soft_warnings.append(
                 _err(
                     ERR_IND,
                     "required_indicators contient des noms inconnus du registre: "
                     f"{unknown_declared}. Utiliser uniquement les noms du registre."
                     f"{hint_suffix}",
-                )
+                ),
             )
 
     # 5d. Warmup obligatoire dans generate_signals (avertissement non bloquant)
@@ -1229,16 +1189,12 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
                 ERR_WARM,
                 "generate_signals ne contient pas de warmup explicite. "
                 "Ajouter: `warmup = int(params.get('warmup', 50)); signals.iloc[:warmup] = 0.0`.",
-            )
+            ),
         )
 
     # 6. Mauvais usage de np.nan_to_num sur indicateurs dict (bollinger, macd, ...)
     for ind in _DICT_INDICATOR_NAMES:
-        bad_pattern = (
-            r"np\.nan_to_num\(\s*indicators\s*\[\s*['\"]"
-            + re.escape(ind)
-            + r"['\"]\s*\]\s*\)"
-        )
+        bad_pattern = r"np\.nan_to_num\(\s*indicators\s*\[\s*['\"]" + re.escape(ind) + r"['\"]\s*\]\s*\)"
         if re.search(bad_pattern, code):
             return (
                 False,
@@ -1270,5 +1226,3 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
             )
 
     return True, "; ".join(_soft_warnings) if _soft_warnings else ""
-
-

@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.run_tracker
+"""Module-ID: utils.run_tracker
 
 Purpose: Déduplique runs d'optimisation cross-sessions (detect déjà exécutés).
 
@@ -25,7 +24,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -41,8 +40,8 @@ class RunSignature:
 
     strategy_name: str
     data_path: str
-    initial_params: Dict[str, Any]
-    llm_model: Optional[str] = None
+    initial_params: dict[str, Any]
+    llm_model: str | None = None
     mode: str = "multi_agents"  # "multi_agents", "autonomous", "grid", etc.
 
     # Métadonnées
@@ -70,7 +69,7 @@ class RunSignature:
         # Hash SHA256
         return hashlib.sha256(json_str.encode()).hexdigest()[:16]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "strategy_name": self.strategy_name,
@@ -84,7 +83,7 @@ class RunSignature:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "RunSignature":
+    def from_dict(cls, data: dict[str, Any]) -> "RunSignature":
         """Crée depuis un dictionnaire."""
         return cls(
             strategy_name=data.get("strategy_name", ""),
@@ -98,8 +97,7 @@ class RunSignature:
 
 
 class RunTracker:
-    """
-    Tracker des runs d'optimisation pour éviter les doublons.
+    """Tracker des runs d'optimisation pour éviter les doublons.
 
     Usage:
         tracker = RunTracker()
@@ -112,15 +110,15 @@ class RunTracker:
             # ... lancer l'optimisation
     """
 
-    def __init__(self, cache_file: Optional[Path] = None):
-        """
-        Initialise le tracker.
+    def __init__(self, cache_file: Path | None = None):
+        """Initialise le tracker.
 
         Args:
             cache_file: Fichier JSON pour persister les runs (défaut: runs/.run_cache.json)
+
         """
         self.cache_file = cache_file or (get_saved_runs_dir() / ".run_cache.json")
-        self.runs: List[RunSignature] = []
+        self.runs: list[RunSignature] = []
 
         # Charger le cache existant
         self._load_cache()
@@ -132,7 +130,7 @@ class RunTracker:
             return
 
         try:
-            with open(self.cache_file, "r", encoding="utf-8") as f:
+            with open(self.cache_file, encoding="utf-8") as f:
                 data = json.load(f)
 
             self.runs = [RunSignature.from_dict(item) for item in data.get("runs", [])]
@@ -164,14 +162,14 @@ class RunTracker:
             logger.warning(f"Erreur lors de la sauvegarde du cache: {e}")
 
     def is_duplicate(self, signature: RunSignature) -> bool:
-        """
-        Vérifie si cette configuration a déjà été exécutée.
+        """Vérifie si cette configuration a déjà été exécutée.
 
         Args:
             signature: Signature du run à vérifier
 
         Returns:
             True si c'est un doublon, False sinon
+
         """
         target_hash = signature.compute_hash()
 
@@ -180,21 +178,21 @@ class RunTracker:
                 logger.warning(
                     f"Configuration dupliquée détectée! "
                     f"Stratégie: {signature.strategy_name}, "
-                    f"Run précédent: {existing.timestamp}"
+                    f"Run précédent: {existing.timestamp}",
                 )
                 return True
 
         return False
 
-    def find_similar(self, signature: RunSignature) -> List[RunSignature]:
-        """
-        Trouve les runs similaires (même stratégie et données).
+    def find_similar(self, signature: RunSignature) -> list[RunSignature]:
+        """Trouve les runs similaires (même stratégie et données).
 
         Args:
             signature: Signature de référence
 
         Returns:
             Liste des runs similaires
+
         """
         similar = []
 
@@ -209,11 +207,11 @@ class RunTracker:
         return similar
 
     def register(self, signature: RunSignature) -> None:
-        """
-        Enregistre un nouveau run.
+        """Enregistre un nouveau run.
 
         Args:
             signature: Signature du run à enregistrer
+
         """
         # Vérifier si déjà présent (ne pas ajouter de doublons)
         if self.is_duplicate(signature):
@@ -224,30 +222,25 @@ class RunTracker:
         self._save_cache()
 
         logger.info(
-            f"Run enregistré: {signature.strategy_name} "
-            f"(hash: {signature.compute_hash()})"
+            f"Run enregistré: {signature.strategy_name} (hash: {signature.compute_hash()})",
         )
 
     def clear_old_runs(self, max_age_days: int = 30) -> int:
-        """
-        Nettoie les runs plus anciens que max_age_days.
+        """Nettoie les runs plus anciens que max_age_days.
 
         Args:
             max_age_days: Age maximum en jours
 
         Returns:
             Nombre de runs supprimés
+
         """
         from datetime import timedelta
 
         cutoff = datetime.now() - timedelta(days=max_age_days)
         initial_count = len(self.runs)
 
-        self.runs = [
-            run
-            for run in self.runs
-            if datetime.fromisoformat(run.timestamp) > cutoff
-        ]
+        self.runs = [run for run in self.runs if datetime.fromisoformat(run.timestamp) > cutoff]
 
         removed = initial_count - len(self.runs)
 
@@ -257,7 +250,7 @@ class RunTracker:
 
         return removed
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Retourne des statistiques sur les runs enregistrés."""
         if not self.runs:
             return {
@@ -289,8 +282,7 @@ class RunTracker:
     # =========================================================================
 
     def build_catalogs(self) -> Path:
-        """
-        Construit un catalogue CSV des sessions à partir des traces jsonl.
+        """Construit un catalogue CSV des sessions à partir des traces jsonl.
 
         Output:
             runs/_catalog/overview.csv
@@ -299,7 +291,7 @@ class RunTracker:
         catalog_dir = runs_dir / "_catalog"
         catalog_dir.mkdir(parents=True, exist_ok=True)
 
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
 
         for session_dir in runs_dir.iterdir():
             if not session_dir.is_dir():
@@ -315,7 +307,7 @@ class RunTracker:
             total_llm_calls = 0
 
             try:
-                with open(trace_path, "r", encoding="utf-8") as f:
+                with open(trace_path, encoding="utf-8") as f:
                     for line in f:
                         line = line.strip()
                         if not line:
@@ -344,14 +336,14 @@ class RunTracker:
                     "total_iterations": total_iterations,
                     "total_llm_tokens": total_llm_tokens,
                     "total_llm_calls": total_llm_calls,
-                }
+                },
             )
 
         if rows:
             df = pd.DataFrame(rows)
         else:
             df = pd.DataFrame(
-                columns=["session_id", "total_iterations", "total_llm_tokens", "total_llm_calls"]
+                columns=["session_id", "total_iterations", "total_llm_tokens", "total_llm_calls"],
             )
 
         overview_path = catalog_dir / "overview.csv"
@@ -361,7 +353,7 @@ class RunTracker:
 
 
 # Instance globale pour utilisation dans l'UI
-_global_tracker: Optional[RunTracker] = None
+_global_tracker: RunTracker | None = None
 
 
 def get_global_tracker() -> RunTracker:

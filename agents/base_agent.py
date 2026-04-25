@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.base_agent
+"""Module-ID: agents.base_agent
 
 Purpose: Classe abstraite et structures communes pour tous les agents LLM (Analyst/Strategist/Critic/Validator).
 
@@ -23,10 +22,11 @@ Skip-if: Vous ne changez qu'un agent spécifique.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any
 
 from utils.observability import get_obs_logger
 
@@ -38,6 +38,7 @@ logger = get_obs_logger(__name__)
 
 class AgentRole(Enum):
     """Rôles des agents."""
+
     ANALYST = "analyst"
     STRATEGIST = "strategist"
     CRITIC = "critic"
@@ -101,7 +102,7 @@ class MetricsSnapshot:
             avg_trade_duration=avg_trade_duration,
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convertit en dictionnaire."""
         return {
             "total_return": self.total_return,
@@ -144,7 +145,7 @@ class ParameterConfig:
     step: Any = None
     description: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "current_value": self.current_value,
@@ -157,8 +158,7 @@ class ParameterConfig:
 
 @dataclass
 class AgentContext:
-    """
-    Contexte partagé entre les agents.
+    """Contexte partagé entre les agents.
 
     Contient toutes les informations nécessaires pour
     l'analyse et la prise de décision.
@@ -171,8 +171,8 @@ class AgentContext:
     # Stratégie
     strategy_name: str = ""
     strategy_description: str = ""
-    current_params: Dict[str, Any] = field(default_factory=dict)
-    param_specs: List[ParameterConfig] = field(default_factory=list)
+    current_params: dict[str, Any] = field(default_factory=dict)
+    param_specs: list[ParameterConfig] = field(default_factory=list)
 
     # Données
     data_path: str = ""
@@ -180,15 +180,15 @@ class AgentContext:
     data_timeframe: str = ""
     data_rows: int = 0
     data_date_range: str = ""
-    comparison_context: Optional[Dict[str, Any]] = None
+    comparison_context: dict[str, Any] | None = None
 
     # Résultats actuels
-    current_metrics: Optional[MetricsSnapshot] = None
-    train_metrics: Optional[MetricsSnapshot] = None
-    test_metrics: Optional[MetricsSnapshot] = None
+    current_metrics: MetricsSnapshot | None = None
+    train_metrics: MetricsSnapshot | None = None
+    test_metrics: MetricsSnapshot | None = None
 
     # Walk-forward results
-    walk_forward_results: List[Dict[str, Any]] = field(default_factory=list)
+    walk_forward_results: list[dict[str, Any]] = field(default_factory=list)
     overfitting_ratio: float = 0.0
     classic_ratio: float = 0.0
     degradation_pct: float = 0.0
@@ -197,9 +197,9 @@ class AgentContext:
     walk_forward_windows: int = 0
 
     # Historique des itérations
-    iteration_history: List[Dict[str, Any]] = field(default_factory=list)
-    best_metrics: Optional[MetricsSnapshot] = None
-    best_params: Dict[str, Any] = field(default_factory=dict)
+    iteration_history: list[dict[str, Any]] = field(default_factory=list)
+    best_metrics: MetricsSnapshot | None = None
+    best_params: dict[str, Any] = field(default_factory=dict)
 
     # Objectifs
     optimization_target: str = "sharpe_ratio"
@@ -210,18 +210,18 @@ class AgentContext:
 
     # Messages des agents précédents
     analyst_report: str = ""
-    strategist_proposals: List[Dict[str, Any]] = field(default_factory=list)
+    strategist_proposals: list[dict[str, Any]] = field(default_factory=list)
     critic_assessment: str = ""
-    critic_concerns: List[str] = field(default_factory=list)
+    critic_concerns: list[str] = field(default_factory=list)
     memory_summary: str = ""
 
     # Contexte indicateurs (stratégie vs lecture seule)
     strategy_indicators_context: str = ""
     readonly_indicators_context: str = ""
-    indicator_context_warnings: List[str] = field(default_factory=list)
+    indicator_context_warnings: list[str] = field(default_factory=list)
 
     # Résultats de sweep (LLM grid search)
-    sweep_results: Optional[Dict[str, Any]] = None
+    sweep_results: dict[str, Any] | None = None
     sweep_summary: str = ""
 
     def to_summary_str(self) -> str:
@@ -267,8 +267,7 @@ Walk-Forward Analysis:
 
 @dataclass
 class AgentResult:
-    """
-    Résultat d'exécution d'un agent.
+    """Résultat d'exécution d'un agent.
 
     Contient:
     - Le succès/échec
@@ -282,11 +281,11 @@ class AgentResult:
 
     # Contenu principal
     content: str = ""
-    data: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
 
     # Erreurs et avertissements
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     # Métriques d'exécution
     execution_time_ms: float = 0.0
@@ -297,14 +296,14 @@ class AgentResult:
     timestamp: datetime = field(default_factory=datetime.now)
 
     # Réponse LLM brute (pour debug)
-    raw_llm_response: Optional[LLMResponse] = None
+    raw_llm_response: LLMResponse | None = None
 
     @classmethod
     def success_result(
         cls,
         role: AgentRole,
         content: str,
-        data: Optional[Dict[str, Any]] = None,
+        data: dict[str, Any] | None = None,
         **kwargs,
     ) -> AgentResult:
         """Crée un résultat de succès."""
@@ -338,16 +337,14 @@ class AgentResult:
                 message=self.content[:100] if self.content else "OK",
                 **self.data,
             )
-        else:
-            return ValidationResult.failure(
-                message=self.errors[0] if self.errors else "Unknown error",
-                errors=self.errors,
-            )
+        return ValidationResult.failure(
+            message=self.errors[0] if self.errors else "Unknown error",
+            errors=self.errors,
+        )
 
 
 class BaseAgent(ABC):
-    """
-    Classe de base pour tous les agents LLM.
+    """Classe de base pour tous les agents LLM.
 
     Chaque agent doit implémenter:
     - role: Son rôle dans le workflow
@@ -357,11 +354,11 @@ class BaseAgent(ABC):
     """
 
     def __init__(self, llm_client: LLMClient) -> None:
-        """
-        Initialise l'agent.
+        """Initialise l'agent.
 
         Args:
             llm_client: Client LLM à utiliser
+
         """
         self.llm = llm_client
         self._execution_count = 0
@@ -371,36 +368,33 @@ class BaseAgent(ABC):
     @abstractmethod
     def role(self) -> AgentRole:
         """Rôle de l'agent."""
-        pass
 
     @property
     @abstractmethod
     def system_prompt(self) -> str:
         """Prompt système définissant la personnalité de l'agent."""
-        pass
 
     @abstractmethod
     def execute(self, context: AgentContext) -> AgentResult:
-        """
-        Exécute la tâche principale de l'agent.
+        """Exécute la tâche principale de l'agent.
 
         Args:
             context: Contexte d'exécution
 
         Returns:
             Résultat de l'exécution
+
         """
-        pass
 
     def validate_result(self, result: AgentResult) -> ValidationResult:
-        """
-        Valide le résultat produit par l'agent.
+        """Valide le résultat produit par l'agent.
 
         Args:
             result: Résultat à valider
 
         Returns:
             Résultat de validation
+
         """
         if not result.success:
             return ValidationResult.failure(
@@ -410,7 +404,7 @@ class BaseAgent(ABC):
 
         if not result.content and not result.data:
             return ValidationResult.failure(
-                f"Agent {self.role.value} n'a produit aucun résultat"
+                f"Agent {self.role.value} n'a produit aucun résultat",
             )
 
         return ValidationResult.success()
@@ -419,10 +413,9 @@ class BaseAgent(ABC):
         self,
         user_message: str,
         json_mode: bool = False,
-        temperature: Optional[float] = None,
+        temperature: float | None = None,
     ) -> LLMResponse:
-        """
-        Appelle le LLM avec le prompt système de l'agent.
+        """Appelle le LLM avec le prompt système de l'agent.
 
         Args:
             user_message: Message utilisateur
@@ -431,6 +424,7 @@ class BaseAgent(ABC):
 
         Returns:
             Réponse LLM
+
         """
         messages = [
             LLMMessage(role="system", content=self.system_prompt),
@@ -449,7 +443,7 @@ class BaseAgent(ABC):
         return response
 
     @property
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """Statistiques de l'agent."""
         return {
             "role": self.role.value,

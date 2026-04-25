@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 logger = get_obs_logger(__name__)
 
 
-def handle_analyze(orch: "Orchestrator") -> None:
+def handle_analyze(orch: Orchestrator) -> None:
     """Handle ANALYZE state - Execute Analyst agent."""
     orch._log_event("phase_start", phase="ANALYZE")
     logger.info("Phase ANALYZE: Exécution Agent Analyst")
@@ -26,7 +26,7 @@ def handle_analyze(orch: "Orchestrator") -> None:
 
     # Add session tracker summary
     if hasattr(orch, "param_tracker"):
-        setattr(orch.context, "session_params_summary", orch.param_tracker.get_summary())
+        orch.context.session_params_summary = orch.param_tracker.get_summary()
 
     # Indicator context (once per run, deduplicated with init)
     ensure_indicator_context(orch)

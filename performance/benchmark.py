@@ -1,5 +1,4 @@
-"""
-Module-ID: performance.benchmark
+"""Module-ID: performance.benchmark
 
 Purpose: Suite benchmarks - compare implémentations (vectorisé, Numba, GPU).
 
@@ -23,9 +22,10 @@ Skip-if: Vous appelez Benchmark().run() ou compare_functions().
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -38,11 +38,12 @@ logger = get_logger(__name__)
 @dataclass
 class BenchmarkResult:
     """Résultat d'un benchmark."""
+
     name: str
     duration_ms: float
     memory_mb: float
     throughput_items_per_sec: float
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __str__(self) -> str:
         return (
@@ -56,8 +57,9 @@ class BenchmarkResult:
 @dataclass
 class BenchmarkComparison:
     """Comparaison de plusieurs benchmarks."""
-    results: List[BenchmarkResult]
-    baseline_name: Optional[str] = None
+
+    results: list[BenchmarkResult]
+    baseline_name: str | None = None
 
     def summary(self) -> str:
         """Génère un résumé comparatif."""
@@ -73,7 +75,7 @@ class BenchmarkComparison:
         lines.append("BENCHMARK RESULTS")
         lines.append("=" * 90)
         lines.append(
-            f"{'Name':<30} | {'Time (ms)':>8} | {'Memory':>7} | {'Throughput':>10} | {'Speedup':>8}"
+            f"{'Name':<30} | {'Time (ms)':>8} | {'Memory':>7} | {'Throughput':>10} | {'Speedup':>8}",
         )
         lines.append("-" * 90)
 
@@ -93,7 +95,7 @@ class BenchmarkComparison:
 
         return "\n".join(lines)
 
-    def _get_baseline(self) -> Optional[BenchmarkResult]:
+    def _get_baseline(self) -> BenchmarkResult | None:
         """Retourne le résultat baseline."""
         if self.baseline_name:
             for result in self.results:
@@ -113,8 +115,9 @@ def get_memory_usage() -> float:
     """Retourne l'utilisation mémoire actuelle en MB."""
     try:
         import psutil
+
         process = psutil.Process()
-        return process.memory_info().rss / (1024 ** 2)
+        return process.memory_info().rss / (1024**2)
     except ImportError:
         return 0.0
 
@@ -126,10 +129,9 @@ def benchmark_function(
     n_items: int = None,
     warmup_runs: int = 2,
     benchmark_runs: int = 5,
-    **kwargs
+    **kwargs,
 ) -> BenchmarkResult:
-    """
-    Benchmark une fonction.
+    """Benchmark une fonction.
 
     Args:
         func: Fonction à benchmarker
@@ -142,6 +144,7 @@ def benchmark_function(
 
     Returns:
         BenchmarkResult
+
     """
     func_name = name or func.__name__
 
@@ -178,7 +181,7 @@ def benchmark_function(
             "std_ms": np.std(durations),
             "min_ms": np.min(durations),
             "max_ms": np.max(durations),
-        }
+        },
     )
 
 
@@ -186,12 +189,12 @@ def benchmark_function(
 # BENCHMARKS SPÉCIFIQUES
 # =============================================================================
 
+
 def benchmark_indicator_calculation(
     data_size: int = 10000,
-    period: int = 20
+    period: int = 20,
 ) -> BenchmarkComparison:
-    """
-    Benchmark le calcul d'indicateurs techniques.
+    """Benchmark le calcul d'indicateurs techniques.
 
     Compare:
     - Calcul natif pandas
@@ -209,22 +212,26 @@ def benchmark_indicator_calculation(
     def pandas_sma():
         return prices_series.rolling(window=period).mean().values
 
-    results.append(benchmark_function(
-        pandas_sma,
-        name="Pandas Rolling SMA",
-        n_items=data_size
-    ))
+    results.append(
+        benchmark_function(
+            pandas_sma,
+            name="Pandas Rolling SMA",
+            n_items=data_size,
+        ),
+    )
 
     # 2. NumPy convolve
     def numpy_convolve():
         kernel = np.ones(period) / period
-        return np.convolve(prices, kernel, mode='same')
+        return np.convolve(prices, kernel, mode="same")
 
-    results.append(benchmark_function(
-        numpy_convolve,
-        name="NumPy Convolve SMA",
-        n_items=data_size
-    ))
+    results.append(
+        benchmark_function(
+            numpy_convolve,
+            name="NumPy Convolve SMA",
+            n_items=data_size,
+        ),
+    )
 
     # 3. Numba (si disponible)
     try:
@@ -234,21 +241,23 @@ def benchmark_indicator_calculation(
         def numba_sma(prices, period):
             n = len(prices)
             result = np.empty(n)
-            result[:period-1] = np.nan
+            result[: period - 1] = np.nan
 
-            for i in range(period-1, n):
-                result[i] = np.mean(prices[i-period+1:i+1])
+            for i in range(period - 1, n):
+                result[i] = np.mean(prices[i - period + 1 : i + 1])
 
             return result
 
         # Warm-up compilation
         _ = numba_sma(prices, period)
 
-        results.append(benchmark_function(
-            lambda: numba_sma(prices, period),
-            name="Numba JIT SMA",
-            n_items=data_size
-        ))
+        results.append(
+            benchmark_function(
+                lambda: numba_sma(prices, period),
+                name="Numba JIT SMA",
+                n_items=data_size,
+            ),
+        )
     except ImportError:
         logger.warning("Numba non disponible pour benchmark")
 
@@ -257,10 +266,9 @@ def benchmark_indicator_calculation(
 
 def benchmark_simulator_performance(
     n_bars: int = 10000,
-    n_signals: int = 500
+    n_signals: int = 500,
 ) -> BenchmarkComparison:
-    """
-    Benchmark la simulation de trades.
+    """Benchmark la simulation de trades.
 
     Compare:
     - Simulateur Python pur (simulator.py)
@@ -273,14 +281,16 @@ def benchmark_simulator_performance(
     dates = pd.date_range("2020-01-01", periods=n_bars, freq="1h")
     close = 100 + np.cumsum(np.random.randn(n_bars) * 0.5)
 
-    df = pd.DataFrame({
-        "timestamp": dates,
-        "open": close,
-        "high": close * 1.01,
-        "low": close * 0.99,
-        "close": close,
-        "volume": np.random.randint(1000, 10000, n_bars)
-    }).set_index("timestamp")
+    df = pd.DataFrame(
+        {
+            "timestamp": dates,
+            "open": close,
+            "high": close * 1.01,
+            "low": close * 0.99,
+            "close": close,
+            "volume": np.random.randint(1000, 10000, n_bars),
+        },
+    ).set_index("timestamp")
 
     # Signaux aléatoires
     signals = pd.Series(np.random.choice([0, 1, -1], size=n_bars, p=[0.95, 0.025, 0.025]), index=df.index)
@@ -290,32 +300,40 @@ def benchmark_simulator_performance(
         "k_sl": 1.5,
         "initial_capital": 10000,
         "fees_bps": 10,
-        "slippage_bps": 5
+        "slippage_bps": 5,
     }
 
     results = []
 
     # 1. Simulateur standard
-    results.append(benchmark_function(
-        simulate_trades,
-        df, signals, params,
-        name="Simulator (Python)",
-        n_items=n_bars,
-        benchmark_runs=3
-    ))
+    results.append(
+        benchmark_function(
+            simulate_trades,
+            df,
+            signals,
+            params,
+            name="Simulator (Python)",
+            n_items=n_bars,
+            benchmark_runs=3,
+        ),
+    )
 
     # 2. Simulateur Numba (si disponible)
     try:
         from backtest.simulator_fast import HAS_NUMBA, simulate_trades_fast
 
         if HAS_NUMBA:
-            results.append(benchmark_function(
-                simulate_trades_fast,
-                df, signals, params,
-                name="Simulator (Numba JIT)",
-                n_items=n_bars,
-                benchmark_runs=3
-            ))
+            results.append(
+                benchmark_function(
+                    simulate_trades_fast,
+                    df,
+                    signals,
+                    params,
+                    name="Simulator (Numba JIT)",
+                    n_items=n_bars,
+                    benchmark_runs=3,
+                ),
+            )
     except ImportError:
         logger.warning("simulator_fast non disponible")
 
@@ -323,11 +341,9 @@ def benchmark_simulator_performance(
 
 
 def benchmark_gpu_vs_cpu(
-    data_size: int = 100000
+    data_size: int = 100000,
 ) -> BenchmarkComparison:
-    """
-    Benchmark CPU-only (GPU désactivé).
-    """
+    """Benchmark CPU-only (GPU désactivé)."""
     results = []
 
     # Données de test
@@ -338,27 +354,29 @@ def benchmark_gpu_vs_cpu(
     def numpy_operations():
         x = np.array(data)
         y = np.sqrt(np.abs(x))
-        z = np.exp(-y ** 2)
+        z = np.exp(-(y**2))
         return np.sum(z)
 
-    results.append(benchmark_function(
-        numpy_operations,
-        name="NumPy (CPU)",
-        n_items=data_size
-    ))
+    results.append(
+        benchmark_function(
+            numpy_operations,
+            name="NumPy (CPU)",
+            n_items=data_size,
+        ),
+    )
 
     return BenchmarkComparison(results, baseline_name="NumPy (CPU)")
 
 
-def run_all_benchmarks(verbose: bool = True) -> Dict[str, BenchmarkComparison]:
-    """
-    Exécute tous les benchmarks.
+def run_all_benchmarks(verbose: bool = True) -> dict[str, BenchmarkComparison]:
+    """Exécute tous les benchmarks.
 
     Args:
         verbose: Afficher les résultats
 
     Returns:
         Dict des comparaisons par catégorie
+
     """
     benchmarks = {}
 
@@ -403,18 +421,18 @@ if __name__ == "__main__":
         "--category",
         choices=["indicators", "simulator", "gpu", "all"],
         default="all",
-        help="Catégorie de benchmark à exécuter"
+        help="Catégorie de benchmark à exécuter",
     )
     parser.add_argument(
         "--size",
         type=int,
         default=10000,
-        help="Taille des données de test"
+        help="Taille des données de test",
     )
     parser.add_argument(
         "--quiet",
         action="store_true",
-        help="Mode silencieux (pas d'affichage)"
+        help="Mode silencieux (pas d'affichage)",
     )
 
     args = parser.parse_args()

@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.vortex
+"""Module-ID: indicators.vortex
 
 Purpose: Indicateur Vortex (VI+ et VI-) - force mouvement haussier/baissier.
 
@@ -20,8 +19,6 @@ Read-if: Modification période, output format.
 Skip-if: Vous utilisez juste calculate_indicator('vortex').
 """
 
-from typing import Dict, Tuple
-
 import numpy as np
 import pandas as pd
 
@@ -31,10 +28,9 @@ from indicators.registry import register_indicator
 def vortex_movement(
     high: pd.Series,
     low: pd.Series,
-    close: pd.Series
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Calcule les mouvements Vortex (+VM, -VM) et le True Range.
+    close: pd.Series,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Calcule les mouvements Vortex (+VM, -VM) et le True Range.
 
     Args:
         high: Série des prix hauts
@@ -43,6 +39,7 @@ def vortex_movement(
 
     Returns:
         Tuple (plus_vm, minus_vm, true_range)
+
     """
     high_arr = np.asarray(high, dtype=np.float64)
     low_arr = np.asarray(low, dtype=np.float64)
@@ -63,8 +60,8 @@ def vortex_movement(
     for i in range(1, n):
         tr[i] = max(
             high_arr[i] - low_arr[i],
-            abs(high_arr[i] - close_arr[i-1]),
-            abs(low_arr[i] - close_arr[i-1])
+            abs(high_arr[i] - close_arr[i - 1]),
+            abs(low_arr[i] - close_arr[i - 1]),
         )
 
     return plus_vm, minus_vm, tr
@@ -74,10 +71,9 @@ def vortex(
     high: pd.Series,
     low: pd.Series,
     close: pd.Series,
-    period: int = 14
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Calcule les indicateurs Vortex VI+ et VI-.
+    period: int = 14,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Calcule les indicateurs Vortex VI+ et VI-.
 
     Formule:
     - VI+ = SUM(+VM, N) / SUM(TR, N)
@@ -91,6 +87,7 @@ def vortex(
 
     Returns:
         Tuple (vi_plus, vi_minus)
+
     """
     plus_vm, minus_vm, tr = vortex_movement(high, low, close)
 
@@ -100,9 +97,9 @@ def vortex(
 
     for i in range(period, n):
         # Somme sur la période
-        vm_plus_sum = np.nansum(plus_vm[i - period + 1:i + 1])
-        vm_minus_sum = np.nansum(minus_vm[i - period + 1:i + 1])
-        tr_sum = np.nansum(tr[i - period + 1:i + 1])
+        vm_plus_sum = np.nansum(plus_vm[i - period + 1 : i + 1])
+        vm_minus_sum = np.nansum(minus_vm[i - period + 1 : i + 1])
+        tr_sum = np.nansum(tr[i - period + 1 : i + 1])
 
         if tr_sum > 0:
             vi_plus[i] = vm_plus_sum / tr_sum
@@ -116,10 +113,9 @@ def vortex_signal(
     low: pd.Series,
     close: pd.Series,
     period: int = 14,
-    threshold: float = 0.0
+    threshold: float = 0.0,
 ) -> np.ndarray:
-    """
-    Génère des signaux de trading basés sur le Vortex Indicator.
+    """Génère des signaux de trading basés sur le Vortex Indicator.
 
     Signaux:
     - Long (1): VI+ croise VI- vers le haut
@@ -133,6 +129,7 @@ def vortex_signal(
 
     Returns:
         Array de signaux (-1, 0, 1)
+
     """
     vi_plus, vi_minus = vortex(high, low, close, period)
 
@@ -142,10 +139,10 @@ def vortex_signal(
     for i in range(1, n):
         if np.isnan(vi_plus[i]) or np.isnan(vi_minus[i]):
             continue
-        if np.isnan(vi_plus[i-1]) or np.isnan(vi_minus[i-1]):
+        if np.isnan(vi_plus[i - 1]) or np.isnan(vi_minus[i - 1]):
             continue
 
-        diff_prev = vi_plus[i-1] - vi_minus[i-1]
+        diff_prev = vi_plus[i - 1] - vi_minus[i - 1]
         diff_curr = vi_plus[i] - vi_minus[i]
 
         # Croisement haussier: VI+ passe au-dessus de VI-
@@ -163,15 +160,15 @@ def vortex_trend_strength(
     high: pd.Series,
     low: pd.Series,
     close: pd.Series,
-    period: int = 14
+    period: int = 14,
 ) -> np.ndarray:
-    """
-    Mesure la force de la tendance basée sur la différence VI+ - VI-.
+    """Mesure la force de la tendance basée sur la différence VI+ - VI-.
 
     Returns:
         Valeurs positives = tendance haussière forte
         Valeurs négatives = tendance baissière forte
         Valeurs proches de 0 = pas de tendance claire
+
     """
     vi_plus, vi_minus = vortex(high, low, close, period)
     return vi_plus - vi_minus
@@ -181,15 +178,15 @@ def vortex_oscillator(
     high: pd.Series,
     low: pd.Series,
     close: pd.Series,
-    period: int = 14
+    period: int = 14,
 ) -> np.ndarray:
-    """
-    Oscillateur Vortex normalisé entre -100 et +100.
+    """Oscillateur Vortex normalisé entre -100 et +100.
 
     Formule: (VI+ - VI-) / (VI+ + VI-) * 100
 
     Returns:
         Oscillateur entre -100 et +100
+
     """
     vi_plus, vi_minus = vortex(high, low, close, period)
 
@@ -198,7 +195,7 @@ def vortex_oscillator(
     oscillator = np.where(
         denominator > 0,
         (vi_plus - vi_minus) / denominator * 100,
-        0
+        0,
     )
 
     # Propager les NaN
@@ -208,9 +205,8 @@ def vortex_oscillator(
     return oscillator
 
 
-def calculate_vortex(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
-    """
-    Fonction wrapper pour le registre d'indicateurs.
+def calculate_vortex(df: pd.DataFrame, **params) -> dict[str, np.ndarray]:
+    """Fonction wrapper pour le registre d'indicateurs.
 
     Args:
         df: DataFrame avec colonnes high, low, close
@@ -220,6 +216,7 @@ def calculate_vortex(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
 
     Returns:
         Dict avec vi_plus, vi_minus, signal, oscillator
+
     """
     period = params.get("period", 14)
     threshold = params.get("threshold", 0.0)
@@ -232,7 +229,7 @@ def calculate_vortex(df: pd.DataFrame, **params) -> Dict[str, np.ndarray]:
         "vi_plus": vi_plus,
         "vi_minus": vi_minus,
         "signal": signal,
-        "oscillator": oscillator
+        "oscillator": oscillator,
     }
 
 
@@ -241,15 +238,15 @@ register_indicator(
     "vortex",
     calculate_vortex,
     required_columns=("high", "low", "close"),
-    description="Vortex Indicator - Mesure la force des tendances"
+    description="Vortex Indicator - Mesure la force des tendances",
 )
 
 
 __all__ = [
+    "calculate_vortex",
     "vortex",
     "vortex_movement",
+    "vortex_oscillator",
     "vortex_signal",
     "vortex_trend_strength",
-    "vortex_oscillator",
-    "calculate_vortex",
 ]

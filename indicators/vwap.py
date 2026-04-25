@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.vwap
+"""Module-ID: indicators.vwap
 
 Purpose: Indicateur VWAP (prix moyen pondéré par volume) institutionnel.
 
@@ -21,7 +20,6 @@ Skip-if: Vous utilisez juste calculate_indicator('vwap').
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -30,8 +28,9 @@ import pandas as pd
 @dataclass
 class VWAPSettings:
     """Paramètres VWAP."""
+
     anchored: bool = False  # Si True, ancré au début des données
-    period: Optional[int] = None  # Si fourni, VWAP glissant
+    period: int | None = None  # Si fourni, VWAP glissant
 
 
 def vwap(
@@ -39,10 +38,9 @@ def vwap(
     low: pd.Series | np.ndarray,
     close: pd.Series | np.ndarray,
     volume: pd.Series | np.ndarray,
-    period: Optional[int] = None,
+    period: int | None = None,
 ) -> np.ndarray:
-    """
-    Calcule VWAP (Volume Weighted Average Price).
+    """Calcule VWAP (Volume Weighted Average Price).
 
     Args:
         high: Prix hauts
@@ -53,6 +51,7 @@ def vwap(
 
     Returns:
         Valeurs VWAP
+
     """
     if isinstance(high, pd.Series):
         high = high.values
@@ -89,4 +88,4 @@ def vwap(
     return vwap_values
 
 
-__all__ = ["vwap", "VWAPSettings"]
+__all__ = ["VWAPSettings", "vwap"]

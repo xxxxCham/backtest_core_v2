@@ -3,31 +3,6 @@
   "description": "Preset multi-LLM 100% Ollama Cloud, large et rôle-spécifique, volontairement sans DeepSeek ni gpt-oss:120b pour valider les autres routes cloud.",
   "derived_from": "24GB_diverse_roles",
   "roles": {
-    "idea_llm": {
-      "backend": "ollama",
-      "preferred_models": [
-        "qwen3.5:122b",
-        "kimi-k2.5",
-        "qwen3-vl:235b",
-        "qwen3-next:80b",
-        "mistral-large-3"
-      ],
-      "random_pool_models": [
-        "qwen3.5:122b",
-        "kimi-k2.5",
-        "qwen3-vl:235b",
-        "qwen3-next:80b",
-        "mistral-large-3",
-        "glm-5"
-      ],
-      "fallback_models": [
-        "mistral-large-3",
-        "kimi-k2-thinking",
-        "glm-5"
-      ],
-      "required": true,
-      "description": "Idéation cloud priorisant les meilleurs générateurs d'idées hors DeepSeek/gpt-oss legacy, avec repli sur d'autres routes cloud lourdes."
-    },
     "builder_llm": {
       "backend": "ollama",
       "preferred_models": [
@@ -51,78 +26,52 @@
         "devstral-2:123b"
       ],
       "required": true,
-      "description": "Pool Builder cloud orienté code et agentique, sans fallback vers les deux anciens tags déjà validés."
+      "description": "Ecrit et ajuste la strategie."
     },
-    "critic_llm": {
+    "supervisor_llm": {
       "backend": "ollama",
       "preferred_models": [
-        "kimi-k2-thinking",
-        "glm-5",
-        "mistral-large-3",
-        "cogito-2.1:671b",
-        "qwen3.5:122b"
-      ],
-      "random_pool_models": [
-        "kimi-k2-thinking",
-        "glm-5",
-        "mistral-large-3",
-        "cogito-2.1:671b",
-        "qwen3.5:122b"
-      ],
-      "fallback_models": [
-        "mistral-large-3",
-        "cogito-2.1:671b",
-        "glm-5"
-      ],
-      "required": true,
-      "description": "Critique cloud priorisant des raisonneurs lourds variés, sans retomber sur DeepSeek ni gpt-oss:120b."
-    },
-    "risk_llm": {
-      "backend": "ollama",
-      "preferred_models": [
-        "cogito-2.1:671b",
-        "nemotron-3-super:120b",
-        "mistral-large-3",
-        "glm-5",
-        "qwen3.5:122b"
-      ],
-      "random_pool_models": [
-        "cogito-2.1:671b",
-        "nemotron-3-super:120b",
-        "mistral-large-3",
-        "glm-5",
-        "qwen3.5:122b"
-      ],
-      "fallback_models": [
-        "mistral-large-3",
-        "nemotron-3-super:120b",
-        "cogito-2.1:671b"
-      ],
-      "required": true,
-      "description": "Rôle risque piloté par des modèles cloud de robustesse variés, sans repli sur les deux tags historiquement fonctionnels."
-    },
-    "execution_router_llm": {
-      "backend": "ollama",
-      "preferred_models": [
-        "glm-4.6",
-        "minimax-m2.5",
-        "kimi-k2",
-        "qwen3-next:80b"
-      ],
-      "random_pool_models": [
-        "glm-4.6",
-        "minimax-m2.5",
-        "kimi-k2",
+        "qwen3.5:122b",
+        "kimi-k2.5",
+        "qwen3-vl:235b",
         "qwen3-next:80b",
+        "mistral-large-3",
+        "glm-5",
+        "kimi-k2-thinking",
+        "cogito-2.1:671b",
+        "nemotron-3-super:120b",
+        "glm-4.6",
+        "minimax-m2.5",
+        "kimi-k2",
+        "minimax-m2.7"
+      ],
+      "random_pool_models": [
+        "qwen3.5:122b",
+        "kimi-k2.5",
+        "qwen3-vl:235b",
+        "qwen3-next:80b",
+        "mistral-large-3",
+        "glm-5",
+        "kimi-k2-thinking",
+        "cogito-2.1:671b",
+        "nemotron-3-super:120b",
+        "glm-4.6",
+        "minimax-m2.5",
+        "kimi-k2",
         "minimax-m2.7"
       ],
       "fallback_models": [
+        "mistral-large-3",
+        "kimi-k2-thinking",
+        "glm-5",
+        "cogito-2.1:671b",
+        "nemotron-3-super:120b",
         "kimi-k2",
         "glm-4.6",
         "minimax-m2.5"
       ],
-      "required": false,
-      "description": "Routeur cloud optionnel gardant une palette plus large, sans repasser par DeepSeek ni gpt-oss:120b."
+      "required": true,
+      "description": "Fusionne generation objectif, critique, risque et decision de boucle."
     }
   },
   "updated_at": "2026-03-28T00:00:00Z",

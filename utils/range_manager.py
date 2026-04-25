@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.range_manager
+"""Module-ID: utils.range_manager
 
 Purpose: Gestion centralisée des plages min/max pour tous les indicateurs et stratégies.
 
@@ -22,7 +21,7 @@ Skip-if: Utilisation simple des plages existantes.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     import tomllib as tomli
@@ -40,18 +39,18 @@ from utils.parameters import ParameterSpec
 @dataclass
 class RangeConfig:
     """Configuration d'une plage de paramètre."""
+
     min: float
     max: float
     step: float
     default: Any
     description: str
-    options: Optional[List[str]] = None
-    param_type: Optional[str] = None
+    options: list[str] | None = None
+    param_type: str | None = None
 
 
 class RangeManager:
-    """
-    Gestionnaire centralisé des plages de paramètres.
+    """Gestionnaire centralisé des plages de paramètres.
 
     Permet de:
     - Charger les plages depuis indicator_ranges.toml
@@ -60,12 +59,12 @@ class RangeManager:
     - Appliquer les plages aux stratégies
     """
 
-    def __init__(self, config_path: Optional[Path] = None):
-        """
-        Initialise le gestionnaire.
+    def __init__(self, config_path: Path | None = None):
+        """Initialise le gestionnaire.
 
         Args:
             config_path: Chemin vers indicator_ranges.toml
+
         """
         if config_path is None:
             # Chemin par défaut
@@ -73,7 +72,7 @@ class RangeManager:
             config_path = repo_root / "config" / "indicator_ranges.toml"
 
         self.config_path = Path(config_path)
-        self.ranges: Dict[str, Dict[str, RangeConfig]] = {}
+        self.ranges: dict[str, dict[str, RangeConfig]] = {}
         self._load_ranges()
 
     def _load_ranges(self) -> None:
@@ -102,12 +101,11 @@ class RangeManager:
                 default=values.get("default"),
                 description=values.get("description", ""),
                 options=values.get("options"),
-                param_type=values.get("type")
+                param_type=values.get("type"),
             )
 
-    def get_range(self, category: str, param: str) -> Optional[RangeConfig]:
-        """
-        Récupère la configuration d'une plage.
+    def get_range(self, category: str, param: str) -> RangeConfig | None:
+        """Récupère la configuration d'une plage.
 
         Args:
             category: Catégorie (ex: "ema", "rsi", "bollinger")
@@ -115,16 +113,20 @@ class RangeManager:
 
         Returns:
             RangeConfig ou None si non trouvé
+
         """
         return self.ranges.get(category, {}).get(param)
 
-    def update_range(self, category: str, param: str,
-                    min_val: Optional[float] = None,
-                    max_val: Optional[float] = None,
-                    step: Optional[float] = None,
-                    default: Optional[Any] = None) -> None:
-        """
-        Met à jour une plage existante.
+    def update_range(
+        self,
+        category: str,
+        param: str,
+        min_val: float | None = None,
+        max_val: float | None = None,
+        step: float | None = None,
+        default: Any | None = None,
+    ) -> None:
+        """Met à jour une plage existante.
 
         Args:
             category: Catégorie de l'indicateur/stratégie
@@ -133,6 +135,7 @@ class RangeManager:
             max_val: Nouvelle valeur maximale (optionnel)
             step: Nouveau pas (optionnel)
             default: Nouvelle valeur par défaut (optionnel)
+
         """
         if category not in self.ranges:
             raise ValueError(f"Catégorie inconnue: {category}")
@@ -152,13 +155,13 @@ class RangeManager:
             range_cfg.default = default
 
     def add_range(self, category: str, param: str, range_config: RangeConfig) -> None:
-        """
-        Ajoute une nouvelle plage.
+        """Ajoute une nouvelle plage.
 
         Args:
             category: Catégorie de l'indicateur/stratégie
             param: Nom du paramètre
             range_config: Configuration de la plage
+
         """
         if category not in self.ranges:
             self.ranges[category] = {}
@@ -166,15 +169,16 @@ class RangeManager:
         self.ranges[category][param] = range_config
 
     def save_ranges(self, backup: bool = True) -> None:
-        """
-        Sauvegarde les plages modifiées dans le fichier TOML.
+        """Sauvegarde les plages modifiées dans le fichier TOML.
 
         Args:
             backup: Créer une sauvegarde avant modification
+
         """
         if backup and self.config_path.exists():
             backup_path = self.config_path.with_suffix(".toml.bak")
             import shutil
+
             shutil.copy2(self.config_path, backup_path)
 
         # Convertir les RangeConfig en dict pour TOML
@@ -187,7 +191,7 @@ class RangeManager:
                     "max": range_cfg.max,
                     "step": range_cfg.step,
                     "default": range_cfg.default,
-                    "description": range_cfg.description
+                    "description": range_cfg.description,
                 }
                 if range_cfg.options:
                     data[key]["options"] = range_cfg.options
@@ -201,10 +205,8 @@ class RangeManager:
             with open(self.config_path, "w", encoding="utf-8") as f:
                 toml.dump(data, f)
 
-    def apply_to_parameter_spec(self, spec: ParameterSpec,
-                                category: str, param: str) -> ParameterSpec:
-        """
-        Applique une plage à un ParameterSpec existant.
+    def apply_to_parameter_spec(self, spec: ParameterSpec, category: str, param: str) -> ParameterSpec:
+        """Applique une plage à un ParameterSpec existant.
 
         Args:
             spec: ParameterSpec original
@@ -213,6 +215,7 @@ class RangeManager:
 
         Returns:
             Nouveau ParameterSpec avec plages appliquées
+
         """
         range_cfg = self.get_range(category, param)
 
@@ -229,35 +232,35 @@ class RangeManager:
             param_type=spec.param_type,
             description=range_cfg.description or spec.description,
             optimize=spec.optimize,
-            options=range_cfg.options or spec.options
+            options=range_cfg.options or spec.options,
         )
 
-    def get_all_categories(self) -> List[str]:
+    def get_all_categories(self) -> list[str]:
         """Retourne toutes les catégories disponibles."""
         return sorted(self.ranges.keys())
 
-    def get_category_params(self, category: str) -> List[str]:
-        """
-        Retourne tous les paramètres d'une catégorie.
+    def get_category_params(self, category: str) -> list[str]:
+        """Retourne tous les paramètres d'une catégorie.
 
         Args:
             category: Nom de la catégorie
 
         Returns:
             Liste des noms de paramètres
+
         """
         return sorted(self.ranges.get(category, {}).keys())
 
-    def get_all_ranges(self) -> Dict[str, Dict[str, RangeConfig]]:
+    def get_all_ranges(self) -> dict[str, dict[str, RangeConfig]]:
         """Retourne toutes les plages chargées."""
         return self.ranges
 
-    def export_to_dict(self) -> Dict[str, Any]:
-        """
-        Exporte toutes les plages en dictionnaire.
+    def export_to_dict(self) -> dict[str, Any]:
+        """Exporte toutes les plages en dictionnaire.
 
         Returns:
             Dictionnaire hiérarchique {category: {param: {...}}}
+
         """
         result = {}
         for category, params in self.ranges.items():
@@ -268,7 +271,7 @@ class RangeManager:
                     "max": range_cfg.max,
                     "step": range_cfg.step,
                     "default": range_cfg.default,
-                    "description": range_cfg.description
+                    "description": range_cfg.description,
                 }
                 if range_cfg.options:
                     result[category][param]["options"] = range_cfg.options
@@ -279,24 +282,24 @@ class RangeManager:
 
 # Fonctions utilitaires globales
 
-def load_indicator_ranges(config_path: Optional[Path] = None) -> RangeManager:
-    """
-    Charge le gestionnaire de plages.
+
+def load_indicator_ranges(config_path: Path | None = None) -> RangeManager:
+    """Charge le gestionnaire de plages.
 
     Args:
         config_path: Chemin vers indicator_ranges.toml (optionnel)
 
     Returns:
         Instance de RangeManager
+
     """
     return RangeManager(config_path)
 
 
-def apply_ranges_to_strategy(strategy_name: str,
-                             parameter_specs: Dict[str, ParameterSpec],
-                             range_manager: Optional[RangeManager] = None) -> Dict[str, ParameterSpec]:
-    """
-    Applique les plages du fichier de configuration aux parameter_specs d'une stratégie.
+def apply_ranges_to_strategy(
+    strategy_name: str, parameter_specs: dict[str, ParameterSpec], range_manager: RangeManager | None = None,
+) -> dict[str, ParameterSpec]:
+    """Applique les plages du fichier de configuration aux parameter_specs d'une stratégie.
 
     Args:
         strategy_name: Nom de la stratégie (ex: "ema_cross", "rsi_reversal")
@@ -305,6 +308,7 @@ def apply_ranges_to_strategy(strategy_name: str,
 
     Returns:
         Nouveau dict de ParameterSpec avec plages appliquées
+
     """
     if range_manager is None:
         range_manager = load_indicator_ranges()
@@ -314,7 +318,9 @@ def apply_ranges_to_strategy(strategy_name: str,
     for param_name, spec in parameter_specs.items():
         # Essayer d'abord avec le nom de la stratégie
         updated_spec = range_manager.apply_to_parameter_spec(
-            spec, strategy_name, param_name
+            spec,
+            strategy_name,
+            param_name,
         )
 
         # Si pas trouvé, essayer avec le nom du paramètre comme catégorie
@@ -323,7 +329,9 @@ def apply_ranges_to_strategy(strategy_name: str,
             # Extraire la catégorie du nom (rsi_period -> rsi)
             category = param_name.split("_")[0]
             updated_spec = range_manager.apply_to_parameter_spec(
-                spec, category, param_name.replace(f"{category}_", "")
+                spec,
+                category,
+                param_name.replace(f"{category}_", ""),
             )
 
         updated_specs[param_name] = updated_spec
@@ -331,10 +339,8 @@ def apply_ranges_to_strategy(strategy_name: str,
     return updated_specs
 
 
-def get_strategy_ranges(strategy_name: str,
-                       range_manager: Optional[RangeManager] = None) -> Dict[str, RangeConfig]:
-    """
-    Récupère toutes les plages définies pour une stratégie.
+def get_strategy_ranges(strategy_name: str, range_manager: RangeManager | None = None) -> dict[str, RangeConfig]:
+    """Récupère toutes les plages définies pour une stratégie.
 
     Args:
         strategy_name: Nom de la stratégie
@@ -342,6 +348,7 @@ def get_strategy_ranges(strategy_name: str,
 
     Returns:
         Dict {param_name: RangeConfig}
+
     """
     if range_manager is None:
         range_manager = load_indicator_ranges()
@@ -350,7 +357,7 @@ def get_strategy_ranges(strategy_name: str,
 
 
 # Singleton global (lazy loading)
-_global_range_manager: Optional[RangeManager] = None
+_global_range_manager: RangeManager | None = None
 
 
 def get_global_range_manager() -> RangeManager:

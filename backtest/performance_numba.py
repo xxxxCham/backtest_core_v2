@@ -1,5 +1,4 @@
-"""
-Backtest Core - Performance Optimizations with Numba
+"""Backtest Core - Performance Optimizations with Numba
 =====================================================
 
 Fonctions optimisées Numba pour calculs de performance critiques.
@@ -13,8 +12,7 @@ from numba import njit
 
 @njit(cache=True, nogil=True, fastmath=True, boundscheck=False)
 def _expanding_max_numba(arr: np.ndarray) -> np.ndarray:
-    """
-    Calcul vectorisé du maximum cumulatif (running maximum).
+    """Calcul vectorisé du maximum cumulatif (running maximum).
 
     Remplace: pandas.Series.expanding().max()
     Gain: 100× plus rapide (5-10ms → 0.05ms sur 116k barres)
@@ -29,6 +27,7 @@ def _expanding_max_numba(arr: np.ndarray) -> np.ndarray:
         >>> arr = np.array([1.0, 3.0, 2.0, 5.0, 4.0])
         >>> _expanding_max_numba(arr)
         array([1., 3., 3., 5., 5.])
+
     """
     n = len(arr)
     if n == 0:
@@ -38,8 +37,7 @@ def _expanding_max_numba(arr: np.ndarray) -> np.ndarray:
     current_max = arr[0]
 
     for i in range(n):
-        if arr[i] > current_max:
-            current_max = arr[i]
+        current_max = max(current_max, arr[i])
         result[i] = current_max
 
     return result
@@ -47,8 +45,7 @@ def _expanding_max_numba(arr: np.ndarray) -> np.ndarray:
 
 @njit(cache=True, nogil=True, fastmath=True, boundscheck=False)
 def _drawdown_series_numba(equity_values: np.ndarray) -> np.ndarray:
-    """
-    Calcul ultra-rapide de la série de drawdown.
+    """Calcul ultra-rapide de la série de drawdown.
 
     Remplace: drawdown_series() avec pandas
     Gain: 100× plus rapide (7-12ms → 0.07ms)
@@ -67,6 +64,7 @@ def _drawdown_series_numba(equity_values: np.ndarray) -> np.ndarray:
         >>> dd = _drawdown_series_numba(equity)
         >>> dd[2]  # Drawdown à 105 depuis pic de 110
         -0.04545...
+
     """
     n = len(equity_values)
     if n == 0:
@@ -88,8 +86,7 @@ def _drawdown_series_numba(equity_values: np.ndarray) -> np.ndarray:
 
 @njit(cache=True, nogil=True, fastmath=True, boundscheck=False)
 def _max_drawdown_numba(equity_values: np.ndarray) -> float:
-    """
-    Calcul ultra-rapide du drawdown maximum.
+    """Calcul ultra-rapide du drawdown maximum.
 
     Gain: 100× plus rapide que version pandas
 
@@ -98,6 +95,7 @@ def _max_drawdown_numba(equity_values: np.ndarray) -> float:
 
     Returns:
         Drawdown maximum (valeur négative, ex: -0.15 pour -15%)
+
     """
     if len(equity_values) == 0:
         return 0.0
@@ -108,8 +106,7 @@ def _max_drawdown_numba(equity_values: np.ndarray) -> float:
 
 @njit(cache=True, nogil=True, fastmath=True, boundscheck=False)
 def _ulcer_index_numba(equity_values: np.ndarray) -> float:
-    """
-    Ulcer Index optimisé: mesure du stress lié aux drawdowns.
+    """Ulcer Index optimisé: mesure du stress lié aux drawdowns.
 
     Remplace: ulcer_index() de metrics_tier_s.py
     Gain: 100× plus rapide (8-12ms → 0.08ms)
@@ -130,6 +127,7 @@ def _ulcer_index_numba(equity_values: np.ndarray) -> float:
         >>> ui = _ulcer_index_numba(equity)
         >>> ui
         2.03...  # Faible stress
+
     """
     n = len(equity_values)
     if n < 2:
@@ -153,8 +151,7 @@ def _ulcer_index_numba(equity_values: np.ndarray) -> float:
 
 @njit(cache=True, nogil=True, fastmath=True, boundscheck=False)
 def _recovery_factor_numba(equity_values: np.ndarray, initial_capital: float) -> float:
-    """
-    Recovery Factor optimisé: Net Profit / Max Drawdown absolu.
+    """Recovery Factor optimisé: Net Profit / Max Drawdown absolu.
 
     Gain: 100× plus rapide (6-10ms → 0.06ms)
 
@@ -175,6 +172,7 @@ def _recovery_factor_numba(equity_values: np.ndarray, initial_capital: float) ->
         >>> rf = _recovery_factor_numba(equity, 100.0)
         >>> rf
         1.0  # Récupéré 1× son pire DD
+
     """
     if len(equity_values) == 0:
         return 0.0
@@ -187,34 +185,30 @@ def _recovery_factor_numba(equity_values: np.ndarray, initial_capital: float) ->
 
     for i in range(len(equity_values)):
         dd_abs = running_max[i] - equity_values[i]
-        if dd_abs > max_dd_abs:
-            max_dd_abs = dd_abs
+        max_dd_abs = max(max_dd_abs, dd_abs)
 
     if max_dd_abs <= 1e-10:
         # Pas de drawdown significatif
         if net_profit > 0:
             return 100.0  # Plafond arbitraire pour inf
-        else:
-            return 0.0
+        return 0.0
 
     recovery = net_profit / max_dd_abs
 
     # Plafonner pour éviter valeurs aberrantes
     if recovery > 100.0:
         return 100.0
-    elif recovery < -100.0:
+    if recovery < -100.0:
         return -100.0
-    else:
-        return recovery
+    return recovery
 
 
 @njit(cache=True, nogil=True, fastmath=True, boundscheck=False)
 def _sortino_downside_deviation_numba(
     returns: np.ndarray,
-    target_return: float = 0.0
+    target_return: float = 0.0,
 ) -> float:
-    """
-    Calcul optimisé de la downside deviation pour Sortino Ratio.
+    """Calcul optimisé de la downside deviation pour Sortino Ratio.
 
     Gain: 10× plus rapide (5-10ms → 0.5ms)
 
@@ -235,6 +229,7 @@ def _sortino_downside_deviation_numba(
         >>> dd = _sortino_downside_deviation_numba(returns, 0.0)
         >>> dd
         0.0122...  # Seulement volatilité baissière
+
     """
     n = len(returns)
     if n < 2:
@@ -257,10 +252,9 @@ def _sortino_downside_deviation_numba(
 @njit(cache=True, nogil=True, fastmath=True, boundscheck=False)
 def _max_drawdown_duration_numba(
     equity_values: np.ndarray,
-    timestamps_days: np.ndarray
+    timestamps_days: np.ndarray,
 ) -> float:
-    """
-    Calcul optimisé de la durée maximale d'un drawdown.
+    """Calcul optimisé de la durée maximale d'un drawdown.
 
     Gain: 10-20× plus rapide (3-8ms → 0.3ms)
 
@@ -277,6 +271,7 @@ def _max_drawdown_duration_numba(
         >>> duration = _max_drawdown_duration_numba(equity, days)
         >>> duration
         4.0  # 4 jours de DD
+
     """
     n = len(equity_values)
     if n < 2:
@@ -293,28 +288,25 @@ def _max_drawdown_duration_numba(
         if dd[i] < 0:  # En drawdown
             if start_idx < 0:
                 start_idx = i
-        else:  # Sorti du drawdown
-            if start_idx >= 0:
-                duration = timestamps_days[i - 1] - timestamps_days[start_idx]
-                if duration > max_duration:
-                    max_duration = duration
-                start_idx = -1
+        elif start_idx >= 0:
+            duration = timestamps_days[i - 1] - timestamps_days[start_idx]
+            max_duration = max(max_duration, duration)
+            start_idx = -1
 
     # Vérifier si encore en drawdown à la fin
     if start_idx >= 0:
         duration = timestamps_days[n - 1] - timestamps_days[start_idx]
-        if duration > max_duration:
-            max_duration = duration
+        max_duration = max(max_duration, duration)
 
     return max_duration
 
 
 __all__ = [
-    "_expanding_max_numba",
     "_drawdown_series_numba",
+    "_expanding_max_numba",
+    "_max_drawdown_duration_numba",
     "_max_drawdown_numba",
-    "_ulcer_index_numba",
     "_recovery_factor_numba",
     "_sortino_downside_deviation_numba",
-    "_max_drawdown_duration_numba",
+    "_ulcer_index_numba",
 ]

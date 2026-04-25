@@ -1,5 +1,4 @@
-"""
-Module-ID: cli.sweep_executor
+"""Module-ID: cli.sweep_executor
 
 Purpose: Exécution des sweeps, grilles et optimisations Optuna en CLI.
 
@@ -17,11 +16,12 @@ Skip-if: Utilisation des commandes sans modifier le comportement.
 """
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import product
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 import pandas as pd
 
@@ -29,9 +29,11 @@ import pandas as pd
 # DATACLASSES
 # =============================================================================
 
+
 @dataclass
 class SweepConfig:
     """Configuration d'un sweep."""
+
     strategy_name: str
     data_path: Path
     symbol: str
@@ -49,8 +51,8 @@ class SweepConfig:
     minimize: bool = False
 
     # Période
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
+    start_date: str | None = None
+    end_date: str | None = None
 
     # Checkpoints
     checkpoint_every: int = 0
@@ -60,13 +62,14 @@ class SweepConfig:
 @dataclass
 class SweepProgress:
     """État de progression d'un sweep."""
+
     completed: int = 0
     failed: int = 0
     total: int = 0
 
-    best_score: float = float('-inf')
-    best_params: Dict[str, Any] = field(default_factory=dict)
-    best_metrics: Dict[str, Any] = field(default_factory=dict)
+    best_score: float = float("-inf")
+    best_params: dict[str, Any] = field(default_factory=dict)
+    best_metrics: dict[str, Any] = field(default_factory=dict)
 
     start_time: float = field(default_factory=time.time)
 
@@ -93,7 +96,7 @@ class SweepProgress:
     def eta_seconds(self) -> float:
         """Temps restant estimé en secondes."""
         if self.rate == 0:
-            return float('inf')
+            return float("inf")
         remaining = self.total - (self.completed + self.failed)
         return remaining / self.rate
 
@@ -101,9 +104,10 @@ class SweepProgress:
 @dataclass
 class SweepResult:
     """Résultat d'un sweep complet."""
-    results: List[Dict[str, Any]]
-    best_params: Dict[str, Any]
-    best_metrics: Dict[str, Any]
+
+    results: list[dict[str, Any]]
+    best_params: dict[str, Any]
+    best_metrics: dict[str, Any]
     best_score: float
 
     total_combinations: int
@@ -120,6 +124,7 @@ class SweepResult:
 # CHECKPOINT MANAGER
 # =============================================================================
 
+
 class CheckpointManager:
     """Gère les checkpoints pour les optimisations longues."""
 
@@ -128,7 +133,7 @@ class CheckpointManager:
         checkpoint_id: str,
         checkpoint_every: int = 0,
         checkpoint_seconds: float = 0,
-        storage=None
+        storage=None,
     ):
         self.checkpoint_id = checkpoint_id
         self.checkpoint_every = checkpoint_every
@@ -137,14 +142,14 @@ class CheckpointManager:
 
         self.last_checkpoint_time = time.time()
         self.last_checkpoint_count = 0
-        self.items: List[Dict] = []
+        self.items: list[dict] = []
 
     @property
     def enabled(self) -> bool:
         """Vérifie si les checkpoints sont activés."""
         return (self.checkpoint_every > 0 or self.checkpoint_seconds > 0) and self.storage is not None
 
-    def add_result(self, result: Dict):
+    def add_result(self, result: dict):
         """Ajoute un résultat au buffer de checkpoint."""
         self.items.append(result)
 
@@ -171,7 +176,7 @@ class CheckpointManager:
         self,
         progress: SweepProgress,
         config: SweepConfig,
-        status: str = "in_progress"
+        status: str = "in_progress",
     ):
         """Sauvegarde un checkpoint."""
         if not self.enabled:
@@ -213,14 +218,14 @@ class CheckpointManager:
 # GÉNÉRATION DE GRILLE
 # =============================================================================
 
+
 def build_param_grid_from_strategy(
     strategy_instance,
     granularity: float = 1.0,
     max_combinations: int = 10000,
-    include_optional: bool = False
-) -> Tuple[Dict[str, List], List[str]]:
-    """
-    Construit une grille de paramètres depuis une stratégie.
+    include_optional: bool = False,
+) -> tuple[dict[str, list], list[str]]:
+    """Construit une grille de paramètres depuis une stratégie.
 
     Args:
         strategy_instance: Instance de la stratégie
@@ -230,6 +235,7 @@ def build_param_grid_from_strategy(
 
     Returns:
         Tuple (param_grid, param_names)
+
     """
     from utils.parameters import ParameterSpec, generate_param_grid
 
@@ -266,12 +272,11 @@ def build_param_grid_from_strategy(
 
 
 def build_simple_grid(
-    param_ranges: Dict[str, Tuple[float, float]],
-    defaults: Dict[str, Any],
-    n_values: int = 3
-) -> Tuple[List[Dict], List[str]]:
-    """
-    Construit une grille simple avec N valeurs par paramètre.
+    param_ranges: dict[str, tuple[float, float]],
+    defaults: dict[str, Any],
+    n_values: int = 3,
+) -> tuple[list[dict], list[str]]:
+    """Construit une grille simple avec N valeurs par paramètre.
 
     Args:
         param_ranges: {param: (min, max)}
@@ -280,6 +285,7 @@ def build_simple_grid(
 
     Returns:
         Tuple (list of param dicts, param names)
+
     """
     param_grid = {}
 
@@ -311,15 +317,15 @@ def build_simple_grid(
 # EXÉCUTION SWEEP
 # =============================================================================
 
+
 def run_sweep(
     config: SweepConfig,
     df: pd.DataFrame,
-    param_grid: List[Dict],
-    on_progress: Optional[Callable[[SweepProgress], None]] = None,
-    on_result: Optional[Callable[[Dict], None]] = None,
+    param_grid: list[dict],
+    on_progress: Callable[[SweepProgress], None] | None = None,
+    on_result: Callable[[dict], None] | None = None,
 ) -> SweepResult:
-    """
-    Exécute un sweep paramétrique.
+    """Exécute un sweep paramétrique.
 
     Args:
         config: Configuration du sweep
@@ -330,6 +336,7 @@ def run_sweep(
 
     Returns:
         SweepResult avec tous les résultats
+
     """
     from backtest.engine import BacktestEngine
     from backtest.sweep_numba import (
@@ -352,6 +359,7 @@ def run_sweep(
     checkpoint_mgr = None
     if config.checkpoint_every > 0 or config.checkpoint_seconds > 0:
         from backtest.storage import get_storage
+
         storage = get_storage()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         checkpoint_id = f"sweep_{config.strategy_name}_{config.symbol}_{timestamp}"
@@ -364,17 +372,17 @@ def run_sweep(
 
     minimize = config.minimize
     if minimize:
-        progress.best_score = float('inf')
+        progress.best_score = float("inf")
 
     results = []
     strategy_key = normalize_numba_strategy_key(config.strategy_name)
     metric_key = normalize_numba_metric_name(config.metric)
 
     def consume_numba_chunk(
-        chunk_items: List[Dict[str, Any]],
+        chunk_items: list[dict[str, Any]],
         completed: int,
         total: int,
-        _best_result: Optional[Dict[str, Any]],
+        _best_result: dict[str, Any] | None,
     ) -> None:
         for item_data in chunk_items:
             metrics = item_data.get("metrics", {})
@@ -386,9 +394,7 @@ def run_sweep(
             }
             results.append(result_item)
 
-            is_better = (
-                (score < progress.best_score) if minimize else (score > progress.best_score)
-            )
+            is_better = (score < progress.best_score) if minimize else (score > progress.best_score)
             if is_better:
                 progress.best_score = score
                 progress.best_params = result_item["params"].copy()
@@ -456,7 +462,7 @@ def run_sweep(
                 timeframe=config.timeframe,
             )
 
-            metrics = result.metrics.to_dict() if hasattr(result.metrics, 'to_dict') else result.metrics
+            metrics = result.metrics.to_dict() if hasattr(result.metrics, "to_dict") else result.metrics
             score = metrics.get(metric_key, metrics.get(config.metric, 0))
 
             result_item = {
@@ -483,10 +489,12 @@ def run_sweep(
 
         except Exception as e:
             progress.failed += 1
-            results.append({
-                "params": params,
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "params": params,
+                    "error": str(e),
+                },
+            )
 
         # Progress callback
         if on_progress:
@@ -519,6 +527,7 @@ def run_sweep(
 # EXÉCUTION OPTUNA
 # =============================================================================
 
+
 def run_optuna_optimization(
     strategy_name: str,
     df: pd.DataFrame,
@@ -530,15 +539,14 @@ def run_optuna_optimization(
     sampler: str = "tpe",
     pruner: bool = True,
     n_jobs: int = 1,
-    timeout: Optional[float] = None,
+    timeout: float | None = None,
     initial_capital: float = 10000,
     fees_bps: int = 10,
     slippage_bps: int = 5,
-    on_trial_complete: Optional[Callable] = None,
+    on_trial_complete: Callable | None = None,
     quiet: bool = False,
-) -> Dict[str, Any]:
-    """
-    Exécute une optimisation Optuna.
+) -> dict[str, Any]:
+    """Exécute une optimisation Optuna.
 
     Args:
         strategy_name: Nom de la stratégie
@@ -560,6 +568,7 @@ def run_optuna_optimization(
 
     Returns:
         Dict avec résultats complets
+
     """
     try:
         from backtest.optuna_optimizer import (

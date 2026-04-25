@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.eom
+"""Module-ID: indicators.eom
 
 Purpose: Ease of Movement (EOM).
 """
@@ -53,4 +52,4 @@ register_indicator(
 )
 
 
-__all__ = ["eom", "calculate_eom", "EOMSettings"]
+__all__ = ["EOMSettings", "calculate_eom", "eom"]

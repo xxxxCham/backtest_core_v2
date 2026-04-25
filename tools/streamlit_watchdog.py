@@ -1,5 +1,4 @@
-"""
-Watchdog léger pour Streamlit.
+"""Watchdog léger pour Streamlit.
 
 Relance automatiquement l'application quand le runtime autonome Builder
 indique qu'il doit continuer mais que le process est réellement tombé
@@ -18,7 +17,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -53,7 +52,7 @@ def _parse_runtime_timestamp(value: Any) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def _load_runtime_state(path: Path) -> Dict[str, Any]:
+def _load_runtime_state(path: Path) -> dict[str, Any]:
     default = {
         "active": False,
         "manual_stop": False,
@@ -78,7 +77,7 @@ def _load_runtime_state(path: Path) -> Dict[str, Any]:
     return merged
 
 
-def _save_runtime_state(path: Path, runtime: Dict[str, Any]) -> None:
+def _save_runtime_state(path: Path, runtime: dict[str, Any]) -> None:
     payload = {
         "version": "1.0",
         "updated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
@@ -98,10 +97,7 @@ def _save_runtime_state(path: Path, runtime: Dict[str, Any]) -> None:
             except Exception as exc:
                 last_exc = exc
                 _cleanup_runtime_tmp_file(tmp_path)
-                should_retry = (
-                    attempt < (_RUNTIME_STATE_SAVE_RETRIES - 1)
-                    and _is_transient_runtime_save_error(exc)
-                )
+                should_retry = attempt < (_RUNTIME_STATE_SAVE_RETRIES - 1) and _is_transient_runtime_save_error(exc)
                 if should_retry:
                     time.sleep(_RUNTIME_STATE_SAVE_RETRY_DELAY_SEC * (attempt + 1))
                     continue
@@ -132,11 +128,11 @@ def _build_unique_runtime_tmp_path(target_path: Path) -> Path:
     return target_path.with_name(f"{target_path.name}{suffix}")
 
 
-def _runtime_requests_restart(runtime: Dict[str, Any]) -> bool:
+def _runtime_requests_restart(runtime: dict[str, Any]) -> bool:
     return bool(runtime.get("active")) and not bool(runtime.get("manual_stop"))
 
 
-def _runtime_pid(runtime: Dict[str, Any]) -> int:
+def _runtime_pid(runtime: dict[str, Any]) -> int:
     try:
         return int(runtime.get("pid", 0) or 0)
     except Exception:
@@ -156,11 +152,11 @@ def _pid_exists(pid: int) -> bool | None:
 
 def _clear_stale_runtime_claim(
     path: Path,
-    runtime: Dict[str, Any],
+    runtime: dict[str, Any],
     *,
     reason: str,
     now: datetime,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     cleaned = dict(runtime)
     cleaned["active"] = False
     cleaned["manual_stop"] = False
@@ -181,11 +177,11 @@ def _clear_stale_runtime_claim(
 
 
 def maybe_clear_orphaned_runtime_claim(
-    runtime: Dict[str, Any],
+    runtime: dict[str, Any],
     *,
     now: datetime,
     stale_runtime_claim_timeout_sec: int,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     if not _runtime_requests_restart(runtime):
         return False, ""
 
@@ -208,10 +204,10 @@ def maybe_clear_orphaned_runtime_claim(
 
 
 def decide_stall_restart(
-    runtime: Dict[str, Any],
+    runtime: dict[str, Any],
     *,
     process_running: bool,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     if not _runtime_requests_restart(runtime):
         return False, ""
     if not process_running:
@@ -219,7 +215,7 @@ def decide_stall_restart(
     return False, ""
 
 
-def decide_exit_restart(runtime: Dict[str, Any], exit_code: int | None) -> Tuple[bool, str]:
+def decide_exit_restart(runtime: dict[str, Any], exit_code: int | None) -> tuple[bool, str]:
     if _runtime_requests_restart(runtime):
         return True, f"runtime_active_after_exit(code={exit_code})"
     if bool(runtime.get("manual_stop")):
@@ -275,7 +271,7 @@ def _port_accepts_connection(port: int) -> bool:
     return False
 
 
-def _port_owner_info(port: int) -> Dict[str, Any]:
+def _port_owner_info(port: int) -> dict[str, Any]:
     if not _HAS_PSUTIL:
         return {}
     try:
@@ -297,7 +293,7 @@ def _port_owner_info(port: int) -> Dict[str, Any]:
     return {}
 
 
-def _is_same_streamlit_app_owner(owner: Dict[str, Any], root: Path) -> bool:
+def _is_same_streamlit_app_owner(owner: dict[str, Any], root: Path) -> bool:
     if not owner:
         return False
     cmdline = " ".join(str(part or "") for part in owner.get("cmdline", []))
@@ -315,7 +311,7 @@ def _resolve_launch_plan(
     requested_port: int,
     *,
     max_port_tries: int = 20,
-) -> Tuple[str, int, str]:
+) -> tuple[str, int, str]:
     owner = _port_owner_info(requested_port)
     if _port_is_available(requested_port):
         return "launch", requested_port, ""
@@ -398,8 +394,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         if launch_action == "reuse":
             print(
-                f"[watchdog] app already running on http://localhost:{effective_port} "
-                f"({launch_reason})",
+                f"[watchdog] app already running on http://localhost:{effective_port} ({launch_reason})",
                 flush=True,
             )
             return 0
@@ -408,8 +403,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         if launch_reason:
             print(
-                f"[watchdog] requested port {args.port} busy, switching to {effective_port} "
-                f"({launch_reason})",
+                f"[watchdog] requested port {args.port} busy, switching to {effective_port} ({launch_reason})",
                 flush=True,
             )
 
@@ -447,8 +441,7 @@ def main(argv: list[str] | None = None) -> int:
         restart_count += 1
         delay_sec = min(int(args.restart_delay_sec) * max(restart_count, 1), 60)
         print(
-            f"[watchdog] restart #{restart_count} in {delay_sec}s "
-            f"(reason={restart_reason})",
+            f"[watchdog] restart #{restart_count} in {delay_sec}s (reason={restart_reason})",
             flush=True,
         )
         time.sleep(delay_sec)

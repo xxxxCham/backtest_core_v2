@@ -1,5 +1,4 @@
-"""
-Module-ID: strategies.base
+"""Module-ID: strategies.base
 
 Purpose: Classe abstraite et contrat pour toutes les stratégies de trading.
 
@@ -23,7 +22,7 @@ Skip-if: Vous ne changez qu'une stratégie spécifique.
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -33,8 +32,7 @@ from utils.parameters import ParameterSpec, Preset
 
 @dataclass
 class StrategyResult:
-    """
-    Résultat d'une exécution de stratégie.
+    """Résultat d'une exécution de stratégie.
 
     Attributes:
         signals: Série de signaux (1=long, -1=short, 0=flat)
@@ -44,19 +42,20 @@ class StrategyResult:
         indicators: Dict des indicateurs calculés
         metadata: Informations additionnelles
         params_used: Paramètres utilisés pour l'exécution
+
     """
+
     signals: pd.Series
-    entry_prices: Optional[np.ndarray] = None
-    stop_losses: Optional[np.ndarray] = None
-    take_profits: Optional[np.ndarray] = None
-    indicators: Dict[str, Any] = field(default_factory=dict)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    params_used: Dict[str, Any] = field(default_factory=dict)
+    entry_prices: np.ndarray | None = None
+    stop_losses: np.ndarray | None = None
+    take_profits: np.ndarray | None = None
+    indicators: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    params_used: dict[str, Any] = field(default_factory=dict)
 
 
 class StrategyBase(ABC):
-    """
-    Classe de base abstraite pour les stratégies de trading.
+    """Classe de base abstraite pour les stratégies de trading.
 
     Toute stratégie doit hériter de cette classe et implémenter:
     - required_indicators: liste des indicateurs nécessaires
@@ -76,23 +75,23 @@ class StrategyBase(ABC):
             def generate_signals(self, df, indicators, params):
                 # Logique de génération de signaux
                 ...
+
     """
 
     def __init__(self, name: str = "BaseStrategy"):
-        """
-        Initialise la stratégie.
+        """Initialise la stratégie.
 
         Args:
             name: Nom identifiant la stratégie
+
         """
         self.name = name
-        self._last_result: Optional[StrategyResult] = None
+        self._last_result: StrategyResult | None = None
 
     @property
     @abstractmethod
-    def required_indicators(self) -> List[str]:
-        """
-        Liste des indicateurs techniques requis par la stratégie.
+    def required_indicators(self) -> list[str]:
+        """Liste des indicateurs techniques requis par la stratégie.
 
         Le moteur de backtest utilisera cette liste pour calculer
         automatiquement les indicateurs nécessaires avant d'appeler
@@ -100,13 +99,12 @@ class StrategyBase(ABC):
 
         Returns:
             Liste de noms d'indicateurs (ex: ["bollinger", "atr"])
+
         """
-        pass
 
     @property
-    def default_params(self) -> Dict[str, Any]:
-        """
-        Paramètres par défaut de la stratégie.
+    def default_params(self) -> dict[str, Any]:
+        """Paramètres par défaut de la stratégie.
 
         Peut être surchargé par les classes filles pour définir
         des valeurs par défaut spécifiques.
@@ -114,9 +112,8 @@ class StrategyBase(ABC):
         return {}
 
     @property
-    def param_ranges(self) -> Dict[str, tuple]:
-        """
-        Plages de paramètres pour l'optimisation.
+    def param_ranges(self) -> dict[str, tuple]:
+        """Plages de paramètres pour l'optimisation.
 
         Format: {"param_name": (min_value, max_value)}
         Génère automatiquement depuis parameter_specs si disponible.
@@ -126,7 +123,7 @@ class StrategyBase(ABC):
 
     def _should_include_optional_params(
         self,
-        override: Optional[bool] = None,
+        override: bool | None = None,
     ) -> bool:
         """Détermine si les paramètres optionnels (ex: leverage) sont inclus."""
         if override is not None:
@@ -138,31 +135,23 @@ class StrategyBase(ABC):
         env_flag = os.getenv("BACKTEST_INCLUDE_OPTIONAL_PARAMS", "").strip().lower()
         return env_flag in {"1", "true", "yes", "on"}
 
-    def get_param_ranges(self, include_optional: Optional[bool] = None) -> Dict[str, tuple]:
+    def get_param_ranges(self, include_optional: bool | None = None) -> dict[str, tuple]:
         """Retourne les plages en excluant les paramètres non optimisables par défaut."""
         include = self._should_include_optional_params(override=include_optional)
 
-        if hasattr(self, 'parameter_specs') and self.parameter_specs:
+        if hasattr(self, "parameter_specs") and self.parameter_specs:
             items = self.parameter_specs.items()
             if not include:
-                items = (
-                    (name, spec)
-                    for name, spec in items
-                    if getattr(spec, "optimize", True)
-                )
-            return {
-                name: (spec.min_val, spec.max_val)
-                for name, spec in items
-            }
+                items = ((name, spec) for name, spec in items if getattr(spec, "optimize", True))
+            return {name: (spec.min_val, spec.max_val) for name, spec in items}
         return {}
 
     def get_indicator_params(
         self,
         indicator_name: str,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Retourne les parametres a passer a l'indicateur.
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Retourne les parametres a passer a l'indicateur.
 
         Les strategies peuvent surcharger cette methode pour mapper leurs
         parametres internes vers ceux attendus par les indicateurs.
@@ -178,12 +167,12 @@ class StrategyBase(ABC):
         }
 
         prefixes = prefix_map.get(indicator_name, [f"{indicator_name}_"])
-        indicator_params: Dict[str, Any] = {}
+        indicator_params: dict[str, Any] = {}
 
         for key, value in params.items():
             for prefix in prefixes:
                 if key.startswith(prefix):
-                    param_name = key[len(prefix):]
+                    param_name = key[len(prefix) :]
                     indicator_params[param_name] = value
                     break
 
@@ -208,11 +197,10 @@ class StrategyBase(ABC):
     def generate_signals(
         self,
         df: pd.DataFrame,
-        indicators: Dict[str, Any],
-        params: Dict[str, Any]
+        indicators: dict[str, Any],
+        params: dict[str, Any],
     ) -> pd.Series:
-        """
-        Génère les signaux de trading.
+        """Génère les signaux de trading.
 
         Args:
             df: DataFrame OHLCV avec colonnes (open, high, low, close, volume)
@@ -231,17 +219,16 @@ class StrategyBase(ABC):
             - La série retournée doit avoir le même index que df
             - Les signaux représentent des intentions d'entrée/sortie
             - La gestion des positions est faite par le moteur de backtest
+
         """
-        pass
 
     def run(
         self,
         df: pd.DataFrame,
-        indicators: Dict[str, Any],
-        params: Optional[Dict[str, Any]] = None
+        indicators: dict[str, Any],
+        params: dict[str, Any] | None = None,
     ) -> StrategyResult:
-        """
-        Exécute la stratégie et retourne le résultat complet.
+        """Exécute la stratégie et retourne le résultat complet.
 
         Cette méthode wrapper facilite l'utilisation et stocke
         le résultat pour inspection ultérieure.
@@ -253,6 +240,7 @@ class StrategyBase(ABC):
 
         Returns:
             StrategyResult avec signaux et métadonnées
+
         """
         # Fusionner avec params par défaut
         final_params = {**self.default_params, **(params or {})}
@@ -269,16 +257,15 @@ class StrategyBase(ABC):
                 "params": final_params,
                 "n_signals_long": int((signals == 1).sum()),
                 "n_signals_short": int((signals == -1).sum()),
-                "period": f"{df.index[0]} → {df.index[-1]}"
-            }
+                "period": f"{df.index[0]} → {df.index[-1]}",
+            },
         )
 
         self._last_result = result
         return result
 
-    def validate_params(self, params: Dict[str, Any]) -> Tuple[bool, List[str]]:
-        """
-        Valide les paramètres fournis.
+    def validate_params(self, params: dict[str, Any]) -> tuple[bool, list[str]]:
+        """Valide les paramètres fournis.
 
         Peut être surchargé pour ajouter une validation spécifique.
 
@@ -287,6 +274,7 @@ class StrategyBase(ABC):
 
         Returns:
             Tuple (is_valid, list_of_errors)
+
         """
         errors = []
 
@@ -299,12 +287,10 @@ class StrategyBase(ABC):
         return len(errors) == 0, errors
 
     def describe(self) -> str:
-        """
-        Retourne une description de la stratégie.
-        """
+        """Retourne une description de la stratégie."""
         return f"""
 Strategy: {self.name}
-Required Indicators: {', '.join(self.required_indicators)}
+Required Indicators: {", ".join(self.required_indicators)}
 Default Parameters: {self.default_params}
 """
 
@@ -319,9 +305,8 @@ Default Parameters: {self.default_params}
     # par des stratégies dynamiques générées par LLM.
 
     @property
-    def parameter_specs(self) -> Dict[str, ParameterSpec]:
-        """
-        Spécifications détaillées des paramètres pour UI et optimisation.
+    def parameter_specs(self) -> dict[str, ParameterSpec]:
+        """Spécifications détaillées des paramètres pour UI et optimisation.
 
         Surchargez cette propriété pour définir les bornes, types et
         descriptions de chaque paramètre. Utilisé par:
@@ -331,33 +316,32 @@ Default Parameters: {self.default_params}
 
         Returns:
             Dict[param_name, ParameterSpec]
+
         """
         return {}
 
-    def get_preset(self) -> Optional[Preset]:
-        """
-        Retourne le preset associé à cette stratégie (si disponible).
+    def get_preset(self) -> Preset | None:
+        """Retourne le preset associé à cette stratégie (si disponible).
 
         Returns:
             Preset ou None
+
         """
         return None
 
-    def on_backtest_start(self, context: Dict[str, Any]) -> None:
-        """
-        Hook appelé au début du backtest.
+    def on_backtest_start(self, context: dict[str, Any]) -> None:
+        """Hook appelé au début du backtest.
 
         Point d'extension pour les agents LLM qui veulent
         initialiser un état ou modifier le contexte.
 
         Args:
             context: Contexte du backtest (symbol, timeframe, etc.)
-        """
-        pass
 
-    def on_backtest_end(self, results: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Hook appelé à la fin du backtest.
+
+    def on_backtest_end(self, results: dict[str, Any]) -> dict[str, Any]:
+        """Hook appelé à la fin du backtest.
 
         Point d'extension pour les agents LLM qui veulent
         analyser les résultats ou proposer des améliorations.
@@ -367,15 +351,15 @@ Default Parameters: {self.default_params}
 
         Returns:
             Résultats potentiellement enrichis avec des suggestions
+
         """
         return results
 
     def suggest_improvements(
         self,
-        results: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Suggère des améliorations basées sur les résultats.
+        results: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Suggère des améliorations basées sur les résultats.
 
         Cette méthode sera utilisée par les agents LLM pour
         proposer des ajustements de paramètres ou de logique.
@@ -387,13 +371,13 @@ Default Parameters: {self.default_params}
         Returns:
             Dict de suggestions ou None
             Format attendu: {"params": {...}, "rationale": "..."}
+
         """
         return None
 
     @classmethod
-    def from_config(cls, config: Dict[str, Any]) -> "StrategyBase":
-        """
-        Factory method pour créer une stratégie depuis une config.
+    def from_config(cls, config: dict[str, Any]) -> "StrategyBase":
+        """Factory method pour créer une stratégie depuis une config.
 
         Permet aux agents LLM de générer des configurations JSON
         qui seront instanciées en stratégies.
@@ -403,6 +387,7 @@ Default Parameters: {self.default_params}
 
         Returns:
             Instance de stratégie
+
         """
         # Par défaut, retourne une instance simple
         # Les sous-classes peuvent surcharger pour une logique plus complexe
@@ -413,25 +398,26 @@ Default Parameters: {self.default_params}
 # REGISTRE DES STRATÉGIES
 # =============================================================================
 
-_STRATEGY_REGISTRY: Dict[str, Type[StrategyBase]] = {}
+_STRATEGY_REGISTRY: dict[str, type[StrategyBase]] = {}
 
 
 def register_strategy(name: str):
-    """
-    Décorateur pour enregistrer une stratégie dans le registre.
+    """Décorateur pour enregistrer une stratégie dans le registre.
 
     Usage:
         @register_strategy("bollinger_atr")
         class BollingerATRStrategy(StrategyBase):
             ...
     """
-    def decorator(cls: Type[StrategyBase]):
+
+    def decorator(cls: type[StrategyBase]):
         _STRATEGY_REGISTRY[name] = cls
         return cls
+
     return decorator
 
 
-def get_strategy(name: str) -> Type[StrategyBase]:
+def get_strategy(name: str) -> type[StrategyBase]:
     """Récupère une classe de stratégie par son nom."""
     if name not in _STRATEGY_REGISTRY:
         available = ", ".join(_STRATEGY_REGISTRY.keys())
@@ -439,7 +425,7 @@ def get_strategy(name: str) -> Type[StrategyBase]:
     return _STRATEGY_REGISTRY[name]
 
 
-def list_strategies() -> List[str]:
+def list_strategies() -> list[str]:
     """Liste les stratégies enregistrées."""
     return list(_STRATEGY_REGISTRY.keys())
 
@@ -451,15 +437,14 @@ def create_strategy(name: str, **kwargs) -> StrategyBase:
 
 
 def get_strategy_overview(name: str, max_chars: int = 1800) -> str:
-    """
-    Construit un résumé compact de la stratégie pour contexte LLM.
+    """Construit un résumé compact de la stratégie pour contexte LLM.
 
     Utilise describe() si disponible, puis docstring de classe et
     informations de base (indicateurs requis, paramètres par défaut).
     """
     strategy_cls = get_strategy(name)
 
-    parts: List[str] = []
+    parts: list[str] = []
     strategy = None
     try:
         strategy = strategy_cls()
@@ -505,9 +490,9 @@ def get_strategy_overview(name: str, max_chars: int = 1800) -> str:
 __all__ = [
     "StrategyBase",
     "StrategyResult",
-    "register_strategy",
-    "get_strategy",
-    "list_strategies",
     "create_strategy",
+    "get_strategy",
     "get_strategy_overview",
+    "list_strategies",
+    "register_strategy",
 ]

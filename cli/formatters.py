@@ -1,5 +1,4 @@
-"""
-Module-ID: cli.formatters
+"""Module-ID: cli.formatters
 
 Purpose: Formatage et affichage pour CLI - couleurs, tableaux, progress bars, messages.
 
@@ -16,7 +15,6 @@ Read-if: Modification du style d'affichage CLI.
 Skip-if: Utilisation des commandes sans modifier l'affichage.
 """
 
-from typing import List, Optional
 
 # =============================================================================
 # GESTION COULEURS (colorama si disponible)
@@ -25,6 +23,7 @@ from typing import List, Optional
 try:
     from colorama import Fore, Style
     from colorama import init as colorama_init
+
     colorama_init(autoreset=True)
     COLORAMA_AVAILABLE = True
 except ImportError:
@@ -43,9 +42,11 @@ except ImportError:
 
 try:
     from tqdm import tqdm
+
     TQDM_AVAILABLE = True
 except ImportError:
     TQDM_AVAILABLE = False
+
     def tqdm(iterable, **kwargs):
         return iterable
 
@@ -54,11 +55,12 @@ except ImportError:
 # CLASSE COLORS
 # =============================================================================
 
+
 class Colors:
-    """
-    Codes couleurs pour terminal avec support colorama.
+    """Codes couleurs pour terminal avec support colorama.
     Compatibilité Windows améliorée.
     """
+
     # Utiliser colorama si disponible
     RESET = Style.RESET_ALL if COLORAMA_AVAILABLE else "\033[0m"
     BOLD = Style.BRIGHT if COLORAMA_AVAILABLE else "\033[1m"
@@ -96,9 +98,27 @@ class Colors:
         return cls._disabled
 
 
+def _normalize_table_rows(
+    headers: list[str],
+    rows: list[list[str]],
+) -> tuple[list[str], list[list[str]]]:
+    """Aligne headers/rows pour éviter les IndexError sur lignes irrégulières."""
+    column_count = max(
+        len(headers),
+        max((len(row) for row in rows), default=0),
+    )
+    normalized_headers = [str(h) for h in headers] + [""] * max(0, column_count - len(headers))
+    normalized_rows = [
+        [str(cell) for cell in row] + [""] * max(0, column_count - len(row))
+        for row in rows
+    ]
+    return normalized_headers, normalized_rows
+
+
 # =============================================================================
 # FONCTIONS D'AFFICHAGE MESSAGES
 # =============================================================================
+
 
 def print_header(text: str, char: str = "="):
     """Affiche un en-tête formaté avec soulignement."""
@@ -126,7 +146,7 @@ def print_info(text: str):
     print(f"{Colors.BLUE}ℹ{Colors.RESET} {text}")
 
 
-def print_metric(label: str, value: float, color: Optional[str] = None, suffix: str = ""):
+def print_metric(label: str, value: float, color: str | None = None, suffix: str = ""):
     """Affiche une métrique formatée."""
     color = color or Colors.RESET
     print(f"    {label}:  {color}{value}{Colors.RESET}{suffix}")
@@ -136,14 +156,14 @@ def print_metric(label: str, value: float, color: Optional[str] = None, suffix: 
 # FORMATAGE TABLEAUX
 # =============================================================================
 
+
 def format_table(
-    headers: List[str],
-    rows: List[List[str]],
+    headers: list[str],
+    rows: list[list[str]],
     indent: int = 2,
     padding: int = 2,
 ) -> str:
-    """
-    Formate une table en texte aligné.
+    """Formate une table en texte aligné.
 
     Args:
         headers: Liste des en-têtes de colonnes
@@ -153,9 +173,12 @@ def format_table(
 
     Returns:
         Table formatée en string
+
     """
     if not rows:
         return " " * indent + "(aucune donnée)"
+
+    headers, rows = _normalize_table_rows(headers, rows)
 
     # Calculer largeurs maximales par colonne
     widths = [len(h) for h in headers]
@@ -181,9 +204,8 @@ def format_table(
     return "\n".join(lines)
 
 
-def format_dict_table(data: dict, title: Optional[str] = None, indent: int = 2) -> str:
-    """
-    Formate un dictionnaire en table clé-valeur.
+def format_dict_table(data: dict, title: str | None = None, indent: int = 2) -> str:
+    """Formate un dictionnaire en table clé-valeur.
 
     Args:
         data: Dictionnaire à formater
@@ -192,6 +214,7 @@ def format_dict_table(data: dict, title: Optional[str] = None, indent: int = 2) 
 
     Returns:
         Table formatée
+
     """
     lines = []
     prefix = " " * indent
@@ -199,7 +222,7 @@ def format_dict_table(data: dict, title: Optional[str] = None, indent: int = 2) 
     if title:
         lines.append(f"{prefix}{Colors.BOLD}{title}{Colors.RESET}")
 
-    max_key_len = max(len(str(k)) for k in data.keys()) if data else 0
+    max_key_len = max(len(str(k)) for k in data) if data else 0
 
     for key, value in data.items():
         lines.append(f"{prefix}  {str(key).ljust(max_key_len)}: {value}")
@@ -211,9 +234,10 @@ def format_dict_table(data: dict, title: Optional[str] = None, indent: int = 2) 
 # FORMATAGE VALEURS
 # =============================================================================
 
+
 def format_bytes(bytes_count: float) -> str:
     """Formate un nombre de bytes en unité lisible (KB, MB, GB, etc.)."""
-    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
         if bytes_count < 1024.0:
             return f"{bytes_count:.2f} {unit}"
         bytes_count /= 1024.0
@@ -224,12 +248,11 @@ def format_duration(seconds: float) -> str:
     """Formate une durée en format lisible."""
     if seconds < 60:
         return f"{seconds:.1f}s"
-    elif seconds < 3600:
+    if seconds < 3600:
         minutes = seconds / 60
         return f"{minutes:.1f}min"
-    else:
-        hours = seconds / 3600
-        return f"{hours:.1f}h"
+    hours = seconds / 3600
+    return f"{hours:.1f}h"
 
 
 def format_number(value: float, decimals: int = 2) -> str:
@@ -239,9 +262,8 @@ def format_number(value: float, decimals: int = 2) -> str:
     return f"{value:.{decimals}f}"
 
 
-def format_pnl(pnl: float, period_days: Optional[int] = None) -> str:
-    """
-    Formate un PnL avec couleur et optionnellement PnL/jour.
+def format_pnl(pnl: float, period_days: int | None = None) -> str:
+    """Formate un PnL avec couleur et optionnellement PnL/jour.
 
     Args:
         pnl: Profit/Loss en valeur absolue
@@ -249,6 +271,7 @@ def format_pnl(pnl: float, period_days: Optional[int] = None) -> str:
 
     Returns:
         String formaté avec couleur
+
     """
     color = Colors.GREEN if pnl >= 0 else Colors.RED
     sign = "+" if pnl >= 0 else ""
@@ -273,10 +296,15 @@ def format_percent(value: float, include_sign: bool = True) -> str:
 # PROGRESS BARS
 # =============================================================================
 
-def create_progress_bar(iterable, desc: str = "", total: int = None,
-                       disable: bool = False, unit: str = "it"):
-    """
-    Crée une progress bar élégante avec tqdm.
+
+def create_progress_bar(
+    iterable,
+    desc: str = "",
+    total: int | None = None,
+    disable: bool = False,
+    unit: str = "it",
+):
+    """Crée une progress bar élégante avec tqdm.
 
     Args:
         iterable: Itérable à parcourir
@@ -287,6 +315,7 @@ def create_progress_bar(iterable, desc: str = "", total: int = None,
 
     Returns:
         Itérable wrappé avec progress bar
+
     """
     if not TQDM_AVAILABLE or disable:
         return iterable
@@ -297,7 +326,7 @@ def create_progress_bar(iterable, desc: str = "", total: int = None,
         total=total,
         unit=unit,
         ncols=100,
-        bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
+        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
     )
 
 
@@ -305,9 +334,9 @@ def create_progress_bar(iterable, desc: str = "", total: int = None,
 # FORMATAGE RÉSULTATS BACKTEST
 # =============================================================================
 
-def format_backtest_summary(metrics: dict, period_days: Optional[int] = None) -> str:
-    """
-    Formate un résumé de backtest pour affichage CLI.
+
+def format_backtest_summary(metrics: dict, period_days: int | None = None) -> str:
+    """Formate un résumé de backtest pour affichage CLI.
 
     Args:
         metrics: Dictionnaire des métriques
@@ -315,15 +344,16 @@ def format_backtest_summary(metrics: dict, period_days: Optional[int] = None) ->
 
     Returns:
         Résumé formaté multi-lignes
+
     """
     lines = []
 
-    total_pnl = metrics.get('total_pnl', 0)
-    sharpe = metrics.get('sharpe_ratio', 0)
-    max_dd = metrics.get('max_drawdown_pct', 0)
-    win_rate = metrics.get('win_rate_pct', 0)
-    trades = metrics.get('total_trades', metrics.get('trades', 0))
-    profit_factor = metrics.get('profit_factor', 0)
+    total_pnl = metrics.get("total_pnl", 0)
+    sharpe = metrics.get("sharpe_ratio", 0)
+    max_dd = metrics.get("max_drawdown_pct", 0)
+    win_rate = metrics.get("win_rate_pct", 0)
+    trades = metrics.get("total_trades", metrics.get("trades", 0))
+    profit_factor = metrics.get("profit_factor", 0)
 
     # Couleurs selon performance
     pnl_color = Colors.GREEN if total_pnl > 0 else Colors.RED

@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.wma
+"""Module-ID: indicators.wma
 
 Purpose: Weighted Moving Average (WMA).
 """
@@ -29,10 +28,15 @@ def wma(data: pd.Series | np.ndarray, period: int = 14) -> np.ndarray:
     weights = np.arange(1, period + 1, dtype=np.float64)
     weights /= weights.sum()
 
-    return pd.Series(values).rolling(window=period, min_periods=period).apply(
-        lambda x: float(np.dot(x, weights)),
-        raw=True,
-    ).values
+    return (
+        pd.Series(values)
+        .rolling(window=period, min_periods=period)
+        .apply(
+            lambda x: float(np.dot(x, weights)),
+            raw=True,
+        )
+        .values
+    )
 
 
 def calculate_wma(df: pd.DataFrame, **params) -> np.ndarray:
@@ -48,4 +52,4 @@ register_indicator(
 )
 
 
-__all__ = ["wma", "calculate_wma", "WMASettings"]
+__all__ = ["WMASettings", "calculate_wma", "wma"]

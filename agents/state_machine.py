@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.state_machine
+"""Module-ID: agents.state_machine
 
 Purpose: Machine à états rigide pour le workflow LLM avec transitions validées et traçabilité.
 
@@ -22,10 +21,11 @@ Skip-if: Vous ne touchez qu'aux agents isolés.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any
 
 from utils.observability import get_obs_logger
 
@@ -36,17 +36,17 @@ class AgentState(Enum):
     """États du workflow d'optimisation."""
 
     # États de travail
-    INIT = auto()       # Initialisation
-    ANALYZE = auto()    # Analyse en cours
-    PROPOSE = auto()    # Proposition en cours
-    CRITIQUE = auto()   # Critique en cours
-    VALIDATE = auto()   # Validation en cours
-    ITERATE = auto()    # Préparation itération suivante
+    INIT = auto()  # Initialisation
+    ANALYZE = auto()  # Analyse en cours
+    PROPOSE = auto()  # Proposition en cours
+    CRITIQUE = auto()  # Critique en cours
+    VALIDATE = auto()  # Validation en cours
+    ITERATE = auto()  # Préparation itération suivante
 
     # États terminaux
-    APPROVED = auto()   # ✅ Optimisation validée
-    REJECTED = auto()   # ❌ Optimisation rejetée
-    FAILED = auto()     # 💥 Erreur système
+    APPROVED = auto()  # ✅ Optimisation validée
+    REJECTED = auto()  # ❌ Optimisation rejetée
+    FAILED = auto()  # 💥 Erreur système
 
     def is_terminal(self) -> bool:
         """Vérifie si l'état est terminal."""
@@ -63,9 +63,9 @@ class ValidationResult:
 
     is_valid: bool
     message: str = ""
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    data: Dict[str, Any] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    data: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def success(cls, message: str = "OK", **data) -> ValidationResult:
@@ -73,7 +73,7 @@ class ValidationResult:
         return cls(is_valid=True, message=message, data=data)
 
     @classmethod
-    def failure(cls, message: str, errors: List[str] = None) -> ValidationResult:
+    def failure(cls, message: str, errors: list[str] = None) -> ValidationResult:
         """Crée un résultat d'échec."""
         return cls(is_valid=False, message=message, errors=errors or [message])
 
@@ -88,9 +88,9 @@ class StateTransition:
     from_state: AgentState
     to_state: AgentState
     condition: str  # Description de la condition
-    validator: Optional[Callable[[Dict[str, Any]], ValidationResult]] = None
+    validator: Callable[[dict[str, Any]], ValidationResult] | None = None
 
-    def validate(self, context: Dict[str, Any]) -> ValidationResult:
+    def validate(self, context: dict[str, Any]) -> ValidationResult:
         """Valide si la transition est permise."""
         if self.validator:
             return self.validator(context)
@@ -102,17 +102,16 @@ class StateHistoryEntry:
     """Entrée dans l'historique des états."""
 
     timestamp: datetime
-    from_state: Optional[AgentState]
+    from_state: AgentState | None
     to_state: AgentState
     validation: ValidationResult
     iteration: int
-    duration_ms: Optional[float] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    duration_ms: float | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class StateMachine:
-    """
-    Machine à états pour le workflow d'optimisation.
+    """Machine à états pour le workflow d'optimisation.
 
     Garantit:
     - Transitions valides uniquement
@@ -125,10 +124,11 @@ class StateMachine:
         >>> sm.transition_to(AgentState.ANALYZE, context)
         >>> if sm.can_transition_to(AgentState.PROPOSE):
         ...     sm.transition_to(AgentState.PROPOSE, context)
+
     """
 
     # Définition des transitions valides
-    VALID_TRANSITIONS: Dict[AgentState, Set[AgentState]] = {
+    VALID_TRANSITIONS: dict[AgentState, set[AgentState]] = {
         AgentState.INIT: {AgentState.ANALYZE, AgentState.FAILED},
         AgentState.ANALYZE: {AgentState.PROPOSE, AgentState.VALIDATE, AgentState.FAILED},
         AgentState.PROPOSE: {AgentState.CRITIQUE, AgentState.FAILED},
@@ -146,21 +146,21 @@ class StateMachine:
         max_iterations: int = 10,
         initial_state: AgentState = AgentState.INIT,
     ):
-        """
-        Initialise la machine à états.
+        """Initialise la machine à états.
 
         Args:
             max_iterations: Nombre maximum d'itérations (anti-boucle infinie)
             initial_state: État initial
+
         """
         self._current_state = initial_state
         self._max_iterations = max_iterations
         self._has_iteration_limit = max_iterations > 0
         self._current_iteration = 0
-        self._history: List[StateHistoryEntry] = []
-        self._context: Dict[str, Any] = {}
-        self._transition_validators: Dict[tuple, Callable] = {}
-        self._last_transition_time: Optional[datetime] = None
+        self._history: list[StateHistoryEntry] = []
+        self._context: dict[str, Any] = {}
+        self._transition_validators: dict[tuple, Callable] = {}
+        self._last_transition_time: datetime | None = None
 
         # Enregistrer l'état initial
         self._record_transition(None, initial_state, ValidationResult.success("Initial state"))
@@ -184,7 +184,7 @@ class StateMachine:
         return self._current_state.is_terminal()
 
     @property
-    def history(self) -> List[StateHistoryEntry]:
+    def history(self) -> list[StateHistoryEntry]:
         """Historique des transitions."""
         return self._history.copy()
 
@@ -192,27 +192,27 @@ class StateMachine:
         self,
         from_state: AgentState,
         to_state: AgentState,
-        validator: Callable[[Dict[str, Any]], ValidationResult],
+        validator: Callable[[dict[str, Any]], ValidationResult],
     ) -> None:
-        """
-        Enregistre un validateur pour une transition spécifique.
+        """Enregistre un validateur pour une transition spécifique.
 
         Args:
             from_state: État source
             to_state: État destination
             validator: Fonction de validation
+
         """
         self._transition_validators[(from_state, to_state)] = validator
 
     def can_transition_to(self, target_state: AgentState) -> bool:
-        """
-        Vérifie si une transition vers l'état cible est possible.
+        """Vérifie si une transition vers l'état cible est possible.
 
         Args:
             target_state: État cible
 
         Returns:
             True si la transition est possible
+
         """
         # Vérifier si la transition est valide structurellement
         valid_targets = self.VALID_TRANSITIONS.get(self._current_state, set())
@@ -226,7 +226,7 @@ class StateMachine:
 
         return True
 
-    def get_valid_transitions(self) -> Set[AgentState]:
+    def get_valid_transitions(self) -> set[AgentState]:
         """Retourne les transitions valides depuis l'état actuel."""
         valid = self.VALID_TRANSITIONS.get(self._current_state, set())
 
@@ -241,11 +241,10 @@ class StateMachine:
     def transition_to(
         self,
         target_state: AgentState,
-        context: Optional[Dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
         force: bool = False,
     ) -> ValidationResult:
-        """
-        Effectue une transition vers un nouvel état.
+        """Effectue une transition vers un nouvel état.
 
         Args:
             target_state: État cible
@@ -257,6 +256,7 @@ class StateMachine:
 
         Raises:
             StateTransitionError: Si la transition est invalide
+
         """
         context = context or {}
         self._context.update(context)
@@ -264,7 +264,7 @@ class StateMachine:
         # Vérifier si déjà en état terminal
         if self.is_terminal:
             return ValidationResult.failure(
-                f"Impossible de quitter l'état terminal {self._current_state.name}"
+                f"Impossible de quitter l'état terminal {self._current_state.name}",
             )
 
         # Vérifier si la transition est structurellement valide
@@ -272,7 +272,7 @@ class StateMachine:
             valid = self.get_valid_transitions()
             return ValidationResult.failure(
                 f"Transition {self._current_state.name} → {target_state.name} invalide. "
-                f"Transitions valides: {[s.name for s in valid]}"
+                f"Transitions valides: {[s.name for s in valid]}",
             )
 
         # Exécuter le validateur spécifique si présent
@@ -281,8 +281,7 @@ class StateMachine:
             validation = self._transition_validators[validator_key](self._context)
             if not validation.is_valid:
                 logger.warning(
-                    f"Validation échouée: {self._current_state.name} → {target_state.name}: "
-                    f"{validation.message}"
+                    f"Validation échouée: {self._current_state.name} → {target_state.name}: {validation.message}",
                 )
                 return validation
         else:
@@ -300,23 +299,22 @@ class StateMachine:
         self._record_transition(old_state, target_state, validation)
 
         logger.info(
-            f"Transition: {old_state.name} → {target_state.name} "
-            f"(iter={self._current_iteration})"
+            f"Transition: {old_state.name} → {target_state.name} (iter={self._current_iteration})",
         )
 
         return validation
 
-    def fail(self, error: str, exception: Optional[Exception] = None) -> None:
-        """
-        Transition vers l'état FAILED.
+    def fail(self, error: str, exception: Exception | None = None) -> None:
+        """Transition vers l'état FAILED.
 
         Args:
             error: Message d'erreur
             exception: Exception optionnelle
+
         """
         validation = ValidationResult.failure(
             error,
-            errors=[str(exception)] if exception else [error]
+            errors=[str(exception)] if exception else [error],
         )
 
         self._current_state = AgentState.FAILED
@@ -326,7 +324,7 @@ class StateMachine:
 
     def _record_transition(
         self,
-        from_state: Optional[AgentState],
+        from_state: AgentState | None,
         to_state: AgentState,
         validation: ValidationResult,
     ) -> None:
@@ -349,13 +347,11 @@ class StateMachine:
         self._history.append(entry)
         self._last_transition_time = now
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """Retourne un résumé de l'exécution."""
         total_duration = 0.0
         if len(self._history) >= 2:
-            total_duration = (
-                self._history[-1].timestamp - self._history[0].timestamp
-            ).total_seconds()
+            total_duration = (self._history[-1].timestamp - self._history[0].timestamp).total_seconds()
 
         return {
             "current_state": self._current_state.name,

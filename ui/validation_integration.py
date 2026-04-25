@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.validation_integration
+"""Module-ID: ui.validation_integration
 
 Purpose: Intègre la validation walk-forward entre backend et UI.
 
@@ -24,7 +23,7 @@ from __future__ import annotations
 
 # pylint: disable=import-outside-toplevel
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -35,12 +34,11 @@ from ui.components.validation_viewer import ValidationReport, WindowResult
 def convert_fold_to_window_result(
     fold: ValidationFold,
     fold_index: int,
-    train_metrics: Dict[str, float],
-    test_metrics: Dict[str, float],
-    params: Dict[str, Any],
+    train_metrics: dict[str, float],
+    test_metrics: dict[str, float],
+    params: dict[str, Any],
 ) -> WindowResult:
-    """
-    Convertit un ValidationFold en WindowResult pour le viewer UI.
+    """Convertit un ValidationFold en WindowResult pour le viewer UI.
 
     Args:
         fold: Fold de validation (contient train_df, test_df, timestamps)
@@ -51,6 +49,7 @@ def convert_fold_to_window_result(
 
     Returns:
         WindowResult prêt pour l'affichage UI
+
     """
     return WindowResult(
         window_id=fold_index + 1,  # 1-based pour UI
@@ -75,11 +74,10 @@ def convert_fold_to_window_result(
 
 def create_validation_report_from_results(
     strategy_name: str,
-    validation_results: Dict[str, Any],
-    created_at: Optional[datetime] = None,
+    validation_results: dict[str, Any],
+    created_at: datetime | None = None,
 ) -> ValidationReport:
-    """
-    Crée un ValidationReport à partir des résultats de run_walk_forward_for_agent().
+    """Crée un ValidationReport à partir des résultats de run_walk_forward_for_agent().
 
     Args:
         strategy_name: Nom de la stratégie testée
@@ -101,6 +99,7 @@ def create_validation_report_from_results(
         >>> results = run_walk_forward_for_agent(strategy_name, params, data)
         >>> report = create_validation_report_from_results("ema_cross", results)
         >>> render_validation_report(report)
+
     """
     if created_at is None:
         created_at = datetime.now()
@@ -110,7 +109,7 @@ def create_validation_report_from_results(
     train_ratio = validation_results.get("train_pct", 0.75)
 
     # Convertir chaque fold en WindowResult
-    windows: List[WindowResult] = []
+    windows: list[WindowResult] = []
 
     for i, fold_data in enumerate(folds_data):
         # Le fold peut contenir directement les timestamps ou un objet ValidationFold
@@ -164,14 +163,13 @@ def create_validation_report_from_results(
 
 def run_validation_and_display(
     strategy_name: str,
-    params: Dict[str, Any],
+    params: dict[str, Any],
     data: pd.DataFrame,
     n_windows: int = 6,
     train_ratio: float = 0.75,
     key: str = "walk_forward_validation",
-) -> Optional[ValidationReport]:
-    """
-    Fonction tout-en-un : exécute Walk-Forward et affiche le rapport UI.
+) -> ValidationReport | None:
+    """Fonction tout-en-un : exécute Walk-Forward et affiche le rapport UI.
 
     Args:
         strategy_name: Nom de la stratégie
@@ -192,6 +190,7 @@ def run_validation_and_display(
         >>>         params={"fast_period": 12, "slow_period": 26},
         >>>         data=df,
         >>>     )
+
     """
     try:
         import streamlit as st
@@ -222,8 +221,10 @@ def run_validation_and_display(
 
     except Exception as e:
         import streamlit as st
+
         st.error(f"❌ Erreur lors de la validation Walk-Forward: {e}")
         import traceback
+
         st.code(traceback.format_exc())
         return None
 

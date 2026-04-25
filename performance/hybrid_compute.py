@@ -1,5 +1,4 @@
-"""
-Module-ID: performance.hybrid_compute
+"""Module-ID: performance.hybrid_compute
 
 Purpose: Calcul CPU-only - répartition simplifiée des tâches.
 
@@ -30,7 +29,6 @@ import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 import numpy as np
 
@@ -41,17 +39,17 @@ logger = logging.getLogger(__name__)
 
 class ComputeStrategy(Enum):
     """Stratégie de répartition des calculs."""
-    AUTO = "auto"           # Décision automatique
-    CPU_ONLY = "cpu_only"   # Forcer CPU
-    GPU_ONLY = "gpu_only"   # Forcer GPU (désactivé)
-    HYBRID = "hybrid"       # Répartition intelligente (CPU-only)
+
+    AUTO = "auto"  # Décision automatique
+    CPU_ONLY = "cpu_only"  # Forcer CPU
+    GPU_ONLY = "gpu_only"  # Forcer GPU (désactivé)
+    HYBRID = "hybrid"  # Répartition intelligente (CPU-only)
 
 
 @dataclass
 class ComputeThresholds:
-    """
-    Seuils de décision (CPU-only).
-    """
+    """Seuils de décision (CPU-only)."""
+
     # Paramètres conservés pour compatibilité API (GPU désactivé)
     gpu_min_size: int = 50000
     gpu_heavy_ops: int = 20000
@@ -61,7 +59,7 @@ class ComputeThresholds:
     min_batch_for_gpu: int = 10
 
     @classmethod
-    def from_env(cls) -> 'ComputeThresholds':
+    def from_env(cls) -> ComputeThresholds:
         """Charge les seuils depuis les variables d'environnement."""
         return cls(
             gpu_min_size=int(os.getenv("BACKTEST_GPU_MIN_SIZE", "1000")),
@@ -73,8 +71,7 @@ class ComputeThresholds:
 
 
 class HybridCompute:
-    """
-    Gestionnaire de calcul hybride CPU+GPU.
+    """Gestionnaire de calcul hybride CPU+GPU.
 
     Répartit intelligemment les tâches selon:
     - Taille des données
@@ -86,11 +83,12 @@ class HybridCompute:
         >>> hc = HybridCompute()
         >>> result = hc.auto_compute(data, operation="sma", window=20)
         >>> # → GPU si len(data) >= 1000, sinon CPU
+
     """
 
-    _instance: Optional['HybridCompute'] = None
+    _instance: HybridCompute | None = None
 
-    def __new__(cls) -> 'HybridCompute':
+    def __new__(cls) -> HybridCompute:
         """Singleton pattern."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -98,7 +96,7 @@ class HybridCompute:
 
     def __init__(self):
         """Initialise le gestionnaire hybride."""
-        if hasattr(self, '_initialized'):
+        if hasattr(self, "_initialized"):
             return
 
         self.backend = ArrayBackend()
@@ -106,8 +104,7 @@ class HybridCompute:
         self._gpu_available = False
 
         logger.info(
-            f"HybridCompute initialisé - GPU: {self._gpu_available}, "
-            f"Seuil GPU: {self.thresholds.gpu_min_size} points"
+            f"HybridCompute initialisé - GPU: {self._gpu_available}, Seuil GPU: {self.thresholds.gpu_min_size} points",
         )
 
         self._initialized = True
@@ -121,10 +118,9 @@ class HybridCompute:
         self,
         data_size: int,
         operation_type: str = "vectorial",
-        force_strategy: Optional[ComputeStrategy] = None,
+        force_strategy: ComputeStrategy | None = None,
     ) -> bool:
-        """
-        Décide si GPU doit être utilisé.
+        """Décide si GPU doit être utilisé.
 
         Args:
             data_size: Nombre de points de données
@@ -133,13 +129,13 @@ class HybridCompute:
 
         Returns:
             True si GPU recommandé
+
         """
         # Mode CPU-only: GPU désactivé
         return False
 
     def estimate_transfer_cost(self, data_size: int, dtype=np.float64) -> float:
-        """
-        Estime le coût de transfer CPU→GPU (en ms).
+        """Estime le coût de transfer CPU→GPU (en ms).
 
         Args:
             data_size: Nombre de points
@@ -147,6 +143,7 @@ class HybridCompute:
 
         Returns:
             Coût estimé en millisecondes
+
         """
         bytes_per_element = np.dtype(dtype).itemsize
         total_mb = (data_size * bytes_per_element) / (1024 * 1024)
@@ -158,8 +155,7 @@ class HybridCompute:
         operation: str,
         **kwargs,
     ) -> np.ndarray:
-        """
-        Calcule automatiquement sur device optimal.
+        """Calcule automatiquement sur device optimal.
 
         Args:
             data: Données d'entrée (NumPy array)
@@ -168,8 +164,9 @@ class HybridCompute:
 
         Returns:
             Résultat calculé (NumPy array)
+
         """
-        data_size = len(data) if hasattr(data, '__len__') else 1
+        data_size = len(data) if hasattr(data, "__len__") else 1
 
         logger.debug(f"CPU compute: {operation} sur {data_size} points")
         return self._compute_cpu(data, operation, **kwargs)
@@ -189,8 +186,7 @@ class HybridCompute:
         operation: str,
         **kwargs,
     ) -> np.ndarray:
-        """
-        Calcule sur CPU avec NumPy/Numba.
+        """Calcule sur CPU avec NumPy/Numba.
 
         Utilise les implémentations optimisées existantes.
         """
@@ -200,22 +196,21 @@ class HybridCompute:
             window = kwargs.get("window", 20)
             return pd.Series(data).rolling(window).mean().values
 
-        elif operation == "ema":
+        if operation == "ema":
             window = kwargs.get("window", 20)
             # Calcul EMA simple sans Numba (pour benchmark)
             alpha = 2 / (window + 1)
             result = np.zeros_like(data, dtype=np.float64)
             result[0] = data[0]
             for i in range(1, len(data)):
-                result[i] = alpha * data[i] + (1 - alpha) * result[i-1]
+                result[i] = alpha * data[i] + (1 - alpha) * result[i - 1]
             return result
 
-        elif operation == "std":
+        if operation == "std":
             window = kwargs.get("window", 20)
             return pd.Series(data).rolling(window).std().values
 
-        else:
-            raise ValueError(f"Opération '{operation}' non supportée")
+        raise ValueError(f"Opération '{operation}' non supportée")
 
     def batch_compute(
         self,
@@ -223,8 +218,7 @@ class HybridCompute:
         operation: str,
         **kwargs,
     ) -> list[np.ndarray]:
-        """
-        Calcule par batch sur CPU.
+        """Calcule par batch sur CPU.
 
         Args:
             data_list: Liste de datasets
@@ -233,13 +227,14 @@ class HybridCompute:
 
         Returns:
             Liste de résultats
+
         """
         return [self.auto_compute(data, operation, **kwargs) for data in data_list]
 
 
 # ==================== API simplifiée ====================
 
-_hybrid_compute: Optional[HybridCompute] = None
+_hybrid_compute: HybridCompute | None = None
 
 
 def get_hybrid_compute() -> HybridCompute:
@@ -251,22 +246,22 @@ def get_hybrid_compute() -> HybridCompute:
 
 
 def auto_compute(data: np.ndarray, operation: str, **kwargs) -> np.ndarray:
-    """
-    API simplifiée pour calcul CPU.
+    """API simplifiée pour calcul CPU.
 
     Example:
         >>> result = auto_compute(prices, "sma", window=20)
+
     """
     hc = get_hybrid_compute()
     return hc.auto_compute(data, operation, **kwargs)
 
 
 def batch_compute(data_list: list[np.ndarray], operation: str, **kwargs) -> list[np.ndarray]:
-    """
-    API simplifiée pour calcul batch CPU.
+    """API simplifiée pour calcul batch CPU.
 
     Example:
         >>> results = batch_compute([prices1, prices2], "ema", window=12)
+
     """
     hc = get_hybrid_compute()
     return hc.batch_compute(data_list, operation, **kwargs)

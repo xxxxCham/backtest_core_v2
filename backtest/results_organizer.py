@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.results_organizer
+"""Module-ID: backtest.results_organizer
 
 Purpose: Organiser automatiquement les résultats de backtest en structure hiérarchique claire.
 
@@ -25,7 +24,6 @@ import shutil
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Optional
 
 # Ajouter le répertoire racine au PYTHONPATH
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -63,13 +61,13 @@ ARCHIVE_AFTER_DAYS = 90  # Archiver résultats > 90 jours
 # FONCTIONS D'ORGANISATION
 # =============================================================================
 
+
 def organize_results(
-    results_dir: Optional[Path] = None,
-    organized_dir: Optional[Path] = None,
+    results_dir: Path | None = None,
+    organized_dir: Path | None = None,
     dry_run: bool = False,
-) -> Dict[str, int]:
-    """
-    Organise les résultats de backtest en structure hiérarchique.
+) -> dict[str, int]:
+    """Organise les résultats de backtest en structure hiérarchique.
 
     Structure cible:
         backtest_results_organized/
@@ -95,6 +93,7 @@ def organize_results(
         >>> stats = organize_results(dry_run=True)
         >>> print(stats)
         {"excellent": 5, "good": 12, ...}
+
     """
     results_dir = get_results_root_dir(results_dir)
     if organized_dir is None:
@@ -106,13 +105,13 @@ def organize_results(
         logger.error(f"Index introuvable: {index_path}")
         return {}
 
-    with open(index_path, "r") as f:
+    with open(index_path) as f:
         index_data = json.load(f)
 
     results = list(index_data.values())
     logger.info(f"📊 {len(results)} résultats à organiser")
 
-    stats = {cat: 0 for cat in CATEGORIES.keys()}
+    stats = dict.fromkeys(CATEGORIES.keys(), 0)
 
     for result in results:
         run_id = result.get("run_id", "unknown")
@@ -146,15 +145,14 @@ def organize_results(
         # Copier ou afficher
         if dry_run:
             logger.info(f"[DRY-RUN] {source_path.name} → {target_path}")
+        elif source_path.exists():
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            if target_path.exists():
+                shutil.rmtree(target_path)
+            shutil.copytree(source_path, target_path)
+            logger.debug(f"✅ Copié: {run_id} → {target_path}")
         else:
-            if source_path.exists():
-                target_path.parent.mkdir(parents=True, exist_ok=True)
-                if target_path.exists():
-                    shutil.rmtree(target_path)
-                shutil.copytree(source_path, target_path)
-                logger.debug(f"✅ Copié: {run_id} → {target_path}")
-            else:
-                logger.warning(f"⚠️ Source introuvable: {source_path}")
+            logger.warning(f"⚠️ Source introuvable: {source_path}")
 
     # Créer README dans chaque catégorie
     if not dry_run:
@@ -169,13 +167,13 @@ def organize_results(
     return stats
 
 
-def create_category_readmes(organized_dir: Path, stats: Dict[str, int]):
-    """
-    Crée des fichiers README.md dans chaque catégorie.
+def create_category_readmes(organized_dir: Path, stats: dict[str, int]):
+    """Crée des fichiers README.md dans chaque catégorie.
 
     Args:
         organized_dir: Répertoire organisé
         stats: Statistiques par catégorie
+
     """
     descriptions = {
         "excellent": "🏆 Configurations exceptionnelles (Return > 5% ET Sharpe > 2.0). **Prêtes pour production.**",
@@ -223,13 +221,12 @@ def create_category_readmes(organized_dir: Path, stats: Dict[str, int]):
 
 
 def archive_old_results(
-    results_dir: Optional[Path] = None,
-    archive_dir: Optional[Path] = None,
+    results_dir: Path | None = None,
+    archive_dir: Path | None = None,
     days_threshold: int = ARCHIVE_AFTER_DAYS,
     dry_run: bool = False,
 ) -> int:
-    """
-    Archive les résultats anciens (> days_threshold jours).
+    """Archive les résultats anciens (> days_threshold jours).
 
     Args:
         results_dir: Répertoire des résultats
@@ -243,6 +240,7 @@ def archive_old_results(
     Example:
         >>> count = archive_old_results(days_threshold=90, dry_run=True)
         >>> print(f"{count} résultats à archiver")
+
     """
     results_dir = get_results_root_dir(results_dir)
     if archive_dir is None:
@@ -254,7 +252,7 @@ def archive_old_results(
         logger.error(f"Index introuvable: {index_path}")
         return 0
 
-    with open(index_path, "r") as f:
+    with open(index_path) as f:
         index_data = json.load(f)
 
     cutoff_date = datetime.now() - timedelta(days=days_threshold)
@@ -274,11 +272,10 @@ def archive_old_results(
 
             if dry_run:
                 logger.info(f"[DRY-RUN] Archiver: {run_id} ({ts_dt.strftime('%Y-%m-%d')})")
-            else:
-                if source_path.exists():
-                    target_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(source_path), str(target_path))
-                    logger.debug(f"📦 Archivé: {run_id}")
+            elif source_path.exists():
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(source_path), str(target_path))
+                logger.debug(f"📦 Archivé: {run_id}")
 
             archived_count += 1
 
@@ -294,7 +291,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Organiser et archiver les résultats de backtest"
+        description="Organiser et archiver les résultats de backtest",
     )
     parser.add_argument(
         "--organize",

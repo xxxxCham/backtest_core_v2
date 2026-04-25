@@ -1,5 +1,4 @@
-"""
-Module-ID: performance.monitor
+"""Module-ID: performance.monitor
 
 Purpose: Monitoring temps réel système (CPU, mémoire, I/O, GPU) pendant exécution.
 
@@ -28,13 +27,14 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # psutil pour métriques système
 try:
     import psutil
+
     HAS_PSUTIL = True
 except ImportError:
     HAS_PSUTIL = False
@@ -55,6 +55,7 @@ try:
         TimeRemainingColumn,
     )
     from rich.table import Table
+
     HAS_RICH = True
 except ImportError:
     HAS_RICH = False
@@ -64,6 +65,7 @@ except ImportError:
 @dataclass
 class ResourceSnapshot:
     """Snapshot des ressources système à un instant t."""
+
     timestamp: float
     cpu_percent: float
     memory_used_gb: float
@@ -71,13 +73,14 @@ class ResourceSnapshot:
     memory_percent: float
     disk_read_mb: float = 0.0
     disk_write_mb: float = 0.0
-    gpu_memory_used_gb: Optional[float] = None
-    gpu_utilization: Optional[float] = None
+    gpu_memory_used_gb: float | None = None
+    gpu_utilization: float | None = None
 
 
 @dataclass
 class ResourceStats:
     """Statistiques agrégées des ressources."""
+
     duration_seconds: float
     cpu_avg: float
     cpu_max: float
@@ -85,13 +88,12 @@ class ResourceStats:
     memory_max_gb: float
     memory_peak_percent: float
     samples_count: int
-    gpu_memory_max_gb: Optional[float] = None
-    gpu_utilization_avg: Optional[float] = None
+    gpu_memory_max_gb: float | None = None
+    gpu_utilization_avg: float | None = None
 
 
 class ResourceTracker:
-    """
-    Tracker de ressources en arrière-plan.
+    """Tracker de ressources en arrière-plan.
 
     Capture les métriques CPU/RAM/GPU à intervalles réguliers.
 
@@ -104,19 +106,20 @@ class ResourceTracker:
         >>> stats = tracker.stop()
         >>> print(f"CPU max: {stats.cpu_max}%")
         >>> print(f"RAM max: {stats.memory_max_gb:.2f} GB")
+
     """
 
     def __init__(self, interval: float = 1.0):
-        """
-        Initialise le tracker.
+        """Initialise le tracker.
 
         Args:
             interval: Intervalle de sampling en secondes
+
         """
         self.interval = interval
-        self._snapshots: List[ResourceSnapshot] = []
+        self._snapshots: list[ResourceSnapshot] = []
         self._running = False
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._start_time: float = 0.0
 
         # Compteurs IO disque de base
@@ -141,12 +144,8 @@ class ResourceTracker:
             try:
                 io = psutil.disk_io_counters()
                 if self._disk_io_start:
-                    disk_read_mb = (
-                        io.read_bytes - self._disk_io_start.read_bytes
-                    ) / (1024**2)
-                    disk_write_mb = (
-                        io.write_bytes - self._disk_io_start.write_bytes
-                    ) / (1024**2)
+                    disk_read_mb = (io.read_bytes - self._disk_io_start.read_bytes) / (1024**2)
+                    disk_write_mb = (io.write_bytes - self._disk_io_start.write_bytes) / (1024**2)
             except Exception:
                 pass
 
@@ -159,15 +158,14 @@ class ResourceTracker:
                 disk_read_mb=disk_read_mb,
                 disk_write_mb=disk_write_mb,
             )
-        else:
-            # Fallback sans psutil
-            return ResourceSnapshot(
-                timestamp=timestamp,
-                cpu_percent=0.0,
-                memory_used_gb=0.0,
-                memory_available_gb=0.0,
-                memory_percent=0.0,
-            )
+        # Fallback sans psutil
+        return ResourceSnapshot(
+            timestamp=timestamp,
+            cpu_percent=0.0,
+            memory_used_gb=0.0,
+            memory_available_gb=0.0,
+            memory_percent=0.0,
+        )
 
     def _sampling_loop(self):
         """Boucle de sampling en arrière-plan."""
@@ -194,11 +192,11 @@ class ResourceTracker:
         logger.debug("ResourceTracker démarré")
 
     def stop(self) -> ResourceStats:
-        """
-        Arrête le tracking et retourne les statistiques.
+        """Arrête le tracking et retourne les statistiques.
 
         Returns:
             ResourceStats avec métriques agrégées
+
         """
         self._running = False
 
@@ -237,14 +235,13 @@ class ResourceTracker:
         """Retourne le snapshot actuel."""
         return self._take_snapshot()
 
-    def get_history(self) -> List[ResourceSnapshot]:
+    def get_history(self) -> list[ResourceSnapshot]:
         """Retourne l'historique des snapshots."""
         return self._snapshots.copy()
 
 
 class PerformanceMonitor:
-    """
-    Moniteur de performance avec affichage temps réel.
+    """Moniteur de performance avec affichage temps réel.
 
     Utilise rich pour afficher une interface console avec:
     - Barre de progression
@@ -256,6 +253,7 @@ class PerformanceMonitor:
         ...     for i, params in enumerate(param_grid):
         ...         run_backtest(params)
         ...         monitor.update(i + 1, len(param_grid))
+
     """
 
     def __init__(
@@ -264,13 +262,13 @@ class PerformanceMonitor:
         show_live: bool = True,
         refresh_rate: int = 4,
     ):
-        """
-        Initialise le moniteur.
+        """Initialise le moniteur.
 
         Args:
             title: Titre de l'opération
             show_live: Afficher le dashboard live
             refresh_rate: Rafraîchissements par seconde
+
         """
         self.title = title
         self.show_live = show_live and HAS_RICH
@@ -281,8 +279,8 @@ class PerformanceMonitor:
         self._progress: int = 0
         self._total: int = 0
         self._status: str = "En attente..."
-        self._live: Optional[Any] = None
-        self._console: Optional[Any] = None
+        self._live: Any | None = None
+        self._console: Any | None = None
 
         if HAS_RICH:
             self._console = Console()
@@ -340,13 +338,13 @@ class PerformanceMonitor:
         return False
 
     def update(self, progress: int, total: int, status: str = ""):
-        """
-        Met à jour la progression.
+        """Met à jour la progression.
 
         Args:
             progress: Nombre de tâches complétées
             total: Nombre total de tâches
             status: Message de status optionnel
+
         """
         self._progress = progress
         self._total = total
@@ -370,20 +368,20 @@ class PerformanceMonitor:
 
 
 class ProgressBar:
-    """
-    Barre de progression simple avec rich.
+    """Barre de progression simple avec rich.
 
     Example:
         >>> with ProgressBar("Running", total=100) as bar:
         ...     for _ in range(100):
         ...         bar.advance()
+
     """
 
     def __init__(self, description: str = "Processing", total: int = 100):
         self.description = description
         self.total = total
-        self._progress: Optional[Any] = None
-        self._task_id: Optional[int] = None
+        self._progress: Any | None = None
+        self._task_id: int | None = None
 
     def __enter__(self):
         if HAS_RICH:
@@ -397,7 +395,8 @@ class ProgressBar:
             )
             self._progress.__enter__()
             self._task_id = self._progress.add_task(
-                self.description, total=self.total
+                self.description,
+                total=self.total,
             )
         return self
 
@@ -418,6 +417,7 @@ class ProgressBar:
 
 
 # ======================== Fonctions utilitaires ========================
+
 
 def print_system_info():
     """Affiche les informations système."""
@@ -459,12 +459,11 @@ def print_system_info():
             ram_total_gb = mem.total / (1024**3)
             ram_available_gb = mem.available / (1024**3)
             print(
-                f"RAM: {ram_total_gb:.1f} GB total, "
-                f"{ram_available_gb:.1f} GB disponible"
+                f"RAM: {ram_total_gb:.1f} GB total, {ram_available_gb:.1f} GB disponible",
             )
 
 
-def get_system_resources() -> Dict[str, Any]:
+def get_system_resources() -> dict[str, Any]:
     """Retourne un dict avec les ressources système."""
     resources = {
         "psutil_available": HAS_PSUTIL,

@@ -1,5 +1,4 @@
-"""
-Module-ID: catalog.models
+"""Module-ID: catalog.models
 
 Purpose: Modèles de données pour le catalogue de fiches de stratégies.
 
@@ -11,7 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -23,19 +22,22 @@ class Archetype:
     family: str = ""  # mean_reversion, trend, breakout, momentum, volatility
     side: str = "both"  # long_only, short_only, both
     timeframe: str = "1h"
-    indicators: List[str] = field(default_factory=list)
-    indicator_params: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    indicators: list[str] = field(default_factory=list)
+    indicator_params: dict[str, dict[str, Any]] = field(default_factory=dict)
     entry_long_logic: str = ""
     entry_short_logic: str = ""
     exit_logic: str = ""
     risk_management: str = ""
-    default_params: Dict[str, Any] = field(default_factory=dict)
-    parameter_specs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    requirements: Dict[str, Any] = field(default_factory=lambda: {
-        "ohlcv_required": True, "dataset_features": []
-    })
+    default_params: dict[str, Any] = field(default_factory=dict)
+    parameter_specs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    requirements: dict[str, Any] = field(
+        default_factory=lambda: {
+            "ohlcv_required": True,
+            "dataset_features": [],
+        },
+    )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "archetype_id": self.archetype_id,
             "version": self.version,
@@ -54,7 +56,7 @@ class Archetype:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Archetype:
+    def from_dict(cls, data: dict[str, Any]) -> Archetype:
         return cls(
             archetype_id=data["archetype_id"],
             version=data.get("version", "1.0"),
@@ -69,14 +71,18 @@ class Archetype:
             risk_management=data.get("risk_management", ""),
             default_params=data.get("default_params", {}),
             parameter_specs=data.get("parameter_specs", {}),
-            requirements=data.get("requirements", {
-                "ohlcv_required": True, "dataset_features": []
-            }),
+            requirements=data.get(
+                "requirements",
+                {
+                    "ohlcv_required": True,
+                    "dataset_features": [],
+                },
+            ),
         )
 
     @classmethod
     def load(cls, path: Path) -> Archetype:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return cls.from_dict(json.load(f))
 
     def save(self, path: Path) -> None:
@@ -89,16 +95,16 @@ class ParamDef:
     """Définition d'un paramètre dans un param_pack."""
 
     dist: str = "int_uniform"  # int_uniform, uniform, categorical, log_uniform
-    source: Optional[str] = None  # "toml" pour charger depuis indicator_ranges.toml
-    indicator: Optional[str] = None  # nom indicateur (si source=toml)
-    param: Optional[str] = None  # nom paramètre dans le TOML (si source=toml)
-    min: Optional[float] = None
-    max: Optional[float] = None
-    step: Optional[float] = None
-    options: Optional[List[Any]] = None
+    source: str | None = None  # "toml" pour charger depuis indicator_ranges.toml
+    indicator: str | None = None  # nom indicateur (si source=toml)
+    param: str | None = None  # nom paramètre dans le TOML (si source=toml)
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
+    options: list[Any] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
-        d: Dict[str, Any] = {"dist": self.dist}
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {"dist": self.dist}
         if self.source:
             d["source"] = self.source
         if self.indicator:
@@ -116,7 +122,7 @@ class ParamDef:
         return d
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> ParamDef:
+    def from_dict(cls, data: dict[str, Any]) -> ParamDef:
         return cls(
             dist=data.get("dist", "int_uniform"),
             source=data.get("source"),
@@ -136,10 +142,10 @@ class ParamPack:
     param_pack_id: str
     archetype_id: str
     seed: int = 42
-    param_defs: Dict[str, ParamDef] = field(default_factory=dict)
-    constraints: List[Dict[str, Any]] = field(default_factory=list)
+    param_defs: dict[str, ParamDef] = field(default_factory=dict)
+    constraints: list[dict[str, Any]] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "param_pack_id": self.param_pack_id,
             "archetype_id": self.archetype_id,
@@ -149,7 +155,7 @@ class ParamPack:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> ParamPack:
+    def from_dict(cls, data: dict[str, Any]) -> ParamPack:
         param_defs = {}
         for k, v in data.get("param_defs", {}).items():
             param_defs[k] = ParamDef.from_dict(v)
@@ -163,7 +169,7 @@ class ParamPack:
 
     @classmethod
     def load(cls, path: Path) -> ParamPack:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return cls.from_dict(json.load(f))
 
     def save(self, path: Path) -> None:
@@ -178,15 +184,15 @@ class Variant:
     variant_id: str
     archetype_id: str
     param_pack_id: str
-    params: Dict[str, Any] = field(default_factory=dict)
-    proposal: Dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
+    proposal: dict[str, Any] = field(default_factory=dict)
     builder_text: str = ""
     fingerprint: str = ""
-    provenance: Dict[str, Any] = field(default_factory=dict)
-    gating_result: Optional[Dict[str, Any]] = None
+    provenance: dict[str, Any] = field(default_factory=dict)
+    gating_result: dict[str, Any] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
-        d: Dict[str, Any] = {
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
             "variant_id": self.variant_id,
             "archetype_id": self.archetype_id,
             "param_pack_id": self.param_pack_id,
@@ -201,7 +207,7 @@ class Variant:
         return d
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Variant:
+    def from_dict(cls, data: dict[str, Any]) -> Variant:
         return cls(
             variant_id=data["variant_id"],
             archetype_id=data["archetype_id"],
@@ -221,13 +227,15 @@ class GatingConfig:
 
     enabled: bool = False
     max_seconds: float = 2.0
-    thresholds: Dict[str, float] = field(default_factory=lambda: {
-        "min_trades": 20,
-        "max_drawdown_pct": 40.0,
-        "min_profit_factor": 1.05,
-    })
+    thresholds: dict[str, float] = field(
+        default_factory=lambda: {
+            "min_trades": 20,
+            "max_drawdown_pct": 40.0,
+            "min_profit_factor": 1.05,
+        },
+    )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "enabled": self.enabled,
             "max_seconds": self.max_seconds,
@@ -235,15 +243,18 @@ class GatingConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> GatingConfig:
+    def from_dict(cls, data: dict[str, Any]) -> GatingConfig:
         return cls(
             enabled=data.get("enabled", False),
             max_seconds=data.get("max_seconds", 2.0),
-            thresholds=data.get("thresholds", {
-                "min_trades": 20,
-                "max_drawdown_pct": 40.0,
-                "min_profit_factor": 1.05,
-            }),
+            thresholds=data.get(
+                "thresholds",
+                {
+                    "min_trades": 20,
+                    "max_drawdown_pct": 40.0,
+                    "min_profit_factor": 1.05,
+                },
+            ),
         )
 
 
@@ -259,17 +270,21 @@ class CatalogConfig:
     archetypes_dir: str = "catalog/archetypes"
     param_packs_dir: str = "catalog/param_packs"
     output_dir: str = "catalog/generated"
-    profiles: Dict[str, Any] = field(default_factory=lambda: {
-        "dataset": "ohlcv_only",
-        "risk_stoploss_mandatory": True,
-    })
+    profiles: dict[str, Any] = field(
+        default_factory=lambda: {
+            "dataset": "ohlcv_only",
+            "risk_stoploss_mandatory": True,
+        },
+    )
     gating: GatingConfig = field(default_factory=GatingConfig)
-    builder_integration: Dict[str, Any] = field(default_factory=lambda: {
-        "enabled": True,
-        "input_format": "json_proposal",
-    })
+    builder_integration: dict[str, Any] = field(
+        default_factory=lambda: {
+            "enabled": True,
+            "input_format": "json_proposal",
+        },
+    )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "catalog_version": self.catalog_version,
             "run_id": self.run_id,
@@ -285,7 +300,7 @@ class CatalogConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> CatalogConfig:
+    def from_dict(cls, data: dict[str, Any]) -> CatalogConfig:
         gating_data = data.get("gating", {})
         gating = GatingConfig.from_dict(gating_data) if gating_data else GatingConfig()
         return cls(
@@ -297,20 +312,26 @@ class CatalogConfig:
             archetypes_dir=data.get("archetypes_dir", "catalog/archetypes"),
             param_packs_dir=data.get("param_packs_dir", "catalog/param_packs"),
             output_dir=data.get("output_dir", "catalog/generated"),
-            profiles=data.get("profiles", {
-                "dataset": "ohlcv_only",
-                "risk_stoploss_mandatory": True,
-            }),
+            profiles=data.get(
+                "profiles",
+                {
+                    "dataset": "ohlcv_only",
+                    "risk_stoploss_mandatory": True,
+                },
+            ),
             gating=gating,
-            builder_integration=data.get("builder_integration", {
-                "enabled": True,
-                "input_format": "json_proposal",
-            }),
+            builder_integration=data.get(
+                "builder_integration",
+                {
+                    "enabled": True,
+                    "input_format": "json_proposal",
+                },
+            ),
         )
 
     @classmethod
     def load(cls, path: Path) -> CatalogConfig:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return cls.from_dict(json.load(f))
 
     def save(self, path: Path) -> None:
@@ -328,10 +349,10 @@ class CatalogResult:
     total_after_sanity: int = 0
     total_after_gating: int = 0
     n_batches: int = 0
-    variants: List[Variant] = field(default_factory=list)
-    rejections: List[Dict[str, Any]] = field(default_factory=list)
+    variants: list[Variant] = field(default_factory=list)
+    rejections: list[dict[str, Any]] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "run_id": self.run_id,
             "total_generated": self.total_generated,

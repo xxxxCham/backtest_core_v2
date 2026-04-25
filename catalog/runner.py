@@ -1,5 +1,4 @@
-"""
-Module-ID: catalog.runner
+"""Module-ID: catalog.runner
 
 Purpose: Orchestrateur principal du catalogue — charge config, génère, filtre, exporte.
 
@@ -18,7 +17,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -31,11 +30,10 @@ logger = logging.getLogger(__name__)
 
 def run_catalog(
     config_path: str,
-    df: Optional[pd.DataFrame] = None,
+    df: pd.DataFrame | None = None,
     dry_run: bool = False,
 ) -> CatalogResult:
-    """
-    Pipeline complet de génération de catalogue.
+    """Pipeline complet de génération de catalogue.
 
     1. Charger CatalogConfig depuis JSON
     2. generate_catalog(config) → variants groupés en batches
@@ -49,6 +47,7 @@ def run_catalog(
 
     Returns:
         CatalogResult avec statistiques et variants approuvés
+
     """
     config_file = Path(config_path)
     if not config_file.exists():
@@ -62,7 +61,9 @@ def run_catalog(
 
     logger.info(
         "Catalog run start: run_id=%s target=%d seed=%d",
-        config.run_id, config.n_variants_target, config.seed,
+        config.run_id,
+        config.n_variants_target,
+        config.seed,
     )
 
     # --- 1. Génération + sanity ---
@@ -70,7 +71,9 @@ def run_catalog(
 
     logger.info(
         "Generation done: generated=%d after_sanity=%d rejected=%d",
-        result.total_generated, result.total_after_sanity, len(result.rejections),
+        result.total_generated,
+        result.total_after_sanity,
+        len(result.rejections),
     )
 
     # --- 2. Gating optionnel ---
@@ -79,8 +82,7 @@ def run_catalog(
         gated = _apply_gating(result.variants, df, config)
         gating_passed = [v for v, passed, _ in gated if passed]
         gating_failed = [
-            {"variant_id": v.variant_id, "metrics": m, "stage": "gating"}
-            for v, passed, m in gated if not passed
+            {"variant_id": v.variant_id, "metrics": m, "stage": "gating"} for v, passed, m in gated if not passed
         ]
         result.variants = gating_passed
         result.total_after_gating = len(gating_passed)
@@ -100,14 +102,16 @@ def run_catalog(
 
     logger.info(
         "Catalog run complete: run_id=%s variants=%d batches=%d",
-        result.run_id, len(result.variants), result.n_batches,
+        result.run_id,
+        len(result.variants),
+        result.n_batches,
     )
 
     return result
 
 
 def _apply_gating(
-    variants: List[Variant],
+    variants: list[Variant],
     df: pd.DataFrame,
     config: CatalogConfig,
 ) -> list:
@@ -125,7 +129,7 @@ def _write_artifacts(result: CatalogResult, config: CatalogConfig) -> None:
     batches_dir = output_dir / "batches"
     batches_dir.mkdir(exist_ok=True)
 
-    batch_manifests: List[Dict[str, Any]] = []
+    batch_manifests: list[dict[str, Any]] = []
 
     for batch_idx in range(result.n_batches):
         start = batch_idx * batch_size
@@ -144,11 +148,13 @@ def _write_artifacts(result: CatalogResult, config: CatalogConfig) -> None:
             encoding="utf-8",
         )
 
-        batch_manifests.append({
-            "batch_id": batch_idx,
-            "file": str(batch_file.relative_to(output_dir)),
-            "n_variants": len(batch_variants),
-        })
+        batch_manifests.append(
+            {
+                "batch_id": batch_idx,
+                "file": str(batch_file.relative_to(output_dir)),
+                "n_variants": len(batch_variants),
+            },
+        )
 
     # Index
     index = {
@@ -196,7 +202,8 @@ def main() -> None:
         prog="catalog.runner",
     )
     parser.add_argument(
-        "--config", "-c",
+        "--config",
+        "-c",
         required=True,
         help="Chemin vers le fichier de configuration JSON",
     )
@@ -206,7 +213,8 @@ def main() -> None:
         help="Générer sans écrire sur disque",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Activer les logs détaillés",
     )
@@ -221,15 +229,15 @@ def main() -> None:
     result = run_catalog(args.config, dry_run=args.dry_run)
 
     # Afficher un résumé
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Catalog Run: {result.run_id}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"  Total generated:    {result.total_generated}")
     print(f"  After sanity:       {result.total_after_sanity}")
     print(f"  After gating:       {result.total_after_gating}")
     print(f"  Batches:            {result.n_batches}")
     print(f"  Rejections:         {len(result.rejections)}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 if __name__ == "__main__":

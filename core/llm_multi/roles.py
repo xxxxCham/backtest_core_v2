@@ -2,32 +2,23 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any
+
+from utils.model_loader import normalize_model_name
 
 MULTI_LLM_ROLES = (
-    "idea_llm",
     "builder_llm",
-    "critic_llm",
-    "risk_llm",
-    "execution_router_llm",
+    "supervisor_llm",
 )
 
 SIMPLE_MULTI_LLM_ACTIVE_ROLES = (
-    "idea_llm",
     "builder_llm",
-    "critic_llm",
-    "risk_llm",
+    "supervisor_llm",
 )
 
 MULTI_LLM_ROLE_DETAILS = {
-    "idea_llm": {
-        "label": "Ideation",
-        "stage": "Amont",
-        "purpose": "Recoit univers marches/TF/indicateurs et historique recent, puis propose un objectif de strategie testable.",
-        "summary": "Propose une idee de strategie a partir de l'univers disponible.",
-        "active_in_simple_mode": "true",
-    },
     "builder_llm": {
         "label": "Builder",
         "stage": "Execution principale",
@@ -35,26 +26,12 @@ MULTI_LLM_ROLE_DETAILS = {
         "summary": "Construit ou ajuste la strategie avec le contrat complet du Builder.",
         "active_in_simple_mode": "true",
     },
-    "critic_llm": {
-        "label": "Critique",
-        "stage": "Post-run",
-        "purpose": "Recoit le resume deterministe de session et audite robustesse, overfitting, qualite des signaux et tests manquants.",
-        "summary": "Audit methodologique du resultat et de sa robustesse.",
+    "supervisor_llm": {
+        "label": "Superviseur",
+        "stage": "Objectif et controle",
+        "purpose": "Recoit univers marches/TF/indicateurs, historique recent et resultats de session; propose l'objectif, audite robustesse/risque et recommande accept/iterate/recover.",
+        "summary": "Fusionne ideation, critique, risque et decision de boucle.",
         "active_in_simple_mode": "true",
-    },
-    "risk_llm": {
-        "label": "Risk",
-        "stage": "Post-run",
-        "purpose": "Recoit le resume deterministe de session et evalue drawdown, fragilite, nombre de trades et risque de comportement de trading.",
-        "summary": "Evalue le risque de trading a partir des resultats du run.",
-        "active_in_simple_mode": "true",
-    },
-    "execution_router_llm": {
-        "label": "Routeur deterministe",
-        "stage": "Controle de boucle local",
-        "purpose": "N'est plus un LLM actif en mode simple; la suite de boucle est decidee localement de maniere deterministe.",
-        "summary": "Decision locale accept/iterate/recover.",
-        "active_in_simple_mode": "false",
     },
 }
 
@@ -65,8 +42,8 @@ class RolePreference:
 
     role: str
     backend: str = "ollama"
-    preferred_models: List[str] = field(default_factory=list)
-    fallback_models: List[str] = field(default_factory=list)
+    preferred_models: list[str] = field(default_factory=list)
+    fallback_models: list[str] = field(default_factory=list)
     required: bool = True
     description: str = ""
 
@@ -87,10 +64,10 @@ class RoleAssignment:
     discovered_path: str = ""
     live: bool = False
     install_required: bool = False
-    alternatives: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    alternatives: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "role": self.role,
             "backend": self.backend,
@@ -109,5 +86,115 @@ class RoleAssignment:
         }
 
 
-def get_multi_llm_role_details(role: str) -> Dict[str, str]:
+def get_multi_llm_role_details(role: str) -> dict[str, str]:
     return dict(MULTI_LLM_ROLE_DETAILS.get(str(role or "").strip(), {}))
+
+
+def normalize_role_candidate(candidate: Any) -> str:
+    raw_candidate = str(candidate or "").strip()
+    return normalize_model_name(raw_candidate) or raw_candidate
+
+
+def normalize_role_candidate_queue(candidates: Iterable[Any]) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for raw_candidate in list(candidates or []):
+        normalized = normalize_role_candidate(raw_candidate)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        ordered.append(normalized)
+    return ordered
+
+
+def role_rotation_remainder(
+    candidates: Iterable[Any],
+    selected_candidate: Any = "",
+    *,
+    selected_index: int | None = None,
+) -> list[str]:
+    queue = normalize_role_candidate_queue(candidates)
+    if not queue:
+        return []
+    if selected_index is None:
+        normalized_selected = normalize_role_candidate(selected_candidate)
+        selected_index = queue.index(normalized_selected) if normalized_selected in queue else 0
+    if not (0 <= int(selected_index) < len(queue)):
+        selected_index = 0
+    return [
+        queue[(int(selected_index) + offset) % len(queue)]
+        for offset in range(1, len(queue))
+    ]
+
+
+def resolve_assignment_rotation_queue(assignment: RoleAssignment) -> list[str]:
+    metadata = dict(getattr(assignment, "metadata", {}) or {})
+    queue = normalize_role_candidate_queue(metadata.get("rotation_queue") or [])
+    if queue:
+        return queue
+    inferred_queue = normalize_role_candidate_queue(
+        [
+            getattr(assignment, "requested_model", ""),
+            *list(getattr(assignment, "alternatives", []) or []),
+        ],
+    )
+    if inferred_queue:
+        return inferred_queue
+    current_candidate = normalize_role_candidate(
+        getattr(assignment, "requested_model", "") or getattr(assignment, "resolved_model", ""),
+    )
+    return [current_candidate] if current_candidate else []
+
+
+def resolve_assignment_rotation_index(
+    assignment: RoleAssignment,
+    *,
+    queue: Iterable[Any] | None = None,
+) -> int:
+    normalized_queue = normalize_role_candidate_queue(
+        queue if queue is not None else resolve_assignment_rotation_queue(assignment),
+    )
+    if not normalized_queue:
+        return 0
+    metadata = dict(getattr(assignment, "metadata", {}) or {})
+    current_candidate = normalize_role_candidate(
+        getattr(assignment, "requested_model", "") or getattr(assignment, "resolved_model", ""),
+    )
+    raw_index = metadata.get("rotation_index")
+    try:
+        index = int(raw_index)
+    except (TypeError, ValueError):
+        index = -1
+    if current_candidate in normalized_queue:
+        return normalized_queue.index(current_candidate)
+    if 0 <= index < len(normalized_queue):
+        return index
+    return 0
+
+
+def build_role_rotation_metadata(
+    metadata: dict[str, Any] | None,
+    *,
+    queue: Iterable[Any],
+    selected_candidate: Any,
+    mission_count: int | None = None,
+) -> dict[str, Any]:
+    merged = dict(metadata or {})
+    normalized_queue = normalize_role_candidate_queue(queue)
+    normalized_selected = normalize_role_candidate(selected_candidate)
+    if normalized_queue:
+        if normalized_selected in normalized_queue:
+            selected_index = normalized_queue.index(normalized_selected)
+        else:
+            selected_index = 0
+        merged["rotation_queue"] = list(normalized_queue)
+        merged["rotation_enabled"] = len(normalized_queue) > 1
+        merged["rotation_index"] = selected_index
+        if mission_count is None:
+            raw_mission_count = merged.get("rotation_mission_count", 0)
+            try:
+                mission_count = int(raw_mission_count)
+            except (TypeError, ValueError):
+                mission_count = 0
+        merged["rotation_mission_count"] = max(0, int(mission_count or 0))
+    return merged

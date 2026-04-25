@@ -182,9 +182,13 @@ from agents.builder_objective_parser import (  # noqa: E402
 
 # -- I/O de session depuis builder_session_io --
 from agents.builder_session_io import (  # noqa: E402
+    BUILDER_MEMORY_CODE_MAX_CHARS,
+    BUILDER_MEMORY_PROPOSAL_MAX_CHARS,
     _truncate_runtime_traceback_tail,
     create_session_id,
+    format_builder_cross_session_memory,
     get_session_dir,
+    load_builder_cross_session_memory,
     persist_session_strategy_code,
     persist_runtime_checkpoint,
     safe_save_session_summary,
@@ -2443,6 +2447,7 @@ class StrategyBuilder:
         self.multi_llm_profile: str = ""
         self.multi_llm_role_overrides: Dict[str, Any] = {}
         self.multi_llm_assignments: List[Dict[str, Any]] = []
+        self._multi_llm_manager: Any = None  # set externally for iteration-level rotation
         if isinstance(llm_topology_config, dict):
             llm_topology_config = LLMTopologyConfig.from_dict(llm_topology_config)
         self.llm_topology_config = llm_topology_config or build_phase1_topology(
@@ -3079,6 +3084,15 @@ class StrategyBuilder:
     def _attempt_session_auto_reset(self, session, **kwargs):
         return attempt_session_auto_reset(session, **kwargs)
 
+    def _build_cross_session_memory_prompt(
+        self,
+        session: BuilderSession,
+        *,
+        max_chars: int,
+    ) -> str:
+        entries = list(getattr(session, "cross_session_memory", []) or [])
+        return format_builder_cross_session_memory(entries, max_chars=max_chars)
+
     # ------------------------------------------------------------------
     # Indicator ranking (shared between proposal & code phases)
     # ------------------------------------------------------------------
@@ -3159,6 +3173,11 @@ class StrategyBuilder:
             "objective": session.objective,
             "available_indicators": ordered_prompt_indicators,
             "available_indicator_guide": build_indicator_selection_guide(ordered_prompt_indicators),
+            "cross_session_memory_prompt": self._build_cross_session_memory_prompt(
+                session,
+                max_chars=BUILDER_MEMORY_PROPOSAL_MAX_CHARS,
+            ),
+            "cross_session_memory_count": len(list(session.cross_session_memory or [])),
             "iteration": len(session.iterations) + 1,
             "max_iterations": session.max_iterations,
             "direction_constraint": session.direction_constraint,
@@ -3513,6 +3532,11 @@ class StrategyBuilder:
             "proposal": proposal,
             "available_indicators": ordered_code_indicators,
             "available_indicator_guide": build_indicator_selection_guide(ordered_code_indicators),
+            "cross_session_memory_prompt": self._build_cross_session_memory_prompt(
+                session,
+                max_chars=BUILDER_MEMORY_CODE_MAX_CHARS,
+            ),
+            "cross_session_memory_count": len(list(session.cross_session_memory or [])),
             "class_name": GENERATED_CLASS_NAME,
             "direction_constraint": session.direction_constraint,
             # Contexte de marché
@@ -4787,6 +4811,18 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             multi_llm_assignments=list(self.multi_llm_assignments or []),
         )
         session.direction_constraint = _infer_direction_constraint_from_objective(objective)
+        try:
+            session.cross_session_memory = load_builder_cross_session_memory(
+                objective=objective,
+                symbol=symbol,
+                timeframe=timeframe,
+                session_id=session_id,
+                universe_mode=session.universe_mode,
+                universe_strategy_type=session.universe_strategy_type,
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("builder_cross_session_memory_load_failed session=%s", session_id, exc_info=True)
+            session.cross_session_memory = []
         model_name = getattr(getattr(self.llm, "config", None), "model", "?")
         session.model_name = model_name
         thought_stream = ThoughtStream(session_id, objective, model_name)

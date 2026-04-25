@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.mfi
+"""Module-ID: indicators.mfi
 
 Purpose: Indicateur MFI (Money Flow Index) - RSI pondéré par volume.
 
@@ -29,6 +28,7 @@ import pandas as pd
 @dataclass
 class MFISettings:
     """Paramètres Money Flow Index."""
+
     period: int = 14
 
 
@@ -39,8 +39,7 @@ def mfi(
     volume: pd.Series | np.ndarray,
     period: int = 14,
 ) -> np.ndarray:
-    """
-    Calcule Money Flow Index.
+    """Calcule Money Flow Index.
 
     Args:
         high: Prix hauts
@@ -51,6 +50,7 @@ def mfi(
 
     Returns:
         MFI values (0-100)
+
     """
     if isinstance(high, pd.Series):
         high = high.values
@@ -89,4 +89,4 @@ def mfi(
     return mfi_values
 
 
-__all__ = ["mfi", "MFISettings"]
+__all__ = ["MFISettings", "mfi"]

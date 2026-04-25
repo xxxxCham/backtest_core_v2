@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.data
+"""Module-ID: utils.data
 
 Purpose: Utilitaires analyse/validation données OHLCV (détection gaps, stats).
 
@@ -20,14 +19,11 @@ Read-if: Modification validation données ou détection gaps.
 Skip-if: Vous utilisez juste detect_gaps().
 """
 
-from typing import Optional
-
 import pandas as pd
 
 
-def detect_gaps(df: pd.DataFrame, expected_freq: Optional[str] = None) -> dict:
-    """
-    Détecte les gaps temporels dans un DataFrame OHLCV.
+def detect_gaps(df: pd.DataFrame, expected_freq: str | None = None) -> dict:
+    """Détecte les gaps temporels dans un DataFrame OHLCV.
 
     Les gaps sont des périodes manquantes dans la série temporelle qui devraient
     normalement être présentes selon la fréquence attendue.
@@ -47,6 +43,7 @@ def detect_gaps(df: pd.DataFrame, expected_freq: Optional[str] = None) -> dict:
         >>> df = load_ohlcv_data()
         >>> gaps = detect_gaps(df, expected_freq='1h')
         >>> print(f"Gaps trouvés : {gaps['gaps_count']} ({gaps['gaps_pct']:.2f}%)")
+
     """
     # Vérifier que l'index est DatetimeIndex
     if not isinstance(df.index, pd.DatetimeIndex):
@@ -54,7 +51,7 @@ def detect_gaps(df: pd.DataFrame, expected_freq: Optional[str] = None) -> dict:
             "gaps_count": 0,
             "gaps_pct": 0.0,
             "gaps_sample": [],
-            "note": "not_datetime_index"
+            "note": "not_datetime_index",
         }
 
     # Inférer fréquence si non fournie
@@ -66,7 +63,7 @@ def detect_gaps(df: pd.DataFrame, expected_freq: Optional[str] = None) -> dict:
             "gaps_count": 0,
             "gaps_pct": 0.0,
             "gaps_sample": [],
-            "note": "freq_not_inferable"
+            "note": "freq_not_inferable",
         }
 
     # Créer série complète attendue
@@ -74,14 +71,14 @@ def detect_gaps(df: pd.DataFrame, expected_freq: Optional[str] = None) -> dict:
         full_index = pd.date_range(
             start=df.index[0],
             end=df.index[-1],
-            freq=expected_freq
+            freq=expected_freq,
         )
     except Exception:
         return {
             "gaps_count": 0,
             "gaps_pct": 0.0,
             "gaps_sample": [],
-            "note": "freq_invalid"
+            "note": "freq_invalid",
         }
 
     # Identifier gaps (timestamps manquants)
@@ -93,7 +90,7 @@ def detect_gaps(df: pd.DataFrame, expected_freq: Optional[str] = None) -> dict:
     return {
         "gaps_count": gaps_count,
         "gaps_pct": gaps_pct,
-        "gaps_sample": missing.tolist()[:5] if gaps_count > 0 else []
+        "gaps_sample": missing.tolist()[:5] if gaps_count > 0 else [],
     }
 
 

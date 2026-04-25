@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.force_index
+"""Module-ID: indicators.force_index
 
 Purpose: Force Index.
 """
@@ -46,4 +45,4 @@ register_indicator(
 )
 
 
-__all__ = ["force_index", "calculate_force_index", "ForceIndexSettings"]
+__all__ = ["ForceIndexSettings", "calculate_force_index", "force_index"]

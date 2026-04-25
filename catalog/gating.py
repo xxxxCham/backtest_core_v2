@@ -1,5 +1,4 @@
-"""
-Module-ID: catalog.gating
+"""Module-ID: catalog.gating
 
 Purpose: Mini-backtest gating via compilation déterministe du proposal + BacktestEngine.
 """
@@ -12,7 +11,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import pandas as pd
 
@@ -41,11 +40,7 @@ def _load_strategy_from_code(code: str, module_name: str = "gating_strategy"):
     strategy_cls = None
     for attr_name in dir(module):
         attr = getattr(module, attr_name)
-        if (
-            isinstance(attr, type)
-            and attr_name != "StrategyBase"
-            and hasattr(attr, "generate_signals")
-        ):
+        if isinstance(attr, type) and attr_name != "StrategyBase" and hasattr(attr, "generate_signals"):
             strategy_cls = attr
             break
 
@@ -59,10 +54,9 @@ def run_gating(
     variant: Variant,
     df: pd.DataFrame,
     config: GatingConfig,
-    engine: Optional[BacktestEngine] = None,
-) -> Tuple[bool, Dict[str, Any]]:
-    """
-    Exécute un mini-backtest sur un variant pour gating.
+    engine: BacktestEngine | None = None,
+) -> tuple[bool, dict[str, Any]]:
+    """Exécute un mini-backtest sur un variant pour gating.
 
     1. Compile variant.proposal → code Python via compile_proposal_to_code
     2. Charge la stratégie dynamiquement
@@ -77,11 +71,12 @@ def run_gating(
 
     Returns:
         Tuple (passed, metrics_dict)
+
     """
     # Import lazy pour éviter la circularité
     from agents.strategy_builder import compile_proposal_to_code
 
-    metrics: Dict[str, Any] = {
+    metrics: dict[str, Any] = {
         "passed": False,
         "error": None,
         "total_trades": 0,
@@ -136,19 +131,19 @@ def run_gating(
         if metrics["total_trades"] < thresholds.get("min_trades", 20):
             passed = False
             reasons.append(
-                f"trades={metrics['total_trades']} < min={thresholds.get('min_trades', 20)}"
+                f"trades={metrics['total_trades']} < min={thresholds.get('min_trades', 20)}",
             )
 
         if metrics["max_drawdown"] > thresholds.get("max_drawdown_pct", 40):
             passed = False
             reasons.append(
-                f"drawdown={metrics['max_drawdown']:.1f}% > max={thresholds.get('max_drawdown_pct', 40)}%"
+                f"drawdown={metrics['max_drawdown']:.1f}% > max={thresholds.get('max_drawdown_pct', 40)}%",
             )
 
         if metrics["profit_factor"] < thresholds.get("min_profit_factor", 1.05):
             passed = False
             reasons.append(
-                f"pf={metrics['profit_factor']:.2f} < min={thresholds.get('min_profit_factor', 1.05)}"
+                f"pf={metrics['profit_factor']:.2f} < min={thresholds.get('min_profit_factor', 1.05)}",
             )
 
         metrics["passed"] = passed
@@ -169,12 +164,12 @@ def run_gating_batch(
     variants: list[Variant],
     df: pd.DataFrame,
     config: GatingConfig,
-) -> list[Tuple[Variant, bool, Dict[str, Any]]]:
-    """
-    Exécute le gating sur un batch de variants.
+) -> list[tuple[Variant, bool, dict[str, Any]]]:
+    """Exécute le gating sur un batch de variants.
 
     Returns:
         Liste de (variant, passed, metrics) pour chaque variant.
+
     """
     engine = BacktestEngine(initial_capital=10000.0)
     results = []

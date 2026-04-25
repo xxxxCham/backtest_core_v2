@@ -58,7 +58,7 @@ def _inventory(
                 exists_on_disk=True,
                 aliases=[name],
                 live=live,
-            )
+            ),
         )
     return ModelInventory(
         discovered_models=discovered,
@@ -83,7 +83,7 @@ def _cloud_inventory(*models: tuple[str, str]) -> ModelInventory:
                 aliases=[tag_name, remote_model, remote_model.split(":", 1)[0]],
                 live=True,
                 metadata={"remote_model": remote_model, "cloud_only": True},
-            )
+            ),
         )
     return ModelInventory(
         discovered_models=discovered,
@@ -110,10 +110,10 @@ def test_summarize_builder_session_excludes_best_score():
                         "max_drawdown_pct": -7.5,
                         "profit_factor": 1.26,
                         "total_trades": 23,
-                    }
-                )
+                    },
+                ),
             ),
-        )
+        ),
     )
 
     assert summary["best_sharpe"] == 1.18
@@ -127,19 +127,12 @@ def test_discover_local_models_detects_verified_manifest_and_hf_dirs(
 ):
     models_root = tmp_path / "models"
     ollama_root = models_root / "ollama"
-    manifest_path = (
-        ollama_root
-        / "manifests"
-        / "registry.ollama.ai"
-        / "library"
-        / "qwen3-coder"
-        / "30b"
-    )
+    manifest_path = ollama_root / "manifests" / "registry.ollama.ai" / "library" / "qwen3-coder" / "30b"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text("{}", encoding="utf-8")
 
     hf_root = models_root / "huggingface"
-    hf_model_dir = hf_root / "fin-llama-33b"
+    hf_model_dir = hf_root / "fin-o1-14b"
     hf_model_dir.mkdir(parents=True, exist_ok=True)
     (hf_model_dir / "config.json").write_text("{}", encoding="utf-8")
 
@@ -166,8 +159,75 @@ def test_discover_local_models_detects_verified_manifest_and_hf_dirs(
 
     assert inventory.find("qwen3-coder:30b") is not None
     assert inventory.find("qwen3-coder:30b").verified_available is True
-    assert inventory.find("fin-llama-33b") is not None
-    assert inventory.find("fin-llama-33b").verified_available is True
+    assert inventory.find("fin-o1-14b") is not None
+    assert inventory.find("fin-o1-14b").verified_available is True
+
+
+def test_discover_local_models_registers_catalog_cloud_models(
+    tmp_path: Path,
+    monkeypatch,
+):
+    fake_models_json = tmp_path / "models.json"
+    fake_models_json.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(model_discovery_module, "DEFAULT_MODEL_SEARCH_ROOTS", ())
+    monkeypatch.setattr(model_discovery_module, "get_models_json_path", lambda: fake_models_json)
+    monkeypatch.setattr(
+        model_discovery_module,
+        "load_models_json",
+        lambda **kwargs: {
+            "ollama_models": [],
+            "cloud_models": [
+                {
+                    "id": "qwen3-coder-480b",
+                    "name": "Qwen3 Coder 480B",
+                    "ollama_name": "qwen3-coder:480b",
+                    "backend": "ollama",
+                },
+            ],
+            "huggingface_models": [],
+        },
+    )
+
+    inventory = discover_local_models(include_live_ollama=False)
+    model = inventory.find("qwen3-coder:480b")
+
+    assert model is not None
+    assert model.verified_available is True
+    assert model.source == "models_json_cloud"
+    assert model.metadata["cloud_only"] is True
+
+
+def test_discover_local_models_treats_ollama_models_layout_as_manifest_root(
+    tmp_path: Path,
+    monkeypatch,
+):
+    ollama_root = tmp_path / "ollama" / "models"
+    manifest_path = ollama_root / "manifests" / "registry.ollama.ai" / "library" / "gemma4" / "31b"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text("{}", encoding="utf-8")
+
+    fake_models_json = tmp_path / "models.json"
+    fake_models_json.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(model_discovery_module, "DEFAULT_MODEL_SEARCH_ROOTS", (ollama_root,))
+    monkeypatch.setattr(model_discovery_module, "get_models_json_path", lambda: fake_models_json)
+    monkeypatch.setattr(
+        model_discovery_module,
+        "load_models_json",
+        lambda **kwargs: {
+            "ollama_models": [{"ollama_name": "gemma4:31b"}],
+            "cloud_models": [],
+            "huggingface_models": [],
+        },
+    )
+
+    inventory = discover_local_models(include_live_ollama=False)
+    model = inventory.find("gemma4:31b")
+
+    assert model is not None
+    assert model.verified_available is True
+    assert model.source == "ollama_manifest"
 
 
 def test_resolve_profile_assignments_prefers_verified_local_models():
@@ -176,9 +236,9 @@ def test_resolve_profile_assignments_prefers_verified_local_models():
             ("gemma4:26b", "ollama"),
             ("qwen3-coder:30b", "ollama"),
             ("deepseek-r1-distill:14b", "ollama"),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama"),
+            ("fin-o1:14b-q6_k", "ollama"),
             ("nemotron-orchestrator-8b:latest", "ollama"),
-        ]
+        ],
     )
 
     resolved = resolve_profile_assignments("24GB_balanced", inventory)
@@ -186,7 +246,7 @@ def test_resolve_profile_assignments_prefers_verified_local_models():
 
     assert resolved["missing_roles"] == []
     assert assignments["builder_llm"].resolved_model == "qwen3-coder:30b"
-    assert assignments["critic_llm"].resolved_model == "deepseek-r1-distill:14b"
+    assert assignments["supervisor_llm"].resolved_model == "gemma4:26b"
 
 
 def test_resolve_profile_assignments_curated_profile_prefers_recent_local_models():
@@ -197,7 +257,6 @@ def test_resolve_profile_assignments_curated_profile_prefers_recent_local_models
             ("devstral-small-2:24b", "ollama", True),
             ("qwen3-coder:30b", "ollama", True),
             ("deepseek-r1-distill:14b", "ollama", True),
-            ("fin-llama-33b:33b", "ollama", True),
             ("nemotron-orchestrator-8b:latest", "ollama", True),
         ],
         live_ollama_reachable=True,
@@ -211,9 +270,8 @@ def test_resolve_profile_assignments_curated_profile_prefers_recent_local_models
     assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
 
     assert resolved["missing_roles"] == []
-    assert assignments["idea_llm"].resolved_model == "qwen3.5:35b"
     assert assignments["builder_llm"].resolved_model == "devstral-small-2:24b"
-    assert assignments["critic_llm"].resolved_model == "qwen3.5:35b"
+    assert assignments["supervisor_llm"].resolved_model == "qwen3.5:35b"
 
 
 def test_resolve_profile_assignments_cloud_power_roles_keeps_cloud_candidates_when_live_validation_disabled():
@@ -227,16 +285,13 @@ def test_resolve_profile_assignments_cloud_power_roles_keeps_cloud_candidates_wh
     assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
 
     assert resolved["missing_roles"] == []
-    assert assignments["idea_llm"].resolved_model == "qwen3.5:122b"
     assert assignments["builder_llm"].resolved_model == "qwen3-coder:480b"
-    assert assignments["critic_llm"].resolved_model == "kimi-k2-thinking"
-    assert assignments["risk_llm"].resolved_model == "cogito-2.1:671b"
-    assert assignments["execution_router_llm"].resolved_model == "glm-4.6"
+    assert assignments["supervisor_llm"].resolved_model == "qwen3.5:122b"
     assert assignments["builder_llm"].source == "ollama_cloud"
     assert assignments["builder_llm"].available is True
 
 
-def test_resolve_profile_assignments_cloud_power_roles_requires_runtime_visible_cloud_candidates_when_live_validation_enabled():
+def test_resolve_profile_assignments_cloud_power_roles_accepts_local_cloud_runtime_candidates_when_live_validation_enabled():
     inventory = _inventory([], live_ollama_reachable=True)
 
     resolved = resolve_profile_assignments(
@@ -246,11 +301,10 @@ def test_resolve_profile_assignments_cloud_power_roles_requires_runtime_visible_
     )
     assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
 
-    assert resolved["missing_roles"] == ["idea_llm", "builder_llm", "critic_llm", "risk_llm"]
-    assert assignments["idea_llm"].available is False
-    assert assignments["idea_llm"].reason == "cloud candidate not exposed by current Ollama host"
-    assert assignments["builder_llm"].available is False
-    assert assignments["execution_router_llm"].available is False
+    assert resolved["missing_roles"] == []
+    assert assignments["builder_llm"].available is True
+    assert assignments["supervisor_llm"].available is True
+    assert assignments["supervisor_llm"].source == "ollama_cloud_local_runtime"
 
 
 def test_resolve_profile_assignments_prefers_live_cloud_runtime_alias_when_available():
@@ -266,10 +320,8 @@ def test_resolve_profile_assignments_prefers_live_cloud_runtime_alias_when_avail
     )
     assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
 
-    assert assignments["critic_llm"].requested_model == "deepseek-v3.1"
-    assert assignments["critic_llm"].resolved_model == "deepseek-v3.1:671b-cloud"
-    assert assignments["risk_llm"].requested_model == "gpt-oss:120b"
-    assert assignments["risk_llm"].resolved_model == "gpt-oss:120b-cloud"
+    assert assignments["supervisor_llm"].requested_model == "deepseek-v3.1"
+    assert assignments["supervisor_llm"].resolved_model == "deepseek-v3.1:671b-cloud"
 
 
 def test_build_continuity_context_ignores_crash_entries_for_best_recent_session():
@@ -293,7 +345,7 @@ def test_build_continuity_context_ignores_crash_entries_for_best_recent_session(
                 "best_pf": 1.0,
                 "best_trades": 0,
             },
-        ]
+        ],
     )
 
     assert continuity["best_recent_session"]["session_num"] == 2227
@@ -302,17 +354,17 @@ def test_build_continuity_context_ignores_crash_entries_for_best_recent_session(
 def test_get_profile_role_pools_returns_cloud_power_roles_random_pools():
     role_pools = get_profile_role_pools("cloud_power_roles")
 
-    assert role_pools["idea_llm"][:3] == ["qwen3.5:122b", "kimi-k2.5", "qwen3-vl:235b"]
     assert role_pools["builder_llm"][:3] == ["qwen3-coder:480b", "devstral-2:123b", "kimi-k2"]
+    assert role_pools["supervisor_llm"][:3] == ["qwen3.5:122b", "kimi-k2.5", "qwen3-vl:235b"]
 
 
 def test_get_profile_role_pools_returns_builtin_diverse_role_pools():
     role_pools = get_profile_role_pools("24GB_diverse_roles")
 
-    assert role_pools["idea_llm"][:3] == [
+    assert role_pools["supervisor_llm"][:3] == [
+        "qwen3.6:35b",
         "qwen3.5:35b",
         "mistral:22b",
-        "lfm2:24b",
     ]
     assert role_pools["builder_llm"] == [
         "gpt-oss:20b",
@@ -320,35 +372,28 @@ def test_get_profile_role_pools_returns_builtin_diverse_role_pools():
         "qwen3-coder:30b",
         "qwen3-30b-a3b:q4_k_m",
     ]
-    assert role_pools["critic_llm"][:3] == [
-        "qwen3.5:35b",
-        "deepseek-r1:32b",
-        "mistral:22b",
-    ]
-    assert role_pools["risk_llm"][0] == "fin-llama-33b:33b"
 
 
 def test_get_profile_role_pools_returns_gemma4_duo_role_pools():
     role_pools = get_profile_role_pools("24GB_gemma4_duo")
 
-    assert role_pools["idea_llm"] == ["gemma4:26b", "gemma4:31b"]
     assert role_pools["builder_llm"] == ["gemma4:26b", "qwen3-coder:30b"]
-    assert role_pools["critic_llm"][:2] == ["gemma4:31b", "gemma4:26b"]
-    assert role_pools["risk_llm"][:2] == ["gemma4:31b", "gemma4:26b"]
+    assert role_pools["supervisor_llm"][:2] == ["gemma4:26b", "gemma4:31b"]
 
 
 def test_get_profile_role_pools_falls_back_to_builtin_preferred_models_when_random_pool_missing():
     role_pools = get_profile_role_pools("24GB_balanced")
 
-    assert role_pools["idea_llm"] == ["qwen2.5:32b", "gemma4:26b"]
     assert role_pools["builder_llm"] == [
         "qwen3-30b-a3b:q4_k_m",
         "qwen3-coder:30b",
     ]
-    assert role_pools["critic_llm"] == ["deepseek-r1-distill:14b"]
-    assert role_pools["risk_llm"] == [
-        "martain7r/finance-llama-8b:q4_k_m",
-        "fin-llama-33b:33b",
+    assert role_pools["supervisor_llm"] == [
+        "qwen2.5:32b",
+        "gemma4:26b",
+        "deepseek-r1-distill:14b",
+        "nemotron-orchestrator-8b",
+        "mistral:7b-instruct",
     ]
 
 
@@ -370,7 +415,6 @@ def test_multi_llm_manager_applies_model_specific_inference_profile_to_role_clie
             ("qwen3.5:35b", "ollama", True),
             ("deepseek-coder-33b-local:latest", "ollama", True),
             ("deepseek-r1-distill:14b", "ollama", True),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
             ("nemotron-orchestrator-8b:latest", "ollama", True),
         ],
         live_ollama_reachable=True,
@@ -411,7 +455,6 @@ def test_resolve_profile_assignments_light_profile_prefers_small_models():
             ("mistral:7b-instruct", "ollama", True),
             ("gemma4:26b", "ollama", True),
             ("deepseek-r1:8b", "ollama", True),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
             ("nemotron-orchestrator-8b:latest", "ollama", True),
             ("qwen3-30b-a3b:q4_k_m", "ollama", True),
         ],
@@ -426,25 +469,21 @@ def test_resolve_profile_assignments_light_profile_prefers_small_models():
     assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
 
     assert resolved["missing_roles"] == []
-    assert assignments["idea_llm"].resolved_model == "mistral:7b-instruct"
     assert assignments["builder_llm"].resolved_model == "gemma4:26b"
-    assert assignments["critic_llm"].resolved_model == "deepseek-r1:8b"
-    assert assignments["risk_llm"].resolved_model == "martain7r/finance-llama-8b:q4_k_m"
+    assert assignments["supervisor_llm"].resolved_model == "mistral:7b-instruct"
 
 
 def test_plan_missing_downloads_lists_unresolved_roles():
     inventory = _inventory(
         [
             ("qwen3-coder:30b", "ollama"),
-            ("deepseek-r1-distill:14b", "ollama"),
-        ]
+        ],
     )
 
     requests = plan_missing_downloads("24GB_balanced", inventory)
     missing_roles = {request.role for request in requests}
 
-    assert "idea_llm" in missing_roles
-    assert "execution_router_llm" not in missing_roles
+    assert "supervisor_llm" in missing_roles
 
 
 def test_resolve_profile_assignments_prefers_live_ollama_match_when_required():
@@ -454,7 +493,6 @@ def test_resolve_profile_assignments_prefers_live_ollama_match_when_required():
             ("gemma4:26b", "ollama", True),
             ("qwen3-coder:30b", "ollama", True),
             ("deepseek-r1-distill:14b", "ollama", True),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
             ("nemotron-orchestrator-8b:latest", "ollama", True),
         ],
         live_ollama_reachable=True,
@@ -467,9 +505,9 @@ def test_resolve_profile_assignments_prefers_live_ollama_match_when_required():
     )
     assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
 
-    assert assignments["idea_llm"].resolved_model == "gemma4:26b"
-    assert assignments["idea_llm"].live is True
-    assert assignments["idea_llm"].available is True
+    assert assignments["supervisor_llm"].resolved_model == "gemma4:26b"
+    assert assignments["supervisor_llm"].live is True
+    assert assignments["supervisor_llm"].available is True
 
 
 def test_resolve_profile_assignments_applies_role_override():
@@ -478,7 +516,6 @@ def test_resolve_profile_assignments_applies_role_override():
             ("qwen2.5:32b", "ollama", True),
             ("qwen3-coder:30b", "ollama", True),
             ("deepseek-r1-distill:14b", "ollama", True),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
             ("nemotron-orchestrator-8b:latest", "ollama", True),
             ("mistral:7b-instruct", "ollama", True),
         ],
@@ -488,14 +525,14 @@ def test_resolve_profile_assignments_applies_role_override():
     resolved = resolve_profile_assignments(
         "24GB_balanced",
         inventory,
-        role_overrides={"risk_llm": "mistral:7b-instruct"},
+        role_overrides={"supervisor_llm": "mistral:7b-instruct"},
         require_live_ollama=True,
     )
     assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
 
-    assert assignments["risk_llm"].requested_model == "mistral:7b-instruct"
-    assert assignments["risk_llm"].resolved_model == "mistral:7b-instruct"
-    assert assignments["risk_llm"].available is True
+    assert assignments["supervisor_llm"].requested_model == "mistral:7b-instruct"
+    assert assignments["supervisor_llm"].resolved_model == "mistral:7b-instruct"
+    assert assignments["supervisor_llm"].available is True
 
 
 def test_resolve_profile_assignments_accepts_cloud_only_override_without_local_match_when_live_validation_disabled():
@@ -504,7 +541,6 @@ def test_resolve_profile_assignments_accepts_cloud_only_override_without_local_m
             ("qwen2.5:32b", "ollama", True),
             ("qwen3-coder:30b", "ollama", True),
             ("deepseek-r1-distill:14b", "ollama", True),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
             ("nemotron-orchestrator-8b:latest", "ollama", True),
         ],
         live_ollama_reachable=True,
@@ -522,6 +558,61 @@ def test_resolve_profile_assignments_accepts_cloud_only_override_without_local_m
     assert assignments["builder_llm"].resolved_model == "qwen3-coder:480b"
     assert assignments["builder_llm"].available is True
     assert assignments["builder_llm"].source == "ollama_cloud"
+
+
+def test_resolve_profile_assignments_accepts_direct_cloud_override_with_live_validation_enabled(
+    monkeypatch,
+):
+    monkeypatch.setenv("OLLAMA_API_KEY", "ollama-test-key")
+    inventory = _inventory(
+        [
+            ("qwen2.5:32b", "ollama", True),
+            ("qwen3-coder:30b", "ollama", True),
+            ("deepseek-r1-distill:14b", "ollama", True),
+            ("fin-o1:14b-q6_k", "ollama", True),
+            ("nemotron-orchestrator-8b:latest", "ollama", True),
+        ],
+        live_ollama_reachable=True,
+    )
+
+    resolved = resolve_profile_assignments(
+        "24GB_balanced",
+        inventory,
+        role_overrides={"builder_llm": ["qwen3-coder:480b"]},
+        require_live_ollama=True,
+    )
+    assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
+
+    assert assignments["builder_llm"].requested_model == "qwen3-coder:480b"
+    assert assignments["builder_llm"].resolved_model == "qwen3-coder:480b"
+    assert assignments["builder_llm"].available is True
+    assert assignments["builder_llm"].source == "ollama_cloud_direct"
+
+
+def test_resolve_profile_assignments_does_not_fall_back_outside_explicit_role_override_pool():
+    inventory = _inventory(
+        [
+            ("qwen2.5:32b", "ollama", True),
+            ("qwen3-coder:30b", "ollama", True),
+            ("deepseek-r1-distill:14b", "ollama", True),
+            ("fin-o1:14b-q6_k", "ollama", True),
+            ("nemotron-orchestrator-8b:latest", "ollama", True),
+        ],
+        live_ollama_reachable=True,
+    )
+
+    resolved = resolve_profile_assignments(
+        "24GB_balanced",
+        inventory,
+        role_overrides={"builder_llm": ["gemma4:26b"]},
+        require_live_ollama=True,
+    )
+    assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
+
+    assert assignments["builder_llm"].requested_model == "gemma4:26b"
+    assert assignments["builder_llm"].resolved_model == ""
+    assert assignments["builder_llm"].available is False
+    assert assignments["builder_llm"].alternatives == []
 
 
 def test_list_available_models_includes_cloud_only_models_even_with_local_inventory():
@@ -550,7 +641,7 @@ def test_multi_llm_manager_select_next_role_candidate_promotes_runtime_visible_c
             aliases=["qwen3-coder:480b-cloud", "qwen3-coder:480b"],
             live=True,
             metadata={"remote_model": "qwen3-coder:480b", "cloud_only": True},
-        )
+        ),
     )
 
     manager = MultiLLMSessionManager(
@@ -576,6 +667,40 @@ def test_multi_llm_manager_select_next_role_candidate_promotes_runtime_visible_c
     assert assignment.source == "ollama_api"
 
 
+def test_multi_llm_manager_select_next_role_candidate_promotes_direct_cloud_model(
+    monkeypatch,
+):
+    monkeypatch.setenv("OLLAMA_API_KEY", "ollama-test-key")
+    inventory = _inventory(
+        [
+            ("qwen3-coder:30b", "ollama", True),
+        ],
+        live_ollama_reachable=True,
+    )
+
+    manager = MultiLLMSessionManager(
+        profile_name="24GB_balanced",
+        base_llm_config=LLMConfig(model="qwen3-coder:30b", ollama_host="http://127.0.0.1:11434"),
+        inventory=inventory,
+        role_overrides={"builder_llm": ["qwen3-coder:30b", "qwen3-coder:480b"]},
+        require_live_ollama=True,
+        client_factory=lambda config: SimpleNamespace(config=config),
+    )
+
+    promoted = manager.select_next_role_candidate(
+        "builder_llm",
+        rejected_model="qwen3-coder:30b",
+        reason="model rejected by host",
+    )
+    assignment = manager.resolve_role_assignment("builder_llm")
+
+    assert promoted == "qwen3-coder:480b"
+    assert assignment is not None
+    assert assignment.requested_model == "qwen3-coder:480b"
+    assert assignment.resolved_model == "qwen3-coder:480b"
+    assert assignment.source == "ollama_cloud_direct"
+
+
 def test_multi_llm_manager_builds_cloud_client_with_live_runtime_alias():
     inventory = _cloud_inventory(
         ("gpt-oss:120b-cloud", "gpt-oss:120b"),
@@ -599,10 +724,54 @@ def test_multi_llm_manager_builds_cloud_client_with_live_runtime_alias():
         client_factory=_factory,
     )
 
-    client = manager.build_role_client("risk_llm")
+    client = manager.build_role_client("supervisor_llm")
 
     assert client is not None
-    assert captured[-1].model == "gpt-oss:120b-cloud"
+    assert captured[-1].model == "deepseek-v3.1:671b-cloud"
+
+
+def test_multi_llm_runtime_flow_snapshot_reports_effective_cloud_host(monkeypatch):
+    monkeypatch.setenv("OLLAMA_API_KEY", "ollama-test-key")
+    inventory = _inventory(
+        [
+            ("qwen3-coder:30b", "ollama", True),
+            ("deepseek-r1-distill:14b", "ollama", True),
+            ("fin-o1:14b-q6_k", "ollama", True),
+        ],
+        live_ollama_reachable=True,
+    )
+
+    manager = MultiLLMSessionManager(
+        profile_name="fast_local",
+        base_llm_config=LLMConfig(
+            model="qwen3-coder:30b",
+            ollama_host="http://127.0.0.1:11434",
+        ),
+        inventory=inventory,
+        role_overrides={
+            "builder_llm": "qwen3-coder:480b",
+            "supervisor_llm": "deepseek-r1-distill:14b",
+        },
+        require_live_ollama=True,
+        client_factory=lambda config: SimpleNamespace(config=config),
+    )
+
+    activation = manager.activate_runtime_model_for_role("builder_llm")
+    snapshot = manager.runtime_flow_snapshot()
+    builder_row = next(row for row in snapshot["role_rows"] if row["role"] == "builder_llm")
+    cloud_host_row = next(row for row in snapshot["host_rows"] if row["host"] == "https://ollama.com")
+
+    assert activation["host"] == "https://ollama.com"
+    assert activation["model"] == "qwen3-coder:480b"
+    assert snapshot["active_models_by_host"] == {"https://ollama.com": "qwen3-coder:480b"}
+    assert builder_row["host"] == "https://ollama.com"
+    assert builder_row["host_logique"] == "http://127.0.0.1:11434"
+    assert builder_row["request_model"] == "qwen3-coder:480b"
+    assert builder_row["transport"] == "cloud_direct"
+    assert builder_row["etat"] == "actif"
+    assert cloud_host_row["host_logique"] == "http://127.0.0.1:11434"
+    assert cloud_host_row["transport"] == "cloud_direct"
+    assert cloud_host_row["modele_actif"] == "qwen3-coder:480b"
 
 
 def test_save_multi_llm_profile_adds_user_profile_to_registry(tmp_path: Path):
@@ -613,7 +782,7 @@ def test_save_multi_llm_profile_adds_user_profile_to_registry(tmp_path: Path):
         base_profile_name="24GB_balanced",
         role_overrides={
             "builder_llm": ["qwen3-coder:30b", "gpt-oss:20b"],
-            "critic_llm": ["deepseek-r1-distill:14b"],
+            "supervisor_llm": ["deepseek-r1-distill:14b"],
         },
         user_profiles_dir=user_profiles_dir,
     )
@@ -623,18 +792,17 @@ def test_save_multi_llm_profile_adds_user_profile_to_registry(tmp_path: Path):
 
     assert saved_path.exists()
     assert "Mon preset Builder" in names
-    assert (
-        payload["profiles"]["Mon preset Builder"]["roles"]["builder_llm"]["preferred_models"]
-        == ["qwen3-coder:30b", "gpt-oss:20b"]
-    )
-    assert (
-        payload["profiles"]["Mon preset Builder"]["roles"]["builder_llm"]["random_pool_models"]
-        == ["qwen3-coder:30b", "gpt-oss:20b"]
-    )
-    assert (
-        payload["profiles"]["Mon preset Builder"]["roles"]["risk_llm"]["preferred_models"]
-        == ["martain7r/finance-llama-8b:q4_k_m", "fin-llama-33b:33b"]
-    )
+    assert payload["profiles"]["Mon preset Builder"]["roles"]["builder_llm"]["preferred_models"] == [
+        "qwen3-coder:30b",
+        "gpt-oss:20b",
+    ]
+    assert payload["profiles"]["Mon preset Builder"]["roles"]["builder_llm"]["random_pool_models"] == [
+        "qwen3-coder:30b",
+        "gpt-oss:20b",
+    ]
+    assert payload["profiles"]["Mon preset Builder"]["roles"]["supervisor_llm"]["preferred_models"] == [
+        "deepseek-r1-distill:14b",
+    ]
     assert get_profile_role_pools(
         "Mon preset Builder",
         user_profiles_dir=user_profiles_dir,
@@ -648,7 +816,7 @@ def test_resolve_profile_assignments_supports_saved_user_profile(tmp_path: Path)
         base_profile_name="24GB_balanced",
         role_overrides={
             "builder_llm": ["qwen3-30b-a3b:q4_k_m"],
-            "critic_llm": ["deepseek-r1:32b"],
+            "supervisor_llm": ["deepseek-r1:32b"],
         },
         user_profiles_dir=user_profiles_dir,
     )
@@ -657,7 +825,6 @@ def test_resolve_profile_assignments_supports_saved_user_profile(tmp_path: Path)
             ("qwen2.5:32b", "ollama", True),
             ("qwen3-30b-a3b:q4_k_m", "ollama", True),
             ("deepseek-r1:32b", "ollama", True),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
             ("nemotron-orchestrator-8b:latest", "ollama", True),
         ],
         live_ollama_reachable=True,
@@ -673,8 +840,8 @@ def test_resolve_profile_assignments_supports_saved_user_profile(tmp_path: Path)
 
     assert assignments["builder_llm"].requested_model == "qwen3-30b-a3b:q4_k_m"
     assert assignments["builder_llm"].resolved_model == "qwen3-30b-a3b:q4_k_m"
-    assert assignments["critic_llm"].requested_model == "deepseek-r1:32b"
-    assert assignments["critic_llm"].resolved_model == "deepseek-r1:32b"
+    assert assignments["supervisor_llm"].requested_model == "deepseek-r1:32b"
+    assert assignments["supervisor_llm"].resolved_model == "deepseek-r1:32b"
 
 
 def test_delete_multi_llm_profile_removes_custom_profile(tmp_path: Path):
@@ -757,7 +924,7 @@ def test_get_profile_role_pools_falls_back_to_user_preferred_models(tmp_path: Pa
     )
 
     assert role_pools == {
-        "builder_llm": ["qwen3-coder:30b", "devstral-small-2:24b"]
+        "builder_llm": ["qwen3-coder:30b", "devstral-small-2:24b"],
     }
 
 
@@ -792,7 +959,7 @@ def test_get_profile_role_pools_normalizes_historical_aliases_in_user_profiles(
     )
 
     assert role_pools == {
-        "builder_llm": ["qwen3-vl:32b", "qwen3-coder:30b"]
+        "builder_llm": ["qwen3-vl:32b", "qwen3-coder:30b"],
     }
 
 
@@ -802,7 +969,7 @@ def test_resolve_profile_assignments_accepts_role_override_candidate_pool():
             ("qwen2.5:32b", "ollama", True),
             ("qwen3-coder:30b", "ollama", True),
             ("deepseek-r1-distill:14b", "ollama", True),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
+            ("fin-o1:14b-q6_k", "ollama", True),
             ("nemotron-orchestrator-8b:latest", "ollama", True),
             ("mistral:7b-instruct", "ollama", True),
         ],
@@ -813,24 +980,23 @@ def test_resolve_profile_assignments_accepts_role_override_candidate_pool():
         "24GB_balanced",
         inventory,
         role_overrides={
-            "risk_llm": ["mistral:7b-instruct", "martain7r/finance-llama-8b:q4_k_m"]
+            "supervisor_llm": ["mistral:7b-instruct", "deepseek-r1-distill:14b"],
         },
         require_live_ollama=True,
     )
     assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
 
-    assert assignments["risk_llm"].requested_model == "mistral:7b-instruct"
-    assert assignments["risk_llm"].resolved_model == "mistral:7b-instruct"
-    assert assignments["risk_llm"].alternatives[0] == "martain7r/finance-llama-8b:q4_k_m"
+    assert assignments["supervisor_llm"].requested_model == "mistral:7b-instruct"
+    assert assignments["supervisor_llm"].resolved_model == "mistral:7b-instruct"
+    assert assignments["supervisor_llm"].alternatives[0] == "deepseek-r1-distill:14b"
 
 
-def test_resolve_profile_assignments_marks_router_optional():
+def test_resolve_profile_assignments_uses_two_required_roles():
     inventory = _inventory(
         [
             ("qwen2.5:32b", "ollama", True),
             ("qwen3-coder:30b", "ollama", True),
             ("deepseek-r1-distill:14b", "ollama", True),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
         ],
         live_ollama_reachable=True,
     )
@@ -843,8 +1009,9 @@ def test_resolve_profile_assignments_marks_router_optional():
     assignments = {assignment.role: assignment for assignment in resolved["assignments"]}
 
     assert resolved["missing_roles"] == []
-    assert assignments["execution_router_llm"].required is False
-    assert assignments["execution_router_llm"].available is False
+    assert set(assignments) == {"builder_llm", "supervisor_llm"}
+    assert assignments["builder_llm"].required is True
+    assert assignments["supervisor_llm"].required is True
 
 
 def test_plan_missing_downloads_skips_models_not_exposed_by_live_host():
@@ -853,7 +1020,7 @@ def test_plan_missing_downloads_skips_models_not_exposed_by_live_host():
             ("qwen2.5:32b", "ollama", False),
             ("qwen3-coder:30b", "ollama", True),
             ("deepseek-r1-distill:14b", "ollama", True),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
+            ("fin-o1:14b-q6_k", "ollama", True),
             ("nemotron-orchestrator-8b:latest", "ollama", True),
         ],
         live_ollama_reachable=True,
@@ -866,17 +1033,16 @@ def test_plan_missing_downloads_skips_models_not_exposed_by_live_host():
     )
 
     missing_roles = {request.role for request in requests}
-    assert "idea_llm" not in missing_roles
+    assert "supervisor_llm" not in missing_roles
 
 
-def test_multi_llm_session_manager_falls_back_when_idea_role_missing():
+def test_multi_llm_session_manager_falls_back_when_supervisor_role_missing():
     inventory = _inventory(
         [
             ("qwen3-coder:30b", "ollama"),
             ("deepseek-r1-distill:14b", "ollama"),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama"),
             ("nemotron-orchestrator-8b:latest", "ollama"),
-        ]
+        ],
     )
     manager = MultiLLMSessionManager(
         profile_name="fast_local",
@@ -903,9 +1069,9 @@ def test_multi_llm_session_manager_runs_minimal_cycle():
             ("deepseek-moe-16b-local:latest", "ollama"),
             ("qwen3-coder:30b", "ollama"),
             ("deepseek-r1-distill:14b", "ollama"),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama"),
+            ("fin-o1:14b-q6_k", "ollama"),
             ("nemotron-orchestrator-8b:latest", "ollama"),
-        ]
+        ],
     )
 
     called_models: list[str] = []
@@ -919,10 +1085,15 @@ def test_multi_llm_session_manager_runs_minimal_cycle():
             called_models.append(model_name)
             if "deepseek-moe-16b-local" in model_name:
                 content = "Momentum breakout on BTCUSDT 1h with EMA + ATR + RSI filter."
-            elif "finance-llama" in model_name:
+            elif "fin-o1" in model_name:
                 content = '{"risk_level":"medium","key_risks":["drawdown"],"mitigations":["reduce leverage"]}'
             else:
-                content = '{"verdict":"promising","critique":"solid baseline","next_focus":["increase trade count"]}'
+                content = (
+                    '{"verdict":"promising","critique":"solid baseline",'
+                    '"next_focus":["increase trade count"],"risk_level":"medium",'
+                    '"key_risks":["drawdown"],"mitigations":["reduce leverage"],'
+                    '"action":"accept","confidence":0.8,"reason":"target reached"}'
+                )
             return SimpleNamespace(
                 content=content,
                 provider=LLMProvider.OLLAMA,
@@ -950,8 +1121,8 @@ def test_multi_llm_session_manager_runs_minimal_cycle():
                         "max_drawdown_pct": -8.2,
                         "profit_factor": 1.4,
                         "total_trades": 24,
-                    }
-                )
+                    },
+                ),
             ),
         )
 
@@ -974,10 +1145,10 @@ def test_multi_llm_session_manager_runs_minimal_cycle():
     assert captured["model"] == "qwen3-coder:30b"
     assert "BTCUSDT" in captured["objective"]
     assert result.router_decision["action"] == "accept"
-    assert result.role_outputs["execution_router_llm"].model == "deterministic_router"
+    assert result.role_outputs["supervisor_llm"].model == "deepseek-r1-distill:14b"
     assert result.shared_memory["objective_context"]["objective"]
     assert result.shared_memory["latest_session"]["metrics"]["total_trades"] == 24
-    assert result.shared_memory["risk_context"]["risk_level"] == "medium"
+    assert result.shared_memory["supervisor_context"]["risk_level"] == "medium"
     assert all("orchestrator" not in model for model in called_models)
     assert result.session_summary["metrics"]["total_trades"] == 24
     assert manager.shared_memory_snapshot()["objective_context"]["objective"] == ""
@@ -991,8 +1162,8 @@ def test_multi_llm_session_manager_unloads_role_models_and_exposes_prompt_inputs
             ("deepseek-moe-16b-local:latest", "ollama"),
             ("qwen3-coder:30b", "ollama"),
             ("deepseek-r1-distill:14b", "ollama"),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama"),
-        ]
+            ("fin-o1:14b-q6_k", "ollama"),
+        ],
     )
 
     unloaded_models: list[str] = []
@@ -1014,7 +1185,7 @@ def test_multi_llm_session_manager_unloads_role_models_and_exposes_prompt_inputs
                     '"constraints":["Need at least 20 trades"],'
                     '"strategy_family":"breakout"}'
                 )
-            elif "finance-llama" in self.config.model:
+            elif "fin-o1" in self.config.model:
                 content = '{"risk_level":"medium","key_risks":["drawdown"],"mitigations":["reduce leverage"]}'
             else:
                 content = '{"verdict":"promising","critique":"solid baseline","next_focus":["improve exits"]}'
@@ -1055,8 +1226,8 @@ def test_multi_llm_session_manager_unloads_role_models_and_exposes_prompt_inputs
                         "max_drawdown_pct": -6.5,
                         "profit_factor": 1.2,
                         "total_trades": 22,
-                    }
-                )
+                    },
+                ),
             ),
         ),
         target_sharpe=1.0,
@@ -1065,7 +1236,6 @@ def test_multi_llm_session_manager_unloads_role_models_and_exposes_prompt_inputs
     assert unloaded_models == [
         "deepseek-moe-16b-local:latest",
         "deepseek-r1-distill:14b",
-        "martain7r/finance-llama-8b:q4_k_m",
     ]
     assert objective_bundle["role_output"].metadata["prompt_inputs"] == {
         "symbols": ["BTCUSDT"],
@@ -1073,15 +1243,15 @@ def test_multi_llm_session_manager_unloads_role_models_and_exposes_prompt_inputs
         "available_indicators": ["ema", "atr", "rsi"],
         "history_tail_size": 1,
     }
-    assert objective_bundle["role_output"].metadata["model_lifecycle"][
-        "unloaded_after_call"
-    ] is True
-    assert review_bundle["role_outputs"]["critic_llm"].metadata[
-        "session_summary_in_prompt"
-    ]["metrics"]["total_trades"] == 22
-    assert review_bundle["role_outputs"]["risk_llm"].metadata[
-        "session_summary_in_prompt"
-    ]["metrics"]["sharpe_ratio"] == 1.05
+    assert objective_bundle["role_output"].metadata["model_lifecycle"]["unloaded_after_call"] is True
+    assert (
+        review_bundle["role_outputs"]["supervisor_llm"].metadata["session_summary_in_prompt"]["metrics"]["total_trades"]
+        == 22
+    )
+    assert (
+        review_bundle["role_outputs"]["supervisor_llm"].metadata["session_summary_in_prompt"]["metrics"]["sharpe_ratio"]
+        == 1.05
+    )
 
 
 def test_multi_llm_session_manager_routes_roles_to_distinct_hosts(monkeypatch):
@@ -1090,7 +1260,6 @@ def test_multi_llm_session_manager_routes_roles_to_distinct_hosts(monkeypatch):
             ("deepseek-moe-16b-local:latest", "ollama", True),
             ("qwen3-coder:30b", "ollama", True),
             ("deepseek-r1-distill:14b", "ollama", True),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
         ],
         live_ollama_reachable=True,
     )
@@ -1099,10 +1268,12 @@ def test_multi_llm_session_manager_routes_roles_to_distinct_hosts(monkeypatch):
 
     monkeypatch.setattr(
         "core.llm_multi.session_manager.unload_model",
-        lambda model_name, ollama_host=None: unloaded.append(
-            (model_name, str(ollama_host or ""))
-        )
-        or True,
+        lambda model_name, ollama_host=None: (
+            unloaded.append(
+                (model_name, str(ollama_host or "")),
+            )
+            or True
+        ),
     )
 
     class _FakeClient:
@@ -1118,10 +1289,13 @@ def test_multi_llm_session_manager_routes_roles_to_distinct_hosts(monkeypatch):
                     '"constraints":["Need enough trades"],'
                     '"strategy_family":"breakout"}'
                 )
-            elif "finance-llama" in self.config.model:
-                content = '{"risk_level":"medium","key_risks":["drawdown"],"mitigations":["reduce leverage"]}'
             else:
-                content = '{"verdict":"promising","critique":"solid baseline","next_focus":["improve exits"]}'
+                content = (
+                    '{"verdict":"promising","critique":"solid baseline",'
+                    '"next_focus":["improve exits"],"risk_level":"medium",'
+                    '"key_risks":["drawdown"],"mitigations":["reduce leverage"],'
+                    '"action":"accept","confidence":0.8,"reason":"target reached"}'
+                )
             return SimpleNamespace(
                 content=content,
                 provider=LLMProvider.OLLAMA,
@@ -1163,20 +1337,17 @@ def test_multi_llm_session_manager_routes_roles_to_distinct_hosts(monkeypatch):
                         "max_drawdown_pct": -6.2,
                         "profit_factor": 1.25,
                         "total_trades": 23,
-                    }
-                )
+                    },
+                ),
             ),
         ),
         target_sharpe=1.0,
     )
 
-    assert seen_calls[0] == ("deepseek-moe-16b-local:latest", "http://127.0.0.1:11434")
+    assert seen_calls[0] == ("deepseek-moe-16b-local:latest", "http://127.0.0.1:22434")
     assert ("deepseek-r1-distill:14b", "http://127.0.0.1:22434") in seen_calls
-    assert ("martain7r/finance-llama-8b:q4_k_m", "http://127.0.0.1:22434") in seen_calls
     assert ("deepseek-r1-distill:14b", "http://127.0.0.1:22434") in unloaded
-    assert ("martain7r/finance-llama-8b:q4_k_m", "http://127.0.0.1:22434") in unloaded
-    assert review_bundle["role_outputs"]["critic_llm"].metadata["route"]["ollama_host"] == "http://127.0.0.1:22434"
-    assert review_bundle["role_outputs"]["risk_llm"].metadata["route"]["ollama_host"] == "http://127.0.0.1:22434"
+    assert review_bundle["role_outputs"]["supervisor_llm"].metadata["route"]["ollama_host"] == "http://127.0.0.1:22434"
 
 
 def test_multi_llm_phase_clients_switch_same_host_models_and_cleanup(monkeypatch):
@@ -1185,7 +1356,7 @@ def test_multi_llm_phase_clients_switch_same_host_models_and_cleanup(monkeypatch
             ("deepseek-moe-16b-local:latest", "ollama", True),
             ("qwen3-coder:30b", "ollama", True),
             ("deepseek-r1-distill:14b", "ollama", True),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
+            ("fin-o1:14b-q6_k", "ollama", True),
         ],
         live_ollama_reachable=True,
     )
@@ -1195,10 +1366,12 @@ def test_multi_llm_phase_clients_switch_same_host_models_and_cleanup(monkeypatch
     monkeypatch.setattr(
         session_manager_module,
         "unload_model",
-        lambda model_name, ollama_host=None: unload_events.append(
-            (model_name, str(ollama_host or ""))
-        )
-        or True,
+        lambda model_name, ollama_host=None: (
+            unload_events.append(
+                (model_name, str(ollama_host or "")),
+            )
+            or True
+        ),
     )
 
     class _FakeClient:
@@ -1239,37 +1412,36 @@ def test_multi_llm_phase_clients_switch_same_host_models_and_cleanup(monkeypatch
     phase_clients["code"].chat([SimpleNamespace(role="user", content="code")])
     phase_clients["analysis"].chat([SimpleNamespace(role="user", content="analysis")])
     phase_clients["pre_reflection"].chat(
-        [SimpleNamespace(role="user", content="risk")]
+        [SimpleNamespace(role="user", content="risk")],
     )
     releases = manager.release_runtime_models()
     snapshot = manager.runtime_flow_snapshot()
 
     assert calls == [
         ("qwen3-coder:30b", "http://127.0.0.1:11434"),
+        ("deepseek-moe-16b-local:latest", "http://127.0.0.1:11434"),
         ("deepseek-r1-distill:14b", "http://127.0.0.1:11434"),
-        ("martain7r/finance-llama-8b:q4_k_m", "http://127.0.0.1:11434"),
     ]
     assert unload_events[:2] == [
         ("qwen3-coder:30b", "http://127.0.0.1:11434"),
-        ("deepseek-r1-distill:14b", "http://127.0.0.1:11434"),
+        ("deepseek-moe-16b-local:latest", "http://127.0.0.1:11434"),
     ]
     assert releases == [
         {
             "host": "http://127.0.0.1:11434",
-            "model": "martain7r/finance-llama-8b:q4_k_m",
+            "model": "deepseek-r1-distill:14b",
             "released": True,
-        }
+        },
     ]
     assert snapshot["active_models_by_host"] == {}
     assert any(
         event["event"] == "runtime_switch"
-        and event["role"] == "critic_llm"
+        and event["role"] == "supervisor_llm"
         and event["previous_model"] == "qwen3-coder:30b"
         for event in snapshot["recent_events"]
     )
     assert any(
-        event["event"] == "runtime_release"
-        and event["model"] == "martain7r/finance-llama-8b:q4_k_m"
+        event["event"] == "runtime_release" and event["model"] == "deepseek-r1-distill:14b"
         for event in snapshot["recent_events"]
     )
 
@@ -1280,10 +1452,10 @@ def test_multi_llm_session_manager_uses_builder_override():
             ("qwen2.5:32b", "ollama"),
             ("qwen3-coder:30b", "ollama"),
             ("deepseek-r1-distill:14b", "ollama"),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama"),
+            ("fin-o1:14b-q6_k", "ollama"),
             ("nemotron-orchestrator-8b:latest", "ollama"),
             ("deepseek-coder-33b-local:latest", "ollama"),
-        ]
+        ],
     )
 
     manager = MultiLLMSessionManager(
@@ -1302,7 +1474,7 @@ def test_multi_llm_role_client_emits_signals_and_recovers_once(monkeypatch):
         [
             ("qwen3-coder:30b", "ollama", True),
             ("deepseek-r1-distill:14b", "ollama", True),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama", True),
+            ("fin-o1:14b-q6_k", "ollama", True),
             ("deepseek-moe-16b-local:latest", "ollama", True),
         ],
         live_ollama_reachable=True,
@@ -1312,10 +1484,12 @@ def test_multi_llm_role_client_emits_signals_and_recovers_once(monkeypatch):
     monkeypatch.setattr(
         session_manager_module,
         "ensure_ollama_running",
-        lambda ollama_host=None, gpu_target=None: ensure_calls.append(
-            (str(ollama_host or ""), gpu_target)
-        )
-        or (True, "restarted"),
+        lambda ollama_host=None, gpu_target=None: (
+            ensure_calls.append(
+                (str(ollama_host or ""), gpu_target),
+            )
+            or (True, "restarted")
+        ),
     )
 
     class _RecoveringClient:
@@ -1349,24 +1523,167 @@ def test_multi_llm_role_client_emits_signals_and_recovers_once(monkeypatch):
         client_factory=_RecoveringClient,
     )
 
-    critic_client = manager.build_role_client("critic_llm")
-    response = critic_client.chat([SimpleNamespace(role="user", content="critique")])
+    supervisor_client = manager.build_role_client("supervisor_llm")
+    response = supervisor_client.chat([SimpleNamespace(role="user", content="review")])
     snapshot = manager.runtime_flow_snapshot()
 
     assert response.content == '{"ok": true}'
     assert ensure_calls == [("http://127.0.0.1:22434", "GPU-1")]
     assert any(
-        event["event"] == "role_mission_failed"
-        and event["role"] == "critic_llm"
-        for event in snapshot["recent_events"]
+        event["event"] == "role_mission_failed" and event["role"] == "supervisor_llm" for event in snapshot["recent_events"]
     )
     assert any(
-        event["event"] == "role_recovered"
-        and event["role"] == "critic_llm"
-        for event in snapshot["recent_events"]
+        event["event"] == "role_recovered" and event["role"] == "supervisor_llm" for event in snapshot["recent_events"]
     )
-    critic_row = next(row for row in snapshot["role_rows"] if row["role"] == "critic_llm")
-    assert critic_row["signal"] == "mission_done"
+    supervisor_row = next(row for row in snapshot["role_rows"] if row["role"] == "supervisor_llm")
+    assert supervisor_row["signal"] == "mission_done"
+
+
+def test_multi_llm_role_client_rotates_through_selected_models_between_calls():
+    inventory = _inventory(
+        [
+            ("qwen3-coder:30b", "ollama", True),
+            ("deepseek-r1-distill:14b", "ollama", True),
+            ("deepseek-moe-16b-local:latest", "ollama", True),
+            ("fin-o1:14b-q6_k", "ollama", True),
+        ],
+        live_ollama_reachable=True,
+    )
+    observed_models: list[str] = []
+
+    class _EchoClient:
+        def __init__(self, config: LLMConfig):
+            self.config = config
+
+        def chat(self, messages, **kwargs):
+            _ = (messages, kwargs)
+            observed_models.append(self.config.model)
+            return SimpleNamespace(
+                content=self.config.model,
+                provider=LLMProvider.OLLAMA,
+                latency_ms=5.0,
+                prompt_tokens=8,
+                completion_tokens=10,
+            )
+
+    manager = MultiLLMSessionManager(
+        profile_name="fast_local",
+        base_llm_config=LLMConfig(
+            model="qwen3-coder:30b",
+            ollama_host="http://127.0.0.1:11434",
+        ),
+        inventory=inventory,
+        role_overrides={
+            "supervisor_llm": [
+                "deepseek-r1-distill:14b",
+                "deepseek-moe-16b-local:latest",
+                "qwen3-coder:30b",
+            ],
+        },
+        require_live_ollama=True,
+        client_factory=_EchoClient,
+    )
+
+    supervisor_client = manager.build_role_client("supervisor_llm")
+    outputs = [
+        supervisor_client.chat([SimpleNamespace(role="user", content=f"review-{index}")]).content
+        for index in range(4)
+    ]
+    assignment = manager.resolve_role_assignment("supervisor_llm")
+    snapshot = manager.runtime_flow_snapshot()
+    supervisor_row = next(row for row in snapshot["role_rows"] if row["role"] == "supervisor_llm")
+
+    assert outputs == [
+        "deepseek-r1-distill:14b",
+        "deepseek-moe-16b-local:latest",
+        "qwen3-coder:30b",
+        "deepseek-r1-distill:14b",
+    ]
+    assert observed_models == outputs
+    assert assignment is not None
+    assert assignment.resolved_model == "deepseek-r1-distill:14b"
+    assert assignment.alternatives == [
+        "deepseek-moe-16b-local",
+        "qwen3-coder:30b",
+    ]
+    assert assignment.metadata["rotation_queue"] == [
+        "deepseek-r1-distill:14b",
+        "deepseek-moe-16b-local",
+        "qwen3-coder:30b",
+    ]
+    assert assignment.metadata["rotation_mission_count"] == 4
+    assert supervisor_row["rotation_queue"] == (
+        "deepseek-r1-distill:14b -> deepseek-moe-16b-local -> qwen3-coder:30b"
+    )
+    assert supervisor_row["rotation_calls"] == 4
+
+
+def test_multi_llm_call_role_reports_actual_rotated_model(monkeypatch):
+    monkeypatch.setattr(
+        session_manager_module,
+        "unload_model",
+        lambda model_name, ollama_host=None: True,
+    )
+    inventory = _inventory(
+        [
+            ("qwen3-coder:30b", "ollama", True),
+            ("deepseek-r1-distill:14b", "ollama", True),
+            ("deepseek-moe-16b-local:latest", "ollama", True),
+            ("fin-o1:14b-q6_k", "ollama", True),
+        ],
+        live_ollama_reachable=True,
+    )
+    observed_models: list[str] = []
+
+    class _EchoClient:
+        def __init__(self, config: LLMConfig):
+            self.config = config
+
+        def chat(self, messages, **kwargs):
+            _ = (messages, kwargs)
+            observed_models.append(self.config.model)
+            return SimpleNamespace(
+                content='{"ok": true}',
+                provider=LLMProvider.OLLAMA,
+                latency_ms=5.0,
+                prompt_tokens=8,
+                completion_tokens=10,
+            )
+
+    manager = MultiLLMSessionManager(
+        profile_name="fast_local",
+        base_llm_config=LLMConfig(
+            model="qwen3-coder:30b",
+            ollama_host="http://127.0.0.1:11434",
+        ),
+        inventory=inventory,
+        role_overrides={
+            "supervisor_llm": [
+                "deepseek-r1-distill:14b",
+                "deepseek-moe-16b-local:latest",
+            ],
+        },
+        require_live_ollama=True,
+        client_factory=_EchoClient,
+    )
+
+    first = manager._call_role(
+        "supervisor_llm",
+        system_prompt="sys",
+        user_prompt="user",
+    )
+    second = manager._call_role(
+        "supervisor_llm",
+        system_prompt="sys",
+        user_prompt="user",
+    )
+
+    assert observed_models == [
+        "deepseek-r1-distill:14b",
+        "deepseek-moe-16b-local:latest",
+    ]
+    assert first.model == "deepseek-r1-distill:14b"
+    assert second.model == "deepseek-moe-16b-local:latest"
 
 
 def test_multi_llm_session_manager_builder_role_no_longer_falls_back():
@@ -1374,8 +1691,8 @@ def test_multi_llm_session_manager_builder_role_no_longer_falls_back():
         [
             ("deepseek-moe-16b-local:latest", "ollama"),
             ("deepseek-r1-distill:14b", "ollama"),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama"),
-        ]
+            ("fin-o1:14b-q6_k", "ollama"),
+        ],
     )
 
     manager = MultiLLMSessionManager(
@@ -1399,8 +1716,8 @@ def test_multi_llm_session_manager_consume_shared_memory_tracks_market_and_reset
             ("deepseek-moe-16b-local:latest", "ollama"),
             ("qwen3-coder:30b", "ollama"),
             ("deepseek-r1-distill:14b", "ollama"),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama"),
-        ]
+            ("fin-o1:14b-q6_k", "ollama"),
+        ],
     )
 
     class _FakeClient:
@@ -1415,10 +1732,15 @@ def test_multi_llm_session_manager_consume_shared_memory_tracks_market_and_reset
                     '"constraints":["Need enough trades"],'
                     '"strategy_family":"breakout"}'
                 )
-            elif "finance-llama" in self.config.model:
+            elif "fin-o1" in self.config.model:
                 content = '{"risk_level":"low","key_risks":["spread"],"mitigations":["use liquid pairs"]}'
             else:
-                content = '{"verdict":"promising","critique":"good baseline","next_focus":["tighten exits"]}'
+                content = (
+                    '{"verdict":"promising","critique":"good baseline",'
+                    '"next_focus":["tighten exits"],"risk_level":"low",'
+                    '"key_risks":["spread"],"mitigations":["use liquid pairs"],'
+                    '"action":"accept","confidence":0.8,"reason":"target reached"}'
+                )
             return SimpleNamespace(
                 content=content,
                 provider=LLMProvider.OLLAMA,
@@ -1457,8 +1779,8 @@ def test_multi_llm_session_manager_consume_shared_memory_tracks_market_and_reset
                         "max_drawdown_pct": -7.5,
                         "profit_factor": 1.3,
                         "total_trades": 21,
-                    }
-                )
+                    },
+                ),
             ),
         ),
         target_sharpe=1.0,
@@ -1467,8 +1789,8 @@ def test_multi_llm_session_manager_consume_shared_memory_tracks_market_and_reset
 
     assert review_bundle["router_decision"]["action"] == "accept"
     assert snapshot["market_context"] == {"symbol": "ETHUSDT", "timeframe": "4h"}
-    assert snapshot["critic_context"]["next_focus"] == ["tighten exits"]
-    assert snapshot["risk_context"]["risk_level"] == "low"
+    assert snapshot["supervisor_context"]["next_focus"] == ["tighten exits"]
+    assert snapshot["supervisor_context"]["risk_level"] == "low"
     assert snapshot["continuity_context"] == {
         "recent_sessions": [],
         "best_recent_session": {},
@@ -1487,8 +1809,8 @@ def test_multi_llm_session_manager_builds_compact_continuity_context_from_histor
             ("deepseek-moe-16b-local:latest", "ollama"),
             ("qwen3-coder:30b", "ollama"),
             ("deepseek-r1-distill:14b", "ollama"),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama"),
-        ]
+            ("fin-o1:14b-q6_k", "ollama"),
+        ],
     )
 
     class _IdeaClient:
@@ -1528,23 +1850,21 @@ def test_multi_llm_session_manager_builds_compact_continuity_context_from_histor
                 "source_label": "LLM multi-role",
                 "multi_llm_builder_model": "qwen3-coder:30b",
                 "multi_llm_shared_memory": {
-                    "critic_context": {
+                    "supervisor_context": {
                         "verdict": "promising",
                         "critique": "good baseline",
                         "next_focus": ["tighten exits", "reduce lag"],
-                    },
-                    "risk_context": {
                         "risk_level": "medium",
                         "key_risks": ["drawdown spike"],
                         "mitigations": ["reduce leverage"],
                     },
-                    "router_context": {
+                    "decision_context": {
                         "action": "iterate",
                         "reason": "promising but unstable",
                         "confidence": 0.72,
                     },
                 },
-            }
+            },
         ],
         fallback_objective="Fallback objective",
     )
@@ -1562,8 +1882,8 @@ def test_multi_llm_session_manager_passes_continuity_context_to_role_prompts():
             ("deepseek-moe-16b-local:latest", "ollama"),
             ("qwen3-coder:30b", "ollama"),
             ("deepseek-r1-distill:14b", "ollama"),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama"),
-        ]
+            ("fin-o1:14b-q6_k", "ollama"),
+        ],
     )
     captured: dict[str, str] = {}
 
@@ -1575,7 +1895,7 @@ def test_multi_llm_session_manager_passes_continuity_context_to_role_prompts():
             captured[self.config.model] = messages[-1].content
             if "deepseek-moe-16b-local" in self.config.model:
                 content = '{"objective":"Build breakout BTCUSDT 1h.","rationale":"compression","constraints":["Need 20 trades"],"strategy_family":"breakout"}'
-            elif "finance-llama" in self.config.model:
+            elif "fin-o1" in self.config.model:
                 content = '{"risk_level":"medium","key_risks":["drawdown"],"mitigations":["reduce leverage"]}'
             else:
                 content = '{"verdict":"promising","critique":"ok","next_focus":["tighten exits"]}'
@@ -1604,10 +1924,12 @@ def test_multi_llm_session_manager_passes_continuity_context_to_role_prompts():
                 "symbol": "ETHUSDT",
                 "timeframe": "4h",
                 "multi_llm_shared_memory": {
-                    "critic_context": {"next_focus": ["tighten exits"]},
-                    "risk_context": {"key_risks": ["drawdown"]},
+                    "supervisor_context": {
+                        "next_focus": ["tighten exits"],
+                        "key_risks": ["drawdown"],
+                    },
                 },
-            }
+            },
         ],
         fallback_objective="Fallback objective",
     )
@@ -1627,8 +1949,8 @@ def test_multi_llm_session_manager_passes_continuity_context_to_role_prompts():
                         "max_drawdown_pct": -5.5,
                         "profit_factor": 1.15,
                         "total_trades": 19,
-                    }
-                )
+                    },
+                ),
             ),
         ),
         target_sharpe=1.0,
@@ -1637,7 +1959,6 @@ def test_multi_llm_session_manager_passes_continuity_context_to_role_prompts():
     assert '"continuity_context"' in captured["deepseek-moe-16b-local:latest"]
     assert '"carry_over_focus": [' in captured["deepseek-moe-16b-local:latest"]
     assert '"continuity_context"' in captured["deepseek-r1-distill:14b"]
-    assert '"continuity_context"' in captured["martain7r/finance-llama-8b:q4_k_m"]
 
 
 def test_multi_llm_session_manager_extracts_objective_field_from_json():
@@ -1646,9 +1967,9 @@ def test_multi_llm_session_manager_extracts_objective_field_from_json():
             ("deepseek-moe-16b-local:latest", "ollama"),
             ("qwen3-coder:30b", "ollama"),
             ("deepseek-r1-distill:14b", "ollama"),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama"),
+            ("fin-o1:14b-q6_k", "ollama"),
             ("nemotron-orchestrator-8b:latest", "ollama"),
-        ]
+        ],
     )
 
     class _IdeaJsonClient:
@@ -1657,10 +1978,7 @@ def test_multi_llm_session_manager_extracts_objective_field_from_json():
 
         def chat(self, messages):
             if "deepseek-moe-16b-local" in self.config.model:
-                content = (
-                    '{"objective":"Build a breakout strategy on ALGOUSDC 1h using RSI, '
-                    'Bollinger and ATR."}'
-                )
+                content = '{"objective":"Build a breakout strategy on ALGOUSDC 1h using RSI, Bollinger and ATR."}'
             else:
                 content = '{"action":"iterate","confidence":0.5,"reason":"ok"}'
             return SimpleNamespace(
@@ -1685,9 +2003,7 @@ def test_multi_llm_session_manager_extracts_objective_field_from_json():
         fallback_objective="Fallback objective",
     )
 
-    assert bundle["objective"] == (
-        "Build a breakout strategy on ALGOUSDC 1h using RSI, Bollinger and ATR."
-    )
+    assert bundle["objective"] == ("Build a breakout strategy on ALGOUSDC 1h using RSI, Bollinger and ATR.")
 
 
 def test_multi_llm_session_manager_extracts_objective_from_prefixed_json():
@@ -1696,8 +2012,8 @@ def test_multi_llm_session_manager_extracts_objective_from_prefixed_json():
             ("deepseek-moe-16b-local:latest", "ollama"),
             ("qwen3-coder:30b", "ollama"),
             ("deepseek-r1-distill:14b", "ollama"),
-            ("martain7r/finance-llama-8b:q4_k_m", "ollama"),
-        ]
+            ("fin-o1:14b-q6_k", "ollama"),
+        ],
     )
 
     class _IdeaWrappedJsonClient:
@@ -1738,7 +2054,7 @@ def test_multi_llm_session_manager_extracts_objective_from_prefixed_json():
     )
 
     assert bundle["objective"].startswith(
-        "Build a mean-reversion strategy on BTCUSDC 1h using RSI and EMA."
+        "Build a mean-reversion strategy on BTCUSDC 1h using RSI and EMA.",
     )
 
 
@@ -1845,7 +2161,7 @@ def test_model_loader_resolves_historical_aliases(monkeypatch):
                 "name": "Gemma 4 31B",
                 "ollama_name": "gemma4:31b",
                 "size_gb": 20.5,
-            }
+            },
         ],
         "huggingface_models": [],
         "diffusion_models": [],
@@ -1874,14 +2190,7 @@ def test_model_loader_resolves_historical_aliases(monkeypatch):
 
 def test_model_loader_runtime_names_include_manifest_only_models(tmp_path: Path, monkeypatch):
     runtime_root = tmp_path / "runtime" / "ollama" / "models"
-    manifest_path = (
-        runtime_root
-        / "manifests"
-        / "registry.ollama.ai"
-        / "library"
-        / "qwen3-48b-savant"
-        / "latest"
-    )
+    manifest_path = runtime_root / "manifests" / "registry.ollama.ai" / "library" / "qwen3-48b-savant" / "latest"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text("{}", encoding="utf-8")
 
@@ -1908,3 +2217,83 @@ def test_plan_missing_downloads_uses_current_runtime_roots(monkeypatch, tmp_path
 
     assert requests
     assert all(request.destination_root == str(ollama_root) for request in requests if request.backend == "ollama")
+
+
+# ─── Iteration-level pinning ──────────────────────────────────────────────────
+def test_iteration_pinning_prevents_intra_iteration_rotation():
+    """Within a pinned iteration, multiple chat() calls on the same role
+    must NOT rotate — the model stays fixed."""
+    inventory = _inventory(
+        [
+            ("model-a:latest", "ollama", True),
+            ("model-b:latest", "ollama", True),
+            ("model-c:latest", "ollama", True),
+        ],
+        live_ollama_reachable=True,
+    )
+    observed: list[str] = []
+
+    class _EchoClient:
+        def __init__(self, config: LLMConfig):
+            self.config = config
+
+        def chat(self, messages, **kwargs):
+            _ = (messages, kwargs)
+            observed.append(self.config.model)
+            return SimpleNamespace(
+                content=self.config.model,
+                provider=LLMProvider.OLLAMA,
+                latency_ms=1.0,
+                prompt_tokens=1,
+                completion_tokens=1,
+            )
+
+    manager = MultiLLMSessionManager(
+        profile_name="fast_local",
+        base_llm_config=LLMConfig(
+            model="model-a:latest",
+            ollama_host="http://127.0.0.1:11434",
+        ),
+        inventory=inventory,
+        role_overrides={
+            "supervisor_llm": ["model-a:latest", "model-b:latest", "model-c:latest"],
+        },
+        require_live_ollama=True,
+        client_factory=_EchoClient,
+    )
+
+    supervisor = manager.build_role_client("supervisor_llm")
+
+    # Pin iteration 1 — first call initialises, subsequent calls must NOT rotate
+    manager.pin_iteration_roles()
+    out_1a = supervisor.chat([SimpleNamespace(role="user", content="call-1")]).content
+    out_1b = supervisor.chat([SimpleNamespace(role="user", content="call-2")]).content
+    out_1c = supervisor.chat([SimpleNamespace(role="user", content="call-3")]).content
+    assert out_1a == out_1b == out_1c, (
+        f"Within pinned iteration, model must stay fixed: {out_1a}, {out_1b}, {out_1c}"
+    )
+
+    # advance_iteration() → rotate once, then re-pin
+    manager.advance_iteration()
+    out_2a = supervisor.chat([SimpleNamespace(role="user", content="call-4")]).content
+    out_2b = supervisor.chat([SimpleNamespace(role="user", content="call-5")]).content
+    assert out_2a == out_2b, (
+        f"After advance, model must stay fixed within iteration 2: {out_2a}, {out_2b}"
+    )
+    assert out_2a != out_1a, (
+        f"advance_iteration() should rotate to a different model: iter1={out_1a}, iter2={out_2a}"
+    )
+
+    # advance again → rotate once more, should cycle through
+    manager.advance_iteration()
+    out_3a = supervisor.chat([SimpleNamespace(role="user", content="call-6")]).content
+    assert out_3a != out_2a, (
+        f"Second advance should rotate again: iter2={out_2a}, iter3={out_3a}"
+    )
+
+    # Verify all 3 models were used across 3 iterations
+    iteration_models = [out_1a, out_2a, out_3a]
+    assert len(set(iteration_models)) == 3, (
+        f"All 3 models should be used across 3 iterations: {iteration_models}"
+    )
+

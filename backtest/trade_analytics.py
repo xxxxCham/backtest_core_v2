@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.trade_analytics
+"""Module-ID: backtest.trade_analytics
 
 Purpose: Analyses simples sur les trades (exit reasons, streaks, exposure).
 
@@ -10,21 +9,21 @@ Key components: analyze_exit_reasons, calculate_streaks, calculate_exposure
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 
-def analyze_exit_reasons(trades_df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Analyse les raisons de sortie (exit_reason) et leurs performances.
+def analyze_exit_reasons(trades_df: pd.DataFrame) -> dict[str, Any]:
+    """Analyse les raisons de sortie (exit_reason) et leurs performances.
 
     Returns:
         Dict avec:
             - by_reason: {reason: {count, pnl_sum, win_rate}}
             - most_common_reason
             - most_profitable_reason
+
     """
     if trades_df is None or trades_df.empty:
         return {
@@ -40,12 +39,12 @@ def analyze_exit_reasons(trades_df: pd.DataFrame) -> Dict[str, Any]:
             "most_profitable_reason": None,
         }
 
-    by_reason: Dict[str, Dict[str, Any]] = {}
+    by_reason: dict[str, dict[str, Any]] = {}
 
     grouped = trades_df.groupby("exit_reason", dropna=False)
     for reason, group in grouped:
         pnl_values = group["pnl"]
-        count = int(len(group))
+        count = len(group)
         pnl_sum = float(pnl_values.sum())
         wins = int((pnl_values > 0).sum())
         win_rate = (wins / count * 100.0) if count > 0 else 0.0
@@ -56,8 +55,8 @@ def analyze_exit_reasons(trades_df: pd.DataFrame) -> Dict[str, Any]:
         }
 
     # Déterminer les raisons principales
-    most_common_reason: Optional[str] = None
-    most_profitable_reason: Optional[str] = None
+    most_common_reason: str | None = None
+    most_profitable_reason: str | None = None
     if by_reason:
         most_common_reason = max(
             by_reason.items(),
@@ -75,18 +74,18 @@ def analyze_exit_reasons(trades_df: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-def _append_streak(streaks: List[int], current: int) -> None:
+def _append_streak(streaks: list[int], current: int) -> None:
     if current > 0:
         streaks.append(current)
 
 
-def calculate_streaks(trades_df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    Calcule les streaks de gains/pertes consécutifs.
+def calculate_streaks(trades_df: pd.DataFrame) -> dict[str, Any]:
+    """Calcule les streaks de gains/pertes consécutifs.
 
     Returns:
         Dict avec max_consecutive_wins, max_consecutive_losses,
         avg_win_streak, avg_loss_streak
+
     """
     if trades_df is None or trades_df.empty or "pnl" not in trades_df.columns:
         return {
@@ -96,10 +95,10 @@ def calculate_streaks(trades_df: pd.DataFrame) -> Dict[str, Any]:
             "avg_loss_streak": 0.0,
         }
 
-    wins_streaks: List[int] = []
-    loss_streaks: List[int] = []
+    wins_streaks: list[int] = []
+    loss_streaks: list[int] = []
     current = 0
-    current_type: Optional[str] = None
+    current_type: str | None = None
 
     for pnl in trades_df["pnl"].tolist():
         if pnl > 0:
@@ -144,9 +143,8 @@ def calculate_streaks(trades_df: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-def calculate_exposure(trades_df: pd.DataFrame, total_bars: int) -> Dict[str, Any]:
-    """
-    Calcule l'exposition au marché (% du temps en position).
+def calculate_exposure(trades_df: pd.DataFrame, total_bars: int) -> dict[str, Any]:
+    """Calcule l'exposition au marché (% du temps en position).
 
     Args:
         trades_df: DataFrame avec entry_time, exit_time, pnl
@@ -154,6 +152,7 @@ def calculate_exposure(trades_df: pd.DataFrame, total_bars: int) -> Dict[str, An
 
     Returns:
         Dict avec exposure_pct, avg_duration_winners_hours, avg_duration_losers_hours
+
     """
     if trades_df is None or trades_df.empty:
         return {
@@ -208,6 +207,6 @@ def calculate_exposure(trades_df: pd.DataFrame, total_bars: int) -> Dict[str, An
 
 __all__ = [
     "analyze_exit_reasons",
-    "calculate_streaks",
     "calculate_exposure",
+    "calculate_streaks",
 ]

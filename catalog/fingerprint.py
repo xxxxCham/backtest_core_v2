@@ -1,5 +1,4 @@
-"""
-Module-ID: catalog.fingerprint
+"""Module-ID: catalog.fingerprint
 
 Purpose: Canonicalisation JSON et fingerprint SHA256 pour déduplication de variants.
 """
@@ -19,7 +18,7 @@ def _normalize_value(value: Any) -> Any:
     if isinstance(value, np.generic):
         return value.item()
     if isinstance(value, np.ndarray):
-        return value.tolist()
+        return _normalize_value(value.tolist())
     if isinstance(value, float):
         if math.isnan(value):
             return "NaN"
@@ -37,8 +36,7 @@ def _normalize_value(value: Any) -> Any:
 
 
 def canonical_json(obj: Any) -> str:
-    """
-    Produit une représentation JSON canonique (déterministe).
+    """Produit une représentation JSON canonique (déterministe).
 
     - Clés triées
     - Séparateurs compacts
@@ -46,7 +44,13 @@ def canonical_json(obj: Any) -> str:
     - Types numpy convertis
     """
     normalized = _normalize_value(obj)
-    return json.dumps(normalized, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return json.dumps(
+        normalized,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
 
 
 def fingerprint_sha256(obj: Any) -> str:

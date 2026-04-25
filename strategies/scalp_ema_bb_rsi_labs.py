@@ -1,5 +1,4 @@
-"""
-Module-ID: strategies.scalp_ema_bb_rsi_labs
+"""Module-ID: strategies.scalp_ema_bb_rsi_labs
 
 Purpose: Scalp continuation/reversal EMA + Bollinger + RSI (version Labs).
 
@@ -24,7 +23,7 @@ Read-if: Modification logique scalp continuation ou intégration labs.
 Skip-if: Vous ne changez que d'autres stratégies.
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -36,8 +35,7 @@ from .base import StrategyBase, register_strategy
 
 @register_strategy("scalp_ema_bb_rsi_labs")
 class ScalpEmaBbRsiLabsStrategy(StrategyBase):
-    """
-    Scalp de continuation / micro-retournement (Labs).
+    """Scalp de continuation / micro-retournement (Labs).
 
     Hypothèse: Un pullback sous l'EMA21 combiné à un touché de la bande
     de Bollinger inférieure, confirmé par un croisement RSI au-dessus du
@@ -54,11 +52,11 @@ class ScalpEmaBbRsiLabsStrategy(StrategyBase):
         super().__init__(name="Scalp EMA+BB+RSI (Labs)")
 
     @property
-    def required_indicators(self) -> List[str]:
+    def required_indicators(self) -> list[str]:
         return ["ema", "rsi", "bollinger", "atr"]
 
     @property
-    def default_params(self) -> Dict[str, Any]:
+    def default_params(self) -> dict[str, Any]:
         return {
             # Bollinger
             "bb_period": 20,
@@ -78,7 +76,7 @@ class ScalpEmaBbRsiLabsStrategy(StrategyBase):
         }
 
     @property
-    def parameter_specs(self) -> Dict[str, ParameterSpec]:
+    def parameter_specs(self) -> dict[str, ParameterSpec]:
         """Plages Labs pour grid search exploratoire.
 
         Steps explicites pour contrôler la combinatoire :
@@ -87,63 +85,81 @@ class ScalpEmaBbRsiLabsStrategy(StrategyBase):
         return {
             "bb_period": ParameterSpec(
                 name="bb_period",
-                min_val=10, max_val=50, default=20,
-                step=10,             # 10, 20, 30, 40, 50 → 5 valeurs
+                min_val=10,
+                max_val=50,
+                default=20,
+                step=10,  # 10, 20, 30, 40, 50 → 5 valeurs
                 param_type="int",
                 description="Bollinger period",
             ),
             "bb_std": ParameterSpec(
                 name="bb_std",
-                min_val=1.0, max_val=3.0, default=2.0,
-                step=0.5,            # 1.0, 1.5, 2.0, 2.5, 3.0 → 5 valeurs
+                min_val=1.0,
+                max_val=3.0,
+                default=2.0,
+                step=0.5,  # 1.0, 1.5, 2.0, 2.5, 3.0 → 5 valeurs
                 param_type="float",
                 description="Bollinger standard deviation",
             ),
             "ema_period": ParameterSpec(
                 name="ema_period",
-                min_val=10, max_val=50, default=21,
-                step=10,             # 10, 20, 30, 40, 50 → 5 valeurs
+                min_val=10,
+                max_val=50,
+                default=21,
+                step=10,  # 10, 20, 30, 40, 50 → 5 valeurs
                 param_type="int",
                 description="EMA period (trend filter)",
             ),
             "rsi_period": ParameterSpec(
                 name="rsi_period",
-                min_val=7, max_val=21, default=14,
-                step=7,              # 7, 14, 21 → 3 valeurs
+                min_val=7,
+                max_val=21,
+                default=14,
+                step=7,  # 7, 14, 21 → 3 valeurs
                 param_type="int",
                 description="RSI period",
             ),
             "rsi_overbought": ParameterSpec(
                 name="rsi_overbought",
-                min_val=65, max_val=80, default=70,
-                step=5,              # 65, 70, 75, 80 → 4 valeurs
+                min_val=65,
+                max_val=80,
+                default=70,
+                step=5,  # 65, 70, 75, 80 → 4 valeurs
                 param_type="int",
                 description="RSI overbought level",
             ),
             "rsi_oversold": ParameterSpec(
                 name="rsi_oversold",
-                min_val=20, max_val=35, default=30,
-                step=5,              # 20, 25, 30, 35 → 4 valeurs
+                min_val=20,
+                max_val=35,
+                default=30,
+                step=5,  # 20, 25, 30, 35 → 4 valeurs
                 param_type="int",
                 description="RSI oversold level",
             ),
             "k_sl": ParameterSpec(
                 name="k_sl",
-                min_val=0.5, max_val=3.0, default=1.5,
-                step=0.5,            # 0.5, 1.0, 1.5, 2.0, 2.5, 3.0 → 6 valeurs
+                min_val=0.5,
+                max_val=3.0,
+                default=1.5,
+                step=0.5,  # 0.5, 1.0, 1.5, 2.0, 2.5, 3.0 → 6 valeurs
                 param_type="float",
                 description="Stop-loss multiplier (%)",
             ),
             "warmup": ParameterSpec(
                 name="warmup",
-                min_val=50, max_val=50, default=50,
+                min_val=50,
+                max_val=50,
+                default=50,
                 param_type="int",
                 description="Warmup bars",
                 optimize=False,
             ),
             "leverage": ParameterSpec(
                 name="leverage",
-                min_val=1, max_val=10, default=1,
+                min_val=1,
+                max_val=10,
+                default=1,
                 param_type="int",
                 description="Leverage (non optimise)",
                 optimize=False,
@@ -153,8 +169,8 @@ class ScalpEmaBbRsiLabsStrategy(StrategyBase):
     def get_indicator_params(
         self,
         indicator_name: str,
-        params: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
         """Mapping explicite des paramètres vers les indicateurs."""
         if indicator_name == "bollinger":
             return {
@@ -172,17 +188,17 @@ class ScalpEmaBbRsiLabsStrategy(StrategyBase):
     def generate_signals(
         self,
         df: pd.DataFrame,
-        indicators: Dict[str, Any],
-        params: Dict[str, Any],
+        indicators: dict[str, Any],
+        params: dict[str, Any],
     ) -> pd.Series:
-        """
-        Signaux d'entrée scalp continuation.
+        """Signaux d'entrée scalp continuation.
 
         LONG:  close < EMA  AND  close <= lower BB  AND  RSI cross au-dessus oversold
         SHORT: close > EMA  AND  close >= upper BB  AND  RSI cross en-dessous overbought
 
         Returns:
             pd.Series de signaux impulsion (+1, -1, 0).
+
         """
         signals = pd.Series(0.0, index=df.index, dtype=np.float64)
         warmup = int(params.get("warmup", 50))
@@ -236,19 +252,9 @@ class ScalpEmaBbRsiLabsStrategy(StrategyBase):
         rsi_prev[1:] = rsi[:-1]
 
         # --- Conditions d'entrée ---
-        long_entry = (
-            (close < ema)
-            & (close <= lower)
-            & (rsi_prev <= oversold)
-            & (rsi > oversold)
-        )
+        long_entry = (close < ema) & (close <= lower) & (rsi_prev <= oversold) & (rsi > oversold)
 
-        short_entry = (
-            (close > ema)
-            & (close >= upper)
-            & (rsi_prev >= overbought)
-            & (rsi < overbought)
-        )
+        short_entry = (close > ema) & (close >= upper) & (rsi_prev >= overbought) & (rsi < overbought)
 
         # --- Écriture vectorisée ---
         signals_arr = np.zeros(len(df), dtype=np.float64)

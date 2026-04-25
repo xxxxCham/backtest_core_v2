@@ -1,5 +1,4 @@
-"""
-Module-ID: config.indicator_history
+"""Module-ID: config.indicator_history
 
 Purpose: Persistance inter-sessions de la mémoire d'indicateurs pour le Strategy Builder.
          Mémorise les indicateurs et familles utilisés dans les runs précédents afin
@@ -35,7 +34,7 @@ import os
 import tempfile
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 # Verrou global pour les accès concurrent en mode autonome 24/24
 _HISTORY_LOCK = threading.Lock()
@@ -43,7 +42,7 @@ _HISTORY_LOCK = threading.Lock()
 # Racine du projet : deux niveaux au-dessus de ce fichier (config/indicator_history.py)
 _PROJECT_ROOT = Path(__file__).parent.parent
 
-_DEFAULT_POLICY: Dict[str, Any] = {
+_DEFAULT_POLICY: dict[str, Any] = {
     "enabled": True,
     "history_length": 10,
     "ban_threshold": 4,
@@ -58,14 +57,14 @@ _DEFAULT_POLICY: Dict[str, Any] = {
     "history_file": "config/indicator_history.json",
 }
 
-_EMPTY_HISTORY: Dict[str, Any] = {
+_EMPTY_HISTORY: dict[str, Any] = {
     "recent_runs": [],
     "recent_families": [],
     "banned_indicators": {},
 }
 
 # Cache module-level pour éviter des recharges répétées sous workload intensif
-_policy_cache: Optional[Dict[str, Any]] = None
+_policy_cache: dict[str, Any] | None = None
 _policy_mtime: float = 0.0
 
 
@@ -73,7 +72,7 @@ def _policy_file() -> Path:
     return _PROJECT_ROOT / "config" / "indicator_policy.json"
 
 
-def load_policy(force_reload: bool = False) -> Dict[str, Any]:
+def load_policy(force_reload: bool = False) -> dict[str, Any]:
     """Charge la politique depuis ``config/indicator_policy.json``.
 
     Fusionne avec les valeurs par défaut afin que les clés manquantes
@@ -105,13 +104,13 @@ def load_policy(force_reload: bool = False) -> Dict[str, Any]:
     return dict(merged)
 
 
-def _history_path(policy: Optional[Dict[str, Any]] = None) -> Path:
+def _history_path(policy: dict[str, Any] | None = None) -> Path:
     pol = policy or load_policy()
     rel = str(pol.get("history_file", "config/indicator_history.json") or "config/indicator_history.json")
     return _PROJECT_ROOT / rel
 
 
-def load_history(policy: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def load_history(policy: dict[str, Any] | None = None) -> dict[str, Any]:
     """Lit le JSON d'historique depuis le disque.
 
     Retourne un historique vide en cas d'absence ou de corruption du fichier.
@@ -128,7 +127,7 @@ def load_history(policy: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             return _clone_empty()
 
 
-def save_history(data: Dict[str, Any], policy: Optional[Dict[str, Any]] = None) -> None:
+def save_history(data: dict[str, Any], policy: dict[str, Any] | None = None) -> None:
     """Écrit le JSON d'historique de façon atomique (write → rename).
 
     Thread-safe.
@@ -139,7 +138,9 @@ def save_history(data: Dict[str, Any], policy: Optional[Dict[str, Any]] = None) 
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
             fd, tmp_path = tempfile.mkstemp(
-                dir=path.parent, suffix=".tmp", prefix=".indicator_history_"
+                dir=path.parent,
+                suffix=".tmp",
+                prefix=".indicator_history_",
             )
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -156,10 +157,10 @@ def save_history(data: Dict[str, Any], policy: Optional[Dict[str, Any]] = None) 
 
 
 def update_history(
-    current_used_indicators: List[str],
-    families_used: Optional[List[str]] = None,
-    policy: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    current_used_indicators: list[str],
+    families_used: list[str] | None = None,
+    policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Intègre un run dans l'historique et recalcule les bannissements.
 
     Args:
@@ -169,6 +170,7 @@ def update_history(
 
     Returns:
         L'historique mis à jour (également sauvegardé sur le disque).
+
     """
     pol = policy or load_policy()
     if not pol.get("enabled", True):
@@ -184,21 +186,19 @@ def update_history(
     norm_families = [str(f).strip().lower() for f in (families_used or []) if str(f).strip()]
 
     # Ajouter le run courant à la FIFO
-    recent_runs: List[List[str]] = list(history.get("recent_runs", []) or [])
+    recent_runs: list[list[str]] = list(history.get("recent_runs", []) or [])
     recent_runs.append(normalized)
     if len(recent_runs) > history_length:
         recent_runs = recent_runs[-history_length:]
 
-    recent_families: List[List[str]] = list(history.get("recent_families", []) or [])
+    recent_families: list[list[str]] = list(history.get("recent_families", []) or [])
     recent_families.append(norm_families)
     if len(recent_families) > history_length:
         recent_families = recent_families[-history_length:]
 
     # Décrémenter les compteurs de bannissement (durée restante -1)
-    banned: Dict[str, int] = {
-        str(k): int(v)
-        for k, v in (history.get("banned_indicators", {}) or {}).items()
-        if int(v) > 0
+    banned: dict[str, int] = {
+        str(k): int(v) for k, v in (history.get("banned_indicators", {}) or {}).items() if int(v) > 0
     }
     # Décrémenter tous les bannis de 1 pour ce run
     expired = [k for k, v in banned.items() if v <= 1]
@@ -208,7 +208,7 @@ def update_history(
         banned[k] = banned[k] - 1
 
     # Compter les apparitions de chaque indicateur sur la fenêtre récente
-    freq: Dict[str, int] = {}
+    freq: dict[str, int] = {}
     for run in recent_runs:
         for ind in run:
             freq[ind] = freq.get(ind, 0) + 1
@@ -227,9 +227,9 @@ def update_history(
 
 
 def get_banned_indicators(
-    history: Optional[Dict[str, Any]] = None,
-    policy: Optional[Dict[str, Any]] = None,
-) -> Set[str]:
+    history: dict[str, Any] | None = None,
+    policy: dict[str, Any] | None = None,
+) -> set[str]:
     """Retourne l'ensemble des noms d'indicateurs actuellement bannis."""
     h = history if history is not None else load_history(policy)
     banned = h.get("banned_indicators", {}) or {}
@@ -237,21 +237,22 @@ def get_banned_indicators(
 
 
 def get_recent_indicators(
-    history: Optional[Dict[str, Any]] = None,
-    policy: Optional[Dict[str, Any]] = None,
-    n_runs: Optional[int] = None,
-) -> List[str]:
+    history: dict[str, Any] | None = None,
+    policy: dict[str, Any] | None = None,
+    n_runs: int | None = None,
+) -> list[str]:
     """Retourne la liste dédupliquée des indicateurs des N derniers runs (FIFO).
 
     Args:
         n_runs: Si fourni, ne considère que les N derniers runs (None = tous).
+
     """
     h = history if history is not None else load_history(policy)
-    recent_runs: List[List[str]] = list(h.get("recent_runs", []) or [])
+    recent_runs: list[list[str]] = list(h.get("recent_runs", []) or [])
     if n_runs is not None:
         recent_runs = recent_runs[-n_runs:]
-    seen: List[str] = []
-    seen_set: Set[str] = set()
+    seen: list[str] = []
+    seen_set: set[str] = set()
     for run in recent_runs:
         for ind in run:
             key = str(ind).strip().lower()
@@ -262,19 +263,19 @@ def get_recent_indicators(
 
 
 def get_recent_families(
-    history: Optional[Dict[str, Any]] = None,
-    policy: Optional[Dict[str, Any]] = None,
-    n_runs: Optional[int] = None,
-) -> List[str]:
+    history: dict[str, Any] | None = None,
+    policy: dict[str, Any] | None = None,
+    n_runs: int | None = None,
+) -> list[str]:
     """Retourne la liste dédupliquée des familles des N derniers runs."""
     pol = policy or load_policy()
     h = history if history is not None else load_history(pol)
     n = n_runs if n_runs is not None else int(pol.get("family_penalty_runs", 3))
-    recent: List[List[str]] = list(h.get("recent_families", []) or [])
+    recent: list[list[str]] = list(h.get("recent_families", []) or [])
     if n is not None:
         recent = recent[-n:]
-    seen: List[str] = []
-    seen_set: Set[str] = set()
+    seen: list[str] = []
+    seen_set: set[str] = set()
     for run_fams in recent:
         for fam in run_fams:
             key = str(fam).strip().lower()
@@ -284,7 +285,7 @@ def get_recent_families(
     return seen
 
 
-def build_indicator_to_family_map() -> Dict[str, str]:
+def build_indicator_to_family_map() -> dict[str, str]:
     """Construit le mapping {indicateur → famille} depuis _INDICATOR_FAMILIES.
 
     Importe `builder_objectives._INDICATOR_FAMILIES` dynamiquement pour éviter
@@ -294,7 +295,7 @@ def build_indicator_to_family_map() -> Dict[str, str]:
         from agents.builder_objectives import _INDICATOR_FAMILIES  # type: ignore[import]
     except ImportError:
         return {}
-    mapping: Dict[str, str] = {}
+    mapping: dict[str, str] = {}
     for family_key, family_data in _INDICATOR_FAMILIES.items():
         primary = family_data.get("primary", []) if isinstance(family_data, dict) else []
         for ind in primary:
@@ -305,13 +306,13 @@ def build_indicator_to_family_map() -> Dict[str, str]:
 
 
 def infer_families_from_indicators(
-    indicators: List[str],
-    indicator_to_family: Optional[Dict[str, str]] = None,
-) -> List[str]:
+    indicators: list[str],
+    indicator_to_family: dict[str, str] | None = None,
+) -> list[str]:
     """Déduit la liste des familles touchées par un ensemble d'indicateurs."""
     mapping = indicator_to_family if indicator_to_family is not None else build_indicator_to_family_map()
-    families: List[str] = []
-    seen: Set[str] = set()
+    families: list[str] = []
+    seen: set[str] = set()
     for ind in indicators:
         key = str(ind).strip().lower()
         fam = mapping.get(key)
@@ -325,7 +326,8 @@ def infer_families_from_indicators(
 # Helpers internes
 # ---------------------------------------------------------------------------
 
-def _clone_empty() -> Dict[str, Any]:
+
+def _clone_empty() -> dict[str, Any]:
     return {
         "recent_runs": [],
         "recent_families": [],
@@ -333,25 +335,19 @@ def _clone_empty() -> Dict[str, Any]:
     }
 
 
-def _sanitize_history(raw: Dict[str, Any]) -> Dict[str, Any]:
+def _sanitize_history(raw: dict[str, Any]) -> dict[str, Any]:
     """Valide et nettoie un dict d'historique brut."""
     recent_runs = raw.get("recent_runs", [])
     if not isinstance(recent_runs, list):
         recent_runs = []
     else:
-        recent_runs = [
-            [str(ind) for ind in run] if isinstance(run, list) else []
-            for run in recent_runs
-        ]
+        recent_runs = [[str(ind) for ind in run] if isinstance(run, list) else [] for run in recent_runs]
 
     recent_families = raw.get("recent_families", [])
     if not isinstance(recent_families, list):
         recent_families = []
     else:
-        recent_families = [
-            [str(f) for f in fam] if isinstance(fam, list) else []
-            for fam in recent_families
-        ]
+        recent_families = [[str(f) for f in fam] if isinstance(fam, list) else [] for fam in recent_families]
 
     banned = raw.get("banned_indicators", {})
     if not isinstance(banned, dict):

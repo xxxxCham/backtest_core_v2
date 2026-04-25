@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.backtest_executor
+"""Module-ID: agents.backtest_executor
 
 Purpose: Fournir une interface stable pour exécuter des backtests depuis les agents (batch, historique, contexte).
 
@@ -25,9 +24,10 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -40,8 +40,8 @@ logger = get_obs_logger(__name__)
 if TYPE_CHECKING:  # pragma: no cover
     from agents.integration import AgentBacktestMetrics, WalkForwardMetrics
 
-BacktestFn = Callable[[str, Dict[str, Any], pd.DataFrame], "AgentBacktestMetrics"]
-ValidationFn = Callable[[str, Dict[str, Any], pd.DataFrame, int, float], "WalkForwardMetrics"]
+BacktestFn = Callable[[str, dict[str, Any], pd.DataFrame], "AgentBacktestMetrics"]
+ValidationFn = Callable[[str, dict[str, Any], pd.DataFrame, int, float], "WalkForwardMetrics"]
 
 
 @dataclass
@@ -51,11 +51,11 @@ class BacktestRequest:
     # Identification
     request_id: str = ""
     requested_by: str = ""  # Nom de l'agent
-    hypothesis: str = ""     # Pourquoi ce test ? (valeur LLM)
+    hypothesis: str = ""  # Pourquoi ce test ? (valeur LLM)
 
     # Configuration
     strategy_name: str = ""
-    parameters: Dict[str, Any] = field(default_factory=dict)
+    parameters: dict[str, Any] = field(default_factory=dict)
 
     # Options
     use_walk_forward: bool = True
@@ -70,7 +70,7 @@ class BacktestRequest:
             # Générer un ID basé sur les paramètres
             param_str = json.dumps(self.parameters, sort_keys=True)
             self.request_id = hashlib.md5(
-                f"{self.strategy_name}:{param_str}".encode()
+                f"{self.strategy_name}:{param_str}".encode(),
             ).hexdigest()[:8]
 
 
@@ -105,10 +105,10 @@ class BacktestResult:
     error_message: str = ""
 
     # Données brutes (pour analyse détaillée)
-    equity_curve: Optional[List[float]] = None
-    trades: Optional[List[Dict]] = None
+    equity_curve: list[float] | None = None
+    trades: list[dict] | None = None
 
-    def to_summary_dict(self) -> Dict[str, Any]:
+    def to_summary_dict(self) -> dict[str, Any]:
         """Résumé pour le LLM."""
         return {
             "request_id": self.request.request_id,
@@ -143,31 +143,32 @@ class BacktestResult:
         ]
 
         if self.overfitting_ratio > 0:
-            lines.extend([
-                "",
-                "Walk-Forward Analysis:",
-                f"  Train Sharpe: {self.train_sharpe:.3f}",
-                f"  Test Sharpe: {self.test_sharpe:.3f}",
-                f"  Overfitting Ratio: {self.overfitting_ratio:.2f}",
-                f"  {'⚠️ OVERFITTING DETECTED' if self.overfitting_ratio > 1.5 else '✓ Ratio acceptable'}",
-            ])
+            lines.extend(
+                [
+                    "",
+                    "Walk-Forward Analysis:",
+                    f"  Train Sharpe: {self.train_sharpe:.3f}",
+                    f"  Test Sharpe: {self.test_sharpe:.3f}",
+                    f"  Overfitting Ratio: {self.overfitting_ratio:.2f}",
+                    f"  {'⚠️ OVERFITTING DETECTED' if self.overfitting_ratio > 1.5 else '✓ Ratio acceptable'}",
+                ],
+            )
 
         return "\n".join(lines)
 
 
 @dataclass
 class ExperimentHistory:
-    """
-    Historique complet des expériences (backtests).
+    """Historique complet des expériences (backtests).
 
     Permet au LLM de voir tous les tests précédents,
     comprendre ce qui a été essayé, et proposer de nouvelles directions.
     """
 
-    experiments: List[BacktestResult] = field(default_factory=list)
+    experiments: list[BacktestResult] = field(default_factory=list)
 
     # Meilleure configuration trouvée
-    best_result: Optional[BacktestResult] = None
+    best_result: BacktestResult | None = None
     best_sharpe: float = float("-inf")
 
     # Statistiques
@@ -188,10 +189,10 @@ class ExperimentHistory:
                 self.best_sharpe = result.sharpe_ratio
                 logger.info(
                     f"Nouveau meilleur résultat: Sharpe={result.sharpe_ratio:.3f} "
-                    f"avec params={result.request.parameters}"
+                    f"avec params={result.request.parameters}",
                 )
 
-    def get_tried_parameters(self) -> List[Dict[str, Any]]:
+    def get_tried_parameters(self) -> list[dict[str, Any]]:
         """Retourne tous les paramètres déjà testés."""
         return [exp.request.parameters for exp in self.experiments]
 
@@ -203,14 +204,16 @@ class ExperimentHistory:
         ]
 
         if self.best_result:
-            lines.extend([
-                "Best Configuration Found:",
-                f"  Parameters: {json.dumps(self.best_result.request.parameters)}",
-                f"  Sharpe: {self.best_sharpe:.3f}",
-                f"  Return: {self.best_result.total_return:.2%}",
-                f"  Drawdown: {self.best_result.max_drawdown:.2%}",
-                "",
-            ])
+            lines.extend(
+                [
+                    "Best Configuration Found:",
+                    f"  Parameters: {json.dumps(self.best_result.request.parameters)}",
+                    f"  Sharpe: {self.best_sharpe:.3f}",
+                    f"  Return: {self.best_result.total_return:.2%}",
+                    f"  Drawdown: {self.best_result.max_drawdown:.2%}",
+                    "",
+                ],
+            )
 
         # Dernières expériences
         recent = self.experiments[-last_n:] if len(self.experiments) > last_n else self.experiments
@@ -220,29 +223,30 @@ class ExperimentHistory:
             status = "✓" if exp.success else "✗"
             sharpe = f"{exp.sharpe_ratio:.2f}" if exp.success else "N/A"
             lines.append(
-                f"  {i}. [{status}] {exp.request.hypothesis[:50]}... "
-                f"Sharpe={sharpe}"
+                f"  {i}. [{status}] {exp.request.hypothesis[:50]}... Sharpe={sharpe}",
             )
 
         # Insights
         if len(self.experiments) >= 3:
             sharpes = [e.sharpe_ratio for e in self.experiments if e.success]
             if sharpes:
-                lines.extend([
-                    "",
-                    "Insights:",
-                    f"  Average Sharpe: {np.mean(sharpes):.3f}",
-                    f"  Sharpe Range: [{min(sharpes):.3f}, {max(sharpes):.3f}]",
-                    f"  Improvement: {'+' if len(sharpes) > 1 and sharpes[-1] > sharpes[0] else ''}"
-                    f"{((sharpes[-1] - sharpes[0]) / abs(sharpes[0]) * 100):.1f}% from first to last"
-                    if len(sharpes) > 1 and sharpes[0] != 0 else "",
-                ])
+                lines.extend(
+                    [
+                        "",
+                        "Insights:",
+                        f"  Average Sharpe: {np.mean(sharpes):.3f}",
+                        f"  Sharpe Range: [{min(sharpes):.3f}, {max(sharpes):.3f}]",
+                        f"  Improvement: {'+' if len(sharpes) > 1 and sharpes[-1] > sharpes[0] else ''}"
+                        f"{((sharpes[-1] - sharpes[0]) / abs(sharpes[0]) * 100):.1f}% from first to last"
+                        if len(sharpes) > 1 and sharpes[0] != 0
+                        else "",
+                    ],
+                )
 
         return "\n".join(lines)
 
-    def analyze_parameter_sensitivity(self) -> Dict[str, Dict[str, float]]:
-        """
-        Analyse la sensibilité des paramètres.
+    def analyze_parameter_sensitivity(self) -> dict[str, dict[str, float]]:
+        """Analyse la sensibilité des paramètres.
 
         Utile pour le LLM : savoir quels paramètres ont le plus d'impact.
         """
@@ -250,7 +254,7 @@ class ExperimentHistory:
             return {}
 
         # Collecter les données
-        param_values: Dict[str, List[Tuple[Any, float]]] = {}
+        param_values: dict[str, list[tuple[Any, float]]] = {}
 
         for exp in self.experiments:
             if not exp.success:
@@ -287,8 +291,7 @@ class ExperimentHistory:
 
 
 class BacktestExecutor:
-    """
-    Exécuteur de backtests pour les agents LLM.
+    """Exécuteur de backtests pour les agents LLM.
 
     L'agent peut :
     1. Demander un backtest avec une hypothèse
@@ -310,6 +313,7 @@ class BacktestExecutor:
         >>>
         >>> # L'agent analyse
         >>> print(result.to_analysis_prompt())
+
     """
 
     def __init__(
@@ -317,17 +321,17 @@ class BacktestExecutor:
         backtest_fn: BacktestFn,
         strategy_name: str,
         data: pd.DataFrame,
-        validation_fn: Optional[ValidationFn] = None,
+        validation_fn: ValidationFn | None = None,
         strategy_description: str = "",
     ) -> None:
-        """
-        Initialise l'exécuteur.
+        """Initialise l'exécuteur.
 
         Args:
             backtest_fn: Fonction de backtest (strategy_name, params, data) -> metrics
             strategy_name: Nom de la stratégie
             data: DataFrame OHLCV
             validation_fn: Fonction de validation walk-forward optionnelle
+
         """
         self.backtest_fn = backtest_fn
         self.strategy_name = strategy_name
@@ -340,20 +344,17 @@ class BacktestExecutor:
         logger.info(f"BacktestExecutor initialisé: strategy={strategy_name}, rows={len(data)}")
 
     def run(self, request: BacktestRequest) -> BacktestResult:
-        """
-        Exécute un backtest pour une requête d'agent.
+        """Exécute un backtest pour une requête d'agent.
 
         Returns:
             BacktestResult avec toutes les métriques
+
         """
         request.strategy_name = self.strategy_name
 
-        hypothesis_preview = (
-            request.hypothesis[:50] + "..." if request.hypothesis else "N/A"
-        )
+        hypothesis_preview = request.hypothesis[:50] + "..." if request.hypothesis else "N/A"
         logger.info(
-            f"Exécution backtest: {request.request_id} | "
-            f"Hypothèse: {hypothesis_preview}"
+            f"Exécution backtest: {request.request_id} | Hypothèse: {hypothesis_preview}",
         )
 
         start_time = time.time()
@@ -363,13 +364,10 @@ class BacktestExecutor:
             metrics_raw: AgentBacktestMetrics = self.backtest_fn(
                 self.strategy_name,
                 request.parameters,
-                self.data
+                self.data,
             )
 
-            if any(
-                key in metrics_raw
-                for key in ("total_return_pct", "max_drawdown_pct", "win_rate_pct")
-            ):
+            if any(key in metrics_raw for key in ("total_return_pct", "max_drawdown_pct", "win_rate_pct")):
                 metrics_frac = pct_to_frac(metrics_raw)
             else:
                 metrics_frac = normalize_metrics(metrics_raw, "frac")
@@ -423,13 +421,12 @@ class BacktestExecutor:
 
         return result
 
-    def run_batch(self, requests: List[BacktestRequest]) -> List[BacktestResult]:
+    def run_batch(self, requests: list[BacktestRequest]) -> list[BacktestResult]:
         """Exécute plusieurs backtests en séquence."""
         return [self.run(req) for req in requests]
 
     def get_context_for_agent(self) -> str:
-        """
-        Génère le contexte complet pour un agent LLM.
+        """Génère le contexte complet pour un agent LLM.
 
         Inclut :
         - Historique des expériences
@@ -437,45 +434,52 @@ class BacktestExecutor:
         - Analyse de sensibilité
         - Suggestions basées sur les patterns
         """
-        lines: List[str] = []
+        lines: list[str] = []
 
         if self.strategy_description:
-            lines.extend([
-                "=== Strategy Overview ===",
-                self.strategy_description.strip(),
-                "",
-            ])
+            lines.extend(
+                [
+                    "=== Strategy Overview ===",
+                    self.strategy_description.strip(),
+                    "",
+                ],
+            )
 
-        lines.extend([
-            self.history.get_summary_for_llm(),
-            "",
-        ])
+        lines.extend(
+            [
+                self.history.get_summary_for_llm(),
+                "",
+            ],
+        )
 
         # Analyse de sensibilité
         sensitivity = self.history.analyze_parameter_sensitivity()
         if sensitivity:
-            lines.extend([
-                "Parameter Sensitivity Analysis:",
-            ])
+            lines.extend(
+                [
+                    "Parameter Sensitivity Analysis:",
+                ],
+            )
             for param, stats in sorted(
                 sensitivity.items(),
                 key=lambda x: x[1]["impact"],
-                reverse=True
+                reverse=True,
             ):
                 direction = "↑" if stats["direction"] == "positive" else "↓"
                 lines.append(
-                    f"  {param}: impact={stats['impact']:.2f} {direction} "
-                    f"(range: {stats['range_tested']})"
+                    f"  {param}: impact={stats['impact']:.2f} {direction} (range: {stats['range_tested']})",
                 )
             lines.append("")
 
         # Paramètres non encore testés dans certaines plages
         if self.history.total_experiments > 0:
-            lines.extend([
-                "Observations:",
-                f"  - {self.history.total_experiments} experiments completed",
-                f"  - Total compute time: {self.history.total_time_ms/1000:.1f}s",
-            ])
+            lines.extend(
+                [
+                    "Observations:",
+                    f"  - {self.history.total_experiments} experiments completed",
+                    f"  - Total compute time: {self.history.total_time_ms / 1000:.1f}s",
+                ],
+            )
 
             if self.history.best_result:
                 if self.history.best_result.overfitting_ratio > 1.3:
@@ -485,9 +489,8 @@ class BacktestExecutor:
 
         return "\n".join(lines)
 
-    def suggest_next_experiments(self, n: int = 3) -> List[Dict[str, Any]]:
-        """
-        Suggère les prochaines expériences basées sur l'historique.
+    def suggest_next_experiments(self, n: int = 3) -> list[dict[str, Any]]:
+        """Suggère les prochaines expériences basées sur l'historique.
 
         Ce n'est PAS de l'intelligence LLM - c'est de l'exploration
         algorithmique pour guider le LLM.
@@ -512,11 +515,13 @@ class BacktestExecutor:
                 else:
                     new_value = current * 0.8
 
-                suggestions.append({
-                    "type": "sensitivity_exploration",
-                    "rationale": f"Explore {param_name} in favorable direction",
-                    "parameters": {**best_params, param_name: int(new_value)},
-                })
+                suggestions.append(
+                    {
+                        "type": "sensitivity_exploration",
+                        "rationale": f"Explore {param_name} in favorable direction",
+                        "parameters": {**best_params, param_name: int(new_value)},
+                    },
+                )
 
         # 2. Perturbation aléatoire autour du meilleur
         perturbed = {}
@@ -526,10 +531,12 @@ class BacktestExecutor:
                 perturbed[k] = int(v * (1 + np.random.uniform(-0.1, 0.1)))
 
         if perturbed:
-            suggestions.append({
-                "type": "local_search",
-                "rationale": "Small perturbation around best config",
-                "parameters": perturbed,
-            })
+            suggestions.append(
+                {
+                    "type": "local_search",
+                    "rationale": "Small perturbation around best config",
+                    "parameters": perturbed,
+                },
+            )
 
         return suggestions[:n]

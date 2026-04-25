@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.validation
+"""Module-ID: backtest.validation
 
 Purpose: Valider l'absence d'overfitting via walk-forward analysis avec fenêtres glissantes train/test.
 
@@ -21,7 +20,7 @@ Skip-if: Vous n'utilisez pas la validation walk-forward.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -29,6 +28,19 @@ import pandas as pd
 from utils.log import get_logger
 
 logger = get_logger(__name__)
+
+
+def _metric_float(metrics: dict[str, Any] | None, key: str, default: float = 0.0) -> float:
+    """Lecture float robuste des métriques train/test."""
+    if not metrics:
+        return float(default)
+    try:
+        value = metrics.get(key, default)
+        if value is None:
+            return float(default)
+        return float(value)
+    except (TypeError, ValueError, AttributeError):
+        return float(default)
 
 
 @dataclass
@@ -42,8 +54,8 @@ class ValidationFold:
     test_end: int
 
     # Métriques calculées après backtest
-    train_metrics: Optional[Dict[str, Any]] = None
-    test_metrics: Optional[Dict[str, Any]] = None
+    train_metrics: dict[str, Any] | None = None
+    test_metrics: dict[str, Any] | None = None
 
     @property
     def train_size(self) -> int:
@@ -54,19 +66,18 @@ class ValidationFold:
         return self.test_end - self.test_start
 
     @property
-    def overfitting_ratio(self) -> Optional[float]:
-        """
-        Ratio d'overfitting: performance train vs test.
+    def overfitting_ratio(self) -> float | None:
+        """Ratio d'overfitting: performance train vs test.
         > 1.0 = overfitting probable
         """
         if self.train_metrics is None or self.test_metrics is None:
             return None
 
-        train_sharpe = self.train_metrics.get("sharpe_ratio", 0)
-        test_sharpe = self.test_metrics.get("sharpe_ratio", 0)
+        train_sharpe = _metric_float(self.train_metrics, "sharpe_ratio", 0.0)
+        test_sharpe = _metric_float(self.test_metrics, "sharpe_ratio", 0.0)
 
-        if test_sharpe == 0:
-            return float('inf') if train_sharpe > 0 else 1.0
+        if test_sharpe <= 0:
+            return 999.0 if train_sharpe > 0 else 1.0
 
         return train_sharpe / test_sharpe
 
@@ -75,7 +86,7 @@ class ValidationFold:
 class WalkForwardResult:
     """Résultat complet d'une validation walk-forward."""
 
-    folds: List[ValidationFold]
+    folds: list[ValidationFold]
     total_train_samples: int
     total_test_samples: int
     embargo_samples: int
@@ -101,7 +112,7 @@ class WalkForwardResult:
     is_robust: bool = False
     confidence_score: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "n_folds": len(self.folds),
             "total_train_samples": self.total_train_samples,
@@ -133,8 +144,7 @@ class WalkForwardResult:
 
 
 class WalkForwardValidator:
-    """
-    Validateur Walk-Forward pour détecter l'overfitting.
+    """Validateur Walk-Forward pour détecter l'overfitting.
 
     Divise les données en fenêtres train/test glissantes avec:
     - Embargo temporel entre train et test (évite le leakage)
@@ -156,17 +166,17 @@ class WalkForwardValidator:
         purge_pct: float = 0.0,
         min_train_samples: int = 100,
         min_test_samples: int = 50,
-        expanding: bool = False
+        expanding: bool = False,
     ):
-        """
-        Args:
-            n_folds: Nombre de fenêtres de validation
-            test_pct: Pourcentage de données pour le test (par fold)
-            embargo_pct: Embargo entre train et test (% du total)
-            purge_pct: Purge avant le test (données exclues)
-            min_train_samples: Minimum de samples pour le train
-            min_test_samples: Minimum de samples pour le test (évite les indicateurs invalides)
-            expanding: Si True, fenêtre d'entraînement qui grandit
+        """Args:
+        n_folds: Nombre de fenêtres de validation
+        test_pct: Pourcentage de données pour le test (par fold)
+        embargo_pct: Embargo entre train et test (% du total)
+        purge_pct: Purge avant le test (données exclues)
+        min_train_samples: Minimum de samples pour le train
+        min_test_samples: Minimum de samples pour le test (évite les indicateurs invalides)
+        expanding: Si True, fenêtre d'entraînement qui grandit
+
         """
         self.n_folds = n_folds
         self.test_pct = test_pct
@@ -177,19 +187,18 @@ class WalkForwardValidator:
         self.expanding = expanding
 
         logger.info(
-            f"WalkForwardValidator: {n_folds} folds, "
-            f"test={test_pct:.0%}, embargo={embargo_pct:.1%}"
+            f"WalkForwardValidator: {n_folds} folds, test={test_pct:.0%}, embargo={embargo_pct:.1%}",
         )
 
-    def split(self, data: pd.DataFrame) -> List[ValidationFold]:
-        """
-        Génère les indices des fenêtres walk-forward.
+    def split(self, data: pd.DataFrame) -> list[ValidationFold]:
+        """Génère les indices des fenêtres walk-forward.
 
         Args:
             data: DataFrame avec les données OHLCV
 
         Returns:
             Liste de ValidationFold avec les indices
+
         """
         n_samples = len(data)
 
@@ -223,7 +232,9 @@ class WalkForwardValidator:
 
             # Vérifications
             if train_end - train_start < self.min_train_samples:
-                logger.warning(f"Fold {i}: train trop petit ({train_end - train_start} < {self.min_train_samples}), skip")
+                logger.warning(
+                    f"Fold {i}: train trop petit ({train_end - train_start} < {self.min_train_samples}), skip",
+                )
                 continue
 
             if test_end - test_start < self.min_test_samples:
@@ -245,10 +256,9 @@ class WalkForwardValidator:
     def get_data_splits(
         self,
         data: pd.DataFrame,
-        fold: ValidationFold
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """
-        Retourne les DataFrames train et test pour un fold.
+        fold: ValidationFold,
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Retourne les DataFrames train et test pour un fold.
 
         PERF: pas de .copy() — le moteur lit mais ne mute pas le DataFrame.
         Les slices partagent la mémoire avec le DataFrame source.
@@ -259,16 +269,16 @@ class WalkForwardValidator:
 
         Returns:
             Tuple (train_df, test_df)
+
         """
-        train_df = data.iloc[fold.train_start:fold.train_end]
-        test_df = data.iloc[fold.test_start:fold.test_end]
+        train_df = data.iloc[fold.train_start : fold.train_end]
+        test_df = data.iloc[fold.test_start : fold.test_end]
 
         return train_df, test_df
 
 
 class OverfittingDetector:
-    """
-    Détecte l'overfitting en comparant les performances train/test.
+    """Détecte l'overfitting en comparant les performances train/test.
 
     Méthodes:
     - Ratio Sharpe train/test
@@ -280,27 +290,27 @@ class OverfittingDetector:
         self,
         max_overfitting_ratio: float = 2.0,
         min_test_sharpe: float = 0.5,
-        min_confidence: float = 0.6
+        min_confidence: float = 0.6,
     ):
-        """
-        Args:
-            max_overfitting_ratio: Ratio max train/test accepté
-            min_test_sharpe: Sharpe minimum sur test
-            min_confidence: Score de confiance minimum
+        """Args:
+        max_overfitting_ratio: Ratio max train/test accepté
+        min_test_sharpe: Sharpe minimum sur test
+        min_confidence: Score de confiance minimum
+
         """
         self.max_overfitting_ratio = max_overfitting_ratio
         self.min_test_sharpe = min_test_sharpe
         self.min_confidence = min_confidence
 
-    def analyze(self, result: WalkForwardResult) -> Dict[str, Any]:
-        """
-        Analyse complète des résultats walk-forward.
+    def analyze(self, result: WalkForwardResult) -> dict[str, Any]:
+        """Analyse complète des résultats walk-forward.
 
         Args:
             result: Résultats de validation walk-forward
 
         Returns:
             Dict avec diagnostic d'overfitting
+
         """
         diagnosis = {
             "overfitting_detected": False,
@@ -313,30 +323,27 @@ class OverfittingDetector:
         if result.avg_overfitting_ratio > self.max_overfitting_ratio:
             diagnosis["overfitting_detected"] = True
             diagnosis["reasons"].append(
-                f"Ratio overfitting trop élevé: {result.avg_overfitting_ratio:.2f} "
-                f"(max: {self.max_overfitting_ratio})"
+                f"Ratio overfitting trop élevé: {result.avg_overfitting_ratio:.2f} (max: {self.max_overfitting_ratio})",
             )
 
         # Vérifier performance sur test
         if result.avg_test_sharpe < self.min_test_sharpe:
             diagnosis["overfitting_detected"] = True
             diagnosis["reasons"].append(
-                f"Sharpe test trop bas: {result.avg_test_sharpe:.2f} "
-                f"(min: {self.min_test_sharpe})"
+                f"Sharpe test trop bas: {result.avg_test_sharpe:.2f} (min: {self.min_test_sharpe})",
             )
 
         # Vérifier stabilité
         if result.sharpe_std > abs(result.avg_test_sharpe):
             diagnosis["reasons"].append(
-                f"Performance instable: std={result.sharpe_std:.2f} > mean={result.avg_test_sharpe:.2f}"
+                f"Performance instable: std={result.sharpe_std:.2f} > mean={result.avg_test_sharpe:.2f}",
             )
 
         # Vérifier confidence
         if result.confidence_score < self.min_confidence:
             diagnosis["overfitting_detected"] = True
             diagnosis["reasons"].append(
-                f"Confiance insuffisante: {result.confidence_score:.1%} "
-                f"(min: {self.min_confidence:.0%})"
+                f"Confiance insuffisante: {result.confidence_score:.1%} (min: {self.min_confidence:.0%})",
             )
 
         # Déterminer la sévérité
@@ -362,9 +369,8 @@ class OverfittingDetector:
         return diagnosis
 
 
-def compute_robust_overfitting_metrics(folds: List[ValidationFold]) -> Dict[str, float]:
-    """
-    Calcule des métriques robustes d'overfitting avec pénalité de stabilité.
+def compute_robust_overfitting_metrics(folds: list[ValidationFold]) -> dict[str, float]:
+    """Calcule des métriques robustes d'overfitting avec pénalité de stabilité.
 
     Amélioration par rapport au simple ratio train/test :
     - Prend en compte la variabilité des performances out-of-sample
@@ -376,6 +382,7 @@ def compute_robust_overfitting_metrics(folds: List[ValidationFold]) -> Dict[str,
 
     Returns:
         Dict avec métriques robustes
+
     """
     # Filtrer les folds valides
     valid_folds = [f for f in folds if f.train_metrics and f.test_metrics]
@@ -390,8 +397,8 @@ def compute_robust_overfitting_metrics(folds: List[ValidationFold]) -> Dict[str,
         }
 
     # Extraire les Sharpe ratios
-    train_sharpes = [f.train_metrics.get("sharpe_ratio", 0) for f in valid_folds]
-    test_sharpes = [f.test_metrics.get("sharpe_ratio", 0) for f in valid_folds]
+    train_sharpes = [_metric_float(f.train_metrics, "sharpe_ratio", 0.0) for f in valid_folds]
+    test_sharpes = [_metric_float(f.test_metrics, "sharpe_ratio", 0.0) for f in valid_folds]
 
     # Moyennes
     avg_train = np.mean(train_sharpes)
@@ -426,15 +433,15 @@ def compute_robust_overfitting_metrics(folds: List[ValidationFold]) -> Dict[str,
     }
 
 
-def calculate_walk_forward_metrics(folds: List[ValidationFold]) -> WalkForwardResult:
-    """
-    Calcule les métriques agrégées de la validation walk-forward.
+def calculate_walk_forward_metrics(folds: list[ValidationFold]) -> WalkForwardResult:
+    """Calcule les métriques agrégées de la validation walk-forward.
 
     Args:
         folds: Liste des folds avec leurs métriques
 
     Returns:
         WalkForwardResult avec les métriques agrégées
+
     """
     valid_folds = [f for f in folds if f.train_metrics and f.test_metrics]
 
@@ -447,11 +454,15 @@ def calculate_walk_forward_metrics(folds: List[ValidationFold]) -> WalkForwardRe
         )
 
     # Extraire les métriques
-    train_sharpes = [f.train_metrics.get("sharpe_ratio", 0) for f in valid_folds]
-    test_sharpes = [f.test_metrics.get("sharpe_ratio", 0) for f in valid_folds]
-    train_returns = [f.train_metrics.get("total_return_pct", 0) for f in valid_folds]
-    test_returns = [f.test_metrics.get("total_return_pct", 0) for f in valid_folds]
-    overfitting_ratios = [f.overfitting_ratio for f in valid_folds if f.overfitting_ratio]
+    train_sharpes = [_metric_float(f.train_metrics, "sharpe_ratio", 0.0) for f in valid_folds]
+    test_sharpes = [_metric_float(f.test_metrics, "sharpe_ratio", 0.0) for f in valid_folds]
+    train_returns = [_metric_float(f.train_metrics, "total_return_pct", 0.0) for f in valid_folds]
+    test_returns = [_metric_float(f.test_metrics, "total_return_pct", 0.0) for f in valid_folds]
+    overfitting_ratios = [
+        ratio
+        for ratio in (f.overfitting_ratio for f in valid_folds)
+        if ratio is not None and np.isfinite(ratio)
+    ]
 
     # Calculer les moyennes
     avg_train_sharpe = np.mean(train_sharpes)
@@ -489,11 +500,7 @@ def calculate_walk_forward_metrics(folds: List[ValidationFold]) -> WalkForwardRe
     confidence_score = np.mean(confidence_factors) if confidence_factors else 0
 
     # Verdict de robustesse
-    is_robust = (
-        avg_test_sharpe > 0.5 and
-        avg_overfitting < 2.0 and
-        confidence_score > 0.5
-    )
+    is_robust = avg_test_sharpe > 0.5 and avg_overfitting < 2.0 and confidence_score > 0.5
 
     # Totaux
     total_train = sum(f.train_size for f in valid_folds)
@@ -527,10 +534,9 @@ def calculate_walk_forward_metrics(folds: List[ValidationFold]) -> WalkForwardRe
 def train_test_split(
     data: pd.DataFrame,
     test_pct: float = 0.2,
-    embargo_pct: float = 0.01
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Split simple train/test avec embargo temporel.
+    embargo_pct: float = 0.01,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split simple train/test avec embargo temporel.
 
     L'embargo évite le data leakage entre train et test
     (important pour les données temporelles).
@@ -542,6 +548,7 @@ def train_test_split(
 
     Returns:
         Tuple (train_df, test_df)
+
     """
     n = len(data)
     embargo_size = max(1, int(n * embargo_pct))
@@ -554,17 +561,14 @@ def train_test_split(
     test_df = data.iloc[test_start:].copy()
 
     logger.info(
-        f"Train/Test split: train={len(train_df)}, "
-        f"embargo={embargo_size}, test={len(test_df)}"
+        f"Train/Test split: train={len(train_df)}, embargo={embargo_size}, test={len(test_df)}",
     )
 
     return train_df, test_df
 
 
 def format_validation_report(result: WalkForwardResult) -> str:
-    """
-    Formate un rapport de validation walk-forward.
-    """
+    """Formate un rapport de validation walk-forward."""
     verdict_emoji = "✅" if result.is_robust else "❌"
 
     report = f"""
@@ -613,22 +617,20 @@ def format_validation_report(result: WalkForwardResult) -> str:
                 ratio = fold.overfitting_ratio or 0
                 status = "🟢" if ratio < 2 else "🟡" if ratio < 3 else "🔴"
                 report += (
-                    f"  {status} Fold {fold.fold_id}: "
-                    f"Train={train_s:.2f} → Test={test_s:.2f} "
-                    f"(ratio: {ratio:.2f}x)\n"
+                    f"  {status} Fold {fold.fold_id}: Train={train_s:.2f} → Test={test_s:.2f} (ratio: {ratio:.2f}x)\n"
                 )
 
     return report
 
 
 __all__ = [
+    "OverfittingDetector",
     "ValidationFold",
     "WalkForwardResult",
     "WalkForwardValidator",
-    "OverfittingDetector",
     "calculate_walk_forward_metrics",
-    "train_test_split",
     "format_validation_report",
+    "train_test_split",
 ]
 
 

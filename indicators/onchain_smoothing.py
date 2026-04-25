@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.onchain_smoothing
+"""Module-ID: indicators.onchain_smoothing
 
 Purpose: Lissage générique on-chain - applique EMA/SMA à colonne quelconque.
 
@@ -50,8 +49,7 @@ def onchain_smoothing(
     method: str = "ema",
     settings: OnchainSmoothingSettings | None = None,
 ) -> np.ndarray:
-    """
-    Smooth a series with EMA or SMA.
+    """Smooth a series with EMA or SMA.
 
     Args:
         values: Input series
@@ -61,6 +59,7 @@ def onchain_smoothing(
 
     Returns:
         Smoothed series
+
     """
     if settings is not None:
         period = settings.period
@@ -75,8 +74,7 @@ def onchain_smoothing(
 
 
 def calculate_onchain_smoothing(df: pd.DataFrame, **params) -> np.ndarray:
-    """
-    Wrapper for registry calculation.
+    """Wrapper for registry calculation.
 
     Params:
         column: Column name to smooth (default: close)
@@ -104,7 +102,7 @@ register_indicator(
 
 
 __all__ = [
-    "onchain_smoothing",
-    "calculate_onchain_smoothing",
     "OnchainSmoothingSettings",
+    "calculate_onchain_smoothing",
+    "onchain_smoothing",
 ]

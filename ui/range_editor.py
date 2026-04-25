@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.range_editor
+"""Module-ID: ui.range_editor
 
 Purpose: Interface Streamlit pour éditer les plages de paramètres visuellement.
 
@@ -64,8 +63,7 @@ def _coerce_numeric_range_inputs(range_cfg) -> tuple[float, float, float, float,
 
 
 def render_range_editor():
-    """
-    Affiche l'interface d'édition des plages de paramètres.
+    """Affiche l'interface d'édition des plages de paramètres.
 
     Cette interface permet de:
     - Visualiser toutes les plages définies
@@ -88,8 +86,7 @@ def render_range_editor():
         st.metric("Catégories", total_categories)
 
     with col2:
-        total_params = sum(len(manager.get_category_params(cat))
-                          for cat in manager.get_all_categories())
+        total_params = sum(len(manager.get_category_params(cat)) for cat in manager.get_all_categories())
         st.metric("Paramètres", total_params)
 
     with col3:
@@ -108,7 +105,7 @@ def render_range_editor():
     search_term = st.text_input(
         "🔍 Rechercher un paramètre",
         value=st.session_state.range_editor_search,
-        placeholder="Ex: ema, period, rsi..."
+        placeholder="Ex: ema, period, rsi...",
     )
     st.session_state.range_editor_search = search_term
 
@@ -121,10 +118,10 @@ def render_range_editor():
         # Filtrer par recherche
         if search_term:
             filtered_categories = [
-                cat for cat in categories
-                if search_term.lower() in cat.lower() or
-                any(search_term.lower() in param.lower()
-                    for param in manager.get_category_params(cat))
+                cat
+                for cat in categories
+                if search_term.lower() in cat.lower()
+                or any(search_term.lower() in param.lower() for param in manager.get_category_params(cat))
             ]
         else:
             filtered_categories = categories
@@ -134,9 +131,10 @@ def render_range_editor():
             selected_category = st.selectbox(
                 "Sélectionner une catégorie",
                 options=filtered_categories,
-                index=0 if st.session_state.range_editor_category not in filtered_categories
-                      else filtered_categories.index(st.session_state.range_editor_category),
-                key="category_selector"
+                index=0
+                if st.session_state.range_editor_category not in filtered_categories
+                else filtered_categories.index(st.session_state.range_editor_category),
+                key="category_selector",
             )
             st.session_state.range_editor_category = selected_category
         else:
@@ -173,6 +171,7 @@ def render_range_editor():
             export_path = Path("config/indicator_ranges_export.json")
             data = manager.export_to_dict()
             import json
+
             with open(export_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             st.write(f"✅ Exporté vers: {export_path}")
@@ -232,8 +231,9 @@ Default: {range_cfg.default}
                             "Valeur par défaut",
                             options=range_cfg.options,
                             index=range_cfg.options.index(range_cfg.default)
-                                  if range_cfg.default in range_cfg.options else 0,
-                            key=f"default_{selected_category}_{param}"
+                            if range_cfg.default in range_cfg.options
+                            else 0,
+                            key=f"default_{selected_category}_{param}",
                         )
 
                         if new_default != range_cfg.default:
@@ -245,24 +245,26 @@ Default: {range_cfg.default}
 
                     else:
                         # Valeurs numériques
-                        safe_min, safe_max, safe_step, safe_default, had_missing_bounds = _coerce_numeric_range_inputs(range_cfg)
+                        safe_min, safe_max, safe_step, safe_default, had_missing_bounds = _coerce_numeric_range_inputs(
+                            range_cfg,
+                        )
                         if had_missing_bounds:
                             st.caption(
                                 "Certaines bornes sont absentes dans la configuration actuelle. "
-                                "Des valeurs sûres temporaires sont affichées pour permettre l'édition."
+                                "Des valeurs sûres temporaires sont affichées pour permettre l'édition.",
                             )
                         new_min = st.number_input(
                             "Minimum",
                             value=safe_min,
                             key=f"min_{selected_category}_{param}",
-                            format="%.4f"
+                            format="%.4f",
                         )
 
                         new_max = st.number_input(
                             "Maximum",
                             value=safe_max,
                             key=f"max_{selected_category}_{param}",
-                            format="%.4f"
+                            format="%.4f",
                         )
 
                         new_step = st.number_input(
@@ -270,7 +272,7 @@ Default: {range_cfg.default}
                             value=safe_step,
                             min_value=0.0001,
                             key=f"step_{selected_category}_{param}",
-                            format="%.4f"
+                            format="%.4f",
                         )
 
                         new_default = st.number_input(
@@ -279,7 +281,7 @@ Default: {range_cfg.default}
                             min_value=new_min,
                             max_value=new_max,
                             key=f"default_{selected_category}_{param}",
-                            format="%.4f"
+                            format="%.4f",
                         )
 
                         # Validation
@@ -297,21 +299,23 @@ Default: {range_cfg.default}
                         # Bouton d'application
                         if valid:
                             changed = (
-                                new_min != range_cfg.min or
-                                new_max != range_cfg.max or
-                                new_step != range_cfg.step or
-                                new_default != range_cfg.default
+                                new_min != range_cfg.min
+                                or new_max != range_cfg.max
+                                or new_step != range_cfg.step
+                                or new_default != range_cfg.default
                             )
 
                             if changed:
-                                if st.button("✅ Appliquer les modifications",
-                                           key=f"apply_{selected_category}_{param}"):
+                                if st.button(
+                                    "✅ Appliquer les modifications", key=f"apply_{selected_category}_{param}",
+                                ):
                                     manager.update_range(
-                                        selected_category, param,
+                                        selected_category,
+                                        param,
                                         min_val=new_min,
                                         max_val=new_max,
                                         step=new_step,
-                                        default=new_default
+                                        default=new_default,
                                     )
                                     st.session_state.range_editor_modified = True
                                     st.write("✅ Modifications appliquées !")
@@ -326,8 +330,7 @@ Default: {range_cfg.default}
 
 
 def render_range_editor_compact():
-    """
-    Version compacte de l'éditeur pour intégration dans d'autres pages.
+    """Version compacte de l'éditeur pour intégration dans d'autres pages.
 
     Affiche uniquement les contrôles essentiels sans header ni sidebar.
     """
@@ -342,7 +345,7 @@ def render_range_editor_compact():
     selected_category = st.selectbox(
         "Catégorie",
         options=categories,
-        key="compact_category"
+        key="compact_category",
     )
 
     if selected_category:
@@ -351,7 +354,7 @@ def render_range_editor_compact():
         selected_param = st.selectbox(
             "Paramètre",
             options=params,
-            key="compact_param"
+            key="compact_param",
         )
 
         if selected_param:
@@ -374,9 +377,12 @@ def render_range_editor_compact():
 
             if st.button("✅ Appliquer", key="compact_apply"):
                 manager.update_range(
-                    selected_category, selected_param,
-                    min_val=new_min, max_val=new_max,
-                    step=new_step, default=new_default
+                    selected_category,
+                    selected_param,
+                    min_val=new_min,
+                    max_val=new_max,
+                    step=new_step,
+                    default=new_default,
                 )
                 manager.save_ranges(backup=True)
                 st.write("✅ Modifications appliquées et sauvegardées !")
@@ -387,6 +393,6 @@ if __name__ == "__main__":
     st.set_page_config(
         page_title="Éditeur de Plages",
         page_icon="⚙️",
-        layout="wide"
+        layout="wide",
     )
     render_range_editor()

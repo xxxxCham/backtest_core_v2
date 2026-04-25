@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.version
+"""Module-ID: utils.version
 
 Purpose: Gestion version et traçabilité Git (commit hash pour reproducibilité).
 
@@ -26,8 +25,7 @@ import subprocess
 
 
 def get_git_commit(short: bool = True) -> str:
-    """
-    Récupère le hash du commit Git courant.
+    """Récupère le hash du commit Git courant.
 
     Utile pour traçabilité : permet de savoir quelle version du code
     a produit un résultat de backtest spécifique.
@@ -42,6 +40,7 @@ def get_git_commit(short: bool = True) -> str:
         >>> commit = get_git_commit()
         >>> print(f"Run exécuté avec commit: {commit}")
         Run exécuté avec commit: a3f7b2c
+
     """
     try:
         cmd = ["git", "rev-parse"]
@@ -53,10 +52,10 @@ def get_git_commit(short: bool = True) -> str:
             cmd,
             stderr=subprocess.DEVNULL,
             text=True,
-            timeout=2  # Timeout pour éviter blocage
+            timeout=2,  # Timeout pour éviter blocage
         ).strip()
 
-        return commit if commit else "unknown"
+        return commit or "unknown"
 
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         # Git non disponible, pas un repo git, ou timeout
@@ -64,39 +63,39 @@ def get_git_commit(short: bool = True) -> str:
 
 
 def get_git_branch() -> str:
-    """
-    Récupère le nom de la branche Git courante.
+    """Récupère le nom de la branche Git courante.
 
     Returns:
         Nom de la branche ou "unknown" si indisponible
+
     """
     try:
         branch = subprocess.check_output(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             stderr=subprocess.DEVNULL,
             text=True,
-            timeout=2
+            timeout=2,
         ).strip()
 
-        return branch if branch else "unknown"
+        return branch or "unknown"
 
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         return "unknown"
 
 
 def is_git_dirty() -> bool:
-    """
-    Vérifie si le répertoire Git a des modifications non committées.
+    """Vérifie si le répertoire Git a des modifications non committées.
 
     Returns:
         True si modifications présentes, False sinon ou si Git indisponible
+
     """
     try:
         result = subprocess.check_output(
             ["git", "status", "--porcelain"],
             stderr=subprocess.DEVNULL,
             text=True,
-            timeout=2
+            timeout=2,
         ).strip()
 
         return len(result) > 0
@@ -105,4 +104,4 @@ def is_git_dirty() -> bool:
         return False
 
 
-__all__ = ["__version__", "get_git_commit", "get_git_branch", "is_git_dirty"]
+__all__ = ["__version__", "get_git_branch", "get_git_commit", "is_git_dirty"]

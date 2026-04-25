@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.model_loader
+"""Module-ID: utils.model_loader
 
 Purpose: Chargement et acces aux modeles depuis models.json avec resolution
 de chemins contemporaine (C/K/L/D) et alias de noms historiques.
@@ -28,8 +27,8 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
 
 from utils.log import get_logger
 
@@ -39,27 +38,21 @@ CURRENT_MODELS_JSON_PATH = Path(r"C:\AI\models\catalog\models.json")
 CURRENT_OLLAMA_MODELS_ROOT = Path(r"C:\AI\ollama\models")
 CURRENT_HUGGINGFACE_ARCHIVE_ROOT = Path(r"L:\models")
 
-LEGACY_MODELS_JSON_CANDIDATES = (
-    Path(r"D:\models\models.json"),
-)
+LEGACY_MODELS_JSON_CANDIDATES = (Path(r"D:\models\models.json"),)
 
 LEGACY_OLLAMA_MODELS_CANDIDATES = (
     Path(r"D:\models\ollama"),
     Path(r"D:\models\models_via_ollamaGUI"),
 )
 
-LEGACY_HUGGINGFACE_ARCHIVE_ROOTS = (
-    Path(r"D:\models\huggingface"),
-)
+LEGACY_HUGGINGFACE_ARCHIVE_ROOTS = (Path(r"D:\models\huggingface"),)
 
 DEFAULT_MODELS_JSON_CANDIDATES = (
     CURRENT_MODELS_JSON_PATH,
     Path(r"C:\AI\models\models.json"),
 )
 
-DEFAULT_OLLAMA_MODELS_CANDIDATES = (
-    CURRENT_OLLAMA_MODELS_ROOT,
-)
+DEFAULT_OLLAMA_MODELS_CANDIDATES = (CURRENT_OLLAMA_MODELS_ROOT,)
 
 DEFAULT_MODEL_LIBRARY_ROOTS = (
     Path(r"K:\models"),
@@ -114,10 +107,10 @@ MODEL_NAME_ALIASES = {
 }
 
 # Cache en memoire
-_models_cache: Optional[Dict] = None
+_models_cache: dict | None = None
 
 
-def _windows_to_wsl_path(path: Path) -> Optional[Path]:
+def _windows_to_wsl_path(path: Path) -> Path | None:
     path_str = str(path)
     if len(path_str) < 3 or path_str[1] != ":":
         return None
@@ -144,15 +137,15 @@ def _iter_unique_paths(paths: Iterable[Path]) -> Iterable[Path]:
         yield Path(raw)
 
 
-def _split_env_paths(value: str) -> List[Path]:
+def _split_env_paths(value: str) -> list[Path]:
     if not value:
         return []
     return [Path(chunk.strip()) for chunk in value.split(";") if chunk.strip()]
 
 
-def _get_ollama_desktop_db_candidates() -> List[Path]:
+def _get_ollama_desktop_db_candidates() -> list[Path]:
     """Retourne les emplacements probables de la base SQLite Ollama Desktop."""
-    candidates: List[Path] = []
+    candidates: list[Path] = []
     local_appdata = str(os.environ.get("LOCALAPPDATA", "") or "").strip()
     if local_appdata:
         candidates.append(Path(local_appdata) / "Ollama" / "db.sqlite")
@@ -162,7 +155,7 @@ def _get_ollama_desktop_db_candidates() -> List[Path]:
     return list(_iter_unique_paths(candidates))
 
 
-def get_ollama_desktop_models_root() -> Optional[Path]:
+def get_ollama_desktop_models_root() -> Path | None:
     """Lit le store modèles configuré dans l'application Ollama Desktop."""
     for db_path in _get_ollama_desktop_db_candidates():
         if not db_path.exists():
@@ -171,7 +164,7 @@ def get_ollama_desktop_models_root() -> Optional[Path]:
         try:
             connection = sqlite3.connect(str(db_path), timeout=1.0)
             row = connection.execute(
-                "SELECT models FROM settings ORDER BY id DESC LIMIT 1"
+                "SELECT models FROM settings ORDER BY id DESC LIMIT 1",
             ).fetchone()
         except sqlite3.Error as exc:
             logger.debug("Lecture config Ollama impossible depuis %s: %s", db_path, exc)
@@ -192,7 +185,7 @@ def _prefer_current_target(
     configured: Iterable[Path],
     current_target: Path,
     legacy_targets: Iterable[Path],
-) -> List[Path]:
+) -> list[Path]:
     ordered = list(_iter_unique_paths(configured))
     if not ordered or not current_target.exists():
         return ordered
@@ -213,13 +206,12 @@ def normalize_model_name(name: str) -> str:
     value = str(name or "").strip()
     if not value:
         return ""
-    if value.endswith(":latest"):
-        value = value[:-7]
+    value = value.removesuffix(":latest")
     return MODEL_NAME_ALIASES.get(value.lower(), value)
 
 
-def _entry_identifiers(entry: Dict) -> List[str]:
-    identifiers: List[str] = []
+def _entry_identifiers(entry: dict) -> list[str]:
+    identifiers: list[str] = []
 
     def add(candidate: object) -> None:
         if not isinstance(candidate, str):
@@ -258,7 +250,7 @@ def _entry_identifiers(entry: Dict) -> List[str]:
     return identifiers
 
 
-def get_candidate_models_json_paths() -> List[Path]:
+def get_candidate_models_json_paths() -> list[Path]:
     """Retourne tous les emplacements candidats pour models.json."""
     env_path = os.environ.get("MODELS_JSON_PATH", "").strip()
     primary = [Path(env_path)] if env_path else []
@@ -273,10 +265,10 @@ def get_candidate_models_json_paths() -> List[Path]:
                 *primary,
                 *DEFAULT_MODELS_JSON_CANDIDATES,
                 *LEGACY_MODELS_JSON_CANDIDATES,
-            ]
-        )
+            ],
+        ),
     )
-    candidates: List[Path] = []
+    candidates: list[Path] = []
     for candidate in combined:
         candidates.append(candidate)
         wsl_candidate = _windows_to_wsl_path(candidate)
@@ -286,8 +278,7 @@ def get_candidate_models_json_paths() -> List[Path]:
 
 
 def get_models_json_path() -> Path:
-    """
-    Retourne le chemin vers models.json.
+    """Retourne le chemin vers models.json.
 
     Peut etre configure via variable d'environnement MODELS_JSON_PATH. Si la
     cible souhaitee n'existe pas encore, on continue vers les fallbacks connus.
@@ -300,8 +291,7 @@ def get_models_json_path() -> Path:
 
 
 def get_ollama_models_root() -> Path:
-    """
-    Retourne le repertoire du store Ollama.
+    """Retourne le repertoire du store Ollama.
 
     La cible contemporaine est ``C:\\AI\\ollama\\models``, avec fallback vers le
     store historique ``D:\\models\\ollama`` tant que la bascule n'est pas achevee.
@@ -317,12 +307,12 @@ def get_ollama_models_root() -> Path:
     ordered = list(
         _iter_unique_paths(
             [
-                *( [desktop_configured] if desktop_configured else [] ),
+                *([desktop_configured] if desktop_configured else []),
                 *configured,
                 *DEFAULT_OLLAMA_MODELS_CANDIDATES,
                 *LEGACY_OLLAMA_MODELS_CANDIDATES,
-            ]
-        )
+            ],
+        ),
     )
     for candidate in ordered:
         if candidate.exists():
@@ -330,9 +320,8 @@ def get_ollama_models_root() -> Path:
     return ordered[0]
 
 
-def get_model_library_roots() -> List[Path]:
-    """
-    Retourne les racines de bibliotheques canoniques.
+def get_model_library_roots() -> list[Path]:
+    """Retourne les racines de bibliotheques canoniques.
 
     `MODEL_LIBRARY_ROOTS` accepte une liste separee par `;`.
     """
@@ -342,8 +331,7 @@ def get_model_library_roots() -> List[Path]:
 
 
 def get_huggingface_archive_root() -> Path:
-    """
-    Retourne le repertoire d'archive des sources Hugging Face.
+    """Retourne le repertoire d'archive des sources Hugging Face.
 
     L'architecture actuelle privilegie ``L:\\models``.
     """
@@ -360,8 +348,8 @@ def get_huggingface_archive_root() -> Path:
                 *configured,
                 *DEFAULT_HUGGINGFACE_ARCHIVE_ROOTS,
                 *LEGACY_HUGGINGFACE_ARCHIVE_ROOTS,
-            ]
-        )
+            ],
+        ),
     )
     for candidate in ordered:
         if candidate.exists():
@@ -369,15 +357,15 @@ def get_huggingface_archive_root() -> Path:
     return ordered[0]
 
 
-def load_models_json(force_reload: bool = False) -> Dict:
-    """
-    Charge le fichier models.json depuis l'emplacement le plus pertinent.
+def load_models_json(force_reload: bool = False) -> dict:
+    """Charge le fichier models.json depuis l'emplacement le plus pertinent.
 
     Args:
         force_reload: Si True, recharge le fichier meme si deja en cache
 
     Returns:
         Dict contenant la configuration des modeles
+
     """
     global _models_cache
 
@@ -406,7 +394,7 @@ def load_models_json(force_reload: bool = False) -> Dict:
             _models_cache = json.load(handle)
         logger.info("Charge %d modeles depuis %s", _count_total_models(_models_cache), models_path)
         return _models_cache
-    except (json.JSONDecodeError, IOError) as exc:
+    except (OSError, json.JSONDecodeError) as exc:
         logger.error("Erreur lors du chargement de %s: %s", models_path, exc)
         _models_cache = {
             "version": "1.0",
@@ -419,7 +407,7 @@ def load_models_json(force_reload: bool = False) -> Dict:
         return _models_cache
 
 
-def _count_total_models(data: Dict) -> int:
+def _count_total_models(data: dict) -> int:
     """Compte le nombre total de modeles."""
     count = 0
     count += len(data.get("ollama_models", []))
@@ -428,25 +416,25 @@ def _count_total_models(data: Dict) -> int:
     return count
 
 
-def get_all_ollama_models() -> List[Dict]:
+def get_all_ollama_models() -> list[dict]:
     """Retourne tous les modeles Ollama disponibles."""
     data = load_models_json()
     return data.get("ollama_models", [])
 
 
-def get_all_huggingface_models() -> List[Dict]:
+def get_all_huggingface_models() -> list[dict]:
     """Retourne tous les modeles HuggingFace disponibles."""
     data = load_models_json()
     return data.get("huggingface_models", [])
 
 
-def get_all_diffusion_models() -> List[Dict]:
+def get_all_diffusion_models() -> list[dict]:
     """Retourne tous les modeles de diffusion disponibles."""
     data = load_models_json()
     return data.get("diffusion_models", [])
 
 
-def get_model_by_id(model_id: str) -> Optional[Dict]:
+def get_model_by_id(model_id: str) -> dict | None:
     """Recupere un modele par ID, nom Ollama ou alias historique."""
     if not model_id:
         return None
@@ -456,10 +444,7 @@ def get_model_by_id(model_id: str) -> Optional[Dict]:
 
     for section in ("ollama_models", "huggingface_models", "diffusion_models"):
         for model in data.get(section, []):
-            identifiers = {
-                normalize_model_name(identifier)
-                for identifier in _entry_identifiers(model)
-            }
+            identifiers = {normalize_model_name(identifier) for identifier in _entry_identifiers(model)}
             if normalized_model_id in identifiers:
                 return model
 
@@ -467,7 +452,7 @@ def get_model_by_id(model_id: str) -> Optional[Dict]:
     return None
 
 
-def get_models_by_category(category: str) -> List[Dict]:
+def get_models_by_category(category: str) -> list[dict]:
     """Recupere tous les modeles d'une categorie."""
     data = load_models_json()
     categories = data.get("model_categories", {})
@@ -475,7 +460,7 @@ def get_models_by_category(category: str) -> List[Dict]:
     if not model_ids:
         return []
 
-    models: List[Dict] = []
+    models: list[dict] = []
     for model_id in model_ids:
         model = get_model_by_id(model_id)
         if model:
@@ -483,13 +468,13 @@ def get_models_by_category(category: str) -> List[Dict]:
     return models
 
 
-def get_models_by_use_case(use_case: str) -> List[Dict]:
+def get_models_by_use_case(use_case: str) -> list[dict]:
     """Recupere tous les modeles pour un cas d'usage."""
     all_models = get_all_ollama_models() + get_all_huggingface_models()
     return [model for model in all_models if model.get("use_case") == use_case]
 
 
-def get_recommended_model_for_task(task: str) -> Optional[str]:
+def get_recommended_model_for_task(task: str) -> str | None:
     """Retourne le modele recommande pour une tache."""
     data = load_models_json()
     recommendations = data.get("recommended_by_task", {})
@@ -499,7 +484,7 @@ def get_recommended_model_for_task(task: str) -> Optional[str]:
     return recommendation
 
 
-def get_model_full_path(model_id: str) -> Optional[Path]:
+def get_model_full_path(model_id: str) -> Path | None:
     """Retourne le chemin complet vers un modele ou son backup canonique."""
     model = get_model_by_id(model_id)
     if not model:
@@ -517,22 +502,17 @@ def get_model_full_path(model_id: str) -> Optional[Path]:
     return base_dir / candidate
 
 
-def get_ollama_model_names() -> List[str]:
-    """
-    Retourne la liste des noms runtime Ollama depuis models.json.
+def get_ollama_model_names() -> list[str]:
+    """Retourne la liste des noms runtime Ollama depuis models.json.
 
     On privilegie `ollama_name`, avec normalisation des alias et suppression du
     suffixe `:latest` pour garder une nomenclature stable dans l'UI.
     """
-    names: List[str] = []
+    names: list[str] = []
     for model in get_all_ollama_models():
         preferred_name = (
             model.get("ollama_name")
-            or (
-                f"{model['model_name']}:{model['tag']}"
-                if model.get("model_name") and model.get("tag")
-                else ""
-            )
+            or (f"{model['model_name']}:{model['tag']}" if model.get("model_name") and model.get("tag") else "")
             or model.get("model_name")
             or model.get("id", "")
         )
@@ -542,15 +522,14 @@ def get_ollama_model_names() -> List[str]:
     return names
 
 
-def get_ollama_manifest_model_names() -> List[str]:
-    """
-    Retourne les noms de modèles présents dans les manifests Ollama locaux.
+def get_ollama_manifest_model_names() -> list[str]:
+    """Retourne les noms de modèles présents dans les manifests Ollama locaux.
 
     Cette source complète ``models.json`` et reflète directement le store
     configuré dans l'application Ollama Desktop, même si le catalogue n'a pas
     encore été régénéré.
     """
-    names: List[str] = []
+    names: list[str] = []
     desktop_root = get_ollama_desktop_models_root()
     candidate_roots = list(
         _iter_unique_paths(
@@ -559,8 +538,8 @@ def get_ollama_manifest_model_names() -> List[str]:
                 get_ollama_models_root(),
                 *DEFAULT_OLLAMA_MODELS_CANDIDATES,
                 *LEGACY_OLLAMA_MODELS_CANDIDATES,
-            ]
-        )
+            ],
+        ),
     )
 
     for root in candidate_roots:
@@ -586,9 +565,9 @@ def get_ollama_manifest_model_names() -> List[str]:
     return names
 
 
-def get_ollama_runtime_model_names() -> List[str]:
+def get_ollama_runtime_model_names() -> list[str]:
     """Retourne l'union catalogue + manifests du runtime Ollama local."""
-    names: List[str] = []
+    names: list[str] = []
     for candidate in [*get_ollama_model_names(), *get_ollama_manifest_model_names()]:
         canonical_name = normalize_model_name(candidate)
         if canonical_name and canonical_name not in names:
@@ -596,7 +575,7 @@ def get_ollama_runtime_model_names() -> List[str]:
     return names
 
 
-def get_model_info_for_ui(model_id: str) -> Dict:
+def get_model_info_for_ui(model_id: str) -> dict:
     """Retourne les infos formatees pour l'UI."""
     model = get_model_by_id(model_id)
     if not model:
@@ -620,8 +599,8 @@ def get_model_info_for_ui(model_id: str) -> Dict:
 
 __all__ = [
     "DEFAULT_HUGGINGFACE_ARCHIVE_ROOTS",
-    "DEFAULT_MODEL_LIBRARY_ROOTS",
     "DEFAULT_MODELS_JSON_CANDIDATES",
+    "DEFAULT_MODEL_LIBRARY_ROOTS",
     "DEFAULT_OLLAMA_MODELS_CANDIDATES",
     "MODEL_NAME_ALIASES",
     "get_all_diffusion_models",
@@ -636,11 +615,11 @@ __all__ = [
     "get_models_by_category",
     "get_models_by_use_case",
     "get_models_json_path",
-    "get_ollama_model_names",
+    "get_ollama_desktop_models_root",
     "get_ollama_manifest_model_names",
+    "get_ollama_model_names",
     "get_ollama_models_root",
     "get_ollama_runtime_model_names",
-    "get_ollama_desktop_models_root",
     "get_recommended_model_for_task",
     "load_models_json",
     "normalize_model_name",

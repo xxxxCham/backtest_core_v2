@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.facade
+"""Module-ID: backtest.facade
 
 Purpose: Interface stable et typée entre l'UI et le backend (BacktestEngine + agents LLM).
 
@@ -26,7 +25,7 @@ import traceback
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -50,8 +49,10 @@ WARMUP_MIN_DEFAULT = 200
 # ENUMS & STATUS
 # =============================================================================
 
+
 class ResponseStatus(Enum):
     """Status de réponse du backend."""
+
     SUCCESS = "success"
     ERROR = "error"
     PARTIAL = "partial"  # Succès partiel (ex: grille avec quelques échecs)
@@ -59,6 +60,7 @@ class ResponseStatus(Enum):
 
 class ErrorCode(Enum):
     """Codes d'erreur pour l'UI."""
+
     INVALID_PARAMS = "invalid_params"
     INVALID_DATA = "invalid_data"
     DATA_NOT_FOUND = "data_not_found"
@@ -74,10 +76,10 @@ class ErrorCode(Enum):
 # REQUEST DATACLASSES
 # =============================================================================
 
+
 @dataclass
 class BacktestRequest:
-    """
-    Requête pour un backtest simple.
+    """Requête pour un backtest simple.
 
     Attributes:
         strategy_name: Nom de la stratégie (ex: "ema_cross")
@@ -88,15 +90,17 @@ class BacktestRequest:
         initial_capital: Capital de départ
         date_start: Date de début (optionnel)
         date_end: Date de fin (optionnel)
+
     """
+
     strategy_name: str
-    params: Dict[str, Any]
-    data: Optional[pd.DataFrame] = None
-    symbol: Optional[str] = None
-    timeframe: Optional[str] = None
+    params: dict[str, Any]
+    data: pd.DataFrame | None = None
+    symbol: str | None = None
+    timeframe: str | None = None
     initial_capital: float = 10000.0
-    date_start: Optional[str] = None
-    date_end: Optional[str] = None
+    date_start: str | None = None
+    date_end: str | None = None
 
     def __post_init__(self):
         """Validation à la création."""
@@ -106,8 +110,7 @@ class BacktestRequest:
 
 @dataclass
 class GridOptimizationRequest:
-    """
-    Requête pour une optimisation en grille.
+    """Requête pour une optimisation en grille.
 
     Attributes:
         strategy_name: Nom de la stratégie
@@ -116,9 +119,11 @@ class GridOptimizationRequest:
         initial_capital: Capital de départ
         max_combinations: Limite de combinaisons
         metric_to_optimize: Métrique à maximiser ("sharpe", "return", etc.)
+
     """
+
     strategy_name: str
-    param_grid: List[Dict[str, Any]]
+    param_grid: list[dict[str, Any]]
     data: pd.DataFrame
     initial_capital: float = 10000.0
     max_combinations: int = 10000
@@ -129,8 +134,7 @@ class GridOptimizationRequest:
 
 @dataclass
 class LLMOptimizationRequest:
-    """
-    Requête pour une optimisation LLM autonome.
+    """Requête pour une optimisation LLM autonome.
 
     Attributes:
         strategy_name: Nom de la stratégie
@@ -144,14 +148,16 @@ class LLMOptimizationRequest:
         max_iterations: Nombre max d'itérations
         use_walk_forward: Activer validation anti-overfitting
         initial_capital: Capital de départ
+
     """
+
     strategy_name: str
-    initial_params: Dict[str, Any]
-    param_bounds: Dict[str, tuple]
+    initial_params: dict[str, Any]
+    param_bounds: dict[str, tuple]
     data: pd.DataFrame
     llm_provider: str = "ollama"
     llm_model: str = "llama3.2"
-    llm_api_key: Optional[str] = None
+    llm_api_key: str | None = None
     llm_base_url: str = "http://localhost:11434"
     max_iterations: int = 10
     use_walk_forward: bool = True
@@ -163,13 +169,14 @@ class LLMOptimizationRequest:
 # RESPONSE DATACLASSES
 # =============================================================================
 
+
 @dataclass
 class UIMetrics:
-    """
-    Métriques formatées pour l'affichage UI.
+    """Métriques formatées pour l'affichage UI.
 
     Format stable garanti - l'UI peut dépendre de ces champs.
     """
+
     # Rendement
     total_pnl: float = 0.0
     total_return_pct: float = 0.0
@@ -191,11 +198,11 @@ class UIMetrics:
     expectancy: float = 0.0
 
     # Avancé (optionnel)
-    sqn: Optional[float] = None
-    recovery_factor: Optional[float] = None
+    sqn: float | None = None
+    recovery_factor: float | None = None
 
     @classmethod
-    def from_run_result(cls, result: RunResult) -> "UIMetrics":
+    def from_run_result(cls, result: RunResult) -> UIMetrics:
         """Crée UIMetrics depuis un RunResult."""
         m = normalize_metrics(result.metrics, "pct")
         return cls(
@@ -241,19 +248,19 @@ class UIMetrics:
 
 @dataclass
 class UIPayload:
-    """
-    Payload complet pour l'affichage UI.
+    """Payload complet pour l'affichage UI.
 
     Contient toutes les données nécessaires pour afficher un résultat de backtest.
     """
+
     metrics: UIMetrics
-    equity_series: Optional[pd.Series] = None
-    trades_df: Optional[pd.DataFrame] = None
-    params_used: Dict[str, Any] = field(default_factory=dict)
-    meta: Dict[str, Any] = field(default_factory=dict)
+    equity_series: pd.Series | None = None
+    trades_df: pd.DataFrame | None = None
+    params_used: dict[str, Any] = field(default_factory=dict)
+    meta: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_run_result(cls, result: RunResult) -> "UIPayload":
+    def from_run_result(cls, result: RunResult) -> UIPayload:
         """Crée UIPayload depuis un RunResult."""
         return cls(
             metrics=UIMetrics.from_run_result(result),
@@ -266,16 +273,16 @@ class UIPayload:
 
 @dataclass
 class ErrorInfo:
-    """
-    Information d'erreur structurée.
+    """Information d'erreur structurée.
 
     L'UI utilise ces champs pour afficher un message cohérent.
     """
+
     code: ErrorCode
     message_user: str  # Message compréhensible pour l'utilisateur
-    hint: Optional[str] = None  # Suggestion de correction
-    trace_id: Optional[str] = None  # ID pour debug/logs
-    details: Optional[str] = None  # Stack trace (mode debug)
+    hint: str | None = None  # Suggestion de correction
+    trace_id: str | None = None  # ID pour debug/logs
+    details: str | None = None  # Stack trace (mode debug)
 
     def __post_init__(self):
         if self.trace_id is None:
@@ -284,17 +291,17 @@ class ErrorInfo:
 
 @dataclass
 class BackendResponse:
-    """
-    Réponse unifiée du backend vers l'UI.
+    """Réponse unifiée du backend vers l'UI.
 
     Contrat stable:
     - status: toujours présent
     - payload: présent si SUCCESS
     - error: présent si ERROR
     """
+
     status: ResponseStatus
-    payload: Optional[UIPayload] = None
-    error: Optional[ErrorInfo] = None
+    payload: UIPayload | None = None
+    error: ErrorInfo | None = None
     message: str = ""  # Message de statut court
     duration_ms: float = 0.0
 
@@ -310,11 +317,12 @@ class BackendResponse:
 @dataclass
 class GridOptimizationResponse:
     """Réponse d'une optimisation en grille."""
+
     status: ResponseStatus
-    results: List[Dict[str, Any]] = field(default_factory=list)  # Tous les résultats
-    best_result: Optional[UIPayload] = None  # Meilleur résultat
-    best_params: Dict[str, Any] = field(default_factory=dict)
-    error: Optional[ErrorInfo] = None
+    results: list[dict[str, Any]] = field(default_factory=list)  # Tous les résultats
+    best_result: UIPayload | None = None  # Meilleur résultat
+    best_params: dict[str, Any] = field(default_factory=dict)
+    error: ErrorInfo | None = None
     total_tested: int = 0
     total_success: int = 0
     total_failed: int = 0
@@ -324,14 +332,15 @@ class GridOptimizationResponse:
 @dataclass
 class LLMOptimizationResponse:
     """Réponse d'une optimisation LLM."""
+
     status: ResponseStatus
-    best_result: Optional[UIPayload] = None
-    best_params: Dict[str, Any] = field(default_factory=dict)
-    iterations_history: List[Dict[str, Any]] = field(default_factory=list)
+    best_result: UIPayload | None = None
+    best_params: dict[str, Any] = field(default_factory=dict)
+    iterations_history: list[dict[str, Any]] = field(default_factory=list)
     total_iterations: int = 0
-    convergence_reason: Optional[str] = None
+    convergence_reason: str | None = None
     improvement_pct: float = 0.0
-    error: Optional[ErrorInfo] = None
+    error: ErrorInfo | None = None
     duration_ms: float = 0.0
 
 
@@ -339,9 +348,9 @@ class LLMOptimizationResponse:
 # FACADE PRINCIPALE
 # =============================================================================
 
+
 class BackendFacade:
-    """
-    Façade principale pour toutes les interactions UI ↔ Backend.
+    """Façade principale pour toutes les interactions UI ↔ Backend.
 
     Point d'entrée unique garantissant:
     - Validation des entrées
@@ -359,13 +368,13 @@ class BackendFacade:
             show_error(response.error)
     """
 
-    def __init__(self, config: Optional[Config] = None, debug: bool = False):
-        """
-        Initialise la façade.
+    def __init__(self, config: Config | None = None, debug: bool = False):
+        """Initialise la façade.
 
         Args:
             config: Configuration globale
             debug: Inclure les stack traces dans les erreurs
+
         """
         self.config = config or Config()
         self.debug = debug
@@ -376,16 +385,17 @@ class BackendFacade:
     # =========================================================================
 
     def run_backtest(self, request: BacktestRequest) -> BackendResponse:
-        """
-        Exécute un backtest simple.
+        """Exécute un backtest simple.
 
         Args:
             request: BacktestRequest avec stratégie, params, data
 
         Returns:
             BackendResponse avec payload ou erreur
+
         """
         import time
+
         start = time.time()
         trace_id = str(uuid.uuid4())[:8]
 
@@ -398,7 +408,7 @@ class BackendFacade:
                     request.symbol,
                     request.timeframe,
                     request.date_start,
-                    request.date_end
+                    request.date_end,
                 )
             else:
                 df = request.data
@@ -409,7 +419,7 @@ class BackendFacade:
             # 3. Créer et exécuter le backtest
             engine = BacktestEngine(
                 initial_capital=request.initial_capital,
-                config=self.config
+                config=self.config,
             )
 
             result = engine.run(
@@ -433,9 +443,11 @@ class BackendFacade:
 
         except UserInputError as e:
             return self._error_response(
-                ErrorCode.INVALID_PARAMS, str(e),
+                ErrorCode.INVALID_PARAMS,
+                str(e),
                 hint="Vérifiez les paramètres de stratégie",
-                trace_id=trace_id, start_time=start
+                trace_id=trace_id,
+                start_time=start,
             )
         except InsufficientDataError as e:
             return self._error_response(
@@ -443,25 +455,31 @@ class BackendFacade:
                 str(e),
                 hint=e.hint,
                 trace_id=trace_id,
-                start_time=start
+                start_time=start,
             )
         except DataError as e:
             return self._error_response(
-                ErrorCode.INVALID_DATA, str(e),
+                ErrorCode.INVALID_DATA,
+                str(e),
                 hint="Vérifiez le format des données OHLCV",
-                trace_id=trace_id, start_time=start
+                trace_id=trace_id,
+                start_time=start,
             )
         except ValueError as e:
             error_str = str(e).lower()
             if "stratégie" in error_str or "strategy" in error_str:
                 return self._error_response(
-                    ErrorCode.STRATEGY_NOT_FOUND, str(e),
+                    ErrorCode.STRATEGY_NOT_FOUND,
+                    str(e),
                     hint="Utilisez list_strategies() pour voir les disponibles",
-                    trace_id=trace_id, start_time=start
+                    trace_id=trace_id,
+                    start_time=start,
                 )
             return self._error_response(
-                ErrorCode.INVALID_PARAMS, str(e),
-                trace_id=trace_id, start_time=start
+                ErrorCode.INVALID_PARAMS,
+                str(e),
+                trace_id=trace_id,
+                start_time=start,
             )
         except Exception:
             self._logger.exception(f"[{trace_id}] Erreur inattendue")
@@ -469,7 +487,8 @@ class BackendFacade:
                 ErrorCode.BACKEND_INTERNAL,
                 "Erreur interne du moteur de backtest",
                 details=traceback.format_exc() if self.debug else None,
-                trace_id=trace_id, start_time=start
+                trace_id=trace_id,
+                start_time=start,
             )
 
     # =========================================================================
@@ -479,10 +498,9 @@ class BackendFacade:
     def run_grid_optimization(
         self,
         request: GridOptimizationRequest,
-        progress_callback: Optional[callable] = None
+        progress_callback: callable | None = None,
     ) -> GridOptimizationResponse:
-        """
-        Exécute une optimisation en grille.
+        """Exécute une optimisation en grille.
 
         Args:
             request: GridOptimizationRequest
@@ -490,14 +508,15 @@ class BackendFacade:
 
         Returns:
             GridOptimizationResponse avec tous les résultats
+
         """
         import time
+
         start = time.time()
         trace_id = str(uuid.uuid4())[:8]
 
         self._logger.info(
-            f"[{trace_id}] run_grid_optimization: {request.strategy_name}, "
-            f"{len(request.param_grid)} combinaisons"
+            f"[{trace_id}] run_grid_optimization: {request.strategy_name}, {len(request.param_grid)} combinaisons",
         )
 
         try:
@@ -505,11 +524,11 @@ class BackendFacade:
             self._validate_dataframe(request.data)
 
             # Limiter les combinaisons
-            param_grid = request.param_grid[:request.max_combinations]
+            param_grid = request.param_grid[: request.max_combinations]
 
             engine = BacktestEngine(
                 initial_capital=request.initial_capital,
-                config=self.config
+                config=self.config,
             )
 
             results = []
@@ -534,11 +553,13 @@ class BackendFacade:
 
                     metric_value = result.metrics.get(request.metric_to_optimize, 0)
 
-                    results.append({
-                        "params": params,
-                        "metrics": UIMetrics.from_run_result(result).to_dict(),
-                        "success": True,
-                    })
+                    results.append(
+                        {
+                            "params": params,
+                            "metrics": UIMetrics.from_run_result(result).to_dict(),
+                            "success": True,
+                        },
+                    )
 
                     if metric_value > best_metric:
                         best_metric = metric_value
@@ -548,11 +569,13 @@ class BackendFacade:
                     success_count += 1
 
                 except Exception as e:
-                    results.append({
-                        "params": params,
-                        "error": str(e),
-                        "success": False,
-                    })
+                    results.append(
+                        {
+                            "params": params,
+                            "error": str(e),
+                            "success": False,
+                        },
+                    )
                     fail_count += 1
 
             duration_ms = (time.time() - start) * 1000
@@ -612,10 +635,9 @@ class BackendFacade:
     def run_llm_optimization(
         self,
         request: LLMOptimizationRequest,
-        progress_callback: Optional[callable] = None
+        progress_callback: callable | None = None,
     ) -> LLMOptimizationResponse:
-        """
-        Exécute une optimisation LLM autonome.
+        """Exécute une optimisation LLM autonome.
 
         Args:
             request: LLMOptimizationRequest
@@ -623,14 +645,15 @@ class BackendFacade:
 
         Returns:
             LLMOptimizationResponse
+
         """
         import time
+
         start = time.time()
         trace_id = str(uuid.uuid4())[:8]
 
         self._logger.info(
-            f"[{trace_id}] run_llm_optimization: {request.strategy_name}, "
-            f"provider={request.llm_provider}"
+            f"[{trace_id}] run_llm_optimization: {request.strategy_name}, provider={request.llm_provider}",
         )
 
         try:
@@ -654,11 +677,7 @@ class BackendFacade:
             self._validate_dataframe(request.data)
 
             # Configurer le LLM
-            provider = (
-                LLMProvider.OLLAMA
-                if request.llm_provider.lower() == "ollama"
-                else LLMProvider.OPENAI
-            )
+            provider = LLMProvider.OLLAMA if request.llm_provider.lower() == "ollama" else LLMProvider.OPENAI
 
             llm_config = LLMConfig(
                 provider=provider,
@@ -689,11 +708,13 @@ class BackendFacade:
             # Convertir l'historique
             history = []
             for exp in session.history:
-                history.append({
-                    "params": exp.request.parameters,
-                    "sharpe_ratio": exp.sharpe_ratio,
-                    "total_pnl": exp.total_pnl,
-                })
+                history.append(
+                    {
+                        "params": exp.request.parameters,
+                        "sharpe_ratio": exp.sharpe_ratio,
+                        "total_pnl": exp.total_pnl,
+                    },
+                )
 
             # Calculer l'amélioration
             improvement = 0.0
@@ -705,7 +726,7 @@ class BackendFacade:
             # Reconstruire le meilleur résultat complet
             engine = BacktestEngine(
                 initial_capital=request.initial_capital,
-                config=self.config
+                config=self.config,
             )
             best_run = engine.run(
                 df=request.data,
@@ -766,7 +787,7 @@ class BackendFacade:
                 status=ResponseStatus.ERROR,
                 error=ErrorInfo(
                     code=ErrorCode.OPTIMIZATION_FAILED,
-                    message_user=f"Erreur lors de l'optimisation LLM: {str(e)}",
+                    message_user=f"Erreur lors de l'optimisation LLM: {e!s}",
                     details=traceback.format_exc() if self.debug else None,
                     trace_id=trace_id,
                 ),
@@ -781,10 +802,9 @@ class BackendFacade:
         self,
         start: str,
         end: str,
-        timeframe: str
+        timeframe: str,
     ) -> int:
-        """
-        Estime le nombre de barres entre deux dates pour un timeframe donné.
+        """Estime le nombre de barres entre deux dates pour un timeframe donné.
 
         Args:
             start: Date de début ISO (ex: "2024-01-01")
@@ -793,22 +813,32 @@ class BackendFacade:
 
         Returns:
             Nombre approximatif de barres
+
         """
         from datetime import datetime
 
         try:
             # Parser les dates (supporter différents formats)
-            start_dt = datetime.fromisoformat(start.replace('Z', '+00:00'))
-            end_dt = datetime.fromisoformat(end.replace('Z', '+00:00'))
+            start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
 
             # Calculer la durée en heures
             duration_hours = (end_dt - start_dt).total_seconds() / 3600
 
             # Conversion timeframe -> heures par barre
             timeframe_hours = {
-                '1m': 1/60, '5m': 5/60, '15m': 15/60, '30m': 0.5,
-                '1h': 1, '2h': 2, '4h': 4, '6h': 6, '8h': 8, '12h': 12,
-                '1d': 24, '1w': 24*7,
+                "1m": 1 / 60,
+                "5m": 5 / 60,
+                "15m": 15 / 60,
+                "30m": 0.5,
+                "1h": 1,
+                "2h": 2,
+                "4h": 4,
+                "6h": 6,
+                "8h": 8,
+                "12h": 12,
+                "1d": 24,
+                "1w": 24 * 7,
             }
 
             hours_per_bar = timeframe_hours.get(timeframe, 1)
@@ -824,12 +854,11 @@ class BackendFacade:
         self,
         symbol: str,
         timeframe: str,
-        start: Optional[str],
-        end: Optional[str],
-        warmup_required: Optional[int] = None
+        start: str | None,
+        end: str | None,
+        warmup_required: int | None = None,
     ) -> pd.DataFrame:
-        """
-        Charge les données OHLCV avec validation de warmup minimal.
+        """Charge les données OHLCV avec validation de warmup minimal.
 
         Args:
             symbol: Symbole à charger (ex: "BTCUSDT")
@@ -844,6 +873,7 @@ class BackendFacade:
         Raises:
             InsufficientDataError: Si les données sont insuffisantes
             DataError: Si les données sont introuvables
+
         """
         from data.loader import load_ohlcv
 
@@ -857,7 +887,7 @@ class BackendFacade:
             if expected_bars > 0 and expected_bars < warmup_min:
                 self._logger.warning(
                     f"Fenêtre trop courte détectée: {expected_bars} barres estimées < {warmup_min} requis. "
-                    f"Neutralisation des dates pour charger toutes les données disponibles."
+                    f"Neutralisation des dates pour charger toutes les données disponibles.",
                 )
                 # Neutraliser les dates pour recharger tout
                 start = None
@@ -871,7 +901,7 @@ class BackendFacade:
             raise DataError(
                 f"Données non trouvées: {symbol}_{timeframe}",
                 symbol=symbol,
-                timeframe=timeframe
+                timeframe=timeframe,
             )
 
         # 5. Validation finale: vérifier que nous avons assez de barres
@@ -884,11 +914,11 @@ class BackendFacade:
                 symbol=symbol,
                 timeframe=timeframe,
                 hint=f"Le warmup des indicateurs nécessite au minimum {warmup_min} barres. "
-                     f"Disponibles: {actual_bars}. Utilisez une période plus longue."
+                f"Disponibles: {actual_bars}. Utilisez une période plus longue.",
             )
 
         self._logger.debug(
-            f"Données chargées avec succès: {actual_bars} barres (warmup requis: {warmup_min})"
+            f"Données chargées avec succès: {actual_bars} barres (warmup requis: {warmup_min})",
         )
 
         return df
@@ -896,12 +926,11 @@ class BackendFacade:
     def _validate_dataframe(
         self,
         df: pd.DataFrame,
-        warmup_required: Optional[int] = None,
+        warmup_required: int | None = None,
         symbol: str = "UNKNOWN",
-        timeframe: str = "UNKNOWN"
+        timeframe: str = "UNKNOWN",
     ) -> None:
-        """
-        Valide un DataFrame OHLCV.
+        """Valide un DataFrame OHLCV.
 
         Args:
             df: DataFrame à valider
@@ -912,6 +941,7 @@ class BackendFacade:
         Raises:
             DataError: Si le format est invalide
             InsufficientDataError: Si les données sont insuffisantes
+
         """
         if df is None or df.empty:
             raise DataError("DataFrame vide ou None")
@@ -935,20 +965,21 @@ class BackendFacade:
                     symbol=symbol,
                     timeframe=timeframe,
                     hint=f"Le warmup des indicateurs nécessite au minimum {warmup_required} barres. "
-                         f"Disponibles: {actual_bars}. Utilisez une période plus longue."
+                    f"Disponibles: {actual_bars}. Utilisez une période plus longue.",
                 )
 
     def _error_response(
         self,
         code: ErrorCode,
         message: str,
-        hint: Optional[str] = None,
-        details: Optional[str] = None,
-        trace_id: Optional[str] = None,
+        hint: str | None = None,
+        details: str | None = None,
+        trace_id: str | None = None,
         start_time: float = 0,
     ) -> BackendResponse:
         """Crée une réponse d'erreur standardisée."""
         import time
+
         return BackendResponse(
             status=ResponseStatus.ERROR,
             error=ErrorInfo(
@@ -967,12 +998,11 @@ class BackendFacade:
 # =============================================================================
 
 # Instance globale (singleton)
-_facade_instance: Optional[BackendFacade] = None
+_facade_instance: BackendFacade | None = None
 
 
-def get_facade(config: Optional[Config] = None, debug: bool = False) -> BackendFacade:
-    """
-    Retourne l'instance globale de la façade.
+def get_facade(config: Config | None = None, debug: bool = False) -> BackendFacade:
+    """Retourne l'instance globale de la façade.
 
     Args:
         config: Configuration (utilisée seulement à la première création)
@@ -980,6 +1010,7 @@ def get_facade(config: Optional[Config] = None, debug: bool = False) -> BackendF
 
     Returns:
         BackendFacade instance
+
     """
     global _facade_instance
     if _facade_instance is None:
@@ -988,8 +1019,7 @@ def get_facade(config: Optional[Config] = None, debug: bool = False) -> BackendF
 
 
 def to_ui_payload(result: RunResult) -> UIPayload:
-    """
-    Convertit un RunResult en UIPayload.
+    """Convertit un RunResult en UIPayload.
 
     Fonction utilitaire pour la compatibilité avec le code existant.
 
@@ -998,13 +1028,13 @@ def to_ui_payload(result: RunResult) -> UIPayload:
 
     Returns:
         UIPayload prêt pour l'affichage
+
     """
     return UIPayload.from_run_result(result)
 
 
-def run_backtest(config: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Interface simple legacy: lance un backtest à partir d'un dict de config.
+def run_backtest(config: dict[str, Any]) -> dict[str, Any]:
+    """Interface simple legacy: lance un backtest à partir d'un dict de config.
 
     Attendu (exemple):
         {

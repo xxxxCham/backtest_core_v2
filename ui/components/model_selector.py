@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.components.model_selector
+"""Module-ID: ui.components.model_selector
 
 Purpose: Selecteur modeles LLM - query Ollama, fallback list, recommendations par role.
          Affichage riche avec details (VRAM, taille, categorie, backup path).
@@ -22,19 +21,25 @@ from __future__ import annotations
 import os
 import subprocess
 import time
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from collections.abc import Iterable, Sequence
+from typing import Any
 from urllib.parse import urlparse
 
 try:
     from agents.ollama_manager import is_ollama_available
 except ImportError:
-    def is_ollama_available(ollama_host: Optional[str] = None) -> bool:
+
+    def is_ollama_available(ollama_host: str | None = None) -> bool:
         del ollama_host
         return False
+
+
 from utils.log import get_logger
 from utils.model_loader import (
     get_model_by_id,
     get_ollama_runtime_model_names,
+)
+from utils.model_loader import (
     normalize_model_name as normalize_catalog_model_name,
 )
 
@@ -43,6 +48,7 @@ def _load_discover_local_models() -> Any:
     try:
         from core.llm_multi import discover_local_models as discover_local_models_fn
     except ImportError:
+
         def _missing_discover_local_models(*args: Any, **kwargs: Any) -> Any:
             del args, kwargs
             return None
@@ -60,10 +66,12 @@ logger = get_logger(__name__)
 # Helper cloud detection
 # ---------------------------------------------------------------------------
 
+
 def _is_cloud_model(name: str) -> bool:
     """Retourne True si le modèle est cloud-only (Ollama Cloud, crédits requis)."""
     try:
         from agents.model_config import KNOWN_MODELS
+
         info = KNOWN_MODELS.get(str(name or "").strip())
         return bool(info and info.cloud_only)
     except (ImportError, AttributeError, KeyError):
@@ -74,10 +82,11 @@ def _is_cloud_model(name: str) -> bool:
 # Constantes
 # ---------------------------------------------------------------------------
 
-FALLBACK_LLM_MODELS: List[str] = [
+FALLBACK_LLM_MODELS: list[str] = [
     # Local
     "gemma4:31b",
     "gemma4:26b",
+    "qwen3.6:35b",
     "qwen3.5:35b",
     "qwen3-vl:32b",
     "lfm2:24b",
@@ -86,7 +95,6 @@ FALLBACK_LLM_MODELS: List[str] = [
     "deepseek-r1:70b",
     "deepseek-r1:32b",
     "qwq:32b",
-
     "qwen2.5:32b",
     "mistral:22b",
     "deepseek-r1-distill:14b",
@@ -94,6 +102,7 @@ FALLBACK_LLM_MODELS: List[str] = [
     "mistral:7b-instruct",
     # Cloud (nécessite crédits Ollama)
     "deepseek-v3.2",
+    "glm-5.1",
     "glm-5",
     "qwen3-coder:480b",
     "kimi-k2",
@@ -106,15 +115,15 @@ FALLBACK_LLM_MODELS: List[str] = [
     "nemotron-3-nano:30b",
 ]
 
-RECOMMENDED_FOR_ANALYSIS = ["gemma4:26b", "qwen3-vl:32b", "qwen3.5:35b"]
-RECOMMENDED_FOR_STRATEGY = ["gemma4:26b", "gemma4:31b", "qwen3.5:35b"]
-RECOMMENDED_FOR_CRITICISM = ["gemma4:31b", "qwen3.5:35b", "deepseek-r1:32b"]
+RECOMMENDED_FOR_ANALYSIS = ["gemma4:26b", "qwen3-vl:32b", "qwen3.6:35b"]
+RECOMMENDED_FOR_STRATEGY = ["gemma4:26b", "gemma4:31b", "qwen3.6:35b"]
+RECOMMENDED_FOR_CRITICISM = ["gemma4:31b", "qwen3.6:35b", "deepseek-r1:32b"]
 RECOMMENDED_FOR_FAST = ["gemma4:26b", "lfm2:24b", "mistral:7b-instruct"]
 
 OPTIMAL_CONFIG_BY_ROLE = {
     "analyst": ["gemma4:26b", "qwen3-vl:32b"],
     "strategist": ["gemma4:26b", "gemma4:31b"],
-    "critic": ["gemma4:31b", "qwen3.5:35b"],
+    "critic": ["gemma4:31b", "qwen3.6:35b"],
     "validator": ["gemma4:31b", "deepseek-r1:32b"],
 }
 
@@ -143,10 +152,10 @@ _CATEGORY_LABELS = {
 # Cache GPU info (ne change pas pendant une session)
 # ---------------------------------------------------------------------------
 
-_gpu_cache_state: Dict[str, Any] = {"value": None, "ts": 0.0}
+_gpu_cache_state: dict[str, Any] = {"value": None, "ts": 0.0}
 
 
-def _get_gpu_info() -> List[Dict]:
+def _get_gpu_info() -> list[dict]:
     """Retourne les GPUs avec leur VRAM totale et libre (cache 60s)."""
     cached_value = _gpu_cache_state.get("value")
     cached_ts = float(_gpu_cache_state.get("ts", 0.0))
@@ -168,11 +177,13 @@ def _get_gpu_info() -> List[Dict]:
         for line in result.stdout.strip().splitlines():
             parts = [p.strip() for p in line.split(",")]
             if len(parts) >= 3:
-                gpus.append({
-                    "name": parts[0],
-                    "vram_total_mb": int(parts[1]),
-                    "vram_free_mb": int(parts[2]),
-                })
+                gpus.append(
+                    {
+                        "name": parts[0],
+                        "vram_total_mb": int(parts[1]),
+                        "vram_free_mb": int(parts[2]),
+                    },
+                )
         _gpu_cache_state["value"] = gpus
         _gpu_cache_state["ts"] = time.time()
         return gpus
@@ -200,7 +211,7 @@ def _get_max_gpu_vram_gb() -> float:
 # Cache inventaire Ollama
 # ---------------------------------------------------------------------------
 
-_ollama_inventory_cache: Dict[str, Dict[str, Any]] = {}
+_ollama_inventory_cache: dict[str, dict[str, Any]] = {}
 
 
 def _get_ollama_inventory_ttl_sec() -> float:
@@ -211,18 +222,16 @@ def _get_ollama_inventory_ttl_sec() -> float:
         return 300.0
 
 
-def _normalize_host(ollama_host: Optional[str] = None) -> str:
+def _normalize_host(ollama_host: str | None = None) -> str:
     host = str(
-        ollama_host
-        or os.environ.get("OLLAMA_HOST")
-        or "http://127.0.0.1:11434"
+        ollama_host or os.environ.get("OLLAMA_HOST") or "http://127.0.0.1:11434",
     ).strip()
     if not host.startswith(("http://", "https://")):
         host = f"http://{host}"
     return host.rstrip("/")
 
 
-def _is_local_ollama_host(ollama_host: Optional[str] = None) -> bool:
+def _is_local_ollama_host(ollama_host: str | None = None) -> bool:
     """Indique si l'endpoint Ollama cible est local à cette machine."""
     host = _normalize_host(ollama_host)
     try:
@@ -234,33 +243,24 @@ def _is_local_ollama_host(ollama_host: Optional[str] = None) -> bool:
 
 def _resolve_selector_current_value(
     key: str,
-    explicit_current_value: Optional[str] = None,
+    explicit_current_value: str | None = None,
 ) -> str:
     import streamlit as st
 
     return str(
-        st.session_state.get(key)
-        or explicit_current_value
-        or st.session_state.get(f"{key}_manual")
-        or ""
+        st.session_state.get(key) or explicit_current_value or st.session_state.get(f"{key}_manual") or "",
     ).strip()
 
 
 def _build_empty_models_warning(
-    ollama_host: Optional[str],
+    ollama_host: str | None,
     *,
     service_available: bool,
 ) -> str:
     host = _normalize_host(ollama_host)
     if service_available:
-        return (
-            f"Ollama répond sur `{host}`, mais aucun modèle installé n'a été détecté "
-            "sur cette instance."
-        )
-    return (
-        f"Aucun modèle Ollama détecté sur `{host}`. "
-        "Le service est indisponible ou encore en démarrage."
-    )
+        return f"Ollama répond sur `{host}`, mais aucun modèle installé n'a été détecté sur cette instance."
+    return f"Aucun modèle Ollama détecté sur `{host}`. Le service est indisponible ou encore en démarrage."
 
 
 def _resolve_selectbox_value(
@@ -282,7 +282,7 @@ def _resolve_selectbox_value(
     return str(models[0]) if models else ""
 
 
-def _fetch_ollama_inventory(ollama_host: Optional[str] = None) -> Dict[str, Any]:
+def _fetch_ollama_inventory(ollama_host: str | None = None) -> dict[str, Any]:
     """Charge une vue unifiée des modèles Ollama installés et de leurs détails."""
     host = _normalize_host(ollama_host)
     ttl_sec = _get_ollama_inventory_ttl_sec()
@@ -291,7 +291,7 @@ def _fetch_ollama_inventory(ollama_host: Optional[str] = None) -> Dict[str, Any]
     if cached is not None and (now - float(cached.get("ts", 0.0))) < ttl_sec:
         return cached
 
-    inventory: Dict[str, Any] = {
+    inventory: dict[str, Any] = {
         "names": [],
         "details": {},
         "service_available": False,
@@ -304,8 +304,8 @@ def _fetch_ollama_inventory(ollama_host: Optional[str] = None) -> Dict[str, Any]
         if resp.status_code == 200:
             inventory["service_available"] = True
         data = resp.json() if resp.status_code == 200 else {}
-        names: List[str] = []
-        details_map: Dict[str, Dict[str, Any]] = {}
+        names: list[str] = []
+        details_map: dict[str, dict[str, Any]] = {}
         for m in data.get("models", []):
             name = normalize_catalog_model_name(m["name"])
             names.append(name)
@@ -328,14 +328,14 @@ def _fetch_ollama_inventory(ollama_host: Optional[str] = None) -> Dict[str, Any]
     return inventory
 
 
-def _get_installed_ollama_models(ollama_host: Optional[str] = None) -> List[str]:
+def _get_installed_ollama_models(ollama_host: str | None = None) -> list[str]:
     """Retourne les noms de modèles installés à partir d'un inventaire cache unique."""
     inventory = _fetch_ollama_inventory(ollama_host)
     names = inventory.get("names", []) or []
     return [str(name) for name in names if str(name).strip()]
 
 
-def _get_local_inventory_models(ollama_host: Optional[str] = None) -> List[str]:
+def _get_local_inventory_models(ollama_host: str | None = None) -> list[str]:
     """Retourne les modèles locaux vérifiés via l'inventaire disque/manifests.
 
     Sert de secours quand Ollama n'a pas encore redémarré mais que les modèles
@@ -352,7 +352,7 @@ def _get_local_inventory_models(ollama_host: Optional[str] = None) -> List[str]:
         logger.debug("Erreur lecture inventaire local modèles: %s", exc)
         return []
 
-    names: List[str] = []
+    names: list[str] = []
     for model in inventory.discovered_models:
         if model.backend != "ollama" or not model.verified_available:
             continue
@@ -362,7 +362,7 @@ def _get_local_inventory_models(ollama_host: Optional[str] = None) -> List[str]:
     return sorted(set(names))
 
 
-def _fetch_ollama_details(ollama_host: Optional[str] = None) -> Dict[str, Dict]:
+def _fetch_ollama_details(ollama_host: str | None = None) -> dict[str, dict]:
     """Charge les détails des modèles Ollama depuis l'inventaire cache unique."""
     inventory = _fetch_ollama_inventory(ollama_host)
     return dict(inventory.get("details", {}) or {})
@@ -377,15 +377,16 @@ def _estimate_vram_gb(size_gb: float) -> float:
 # Enrichissement des infos modele
 # ---------------------------------------------------------------------------
 
-def get_model_details(model_name: str, ollama_host: Optional[str] = None) -> Dict:
-    """
-    Retourne des informations detaillees sur un modele.
+
+def get_model_details(model_name: str, ollama_host: str | None = None) -> dict:
+    """Retourne des informations detaillees sur un modele.
 
     Fusionne: Ollama API + models.json + estimation VRAM.
 
     Returns:
         Dict avec: name, size_gb, vram_gb, parameters, quantization,
                    family, use_case, description, backup_path, fits_gpu
+
     """
     normalized_model_name = _normalize_model_name(model_name)
     ollama_data = _fetch_ollama_details(ollama_host).get(normalized_model_name, {})
@@ -406,8 +407,9 @@ def get_model_details(model_name: str, ollama_host: Optional[str] = None) -> Dic
     if size_gb == "?":
         try:
             from agents.model_config import KNOWN_MODELS
+
             _known_info = KNOWN_MODELS.get(normalized_model_name) or KNOWN_MODELS.get(
-                _normalize_model_name(model_name)
+                _normalize_model_name(model_name),
             )
             if _known_info and getattr(_known_info, "params_billions", 0) > 0:
                 size_gb = round(_known_info.params_billions * 0.55, 1)
@@ -418,6 +420,7 @@ def get_model_details(model_name: str, ollama_host: Optional[str] = None) -> Dic
     # Couvre les modèles locaux installés mais absents de KNOWN_MODELS et de models.json.
     if size_gb == "?" and not _is_cloud_model(normalized_model_name or model_name):
         import re as _re
+
         _m = _re.search(r"[:\-_\.](\d+\.?\d*)b", (normalized_model_name or model_name), _re.IGNORECASE)
         if _m:
             _approx_params = float(_m.group(1))
@@ -464,12 +467,14 @@ def get_model_details(model_name: str, ollama_host: Optional[str] = None) -> Dic
 # Fonctions publiques (inchangees pour compatibilite)
 # ---------------------------------------------------------------------------
 
+
 def _sort_with_preferred(
-    models: Iterable[str], preferred_order: Sequence[str]
-) -> List[str]:
+    models: Iterable[str],
+    preferred_order: Sequence[str],
+) -> list[str]:
     preferred_index = {name: i for i, name in enumerate(preferred_order)}
 
-    def sort_key(name: str) -> Tuple[int, ...]:
+    def sort_key(name: str) -> tuple[int, ...]:
         if name in preferred_index:
             return (0, preferred_index[name])
         return (1, 0)
@@ -478,7 +483,7 @@ def _sort_with_preferred(
     return unique
 
 
-def _get_library_models() -> List[str]:
+def _get_library_models() -> list[str]:
     try:
         return get_ollama_runtime_model_names()
     except Exception as exc:  # noqa: BLE001
@@ -490,10 +495,11 @@ def _normalize_model_name(name: str) -> str:
     return normalize_catalog_model_name(name)
 
 
-def _get_cloud_only_models() -> List[str]:
+def _get_cloud_only_models() -> list[str]:
     """Retourne la liste des modèles cloud-only définis dans KNOWN_MODELS."""
     try:
         from agents.model_config import KNOWN_MODELS
+
         return [name for name, info in KNOWN_MODELS.items() if info.cloud_only]
     except Exception:
         return []
@@ -502,10 +508,10 @@ def _get_cloud_only_models() -> List[str]:
 def get_available_models_for_ui(
     preferred_order: Sequence[str] | None = None,
     fallback: Sequence[str] | None = None,
-    ollama_host: Optional[str] = None,
+    ollama_host: str | None = None,
     include_library_models: bool = False,
-    current_value: Optional[str] = None,
-) -> List[str]:
+    current_value: str | None = None,
+) -> list[str]:
     """Retourne la liste des modèles LLM pour l'UI.
 
     Règle stricte : uniquement les modèles **installés localement** (détectés via
@@ -514,17 +520,13 @@ def get_available_models_for_ui(
     """
     del fallback, include_library_models
 
-    installed_runtime = [
-        _normalize_model_name(n) for n in _get_installed_ollama_models(ollama_host) if n
-    ]
+    installed_runtime = [_normalize_model_name(n) for n in _get_installed_ollama_models(ollama_host) if n]
     installed_inventory = _get_local_inventory_models(ollama_host)
-    installed_catalog = [
-        _normalize_model_name(name) for name in _get_library_models() if name
-    ]
+    installed_catalog = [_normalize_model_name(name) for name in _get_library_models() if name]
     installed = sorted(
         set(name for name in installed_runtime if name)
         | set(name for name in installed_catalog if name)
-        | set(name for name in installed_inventory if name)
+        | set(name for name in installed_inventory if name),
     )
     cloud_models = _get_cloud_only_models()
 
@@ -539,7 +541,7 @@ def get_available_models_for_ui(
     # Fallback ultime : si aucun modèle local n'est détecté,
     # on garde quand même les cloud-only + la valeur courante
     current_model = _normalize_model_name(str(current_value or "").strip())
-    fallback_list: List[str] = list(cloud_models)
+    fallback_list: list[str] = list(cloud_models)
     if current_model and current_model not in fallback_list:
         fallback_list.insert(0, current_model)
     if fallback_list:
@@ -564,8 +566,8 @@ def get_model_info(model_name: str) -> dict:
 
 def get_optimal_config_for_role(
     role: str,
-    available_models: List[str],
-) -> List[str]:
+    available_models: list[str],
+) -> list[str]:
     optimal_primary = OPTIMAL_CONFIG_BY_ROLE.get(role, [])
     available_set = set(available_models)
     optimal_available = [m for m in optimal_primary if m in available_set]
@@ -584,15 +586,16 @@ def get_optimal_config_for_role(
 # Rendu Streamlit enrichi
 # ---------------------------------------------------------------------------
 
-def _vram_badge(fits_gpu: Optional[bool]) -> str:
+
+def _vram_badge(fits_gpu: bool | None) -> str:
     if fits_gpu is True:
         return "🟢"
-    elif fits_gpu is False:
+    if fits_gpu is False:
         return "🔴"
     return "⚪"
 
 
-def _format_model_option(name: str, details: Dict) -> str:
+def _format_model_option(name: str, details: dict) -> str:
     """Formate le nom affiché dans le selectbox avec taille et badge GPU ou \u2601\ufe0f."""
     display_name = str(details.get("display_name") or name or "").strip() or name
     size = details.get("size_gb", "?")
@@ -615,13 +618,12 @@ def render_model_selector(
     show_details: bool = True,
     show_filter: bool = False,
     compact: bool = False,
-    ollama_host: Optional[str] = None,
+    ollama_host: str | None = None,
     include_library_models: bool = False,
     fallback: Sequence[str] | None = None,
-    current_value: Optional[str] = None,
+    current_value: str | None = None,
 ) -> str:
-    """
-    Selecteur de modele Streamlit avec affichage riche.
+    """Selecteur de modele Streamlit avec affichage riche.
 
     Args:
         label: Label du selectbox
@@ -634,6 +636,7 @@ def render_model_selector(
 
     Returns:
         str: Nom du modele selectionne (nom Ollama exact)
+
     """
     import streamlit as st
 
@@ -738,16 +741,16 @@ def render_model_selector(
         if include_library_models and selected not in installed_models:
             st.caption(
                 "ℹ️ Modèle issu du catalogue local, non vérifié sur l'instance Ollama courante. "
-                "Il sera utilisé tel quel, avec erreur explicite s'il est absent côté serveur."
+                "Il sera utilisé tel quel, avec erreur explicite s'il est absent côté serveur.",
             )
 
     return selected
 
 
 def _render_model_card(
-    d: Dict,
+    d: dict,
     compact: bool = False,
-    ollama_host: Optional[str] = None,
+    ollama_host: str | None = None,
 ) -> None:
     """Affiche la fiche d'un modele sous le selecteur."""
     import streamlit as st
@@ -852,15 +855,15 @@ def _render_model_card(
 
 __all__ = [
     "FALLBACK_LLM_MODELS",
-    "RECOMMENDED_FOR_ANALYSIS",
-    "RECOMMENDED_FOR_STRATEGY",
-    "RECOMMENDED_FOR_CRITICISM",
-    "RECOMMENDED_FOR_FAST",
     "OPTIMAL_CONFIG_BY_ROLE",
     "OPTIMAL_CONFIG_FALLBACK",
+    "RECOMMENDED_FOR_ANALYSIS",
+    "RECOMMENDED_FOR_CRITICISM",
+    "RECOMMENDED_FOR_FAST",
+    "RECOMMENDED_FOR_STRATEGY",
     "get_available_models_for_ui",
-    "get_model_info",
     "get_model_details",
+    "get_model_info",
     "get_optimal_config_for_role",
     "render_model_selector",
 ]

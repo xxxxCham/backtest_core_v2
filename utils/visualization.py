@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.visualization
+"""Module-ID: utils.visualization
 
 Purpose: Visualisation interactive - candlesticks, trades, equity curve, dashboard.
 
@@ -27,13 +26,14 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import pandas as pd
 
 try:
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
+
     PLOTLY_AVAILABLE = True
 except ImportError:
     PLOTLY_AVAILABLE = False
@@ -46,28 +46,31 @@ logger = logging.getLogger(__name__)
 # DATA CLASSES
 # ============================================================================
 
+
 @dataclass
 class TradeMarker:
     """Marqueur de trade pour visualisation."""
+
     timestamp: pd.Timestamp
     price: float
     side: str  # "LONG" ou "SHORT"
     action: str  # "entry" ou "exit"
-    pnl: Optional[float] = None
+    pnl: float | None = None
     trade_id: int = 0
-    exit_reason: Optional[str] = None
-    size: Optional[float] = None
+    exit_reason: str | None = None
+    size: float | None = None
 
 
 @dataclass
 class BacktestVisualData:
     """Données complètes pour visualisation d'un backtest."""
+
     ohlcv: pd.DataFrame
-    trades: List[Dict[str, Any]]
-    equity_curve: Optional[List[float]] = None
-    signals: Optional[pd.Series] = None
-    params: Dict[str, Any] = field(default_factory=dict)
-    metrics: Dict[str, Any] = field(default_factory=dict)
+    trades: list[dict[str, Any]]
+    equity_curve: list[float] | None = None
+    signals: pd.Series | None = None
+    params: dict[str, Any] = field(default_factory=dict)
+    metrics: dict[str, Any] = field(default_factory=dict)
     strategy_name: str = ""
     symbol: str = ""
     timeframe: str = ""
@@ -77,16 +80,16 @@ class BacktestVisualData:
 # CORE PLOTTING FUNCTIONS
 # ============================================================================
 
+
 def plot_trades(
     df: pd.DataFrame,
-    trades: List[Dict[str, Any]],
+    trades: list[dict[str, Any]],
     title: str = "Backtest - Trades",
     show_volume: bool = True,
     height: int = 800,
     max_candles: int = 2000,
-) -> "go.Figure":
-    """
-    Crée un graphique candlestick avec les marqueurs de trades.
+) -> go.Figure:
+    """Crée un graphique candlestick avec les marqueurs de trades.
 
     Args:
         df: DataFrame OHLCV avec colonnes open, high, low, close, volume
@@ -98,6 +101,7 @@ def plot_trades(
 
     Returns:
         Figure Plotly interactive
+
     """
     if not PLOTLY_AVAILABLE:
         raise ImportError("Plotly requis: pip install plotly")
@@ -109,10 +113,10 @@ def plot_trades(
     # Préparer les données
     df = df.copy()
     if not isinstance(df.index, pd.DatetimeIndex):
-        if 'timestamp' in df.columns:
-            df.set_index('timestamp', inplace=True)
-        elif 'date' in df.columns:
-            df.set_index('date', inplace=True)
+        if "timestamp" in df.columns:
+            df.set_index("timestamp", inplace=True)
+        elif "date" in df.columns:
+            df.set_index("date", inplace=True)
 
     # Créer la figure avec subplots
     rows = 2 if show_volume else 1
@@ -131,33 +135,34 @@ def plot_trades(
     fig.add_trace(
         go.Candlestick(
             x=df.index,
-            open=df['open'],
-            high=df['high'],
-            low=df['low'],
-            close=df['close'],
-            name='OHLC',
-            increasing_line_color='#26a69a',
-            decreasing_line_color='#ef5350',
-            increasing_fillcolor='#26a69a',
-            decreasing_fillcolor='#ef5350',
+            open=df["open"],
+            high=df["high"],
+            low=df["low"],
+            close=df["close"],
+            name="OHLC",
+            increasing_line_color="#26a69a",
+            decreasing_line_color="#ef5350",
+            increasing_fillcolor="#26a69a",
+            decreasing_fillcolor="#ef5350",
         ),
-        row=1, col=1,
+        row=1,
+        col=1,
     )
 
     # === Volume ===
-    if show_volume and 'volume' in df.columns:
-        colors = ['#26a69a' if c >= o else '#ef5350'
-                  for o, c in zip(df['open'], df['close'])]
+    if show_volume and "volume" in df.columns:
+        colors = ["#26a69a" if c >= o else "#ef5350" for o, c in zip(df["open"], df["close"])]
 
         fig.add_trace(
             go.Bar(
                 x=df.index,
-                y=df['volume'],
-                name='Volume',
+                y=df["volume"],
+                name="Volume",
                 marker_color=colors,
                 opacity=0.7,
             ),
-            row=2, col=1,
+            row=2,
+            col=1,
         )
 
     # === Marqueurs de trades ===
@@ -170,8 +175,8 @@ def plot_trades(
         for i, trade in enumerate(trades):
             # Conversion des timestamps avec validation
             try:
-                entry_ts_raw = trade.get('entry_ts')
-                exit_ts_raw = trade.get('exit_ts')
+                entry_ts_raw = trade.get("entry_ts")
+                exit_ts_raw = trade.get("exit_ts")
 
                 if entry_ts_raw is None or exit_ts_raw is None:
                     logger.warning(f"Trade #{i} missing timestamps, skip")
@@ -187,41 +192,38 @@ def plot_trades(
             if entry_ts < df.index[0] and exit_ts < df.index[0]:
                 continue
 
-            side = trade.get('side', 'LONG')
-            pnl = trade.get('pnl', 0)
-            entry_price = trade.get('price_entry', trade.get('entry_price', 0))
-            exit_price = trade.get('price_exit', trade.get('exit_price', 0))
-            exit_reason = trade.get('exit_reason', 'unknown')
-            size = trade.get('size', 0)
+            side = trade.get("side", "LONG")
+            pnl = trade.get("pnl", 0)
+            entry_price = trade.get("price_entry", trade.get("entry_price", 0))
+            exit_price = trade.get("price_exit", trade.get("exit_price", 0))
+            exit_reason = trade.get("exit_reason", "unknown")
+            size = trade.get("size", 0)
 
             # Entrée
             entry_marker = {
-                'ts': entry_ts,
-                'price': entry_price,
-                'text': f"<b>ENTRÉE {side}</b><br>"
-                        f"Trade #{i+1}<br>"
-                        f"Prix: {entry_price:,.2f}<br>"
-                        f"Taille: {size:,.4f}",
-                'trade_id': i + 1,
+                "ts": entry_ts,
+                "price": entry_price,
+                "text": f"<b>ENTRÉE {side}</b><br>Trade #{i + 1}<br>Prix: {entry_price:,.2f}<br>Taille: {size:,.4f}",
+                "trade_id": i + 1,
             }
 
-            if side == 'LONG':
+            if side == "LONG":
                 entries_long.append(entry_marker)
             else:
                 entries_short.append(entry_marker)
 
             # Sortie
             exit_marker = {
-                'ts': exit_ts,
-                'price': exit_price,
-                'text': f"<b>SORTIE {side}</b><br>"
-                        f"Trade #{i+1}<br>"
-                        f"Prix: {exit_price:,.2f}<br>"
-                        f"PnL: <b style='color:{'#26a69a' if pnl >= 0 else '#ef5350'}'>"
-                        f"{pnl:+,.2f}</b><br>"
-                        f"Raison: {exit_reason}",
-                'trade_id': i + 1,
-                'pnl': pnl,
+                "ts": exit_ts,
+                "price": exit_price,
+                "text": f"<b>SORTIE {side}</b><br>"
+                f"Trade #{i + 1}<br>"
+                f"Prix: {exit_price:,.2f}<br>"
+                f"PnL: <b style='color:{'#26a69a' if pnl >= 0 else '#ef5350'}'>"
+                f"{pnl:+,.2f}</b><br>"
+                f"Raison: {exit_reason}",
+                "trade_id": i + 1,
+                "pnl": pnl,
             }
 
             if pnl >= 0:
@@ -233,110 +235,115 @@ def plot_trades(
         if entries_long:
             fig.add_trace(
                 go.Scatter(
-                    x=[m['ts'] for m in entries_long],
-                    y=[m['price'] for m in entries_long],
-                    mode='markers',
-                    name='Entrée LONG',
+                    x=[m["ts"] for m in entries_long],
+                    y=[m["price"] for m in entries_long],
+                    mode="markers",
+                    name="Entrée LONG",
                     marker=dict(
-                        symbol='triangle-up',
+                        symbol="triangle-up",
                         size=14,
-                        color='#00e676',
-                        line=dict(color='white', width=1),
+                        color="#00e676",
+                        line=dict(color="white", width=1),
                     ),
-                    text=[m['text'] for m in entries_long],
-                    hoverinfo='text',
-                    hovertemplate='%{text}<extra></extra>',
+                    text=[m["text"] for m in entries_long],
+                    hoverinfo="text",
+                    hovertemplate="%{text}<extra></extra>",
                 ),
-                row=1, col=1,
+                row=1,
+                col=1,
             )
 
         # Entrées SHORT (triangle rouge vers le bas)
         if entries_short:
             fig.add_trace(
                 go.Scatter(
-                    x=[m['ts'] for m in entries_short],
-                    y=[m['price'] for m in entries_short],
-                    mode='markers',
-                    name='Entrée SHORT',
+                    x=[m["ts"] for m in entries_short],
+                    y=[m["price"] for m in entries_short],
+                    mode="markers",
+                    name="Entrée SHORT",
                     marker=dict(
-                        symbol='triangle-down',
+                        symbol="triangle-down",
                         size=14,
-                        color='#ff5252',
-                        line=dict(color='white', width=1),
+                        color="#ff5252",
+                        line=dict(color="white", width=1),
                     ),
-                    text=[m['text'] for m in entries_short],
-                    hoverinfo='text',
-                    hovertemplate='%{text}<extra></extra>',
+                    text=[m["text"] for m in entries_short],
+                    hoverinfo="text",
+                    hovertemplate="%{text}<extra></extra>",
                 ),
-                row=1, col=1,
+                row=1,
+                col=1,
             )
 
         # Sorties gagnantes (cercle vert)
         if exits_win:
             fig.add_trace(
                 go.Scatter(
-                    x=[m['ts'] for m in exits_win],
-                    y=[m['price'] for m in exits_win],
-                    mode='markers',
-                    name='Sortie Win',
+                    x=[m["ts"] for m in exits_win],
+                    y=[m["price"] for m in exits_win],
+                    mode="markers",
+                    name="Sortie Win",
                     marker=dict(
-                        symbol='circle',
+                        symbol="circle",
                         size=12,
-                        color='#00e676',
-                        line=dict(color='white', width=2),
+                        color="#00e676",
+                        line=dict(color="white", width=2),
                     ),
-                    text=[m['text'] for m in exits_win],
-                    hoverinfo='text',
-                    hovertemplate='%{text}<extra></extra>',
+                    text=[m["text"] for m in exits_win],
+                    hoverinfo="text",
+                    hovertemplate="%{text}<extra></extra>",
                 ),
-                row=1, col=1,
+                row=1,
+                col=1,
             )
 
         # Sorties perdantes (cercle rouge)
         if exits_loss:
             fig.add_trace(
                 go.Scatter(
-                    x=[m['ts'] for m in exits_loss],
-                    y=[m['price'] for m in exits_loss],
-                    mode='markers',
-                    name='Sortie Loss',
+                    x=[m["ts"] for m in exits_loss],
+                    y=[m["price"] for m in exits_loss],
+                    mode="markers",
+                    name="Sortie Loss",
                     marker=dict(
-                        symbol='circle',
+                        symbol="circle",
                         size=12,
-                        color='#ff5252',
-                        line=dict(color='white', width=2),
+                        color="#ff5252",
+                        line=dict(color="white", width=2),
                     ),
-                    text=[m['text'] for m in exits_loss],
-                    hoverinfo='text',
-                    hovertemplate='%{text}<extra></extra>',
+                    text=[m["text"] for m in exits_loss],
+                    hoverinfo="text",
+                    hovertemplate="%{text}<extra></extra>",
                 ),
-                row=1, col=1,
+                row=1,
+                col=1,
             )
 
         # Lignes connectant entrée et sortie
         for i, trade in enumerate(trades):
-            entry_ts = pd.Timestamp(trade.get('entry_ts'))
-            exit_ts = pd.Timestamp(trade.get('exit_ts'))
+            entry_ts = pd.Timestamp(trade.get("entry_ts"))
+            exit_ts = pd.Timestamp(trade.get("exit_ts"))
 
             if entry_ts < df.index[0] and exit_ts < df.index[0]:
                 continue
 
-            entry_price = trade.get('price_entry', trade.get('entry_price', 0))
-            exit_price = trade.get('price_exit', trade.get('exit_price', 0))
-            pnl = trade.get('pnl', 0)
+            entry_price = trade.get("price_entry", trade.get("entry_price", 0))
+            exit_price = trade.get("price_exit", trade.get("exit_price", 0))
+            pnl = trade.get("pnl", 0)
 
-            line_color = 'rgba(0, 230, 118, 0.4)' if pnl >= 0 else 'rgba(255, 82, 82, 0.4)'
+            line_color = "rgba(0, 230, 118, 0.4)" if pnl >= 0 else "rgba(255, 82, 82, 0.4)"
 
             fig.add_trace(
                 go.Scatter(
                     x=[entry_ts, exit_ts],
                     y=[entry_price, exit_price],
-                    mode='lines',
-                    line=dict(color=line_color, width=1, dash='dot'),
+                    mode="lines",
+                    line=dict(color=line_color, width=1, dash="dot"),
                     showlegend=False,
-                    hoverinfo='skip',
+                    hoverinfo="skip",
                 ),
-                row=1, col=1,
+                row=1,
+                col=1,
             )
 
     # === Layout ===
@@ -345,7 +352,7 @@ def plot_trades(
             text=title,
             font=dict(size=18),
         ),
-        template='plotly_dark',
+        template="plotly_dark",
         height=height,
         xaxis_rangeslider_visible=False,
         legend=dict(
@@ -353,35 +360,34 @@ def plot_trades(
             y=0.99,
             xanchor="left",
             x=0.01,
-            bgcolor='rgba(0,0,0,0.5)',
+            bgcolor="rgba(0,0,0,0.5)",
         ),
-        hovermode='x unified',
+        hovermode="x unified",
     )
 
     # Formater les axes
     fig.update_xaxes(
         showgrid=True,
         gridwidth=1,
-        gridcolor='rgba(128,128,128,0.2)',
+        gridcolor="rgba(128,128,128,0.2)",
     )
     fig.update_yaxes(
         showgrid=True,
         gridwidth=1,
-        gridcolor='rgba(128,128,128,0.2)',
+        gridcolor="rgba(128,128,128,0.2)",
     )
 
     return fig
 
 
 def plot_equity_curve(
-    equity_curve: List[float],
-    trades: Optional[List[Dict[str, Any]]] = None,
+    equity_curve: list[float],
+    trades: list[dict[str, Any]] | None = None,
     initial_capital: float = 10000,
     title: str = "Equity Curve",
     height: int = 400,
-) -> "go.Figure":
-    """
-    Crée un graphique de la courbe d'equity.
+) -> go.Figure:
+    """Crée un graphique de la courbe d'equity.
 
     Args:
         equity_curve: Liste des valeurs d'equity
@@ -392,6 +398,7 @@ def plot_equity_curve(
 
     Returns:
         Figure Plotly
+
     """
     if not PLOTLY_AVAILABLE:
         raise ImportError("Plotly requis: pip install plotly")
@@ -405,12 +412,12 @@ def plot_equity_curve(
         go.Scatter(
             x=x,
             y=equity_curve,
-            mode='lines',
-            name='Equity',
-            line=dict(color='#00e676', width=2),
-            fill='tozeroy',
-            fillcolor='rgba(0, 230, 118, 0.1)',
-        )
+            mode="lines",
+            name="Equity",
+            line=dict(color="#00e676", width=2),
+            fill="tozeroy",
+            fillcolor="rgba(0, 230, 118, 0.1)",
+        ),
     )
 
     # Ligne de capital initial
@@ -427,10 +434,10 @@ def plot_equity_curve(
         go.Scatter(
             x=x,
             y=hwm,
-            mode='lines',
-            name='High Water Mark',
-            line=dict(color='rgba(255,255,255,0.3)', width=1, dash='dot'),
-        )
+            mode="lines",
+            name="High Water Mark",
+            line=dict(color="rgba(255,255,255,0.3)", width=1, dash="dot"),
+        ),
     )
 
     # PnL final
@@ -445,19 +452,19 @@ def plot_equity_curve(
         showarrow=True,
         arrowhead=2,
         font=dict(
-            color='#00e676' if pnl >= 0 else '#ff5252',
+            color="#00e676" if pnl >= 0 else "#ff5252",
             size=14,
         ),
-        bgcolor='rgba(0,0,0,0.7)',
+        bgcolor="rgba(0,0,0,0.7)",
         borderpad=4,
     )
 
     fig.update_layout(
         title=title,
-        template='plotly_dark',
+        template="plotly_dark",
         height=height,
-        xaxis_title='Barres',
-        yaxis_title='Equity',
+        xaxis_title="Barres",
+        yaxis_title="Equity",
         showlegend=True,
         legend=dict(
             yanchor="top",
@@ -471,12 +478,11 @@ def plot_equity_curve(
 
 
 def plot_drawdown(
-    equity_curve: List[float],
+    equity_curve: list[float],
     title: str = "Drawdown",
     height: int = 250,
-) -> "go.Figure":
-    """
-    Crée un graphique de drawdown.
+) -> go.Figure:
+    """Crée un graphique de drawdown.
 
     Args:
         equity_curve: Liste des valeurs d'equity
@@ -485,6 +491,7 @@ def plot_drawdown(
 
     Returns:
         Figure Plotly
+
     """
     if not PLOTLY_AVAILABLE:
         raise ImportError("Plotly requis: pip install plotly")
@@ -499,12 +506,12 @@ def plot_drawdown(
         go.Scatter(
             x=list(range(len(drawdown))),
             y=drawdown,
-            mode='lines',
-            name='Drawdown',
-            line=dict(color='#ff5252', width=1),
-            fill='tozeroy',
-            fillcolor='rgba(255, 82, 82, 0.3)',
-        )
+            mode="lines",
+            name="Drawdown",
+            line=dict(color="#ff5252", width=1),
+            fill="tozeroy",
+            fillcolor="rgba(255, 82, 82, 0.3)",
+        ),
     )
 
     # Max drawdown
@@ -517,47 +524,47 @@ def plot_drawdown(
         text=f"Max DD: {max_dd:.1f}%",
         showarrow=True,
         arrowhead=2,
-        font=dict(color='#ff5252', size=12),
+        font=dict(color="#ff5252", size=12),
     )
 
     fig.update_layout(
         title=title,
-        template='plotly_dark',
+        template="plotly_dark",
         height=height,
-        xaxis_title='Barres',
-        yaxis_title='Drawdown %',
+        xaxis_title="Barres",
+        yaxis_title="Drawdown %",
         showlegend=False,
     )
 
     return fig
 
 
-def create_performance_cards(metrics: Dict[str, Any]) -> str:
-    """
-    Crée des cartes HTML pour les métriques de performance.
+def create_performance_cards(metrics: dict[str, Any]) -> str:
+    """Crée des cartes HTML pour les métriques de performance.
 
     Args:
         metrics: Dict des métriques
 
     Returns:
         HTML string
+
     """
-    pnl = metrics.get('pnl', metrics.get('total_pnl', 0))
-    total_return_pct = metrics.get('total_return_pct')
-    sharpe = metrics.get('sharpe_ratio', 0)
-    sortino = metrics.get('sortino_ratio', 0)
-    max_dd = metrics.get('max_drawdown', 0)
-    win_rate = metrics.get('win_rate', 0)
-    num_trades = metrics.get('total_trades', metrics.get('num_trades', 0))
-    profit_factor = metrics.get('profit_factor', 0)
+    pnl = metrics.get("pnl", metrics.get("total_pnl", 0))
+    total_return_pct = metrics.get("total_return_pct")
+    sharpe = metrics.get("sharpe_ratio", 0)
+    sortino = metrics.get("sortino_ratio", 0)
+    max_dd = metrics.get("max_drawdown", 0)
+    win_rate = metrics.get("win_rate", 0)
+    num_trades = metrics.get("total_trades", metrics.get("num_trades", 0))
+    profit_factor = metrics.get("profit_factor", 0)
 
     # calculate_metrics returns percentages; agent outputs use fractions.
     if total_return_pct is None:
-        total_return_pct = metrics.get('total_return', 0) * 100
+        total_return_pct = metrics.get("total_return", 0) * 100
         max_dd *= 100
         win_rate *= 100
 
-    pnl_color = '#00e676' if pnl >= 0 else '#ff5252'
+    pnl_color = "#00e676" if pnl >= 0 else "#ff5252"
 
     html = f"""
     <div style="display: flex; flex-wrap: wrap; gap: 15px; margin: 20px 0;">
@@ -620,9 +627,8 @@ def create_performance_cards(metrics: Dict[str, Any]) -> str:
     return html
 
 
-def create_trades_table(trades: List[Dict[str, Any]], max_rows: int = 50) -> str:
-    """
-    Crée une table HTML des trades.
+def create_trades_table(trades: list[dict[str, Any]], max_rows: int = 50) -> str:
+    """Crée une table HTML des trades.
 
     Args:
         trades: Liste des trades
@@ -630,6 +636,7 @@ def create_trades_table(trades: List[Dict[str, Any]], max_rows: int = 50) -> str
 
     Returns:
         HTML string
+
     """
     html = """
     <style>
@@ -680,17 +687,17 @@ def create_trades_table(trades: List[Dict[str, Any]], max_rows: int = 50) -> str
     """
 
     for i, trade in enumerate(trades[:max_rows]):
-        side = trade.get('side', 'LONG')
-        entry_ts = pd.Timestamp(trade.get('entry_ts')).strftime('%Y-%m-%d %H:%M')
-        exit_ts = pd.Timestamp(trade.get('exit_ts')).strftime('%Y-%m-%d %H:%M')
-        entry_price = trade.get('price_entry', trade.get('entry_price', 0))
-        exit_price = trade.get('price_exit', trade.get('exit_price', 0))
-        pnl = trade.get('pnl', 0)
-        return_pct = trade.get('return_pct', 0)
-        exit_reason = trade.get('exit_reason', '-')
+        side = trade.get("side", "LONG")
+        entry_ts = pd.Timestamp(trade.get("entry_ts")).strftime("%Y-%m-%d %H:%M")
+        exit_ts = pd.Timestamp(trade.get("exit_ts")).strftime("%Y-%m-%d %H:%M")
+        entry_price = trade.get("price_entry", trade.get("entry_price", 0))
+        exit_price = trade.get("price_exit", trade.get("exit_price", 0))
+        pnl = trade.get("pnl", 0)
+        return_pct = trade.get("return_pct", 0)
+        exit_reason = trade.get("exit_reason", "-")
 
-        pnl_class = 'pnl-positive' if pnl >= 0 else 'pnl-negative'
-        side_class = 'side-long' if side == 'LONG' else 'side-short'
+        pnl_class = "pnl-positive" if pnl >= 0 else "pnl-negative"
+        side_class = "side-long" if side == "LONG" else "side-short"
 
         html += f"""
             <tr>
@@ -701,7 +708,7 @@ def create_trades_table(trades: List[Dict[str, Any]], max_rows: int = 50) -> str
                 <td>{entry_price:,.2f}</td>
                 <td>{exit_price:,.2f}</td>
                 <td class="{pnl_class}">{pnl:+,.2f}</td>
-                <td class="{pnl_class}">{return_pct*100:+.2f}%</td>
+                <td class="{pnl_class}">{return_pct * 100:+.2f}%</td>
                 <td>{exit_reason}</td>
             </tr>
         """
@@ -723,17 +730,17 @@ def create_trades_table(trades: List[Dict[str, Any]], max_rows: int = 50) -> str
 # HIGH-LEVEL VISUALIZATION
 # ============================================================================
 
+
 def visualize_backtest(
     df: pd.DataFrame,
-    trades: List[Dict[str, Any]],
-    metrics: Dict[str, Any],
-    equity_curve: Optional[List[float]] = None,
+    trades: list[dict[str, Any]],
+    metrics: dict[str, Any],
+    equity_curve: list[float] | None = None,
     title: str = "Backtest Results",
-    output_path: Optional[Union[str, Path]] = None,
+    output_path: str | Path | None = None,
     show: bool = True,
-) -> Dict[str, Any]:
-    """
-    Crée une visualisation complète d'un backtest.
+) -> dict[str, Any]:
+    """Crée une visualisation complète d'un backtest.
 
     Args:
         df: DataFrame OHLCV
@@ -746,6 +753,7 @@ def visualize_backtest(
 
     Returns:
         Dict avec les figures générées
+
     """
     if not PLOTLY_AVAILABLE:
         raise ImportError("Plotly requis: pip install plotly")
@@ -754,20 +762,20 @@ def visualize_backtest(
 
     # Graphique principal avec trades
     fig_trades = plot_trades(df, trades, title=f"{title} - Trades")
-    figures['trades'] = fig_trades
+    figures["trades"] = fig_trades
 
     # Equity curve si disponible
     if equity_curve:
         fig_equity = plot_equity_curve(
             equity_curve,
             trades=trades,
-            initial_capital=metrics.get('initial_capital', 10000),
+            initial_capital=metrics.get("initial_capital", 10000),
             title=f"{title} - Equity Curve",
         )
-        figures['equity'] = fig_equity
+        figures["equity"] = fig_equity
 
         fig_dd = plot_drawdown(equity_curve, title=f"{title} - Drawdown")
-        figures['drawdown'] = fig_dd
+        figures["drawdown"] = fig_dd
 
     # Générer HTML si output_path
     if output_path:
@@ -812,7 +820,7 @@ def visualize_backtest(
 </head>
 <body>
     <h1>🏆 {title}</h1>
-    <p class="timestamp">Généré le {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+    <p class="timestamp">Généré le {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
 
     <h2>📊 Performance</h2>
     {create_performance_cards(metrics)}
@@ -851,7 +859,7 @@ def visualize_backtest(
 </html>
 """
 
-        output_path.write_text(html_content, encoding='utf-8')
+        output_path.write_text(html_content, encoding="utf-8")
         print(f"✅ Rapport sauvegardé: {output_path}")
 
     # Afficher
@@ -862,13 +870,12 @@ def visualize_backtest(
 
 
 def load_and_visualize(
-    results_path: Union[str, Path],
-    data_path: Optional[Union[str, Path]] = None,
-    output_path: Optional[Union[str, Path]] = None,
+    results_path: str | Path,
+    data_path: str | Path | None = None,
+    output_path: str | Path | None = None,
     show: bool = True,
-) -> Dict[str, Any]:
-    """
-    Charge un fichier de résultats et génère la visualisation.
+) -> dict[str, Any]:
+    """Charge un fichier de résultats et génère la visualisation.
 
     Args:
         results_path: Chemin vers le fichier JSON de résultats
@@ -878,33 +885,34 @@ def load_and_visualize(
 
     Returns:
         Dict avec les résultats et figures
+
     """
     results_path = Path(results_path)
 
-    with open(results_path, 'r', encoding='utf-8') as f:
+    with open(results_path, encoding="utf-8") as f:
         data = json.load(f)
 
     # Extraire les informations
-    trades = data.get('trades', [])
-    metrics = data.get('metrics', {})
-    equity_curve = data.get('equity_curve')
-    params = data.get('params', {})
-    strategy = data.get('strategy', 'Unknown')
+    trades = data.get("trades", [])
+    metrics = data.get("metrics", {})
+    equity_curve = data.get("equity_curve")
+    params = data.get("params", {})
+    strategy = data.get("strategy", "Unknown")
 
     # Charger les données OHLCV si fournies
     df = None
     if data_path:
         data_path = Path(data_path)
-        if data_path.suffix == '.parquet':
+        if data_path.suffix == ".parquet":
             df = pd.read_parquet(data_path)
-        elif data_path.suffix == '.csv':
+        elif data_path.suffix == ".csv":
             df = pd.read_csv(data_path)
 
         # Normaliser les colonnes
         df.columns = df.columns.str.lower()
-        if 'timestamp' in df.columns:
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
-            df.set_index('timestamp', inplace=True)
+        if "timestamp" in df.columns:
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            df.set_index("timestamp", inplace=True)
 
     # Si pas de données OHLCV et pas de trades, erreur
     if df is None and not trades:
@@ -917,17 +925,20 @@ def load_and_visualize(
         all_prices = []
         all_times = []
         for t in trades:
-            all_times.append(pd.Timestamp(t.get('entry_ts')))
-            all_times.append(pd.Timestamp(t.get('exit_ts')))
-            all_prices.append(t.get('price_entry', t.get('entry_price', 0)))
-            all_prices.append(t.get('price_exit', t.get('exit_price', 0)))
+            all_times.append(pd.Timestamp(t.get("entry_ts")))
+            all_times.append(pd.Timestamp(t.get("exit_ts")))
+            all_prices.append(t.get("price_entry", t.get("entry_price", 0)))
+            all_prices.append(t.get("price_exit", t.get("exit_price", 0)))
 
-        df = pd.DataFrame({
-            'open': all_prices,
-            'high': all_prices,
-            'low': all_prices,
-            'close': all_prices,
-        }, index=all_times).sort_index()
+        df = pd.DataFrame(
+            {
+                "open": all_prices,
+                "high": all_prices,
+                "low": all_prices,
+                "close": all_prices,
+            },
+            index=all_times,
+        ).sort_index()
 
     # Générer titre
     title = f"Backtest - {strategy}"
@@ -951,14 +962,14 @@ def load_and_visualize(
 # ============================================================================
 
 __all__ = [
-    'plot_trades',
-    'plot_equity_curve',
-    'plot_drawdown',
-    'create_performance_cards',
-    'create_trades_table',
-    'visualize_backtest',
-    'load_and_visualize',
-    'BacktestVisualData',
-    'TradeMarker',
-    'PLOTLY_AVAILABLE',
+    "PLOTLY_AVAILABLE",
+    "BacktestVisualData",
+    "TradeMarker",
+    "create_performance_cards",
+    "create_trades_table",
+    "load_and_visualize",
+    "plot_drawdown",
+    "plot_equity_curve",
+    "plot_trades",
+    "visualize_backtest",
 ]

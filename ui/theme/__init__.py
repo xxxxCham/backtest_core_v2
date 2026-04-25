@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.theme
+"""Module-ID: ui.theme
 
 Purpose: Système de thème centralisé pour toute l'application.
 
@@ -95,7 +94,6 @@ __all__ = [
     "ChartColorConfig",
     # Constantes
     "PALETTES",
-
     # === plotly_config.py ===
     # Config globale
     "PLOTLY_CHART_CONFIG",

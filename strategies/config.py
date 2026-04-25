@@ -1,5 +1,4 @@
-"""
-Module-ID: strategies.config
+"""Module-ID: strategies.config
 
 Purpose: Configuration et logique métier pour les stratégies de trading.
 
@@ -16,10 +15,11 @@ Key components:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     from strategies.base import StrategyBase, get_strategy, list_strategies
+
     STRATEGIES_AVAILABLE = True
 except ImportError:
     StrategyBase = None
@@ -32,7 +32,7 @@ except ImportError:
 # CONFIGURATION CONSTANTS
 # ============================================================================
 
-PARAM_CONSTRAINTS: Dict[str, Dict[str, Any]] = {
+PARAM_CONSTRAINTS: dict[str, dict[str, Any]] = {
     "fast_period": {"min": 2, "max": 100, "default": 10},
     "slow_period": {"min": 5, "max": 200, "default": 21},
     "bb_period": {"min": 5, "max": 100, "default": 20},
@@ -54,15 +54,17 @@ PARAM_CONSTRAINTS: Dict[str, Dict[str, Any]] = {
 # DATA CLASSES
 # ============================================================================
 
+
 @dataclass
 class StrategyParamInfo:
     """Informations sur un paramètre de stratégie."""
+
     name: str
     param_type: str
     default: Any
-    min_val: Optional[float] = None
-    max_val: Optional[float] = None
-    step: Optional[float] = None
+    min_val: float | None = None
+    max_val: float | None = None
+    step: float | None = None
     optimize: bool = True
     description: str = ""
 
@@ -70,26 +72,29 @@ class StrategyParamInfo:
 @dataclass
 class SearchSpaceStats:
     """Statistiques sur l'espace de recherche."""
+
     total_combinations: int = 1
-    per_param_counts: Dict[str, int] = field(default_factory=dict)
+    per_param_counts: dict[str, int] = field(default_factory=dict)
     is_continuous: bool = False
     has_overflow: bool = False
-    overflow_param: Optional[str] = None
+    overflow_param: str | None = None
 
 
 @dataclass
 class ParamValidationResult:
     """Résultat de validation d'un paramètre."""
+
     is_valid: bool = True
-    error_message: Optional[str] = None
-    warning_message: Optional[str] = None
+    error_message: str | None = None
+    warning_message: str | None = None
 
 
 # ============================================================================
 # STRATEGY DISCOVERY
 # ============================================================================
 
-def get_available_strategies() -> List[str]:
+
+def get_available_strategies() -> list[str]:
     if not STRATEGIES_AVAILABLE or list_strategies is None:
         return ["ema_cross", "bollinger_atr"]
     try:
@@ -98,7 +103,7 @@ def get_available_strategies() -> List[str]:
         return ["ema_cross", "bollinger_atr"]
 
 
-def get_strategy_instance(strategy_key: str) -> Optional[Any]:
+def get_strategy_instance(strategy_key: str) -> Any | None:
     if not STRATEGIES_AVAILABLE or get_strategy is None:
         return None
     try:
@@ -116,14 +121,15 @@ def get_strategy_description(strategy_key: str) -> str:
         return f"Stratégie: {strategy_key}"
     doc = getattr(inst, "__doc__", "") or ""
     first_line = doc.strip().split("\n")[0] if doc else ""
-    return first_line if first_line else f"Stratégie: {strategy_key}"
+    return first_line or f"Stratégie: {strategy_key}"
 
 
 # ============================================================================
 # PARAMETER CONFIGURATION
 # ============================================================================
 
-def get_param_constraints(param_name: str) -> Dict[str, Any]:
+
+def get_param_constraints(param_name: str) -> dict[str, Any]:
     return PARAM_CONSTRAINTS.get(param_name, {"min": 0, "max": 100, "default": 0})
 
 
@@ -131,13 +137,13 @@ def build_param_range(
     param_name: str,
     min_val: float,
     max_val: float,
-    step: Optional[float] = None,
+    step: float | None = None,
     param_type: str = "float",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return {"min": min_val, "max": max_val, "step": step, "type": param_type}
 
 
-def compute_param_combinations(param_range: Dict[str, Any]) -> int:
+def compute_param_combinations(param_range: dict[str, Any]) -> int:
     min_val = param_range.get("min", 0)
     max_val = param_range.get("max", 0)
     step = param_range.get("step")
@@ -156,7 +162,7 @@ def compute_param_combinations(param_range: Dict[str, Any]) -> int:
 
 
 def compute_search_space_stats(
-    param_ranges: Dict[str, Dict[str, Any]],
+    param_ranges: dict[str, dict[str, Any]],
     max_combinations: int = 100_000_000,
 ) -> SearchSpaceStats:
     stats = SearchSpaceStats()
@@ -187,10 +193,11 @@ def compute_search_space_stats(
 # PARAMETER VALIDATION
 # ============================================================================
 
+
 def validate_param(
     param_name: str,
     value: Any,
-    constraints: Optional[Dict[str, Any]] = None,
+    constraints: dict[str, Any] | None = None,
 ) -> ParamValidationResult:
     result = ParamValidationResult()
     if constraints is None:
@@ -212,28 +219,26 @@ def validate_param(
     return result
 
 
-def validate_param_dependencies(params: Dict[str, Any], strategy_key: str) -> List[str]:
-    errors: List[str] = []
+def validate_param_dependencies(params: dict[str, Any], strategy_key: str) -> list[str]:
+    errors: list[str] = []
 
     if "fast_period" in params and "slow_period" in params:
         if params["slow_period"] <= params["fast_period"]:
             errors.append(
-                f"slow_period ({params['slow_period']}) doit être > "
-                f"fast_period ({params['fast_period']})"
+                f"slow_period ({params['slow_period']}) doit être > fast_period ({params['fast_period']})",
             )
 
     if "rsi_oversold" in params and "rsi_overbought" in params:
         if params["rsi_overbought"] <= params["rsi_oversold"]:
             errors.append(
-                f"rsi_overbought ({params['rsi_overbought']}) doit être > "
-                f"rsi_oversold ({params['rsi_oversold']})"
+                f"rsi_overbought ({params['rsi_overbought']}) doit être > rsi_oversold ({params['rsi_oversold']})",
             )
 
     if "entry_level" in params and "tp_level" in params:
         if "long" in strategy_key.lower() and params["tp_level"] <= params["entry_level"]:
             errors.append(
                 f"tp_level ({params['tp_level']}) doit être > "
-                f"entry_level ({params['entry_level']}) pour stratégie long"
+                f"entry_level ({params['entry_level']}) pour stratégie long",
             )
 
     return errors
@@ -243,8 +248,9 @@ def validate_param_dependencies(params: Dict[str, Any], strategy_key: str) -> Li
 # STRATEGY OPTIONS FORMATTING
 # ============================================================================
 
-def build_strategy_options(strategy_keys: List[str]) -> Dict[str, str]:
-    options: Dict[str, str] = {}
+
+def build_strategy_options(strategy_keys: list[str]) -> dict[str, str]:
+    options: dict[str, str] = {}
     for key in strategy_keys:
         if "long" in key.lower():
             label = f"📈 {key}"
@@ -258,15 +264,15 @@ def build_strategy_options(strategy_keys: List[str]) -> Dict[str, str]:
 
 __all__ = [
     "PARAM_CONSTRAINTS",
+    "ParamValidationResult",
     "SearchSpaceStats",
     "StrategyParamInfo",
-    "ParamValidationResult",
-    "compute_search_space_stats",
+    "build_param_range",
+    "build_strategy_options",
     "compute_param_combinations",
+    "compute_search_space_stats",
+    "get_param_constraints",
+    "get_strategy_description",
     "validate_param",
     "validate_param_dependencies",
-    "build_param_range",
-    "get_param_constraints",
-    "build_strategy_options",
-    "get_strategy_description",
 ]

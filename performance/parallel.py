@@ -1,5 +1,4 @@
-"""
-Module-ID: performance.parallel
+"""Module-ID: performance.parallel
 
 Purpose: Parallélisation backtests - ProcessPoolExecutor/ThreadPoolExecutor + joblib.
 
@@ -25,6 +24,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from collections.abc import Callable, Iterator
 from concurrent.futures import (
     FIRST_COMPLETED,
     ProcessPoolExecutor,
@@ -33,7 +33,7 @@ from concurrent.futures import (
     wait,
 )
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -41,6 +41,7 @@ import pandas as pd
 # Joblib pour parallélisation simple (optionnel)
 try:
     from joblib import Parallel, delayed
+
     HAS_JOBLIB = True
 except ImportError:
     HAS_JOBLIB = False
@@ -48,6 +49,7 @@ except ImportError:
 # psutil pour monitoring ressources (optionnel)
 try:
     import psutil
+
     HAS_PSUTIL = True
 except ImportError:
     HAS_PSUTIL = False
@@ -55,18 +57,18 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Shared worker state to avoid pickling large fixed kwargs per task.
-_WORKER_FUNC: Optional[Callable[..., Any]] = None
-_WORKER_KWARGS: Dict[str, Any] = {}
+_WORKER_FUNC: Callable[..., Any] | None = None
+_WORKER_KWARGS: dict[str, Any] = {}
 
 
-def _init_shared_worker(func: Callable[..., Any], fixed_kwargs: Dict[str, Any]) -> None:
+def _init_shared_worker(func: Callable[..., Any], fixed_kwargs: dict[str, Any]) -> None:
     """Initialise un worker avec une fonction + kwargs partagés."""
     global _WORKER_FUNC, _WORKER_KWARGS
     _WORKER_FUNC = func
     _WORKER_KWARGS = fixed_kwargs
 
 
-def _run_with_shared_kwargs(params: Dict[str, Any]) -> Any:
+def _run_with_shared_kwargs(params: dict[str, Any]) -> Any:
     """Exécute la fonction partagée avec les kwargs stockés en worker."""
     if _WORKER_FUNC is None:
         raise RuntimeError("Worker non initialisé (fonction manquante)")
@@ -76,13 +78,14 @@ def _run_with_shared_kwargs(params: Dict[str, Any]) -> Any:
 @dataclass
 class ParallelConfig:
     """Configuration pour l'exécution parallèle."""
+
     max_workers: int = -1  # -1 = auto (nb CPU avec GPU multiplier)
     use_processes: bool = True  # True=multiprocessing, False=threading
     backend: str = "loky"  # Backend joblib: 'loky' (défaut, optimal), 'multiprocessing', 'threading'
     chunk_size: int = 10  # Taille des batches
-    timeout: Optional[float] = None  # Timeout par tâche (secondes)
-    memory_limit_gb: Optional[float] = None  # Limite mémoire
-    max_in_flight: Optional[int] = None  # Nombre max de tâches en vol
+    timeout: float | None = None  # Timeout par tâche (secondes)
+    memory_limit_gb: float | None = None  # Limite mémoire
+    max_in_flight: int | None = None  # Nombre max de tâches en vol
     share_fixed_kwargs: bool = True  # Partager kwargs fixes via initializer
     continue_on_timeout: bool = False  # Continuer après un timeout
 
@@ -95,17 +98,17 @@ class ParallelConfig:
 @dataclass
 class SweepResult:
     """Résultat d'un sweep parallèle."""
-    results: List[Dict[str, Any]]
+
+    results: list[dict[str, Any]]
     total_time: float
     n_completed: int
     n_failed: int
     avg_time_per_task: float
-    memory_peak_gb: Optional[float] = None
+    memory_peak_gb: float | None = None
 
 
 def _get_cpu_count() -> int:
-    """
-    Retourne le nombre de CPUs optimisé pour setup CPU-only haute performance.
+    """Retourne le nombre de CPUs optimisé pour setup CPU-only haute performance.
 
     🚀 OPTIMISÉ POUR RYZEN 9950X (32 threads) + DDR5 60GB:
     - Mode CPU-only: multiplier 2.0-2.5x pour saturer tous les threads
@@ -145,7 +148,7 @@ def _get_cpu_count() -> int:
 
         logger.debug(
             f"CPU Config: {physical_cores} physical, {logical_cores} logical, "
-            f"multiplier={cpu_multiplier}x -> {max_workers} workers"
+            f"multiplier={cpu_multiplier}x -> {max_workers} workers",
         )
 
         return max(physical_cores, max_workers)
@@ -165,15 +168,14 @@ def _get_available_memory_gb() -> float:
     """Retourne la mémoire disponible en GB."""
     if HAS_PSUTIL:
         try:
-            return psutil.virtual_memory().available / (1024 ** 3)
+            return psutil.virtual_memory().available / (1024**3)
         except Exception:
             pass
     return 8.0  # Valeur par défaut
 
 
-def get_recommended_chunk_size(default: int = 100, total_tasks: Optional[int] = None) -> int:
-    """
-    Retourne une taille de chunk adaptée à la RAM disponible.
+def get_recommended_chunk_size(default: int = 100, total_tasks: int | None = None) -> int:
+    """Retourne une taille de chunk adaptée à la RAM disponible.
 
     La logique existait déjà dans ParallelRunner, mais n'était pas facilement
     réutilisable par les autres couches.
@@ -193,10 +195,8 @@ def get_recommended_chunk_size(default: int = 100, total_tasks: Optional[int] = 
     return chunk_size
 
 
-def get_recommended_worker_count(max_cap: Optional[int] = None) -> int:
-    """
-    Retourne un nombre de workers cohérent avec CPU + RAM disponible.
-    """
+def get_recommended_worker_count(max_cap: int | None = None) -> int:
+    """Retourne un nombre de workers cohérent avec CPU + RAM disponible."""
     cpu_count = _get_cpu_count()
     available_ram = _get_available_memory_gb()
 
@@ -213,10 +213,9 @@ def get_recommended_worker_count(max_cap: Optional[int] = None) -> int:
 def get_recommended_max_in_flight(
     total_tasks: int,
     worker_count: int,
-    memory_limit_gb: Optional[float] = None,
+    memory_limit_gb: float | None = None,
 ) -> int:
-    """
-    Retourne un nombre de tâches en vol adapté à la mémoire disponible.
+    """Retourne un nombre de tâches en vol adapté à la mémoire disponible.
 
     Le système avait déjà des heuristiques workers/chunks, mais le pool manuel UI
     et certains chemins fallback restaient figés sur des multiplicateurs constants.
@@ -240,9 +239,7 @@ def get_recommended_max_in_flight(
 
 
 def get_recommended_joblib_batch_size(total_tasks: int, default_chunk_size: int = 100) -> int:
-    """
-    Retourne une taille de batch joblib alignée sur les chunks adaptatifs.
-    """
+    """Retourne une taille de batch joblib alignée sur les chunks adaptatifs."""
     if total_tasks <= 0:
         return 1
 
@@ -252,9 +249,8 @@ def get_recommended_joblib_batch_size(total_tasks: int, default_chunk_size: int 
     return max(1, min(chunk_size, feedback_bound, total_tasks))
 
 
-def generate_param_grid(param_ranges: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Génère toutes les combinaisons de paramètres.
+def generate_param_grid(param_ranges: dict[str, Any]) -> list[dict[str, Any]]:
+    """Génère toutes les combinaisons de paramètres.
 
     Args:
         param_ranges: Dict avec {param_name: [values]} ou {param_name: value}
@@ -270,6 +266,7 @@ def generate_param_grid(param_ranges: Dict[str, Any]) -> List[Dict[str, Any]]:
         ... })
         >>> len(grid)  # 3 * 2 = 6 combinaisons
         6
+
     """
     import itertools
 
@@ -294,14 +291,13 @@ def generate_param_grid(param_ranges: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def parallel_sweep(
     func: Callable,
-    param_grid: List[Dict[str, Any]],
+    param_grid: list[dict[str, Any]],
     n_jobs: int = -1,
     backend: str = "loky",
     verbose: int = 0,
-    **fixed_kwargs
-) -> List[Any]:
-    """
-    Exécute une fonction sur une grille de paramètres en parallèle.
+    **fixed_kwargs,
+) -> list[Any]:
+    """Exécute une fonction sur une grille de paramètres en parallèle.
 
     Utilise joblib si disponible, sinon ProcessPoolExecutor.
 
@@ -322,6 +318,7 @@ def parallel_sweep(
         >>>
         >>> grid = [{"period": 10}, {"period": 20}]
         >>> results = parallel_sweep(run_backtest, grid, data=df)
+
     """
     if n_jobs == -1:
         n_jobs = _get_cpu_count()
@@ -332,31 +329,26 @@ def parallel_sweep(
             delayed(func)(params, **fixed_kwargs) for params in param_grid
         )
         return results
-    else:
-        # Fallback sur concurrent.futures
-        logger.info("joblib non disponible, utilisation de ProcessPoolExecutor")
-        results = [None] * len(param_grid)
+    # Fallback sur concurrent.futures
+    logger.info("joblib non disponible, utilisation de ProcessPoolExecutor")
+    results = [None] * len(param_grid)
 
-        with ProcessPoolExecutor(max_workers=n_jobs) as executor:
-            futures = {
-                executor.submit(func, params, **fixed_kwargs): i
-                for i, params in enumerate(param_grid)
-            }
+    with ProcessPoolExecutor(max_workers=n_jobs) as executor:
+        futures = {executor.submit(func, params, **fixed_kwargs): i for i, params in enumerate(param_grid)}
 
-            for future in as_completed(futures):
-                idx = futures[future]
-                try:
-                    results[idx] = future.result()
-                except Exception as e:
-                    logger.error(f"Erreur tâche {idx}: {e}")
-                    results[idx] = {"error": str(e)}
+        for future in as_completed(futures):
+            idx = futures[future]
+            try:
+                results[idx] = future.result()
+            except Exception as e:
+                logger.error(f"Erreur tâche {idx}: {e}")
+                results[idx] = {"error": str(e)}
 
-        return results
+    return results
 
 
 class ParallelRunner:
-    """
-    Gestionnaire de backtests parallèles avec monitoring et optimisation.
+    """Gestionnaire de backtests parallèles avec monitoring et optimisation.
 
     Supporte:
     - Exécution multi-processus ou multi-thread
@@ -377,22 +369,22 @@ class ParallelRunner:
         ...     data=df,
         ...     param_grid=param_grid
         ... )
+
     """
 
     def __init__(
         self,
-        max_workers: Optional[int] = None,
+        max_workers: int | None = None,
         use_processes: bool = True,
         backend: str = "loky",
         chunk_size: int = 100,  # 🚀 Augmenté de 50 à 100 pour DDR5
-        memory_limit_gb: Optional[float] = None,
-        max_in_flight: Optional[int] = None,
+        memory_limit_gb: float | None = None,
+        max_in_flight: int | None = None,
         share_fixed_kwargs: bool = True,
-        task_timeout: Optional[float] = None,
+        task_timeout: float | None = None,
         continue_on_timeout: bool = False,
     ):
-        """
-        Initialise le runner parallèle.
+        """Initialise le runner parallèle.
 
         🚀 OPTIMISÉ POUR RYZEN 9950X + DDR5 60GB:
         - chunk_size=100 (vs 50) pour réduire overhead
@@ -409,6 +401,7 @@ class ParallelRunner:
             share_fixed_kwargs: Partager les kwargs fixes via initializer (processes)
             task_timeout: Timeout par tâche (secondes)
             continue_on_timeout: Continuer après timeout (sinon arrêt)
+
         """
         self.max_workers = max_workers or self._calculate_optimal_workers()
         self.use_processes = use_processes
@@ -427,7 +420,7 @@ class ParallelRunner:
         self._total_tasks = 0
 
         # Callbacks
-        self._progress_callback: Optional[Callable[[int, int], None]] = None
+        self._progress_callback: Callable[[int, int], None] | None = None
 
         # Déterminer si on peut utiliser joblib
         self._use_joblib = HAS_JOBLIB and backend in ("loky", "multiprocessing", "threading")
@@ -435,12 +428,11 @@ class ParallelRunner:
         logger.info(
             f"ParallelRunner initialisé: {self.max_workers} workers, "
             f"backend={'joblib-' + backend if self._use_joblib else ('processes' if use_processes else 'threads')}, "
-            f"chunk_size={self.chunk_size}, max_in_flight={self.max_in_flight or 'auto'}"
+            f"chunk_size={self.chunk_size}, max_in_flight={self.max_in_flight or 'auto'}",
         )
 
     def _optimize_chunk_size(self, default: int) -> int:
-        """
-        Optimise la taille des chunks selon la RAM disponible.
+        """Optimise la taille des chunks selon la RAM disponible.
 
         🚀 DDR5 60GB: chunks plus gros pour réduire l'overhead
         """
@@ -459,20 +451,19 @@ class ParallelRunner:
         self._stop_requested = True
         logger.info("Arrêt demandé pour le sweep en cours")
 
-    def _chunk_grid(self, param_grid: List[Dict]) -> Iterator[List[Dict]]:
+    def _chunk_grid(self, param_grid: list[dict]) -> Iterator[list[dict]]:
         """Divise la grille en chunks pour gestion mémoire."""
         for i in range(0, len(param_grid), self.chunk_size):
-            yield param_grid[i:i + self.chunk_size]
+            yield param_grid[i : i + self.chunk_size]
 
     def run_sweep(
         self,
         run_func: Callable,
-        param_grid: List[Dict[str, Any]],
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-        **fixed_kwargs
+        param_grid: list[dict[str, Any]],
+        progress_callback: Callable[[int, int], None] | None = None,
+        **fixed_kwargs,
     ) -> SweepResult:
-        """
-        Exécute un sweep parallèle complet (OPTIMISÉ avec joblib/loky par défaut).
+        """Exécute un sweep parallèle complet (OPTIMISÉ avec joblib/loky par défaut).
 
         Args:
             run_func: Fonction de backtest, signature: run_func(params, **kwargs)
@@ -482,6 +473,7 @@ class ParallelRunner:
 
         Returns:
             SweepResult avec tous les résultats et métriques
+
         """
         self._stop_requested = False
         self._total_tasks = len(param_grid)
@@ -492,7 +484,7 @@ class ParallelRunner:
 
         logger.info(
             f"Démarrage sweep: {self._total_tasks} tâches, "
-            f"{self.max_workers} workers, backend={self.backend if self._use_joblib else 'executor'}"
+            f"{self.max_workers} workers, backend={self.backend if self._use_joblib else 'executor'}",
         )
 
         if self._total_tasks == 0:
@@ -508,17 +500,15 @@ class ParallelRunner:
         # 🚀 PRIORITÉ: Utiliser joblib avec backend loky si disponible (meilleure gestion mémoire)
         if self._use_joblib:
             return self._run_sweep_joblib(run_func, param_grid, **fixed_kwargs)
-        else:
-            return self._run_sweep_executor(run_func, param_grid, **fixed_kwargs)
+        return self._run_sweep_executor(run_func, param_grid, **fixed_kwargs)
 
     def _run_sweep_joblib(
         self,
         run_func: Callable,
-        param_grid: List[Dict[str, Any]],
-        **fixed_kwargs
+        param_grid: list[dict[str, Any]],
+        **fixed_kwargs,
     ) -> SweepResult:
-        """
-        Exécution du sweep via joblib (loky/multiprocessing/threading).
+        """Exécution du sweep via joblib (loky/multiprocessing/threading).
 
         Avantages:
         - Pas de pickling répétitif du DataFrame (shared memory automatique avec loky)
@@ -533,7 +523,7 @@ class ParallelRunner:
         logger.info(f"Utilisation de joblib backend={self.backend}")
 
         # Wrapper pour capturer les erreurs et faire le suivi de progression
-        def _safe_run_with_progress(idx: int, params: Dict[str, Any]) -> Dict[str, Any]:
+        def _safe_run_with_progress(idx: int, params: dict[str, Any]) -> dict[str, Any]:
             try:
                 result = run_func(params, **fixed_kwargs)
                 return {
@@ -585,10 +575,7 @@ class ParallelRunner:
                     verbose=verbose_level,
                     max_nbytes=max_nbytes,  # 🚀 DDR5: copies directes en RAM
                     batch_size="auto",  # Laisser joblib optimiser
-                )(
-                    delayed(_safe_run_with_progress)(batch_start + i, params)
-                    for i, params in enumerate(batch_params)
-                )
+                )(delayed(_safe_run_with_progress)(batch_start + i, params) for i, params in enumerate(batch_params))
 
                 # Trier ce batch par index
                 batch_results.sort(key=lambda x: x["idx"])
@@ -596,17 +583,21 @@ class ParallelRunner:
                 # Traiter résultats de ce batch immédiatement pour callbacks
                 for r in batch_results:
                     if r["success"]:
-                        all_results.append({
-                            "params": r["params"],
-                            "result": r["result"],
-                            "success": True,
-                        })
+                        all_results.append(
+                            {
+                                "params": r["params"],
+                                "result": r["result"],
+                                "success": True,
+                            },
+                        )
                     else:
-                        all_results.append({
-                            "params": r["params"],
-                            "error": r.get("error", "Unknown error"),
-                            "success": False,
-                        })
+                        all_results.append(
+                            {
+                                "params": r["params"],
+                                "error": r.get("error", "Unknown error"),
+                                "success": False,
+                            },
+                        )
                         n_failed += 1
 
                     # Callback de progression PENDANT l'exécution
@@ -622,14 +613,14 @@ class ParallelRunner:
                     speed = self._current_progress / elapsed if elapsed > 0 else 0
                     logger.info(
                         f"Joblib progress: {self._current_progress}/{self._total_tasks} "
-                        f"({self._current_progress/self._total_tasks*100:.1f}%) • "
-                        f"{speed:.1f} tasks/s • batch {batch_count}"
+                        f"({self._current_progress / self._total_tasks * 100:.1f}%) • "
+                        f"{speed:.1f} tasks/s • batch {batch_count}",
                     )
                     last_log_time = current_time
 
                 # Tracking mémoire à chaque batch
                 if HAS_PSUTIL:
-                    current_mem = psutil.virtual_memory().used / (1024 ** 3)
+                    current_mem = psutil.virtual_memory().used / (1024**3)
                     memory_peak = max(memory_peak, current_mem)
 
         except Exception as e:
@@ -643,7 +634,7 @@ class ParallelRunner:
 
         logger.info(
             f"✅ Sweep joblib terminé: {n_completed}/{self._total_tasks} en {elapsed:.1f}s "
-            f"({n_completed/elapsed:.1f} tâches/s)"
+            f"({n_completed / elapsed:.1f} tâches/s)",
         )
 
         return SweepResult(
@@ -658,12 +649,10 @@ class ParallelRunner:
     def _run_sweep_executor(
         self,
         run_func: Callable,
-        param_grid: List[Dict[str, Any]],
-        **fixed_kwargs
+        param_grid: list[dict[str, Any]],
+        **fixed_kwargs,
     ) -> SweepResult:
-        """
-        Exécution du sweep via ProcessPoolExecutor/ThreadPoolExecutor (fallback).
-        """
+        """Exécution du sweep via ProcessPoolExecutor/ThreadPoolExecutor (fallback)."""
         start_time = time.time()
         all_results = []
         n_failed = 0
@@ -682,11 +671,9 @@ class ParallelRunner:
         max_in_flight = min(max_in_flight, self._total_tasks)
 
         fixed_kwargs = dict(fixed_kwargs)
-        use_shared_kwargs = (
-            self.use_processes and self.share_fixed_kwargs and bool(fixed_kwargs)
-        )
+        use_shared_kwargs = self.use_processes and self.share_fixed_kwargs and bool(fixed_kwargs)
 
-        executor_kwargs: Dict[str, Any] = {}
+        executor_kwargs: dict[str, Any] = {}
         submit_func = run_func
         submit_kwargs = fixed_kwargs
         if use_shared_kwargs:
@@ -700,7 +687,7 @@ class ParallelRunner:
         # ✅ Executor unique + limite de tâches en vol pour éviter l'overhead mémoire
         with ExecutorClass(max_workers=self.max_workers, **executor_kwargs) as executor:
             pending = {}
-            submitted_at: Dict[Any, float] = {}
+            submitted_at: dict[Any, float] = {}
             param_iter = iter(param_grid)
 
             def submit_next() -> bool:
@@ -733,21 +720,20 @@ class ParallelRunner:
                     # Timeout par tâche si configuré
                     if self.task_timeout is not None:
                         now = time.time()
-                        timed_out = [
-                            fut for fut, started in submitted_at.items()
-                            if now - started > self.task_timeout
-                        ]
+                        timed_out = [fut for fut, started in submitted_at.items() if now - started > self.task_timeout]
                         for fut in timed_out:
                             params = pending.pop(fut, None)
                             submitted_at.pop(fut, None)
                             if params is None:
                                 continue
                             fut.cancel()
-                            all_results.append({
-                                "params": params,
-                                "error": f"timeout > {self.task_timeout}s",
-                                "success": False,
-                            })
+                            all_results.append(
+                                {
+                                    "params": params,
+                                    "error": f"timeout > {self.task_timeout}s",
+                                    "success": False,
+                                },
+                            )
                             n_failed += 1
                             self._current_progress += 1
                             if self._progress_callback:
@@ -764,18 +750,22 @@ class ParallelRunner:
                     submitted_at.pop(future, None)
                     try:
                         result = future.result()
-                        all_results.append({
-                            "params": params,
-                            "result": result,
-                            "success": True,
-                        })
+                        all_results.append(
+                            {
+                                "params": params,
+                                "result": result,
+                                "success": True,
+                            },
+                        )
                     except Exception as e:
                         logger.error(f"Erreur: {params} -> {e}")
-                        all_results.append({
-                            "params": params,
-                            "error": str(e),
-                            "success": False,
-                        })
+                        all_results.append(
+                            {
+                                "params": params,
+                                "error": str(e),
+                                "success": False,
+                            },
+                        )
                         n_failed += 1
 
                     self._current_progress += 1
@@ -784,7 +774,7 @@ class ParallelRunner:
 
                     # Tracking mémoire périodique (tous les 10 résultats pour éviter overhead)
                     if HAS_PSUTIL and self._current_progress % 10 == 0:
-                        current_mem = psutil.virtual_memory().used / (1024 ** 3)
+                        current_mem = psutil.virtual_memory().used / (1024**3)
                         memory_peak = max(memory_peak, current_mem)
 
                         # Vérifier limite mémoire
@@ -802,7 +792,7 @@ class ParallelRunner:
 
         logger.info(
             f"✅ Sweep terminé: {n_completed}/{self._total_tasks} en {elapsed:.1f}s "
-            f"({n_completed/elapsed:.1f} tâches/s)"
+            f"({n_completed / elapsed:.1f} tâches/s)",
         )
 
         return SweepResult(
@@ -811,18 +801,17 @@ class ParallelRunner:
             n_completed=n_completed,
             n_failed=n_failed,
             avg_time_per_task=elapsed / max(1, len(all_results)),
-            memory_peak_gb=memory_peak if memory_peak > 0 else None
+            memory_peak_gb=memory_peak if memory_peak > 0 else None,
         )
 
 
 def run_backtest_worker(
-    params: Dict[str, Any],
+    params: dict[str, Any],
     strategy_class: type,
     data: pd.DataFrame,
-    indicators: Dict[str, Any],
-) -> Dict[str, Any]:
-    """
-    Worker function pour exécuter un backtest (picklable).
+    indicators: dict[str, Any],
+) -> dict[str, Any]:
+    """Worker function pour exécuter un backtest (picklable).
 
     Args:
         params: Paramètres de la stratégie
@@ -832,6 +821,7 @@ def run_backtest_worker(
 
     Returns:
         Dict avec params et métriques de performance
+
     """
     try:
         strategy = strategy_class()
@@ -844,26 +834,26 @@ def run_backtest_worker(
         return {
             "params": params,
             "n_trades": n_trades,
-            "success": True
+            "success": True,
         }
     except Exception as e:
         return {
             "params": params,
             "error": str(e),
-            "success": False
+            "success": False,
         }
 
 
 # ======================== Utilitaires de benchmark ========================
 
+
 def benchmark_parallel_configs(
     func: Callable,
-    sample_params: List[Dict],
-    configs: Optional[List[ParallelConfig]] = None,
-    **kwargs
-) -> Dict[str, Any]:
-    """
-    Benchmark différentes configurations parallèles.
+    sample_params: list[dict],
+    configs: list[ParallelConfig] | None = None,
+    **kwargs,
+) -> dict[str, Any]:
+    """Benchmark différentes configurations parallèles.
 
     Args:
         func: Fonction à tester
@@ -873,6 +863,7 @@ def benchmark_parallel_configs(
 
     Returns:
         Dict avec meilleure config et résultats de benchmark
+
     """
     if configs is None:
         cpu_count = _get_cpu_count()
@@ -899,19 +890,21 @@ def benchmark_parallel_configs(
         )
 
         start = time.time()
-        runner.run_sweep(func, sample_params[:min(20, len(sample_params))], **kwargs)
+        runner.run_sweep(func, sample_params[: min(20, len(sample_params))], **kwargs)
         elapsed = time.time() - start
 
-        results.append({
-            "config": config,
-            "elapsed": elapsed,
-            "throughput": len(sample_params) / elapsed if elapsed > 0 else 0
-        })
+        results.append(
+            {
+                "config": config,
+                "elapsed": elapsed,
+                "throughput": len(sample_params) / elapsed if elapsed > 0 else 0,
+            },
+        )
 
         logger.info(
             f"Config: {config.max_workers} workers, "
             f"{'process' if config.use_processes else 'thread'} -> "
-            f"{elapsed:.2f}s ({results[-1]['throughput']:.1f} tâches/s)"
+            f"{elapsed:.2f}s ({results[-1]['throughput']:.1f} tâches/s)",
         )
 
     # Trouver la meilleure config
@@ -920,5 +913,5 @@ def benchmark_parallel_configs(
     return {
         "best_config": best["config"],
         "best_throughput": best["throughput"],
-        "all_results": results
+        "all_results": results,
     }

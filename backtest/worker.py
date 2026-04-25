@@ -1,5 +1,4 @@
-"""
-Module worker isolé pour les backtests parallèles.
+"""Module worker isolé pour les backtests parallèles.
 
 Ce module est séparé de l'UI Streamlit pour éviter les problèmes de pickling
 quand Streamlit recharge ses modules (hot-reload).
@@ -11,10 +10,11 @@ PERFORMANCE NOTE (#3): Imports lourds ~100-300ms par worker au démarrage.
 C'est une limitation intrinsèque de Windows multiprocessing 'spawn' mode.
 Avec 24 workers: ~7s de latence initiale (coût fixe unique).
 """
+
 from __future__ import annotations
 
 import os
-from typing import Any, Dict
+from typing import Any
 
 # Ces imports sont faits au niveau du module pour être disponibles dans les workers
 # ⚠️ FIX #3: Import coûteux mais inévitable avec Windows spawn mode
@@ -77,8 +77,7 @@ def init_worker_with_dataframe(
     fast_metrics: bool = True,  # ⚡ Performance: mode rapide par défaut
     is_path: bool = False,
 ):
-    """
-    Initializer pour ProcessPoolExecutor - charge le DataFrame une seule fois.
+    """Initializer pour ProcessPoolExecutor - charge le DataFrame une seule fois.
 
     CRITICAL: Toute exception ici casse le pool entier (BrokenProcessPool).
     On wrappe tout dans try/except pour logger les erreurs avant crash.
@@ -89,13 +88,21 @@ def init_worker_with_dataframe(
 
     try:
         _init_worker_with_dataframe_impl(
-            df_or_path, strategy_key, symbol, timeframe,
-            initial_capital, debug_enabled, thread_limit,
-            fast_metrics, is_path
+            df_or_path,
+            strategy_key,
+            symbol,
+            timeframe,
+            initial_capital,
+            debug_enabled,
+            thread_limit,
+            fast_metrics,
+            is_path,
         )
     except Exception as e:
         # CRITICAL: Logger l'erreur avant que le worker ne crash
-        import sys, traceback
+        import sys
+        import traceback
+
         print(f"❌ FATAL: Worker init failed: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         sys.stderr.flush()
@@ -113,8 +120,7 @@ def _init_worker_with_dataframe_impl(
     fast_metrics: bool = True,
     is_path: bool = False,
 ):
-    """
-    Implémentation réelle de l'initializer (wrappée pour error handling).
+    """Implémentation réelle de l'initializer (wrappée pour error handling).
 
     ✅ FIX CRITICAL: Ajouter root du projet au PYTHONPATH (Windows spawn mode)
     Les workers importent ui/main.py mais n'ont pas 'ui' dans leur sys.path.
@@ -124,6 +130,7 @@ def _init_worker_with_dataframe_impl(
     # ═══════════════════════════════════════════════════════════════════════════
     import sys
     from pathlib import Path
+
     project_root = Path(__file__).parent.parent  # d:\backtest_core_v2
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
@@ -161,6 +168,7 @@ def _init_worker_with_dataframe_impl(
     # Charger le DataFrame depuis le fichier ou utiliser celui fourni
     if is_path:
         import pandas as pd
+
         _worker_dataframe = pd.read_parquet(df_or_path)
     else:
         _worker_dataframe = df_or_path
@@ -185,6 +193,7 @@ def _init_worker_with_dataframe_impl(
     _worker_period_days = None
     try:
         import pandas as pd
+
         start_day = pd.to_datetime(_worker_dataframe.index[0]).date()
         end_day = pd.to_datetime(_worker_dataframe.index[-1]).date()
         days = (end_day - start_day).days
@@ -235,6 +244,7 @@ def _init_worker_with_dataframe_impl(
             info = threadpoolctl.threadpool_info()
             total_threads = sum(pool.get("num_threads", 0) for pool in info)
             import logging
+
             logger = logging.getLogger(__name__)
             logger.debug(
                 "Worker thread limit applied: %d thread(s) across %d pool(s)",
@@ -245,19 +255,22 @@ def _init_worker_with_dataframe_impl(
         # threadpoolctl non installé - fallback env vars uniquement
         if debug_enabled:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(
-                "threadpoolctl not available - using env vars only (less reliable)"
+                "threadpoolctl not available - using env vars only (less reliable)",
             )
     except Exception as e:
         if debug_enabled:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning("threadpoolctl configuration failed: %s", e)
 
     # 3️⃣ PyTorch (si disponible)
     try:
         import torch
+
         torch.set_num_threads(effective_limit)
         torch.set_num_interop_threads(max(1, effective_limit // 2))
     except (ImportError, AttributeError):
@@ -266,11 +279,12 @@ def _init_worker_with_dataframe_impl(
     # 4️⃣ Vérification finale (optionnel - seulement en debug)
     if debug_enabled and not threadpoolctl_applied:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.warning(
             "⚠️ Thread limiting applied via env vars only - "
             "consider installing threadpoolctl for robust control: "
-            "pip install threadpoolctl"
+            "pip install threadpoolctl",
         )
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -288,6 +302,7 @@ def _init_worker_with_dataframe_impl(
             _worker_sweep_ready = True
     except Exception as exc:
         import logging
+
         logging.getLogger(__name__).warning("Sweep pre-init failed: %s", exc, exc_info=True)
         _worker_sweep_ready = False
         _worker_engine = None
@@ -297,9 +312,8 @@ def _init_worker_with_dataframe_impl(
 _worker_sweep_ready = False
 
 
-def run_backtest_worker(param_combo: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Worker function pour ProcessPoolExecutor - isolé du hot-reload Streamlit.
+def run_backtest_worker(param_combo: dict[str, Any]) -> dict[str, Any]:
+    """Worker function pour ProcessPoolExecutor - isolé du hot-reload Streamlit.
 
     Utilise automatiquement le mode sweep ultra-rapide si prepare_sweep()
     a été appelé dans l'init. Sinon, fallback vers le chemin legacy.
@@ -309,6 +323,7 @@ def run_backtest_worker(param_combo: Dict[str, Any]) -> Dict[str, Any]:
 
     Returns:
         Dict avec résultats du backtest ou erreur
+
     """
     global _worker_engine
 
@@ -343,6 +358,7 @@ def run_backtest_worker(param_combo: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as e:
             if _worker_debug_enabled:
                 import traceback as tb
+
                 err = tb.format_exc()
             else:
                 err = str(e)
@@ -449,6 +465,7 @@ def run_backtest_worker(param_combo: Dict[str, Any]) -> Dict[str, Any]:
         error_msg = str(e)
         if debug_enabled:
             import traceback
+
             error_msg = traceback.format_exc()
         return {
             "params_dict": param_combo,

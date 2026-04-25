@@ -1,5 +1,4 @@
-"""
-Module-ID: data.indicator_bank
+"""Module-ID: data.indicator_bank
 
 Purpose: Cache disque intelligent indicateurs - évite recalc via hash param+données.
 
@@ -28,7 +27,7 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import pandas as pd
 
@@ -36,8 +35,9 @@ from utils.log import get_logger
 
 logger = get_logger(__name__)
 
+
 # Helpers env (configuration cache)
-def _env_bool(name: str, default: Optional[bool] = None) -> Optional[bool]:
+def _env_bool(name: str, default: bool | None = None) -> bool | None:
     raw = os.getenv(name)
     if raw is None:
         return default
@@ -49,7 +49,7 @@ def _env_bool(name: str, default: Optional[bool] = None) -> Optional[bool]:
     return default
 
 
-def _env_int(name: str, default: Optional[int] = None) -> Optional[int]:
+def _env_int(name: str, default: int | None = None) -> int | None:
     raw = os.getenv(name)
     if raw is None:
         return default
@@ -59,7 +59,7 @@ def _env_int(name: str, default: Optional[int] = None) -> Optional[int]:
         return default
 
 
-def _env_float(name: str, default: Optional[float] = None) -> Optional[float]:
+def _env_float(name: str, default: float | None = None) -> float | None:
     raw = os.getenv(name)
     if raw is None:
         return default
@@ -68,14 +68,17 @@ def _env_float(name: str, default: Optional[float] = None) -> Optional[float]:
     except (TypeError, ValueError):
         return default
 
+
 # Support optionnel pour file locking (concurrence multiprocess)
 try:
     import fcntl
+
     HAS_FCNTL = True
 except ImportError:
     HAS_FCNTL = False
     try:
         from filelock import FileLock
+
         HAS_FILELOCK = True
     except ImportError:
         HAS_FILELOCK = False
@@ -84,6 +87,7 @@ except ImportError:
 @dataclass
 class CacheStats:
     """Statistiques du cache."""
+
     hits: int = 0
     misses: int = 0
     evictions: int = 0
@@ -96,20 +100,21 @@ class CacheStats:
         total = self.hits + self.misses
         return (self.hits / total * 100) if total > 0 else 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "hits": self.hits,
             "misses": self.misses,
             "evictions": self.evictions,
             "hit_rate": self.hit_rate,
             "total_size_mb": self.total_size_mb,
-            "entries_count": self.entries_count
+            "entries_count": self.entries_count,
         }
 
 
 @dataclass
 class CacheEntry:
     """Entrée de cache avec métadonnées."""
+
     key: str
     indicator_name: str
     params_hash: str
@@ -125,8 +130,7 @@ class CacheEntry:
 
 
 class IndicatorBank:
-    """
-    Cache disque intelligent pour les indicateurs calculés.
+    """Cache disque intelligent pour les indicateurs calculés.
 
     Usage:
         >>> bank = IndicatorBank(cache_dir=".indicator_cache")
@@ -143,15 +147,14 @@ class IndicatorBank:
 
     def __init__(
         self,
-        cache_dir: Union[str, Path] = ".indicator_cache",
+        cache_dir: str | Path = ".indicator_cache",
         ttl: int = DEFAULT_TTL,
         max_size_mb: float = DEFAULT_MAX_SIZE_MB,
         enabled: bool = True,
         disk_enabled: bool = True,
-        memory_max_entries: int = 128
+        memory_max_entries: int = 128,
     ):
-        """
-        Initialise l'IndicatorBank.
+        """Initialise l'IndicatorBank.
 
         Args:
             cache_dir: Répertoire de cache
@@ -160,6 +163,7 @@ class IndicatorBank:
             enabled: Activer/désactiver le cache
             disk_enabled: Activer/désactiver le cache disque (mémoire reste active)
             memory_max_entries: Max entries kept in memory (0 disables)
+
         """
         self.cache_dir = Path(cache_dir)
         self._index_path = self.cache_dir / "index.json"
@@ -170,8 +174,8 @@ class IndicatorBank:
         self.memory_max_entries = int(memory_max_entries)
 
         self.stats = CacheStats()
-        self._index: Dict[str, CacheEntry] = {}
-        self._memory_cache: Dict[str, Tuple[float, Any]] = {}
+        self._index: dict[str, CacheEntry] = {}
+        self._memory_cache: dict[str, tuple[float, Any]] = {}
 
         if enabled and self.disk_enabled:
             self._init_cache_dir()
@@ -236,7 +240,7 @@ class IndicatorBank:
                         created_at=created_at,
                         expires_at=expires_at,
                         size_bytes=size_bytes,
-                        filepath=pkl_file
+                        filepath=pkl_file,
                     )
 
                     # Ne garder que les entrées non expirées
@@ -265,7 +269,7 @@ class IndicatorBank:
             return
         if self._index_path.exists():
             try:
-                with open(self._index_path, "r") as f:
+                with open(self._index_path) as f:
                     data = json.load(f)
 
                 for key, entry_data in data.get("entries", {}).items():
@@ -277,7 +281,7 @@ class IndicatorBank:
                         created_at=entry_data["created_at"],
                         expires_at=entry_data["expires_at"],
                         size_bytes=entry_data["size_bytes"],
-                        filepath=Path(entry_data["filepath"])
+                        filepath=Path(entry_data["filepath"]),
                     )
 
                     # Vérifier si le fichier existe encore
@@ -332,7 +336,7 @@ class IndicatorBank:
         data = {
             "version": "1.0",
             "updated_at": time.time(),
-            "entries": {}
+            "entries": {},
         }
 
         for key, entry in self._index.items():
@@ -344,7 +348,7 @@ class IndicatorBank:
                 "created_at": entry.created_at,
                 "expires_at": entry.expires_at,
                 "size_bytes": entry.size_bytes,
-                "filepath": str(entry.filepath)
+                "filepath": str(entry.filepath),
             }
 
         # Écriture atomique via fichier temporaire
@@ -402,7 +406,7 @@ class IndicatorBank:
             "columns": list(df.columns),
             "first_idx": str(df.index[0]) if len(df) > 0 else "",
             "last_idx": str(df.index[-1]) if len(df) > 0 else "",
-            "checksum": float(df["close"].sum()) if "close" in df.columns else 0.0
+            "checksum": float(df["close"].sum()) if "close" in df.columns else 0.0,
         }
         data_str = json.dumps(data_info, sort_keys=True, default=str)
         return hashlib.sha256(data_str.encode("utf-8")).hexdigest()[:12]
@@ -410,18 +414,18 @@ class IndicatorBank:
     def _generate_key(
         self,
         indicator_name: str,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         df: pd.DataFrame,
-        data_hash: Optional[str] = None
-    ) -> Tuple[str, str, str]:
-        """
-        Génère une clé de cache unique.
+        data_hash: str | None = None,
+    ) -> tuple[str, str, str]:
+        """Génère une clé de cache unique.
 
         La clé inclut automatiquement le backend (CPU/GPU) pour éviter
         que des résultats GPU (float32) soient utilisés en mode CPU (float64).
 
         Returns:
             Tuple (full_key, params_hash, data_hash)
+
         """
         # Inclure le backend dans la clé de cache pour éviter collisions CPU/GPU
         if "_backend" not in params:
@@ -444,7 +448,7 @@ class IndicatorBank:
         """Return a data hash that can be reused across indicators."""
         return self._get_data_hash(df)
 
-    def _memory_get(self, key: str) -> Optional[Any]:
+    def _memory_get(self, key: str) -> Any | None:
         if self.memory_max_entries <= 0:
             return None
         entry = self._memory_cache.get(key)
@@ -468,13 +472,12 @@ class IndicatorBank:
     def get(
         self,
         indicator_name: str,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         df: pd.DataFrame,
-        data_hash: Optional[str] = None,
-        backend: str = "cpu"
-    ) -> Optional[Any]:
-        """
-        Récupère un indicateur depuis le cache.
+        data_hash: str | None = None,
+        backend: str = "cpu",
+    ) -> Any | None:
+        """Récupère un indicateur depuis le cache.
 
         Args:
             indicator_name: Nom de l'indicateur
@@ -484,6 +487,7 @@ class IndicatorBank:
 
         Returns:
             Résultat caché ou None si non trouvé/expiré
+
         """
         if not self.enabled:
             return None
@@ -535,15 +539,14 @@ class IndicatorBank:
     def put(
         self,
         indicator_name: str,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         df: pd.DataFrame,
         result: Any,
-        ttl: Optional[int] = None,
-        data_hash: Optional[str] = None,
-        backend: str = "cpu"
+        ttl: int | None = None,
+        data_hash: str | None = None,
+        backend: str = "cpu",
     ) -> bool:
-        """
-        Stocke un indicateur dans le cache.
+        """Stocke un indicateur dans le cache.
 
         Args:
             indicator_name: Nom de l'indicateur
@@ -555,6 +558,7 @@ class IndicatorBank:
 
         Returns:
             True si mis en cache avec succès
+
         """
         if not self.enabled:
             return False
@@ -562,7 +566,10 @@ class IndicatorBank:
         # Ajouter backend aux params pour différencier cache CPU vs GPU
         params_with_backend = {**params, "_backend": backend}
         key, params_hash, data_hash = self._generate_key(
-            indicator_name, params_with_backend, df, data_hash=data_hash
+            indicator_name,
+            params_with_backend,
+            df,
+            data_hash=data_hash,
         )
 
         # Sérialiser le résultat
@@ -621,14 +628,14 @@ class IndicatorBank:
             created_at=now,
             expires_at=expires_at,
             size_bytes=size_bytes,
-            filepath=filepath
+            filepath=filepath,
         )
 
         self._index[key] = entry
         self._save_index()
         self._update_stats()
 
-        logger.debug(f"Cache PUT: {indicator_name} [{key[:16]}] ({size_bytes/1024:.1f}KB)")
+        logger.debug(f"Cache PUT: {indicator_name} [{key[:16]}] ({size_bytes / 1024:.1f}KB)")
         return True
 
     def _remove_entry(self, entry: CacheEntry, update_index: bool = True) -> None:
@@ -659,7 +666,7 @@ class IndicatorBank:
         # Trier par date de création (plus ancien en premier)
         sorted_entries = sorted(
             self._index.values(),
-            key=lambda e: e.created_at
+            key=lambda e: e.created_at,
         )
 
         # Supprimer jusqu'à avoir assez de place
@@ -674,13 +681,10 @@ class IndicatorBank:
     def _update_stats(self) -> None:
         """Met à jour les statistiques."""
         self.stats.entries_count = len(self._index)
-        self.stats.total_size_mb = sum(
-            e.size_bytes for e in self._index.values()
-        ) / (1024 * 1024)
+        self.stats.total_size_mb = sum(e.size_bytes for e in self._index.values()) / (1024 * 1024)
 
-    def invalidate(self, indicator_name: Optional[str] = None) -> int:
-        """
-        Invalide des entrées du cache.
+    def invalidate(self, indicator_name: str | None = None) -> int:
+        """Invalide des entrées du cache.
 
         Args:
             indicator_name: Si fourni, invalide seulement cet indicateur.
@@ -688,6 +692,7 @@ class IndicatorBank:
 
         Returns:
             Nombre d'entrées supprimées
+
         """
         if not self.enabled:
             return 0
@@ -733,11 +738,11 @@ class IndicatorBank:
             logger.warning(f"Erreur vidage cache: {e}")
 
     def cleanup_expired(self) -> int:
-        """
-        Supprime les entrées expirées.
+        """Supprime les entrées expirées.
 
         Returns:
             Nombre d'entrées supprimées
+
         """
         if not self.enabled:
             return 0
@@ -765,32 +770,33 @@ class IndicatorBank:
         self._update_stats()
         return self.stats
 
-    def list_entries(self) -> List[Dict[str, Any]]:
+    def list_entries(self) -> list[dict[str, Any]]:
         """Liste toutes les entrées du cache."""
         entries = []
         for entry in self._index.values():
-            entries.append({
-                "key": entry.key,
-                "indicator": entry.indicator_name,
-                "created_at": entry.created_at,
-                "expires_at": entry.expires_at,
-                "size_kb": entry.size_bytes / 1024,
-                "expired": entry.is_expired()
-            })
+            entries.append(
+                {
+                    "key": entry.key,
+                    "indicator": entry.indicator_name,
+                    "created_at": entry.created_at,
+                    "expires_at": entry.expires_at,
+                    "size_kb": entry.size_bytes / 1024,
+                    "expired": entry.is_expired(),
+                },
+            )
         return sorted(entries, key=lambda e: e["created_at"], reverse=True)
 
 
 # Instance globale
-_default_bank: Optional[IndicatorBank] = None
+_default_bank: IndicatorBank | None = None
 
 
 def get_indicator_bank(
-    cache_dir: Union[str, Path] = ".indicator_cache",
-    disk_enabled: Optional[bool] = None,
-    **kwargs
+    cache_dir: str | Path = ".indicator_cache",
+    disk_enabled: bool | None = None,
+    **kwargs,
 ) -> IndicatorBank:
-    """
-    Retourne l'instance globale de l'IndicatorBank.
+    """Retourne l'instance globale de l'IndicatorBank.
 
     Args:
         cache_dir: Répertoire de cache
@@ -798,6 +804,7 @@ def get_indicator_bank(
 
     Returns:
         Instance IndicatorBank
+
     """
     global _default_bank
 
@@ -831,7 +838,7 @@ def get_indicator_bank(
         _default_bank = IndicatorBank(
             cache_dir=cache_dir,
             disk_enabled=True if disk_enabled is None else disk_enabled,
-            **kwargs
+            **kwargs,
         )
     else:
         # Appliquer les overrides dynamiquement (si variables env changent)
@@ -858,8 +865,7 @@ def get_indicator_bank(
 
 
 def cached_indicator(indicator_func):
-    """
-    Décorateur pour cacher automatiquement les résultats d'un indicateur.
+    """Décorateur pour cacher automatiquement les résultats d'un indicateur.
 
     Usage:
         @cached_indicator
@@ -867,7 +873,8 @@ def cached_indicator(indicator_func):
             # calculs...
             return result
     """
-    def wrapper(df: pd.DataFrame, params: Dict[str, Any]):
+
+    def wrapper(df: pd.DataFrame, params: dict[str, Any]):
         bank = get_indicator_bank()
         indicator_name = indicator_func.__name__
 
@@ -890,9 +897,9 @@ def cached_indicator(indicator_func):
 
 
 __all__ = [
-    "IndicatorBank",
-    "CacheStats",
     "CacheEntry",
-    "get_indicator_bank",
+    "CacheStats",
+    "IndicatorBank",
     "cached_indicator",
+    "get_indicator_bank",
 ]

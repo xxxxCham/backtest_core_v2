@@ -1,22 +1,22 @@
-"""
-Module-ID: backtest.store_v3
+"""Module-ID: backtest.store_v3
 
 Production-ready V3 backtest store based on SQLite + atomic artifact writes.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 import os
 import secrets
 import shutil
 import sqlite3
-import argparse
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -27,7 +27,6 @@ from .store_metadata import (
     list_missing_run_artifacts,
     load_metadata_payload,
 )
-
 
 STORE_SCHEMA_VERSION = 3
 DEFAULT_ROOT_DIR = "backtest_results"
@@ -105,7 +104,7 @@ def _coerce_metrics(value: Any) -> dict[str, Any]:
         return {}
 
 
-def _coerce_dataframe(value: Any, *, default_column: str, index_name: Optional[str] = None) -> pd.DataFrame:
+def _coerce_dataframe(value: Any, *, default_column: str, index_name: str | None = None) -> pd.DataFrame:
     if value is None:
         return pd.DataFrame()
     if isinstance(value, pd.DataFrame):
@@ -138,7 +137,7 @@ def _coerce_equity_series(value: Any) -> pd.Series:
     return pd.Series(value, name="equity")
 
 
-def _safe_float(value: Any) -> Optional[float]:
+def _safe_float(value: Any) -> float | None:
     try:
         if value is None or value == "":
             return None
@@ -150,7 +149,7 @@ def _safe_float(value: Any) -> Optional[float]:
     return number
 
 
-def _safe_int(value: Any) -> Optional[int]:
+def _safe_int(value: Any) -> int | None:
     try:
         if value is None or value == "":
             return None
@@ -261,7 +260,7 @@ class BacktestStoreV3:
                     artifact_path TEXT NOT NULL,
                     schema_version INTEGER NOT NULL
                 );
-                """
+                """,
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs(created_at DESC);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_strategy ON runs(strategy);")
@@ -431,7 +430,7 @@ class BacktestStoreV3:
                 "strategy": strategy,
                 "symbol": symbol,
                 "timeframe": timeframe,
-                "n_trades": int(len(trades_df)),
+                "n_trades": len(trades_df),
                 "total_return_pct": _safe_float(metrics.get("total_return_pct")),
                 "sharpe_ratio": _safe_float(metrics.get("sharpe_ratio")),
                 "max_drawdown_pct": _safe_float(metrics.get("max_drawdown_pct")),
@@ -454,7 +453,7 @@ class BacktestStoreV3:
                 "strategy": strategy,
                 "symbol": symbol,
                 "timeframe": timeframe,
-                "n_trades": int(len(trades_df)),
+                "n_trades": len(trades_df),
                 "total_return_pct": _safe_float(metrics.get("total_return_pct")),
                 "sharpe_ratio": _safe_float(metrics.get("sharpe_ratio")),
                 "max_drawdown_pct": _safe_float(metrics.get("max_drawdown_pct")),
@@ -578,7 +577,7 @@ class BacktestStoreV3:
             if column in df.columns:
                 parsed_name = column.replace("_json", "")
                 df[parsed_name] = df[column].apply(
-                    lambda value: json.loads(value) if isinstance(value, str) and value.strip() else {}
+                    lambda value: json.loads(value) if isinstance(value, str) and value.strip() else {},
                 )
         return df
 
@@ -686,9 +685,7 @@ class BacktestStoreV3:
 
         if isinstance(raw_payload, list):
             payload = {
-                str(item.get("run_id")): item
-                for item in raw_payload
-                if isinstance(item, dict) and item.get("run_id")
+                str(item.get("run_id")): item for item in raw_payload if isinstance(item, dict) and item.get("run_id")
             }
         elif isinstance(raw_payload, dict):
             payload = raw_payload
@@ -872,7 +869,7 @@ def _main(argv: list[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["BacktestStoreV3", "STORE_SCHEMA_VERSION"]
+__all__ = ["STORE_SCHEMA_VERSION", "BacktestStoreV3"]
 
 
 if __name__ == "__main__":

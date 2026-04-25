@@ -119,7 +119,9 @@ def test_resolve_launch_plan_switches_to_next_port_when_same_streamlit_app_alrea
     assert reason == "no_free_port_from_8502_to_8522"
 
 
-def test_resolve_launch_plan_switches_to_next_port_when_same_streamlit_app_already_owns_port_and_next_is_free(monkeypatch):
+def test_resolve_launch_plan_switches_to_next_port_when_same_streamlit_app_already_owns_port_and_next_is_free(
+    monkeypatch,
+):
     monkeypatch.setattr(
         watchdog_module,
         "_port_is_available",

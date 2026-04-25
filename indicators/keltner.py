@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.keltner
+"""Module-ID: indicators.keltner
 
 Purpose: Indicateur Keltner Channel - bandes EMA+ATR (alternative Bollinger).
 
@@ -21,7 +20,6 @@ Skip-if: Vous utilisez juste calculate_indicator('keltner').
 """
 
 from dataclasses import dataclass
-from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -33,6 +31,7 @@ from .ema import ema
 @dataclass
 class KeltnerSettings:
     """Paramètres Keltner Channel."""
+
     ema_period: int = 20
     atr_period: int = 10
     atr_multiplier: float = 2.0
@@ -45,9 +44,8 @@ def keltner_channel(
     ema_period: int = 20,
     atr_period: int = 10,
     atr_multiplier: float = 2.0,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Calcule Keltner Channel.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Calcule Keltner Channel.
 
     Args:
         high: Prix hauts
@@ -59,6 +57,7 @@ def keltner_channel(
 
     Returns:
         Tuple (middle, upper, lower)
+
     """
     # Middle = EMA du close
     middle = ema(close, period=ema_period)
@@ -73,4 +72,4 @@ def keltner_channel(
     return middle, upper, lower
 
 
-__all__ = ["keltner_channel", "KeltnerSettings"]
+__all__ = ["KeltnerSettings", "keltner_channel"]

@@ -1,5 +1,4 @@
-"""
-Module-ID: utils.parameters
+"""Module-ID: utils.parameters
 
 Purpose: Gestion granularité paramètres, presets, contraintes (contrôle combinatoire).
 
@@ -129,12 +128,12 @@ import json
 import os
 import re
 import shutil
-from decimal import Decimal, ROUND_FLOOR
 from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import ROUND_FLOOR, Decimal
 from itertools import product
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -147,11 +146,12 @@ logger = get_logger(__name__)
 VERSIONED_PRESETS_DIR_ENV = "BACKTEST_PRESETS_DIR"
 DEFAULT_STRATEGY_VERSION = "0.0.1"
 _VERSIONED_NAME_RE = re.compile(
-    r"^(?P<strategy>[a-z0-9_-]+)@(?P<version>[^_]+)__(?P<preset>[a-z0-9_-]+)$"
+    r"^(?P<strategy>[a-z0-9_-]+)@(?P<version>[^_]+)__(?P<preset>[a-z0-9_-]+)$",
 )
 
 
 # --- 1.3. Helpers privés de normalisation et conversion ---
+
 
 def _normalize_slug(value: str) -> str:
     """Normalise une chaîne en slug (minuscules, underscores)."""
@@ -172,7 +172,7 @@ def _to_builtin(value: Any) -> Any:
     return value
 
 
-def _parse_versioned_id(value: str) -> Optional[Dict[str, str]]:
+def _parse_versioned_id(value: str) -> dict[str, str] | None:
     """Parse un ID de preset versionné (format: strategy@version__preset)."""
     match = _VERSIONED_NAME_RE.match(value)
     if not match:
@@ -180,7 +180,7 @@ def _parse_versioned_id(value: str) -> Optional[Dict[str, str]]:
     return match.groupdict()
 
 
-def _semver_key(version: str) -> Tuple[int, int, int, str]:
+def _semver_key(version: str) -> tuple[int, int, int, str]:
     """Clé de tri pour semantic versioning."""
     match = re.match(r"^(\d+)\.(\d+)\.(\d+)", version or "")
     if not match:
@@ -189,19 +189,18 @@ def _semver_key(version: str) -> Tuple[int, int, int, str]:
     return (int(major), int(minor), int(patch), version or "")
 
 
-def _parse_created_at(value: Optional[str]) -> Optional[datetime]:
+def _parse_created_at(value: str | None) -> datetime | None:
     """Parse une date ISO 8601."""
     if not value:
         return None
     try:
-        if value.endswith("Z"):
-            value = value[:-1]
+        value = value.removesuffix("Z")
         return datetime.fromisoformat(value)
     except ValueError:
         return None
 
 
-def _preset_sort_key(preset: "Preset") -> Tuple[Tuple[int, int, int, str], int, str]:
+def _preset_sort_key(preset: "Preset") -> tuple[tuple[int, int, int, str], int, str]:
     """Clé de tri pour presets (par version, date, nom)."""
     meta = preset.metadata or {}
     version = meta.get("version") or ""
@@ -213,8 +212,8 @@ def _preset_sort_key(preset: "Preset") -> Tuple[Tuple[int, int, int, str], int, 
 def _apply_versioned_defaults(
     preset: "Preset",
     strategy_name: str,
-    parsed: Optional[Dict[str, str]],
-    source_path: Optional[Path],
+    parsed: dict[str, str] | None,
+    source_path: Path | None,
 ) -> None:
     """Applique les métadonnées par défaut à un preset versionné."""
     preset.metadata = preset.metadata or {}
@@ -232,11 +231,12 @@ def _apply_versioned_defaults(
 
 # --- 1.4. Helpers privés de construction ---
 
+
 def _build_fixed_parameter_specs(
-    params_values: Dict[str, Any]
-) -> Dict[str, "ParameterSpec"]:
+    params_values: dict[str, Any],
+) -> dict[str, "ParameterSpec"]:
     """Construit des ParameterSpec à partir de valeurs fixes."""
-    specs: Dict[str, "ParameterSpec"] = {}
+    specs: dict[str, ParameterSpec] = {}
     for name, raw_value in params_values.items():
         value = _to_builtin(raw_value)
         if isinstance(value, float) and value.is_integer():
@@ -274,20 +274,20 @@ def _build_fixed_parameter_specs(
             )
         else:
             raise ValueError(
-                f"Unsupported param type for '{name}': {type(value)}"
+                f"Unsupported param type for '{name}': {type(value)}",
             )
     return specs
 
 
 def _compute_param_count(
     spec: Any,
-    granularity: Optional[float] = None,
+    granularity: float | None = None,
 ) -> int:
-    """
-    Calcule le nombre de valeurs pour un paramètre.
+    """Calcule le nombre de valeurs pour un paramètre.
 
     Returns:
         Nombre de valeurs, ou -1 si continu
+
     """
     # Cas 1: ParameterSpec
     if isinstance(spec, ParameterSpec):
@@ -300,10 +300,9 @@ def _compute_param_count(
                 param_type=spec.param_type,
             )
             return len(values)
-        elif spec.step and spec.step > 0:
+        if spec.step and spec.step > 0:
             return int((spec.max_val - spec.min_val) / spec.step) + 1
-        else:
-            return -1  # Continu
+        return -1  # Continu
 
     # Cas 1b: Liste/array explicite de valeurs
     if isinstance(spec, (list, np.ndarray)):
@@ -319,7 +318,7 @@ def _compute_param_count(
             if step and step > 0:
                 return int((max_v - min_v) / step) + 1
             return -1
-        elif len(spec) == 2:
+        if len(spec) == 2:
             return -1  # Continu
         # Fallback: tuple de valeurs explicites
         return max(1, len(spec))
@@ -382,7 +381,9 @@ def _migrate_legacy_presets(target_dir: Path) -> None:
                 moved += 1
             except Exception as exc:
                 logger.warning(
-                    "Failed to migrate preset %s: %s", path, exc
+                    "Failed to migrate preset %s: %s",
+                    path,
+                    exc,
                 )
         if moved:
             logger.info(
@@ -398,10 +399,10 @@ def _migrate_legacy_presets(target_dir: Path) -> None:
 
 # --- 2.1. ParameterSpec ---
 
+
 @dataclass
 class ParameterSpec:
-    """
-    Spécification d'un paramètre avec ses bornes et contraintes.
+    """Spécification d'un paramètre avec ses bornes et contraintes.
 
     Attributes:
         name: Nom du paramètre
@@ -412,12 +413,14 @@ class ParameterSpec:
         param_type: Type ('int', 'float', 'bool')
         description: Description pour l'UI
         optimize: Inclus par défaut dans l'exploration des grilles
+
     """
+
     name: str
     min_val: float
     max_val: float
     default: float
-    step: Optional[float] = None
+    step: float | None = None
     param_type: str = "float"
     description: str = ""
     optimize: bool = True
@@ -431,7 +434,7 @@ class ParameterSpec:
             else:
                 self.step = range_size / 10
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "min": self.min_val,
@@ -446,10 +449,10 @@ class ParameterSpec:
 
 # --- 2.2. SearchSpaceStats ---
 
+
 @dataclass
 class SearchSpaceStats:
-    """
-    Statistiques unifiées d'un espace de recherche.
+    """Statistiques unifiées d'un espace de recherche.
 
     Utilisé par:
     - CLI sweep: pour afficher le nombre de combinaisons
@@ -462,10 +465,12 @@ class SearchSpaceStats:
         warnings: Liste d'avertissements
         has_overflow: True si dépasse max_combinations
         is_continuous: True si au moins un param sans step
+
     """
+
     total_combinations: int
-    per_param_counts: Dict[str, int]
-    warnings: List[str]
+    per_param_counts: dict[str, int]
+    warnings: list[str]
     has_overflow: bool
     is_continuous: bool
 
@@ -475,7 +480,7 @@ class SearchSpaceStats:
             return "Espace continu (exploration adaptative)"
         return f"{self.total_combinations:,} combinaisons"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Conversion en dict pour sérialisation."""
         return {
             "total_combinations": self.total_combinations,
@@ -488,22 +493,23 @@ class SearchSpaceStats:
 
 # --- 2.3. Preset ---
 
+
 @dataclass
 class Preset:
-    """
-    Preset de configuration (ex: Safe Ranges).
+    """Preset de configuration (ex: Safe Ranges).
 
     Définit un ensemble d'indicateurs/paramètres pré-configurés
     pour un usage courant.
     """
+
     name: str
     description: str
-    parameters: Dict[str, ParameterSpec] = field(default_factory=dict)
-    indicators: List[str] = field(default_factory=list)
+    parameters: dict[str, ParameterSpec] = field(default_factory=dict)
+    indicators: list[str] = field(default_factory=list)
     default_granularity: float = 0.5
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "description": self.description,
@@ -514,7 +520,7 @@ class Preset:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Preset":
+    def from_dict(cls, data: dict[str, Any]) -> "Preset":
         params = {}
         for name, spec in data.get("parameters", {}).items():
             params[name] = ParameterSpec(
@@ -525,7 +531,7 @@ class Preset:
                 step=spec.get("step"),
                 param_type=spec.get("type", "float"),
                 description=spec.get("description", ""),
-                optimize=spec.get("optimize", True)
+                optimize=spec.get("optimize", True),
             )
 
         return cls(
@@ -537,12 +543,13 @@ class Preset:
             metadata=data.get("metadata", {}),
         )
 
-    def get_default_values(self) -> Dict[str, Any]:
+    def get_default_values(self) -> dict[str, Any]:
         """Retourne les valeurs par défaut de tous les paramètres."""
         return {name: spec.default for name, spec in self.parameters.items()}
 
     def estimate_combinations(
-        self, granularity: Optional[float] = None
+        self,
+        granularity: float | None = None,
     ) -> int:
         """Estime le nombre de combinaisons pour une granularité donnée."""
         if granularity is None:
@@ -555,10 +562,10 @@ class Preset:
 
 # --- 2.4. RangeProposal ---
 
+
 @dataclass
 class RangeProposal:
-    """
-    Proposition de plages de paramètres pour grid search par le LLM.
+    """Proposition de plages de paramètres pour grid search par le LLM.
 
     Permet au LLM de demander une exploration de paramètres au lieu de
     configurations individuelles (ex: "bb_period entre 20-25 avec step 1").
@@ -579,20 +586,22 @@ class RangeProposal:
         ...     rationale="Explorer corrélation bb_period vs bb_std",
         ...     max_combinations=50
         ... )
+
     """
-    ranges: Dict[str, Dict[str, float]]
+
+    ranges: dict[str, dict[str, float]]
     rationale: str
     optimize_for: str = "sharpe_ratio"
     max_combinations: int = 100
-    early_stop_threshold: Optional[float] = None
+    early_stop_threshold: float | None = None
 
 
 # --- 2.5. ParameterConstraint ---
 
+
 @dataclass
 class ParameterConstraint:
-    """
-    Contrainte inter-paramètres pour filtrer les combinaisons invalides.
+    """Contrainte inter-paramètres pour filtrer les combinaisons invalides.
 
     Types de contraintes:
     - 'greater_than': param_a > param_b
@@ -615,102 +624,103 @@ class ParameterConstraint:
         ParameterConstraint(
             'slow_period', 'difference_min', 'fast_period', value=5
         )
+
     """
+
     param_a: str
     constraint_type: str
-    param_b: Optional[str] = None
-    value: Optional[float] = None
-    ratio: Optional[float] = None
+    param_b: str | None = None
+    value: float | None = None
+    ratio: float | None = None
     description: str = ""
 
-    def validate(self, params: Dict[str, Any]) -> bool:
-        """
-        Vérifie si la combinaison de paramètres respecte la contrainte.
+    def validate(self, params: dict[str, Any]) -> bool:
+        """Vérifie si la combinaison de paramètres respecte la contrainte.
 
         Args:
             params: Dictionnaire des paramètres
 
         Returns:
             True si la contrainte est respectée
+
         """
         val_a = params.get(self.param_a)
         if val_a is None:
             return True  # Paramètre absent, skip
 
-        if self.constraint_type == 'greater_than':
+        if self.constraint_type == "greater_than":
             val_b = params.get(self.param_b)
             if val_b is None:
                 return True
             return val_a > val_b
 
-        elif self.constraint_type == 'greater_than_equal':
+        if self.constraint_type == "greater_than_equal":
             val_b = params.get(self.param_b)
             if val_b is None:
                 return True
             return val_a >= val_b
 
-        elif self.constraint_type == 'less_than':
+        if self.constraint_type == "less_than":
             val_b = params.get(self.param_b)
             if val_b is None:
                 return True
             return val_a < val_b
 
-        elif self.constraint_type == 'less_than_equal':
+        if self.constraint_type == "less_than_equal":
             val_b = params.get(self.param_b)
             if val_b is None:
                 return True
             return val_a <= val_b
 
-        elif self.constraint_type == 'ratio_min':
+        if self.constraint_type == "ratio_min":
             val_b = params.get(self.param_b)
             if val_b is None or val_b == 0:
                 return True
             return (val_a / val_b) >= (self.ratio or 1.0)
 
-        elif self.constraint_type == 'ratio_max':
+        if self.constraint_type == "ratio_max":
             val_b = params.get(self.param_b)
             if val_b is None or val_b == 0:
                 return True
             return (val_a / val_b) <= (self.ratio or 1.0)
 
-        elif self.constraint_type == 'difference_min':
+        if self.constraint_type == "difference_min":
             val_b = params.get(self.param_b)
             if val_b is None:
                 return True
             return (val_a - val_b) >= (self.value or 0)
 
-        elif self.constraint_type == 'difference_max':
+        if self.constraint_type == "difference_max":
             val_b = params.get(self.param_b)
             if val_b is None:
                 return True
-            return (val_a - val_b) <= (self.value or float('inf'))
+            return (val_a - val_b) <= (self.value or float("inf"))
 
-        elif self.constraint_type == 'min_value':
+        if self.constraint_type == "min_value":
             return val_a >= (self.value or 0)
 
-        elif self.constraint_type == 'max_value':
-            return val_a <= (self.value or float('inf'))
+        if self.constraint_type == "max_value":
+            return val_a <= (self.value or float("inf"))
 
-        elif self.constraint_type == 'sum_max':
+        if self.constraint_type == "sum_max":
             val_b = params.get(self.param_b)
             if val_b is None:
                 return True
-            return (val_a + val_b) <= (self.value or float('inf'))
+            return (val_a + val_b) <= (self.value or float("inf"))
 
-        elif self.constraint_type == 'sum_min':
+        if self.constraint_type == "sum_min":
             val_b = params.get(self.param_b)
             if val_b is None:
                 return True
             return (val_a + val_b) >= (self.value or 0)
 
-        else:
-            logger.warning(
-                "Type de contrainte inconnu: %s",
-                self.constraint_type,
-            )
-            return True
+        logger.warning(
+            "Type de contrainte inconnu: %s",
+            self.constraint_type,
+        )
+        return True
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "param_a": self.param_a,
             "constraint_type": self.constraint_type,
@@ -721,7 +731,7 @@ class ParameterConstraint:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ParameterConstraint":
+    def from_dict(cls, data: dict[str, Any]) -> "ParameterConstraint":
         return cls(
             param_a=data["param_a"],
             constraint_type=data["constraint_type"],
@@ -736,16 +746,16 @@ class ParameterConstraint:
 # III. GÉNÉRATION D'ESPACES DE RECHERCHE
 # =============================================================================
 
+
 def parameter_values(
     min_val: float,
     max_val: float,
     granularity: float = 0.5,
     base_steps: int = 10,
     max_values: int = 4,
-    param_type: str = "float"
+    param_type: str = "float",
 ) -> np.ndarray:
-    """
-    Génère les valeurs d'un paramètre selon la granularité.
+    """Génère les valeurs d'un paramètre selon la granularité.
 
     Cette fonction applique une logique de réduction intelligente:
     - Granularité 0% = maximum de valeurs (jusqu'à base_steps)
@@ -770,6 +780,7 @@ def parameter_values(
 
         >>> parameter_values(10, 50, granularity=1.0)  # Grossier
         array([30.])  # Juste la médiane
+
     """
     # Cas dégénéré
     if min_val >= max_val:
@@ -824,12 +835,11 @@ def parameter_values(
 
 
 def calculate_combinations(
-    params_specs: Dict[str, ParameterSpec],
+    params_specs: dict[str, ParameterSpec],
     granularity: float = 0.5,
-    max_values_per_param: int = 4
-) -> Tuple[int, Dict[str, np.ndarray]]:
-    """
-    Calcule le nombre total de combinaisons et les valeurs pour chaque
+    max_values_per_param: int = 4,
+) -> tuple[int, dict[str, np.ndarray]]:
+    """Calcule le nombre total de combinaisons et les valeurs pour chaque
     paramètre.
 
     Args:
@@ -839,6 +849,7 @@ def calculate_combinations(
 
     Returns:
         Tuple (nombre_total_combinaisons, dict_valeurs_par_param)
+
     """
     param_values_dict = {}
     total = 1
@@ -849,7 +860,7 @@ def calculate_combinations(
             max_val=spec.max_val,
             granularity=granularity,
             max_values=max_values_per_param,
-            param_type=spec.param_type
+            param_type=spec.param_type,
         )
         param_values_dict[name] = values
         total *= len(values)
@@ -858,13 +869,12 @@ def calculate_combinations(
 
 
 def generate_param_grid(
-    params_specs: Dict[str, ParameterSpec],
+    params_specs: dict[str, ParameterSpec],
     granularity: float = 0.5,
     max_values_per_param: int = 4,
-    max_total_combinations: int = 10000
-) -> List[Dict[str, Any]]:
-    """
-    Génère une grille de combinaisons de paramètres.
+    max_total_combinations: int = 10000,
+) -> list[dict[str, Any]]:
+    """Génère une grille de combinaisons de paramètres.
 
     Args:
         params_specs: Spécifications des paramètres
@@ -877,16 +887,19 @@ def generate_param_grid(
 
     Raises:
         ValueError: Si le nombre de combinaisons dépasse la limite
+
     """
     total, param_values = calculate_combinations(
-        params_specs, granularity, max_values_per_param
+        params_specs,
+        granularity,
+        max_values_per_param,
     )
 
     if total > max_total_combinations:
         raise ValueError(
             f"Trop de combinaisons ({total:,}). "
             f"Augmentez la granularité ou réduisez les paramètres. "
-            f"Limite: {max_total_combinations:,}"
+            f"Limite: {max_total_combinations:,}",
         )
 
     # Générer toutes les combinaisons via produit cartésien
@@ -901,12 +914,11 @@ def generate_param_grid(
 
 
 def compute_search_space_stats(
-    param_space: Dict[str, Any],
+    param_space: dict[str, Any],
     max_combinations: int = 100000,
-    granularity: Optional[float] = None,
+    granularity: float | None = None,
 ) -> SearchSpaceStats:
-    """
-    Calcule les statistiques d'un espace de recherche de manière unifiée.
+    """Calcule les statistiques d'un espace de recherche de manière unifiée.
 
     Cette fonction accepte plusieurs formats d'entrée:
     - Dict[str, ParameterSpec]: spécifications complètes
@@ -937,10 +949,11 @@ def compute_search_space_stats(
         ...     "fast_period": (5, 20),
         ...     "slow_period": (20, 50),
         ... })
+
     """
     total = 1
-    counts: Dict[str, int] = {}
-    warnings: List[str] = []
+    counts: dict[str, int] = {}
+    warnings: list[str] = []
     is_continuous = False
 
     for name, spec in param_space.items():
@@ -958,7 +971,7 @@ def compute_search_space_stats(
     if is_continuous:
         total = -1
         warnings.append(
-            "Espace continu: nombre de combinaisons non défini (pas de step)"
+            "Espace continu: nombre de combinaisons non défini (pas de step)",
         )
 
     # Vérifier overflow
@@ -977,6 +990,7 @@ def compute_search_space_stats(
 
 # --- 3.5. normalize_param_ranges ---
 
+
 def _infer_step_decimals(step: float) -> int:
     step_str = f"{step:.12f}".rstrip("0").rstrip(".")
     if "." in step_str:
@@ -989,7 +1003,7 @@ def _build_param_values_from_range(
     max_v: float,
     step: float,
     is_int: bool,
-) -> List[float]:
+) -> list[float]:
     if step is None or step <= 0 or max_v < min_v:
         return [float(min_v)]
 
@@ -1007,7 +1021,7 @@ def _build_param_values_from_range(
     decimals = _infer_step_decimals(step)
     quant = Decimal(1).scaleb(-decimals) if decimals > 0 else None
 
-    values: List[float] = []
+    values: list[float] = []
     for i in range(count):
         v = min_dec + step_dec * i
         if v > max_dec:
@@ -1026,10 +1040,9 @@ def _build_param_values_from_range(
 
 def normalize_param_ranges(
     param_specs: Any,
-    ranges: Dict[str, Dict[str, float]]
-) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
-    """
-    Normalise et valide des ranges de paramètres contre les ParameterSpec.
+    ranges: dict[str, dict[str, float]],
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """Normalise et valide des ranges de paramètres contre les ParameterSpec.
 
     - Clamp aux bornes des ParameterSpec
     - Vérifie min <= max, step > 0
@@ -1058,9 +1071,10 @@ def normalize_param_ranges(
         >>> normalized, warnings = normalize_param_ranges(specs, ranges)
         >>> normalized["bb_period"]["values"]
         [20, 21, 22, 23, 24, 25]
+
     """
-    normalized: Dict[str, Dict[str, Any]] = {}
-    warnings: List[str] = []
+    normalized: dict[str, dict[str, Any]] = {}
+    warnings: list[str] = []
 
     if isinstance(param_specs, dict):
         specs_dict = param_specs
@@ -1071,8 +1085,7 @@ def normalize_param_ranges(
         # Vérifier que le paramètre existe
         if param_name not in specs_dict:
             raise ValueError(
-                f"Paramètre inconnu '{param_name}'. "
-                f"Paramètres disponibles: {list(specs_dict.keys())}"
+                f"Paramètre inconnu '{param_name}'. Paramètres disponibles: {list(specs_dict.keys())}",
             )
 
         spec = specs_dict[param_name]
@@ -1080,7 +1093,7 @@ def normalize_param_ranges(
         # Extraire min/max/step
         if not isinstance(range_def, dict):
             raise ValueError(
-                f"Paramètre '{param_name}': format invalide (attendu dict avec min/max/step)"
+                f"Paramètre '{param_name}': format invalide (attendu dict avec min/max/step)",
             )
         min_val = range_def.get("min")
         max_val = range_def.get("max")
@@ -1088,7 +1101,7 @@ def normalize_param_ranges(
 
         if min_val is None or max_val is None:
             raise ValueError(
-                f"Paramètre '{param_name}': 'min' et 'max' sont obligatoires"
+                f"Paramètre '{param_name}': 'min' et 'max' sont obligatoires",
             )
 
         # Clamp aux bornes du ParameterSpec
@@ -1100,14 +1113,14 @@ def normalize_param_ranges(
             warnings.append(
                 f"{param_name}: plage clampée "
                 f"[{min_val}, {max_val}] → [{clamped_min}, {clamped_max}] "
-                f"(limites: [{spec.min_val}, {spec.max_val}])"
+                f"(limites: [{spec.min_val}, {spec.max_val}])",
             )
 
         # Vérifier cohérence min/max
         if clamped_min > clamped_max:
             raise ValueError(
                 f"Paramètre '{param_name}': min ({clamped_min}) > max ({clamped_max}) "
-                f"après clamping aux limites [{spec.min_val}, {spec.max_val}]"
+                f"après clamping aux limites [{spec.min_val}, {spec.max_val}]",
             )
 
         # Utiliser step fourni ou step du spec
@@ -1122,7 +1135,7 @@ def normalize_param_ranges(
 
         if step <= 0:
             raise ValueError(
-                f"Paramètre '{param_name}': step doit être > 0 (reçu: {step})"
+                f"Paramètre '{param_name}': step doit être > 0 (reçu: {step})",
             )
 
         is_int = spec.param_type == "int" or spec.param_type is int
@@ -1140,8 +1153,7 @@ def normalize_param_ranges(
 
         if not values:
             raise ValueError(
-                f"Paramètre '{param_name}': aucune valeur générée "
-                f"(min={clamped_min}, max={clamped_max}, step={step})"
+                f"Paramètre '{param_name}': aucune valeur générée (min={clamped_min}, max={clamped_max}, step={step})",
             )
 
         normalized[param_name] = {
@@ -1163,10 +1175,9 @@ def normalize_param_ranges(
 
 def normalize_param_grid_values(
     param_specs: Any,
-    param_grid: Dict[str, Any],
-) -> Tuple[Dict[str, List[Any]], List[str]]:
-    """
-    Normalise une grille explicite de valeurs par paramètre.
+    param_grid: dict[str, Any],
+) -> tuple[dict[str, list[Any]], list[str]]:
+    """Normalise une grille explicite de valeurs par paramètre.
 
     - Convertit en liste si scalaire
     - Filtre les valeurs hors bornes des ParameterSpec
@@ -1174,20 +1185,20 @@ def normalize_param_grid_values(
 
     Returns:
         Tuple (normalized_param_grid, warnings)
+
     """
     if isinstance(param_specs, dict):
         specs_dict = param_specs
     else:
         specs_dict = {spec.name: spec for spec in param_specs or []}
 
-    normalized: Dict[str, List[Any]] = {}
-    warnings: List[str] = []
+    normalized: dict[str, list[Any]] = {}
+    warnings: list[str] = []
 
     for param_name, values in param_grid.items():
         if param_name not in specs_dict:
             raise ValueError(
-                f"Paramètre inconnu '{param_name}'. "
-                f"Paramètres disponibles: {list(specs_dict.keys())}"
+                f"Paramètre inconnu '{param_name}'. Paramètres disponibles: {list(specs_dict.keys())}",
             )
 
         spec = specs_dict[param_name]
@@ -1196,7 +1207,7 @@ def normalize_param_grid_values(
         else:
             values_list = [values]
 
-        filtered: List[Any] = []
+        filtered: list[Any] = []
         removed = 0
         is_int = spec.param_type == "int" or spec.param_type is int
 
@@ -1215,14 +1226,13 @@ def normalize_param_grid_values(
 
         if removed:
             warnings.append(
-                f"{param_name}: {removed} valeur(s) hors bornes supprimées "
-                f"(limites: [{spec.min_val}, {spec.max_val}])"
+                f"{param_name}: {removed} valeur(s) hors bornes supprimées (limites: [{spec.min_val}, {spec.max_val}])",
             )
 
         if not filtered:
             raise ValueError(
                 f"Paramètre '{param_name}': aucune valeur valide après filtrage "
-                f"(limites: [{spec.min_val}, {spec.max_val}])"
+                f"(limites: [{spec.min_val}, {spec.max_val}])",
             )
 
         normalized[param_name] = filtered
@@ -1234,9 +1244,9 @@ def normalize_param_grid_values(
 # IV. SYSTÈME DE CONTRAINTES
 # =============================================================================
 
+
 class ConstraintValidator:
-    """
-    Validateur de contraintes pour filtrer les combinaisons de paramètres.
+    """Validateur de contraintes pour filtrer les combinaisons de paramètres.
 
     Usage:
         validator = ConstraintValidator()
@@ -1252,9 +1262,10 @@ class ConstraintValidator:
     """
 
     def __init__(
-        self, constraints: Optional[List[ParameterConstraint]] = None
+        self,
+        constraints: list[ParameterConstraint] | None = None,
     ):
-        self.constraints: List[ParameterConstraint] = constraints or []
+        self.constraints: list[ParameterConstraint] = constraints or []
 
     def add_constraint(self, constraint: ParameterConstraint) -> None:
         """Ajoute une contrainte."""
@@ -1266,15 +1277,20 @@ class ConstraintValidator:
         )
 
     def add_greater_than(
-        self, param_a: str, param_b: str, description: str = ""
+        self,
+        param_a: str,
+        param_b: str,
+        description: str = "",
     ) -> None:
         """Raccourci pour ajouter une contrainte param_a > param_b."""
-        self.add_constraint(ParameterConstraint(
-            param_a=param_a,
-            constraint_type='greater_than',
-            param_b=param_b,
-            description=description or f"{param_a} doit être > {param_b}"
-        ))
+        self.add_constraint(
+            ParameterConstraint(
+                param_a=param_a,
+                constraint_type="greater_than",
+                param_b=param_b,
+                description=description or f"{param_a} doit être > {param_b}",
+            ),
+        )
 
     def add_ratio_min(
         self,
@@ -1284,14 +1300,15 @@ class ConstraintValidator:
         description: str = "",
     ) -> None:
         """Raccourci pour ajouter une contrainte param_a / param_b >= ratio."""
-        self.add_constraint(ParameterConstraint(
-            param_a=param_a,
-            constraint_type='ratio_min',
-            param_b=param_b,
-            ratio=ratio,
-            description=description
-            or f"{param_a} / {param_b} doit être >= {ratio}"
-        ))
+        self.add_constraint(
+            ParameterConstraint(
+                param_a=param_a,
+                constraint_type="ratio_min",
+                param_b=param_b,
+                ratio=ratio,
+                description=description or f"{param_a} / {param_b} doit être >= {ratio}",
+            ),
+        )
 
     def add_difference_min(
         self,
@@ -1301,18 +1318,18 @@ class ConstraintValidator:
         description: str = "",
     ) -> None:
         """Raccourci pour ajouter une contrainte param_a - param_b >= diff."""
-        self.add_constraint(ParameterConstraint(
-            param_a=param_a,
-            constraint_type='difference_min',
-            param_b=param_b,
-            value=diff,
-            description=description
-            or f"{param_a} - {param_b} doit être >= {diff}"
-        ))
+        self.add_constraint(
+            ParameterConstraint(
+                param_a=param_a,
+                constraint_type="difference_min",
+                param_b=param_b,
+                value=diff,
+                description=description or f"{param_a} - {param_b} doit être >= {diff}",
+            ),
+        )
 
-    def validate(self, params: Dict[str, Any]) -> bool:
-        """
-        Vérifie si une combinaison de paramètres respecte toutes les
+    def validate(self, params: dict[str, Any]) -> bool:
+        """Vérifie si une combinaison de paramètres respecte toutes les
         contraintes.
 
         Args:
@@ -1320,16 +1337,16 @@ class ConstraintValidator:
 
         Returns:
             True si toutes les contraintes sont respectées
+
         """
         return all(c.validate(params) for c in self.constraints)
 
     def filter_grid(
         self,
-        param_grid: List[Dict[str, Any]],
-        log_filtered: bool = False
-    ) -> List[Dict[str, Any]]:
-        """
-        Filtre une grille de paramètres selon les contraintes.
+        param_grid: list[dict[str, Any]],
+        log_filtered: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Filtre une grille de paramètres selon les contraintes.
 
         Args:
             param_grid: Liste de combinaisons de paramètres
@@ -1337,6 +1354,7 @@ class ConstraintValidator:
 
         Returns:
             Liste des combinaisons valides
+
         """
         if not self.constraints:
             return param_grid
@@ -1362,74 +1380,79 @@ class ConstraintValidator:
 
         return valid
 
-    def get_violations(self, params: Dict[str, Any]) -> List[str]:
-        """
-        Retourne la liste des contraintes violées.
+    def get_violations(self, params: dict[str, Any]) -> list[str]:
+        """Retourne la liste des contraintes violées.
 
         Args:
             params: Dictionnaire des paramètres
 
         Returns:
             Liste des descriptions des contraintes violées
+
         """
         violations = []
         for constraint in self.constraints:
             if not constraint.validate(params):
                 desc = constraint.description or (
-                    f"{constraint.param_a} {constraint.constraint_type} "
-                    f"{constraint.param_b or constraint.value}"
+                    f"{constraint.param_a} {constraint.constraint_type} {constraint.param_b or constraint.value}"
                 )
                 violations.append(desc)
         return violations
 
-    def to_dict(self) -> List[Dict[str, Any]]:
+    def to_dict(self) -> list[dict[str, Any]]:
         return [c.to_dict() for c in self.constraints]
 
     @classmethod
-    def from_dict(cls, data: List[Dict[str, Any]]) -> "ConstraintValidator":
+    def from_dict(cls, data: list[dict[str, Any]]) -> "ConstraintValidator":
         constraints = [ParameterConstraint.from_dict(c) for c in data]
         return cls(constraints=constraints)
 
 
 # Contraintes prédéfinies courantes
 COMMON_CONSTRAINTS = {
-    "ema_cross": ConstraintValidator([
-        ParameterConstraint(
-            param_a="slow_period",
-            constraint_type="greater_than",
-            param_b="fast_period",
-            description="La période lente doit être > période rapide"
-        ),
-        ParameterConstraint(
-            param_a="slow_period",
-            constraint_type="ratio_min",
-            param_b="fast_period",
-            ratio=1.5,
-            description="La période lente doit être au moins 1.5x la rapide"
-        ),
-    ]),
-    "bollinger": ConstraintValidator([
-        ParameterConstraint(
-            param_a="bb_std",
-            constraint_type="min_value",
-            value=1.0,
-            description="L'écart-type doit être >= 1.0"
-        ),
-    ]),
-    "atr_stop": ConstraintValidator([
-        ParameterConstraint(
-            param_a="k_sl",
-            constraint_type="min_value",
-            value=0.5,
-            description="Le multiplicateur SL doit être >= 0.5"
-        ),
-        ParameterConstraint(
-            param_a="k_sl",
-            constraint_type="max_value",
-            value=5.0,
-            description="Le multiplicateur SL doit être <= 5.0"
-        ),
-    ]),
+    "ema_cross": ConstraintValidator(
+        [
+            ParameterConstraint(
+                param_a="slow_period",
+                constraint_type="greater_than",
+                param_b="fast_period",
+                description="La période lente doit être > période rapide",
+            ),
+            ParameterConstraint(
+                param_a="slow_period",
+                constraint_type="ratio_min",
+                param_b="fast_period",
+                ratio=1.5,
+                description="La période lente doit être au moins 1.5x la rapide",
+            ),
+        ],
+    ),
+    "bollinger": ConstraintValidator(
+        [
+            ParameterConstraint(
+                param_a="bb_std",
+                constraint_type="min_value",
+                value=1.0,
+                description="L'écart-type doit être >= 1.0",
+            ),
+        ],
+    ),
+    "atr_stop": ConstraintValidator(
+        [
+            ParameterConstraint(
+                param_a="k_sl",
+                constraint_type="min_value",
+                value=0.5,
+                description="Le multiplicateur SL doit être >= 0.5",
+            ),
+            ParameterConstraint(
+                param_a="k_sl",
+                constraint_type="max_value",
+                value=5.0,
+                description="Le multiplicateur SL doit être <= 5.0",
+            ),
+        ],
+    ),
 }
 
 
@@ -1439,14 +1462,13 @@ def get_common_constraints(strategy_type: str) -> ConstraintValidator:
 
 
 def generate_constrained_param_grid(
-    params_specs: Dict[str, ParameterSpec],
-    constraints: Optional[ConstraintValidator] = None,
+    params_specs: dict[str, ParameterSpec],
+    constraints: ConstraintValidator | None = None,
     granularity: float = 0.5,
     max_values_per_param: int = 4,
-    max_total_combinations: int = 10000
-) -> List[Dict[str, Any]]:
-    """
-    Génère une grille de paramètres avec filtrage par contraintes.
+    max_total_combinations: int = 10000,
+) -> list[dict[str, Any]]:
+    """Génère une grille de paramètres avec filtrage par contraintes.
 
     Args:
         params_specs: Spécifications des paramètres
@@ -1457,13 +1479,14 @@ def generate_constrained_param_grid(
 
     Returns:
         Liste de combinaisons valides
+
     """
     # Générer la grille brute
     grid = generate_param_grid(
         params_specs=params_specs,
         granularity=granularity,
         max_values_per_param=max_values_per_param,
-        max_total_combinations=max_total_combinations
+        max_total_combinations=max_total_combinations,
     )
 
     # Appliquer les contraintes si présentes
@@ -1482,7 +1505,7 @@ def generate_constrained_param_grid(
 SAFE_RANGES_PRESET = Preset(
     name="Safe Ranges",
     description="Configuration conservative avec 4 indicateurs de base. "
-                "~750 combinaisons pour une optimisation rapide.",
+    "~750 combinaisons pour une optimisation rapide.",
     parameters={
         # Bollinger Bands
         "bb_period": ParameterSpec(
@@ -1491,7 +1514,7 @@ SAFE_RANGES_PRESET = Preset(
             max_val=50,
             default=20,
             param_type="int",
-            description="Période des Bandes de Bollinger"
+            description="Période des Bandes de Bollinger",
         ),
         "bb_std": ParameterSpec(
             name="bb_std",
@@ -1499,7 +1522,7 @@ SAFE_RANGES_PRESET = Preset(
             max_val=3.0,
             default=2.0,
             param_type="float",
-            description="Nombre d'écarts-types pour les bandes"
+            description="Nombre d'écarts-types pour les bandes",
         ),
         # ATR
         "atr_period": ParameterSpec(
@@ -1508,7 +1531,7 @@ SAFE_RANGES_PRESET = Preset(
             max_val=21,
             default=14,
             param_type="int",
-            description="Période de l'ATR"
+            description="Période de l'ATR",
         ),
         # Stop Loss
         "k_sl": ParameterSpec(
@@ -1517,7 +1540,7 @@ SAFE_RANGES_PRESET = Preset(
             max_val=3.0,
             default=1.5,
             param_type="float",
-            description="Multiplicateur ATR pour stop-loss"
+            description="Multiplicateur ATR pour stop-loss",
         ),
         # Leverage (non optimisé, fixé à 1)
         "leverage": ParameterSpec(
@@ -1531,25 +1554,28 @@ SAFE_RANGES_PRESET = Preset(
         ),
     },
     indicators=["bollinger", "atr"],
-    default_granularity=0.5
+    default_granularity=0.5,
 )
 
 
 MINIMAL_PRESET = Preset(
     name="Minimal",
-    description="Configuration minimale pour tests rapides. "
-                "Paramètres par défaut, pas d'optimisation.",
+    description="Configuration minimale pour tests rapides. Paramètres par défaut, pas d'optimisation.",
     parameters={
         "bb_period": ParameterSpec("bb_period", 20, 20, 20, param_type="int"),
         "bb_std": ParameterSpec("bb_std", 2.0, 2.0, 2.0),
         "atr_period": ParameterSpec(
-            "atr_period", 14, 14, 14, param_type="int"
+            "atr_period",
+            14,
+            14,
+            14,
+            param_type="int",
         ),
         "k_sl": ParameterSpec("k_sl", 1.5, 1.5, 1.5),
         "leverage": ParameterSpec("leverage", 1, 1, 1, param_type="int", optimize=False),
     },
     indicators=["bollinger", "atr"],
-    default_granularity=1.0
+    default_granularity=1.0,
 )
 
 
@@ -1563,7 +1589,7 @@ EMA_CROSS_PRESET = Preset(
             max_val=20,
             default=12,
             param_type="int",
-            description="Période EMA rapide"
+            description="Période EMA rapide",
         ),
         "slow_period": ParameterSpec(
             name="slow_period",
@@ -1571,7 +1597,7 @@ EMA_CROSS_PRESET = Preset(
             max_val=50,
             default=26,
             param_type="int",
-            description="Période EMA lente"
+            description="Période EMA lente",
         ),
         "k_sl": ParameterSpec(
             name="k_sl",
@@ -1579,7 +1605,7 @@ EMA_CROSS_PRESET = Preset(
             max_val=3.0,
             default=2.0,
             param_type="float",
-            description="Multiplicateur pour stop-loss %"
+            description="Multiplicateur pour stop-loss %",
         ),
         "leverage": ParameterSpec(
             name="leverage",
@@ -1592,14 +1618,13 @@ EMA_CROSS_PRESET = Preset(
         ),
     },
     indicators=[],  # EMA calculée internement par la stratégie
-    default_granularity=0.5
+    default_granularity=0.5,
 )
 
 
 MACD_CROSS_PRESET = Preset(
     name="MACD Cross",
-    description="Configuration pour stratégie MACD Crossover. "
-                "~256 combinaisons.",
+    description="Configuration pour stratégie MACD Crossover. ~256 combinaisons.",
     parameters={
         "fast_period": ParameterSpec(
             name="fast_period",
@@ -1607,7 +1632,7 @@ MACD_CROSS_PRESET = Preset(
             max_val=20,
             default=12,
             param_type="int",
-            description="Période EMA rapide MACD"
+            description="Période EMA rapide MACD",
         ),
         "slow_period": ParameterSpec(
             name="slow_period",
@@ -1615,7 +1640,7 @@ MACD_CROSS_PRESET = Preset(
             max_val=35,
             default=26,
             param_type="int",
-            description="Période EMA lente MACD"
+            description="Période EMA lente MACD",
         ),
         "signal_period": ParameterSpec(
             name="signal_period",
@@ -1623,7 +1648,7 @@ MACD_CROSS_PRESET = Preset(
             max_val=15,
             default=9,
             param_type="int",
-            description="Période ligne signal"
+            description="Période ligne signal",
         ),
         "leverage": ParameterSpec(
             name="leverage",
@@ -1636,14 +1661,13 @@ MACD_CROSS_PRESET = Preset(
         ),
     },
     indicators=["macd"],
-    default_granularity=0.5
+    default_granularity=0.5,
 )
 
 
 RSI_REVERSAL_PRESET = Preset(
     name="RSI Reversal",
-    description="Configuration pour stratégie RSI mean-reversion. "
-                "~256 combinaisons.",
+    description="Configuration pour stratégie RSI mean-reversion. ~256 combinaisons.",
     parameters={
         "rsi_period": ParameterSpec(
             name="rsi_period",
@@ -1651,7 +1675,7 @@ RSI_REVERSAL_PRESET = Preset(
             max_val=21,
             default=14,
             param_type="int",
-            description="Période RSI"
+            description="Période RSI",
         ),
         "oversold_level": ParameterSpec(
             name="oversold_level",
@@ -1659,7 +1683,7 @@ RSI_REVERSAL_PRESET = Preset(
             max_val=40,
             default=30,
             param_type="int",
-            description="Seuil survente"
+            description="Seuil survente",
         ),
         "overbought_level": ParameterSpec(
             name="overbought_level",
@@ -1667,7 +1691,7 @@ RSI_REVERSAL_PRESET = Preset(
             max_val=80,
             default=70,
             param_type="int",
-            description="Seuil surachat"
+            description="Seuil surachat",
         ),
         "leverage": ParameterSpec(
             name="leverage",
@@ -1680,14 +1704,13 @@ RSI_REVERSAL_PRESET = Preset(
         ),
     },
     indicators=["rsi"],
-    default_granularity=0.5
+    default_granularity=0.5,
 )
 
 
 ATR_CHANNEL_PRESET = Preset(
     name="ATR Channel",
-    description="Configuration pour stratégie ATR Channel breakout. "
-                "~256 combinaisons.",
+    description="Configuration pour stratégie ATR Channel breakout. ~256 combinaisons.",
     parameters={
         "atr_period": ParameterSpec(
             name="atr_period",
@@ -1695,7 +1718,7 @@ ATR_CHANNEL_PRESET = Preset(
             max_val=21,
             default=14,
             param_type="int",
-            description="Période ATR et EMA"
+            description="Période ATR et EMA",
         ),
         "atr_mult": ParameterSpec(
             name="atr_mult",
@@ -1703,7 +1726,7 @@ ATR_CHANNEL_PRESET = Preset(
             max_val=4.0,
             default=2.0,
             param_type="float",
-            description="Multiplicateur ATR pour canal"
+            description="Multiplicateur ATR pour canal",
         ),
         "leverage": ParameterSpec(
             name="leverage",
@@ -1716,7 +1739,7 @@ ATR_CHANNEL_PRESET = Preset(
         ),
     },
     indicators=["atr", "ema"],
-    default_granularity=0.5
+    default_granularity=0.5,
 )
 
 
@@ -1789,7 +1812,7 @@ BOLLINGER_ATR_PRESET = Preset(
 
 # --- 5.2. Registre PRESETS ---
 
-PRESETS: Dict[str, Preset] = {
+PRESETS: dict[str, Preset] = {
     "safe_ranges": SAFE_RANGES_PRESET,
     "minimal": MINIMAL_PRESET,
     "bollinger_atr": BOLLINGER_ATR_PRESET,
@@ -1802,17 +1825,18 @@ PRESETS: Dict[str, Preset] = {
 
 # --- 5.3. Fonctions d'accès ---
 
+
 def get_preset(name: str) -> Preset:
     """Récupère un preset par son nom."""
     if name not in PRESETS:
         available = ", ".join(PRESETS.keys())
         raise ValueError(
-            f"Preset '{name}' non trouvé. Disponibles: {available}"
+            f"Preset '{name}' non trouvé. Disponibles: {available}",
         )
     return PRESETS[name]
 
 
-def list_presets() -> List[str]:
+def list_presets() -> list[str]:
     """Liste les presets disponibles."""
     return list(PRESETS.keys())
 
@@ -1820,6 +1844,7 @@ def list_presets() -> List[str]:
 # =============================================================================
 # VI. PRESETS I/O (DISQUE)
 # =============================================================================
+
 
 def save_preset(preset: Preset, filepath: Path) -> None:
     """Sauvegarde un preset en JSON."""
@@ -1829,7 +1854,7 @@ def save_preset(preset: Preset, filepath: Path) -> None:
 
 def load_preset(filepath: Path) -> Preset:
     """Charge un preset depuis un fichier JSON."""
-    with open(filepath, "r", encoding="utf-8") as f:
+    with open(filepath, encoding="utf-8") as f:
         data = json.load(f)
     return Preset.from_dict(data)
 
@@ -1839,6 +1864,7 @@ def load_preset(filepath: Path) -> Preset:
 # =============================================================================
 
 # --- 7.1. Configuration et gestion du répertoire ---
+
 
 def get_versioned_presets_dir() -> Path:
     """Return directory for versioned presets."""
@@ -1853,21 +1879,21 @@ def get_versioned_presets_dir() -> Path:
 
 # --- 7.2. Sauvegarde et chargement ---
 
+
 def save_versioned_preset(
     strategy_name: str,
     version: str,
     preset_name: str,
-    params_values: Dict[str, Any],
-    indicators: Optional[List[str]] = None,
-    description: Optional[str] = None,
-    metrics: Optional[Dict[str, Any]] = None,
+    params_values: dict[str, Any],
+    indicators: list[str] | None = None,
+    description: str | None = None,
+    metrics: dict[str, Any] | None = None,
     *,
-    origin: Optional[str] = None,
-    origin_run_id: Optional[str] = None,
-    extra_metadata: Optional[Dict[str, Any]] = None,
+    origin: str | None = None,
+    origin_run_id: str | None = None,
+    extra_metadata: dict[str, Any] | None = None,
 ) -> Preset:
-    """
-    Save a versioned preset to disk and return it.
+    """Save a versioned preset to disk and return it.
 
     Naming convention:
         <strategy>@<version>__<preset_slug>
@@ -1882,13 +1908,14 @@ def save_versioned_preset(
 
     if indicators is None:
         from utils.preset_validation import auto_fill_indicators_from_strategy
+
         indicators = auto_fill_indicators_from_strategy(strategy_name)
 
     params_values = params_values or {}
     param_specs = _build_fixed_parameter_specs(params_values)
     created_at = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
-    metadata: Dict[str, Any] = {
+    metadata: dict[str, Any] = {
         "strategy": strategy_name,
         "strategy_slug": strategy_slug,
         "version": version,
@@ -1925,31 +1952,27 @@ def save_versioned_preset(
 
 def load_strategy_version(
     strategy_name: str,
-    version: Optional[str] = None,
-    preset_name: Optional[str] = None,
+    version: str | None = None,
+    preset_name: str | None = None,
 ) -> Preset:
-    """
-    Load a versioned preset for a strategy, validated against indicators.
-    """
+    """Load a versioned preset for a strategy, validated against indicators."""
     presets = list_strategy_versions(strategy_name)
     if not presets:
         raise ValueError(
-            f"No versioned presets found for strategy '{strategy_name}'"
+            f"No versioned presets found for strategy '{strategy_name}'",
         )
 
     if version is None:
         version = resolve_latest_version(strategy_name)
     version = version.strip()
 
-    filtered = [
-        p for p in presets
-        if (p.metadata or {}).get("version") == version
-    ]
+    filtered = [p for p in presets if (p.metadata or {}).get("version") == version]
 
     if preset_name:
         preset_slug = _normalize_slug(preset_name)
         filtered = [
-            p for p in filtered
+            p
+            for p in filtered
             if (
                 (p.metadata or {}).get("preset_slug") == preset_slug
                 or (p.metadata or {}).get("preset_name") == preset_name
@@ -1959,8 +1982,7 @@ def load_strategy_version(
 
     if not filtered:
         raise ValueError(
-            "No matching versioned preset for strategy "
-            f"'{strategy_name}' version='{version}'"
+            f"No matching versioned preset for strategy '{strategy_name}' version='{version}'",
         )
 
     filtered.sort(key=_preset_sort_key, reverse=True)
@@ -1970,14 +1992,15 @@ def load_strategy_version(
 
 # --- 7.3. Listage et résolution ---
 
-def list_strategy_versions(strategy_name: str) -> List[Preset]:
+
+def list_strategy_versions(strategy_name: str) -> list[Preset]:
     """List versioned presets for a strategy."""
     presets_dir = get_versioned_presets_dir()
     if not presets_dir.exists():
         return []
 
     strategy_slug = _normalize_slug(strategy_name)
-    presets: List[Preset] = []
+    presets: list[Preset] = []
 
     for path in presets_dir.glob("*.json"):
         parsed = _parse_versioned_id(path.stem)
@@ -2000,10 +2023,7 @@ def resolve_latest_version(strategy_name: str) -> str:
     presets = list_strategy_versions(strategy_name)
     if not presets:
         return DEFAULT_STRATEGY_VERSION
-    versions = [
-        (preset.metadata or {}).get("version", "")
-        for preset in presets
-    ]
+    versions = [(preset.metadata or {}).get("version", "") for preset in presets]
     versions = [v for v in versions if v]
     if not versions:
         return DEFAULT_STRATEGY_VERSION
@@ -2013,6 +2033,7 @@ def resolve_latest_version(strategy_name: str) -> str:
 
 # --- 7.4. Validation ---
 
+
 def validate_before_use(preset: Preset, strategy_name: str) -> Preset:
     """Validate preset against strategy indicators before use."""
     from utils.preset_validation import validate_preset_against_strategy
@@ -2021,7 +2042,7 @@ def validate_before_use(preset: Preset, strategy_name: str) -> Preset:
     if not result.is_valid:
         details = "; ".join(result.errors + result.warnings)
         raise ValueError(
-            f"Preset validation failed for '{strategy_name}': {details}"
+            f"Preset validation failed for '{strategy_name}': {details}",
         )
     return preset
 
@@ -2071,4 +2092,3 @@ __all__ = [
     "ATR_CHANNEL_PRESET",
     "PRESETS",
 ]
-

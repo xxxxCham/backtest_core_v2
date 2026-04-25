@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.atr
+"""Module-ID: indicators.atr
 
 Purpose: Indicateur volatilité ATR (Average True Range) vectorisé.
 
@@ -21,7 +20,7 @@ Skip-if: Vous utilisez juste calculate_indicator('atr').
 """
 
 from dataclasses import dataclass
-from typing import Literal, Union
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -42,12 +41,11 @@ class ATRSettings:
 
 
 def true_range(
-    high: Union[pd.Series, np.ndarray],
-    low: Union[pd.Series, np.ndarray],
-    close: Union[pd.Series, np.ndarray]
+    high: pd.Series | np.ndarray,
+    low: pd.Series | np.ndarray,
+    close: pd.Series | np.ndarray,
 ) -> np.ndarray:
-    """
-    Calcule le True Range pour chaque barre.
+    """Calcule le True Range pour chaque barre.
 
     TR = max(high-low, abs(high-prev_close), abs(low-prev_close))
 
@@ -58,6 +56,7 @@ def true_range(
 
     Returns:
         Array du True Range (première valeur = high - low)
+
     """
     # Convertir en arrays numpy
     if isinstance(high, pd.Series):
@@ -70,6 +69,13 @@ def true_range(
     high = np.asarray(high, dtype=np.float64)
     low = np.asarray(low, dtype=np.float64)
     close = np.asarray(close, dtype=np.float64)
+
+    if high.ndim != 1 or low.ndim != 1 or close.ndim != 1:
+        raise ValueError("high, low and close must be 1D arrays")
+    if len(high) != len(low) or len(high) != len(close):
+        raise ValueError("high, low and close must have the same length")
+    if len(close) == 0:
+        return np.array([], dtype=np.float64)
 
     n = len(close)
     tr = np.zeros(n, dtype=np.float64)
@@ -89,15 +95,14 @@ def true_range(
 
 
 def atr(
-    high: Union[pd.Series, np.ndarray],
-    low: Union[pd.Series, np.ndarray],
-    close: Union[pd.Series, np.ndarray],
+    high: pd.Series | np.ndarray,
+    low: pd.Series | np.ndarray,
+    close: pd.Series | np.ndarray,
     period: int = 14,
     method: Literal["ema", "sma"] = "ema",
-    settings: ATRSettings = None
+    settings: ATRSettings | None = None,
 ) -> np.ndarray:
-    """
-    Calcule l'Average True Range.
+    """Calcule l'Average True Range.
 
     Args:
         high: Prix hauts
@@ -111,6 +116,7 @@ def atr(
         Array ATR de même longueur que les entrées.
         Les premières (period-1) valeurs seront NaN pour SMA,
         ou valeurs progressives pour EMA.
+
     """
     # Utiliser settings si fourni
     if settings is not None:
@@ -120,8 +126,15 @@ def atr(
     # Calculer True Range
     tr = true_range(high, low, close)
     period = int(period)  # Assurer que period est un entier
+    if period < 1:
+        raise ValueError(f"period doit être >= 1, reçu: {period}")
+    method = str(method).lower()
+    if method not in ("ema", "sma"):
+        raise ValueError(f"method doit être 'ema' ou 'sma', reçu: {method}")
     n = len(tr)
 
+    if n == 0:
+        return np.array([], dtype=np.float64)
     if n < period:
         raise ValueError(f"Données insuffisantes: {n} < period={period}")
 
@@ -132,30 +145,29 @@ def atr(
         atr_values = tr_series.rolling(window=period, min_periods=period).mean()
         return atr_values.values
 
-    else:  # EMA (méthode Wilder)
-        atr_values = np.zeros(n, dtype=np.float64)
-        atr_values[:period] = np.nan
+    # EMA (méthode Wilder)
+    atr_values = np.zeros(n, dtype=np.float64)
+    atr_values[:period] = np.nan
 
-        # Première ATR = SMA des premières périodes
-        atr_values[period - 1] = np.mean(tr[:period])
+    # Première ATR = SMA des premières périodes
+    atr_values[period - 1] = np.mean(tr[:period])
 
-        # EMA avec alpha = 1/period (méthode Wilder)
-        alpha = 1.0 / period
+    # EMA avec alpha = 1/period (méthode Wilder)
+    alpha = 1.0 / period
 
-        for i in range(period, n):
-            atr_values[i] = alpha * tr[i] + (1 - alpha) * atr_values[i - 1]
+    for i in range(period, n):
+        atr_values[i] = alpha * tr[i] + (1 - alpha) * atr_values[i - 1]
 
-        return atr_values
+    return atr_values
 
 
 def atr_percent(
-    high: Union[pd.Series, np.ndarray],
-    low: Union[pd.Series, np.ndarray],
-    close: Union[pd.Series, np.ndarray],
-    period: int = 14
+    high: pd.Series | np.ndarray,
+    low: pd.Series | np.ndarray,
+    close: pd.Series | np.ndarray,
+    period: int = 14,
 ) -> np.ndarray:
-    """
-    Calcule l'ATR en pourcentage du prix.
+    """Calcule l'ATR en pourcentage du prix.
 
     Formule: ATR / Close * 100
 
@@ -164,6 +176,10 @@ def atr_percent(
     if isinstance(close, pd.Series):
         close = close.values
     close = np.asarray(close, dtype=np.float64)
+    if close.ndim != 1:
+        raise ValueError("close must be a 1D array")
+    if close.size == 0:
+        return np.array([], dtype=np.float64)
 
     atr_values = atr(high, low, close, period)
 
@@ -177,10 +193,9 @@ def calculate_stop_loss(
     entry_price: float,
     atr_value: float,
     multiplier: float = 1.5,
-    side: Literal["long", "short"] = "long"
+    side: Literal["long", "short"] = "long",
 ) -> float:
-    """
-    Calcule un niveau de stop-loss basé sur l'ATR.
+    """Calcule un niveau de stop-loss basé sur l'ATR.
 
     Args:
         entry_price: Prix d'entrée
@@ -190,13 +205,13 @@ def calculate_stop_loss(
 
     Returns:
         Prix du stop-loss
+
     """
     distance = atr_value * multiplier
 
     if side == "long":
         return entry_price - distance
-    else:
-        return entry_price + distance
+    return entry_price + distance
 
 
-__all__ = ["atr", "ATRSettings", "true_range", "atr_percent", "calculate_stop_loss"]
+__all__ = ["ATRSettings", "atr", "atr_percent", "calculate_stop_loss", "true_range"]

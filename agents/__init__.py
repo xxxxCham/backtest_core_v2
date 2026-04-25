@@ -1,5 +1,4 @@
-"""
-Backtest Core V2 - Agents LLM Module
+"""Backtest Core V2 - Agents LLM Module
 =================================
 
 Système d'optimisation autonome par agents LLM.
@@ -61,8 +60,7 @@ import sys
 
 
 def _configure_agents_logger() -> None:
-    """
-    Force un handler stdout dédié pour les logs des agents afin de contourner
+    """Force un handler stdout dédié pour les logs des agents afin de contourner
     une configuration du logger racine trop restrictive.
     """
     if os.getenv("AGENTS_FORCE_STDOUT", "1") == "0":
@@ -79,10 +77,12 @@ def _configure_agents_logger() -> None:
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(level)
-    handler.setFormatter(logging.Formatter(
-        "[AGENTS] %(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        datefmt="%H:%M:%S",
-    ))
+    handler.setFormatter(
+        logging.Formatter(
+            "[AGENTS] %(asctime)s | %(levelname)s | %(name)s | %(message)s",
+            datefmt="%H:%M:%S",
+        ),
+    )
     handler._agents_force_stdout = True  # type: ignore[attr-defined]  # pylint: disable=protected-access
 
     logger.addHandler(handler)
@@ -106,6 +106,7 @@ from .backtest_executor import (  # noqa: E402
     ExperimentHistory,
 )
 from .base_agent import AgentContext, AgentResult, BaseAgent  # noqa: E402
+from .builder_code_validation import validate_generated_code  # noqa: E402
 from .critic import CriticAgent  # noqa: E402
 from .integration import (  # noqa: E402
     create_optimizer_from_engine,
@@ -161,7 +162,6 @@ from .strategy_builder import (  # noqa: E402
     BuilderSession,
     StrategyBuilder,
 )
-from .builder_code_validation import validate_generated_code  # noqa: E402
 from .validator import ValidatorAgent  # noqa: E402
 
 __all__ = [

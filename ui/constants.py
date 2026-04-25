@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.constants
+"""Module-ID: ui.constants
 
 Purpose: Constantes UI - limites paramètres, descriptions stratégies, options modes, styles.
 
@@ -23,122 +22,199 @@ Skip-if: Vous appelez get_strategy_description(strategy_name).
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Tuple
 
 from strategies.indicators_mapping import STRATEGY_INDICATORS_MAP, get_ui_indicators
 
 # Contraintes des parametres (min, max, step, description)
 # Plages etendues pour permettre plus de combinaisons de test
-PARAM_CONSTRAINTS: Dict[str, Dict[str, object]] = {
+PARAM_CONSTRAINTS: dict[str, dict[str, object]] = {
     # Bollinger ATR Strategy
     "bb_period": {
-        "min": 2, "max": 200, "step": 1, "default": 20,
+        "min": 2,
+        "max": 200,
+        "step": 1,
+        "default": 20,
         "description": "Période des Bollinger Bands (2-200)",
     },
     "bb_std": {
-        "min": 0.5, "max": 5.0, "step": 0.1, "default": 2.0,
+        "min": 0.5,
+        "max": 5.0,
+        "step": 0.1,
+        "default": 2.0,
         "description": "Écart-type des bandes (0.5-5.0)",
     },
     "bb_window": {
-        "min": 10, "max": 50, "step": 1, "default": 20,
+        "min": 10,
+        "max": 50,
+        "step": 1,
+        "default": 20,
         "description": "Periode Bollinger (10-50)",
     },
     "ma_window": {
-        "min": 5, "max": 30, "step": 1, "default": 10,
+        "min": 5,
+        "max": 30,
+        "step": 1,
+        "default": 10,
         "description": "Periode MA (5-30)",
     },
     "trailing_pct": {
-        "min": 0.5, "max": 1.0, "step": 0.05, "default": 0.8,
+        "min": 0.5,
+        "max": 1.0,
+        "step": 0.05,
+        "default": 0.8,
         "description": "Trailing stop (0.5-1.0)",
     },
     "short_stop_pct": {
-        "min": 0.1, "max": 0.5, "step": 0.01, "default": 0.37,
+        "min": 0.1,
+        "max": 0.5,
+        "step": 0.01,
+        "default": 0.37,
         "description": "Stop loss short (0.1-0.5)",
     },
     "atr_period": {
-        "min": 2, "max": 100, "step": 1, "default": 14,
+        "min": 2,
+        "max": 100,
+        "step": 1,
+        "default": 14,
         "description": "Periode ATR (2-100)",
     },
     "atr_percentile": {
-        "min": 0, "max": 100, "step": 1, "default": 30,
+        "min": 0,
+        "max": 100,
+        "step": 1,
+        "default": 30,
         "description": "Percentile ATR (0-100)",
     },
     "entry_z": {
-        "min": 0.5, "max": 5.0, "step": 0.1, "default": 2.0,
+        "min": 0.5,
+        "max": 5.0,
+        "step": 0.1,
+        "default": 2.0,
         "description": "Z-score d'entrée (0.5-5.0)",
     },
     "k_sl": {
-        "min": 0.1, "max": 10.0, "step": 0.1, "default": 1.5,
+        "min": 0.1,
+        "max": 10.0,
+        "step": 0.1,
+        "default": 1.5,
         "description": "Multiplicateur stop-loss (0.1-10.0)",
     },
     # Commun
     "leverage": {
-        "min": 1, "max": 10, "step": 1, "default": 1,
+        "min": 1,
+        "max": 10,
+        "step": 1,
+        "default": 1,
         "description": "Levier de trading (1-10) - défaut: 1 pour éviter ruine du compte",
     },
     # EMA Cross / MA Crossover Strategy
     "fast_period": {
-        "min": 2, "max": 200, "step": 1, "default": 12,
+        "min": 2,
+        "max": 200,
+        "step": 1,
+        "default": 12,
         "description": "Période MA rapide (2-200)",
     },
     "slow_period": {
-        "min": 2, "max": 500, "step": 1, "default": 26,
+        "min": 2,
+        "max": 500,
+        "step": 1,
+        "default": 26,
         "description": "Période MA lente (2-500)",
     },
     "ema_fast": {
-        "min": 10, "max": 50, "step": 1, "default": 20,
+        "min": 10,
+        "max": 50,
+        "step": 1,
+        "default": 20,
         "description": "Période EMA rapide (10-50)",
     },
     "ema_slow": {
-        "min": 30, "max": 100, "step": 1, "default": 50,
+        "min": 30,
+        "max": 100,
+        "step": 1,
+        "default": 50,
         "description": "Période EMA lente (30-100)",
     },
     # MACD Cross Strategy
     "signal_period": {
-        "min": 2, "max": 50, "step": 1, "default": 9,
+        "min": 2,
+        "max": 50,
+        "step": 1,
+        "default": 9,
         "description": "Période ligne signal MACD (2-50)",
     },
     # RSI Reversal Strategy
     "rsi_period": {
-        "min": 2, "max": 100, "step": 1, "default": 14,
+        "min": 2,
+        "max": 100,
+        "step": 1,
+        "default": 14,
         "description": "Période RSI (2-100)",
     },
     "oversold_level": {
-        "min": 1, "max": 49, "step": 1, "default": 30,
+        "min": 1,
+        "max": 49,
+        "step": 1,
+        "default": 30,
         "description": "Seuil survente RSI (1-49)",
     },
     "overbought_level": {
-        "min": 51, "max": 99, "step": 1, "default": 70,
+        "min": 51,
+        "max": 99,
+        "step": 1,
+        "default": 70,
         "description": "Seuil surachat RSI (51-99)",
     },
     # ATR Channel Strategy
     "atr_mult": {
-        "min": 0.1, "max": 10.0, "step": 0.1, "default": 2.0,
+        "min": 0.1,
+        "max": 10.0,
+        "step": 0.1,
+        "default": 2.0,
         "description": "Multiplicateur ATR pour canal (0.1-10.0)",
     },
     # EMA Stochastic Scalp Strategy
     "fast_ema": {
-        "min": 2, "max": 200, "step": 1, "default": 50,
+        "min": 2,
+        "max": 200,
+        "step": 1,
+        "default": 50,
         "description": "Période EMA rapide scalp (2-200)",
     },
     "slow_ema": {
-        "min": 2, "max": 500, "step": 1, "default": 100,
+        "min": 2,
+        "max": 500,
+        "step": 1,
+        "default": 100,
         "description": "Période EMA lente scalp (2-500)",
     },
     "stoch_k": {
-        "min": 2, "max": 100, "step": 1, "default": 14,
+        "min": 2,
+        "max": 100,
+        "step": 1,
+        "default": 14,
         "description": "Période Stochastic %K (2-100)",
     },
     "stoch_d": {
-        "min": 1, "max": 50, "step": 1, "default": 3,
+        "min": 1,
+        "max": 50,
+        "step": 1,
+        "default": 3,
         "description": "Période Stochastic %D (1-50)",
     },
     "stoch_oversold": {
-        "min": 1, "max": 49, "step": 1, "default": 20,
+        "min": 1,
+        "max": 49,
+        "step": 1,
+        "default": 20,
         "description": "Seuil survente Stochastic (1-49)",
     },
     "stoch_overbought": {
-        "min": 51, "max": 99, "step": 1, "default": 80,
+        "min": 51,
+        "max": 99,
+        "step": 1,
+        "default": 80,
         "description": "Seuil surachat Stochastic (51-99)",
     },
 }
@@ -176,7 +252,7 @@ def get_strategy_description(strategy_key: str) -> str:
     return info.description or ""
 
 
-def get_strategy_ui_indicators(strategy_key: str) -> List[str]:
+def get_strategy_ui_indicators(strategy_key: str) -> list[str]:
     try:
         return get_ui_indicators(strategy_key)
     except KeyError:
@@ -189,34 +265,35 @@ MODE_BUTTON_CSS = """
         width: 100%;
         padding: 12px 16px;
         margin: 6px 0;
-        border: 2px solid transparent;
-        border-radius: 8px;
+        border: 1px solid rgba(96, 165, 250, 0.25);
+        border-radius: 14px;
         font-size: 14px;
-        font-weight: 600;
+        font-weight: 650;
         cursor: pointer;
         text-align: center;
-        transition: all 0.3s ease;
+        color: #dbeafe;
+        transition: all 0.2s ease;
     }
     .mode-button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        border-color: rgba(147, 197, 253, 0.55);
+        box-shadow: 0 10px 24px rgba(2, 8, 23, 0.25);
     }
     .mode-inactive {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        opacity: 0.6;
+        background: linear-gradient(180deg, rgba(14, 27, 45, 0.94), rgba(18, 34, 57, 0.92));
+        opacity: 0.7;
     }
     .mode-active {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+        background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 58%, #60a5fa 100%);
+        color: #ffffff;
         opacity: 1;
-        border-color: #ffd700;
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        border-color: rgba(147, 197, 253, 0.78);
+        box-shadow: 0 14px 30px rgba(30, 64, 175, 0.34);
     }
 </style>
 """
 
-MODE_OPTIONS: List[Tuple[str, str, str]] = [
+MODE_OPTIONS: list[tuple[str, str, str]] = [
     ("Backtest Simple", "📊", "1 combinaison de paramètres"),
     ("Grille de Paramètres", "🔢", "Exploration min/max/step"),
     ("🤖 Optimisation LLM", "🧠", "Agents IA + Deep Trace intégré"),
@@ -224,7 +301,5 @@ MODE_OPTIONS: List[Tuple[str, str, str]] = [
 ]
 
 
-def build_strategy_options(available_strategies: List[str]) -> Dict[str, str]:
+def build_strategy_options(available_strategies: list[str]) -> dict[str, str]:
     return {get_strategy_ui_label(k): k for k in available_strategies}
-
-

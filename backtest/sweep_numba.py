@@ -1,5 +1,4 @@
-"""
-Backtest Core - Sweep Numba Vectorisé
+"""Backtest Core - Sweep Numba Vectorisé
 =====================================
 
 Exécute des milliers de backtests en parallèle avec Numba prange.
@@ -18,16 +17,19 @@ Stratégies supportées:
 import logging
 import os
 import time
+from collections.abc import Callable
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
+
 from performance.memory import get_available_ram_gb
 from performance.parallel import get_recommended_chunk_size, get_recommended_worker_count
 
 try:
     from numba import get_num_threads, njit, prange, set_num_threads
+
     HAS_NUMBA = True
 except ImportError:
     HAS_NUMBA = False
@@ -38,7 +40,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-NUMBA_SWEEP_PARAM_SPECS: Dict[str, Dict[str, float]] = {
+NUMBA_SWEEP_PARAM_SPECS: dict[str, dict[str, float]] = {
     "bollinger_best_longe_3i": {
         "bb_period": 20.0,
         "bb_std": 2.1,
@@ -84,7 +86,7 @@ NUMBA_SWEEP_PARAM_SPECS: Dict[str, Dict[str, float]] = {
     },
 }
 
-NUMBA_SWEEP_THREAD_PROFILES: Dict[str, Dict[str, float]] = {
+NUMBA_SWEEP_THREAD_PROFILES: dict[str, dict[str, float]] = {
     "bollinger_best_longe_3i": {
         "cost_multiplier": 1.35,
         "to_4_threads": 220_000,
@@ -127,12 +129,14 @@ NUMBA_SWEEP_THREAD_PROFILES: Dict[str, Dict[str, float]] = {
 # Stratégies supportées par le sweep Numba
 # ============================================================================
 NUMBA_SUPPORTED_STRATEGIES = {
-    'bollinger_atr', 'bollinger_atr_v2', 'bollinger_atr_v3',
-    'ema_cross',
-    'rsi_reversal',
-    'macd_cross',
-    'bollinger_best_longe_3i',
-    'bollinger_best_short_3i',
+    "bollinger_atr",
+    "bollinger_atr_v2",
+    "bollinger_atr_v3",
+    "ema_cross",
+    "rsi_reversal",
+    "macd_cross",
+    "bollinger_best_longe_3i",
+    "bollinger_best_short_3i",
 }
 
 NUMBA_SUPPORTED_METRICS = {
@@ -150,7 +154,7 @@ NUMBA_SUPPORTED_METRICS = {
 }
 
 
-def _read_positive_int_env(var_name: str) -> Optional[int]:
+def _read_positive_int_env(var_name: str) -> int | None:
     """Lit une variable d'environnement entière positive."""
     raw_value = str(os.getenv(var_name, "") or "").strip()
     if not raw_value:
@@ -162,9 +166,8 @@ def _read_positive_int_env(var_name: str) -> Optional[int]:
     return parsed if parsed > 0 else None
 
 
-def _get_numba_thread_ceiling() -> Optional[int]:
-    """
-    Retourne le plafond de threads impose par le runtime courant.
+def _get_numba_thread_ceiling() -> int | None:
+    """Retourne le plafond de threads impose par le runtime courant.
 
     Cas important:
     - les workers multiprocess bornent Numba a 1 thread pour eviter le nested
@@ -174,7 +177,7 @@ def _get_numba_thread_ceiling() -> Optional[int]:
       "Cannot set NUMBA_NUM_THREADS to a different value once the threads have
       been launched".
     """
-    caps: List[int] = []
+    caps: list[int] = []
     for env_name in ("BACKTEST_WORKER_THREADS", "NUMBA_NUM_THREADS"):
         env_value = _read_positive_int_env(env_name)
         if env_value is not None:
@@ -196,7 +199,7 @@ def normalize_numba_strategy_key(strategy_key: str) -> str:
     return str(strategy_key or "").lower().replace("-", "_").replace(" ", "_")
 
 
-def normalize_numba_metric_name(metric: Optional[str]) -> str:
+def normalize_numba_metric_name(metric: str | None) -> str:
     """Normalise les alias de métriques vers le contrat canonique Numba."""
     metric_key = str(metric or "sharpe_ratio").strip().lower()
     aliases = {
@@ -219,7 +222,7 @@ def is_numba_supported(strategy_key: str) -> bool:
     return HAS_NUMBA and normalize_numba_strategy_key(strategy_key) in NUMBA_SUPPORTED_STRATEGIES
 
 
-def is_numba_metric_supported(metric: Optional[str]) -> bool:
+def is_numba_metric_supported(metric: str | None) -> bool:
     """Vérifie si la métrique demandée est compatible avec le backend Numba."""
     if metric is None:
         return True
@@ -229,11 +232,10 @@ def is_numba_metric_supported(metric: Optional[str]) -> bool:
 def should_use_numba_backend(
     strategy_key: str,
     *,
-    metric: Optional[str] = "sharpe_ratio",
-    total_combos: Optional[int] = None,
+    metric: str | None = "sharpe_ratio",
+    total_combos: int | None = None,
 ) -> bool:
-    """
-    Décide si le sweep Numba doit être utilisé par défaut.
+    """Décide si le sweep Numba doit être utilisé par défaut.
 
     Le but est de privilégier Numba partout où le contrat fonctionnel reste
     compatible; un fallback classique reste possible via variables d'environnement.
@@ -261,7 +263,7 @@ def should_use_numba_backend(
     return True
 
 
-def numba_result_to_metrics(result: Dict[str, Any], initial_capital: float) -> Dict[str, Any]:
+def numba_result_to_metrics(result: dict[str, Any], initial_capital: float) -> dict[str, Any]:
     """Normalise un résultat Numba vers le format métriques attendu par les autres couches."""
     total_pnl = float(result.get("total_pnl", 0.0))
     max_drawdown = -abs(float(result.get("max_drawdown", 0.0)))
@@ -284,11 +286,11 @@ def numba_result_to_metrics(result: Dict[str, Any], initial_capital: float) -> D
 
 
 def build_numba_sweep_result_item(
-    result: Dict[str, Any],
+    result: dict[str, Any],
     *,
     initial_capital: float,
-    metric: Optional[str] = "sharpe_ratio",
-) -> Dict[str, Any]:
+    metric: str | None = "sharpe_ratio",
+) -> dict[str, Any]:
     """Construit un item de sweep normalisé à partir d'un résultat brut Numba."""
     metric_key = normalize_numba_metric_name(metric)
     metrics = numba_result_to_metrics(result, initial_capital)
@@ -304,23 +306,20 @@ def run_numba_sweep_items_if_supported(
     *,
     df: pd.DataFrame,
     strategy_key: str,
-    param_grid: List[Dict[str, Any]],
-    metric: Optional[str] = "sharpe_ratio",
+    param_grid: list[dict[str, Any]],
+    metric: str | None = "sharpe_ratio",
     initial_capital: float = 10000.0,
     fees_bps: float = 10.0,
     slippage_bps: float = 5.0,
-    progress_callback: Optional[Callable[[int, int, Dict[str, Any]], None]] = None,
-    result_chunk_callback: Optional[
-        Callable[[List[Dict[str, Any]], int, int, Optional[Dict[str, Any]]], None]
-    ] = None,
-    thread_override: Optional[int] = None,
-    chunk_size_override: Optional[int] = None,
-    should_stop: Optional[Callable[[], bool]] = None,
-    _param_arrays: Optional[Dict[str, np.ndarray]] = None,
-    _ohlcv: Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]] = None,
-) -> Optional[List[Dict[str, Any]]]:
-    """
-    Exécute un sweep Numba si le backend est compatible et retourne des items normalisés.
+    progress_callback: Callable[[int, int, dict[str, Any]], None] | None = None,
+    result_chunk_callback: Callable[[list[dict[str, Any]], int, int, dict[str, Any] | None], None] | None = None,
+    thread_override: int | None = None,
+    chunk_size_override: int | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    _param_arrays: dict[str, np.ndarray] | None = None,
+    _ohlcv: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+) -> list[dict[str, Any]] | None:
+    """Exécute un sweep Numba si le backend est compatible et retourne des items normalisés.
 
     Chaque item suit le contrat:
     `{"params": {...}, "metrics": {...}, "score": ...}`.
@@ -336,10 +335,10 @@ def run_numba_sweep_items_if_supported(
         return None
 
     def normalized_chunk_callback(
-        chunk_rows: List[Dict[str, Any]],
+        chunk_rows: list[dict[str, Any]],
         completed: int,
         total: int,
-        best_result: Optional[Dict[str, Any]],
+        best_result: dict[str, Any] | None,
     ) -> None:
         if result_chunk_callback is None:
             return
@@ -386,6 +385,7 @@ def run_numba_sweep_items_if_supported(
 
 
 if HAS_NUMBA:
+
     @njit(cache=True, nogil=True, fastmath=True, boundscheck=False, parallel=True)
     def _calc_bollinger_signals(
         closes: np.ndarray,
@@ -398,7 +398,7 @@ if HAS_NUMBA:
         signals = np.zeros(n, dtype=np.float64)
 
         for i in prange(bb_period, n):
-            window = closes[i-bb_period+1:i+1]
+            window = closes[i - bb_period + 1 : i + 1]
             sma = 0.0
             for j in range(bb_period):
                 sma += window[j]
@@ -433,9 +433,8 @@ if HAS_NUMBA:
         initial_capital: float,
         fees_bps: float,
         slippage_bps: float,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Sweep COMPLET en un seul kernel Numba parallèle.
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Sweep COMPLET en un seul kernel Numba parallèle.
         Calcule signaux + backtest pour chaque combo en parallèle.
         """
         n_combos = len(bb_periods)
@@ -503,11 +502,11 @@ if HAS_NUMBA:
                 elif position != 0:
                     exit_now = False
 
-                    if signal != 0 and signal != position:
-                        exit_now = True
-                    elif position == 1 and lows[i] <= entry_price * (1.0 - sl_pct):
-                        exit_now = True
-                    elif position == -1 and highs[i] >= entry_price * (1.0 + sl_pct):
+                    if (
+                        (signal != 0 and signal != position)
+                        or (position == 1 and lows[i] <= entry_price * (1.0 - sl_pct))
+                        or (position == -1 and highs[i] >= entry_price * (1.0 + sl_pct))
+                    ):
                         exit_now = True
 
                     if exit_now:
@@ -529,11 +528,9 @@ if HAS_NUMBA:
                         returns_sum += net_return
                         returns_sq_sum += net_return * net_return
 
-                        if equity > peak_equity:
-                            peak_equity = equity
+                        peak_equity = max(peak_equity, equity)
                         dd = (peak_equity - equity) / peak_equity * 100.0
-                        if dd > max_dd:
-                            max_dd = dd
+                        max_dd = max(max_dd, dd)
 
                         position = 0
                         entry_price = 0.0
@@ -574,21 +571,19 @@ if HAS_NUMBA:
 
         return total_pnls, sharpes, max_dds, win_rates, n_trades_out
 
-
     @njit(cache=True, nogil=True, fastmath=True, boundscheck=False, parallel=True)
     def _sweep_backtest_core(
         closes: np.ndarray,
         highs: np.ndarray,
         lows: np.ndarray,
         signals_matrix: np.ndarray,  # (n_combos, n_bars) - signaux pré-calculés
-        leverages: np.ndarray,       # (n_combos,)
-        k_sls: np.ndarray,           # (n_combos,)
+        leverages: np.ndarray,  # (n_combos,)
+        k_sls: np.ndarray,  # (n_combos,)
         initial_capital: float,
         fees_bps: float,
         slippage_bps: float,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Exécute N backtests en parallèle (Numba prange).
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Exécute N backtests en parallèle (Numba prange).
 
         Returns:
             total_pnls: (n_combos,) - PnL total par combo
@@ -596,6 +591,7 @@ if HAS_NUMBA:
             max_dds: (n_combos,) - Max drawdown %
             win_rates: (n_combos,) - Win rate %
             n_trades: (n_combos,) - Nombre de trades
+
         """
         n_combos = signals_matrix.shape[0]
         n_bars = len(closes)
@@ -647,12 +643,11 @@ if HAS_NUMBA:
                     exit_now = False
 
                     # Signal opposé
-                    if signal != 0 and signal != position:
-                        exit_now = True
-                    # Stop-loss
-                    elif position == 1 and lows[i] <= entry_price * (1.0 - sl_pct):
-                        exit_now = True
-                    elif position == -1 and highs[i] >= entry_price * (1.0 + sl_pct):
+                    if (
+                        (signal != 0 and signal != position)
+                        or (position == 1 and lows[i] <= entry_price * (1.0 - sl_pct))
+                        or (position == -1 and highs[i] >= entry_price * (1.0 + sl_pct))
+                    ):
                         exit_now = True
 
                     if exit_now:
@@ -676,11 +671,9 @@ if HAS_NUMBA:
                         returns_sq_sum += net_return * net_return
 
                         # Drawdown
-                        if equity > peak_equity:
-                            peak_equity = equity
+                        peak_equity = max(peak_equity, equity)
                         dd = (peak_equity - equity) / peak_equity * 100.0
-                        if dd > max_dd:
-                            max_dd = dd
+                        max_dd = max(max_dd, dd)
 
                         # Reset ou nouvelle position
                         position = 0
@@ -727,14 +720,13 @@ if HAS_NUMBA:
 
 def run_sweep_numba(
     df,
-    param_grid: List[Dict[str, Any]],
+    param_grid: list[dict[str, Any]],
     signal_generator,  # Fonction qui génère les signaux pour un set de params
     initial_capital: float = 10000.0,
     fees_bps: float = 10.0,
     slippage_bps: float = 5.0,
-) -> List[Dict[str, Any]]:
-    """
-    Exécute un sweep complet avec Numba vectorisé.
+) -> list[dict[str, Any]]:
+    """Exécute un sweep complet avec Numba vectorisé.
 
     Args:
         df: DataFrame OHLCV
@@ -746,6 +738,7 @@ def run_sweep_numba(
 
     Returns:
         Liste de résultats (dict par combinaison)
+
     """
     if not HAS_NUMBA:
         raise ImportError("Numba requis pour sweep vectorisé")
@@ -754,9 +747,9 @@ def run_sweep_numba(
     n_bars = len(df)
 
     # Extraire données OHLCV
-    closes = df['close'].values.astype(np.float64)
-    highs = df['high'].values.astype(np.float64)
-    lows = df['low'].values.astype(np.float64)
+    closes = df["close"].values.astype(np.float64)
+    highs = df["high"].values.astype(np.float64)
+    lows = df["low"].values.astype(np.float64)
 
     # Pré-calculer TOUS les signaux (peut être parallélisé aussi)
     print(f"📊 Pré-calcul des signaux pour {n_combos} combinaisons...")
@@ -766,29 +759,36 @@ def run_sweep_numba(
 
     for i, params in enumerate(param_grid):
         signals_matrix[i] = signal_generator(df, params)
-        leverages[i] = params.get('leverage', 1.0)
-        k_sls[i] = params.get('k_sl', 1.5)
+        leverages[i] = params.get("leverage", 1.0)
+        k_sls[i] = params.get("k_sl", 1.5)
 
     # ⚡ Exécuter TOUS les backtests en parallèle
     print(f"⚡ Exécution de {n_combos} backtests en parallèle (Numba)...")
     total_pnls, sharpes, max_dds, win_rates, n_trades = _sweep_backtest_core(
-        closes, highs, lows,
+        closes,
+        highs,
+        lows,
         signals_matrix,
-        leverages, k_sls,
-        initial_capital, fees_bps, slippage_bps
+        leverages,
+        k_sls,
+        initial_capital,
+        fees_bps,
+        slippage_bps,
     )
 
     # Reconstruire résultats
     results = []
     for i, params in enumerate(param_grid):
-        results.append({
-            'params': params,
-            'total_pnl': float(total_pnls[i]),
-            'sharpe_ratio': float(sharpes[i]),
-            'max_drawdown': float(max_dds[i]),
-            'win_rate': float(win_rates[i]),
-            'total_trades': int(n_trades[i]),
-        })
+        results.append(
+            {
+                "params": params,
+                "total_pnl": float(total_pnls[i]),
+                "sharpe_ratio": float(sharpes[i]),
+                "max_drawdown": float(max_dds[i]),
+                "win_rate": float(win_rates[i]),
+                "total_trades": int(n_trades[i]),
+            },
+        )
 
     return results
 
@@ -796,6 +796,7 @@ def run_sweep_numba(
 # ============================================================================
 # Générateurs de signaux optimisés Numba
 # ============================================================================
+
 
 @njit(cache=True, nogil=True, fastmath=True, boundscheck=False)
 def _ema_numba(data: np.ndarray, period: int) -> np.ndarray:
@@ -807,11 +808,11 @@ def _ema_numba(data: np.ndarray, period: int) -> np.ndarray:
     # Initialiser avec SMA
     result[0] = data[0]
     for i in range(1, min(period, n)):
-        result[i] = data[:i+1].mean()
+        result[i] = data[: i + 1].mean()
 
     # EMA
     for i in range(period, n):
-        result[i] = alpha * data[i] + (1 - alpha) * result[i-1]
+        result[i] = alpha * data[i] + (1 - alpha) * result[i - 1]
 
     return result
 
@@ -828,7 +829,7 @@ def _bollinger_signals_numba(
     signals = np.zeros(n, dtype=np.float64)
 
     for i in prange(bb_period, n):
-        window = closes[i-bb_period+1:i+1]
+        window = closes[i - bb_period + 1 : i + 1]
         sma = window.mean()
         std = window.std()
 
@@ -860,10 +861,10 @@ def _ema_cross_signals_numba(
 
     for i in prange(slow_period, n):
         # Crossover haussier
-        if fast_ema[i] > slow_ema[i] and fast_ema[i-1] <= slow_ema[i-1]:
+        if fast_ema[i] > slow_ema[i] and fast_ema[i - 1] <= slow_ema[i - 1]:
             signals[i] = 1.0
         # Crossover baissier
-        elif fast_ema[i] < slow_ema[i] and fast_ema[i-1] >= slow_ema[i-1]:
+        elif fast_ema[i] < slow_ema[i] and fast_ema[i - 1] >= slow_ema[i - 1]:
             signals[i] = -1.0
 
     return signals
@@ -874,23 +875,23 @@ def create_signal_generator(strategy_name: str):
 
     def bollinger_generator(df, params):
         return _bollinger_signals_numba(
-            df['close'].values.astype(np.float64),
-            int(params.get('bb_period', 20)),
-            float(params.get('bb_std', 2.0)),
-            float(params.get('entry_z', 2.0)),
+            df["close"].values.astype(np.float64),
+            int(params.get("bb_period", 20)),
+            float(params.get("bb_std", 2.0)),
+            float(params.get("entry_z", 2.0)),
         )
 
     def ema_cross_generator(df, params):
         return _ema_cross_signals_numba(
-            df['close'].values.astype(np.float64),
-            int(params.get('fast_period', 12)),
-            int(params.get('slow_period', 26)),
+            df["close"].values.astype(np.float64),
+            int(params.get("fast_period", 12)),
+            int(params.get("slow_period", 26)),
         )
 
     generators = {
-        'bollinger_atr': bollinger_generator,
-        'bollinger': bollinger_generator,
-        'ema_cross': ema_cross_generator,
+        "bollinger_atr": bollinger_generator,
+        "bollinger": bollinger_generator,
+        "ema_cross": ema_cross_generator,
     }
 
     return generators.get(strategy_name, bollinger_generator)
@@ -911,11 +912,11 @@ def _resolve_numba_strategy_family(strategy_lower: str) -> str:
     raise ValueError(f"Stratégie '{strategy_lower}' non supportée par Numba sweep")
 
 
-def _get_numba_param_spec(strategy_lower: str) -> Dict[str, float]:
+def _get_numba_param_spec(strategy_lower: str) -> dict[str, float]:
     return NUMBA_SWEEP_PARAM_SPECS[_resolve_numba_strategy_family(strategy_lower)]
 
 
-def _get_numba_thread_profile(strategy_lower: str) -> Dict[str, float]:
+def _get_numba_thread_profile(strategy_lower: str) -> dict[str, float]:
     return NUMBA_SWEEP_THREAD_PROFILES[_resolve_numba_strategy_family(strategy_lower)]
 
 
@@ -928,8 +929,7 @@ def _estimate_numba_sweep_bytes_per_combo(strategy_lower: str) -> int:
 
 
 def _get_numba_sweep_memory_budget_gb() -> float:
-    """
-    Retourne le budget RAM autorisé pour un sweep Numba.
+    """Retourne le budget RAM autorisé pour un sweep Numba.
 
     Défaut: utiliser le matériel disponible avec une large fenêtre DDR, plafonnée
     à 40 GB pour éviter de saturer inutilement le système.
@@ -952,10 +952,9 @@ def _get_numba_chunk_size(
     strategy_lower: str,
     total_combos: int,
     n_bars: int,
-    chunk_size_override: Optional[int] = None,
+    chunk_size_override: int | None = None,
 ) -> int:
-    """
-    Détermine une taille de chunk adaptée au sweep Numba.
+    """Détermine une taille de chunk adaptée au sweep Numba.
 
     On borne la taille par:
     - un plafond de calcul pour éviter des kernels monolithiques
@@ -968,7 +967,7 @@ def _get_numba_chunk_size(
         return max(1, min(int(chunk_size_override), total_combos))
 
     bytes_per_combo = _estimate_numba_sweep_bytes_per_combo(strategy_lower)
-    budget_bytes = _get_numba_sweep_memory_budget_gb() * (1024 ** 3)
+    budget_bytes = _get_numba_sweep_memory_budget_gb() * (1024**3)
     static_bytes = n_bars * 3 * 8
     linear_total_bytes = static_bytes + (total_combos * bytes_per_combo)
     if linear_total_bytes <= budget_bytes * 0.70:
@@ -995,10 +994,9 @@ def _get_numba_thread_count(
     strategy_lower: str,
     chunk_size: int,
     n_bars: int,
-    thread_override: Optional[int] = None,
+    thread_override: int | None = None,
 ) -> int:
-    """
-    Détermine le nombre de threads Numba utile pour un chunk.
+    """Détermine le nombre de threads Numba utile pour un chunk.
 
     Les kernels Numba du sweep parallélisent sur les combinaisons. Sur petits
     chunks, utiliser beaucoup de threads coûte plus qu'il ne rapporte.
@@ -1070,7 +1068,7 @@ def _numba_thread_context(thread_count: int):
 
 
 def _extract_param_array(
-    params_chunk: List[Dict[str, Any]],
+    params_chunk: list[dict[str, Any]],
     key: str,
     default: float,
 ) -> np.ndarray:
@@ -1083,46 +1081,41 @@ def _extract_param_array(
 
 def extract_strategy_params(
     strategy_key: str,
-    param_grid: List[Dict[str, Any]],
-) -> Dict[str, np.ndarray]:
-    """
-    Pré-extrait tous les paramètres d'une grille en arrays numpy.
+    param_grid: list[dict[str, Any]],
+) -> dict[str, np.ndarray]:
+    """Pré-extrait tous les paramètres d'une grille en arrays numpy.
 
     Le hot path des gros sweeps ne doit pas reboucler sur `dict.get(...)`
     entre chaque chunk si la grille est déjà matérialisée.
     """
     strategy_lower = strategy_key.lower()
     param_spec = _get_numba_param_spec(strategy_lower)
-    return {
-        key: _extract_param_array(param_grid, key, default)
-        for key, default in param_spec.items()
-    }
+    return {key: _extract_param_array(param_grid, key, default) for key, default in param_spec.items()}
 
 
 def _slice_param_arrays(
-    param_arrays: Dict[str, np.ndarray],
+    param_arrays: dict[str, np.ndarray],
     start: int,
     end: int,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     return {key: values[start:end] for key, values in param_arrays.items()}
 
 
 def _run_numba_kernel_chunk(
     strategy_lower: str,
-    params_chunk: List[Dict[str, Any]],
+    params_chunk: list[dict[str, Any]],
     closes: np.ndarray,
     highs: np.ndarray,
     lows: np.ndarray,
     initial_capital: float,
     fees_bps: float,
     slippage_bps: float,
-    param_arrays_chunk: Optional[Dict[str, np.ndarray]] = None,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    param_arrays_chunk: dict[str, np.ndarray] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Exécute un chunk de sweep sur le kernel spécialisé correspondant."""
     param_spec = _get_numba_param_spec(strategy_lower)
     arrays = param_arrays_chunk or {
-        key: _extract_param_array(params_chunk, key, default)
-        for key, default in param_spec.items()
+        key: _extract_param_array(params_chunk, key, default) for key, default in param_spec.items()
     }
 
     if strategy_lower == "bollinger_best_longe_3i":
@@ -1220,13 +1213,13 @@ def _run_numba_kernel_chunk(
 
 
 def _build_results_chunk(
-    params_chunk: List[Dict[str, Any]],
+    params_chunk: list[dict[str, Any]],
     pnls: np.ndarray,
     sharpes: np.ndarray,
     max_dds: np.ndarray,
     win_rates: np.ndarray,
     n_trades: np.ndarray,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     return [
         {
             "params": params_chunk[i],
@@ -1241,14 +1234,14 @@ def _build_results_chunk(
 
 
 def _make_best_result_dict(
-    params_chunk: List[Dict[str, Any]],
+    params_chunk: list[dict[str, Any]],
     pnls: np.ndarray,
     sharpes: np.ndarray,
     max_dds: np.ndarray,
     win_rates: np.ndarray,
     n_trades: np.ndarray,
     best_idx: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return {
         "params": params_chunk[best_idx],
         "total_pnl": float(pnls[best_idx]),
@@ -1274,14 +1267,14 @@ def _build_benchmark_ohlcv(n_bars: int, seed: int = 42) -> pd.DataFrame:
             "low": close * 0.99,
             "close": close,
             "volume": rng.integers(1_000, 10_000, n_bars),
-        }
+        },
     )
 
 
-def _build_benchmark_param_grid(strategy_key: str, n_combos: int) -> List[Dict[str, float]]:
+def _build_benchmark_param_grid(strategy_key: str, n_combos: int) -> list[dict[str, float]]:
     strategy_lower = strategy_key.lower()
     strategy_family = _resolve_numba_strategy_family(strategy_lower)
-    combos: List[Dict[str, float]] = []
+    combos: list[dict[str, float]] = []
 
     if strategy_family == "ema_cross":
         for fast in range(5, 81):
@@ -1294,7 +1287,7 @@ def _build_benchmark_param_grid(strategy_key: str, n_combos: int) -> List[Dict[s
                                 "slow_period": float(slow),
                                 "leverage": leverage,
                                 "k_sl": k_sl,
-                            }
+                            },
                         )
                         if len(combos) >= n_combos:
                             return combos
@@ -1311,7 +1304,7 @@ def _build_benchmark_param_grid(strategy_key: str, n_combos: int) -> List[Dict[s
                                 "signal_period": float(signal),
                                 "leverage": leverage,
                                 "k_sl": 1.5,
-                            }
+                            },
                         )
                         if len(combos) >= n_combos:
                             return combos
@@ -1330,7 +1323,7 @@ def _build_benchmark_param_grid(strategy_key: str, n_combos: int) -> List[Dict[s
                                 "oversold": float(oversold),
                                 "leverage": leverage,
                                 "k_sl": 1.5,
-                            }
+                            },
                         )
                         if len(combos) >= n_combos:
                             return combos
@@ -1348,7 +1341,7 @@ def _build_benchmark_param_grid(strategy_key: str, n_combos: int) -> List[Dict[s
                                 "sl_level": float(-0.8 if "long" in strategy_family else 1.4),
                                 "tp_level": float(0.9 if "long" in strategy_family else 0.2),
                                 "leverage": 1.0,
-                            }
+                            },
                         )
                         if len(combos) >= n_combos:
                             return combos
@@ -1363,7 +1356,7 @@ def _build_benchmark_param_grid(strategy_key: str, n_combos: int) -> List[Dict[s
                                 "entry_z": float(entry_z),
                                 "leverage": 1.0,
                                 "k_sl": 1.5,
-                            }
+                            },
                         )
                         if len(combos) >= n_combos:
                             return combos
@@ -1372,13 +1365,12 @@ def _build_benchmark_param_grid(strategy_key: str, n_combos: int) -> List[Dict[s
 
 
 def benchmark_numba_strategy_profiles(
-    strategy_keys: Optional[List[str]] = None,
-    combo_sizes: Tuple[int, ...] = (128, 1024, 8192),
+    strategy_keys: list[str] | None = None,
+    combo_sizes: tuple[int, ...] = (128, 1024, 8192),
     n_bars: int = 5000,
-    thread_candidates: Optional[Tuple[Optional[int], ...]] = None,
-) -> List[Dict[str, Any]]:
-    """
-    Benchmark reproductible des profils adaptatifs Numba par stratégie.
+    thread_candidates: tuple[int | None, ...] | None = None,
+) -> list[dict[str, Any]]:
+    """Benchmark reproductible des profils adaptatifs Numba par stratégie.
 
     Utilisé pour fixer les seuils de threads sur CPU-only sans dépendre de l'UI.
     """
@@ -1387,7 +1379,7 @@ def benchmark_numba_strategy_profiles(
     if thread_candidates is None:
         thread_candidates = (1, 4, 8, 16, None)
 
-    rows: List[Dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
 
     for idx, strategy_key in enumerate(strategy_keys):
         df = _build_benchmark_ohlcv(n_bars=n_bars, seed=42 + idx)
@@ -1437,7 +1429,7 @@ def benchmark_numba_strategy_profiles(
                         "thread_mode": "adaptive" if thread_candidate is None else str(thread_candidate),
                         "throughput": combo_size / max(elapsed, 1e-9),
                         "elapsed": elapsed,
-                    }
+                    },
                 )
 
     return rows
@@ -1447,9 +1439,9 @@ def benchmark_sweep_numba(n_combos: int = 1000, n_bars: int = 10000):
     """Benchmark du sweep Numba vs ProcessPoolExecutor."""
     import time
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"BENCHMARK SWEEP NUMBA - {n_combos} combinaisons × {n_bars} barres")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # Générer données
     np.random.seed(42)
@@ -1492,10 +1484,17 @@ def benchmark_sweep_numba(n_combos: int = 1000, n_bars: int = 10000):
     # Warm-up JIT (première compilation)
     print("Warm-up Numba JIT (première compilation)...")
     _ = _sweep_bollinger_full(
-        closes[:100], highs[:100], lows[:100],
-        bb_periods[:5], bb_stds[:5], entry_zs[:5],
-        leverages[:5], k_sls[:5],
-        10000.0, 10.0, 5.0
+        closes[:100],
+        highs[:100],
+        lows[:100],
+        bb_periods[:5],
+        bb_stds[:5],
+        entry_zs[:5],
+        leverages[:5],
+        k_sls[:5],
+        10000.0,
+        10.0,
+        5.0,
     )
     print("  JIT compilé ✓")
 
@@ -1503,21 +1502,28 @@ def benchmark_sweep_numba(n_combos: int = 1000, n_bars: int = 10000):
     print(f"\n⚡ Exécution sweep COMPLET ({actual_combos} combos × {n_bars} bars)...")
     start = time.perf_counter()
     total_pnls, sharpes, max_dds, win_rates, n_trades = _sweep_bollinger_full(
-        closes, highs, lows,
-        bb_periods, bb_stds, entry_zs,
-        leverages, k_sls,
-        10000.0, 10.0, 5.0
+        closes,
+        highs,
+        lows,
+        bb_periods,
+        bb_stds,
+        entry_zs,
+        leverages,
+        k_sls,
+        10000.0,
+        10.0,
+        5.0,
     )
     total_time = time.perf_counter() - start
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("RÉSULTATS")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"  Temps total: {total_time:.3f}s")
-    print("")
-    print(f"  ⚡ Throughput: {actual_combos/total_time:,.0f} backtests/seconde")
-    print(f"  ⚡ Temps/bt:   {total_time/actual_combos*1000:.3f} ms")
-    print(f"{'='*60}")
+    print()
+    print(f"  ⚡ Throughput: {actual_combos / total_time:,.0f} backtests/seconde")
+    print(f"  ⚡ Temps/bt:   {total_time / actual_combos * 1000:.3f} ms")
+    print(f"{'=' * 60}")
 
     # Stats résultats
     print("\nStats résultats:")
@@ -1527,9 +1533,9 @@ def benchmark_sweep_numba(n_combos: int = 1000, n_bars: int = 10000):
     print(f"  Avg trades:  {np.mean(n_trades):.0f}")
 
     return {
-        'n_combos': actual_combos,
-        'total_time': total_time,
-        'throughput': actual_combos / total_time,
+        "n_combos": actual_combos,
+        "total_time": total_time,
+        "throughput": actual_combos / total_time,
     }
 
 
@@ -1538,6 +1544,7 @@ def benchmark_sweep_numba(n_combos: int = 1000, n_bars: int = 10000):
 # ============================================================================
 
 if HAS_NUMBA:
+
     @njit(cache=True, nogil=True, fastmath=True, boundscheck=False, parallel=True)
     def _sweep_ema_cross_full(
         closes: np.ndarray,
@@ -1550,7 +1557,7 @@ if HAS_NUMBA:
         initial_capital: float,
         fees_bps: float,
         slippage_bps: float,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Sweep EMA Cross en Numba parallèle."""
         n_combos = len(fast_periods)
         n_bars = len(closes)
@@ -1576,21 +1583,21 @@ if HAS_NUMBA:
             fast_ema = np.zeros(n_bars, dtype=np.float64)
             fast_ema[0] = closes[0]
             for i in range(1, n_bars):
-                fast_ema[i] = alpha_fast * closes[i] + (1 - alpha_fast) * fast_ema[i-1]
+                fast_ema[i] = alpha_fast * closes[i] + (1 - alpha_fast) * fast_ema[i - 1]
 
             # Calcul EMA slow
             alpha_slow = 2.0 / (slow_p + 1)
             slow_ema = np.zeros(n_bars, dtype=np.float64)
             slow_ema[0] = closes[0]
             for i in range(1, n_bars):
-                slow_ema[i] = alpha_slow * closes[i] + (1 - alpha_slow) * slow_ema[i-1]
+                slow_ema[i] = alpha_slow * closes[i] + (1 - alpha_slow) * slow_ema[i - 1]
 
             # Signaux crossover
             signals = np.zeros(n_bars, dtype=np.float64)
             for i in range(slow_p, n_bars):
-                if fast_ema[i] > slow_ema[i] and fast_ema[i-1] <= slow_ema[i-1]:
+                if fast_ema[i] > slow_ema[i] and fast_ema[i - 1] <= slow_ema[i - 1]:
                     signals[i] = 1.0
-                elif fast_ema[i] < slow_ema[i] and fast_ema[i-1] >= slow_ema[i-1]:
+                elif fast_ema[i] < slow_ema[i] and fast_ema[i - 1] >= slow_ema[i - 1]:
                     signals[i] = -1.0
 
             # Simulation identique
@@ -1613,11 +1620,11 @@ if HAS_NUMBA:
                     entry_price = close_price * (1.0 + slippage_factor * position)
                 elif position != 0:
                     exit_now = False
-                    if signal != 0 and signal != position:
-                        exit_now = True
-                    elif position == 1 and lows[i] <= entry_price * (1.0 - sl_pct):
-                        exit_now = True
-                    elif position == -1 and highs[i] >= entry_price * (1.0 + sl_pct):
+                    if (
+                        (signal != 0 and signal != position)
+                        or (position == 1 and lows[i] <= entry_price * (1.0 - sl_pct))
+                        or (position == -1 and highs[i] >= entry_price * (1.0 + sl_pct))
+                    ):
                         exit_now = True
 
                     if exit_now:
@@ -1634,11 +1641,9 @@ if HAS_NUMBA:
                             winning_trades += 1
                         returns_sum += net_return
                         returns_sq_sum += net_return * net_return
-                        if equity > peak_equity:
-                            peak_equity = equity
+                        peak_equity = max(peak_equity, equity)
                         dd = (peak_equity - equity) / peak_equity * 100.0
-                        if dd > max_dd:
-                            max_dd = dd
+                        max_dd = max(max_dd, dd)
                         position = 0
                         entry_price = 0.0
                         if signal != 0:
@@ -1674,7 +1679,6 @@ if HAS_NUMBA:
 
         return total_pnls, sharpes, max_dds, win_rates, n_trades_out
 
-
     @njit(cache=True, nogil=True, fastmath=True, boundscheck=False, parallel=True)
     def _sweep_rsi_reversal_full(
         closes: np.ndarray,
@@ -1688,7 +1692,7 @@ if HAS_NUMBA:
         initial_capital: float,
         fees_bps: float,
         slippage_bps: float,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Sweep RSI Reversal en Numba parallèle."""
         n_combos = len(rsi_periods)
         n_bars = len(closes)
@@ -1717,7 +1721,7 @@ if HAS_NUMBA:
 
             # Première période
             for i in range(1, rsi_p + 1):
-                diff = closes[i] - closes[i-1]
+                diff = closes[i] - closes[i - 1]
                 if diff > 0:
                     avg_gain += diff
                 else:
@@ -1733,7 +1737,7 @@ if HAS_NUMBA:
 
             # Smoothed RSI
             for i in range(rsi_p + 1, n_bars):
-                diff = closes[i] - closes[i-1]
+                diff = closes[i] - closes[i - 1]
                 gain = max(0.0, diff)
                 loss = max(0.0, -diff)
                 avg_gain = (avg_gain * (rsi_p - 1) + gain) / rsi_p
@@ -1747,9 +1751,9 @@ if HAS_NUMBA:
             # Signaux reversal
             signals = np.zeros(n_bars, dtype=np.float64)
             for i in range(rsi_p + 1, n_bars):
-                if rsi[i-1] <= oversold and rsi[i] > oversold:
+                if rsi[i - 1] <= oversold and rsi[i] > oversold:
                     signals[i] = 1.0  # Long quand RSI sort de survente
-                elif rsi[i-1] >= overbought and rsi[i] < overbought:
+                elif rsi[i - 1] >= overbought and rsi[i] < overbought:
                     signals[i] = -1.0  # Short quand RSI sort de surachat
 
             # Simulation (identique)
@@ -1772,11 +1776,11 @@ if HAS_NUMBA:
                     entry_price = close_price * (1.0 + slippage_factor * position)
                 elif position != 0:
                     exit_now = False
-                    if signal != 0 and signal != position:
-                        exit_now = True
-                    elif position == 1 and lows[i] <= entry_price * (1.0 - sl_pct):
-                        exit_now = True
-                    elif position == -1 and highs[i] >= entry_price * (1.0 + sl_pct):
+                    if (
+                        (signal != 0 and signal != position)
+                        or (position == 1 and lows[i] <= entry_price * (1.0 - sl_pct))
+                        or (position == -1 and highs[i] >= entry_price * (1.0 + sl_pct))
+                    ):
                         exit_now = True
 
                     if exit_now:
@@ -1793,11 +1797,9 @@ if HAS_NUMBA:
                             winning_trades += 1
                         returns_sum += net_return
                         returns_sq_sum += net_return * net_return
-                        if equity > peak_equity:
-                            peak_equity = equity
+                        peak_equity = max(peak_equity, equity)
                         dd = (peak_equity - equity) / peak_equity * 100.0
-                        if dd > max_dd:
-                            max_dd = dd
+                        max_dd = max(max_dd, dd)
                         position = 0
                         entry_price = 0.0
                         if signal != 0:
@@ -1832,7 +1834,6 @@ if HAS_NUMBA:
 
         return total_pnls, sharpes, max_dds, win_rates, n_trades_out
 
-
     # ================================================================
     # MACD CROSS — croisement MACD / Signal line
     # ================================================================
@@ -1850,7 +1851,7 @@ if HAS_NUMBA:
         initial_capital: float,
         fees_bps: float,
         slippage_bps: float,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Sweep MACD Cross en Numba parallèle."""
         n_combos = len(fast_periods)
         n_bars = len(closes)
@@ -1905,7 +1906,7 @@ if HAS_NUMBA:
                 prev_above = macd_line[i - 1] > signal_line[i - 1]
                 curr_above = macd_line[i] > signal_line[i]
                 if curr_above and not prev_above:
-                    signals[i] = 1.0   # golden cross
+                    signals[i] = 1.0  # golden cross
                 elif not curr_above and prev_above:
                     signals[i] = -1.0  # death cross
 
@@ -1929,11 +1930,11 @@ if HAS_NUMBA:
                     entry_price = close_price * (1.0 + slippage_factor * position)
                 elif position != 0:
                     exit_now = False
-                    if signal != 0 and signal != position:
-                        exit_now = True
-                    elif position == 1 and lows[i] <= entry_price * (1.0 - sl_pct):
-                        exit_now = True
-                    elif position == -1 and highs[i] >= entry_price * (1.0 + sl_pct):
+                    if (
+                        (signal != 0 and signal != position)
+                        or (position == 1 and lows[i] <= entry_price * (1.0 - sl_pct))
+                        or (position == -1 and highs[i] >= entry_price * (1.0 + sl_pct))
+                    ):
                         exit_now = True
 
                     if exit_now:
@@ -1950,11 +1951,9 @@ if HAS_NUMBA:
                             winning_trades += 1
                         returns_sum += net_return
                         returns_sq_sum += net_return * net_return
-                        if equity > peak_equity:
-                            peak_equity = equity
+                        peak_equity = max(peak_equity, equity)
                         dd = (peak_equity - equity) / peak_equity * 100.0
-                        if dd > max_dd:
-                            max_dd = dd
+                        max_dd = max(max_dd, dd)
                         position = 0
                         entry_price = 0.0
                         if signal != 0:
@@ -1990,7 +1989,6 @@ if HAS_NUMBA:
 
         return total_pnls, sharpes, max_dds, win_rates, n_trades_out
 
-
     # ================================================================
     # BOLLINGER BEST LONG 3i — entry/SL/TP sur échelle Bollinger
     # ================================================================
@@ -2009,7 +2007,7 @@ if HAS_NUMBA:
         initial_capital: float,
         fees_bps: float,
         slippage_bps: float,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Sweep Bollinger level-based LONG en Numba parallèle."""
         n_combos = len(bb_periods)
         n_bars = len(closes)
@@ -2085,9 +2083,7 @@ if HAS_NUMBA:
                     tp_price = tp_pl
                 elif position == 1:
                     exit_now = False
-                    if lows[i] <= stop_price:
-                        exit_now = True
-                    elif highs[i] >= tp_price:
+                    if lows[i] <= stop_price or highs[i] >= tp_price:
                         exit_now = True
 
                     if exit_now:
@@ -2101,11 +2097,9 @@ if HAS_NUMBA:
                             winning_trades += 1
                         returns_sum += net_return
                         returns_sq_sum += net_return * net_return
-                        if equity > peak_equity:
-                            peak_equity = equity
+                        peak_equity = max(peak_equity, equity)
                         dd = (peak_equity - equity) / peak_equity * 100.0
-                        if dd > max_dd:
-                            max_dd = dd
+                        max_dd = max(max_dd, dd)
                         position = 0
                         entry_price = 0.0
 
@@ -2135,7 +2129,6 @@ if HAS_NUMBA:
 
         return total_pnls, sharpes, max_dds, win_rates, n_trades_out
 
-
     # ================================================================
     # BOLLINGER BEST SHORT 3i — miroir SHORT
     # ================================================================
@@ -2154,7 +2147,7 @@ if HAS_NUMBA:
         initial_capital: float,
         fees_bps: float,
         slippage_bps: float,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Sweep Bollinger level-based SHORT en Numba parallèle."""
         n_combos = len(bb_periods)
         n_bars = len(closes)
@@ -2207,9 +2200,9 @@ if HAS_NUMBA:
                 if total_dist < 1e-10:
                     continue
 
-                entry_pl = lower + entry_lv * total_dist   # ~upper band
-                sl_pl = lower + sl_lv * total_dist         # au-dessus upper
-                tp_pl = lower + tp_lv * total_dist         # vers lower
+                entry_pl = lower + entry_lv * total_dist  # ~upper band
+                sl_pl = lower + sl_lv * total_dist  # au-dessus upper
+                tp_pl = lower + tp_lv * total_dist  # vers lower
 
                 close_price = closes[i]
 
@@ -2227,9 +2220,7 @@ if HAS_NUMBA:
                     tp_price = tp_pl
                 elif position == -1:
                     exit_now = False
-                    if highs[i] >= stop_price:
-                        exit_now = True
-                    elif lows[i] <= tp_price:
+                    if highs[i] >= stop_price or lows[i] <= tp_price:
                         exit_now = True
 
                     if exit_now:
@@ -2243,11 +2234,9 @@ if HAS_NUMBA:
                             winning_trades += 1
                         returns_sum += net_return
                         returns_sq_sum += net_return * net_return
-                        if equity > peak_equity:
-                            peak_equity = equity
+                        peak_equity = max(peak_equity, equity)
                         dd = (peak_equity - equity) / peak_equity * 100.0
-                        if dd > max_dd:
-                            max_dd = dd
+                        max_dd = max(max_dd, dd)
                         position = 0
                         entry_price = 0.0
 
@@ -2282,26 +2271,24 @@ if HAS_NUMBA:
 # FONCTION D'INTÉGRATION UI
 # ============================================================================
 
+
 def run_numba_sweep(
     df: pd.DataFrame,
     strategy_key: str,
-    param_grid: List[Dict[str, Any]],
+    param_grid: list[dict[str, Any]],
     initial_capital: float = 10000.0,
     fees_bps: float = 10.0,
     slippage_bps: float = 5.0,
-    progress_callback: Optional[Callable[[int, int, Dict], None]] = None,
-    result_chunk_callback: Optional[
-        Callable[[List[Dict[str, Any]], int, int, Optional[Dict[str, Any]]], None]
-    ] = None,
+    progress_callback: Callable[[int, int, dict], None] | None = None,
+    result_chunk_callback: Callable[[list[dict[str, Any]], int, int, dict[str, Any] | None], None] | None = None,
     return_arrays: bool = False,
-    thread_override: Optional[int] = None,
-    chunk_size_override: Optional[int] = None,
-    should_stop: Optional[Callable[[], bool]] = None,
-    _param_arrays: Optional[Dict[str, np.ndarray]] = None,
-    _ohlcv: Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]] = None,
-) -> "Union[List[Dict[str, Any]], Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]]":
-    """
-    Exécute un sweep Numba depuis l'UI.
+    thread_override: int | None = None,
+    chunk_size_override: int | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    _param_arrays: dict[str, np.ndarray] | None = None,
+    _ohlcv: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
+) -> "list[dict[str, Any]] | tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]":
+    """Exécute un sweep Numba depuis l'UI.
 
     Args:
         df: DataFrame OHLCV avec colonnes 'close', 'high', 'low'
@@ -2324,6 +2311,7 @@ def run_numba_sweep(
     Returns:
         Si return_arrays=False: Liste de résultats [{params, total_pnl, ...}, ...]
         Si return_arrays=True: Tuple (pnls, sharpes, max_dds, win_rates, n_trades) np.ndarray
+
     """
     if not HAS_NUMBA:
         raise ImportError("Numba non disponible")
@@ -2385,7 +2373,7 @@ def run_numba_sweep(
     for key, values in param_arrays.items():
         if len(values) != n_combos:
             raise ValueError(
-                f"_param_arrays['{key}'] a une longueur {len(values)} != {n_combos}"
+                f"_param_arrays['{key}'] a une longueur {len(values)} != {n_combos}",
             )
 
     all_pnls = np.empty(n_combos, dtype=np.float64)
@@ -2393,8 +2381,8 @@ def run_numba_sweep(
     all_max_dds = np.empty(n_combos, dtype=np.float64)
     all_win_rates = np.empty(n_combos, dtype=np.float64)
     all_n_trades = np.empty(n_combos, dtype=np.int64)
-    results: List[Dict[str, Any]] = []
-    best_result: Optional[Dict[str, Any]] = None
+    results: list[dict[str, Any]] = []
+    best_result: dict[str, Any] | None = None
     best_pnl = float("-inf")
     completed = 0
 
@@ -2412,11 +2400,7 @@ def run_numba_sweep(
             chunk_end = min(chunk_start + chunk_size, n_combos)
             param_arrays_chunk = _slice_param_arrays(param_arrays, chunk_start, chunk_end)
             needs_python_chunk = (not return_arrays) or progress_callback is not None
-            params_chunk = (
-                param_grid[chunk_start:chunk_end]
-                if needs_python_chunk
-                else []
-            )
+            params_chunk = param_grid[chunk_start:chunk_end] if needs_python_chunk else []
 
             t_kernel = time.perf_counter()
             pnls, sharpes, max_dds, win_rates, n_trades = _run_numba_kernel_chunk(

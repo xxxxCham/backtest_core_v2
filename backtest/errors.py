@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.errors
+"""Module-ID: backtest.errors
 
 Purpose: Hiérarchie structurée d'exceptions pour distinguer erreurs utilisateur/système et messages UI cohérents.
 
@@ -22,26 +21,26 @@ Skip-if: Vous n'ajoutez pas de nouveaux types d'erreurs.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class BacktestError(Exception):
-    """
-    Exception de base pour toutes les erreurs du moteur de backtest.
+    """Exception de base pour toutes les erreurs du moteur de backtest.
 
     Attributes:
         message: Message d'erreur
         code: Code d'erreur court (pour logs)
         hint: Suggestion de correction pour l'utilisateur
         details: Détails techniques (optionnel)
+
     """
 
     def __init__(
         self,
         message: str,
         code: str = "BACKTEST_ERROR",
-        hint: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None
+        hint: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         super().__init__(message)
         self.message = message
@@ -52,7 +51,7 @@ class BacktestError(Exception):
     def __str__(self) -> str:
         return f"[{self.code}] {self.message}"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Sérialise l'erreur en dict."""
         return {
             "code": self.code,
@@ -63,8 +62,7 @@ class BacktestError(Exception):
 
 
 class UserInputError(BacktestError):
-    """
-    Erreur due à une entrée utilisateur invalide.
+    """Erreur due à une entrée utilisateur invalide.
 
     Exemples:
     - Paramètre hors limites
@@ -75,10 +73,10 @@ class UserInputError(BacktestError):
     def __init__(
         self,
         message: str,
-        param_name: Optional[str] = None,
-        expected: Optional[str] = None,
-        got: Optional[Any] = None,
-        hint: Optional[str] = None
+        param_name: str | None = None,
+        expected: str | None = None,
+        got: Any | None = None,
+        hint: str | None = None,
     ):
         details = {}
         if param_name:
@@ -92,7 +90,7 @@ class UserInputError(BacktestError):
             message=message,
             code="INVALID_INPUT",
             hint=hint,
-            details=details
+            details=details,
         )
         self.param_name = param_name
         self.expected = expected
@@ -100,8 +98,7 @@ class UserInputError(BacktestError):
 
 
 class DataError(BacktestError):
-    """
-    Erreur liée aux données OHLCV.
+    """Erreur liée aux données OHLCV.
 
     Exemples:
     - Fichier non trouvé
@@ -113,10 +110,10 @@ class DataError(BacktestError):
     def __init__(
         self,
         message: str,
-        symbol: Optional[str] = None,
-        timeframe: Optional[str] = None,
-        missing_columns: Optional[list] = None,
-        hint: Optional[str] = None
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        missing_columns: list | None = None,
+        hint: str | None = None,
     ):
         details = {}
         if symbol:
@@ -130,7 +127,7 @@ class DataError(BacktestError):
             message=message,
             code="DATA_ERROR",
             hint=hint or "Vérifiez le format et l'emplacement des données",
-            details=details
+            details=details,
         )
         self.symbol = symbol
         self.timeframe = timeframe
@@ -138,8 +135,7 @@ class DataError(BacktestError):
 
 
 class InsufficientDataError(DataError):
-    """
-    Erreur lorsque les données sont insuffisantes pour le warmup des indicateurs.
+    """Erreur lorsque les données sont insuffisantes pour le warmup des indicateurs.
 
     Exemples:
     - Fenêtre temporelle trop courte (49 barres < 200 requis)
@@ -149,11 +145,11 @@ class InsufficientDataError(DataError):
     def __init__(
         self,
         message: str,
-        available_bars: Optional[int] = None,
-        required_bars: Optional[int] = None,
-        symbol: Optional[str] = None,
-        timeframe: Optional[str] = None,
-        hint: Optional[str] = None
+        available_bars: int | None = None,
+        required_bars: int | None = None,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        hint: str | None = None,
     ):
         details = {}
         if available_bars is not None:
@@ -167,7 +163,7 @@ class InsufficientDataError(DataError):
             message=message,
             symbol=symbol,
             timeframe=timeframe,
-            hint=hint or default_hint
+            hint=hint or default_hint,
         )
         self.details.update(details)
         self.available_bars = available_bars
@@ -175,8 +171,7 @@ class InsufficientDataError(DataError):
 
 
 class BackendInternalError(BacktestError):
-    """
-    Erreur interne du backend (bug).
+    """Erreur interne du backend (bug).
 
     Ces erreurs ne devraient pas arriver en usage normal.
     Elles indiquent un problème dans le code du moteur.
@@ -185,8 +180,8 @@ class BackendInternalError(BacktestError):
     def __init__(
         self,
         message: str,
-        original_exception: Optional[Exception] = None,
-        trace_id: Optional[str] = None
+        original_exception: Exception | None = None,
+        trace_id: str | None = None,
     ):
         details = {}
         if original_exception:
@@ -199,15 +194,14 @@ class BackendInternalError(BacktestError):
             message=message,
             code="INTERNAL_ERROR",
             hint="Contactez le support avec le trace_id",
-            details=details
+            details=details,
         )
         self.original_exception = original_exception
         self.trace_id = trace_id
 
 
 class LLMUnavailableError(BacktestError):
-    """
-    Erreur lorsque le module LLM n'est pas disponible.
+    """Erreur lorsque le module LLM n'est pas disponible.
 
     Peut être causée par:
     - Import manquant
@@ -218,8 +212,8 @@ class LLMUnavailableError(BacktestError):
     def __init__(
         self,
         message: str,
-        provider: Optional[str] = None,
-        reason: Optional[str] = None
+        provider: str | None = None,
+        reason: str | None = None,
     ):
         details = {}
         if provider:
@@ -237,16 +231,14 @@ class LLMUnavailableError(BacktestError):
             message=message,
             code="LLM_UNAVAILABLE",
             hint=hint,
-            details=details
+            details=details,
         )
         self.provider = provider
         self.reason = reason
 
 
 class StrategyNotFoundError(UserInputError):
-    """
-    Erreur lorsqu'une stratégie n'existe pas.
-    """
+    """Erreur lorsqu'une stratégie n'existe pas."""
 
     def __init__(self, strategy_name: str, available: list = None):
         available_str = ", ".join(available) if available else "?"
@@ -255,24 +247,22 @@ class StrategyNotFoundError(UserInputError):
             param_name="strategy",
             expected=f"Une parmi: {available_str}",
             got=strategy_name,
-            hint=f"Stratégies disponibles: {available_str}"
+            hint=f"Stratégies disponibles: {available_str}",
         )
         self.strategy_name = strategy_name
         self.available = available or []
 
 
 class ParameterValidationError(UserInputError):
-    """
-    Erreur de validation d'un paramètre spécifique.
-    """
+    """Erreur de validation d'un paramètre spécifique."""
 
     def __init__(
         self,
         param_name: str,
         message: str,
-        min_value: Optional[float] = None,
-        max_value: Optional[float] = None,
-        current_value: Optional[Any] = None
+        min_value: float | None = None,
+        max_value: float | None = None,
+        current_value: Any | None = None,
     ):
         expected = None
         if min_value is not None and max_value is not None:
@@ -287,14 +277,13 @@ class ParameterValidationError(UserInputError):
             param_name=param_name,
             expected=expected,
             got=current_value,
-            hint=f"Ajustez '{param_name}' pour qu'il soit dans la plage valide"
+            hint=f"Ajustez '{param_name}' pour qu'il soit dans la plage valide",
         )
 
-
-# Docstring update summary
-# - Docstring de module normalisée (LLM-friendly) centrée sur hiérarchie d'exceptions
-# - Conventions codes et sérialisation to_dict() explicitées
-# - Read-if/Skip-if ajoutés pour tri rapide
+        # Docstring update summary
+        # - Docstring de module normalisée (LLM-friendly) centrée sur hiérarchie d'exceptions
+        # - Conventions codes et sérialisation to_dict() explicitées
+        # - Read-if/Skip-if ajoutés pour tri rapide
         self.min_value = min_value
         self.max_value = max_value
         self.current_value = current_value

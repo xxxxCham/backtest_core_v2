@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.__init__
+"""Module-ID: ui.__init__
 
 Purpose: Package UI - centralizes Streamlit app et components.
 

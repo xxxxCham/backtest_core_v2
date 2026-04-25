@@ -1,14 +1,16 @@
 """Benchmark RÉEL: multi-process avec run_sweep_iteration vs legacy."""
-import sys
+
 import os
+import sys
 import time
 
 sys.path.insert(0, r"D:\backtest_core")
 os.environ["INDICATOR_CACHE_ENABLED"] = "1"
 os.environ["BACKTEST_DATA_DIR"] = r"D:\my_soft\gestionnaire_telechargement_multi-timeframe\processed\parquet"
 
-import pandas as pd
 from concurrent.futures import ProcessPoolExecutor, as_completed
+
+import pandas as pd
 
 DATA_PATH = r"D:\my_soft\gestionnaire_telechargement_multi-timeframe\processed\parquet\BTCUSDC_1h.parquet"
 
@@ -26,12 +28,7 @@ def main():
     print(f"Index: {df.index[0]} -> {df.index[-1]}")
 
     # Générer grid EMA cross
-    combos = [
-        {"fast_period": f, "slow_period": s}
-        for f in range(5, 21)
-        for s in range(20, 51)
-        if f < s
-    ]
+    combos = [{"fast_period": f, "slow_period": s} for f in range(5, 21) for s in range(20, 51) if f < s]
     print(f"Combos total: {len(combos)}")
 
     # ═══════════════════════════════════════════════════════════════════
@@ -48,7 +45,7 @@ def main():
     for c in test_combos:
         engine.run(df, "ema_cross", c, silent_mode=True, fast_metrics=True)
     t_legacy = time.perf_counter() - t0
-    print(f"\n[SINGLE-THREAD] LEGACY: {n_test} runs en {t_legacy:.2f}s = {n_test/t_legacy:.0f} runs/s")
+    print(f"\n[SINGLE-THREAD] LEGACY: {n_test} runs en {t_legacy:.2f}s = {n_test / t_legacy:.0f} runs/s")
 
     # Fast
     engine2 = BacktestEngine(initial_capital=10000)
@@ -57,8 +54,8 @@ def main():
     for c in test_combos:
         engine2.run_sweep_iteration(c)
     t_fast = time.perf_counter() - t0
-    print(f"[SINGLE-THREAD] FAST:   {n_test} runs en {t_fast:.2f}s = {n_test/t_fast:.0f} runs/s")
-    print(f"[SINGLE-THREAD] SPEEDUP: {t_legacy/t_fast:.1f}x")
+    print(f"[SINGLE-THREAD] FAST:   {n_test} runs en {t_fast:.2f}s = {n_test / t_fast:.0f} runs/s")
+    print(f"[SINGLE-THREAD] SPEEDUP: {t_legacy / t_fast:.1f}x")
 
     # ═══════════════════════════════════════════════════════════════════
     # BENCHMARK 2: Multi-process complet avec worker fast path
@@ -83,7 +80,7 @@ def main():
     t_mp = time.perf_counter() - t0
 
     errors = sum(1 for r in results if "error" in r)
-    print(f"[MULTI-PROCESS] {n_mp_test} runs en {t_mp:.2f}s = {n_mp_test/t_mp:.0f} runs/s ({errors} erreurs)")
+    print(f"[MULTI-PROCESS] {n_mp_test} runs en {t_mp:.2f}s = {n_mp_test / t_mp:.0f} runs/s ({errors} erreurs)")
 
     # Extrapolation
     if t_mp > 0:
@@ -97,8 +94,10 @@ def main():
     valid = [r for r in results if "error" not in r]
     if valid:
         best = max(valid, key=lambda r: r.get("total_pnl", -1e9))
-        print(f"\nMeilleur: PnL=${best['total_pnl']:.2f}, sharpe={best['sharpe']:.4f}, "
-              f"trades={best['trades']}, params={best['params_dict']}")
+        print(
+            f"\nMeilleur: PnL=${best['total_pnl']:.2f}, sharpe={best['sharpe']:.4f}, "
+            f"trades={best['trades']}, params={best['params_dict']}",
+        )
 
 
 if __name__ == "__main__":

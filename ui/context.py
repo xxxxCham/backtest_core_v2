@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.context
+"""Module-ID: ui.context
 
 Purpose: Context loaders - chargement imports backend avec error handling, fallbacks gracieux.
 
@@ -68,6 +67,7 @@ try:
         resolve_latest_version,
         save_versioned_preset,
     )
+
     BACKEND_AVAILABLE = True
 except ImportError as exc:
     IMPORT_ERROR = str(exc)
@@ -132,7 +132,6 @@ save_model_preset = None
 
 try:
     from agents.autonomous_strategist import AutonomousStrategist  # noqa: F401
-    from agents.strategy_builder import StrategyBuilder  # noqa: F401
     from agents.integration import (  # noqa: F401
         create_optimizer_from_engine,
         create_orchestrator_with_backtest,
@@ -152,6 +151,7 @@ try:
     )
     from agents.ollama_manager import ensure_ollama_running, is_ollama_available  # noqa: F401
     from agents.orchestration_logger import OrchestrationLogger, generate_session_id  # noqa: F401
+    from agents.strategy_builder import StrategyBuilder  # noqa: F401
     from ui.components.agent_timeline import (  # noqa: F401
         ActivityType,
         AgentActivity,
@@ -189,6 +189,7 @@ try:
         render_orchestration_logs,
         render_orchestration_summary_table,
     )
+
     LLM_AVAILABLE = True
 except ImportError as exc:
     LLM_IMPORT_ERROR = str(exc)

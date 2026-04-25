@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.fibonacci
+"""Module-ID: indicators.fibonacci
 
 Purpose: Niveaux Fibonacci retracement roulants basés fenetre high/low.
 
@@ -20,8 +19,8 @@ Read-if: Utiliser Fibonacci pour niveaux support/resistance.
 Skip-if: Indicateur non utilisé.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -35,7 +34,7 @@ class FibonacciSettings:
 
     period: int = 50
     levels: tuple[float, ...] = field(
-        default_factory=lambda: (0.236, 0.382, 0.5, 0.618, 0.786)
+        default_factory=lambda: (0.236, 0.382, 0.5, 0.618, 0.786),
     )
 
     def __post_init__(self) -> None:
@@ -50,8 +49,7 @@ def fibonacci_levels(
     levels: Iterable[float] | None = None,
     settings: FibonacciSettings | None = None,
 ) -> dict[str, np.ndarray]:
-    """
-    Compute rolling Fibonacci retracement levels.
+    """Compute rolling Fibonacci retracement levels.
 
     Args:
         high: High price series
@@ -62,6 +60,7 @@ def fibonacci_levels(
 
     Returns:
         Dict of level arrays including high/low
+
     """
     if settings is not None:
         period = settings.period
@@ -96,8 +95,7 @@ def fibonacci_levels(
 
 
 def calculate_fibonacci_levels(df: pd.DataFrame, **params) -> dict[str, np.ndarray]:
-    """
-    Wrapper for registry calculation.
+    """Wrapper for registry calculation.
 
     Params:
         period: Lookback window (default: 50)
@@ -119,7 +117,7 @@ register_indicator(
 
 
 __all__ = [
-    "fibonacci_levels",
-    "calculate_fibonacci_levels",
     "FibonacciSettings",
+    "calculate_fibonacci_levels",
+    "fibonacci_levels",
 ]

@@ -1,5 +1,4 @@
-"""
-Backtest Core - Fast Trade Simulator (Numba-accelerated)
+"""Backtest Core - Fast Trade Simulator (Numba-accelerated)
 =======================================================
 
 Version haute performance du simulateur de trades utilisant Numba JIT.
@@ -11,7 +10,7 @@ Usage:
     trades_df = simulate_trades_fast(df, signals, params)
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -19,6 +18,7 @@ import pandas as pd
 # Numba pour JIT compilation
 try:
     from numba import njit
+
     HAS_NUMBA = True
 except ImportError:
     HAS_NUMBA = False
@@ -28,12 +28,23 @@ from utils.log import get_logger
 logger = get_logger(__name__)
 
 
+def _to_writable_float64_array(values: Any) -> np.ndarray:
+    """Retourne un buffer float64 contigu et modifiable.
+
+    `np.ascontiguousarray()` peut conserver un buffer read-only existant si la
+    source est déjà C-contiguous et du bon dtype. Ici on force une vraie copie
+    pour sécuriser les normalisations in-place (`nan_to_num(copy=False)`).
+    """
+    return np.array(values, dtype=np.float64, copy=True, order="C")
+
+
 # =============================================================================
 # NUMBA-OPTIMIZED CORE (JIT-compiled)
 # =============================================================================
 
 if HAS_NUMBA:
-    @njit(cache=True, nogil=True, fastmath=True, boundscheck=False)
+
+    @njit(cache=True, nogil=True, boundscheck=False)
     def _simulate_trades_numba(
         closes: np.ndarray,
         highs: np.ndarray,
@@ -44,10 +55,10 @@ if HAS_NUMBA:
         initial_capital: float,
         fees_bps: float,
         slippage_bps: float,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,
-               np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
-        """
-        Cœur de simulation JIT-compilé.
+    ) -> tuple[
+        np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int,
+    ]:
+        """Cœur de simulation JIT-compilé.
 
         Retourne les arrays numpy des trades pour reconstruction DataFrame.
         """
@@ -81,7 +92,7 @@ if HAS_NUMBA:
             signal = signals[i]
 
             # === Entrée en position ===
-            if position == 0 and signal != 0:
+            if position == 0 and signal != 0 and close_price > 0.0:
                 position = int(signal)
                 entry_price = close_price * (1.0 + slippage_factor * position)
                 entry_idx = i
@@ -113,14 +124,18 @@ if HAS_NUMBA:
                     exit_price = close_price * (1.0 - slippage_factor * position)
 
                     # PnL
-                    if position == 1:
-                        raw_return = (exit_price - entry_price) / entry_price
+                    if entry_price > 0.0:
+                        if position == 1:
+                            raw_return = (exit_price - entry_price) / entry_price
+                        else:
+                            raw_return = (entry_price - exit_price) / entry_price
+                        position_size = leverage * initial_capital / entry_price
                     else:
-                        raw_return = (entry_price - exit_price) / entry_price
+                        raw_return = 0.0
+                        position_size = 0.0
 
                     net_return = raw_return - fees_factor
                     pnl = net_return * leverage * initial_capital
-                    position_size = leverage * initial_capital / entry_price
 
                     # Enregistrer trade
                     entry_indices[trade_count] = entry_idx
@@ -139,13 +154,13 @@ if HAS_NUMBA:
                     entry_price = 0.0
 
                     # Nouvelle position si signal présent
-                    if signal != 0:
+                    if signal != 0 and close_price > 0.0:
                         position = int(signal)
                         entry_price = close_price * (1.0 + slippage_factor * position)
                         entry_idx = i
 
         # === Trade final si position ouverte ===
-        if position != 0:
+        if position != 0 and entry_price > 0.0:
             final_price = closes[-1] * (1.0 - slippage_factor * position)
 
             if position == 1:
@@ -178,10 +193,10 @@ if HAS_NUMBA:
             returns_pct[:trade_count],
             exit_reasons[:trade_count],
             sizes[:trade_count],
-            trade_count
+            trade_count,
         )
 
-    @njit(cache=True, nogil=True, fastmath=True, boundscheck=False)
+    @njit(cache=True, nogil=True, boundscheck=False)
     def _calculate_equity_numba(
         n_bars: int,
         entry_indices: np.ndarray,
@@ -193,8 +208,7 @@ if HAS_NUMBA:
         close_prices: np.ndarray,
         initial_capital: float,
     ) -> np.ndarray:
-        """
-        Calcule l'equity mark-to-market en O(n_bars + n_trades).
+        """Calcule l'equity mark-to-market en O(n_bars + n_trades).
 
         Maintient une sémantique identique au moteur de référence:
         - capital réalisé crédité à la barre de sortie
@@ -264,7 +278,7 @@ if HAS_NUMBA:
 
         return equity
 
-    @njit(cache=True, nogil=True, fastmath=True, boundscheck=False)
+    @njit(cache=True, nogil=True, boundscheck=False)
     def _simulate_trades_numba_bb_levels(
         closes: np.ndarray,
         highs: np.ndarray,
@@ -285,10 +299,10 @@ if HAS_NUMBA:
         tp_level_arr: np.ndarray,
         sl_level_param: float,
         tp_level_param: float,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,
-               np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
-        """
-        Kernel Numba JIT avec support BB-levels stop-loss/take-profit.
+    ) -> tuple[
+        np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int,
+    ]:
+        """Kernel Numba JIT avec support BB-levels stop-loss/take-profit.
 
         Version 10-100× plus rapide que fallback Python grâce à JIT compilation.
         Gère dynamiquement les niveaux de SL/TP basés sur Bollinger Bands.
@@ -332,7 +346,7 @@ if HAS_NUMBA:
             signal = signals[i]
 
             # === ENTRÉE EN POSITION ===
-            if position == 0 and signal != 0:
+            if position == 0 and signal != 0 and close_price > 0.0:
                 position = int(signal)
                 entry_price = close_price * (1.0 + slippage_factor * position)
                 entry_idx = i
@@ -390,21 +404,17 @@ if HAS_NUMBA:
                 else:
                     # Utiliser price directement
                     if has_bb_stop:
-                        if position == 1 and lows[i] <= stop_price:
-                            sl_hit = True
-                        elif position == -1 and highs[i] >= stop_price:
+                        if (position == 1 and lows[i] <= stop_price) or (position == -1 and highs[i] >= stop_price):
                             sl_hit = True
                     if has_bb_tp:
-                        if position == 1 and highs[i] >= tp_price:
-                            tp_hit = True
-                        elif position == -1 and lows[i] <= tp_price:
+                        if (position == 1 and highs[i] >= tp_price) or (position == -1 and lows[i] <= tp_price):
                             tp_hit = True
 
                 # Fallback SL classique (k_sl) si pas de BB stop
                 if not sl_hit and not has_bb_stop:
-                    if position == 1 and lows[i] <= entry_price * (1.0 - sl_pct):
-                        sl_hit = True
-                    elif position == -1 and highs[i] >= entry_price * (1.0 + sl_pct):
+                    if (position == 1 and lows[i] <= entry_price * (1.0 - sl_pct)) or (
+                        position == -1 and highs[i] >= entry_price * (1.0 + sl_pct)
+                    ):
                         sl_hit = True
 
                 # Déterminer raison sortie
@@ -423,14 +433,18 @@ if HAS_NUMBA:
                     exit_price = close_price * (1.0 - slippage_factor * position)
 
                     # Calcul PnL
-                    if position == 1:
-                        raw_return = (exit_price - entry_price) / entry_price
+                    if entry_price > 0.0:
+                        if position == 1:
+                            raw_return = (exit_price - entry_price) / entry_price
+                        else:
+                            raw_return = (entry_price - exit_price) / entry_price
+                        position_size = leverage * initial_capital / entry_price
                     else:
-                        raw_return = (entry_price - exit_price) / entry_price
+                        raw_return = 0.0
+                        position_size = 0.0
 
                     net_return = raw_return - fees_factor
                     pnl = net_return * leverage * initial_capital
-                    position_size = leverage * initial_capital / entry_price
 
                     # Enregistrer trade
                     entry_indices[trade_count] = entry_idx
@@ -456,7 +470,7 @@ if HAS_NUMBA:
                     has_bb_tp = False
 
                     # Nouvelle position immédiate si signal présent
-                    if signal != 0:
+                    if signal != 0 and close_price > 0.0:
                         position = int(signal)
                         entry_price = close_price * (1.0 + slippage_factor * position)
                         entry_idx = i
@@ -489,7 +503,7 @@ if HAS_NUMBA:
                             has_bb_tp = not np.isnan(tp_level)
 
         # === TRADE FINAL SI POSITION OUVERTE ===
-        if position != 0:
+        if position != 0 and entry_price > 0.0:
             final_price = closes[-1] * (1.0 - slippage_factor * position)
 
             if position == 1:
@@ -522,13 +536,14 @@ if HAS_NUMBA:
             returns_pct[:trade_count],
             exit_reasons[:trade_count],
             sizes[:trade_count],
-            trade_count
+            trade_count,
         )
 
 
 # =============================================================================
 # NUMPY VECTORIZED FALLBACK (si Numba non disponible)
 # =============================================================================
+
 
 def _simulate_trades_numpy(
     closes: np.ndarray,
@@ -540,8 +555,9 @@ def _simulate_trades_numpy(
     initial_capital: float,
     fees_bps: float,
     slippage_bps: float,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,
-           np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
+) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int,
+]:
     """Version numpy pure (fallback si pas de Numba)."""
     n_bars = len(closes)
 
@@ -582,10 +598,9 @@ def _simulate_trades_numpy(
             if signal != 0 and signal != position:
                 exit_condition = True
                 exit_reason = 0
-            elif position == 1 and lows[i] <= entry_price * (1.0 - sl_pct):
-                exit_condition = True
-                exit_reason = 1
-            elif position == -1 and highs[i] >= entry_price * (1.0 + sl_pct):
+            elif (position == 1 and lows[i] <= entry_price * (1.0 - sl_pct)) or (
+                position == -1 and highs[i] >= entry_price * (1.0 + sl_pct)
+            ):
                 exit_condition = True
                 exit_reason = 1
 
@@ -654,7 +669,7 @@ def _simulate_trades_numpy(
         returns_pct[:trade_count],
         exit_reasons[:trade_count],
         sizes[:trade_count],
-        trade_count
+        trade_count,
     )
 
 
@@ -675,18 +690,19 @@ def _simulate_trades_numpy_bb_levels(
     initial_capital: float,
     fees_bps: float,
     slippage_bps: float,
-    bb_stop_long: Optional[np.ndarray],
-    bb_tp_long: Optional[np.ndarray],
-    bb_stop_short: Optional[np.ndarray],
-    bb_tp_short: Optional[np.ndarray],
-    bb_pos_low: Optional[np.ndarray],
-    bb_pos_high: Optional[np.ndarray],
-    sl_level_arr: Optional[np.ndarray],
-    tp_level_arr: Optional[np.ndarray],
+    bb_stop_long: np.ndarray | None,
+    bb_tp_long: np.ndarray | None,
+    bb_stop_short: np.ndarray | None,
+    bb_tp_short: np.ndarray | None,
+    bb_pos_low: np.ndarray | None,
+    bb_pos_high: np.ndarray | None,
+    sl_level_arr: np.ndarray | None,
+    tp_level_arr: np.ndarray | None,
     sl_level_param: float,
     tp_level_param: float,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,
-           np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
+) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int,
+]:
     """Fallback numpy loop with BB-level stop-loss/take-profit support."""
     n_bars = len(closes)
 
@@ -718,7 +734,7 @@ def _simulate_trades_numpy_bb_levels(
     fees_factor = fees_bps * 2 * 0.0001
     sl_pct = k_sl * 0.01
 
-    def _init_trade_levels(bar_idx: int, pos: int) -> Tuple[float, float, float, float, bool, bool, bool]:
+    def _init_trade_levels(bar_idx: int, pos: int) -> tuple[float, float, float, float, bool, bool, bool]:
         stop_p = np.nan
         tp_p = np.nan
         stop_l = np.nan
@@ -759,7 +775,9 @@ def _simulate_trades_numpy_bb_levels(
             position = int(signal)
             entry_price = close_price * (1.0 + slippage_factor * position)
             entry_idx = i
-            stop_price, tp_price, stop_level, tp_level, use_bb_pos, has_bb_stop, has_bb_tp = _init_trade_levels(i, position)
+            stop_price, tp_price, stop_level, tp_level, use_bb_pos, has_bb_stop, has_bb_tp = _init_trade_levels(
+                i, position,
+            )
 
         elif position != 0:
             exit_condition = False
@@ -781,20 +799,16 @@ def _simulate_trades_numpy_bb_levels(
                         tp_hit = True
             else:
                 if has_bb_stop:
-                    if position == 1 and lows[i] <= stop_price:
-                        sl_hit = True
-                    elif position == -1 and highs[i] >= stop_price:
+                    if (position == 1 and lows[i] <= stop_price) or (position == -1 and highs[i] >= stop_price):
                         sl_hit = True
                 if has_bb_tp:
-                    if position == 1 and highs[i] >= tp_price:
-                        tp_hit = True
-                    elif position == -1 and lows[i] <= tp_price:
+                    if (position == 1 and highs[i] >= tp_price) or (position == -1 and lows[i] <= tp_price):
                         tp_hit = True
 
             if not sl_hit and not has_bb_stop:
-                if position == 1 and lows[i] <= entry_price * (1.0 - sl_pct):
-                    sl_hit = True
-                elif position == -1 and highs[i] >= entry_price * (1.0 + sl_pct):
+                if (position == 1 and lows[i] <= entry_price * (1.0 - sl_pct)) or (
+                    position == -1 and highs[i] >= entry_price * (1.0 + sl_pct)
+                ):
                     sl_hit = True
 
             if sl_hit:
@@ -844,7 +858,9 @@ def _simulate_trades_numpy_bb_levels(
                     position = int(signal)
                     entry_price = close_price * (1.0 + slippage_factor * position)
                     entry_idx = i
-                    stop_price, tp_price, stop_level, tp_level, use_bb_pos, has_bb_stop, has_bb_tp = _init_trade_levels(i, position)
+                    stop_price, tp_price, stop_level, tp_level, use_bb_pos, has_bb_stop, has_bb_tp = _init_trade_levels(
+                        i, position,
+                    )
 
     if position != 0:
         final_price = closes[-1] * (1.0 - slippage_factor * position)
@@ -879,17 +895,16 @@ def _simulate_trades_numpy_bb_levels(
         returns_pct[:trade_count],
         exit_reasons[:trade_count],
         sizes[:trade_count],
-        trade_count
+        trade_count,
     )
 
 
 def simulate_trades_fast(
     df: pd.DataFrame,
     signals: pd.Series,
-    params: Dict[str, Any],
+    params: dict[str, Any],
 ) -> pd.DataFrame:
-    """
-    Simule l'exécution des trades avec optimisation Numba.
+    """Simule l'exécution des trades avec optimisation Numba.
 
     10-100x plus rapide que simulate_trades() standard.
 
@@ -900,6 +915,7 @@ def simulate_trades_fast(
 
     Returns:
         DataFrame des trades
+
     """
     # Extraire paramètres
     leverage = float(params.get("leverage", 1))
@@ -909,46 +925,35 @@ def simulate_trades_fast(
     slippage_bps = float(params.get("slippage_bps", 5.0))
 
     # Convertir en arrays numpy (contiguous pour performance)
-    closes = np.ascontiguousarray(df["close"].values, dtype=np.float64)
-    highs = np.ascontiguousarray(df["high"].values, dtype=np.float64)
-    lows = np.ascontiguousarray(df["low"].values, dtype=np.float64)
-    signal_arr = np.ascontiguousarray(
-        signals.values if hasattr(signals, "values") else signals,
-        dtype=np.float64
-    )
+    closes = _to_writable_float64_array(df["close"].values)
+    highs = _to_writable_float64_array(df["high"].values)
+    lows = _to_writable_float64_array(df["low"].values)
+    signal_arr = _to_writable_float64_array(signals.values if hasattr(signals, "values") else signals)
+
+    # ── Guard défensif : sanitiser les données avant passage au JIT Numba ──
+    # Numba fastmath+boundscheck=False provoque un segfault (0xC0000005) sur
+    # NaN/Inf/zéro dans les arrays critiques au lieu de lever une exception Python.
+    np.nan_to_num(signal_arr, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
+    np.nan_to_num(closes, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
+    np.nan_to_num(highs, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
+    np.nan_to_num(lows, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
 
     bb_stop_long = (
-        np.ascontiguousarray(df["bb_stop_long"].values, dtype=np.float64)
-        if "bb_stop_long" in df.columns else None
+        np.ascontiguousarray(df["bb_stop_long"].values, dtype=np.float64) if "bb_stop_long" in df.columns else None
     )
-    bb_tp_long = (
-        np.ascontiguousarray(df["bb_tp_long"].values, dtype=np.float64)
-        if "bb_tp_long" in df.columns else None
-    )
+    bb_tp_long = np.ascontiguousarray(df["bb_tp_long"].values, dtype=np.float64) if "bb_tp_long" in df.columns else None
     bb_stop_short = (
-        np.ascontiguousarray(df["bb_stop_short"].values, dtype=np.float64)
-        if "bb_stop_short" in df.columns else None
+        np.ascontiguousarray(df["bb_stop_short"].values, dtype=np.float64) if "bb_stop_short" in df.columns else None
     )
     bb_tp_short = (
-        np.ascontiguousarray(df["bb_tp_short"].values, dtype=np.float64)
-        if "bb_tp_short" in df.columns else None
+        np.ascontiguousarray(df["bb_tp_short"].values, dtype=np.float64) if "bb_tp_short" in df.columns else None
     )
-    bb_pos_low = (
-        np.ascontiguousarray(df["bb_pos_low"].values, dtype=np.float64)
-        if "bb_pos_low" in df.columns else None
-    )
+    bb_pos_low = np.ascontiguousarray(df["bb_pos_low"].values, dtype=np.float64) if "bb_pos_low" in df.columns else None
     bb_pos_high = (
-        np.ascontiguousarray(df["bb_pos_high"].values, dtype=np.float64)
-        if "bb_pos_high" in df.columns else None
+        np.ascontiguousarray(df["bb_pos_high"].values, dtype=np.float64) if "bb_pos_high" in df.columns else None
     )
-    sl_level_arr = (
-        np.ascontiguousarray(df["sl_level"].values, dtype=np.float64)
-        if "sl_level" in df.columns else None
-    )
-    tp_level_arr = (
-        np.ascontiguousarray(df["tp_level"].values, dtype=np.float64)
-        if "tp_level" in df.columns else None
-    )
+    sl_level_arr = np.ascontiguousarray(df["sl_level"].values, dtype=np.float64) if "sl_level" in df.columns else None
+    tp_level_arr = np.ascontiguousarray(df["tp_level"].values, dtype=np.float64) if "tp_level" in df.columns else None
     sl_level_param = params.get("sl_level", np.nan)
     if sl_level_param is None:
         sl_level_param = np.nan
@@ -959,7 +964,8 @@ def simulate_trades_fast(
     tp_level_param = float(tp_level_param)
 
     use_bb_levels = any(
-        arr is not None for arr in (
+        arr is not None
+        for arr in (
             bb_stop_long,
             bb_tp_long,
             bb_stop_short,
@@ -984,7 +990,7 @@ def simulate_trades_fast(
             n_bars = len(closes)
 
             # Cache thread-local pour éviter allocations répétées (gain mémoire + GC)
-            if not hasattr(simulate_trades_fast, '_nan_cache') or len(simulate_trades_fast._nan_cache) != n_bars:
+            if not hasattr(simulate_trades_fast, "_nan_cache") or len(simulate_trades_fast._nan_cache) != n_bars:
                 simulate_trades_fast._nan_cache = np.full(n_bars, np.nan, dtype=np.float64)
             _nan_fallback = simulate_trades_fast._nan_cache
 
@@ -998,64 +1004,129 @@ def simulate_trades_fast(
             tp_level_arr_safe = tp_level_arr if tp_level_arr is not None else _nan_fallback
 
             result = _simulate_trades_numba_bb_levels(
-                closes, highs, lows, signal_arr,
-                leverage, k_sl, initial_capital, fees_bps, slippage_bps,
-                bb_stop_long_arr, bb_tp_long_arr, bb_stop_short_arr, bb_tp_short_arr,
-                bb_pos_low_arr, bb_pos_high_arr, sl_level_arr_safe, tp_level_arr_safe,
-                sl_level_param, tp_level_param,
+                closes,
+                highs,
+                lows,
+                signal_arr,
+                leverage,
+                k_sl,
+                initial_capital,
+                fees_bps,
+                slippage_bps,
+                bb_stop_long_arr,
+                bb_tp_long_arr,
+                bb_stop_short_arr,
+                bb_tp_short_arr,
+                bb_pos_low_arr,
+                bb_pos_high_arr,
+                sl_level_arr_safe,
+                tp_level_arr_safe,
+                sl_level_param,
+                tp_level_param,
             )
         else:
             # ⚠️ FALLBACK : Boucle Python (LENT - seulement si Numba indisponible)
             logger.warning("Backend: numpy_bb_levels (Python loop - SLOW)")
             logger.warning("⚠️  Performance dégradée : installez numba pour accélération 10-100×")
             result = _simulate_trades_numpy_bb_levels(
-                closes, highs, lows, signal_arr,
-                leverage, k_sl, initial_capital, fees_bps, slippage_bps,
-                bb_stop_long, bb_tp_long, bb_stop_short, bb_tp_short,
-                bb_pos_low, bb_pos_high, sl_level_arr, tp_level_arr,
-                sl_level_param, tp_level_param,
+                closes,
+                highs,
+                lows,
+                signal_arr,
+                leverage,
+                k_sl,
+                initial_capital,
+                fees_bps,
+                slippage_bps,
+                bb_stop_long,
+                bb_tp_long,
+                bb_stop_short,
+                bb_tp_short,
+                bb_pos_low,
+                bb_pos_high,
+                sl_level_arr,
+                tp_level_arr,
+                sl_level_param,
+                tp_level_param,
             )
     elif HAS_NUMBA:
         # ✅ Kernel Numba standard (sans BB levels)
         logger.debug("Backend: numba_standard (JIT-compiled)")
         result = _simulate_trades_numba(
-            closes, highs, lows, signal_arr,
-            leverage, k_sl, initial_capital, fees_bps, slippage_bps
+            closes,
+            highs,
+            lows,
+            signal_arr,
+            leverage,
+            k_sl,
+            initial_capital,
+            fees_bps,
+            slippage_bps,
         )
     else:
         # ⚠️ FALLBACK : NumPy pur (seulement si Numba indisponible)
         logger.debug("Backend: numpy_standard (Numba non disponible)")
         result = _simulate_trades_numpy(
-            closes, highs, lows, signal_arr,
-            leverage, k_sl, initial_capital, fees_bps, slippage_bps
+            closes,
+            highs,
+            lows,
+            signal_arr,
+            leverage,
+            k_sl,
+            initial_capital,
+            fees_bps,
+            slippage_bps,
         )
 
-    (entry_indices, exit_indices, sides, entry_prices, exit_prices,
-     pnls, returns_pct, exit_reasons, sizes, trade_count) = result
+    (
+        entry_indices,
+        exit_indices,
+        sides,
+        entry_prices,
+        exit_prices,
+        pnls,
+        returns_pct,
+        exit_reasons,
+        sizes,
+        trade_count,
+    ) = result
 
     if trade_count == 0:
-        return pd.DataFrame(columns=[
-            "entry_ts", "exit_ts", "pnl", "size", "price_entry", "price_exit",
-            "side", "exit_reason", "return_pct", "leverage_used", "fees_paid"
-        ])
+        return pd.DataFrame(
+            columns=[
+                "entry_ts",
+                "exit_ts",
+                "pnl",
+                "size",
+                "price_entry",
+                "price_exit",
+                "side",
+                "exit_reason",
+                "return_pct",
+                "leverage_used",
+                "fees_paid",
+            ],
+        )
 
     # Convertir timestamps
     timestamps = df.index.values
     fees_factor = fees_bps * 2 * 0.0001
 
-    trades_df = pd.DataFrame({
-        "entry_ts": pd.to_datetime(timestamps[entry_indices]),
-        "exit_ts": pd.to_datetime(timestamps[exit_indices]),
-        "pnl": pnls,
-        "size": sizes,
-        "price_entry": entry_prices,
-        "price_exit": exit_prices,
-        "side": np.where(sides == 1, "LONG", "SHORT"),
-        "exit_reason": [EXIT_REASON_MAP.get(r, "unknown") for r in exit_reasons],
-        "return_pct": returns_pct,
-        "leverage_used": leverage,
-        "fees_paid": sizes * entry_prices * fees_factor
-    })
+    trades_df = pd.DataFrame(
+        {
+            "entry_ts": pd.to_datetime(timestamps[entry_indices]),
+            "exit_ts": pd.to_datetime(timestamps[exit_indices]),
+            "pnl": pnls,
+            "size": sizes,
+            "price_entry": entry_prices,
+            "price_exit": exit_prices,
+            "side": np.where(sides == 1, "LONG", "SHORT"),
+            "exit_reason": [EXIT_REASON_MAP.get(r, "unknown") for r in exit_reasons],
+            "return_pct": returns_pct,
+            "leverage_used": leverage,
+            "fees_paid": sizes * entry_prices * fees_factor,
+        },
+    )
 
     logger.debug(f"Simulation fast terminée: {trade_count} trades")
 
@@ -1065,10 +1136,9 @@ def simulate_trades_fast(
 def calculate_equity_fast(
     df: pd.DataFrame,
     trades_df: pd.DataFrame,
-    initial_capital: float = 10000.0
+    initial_capital: float = 10000.0,
 ) -> pd.Series:
-    """
-    Calcule la courbe d'équité avec mark-to-market.
+    """Calcule la courbe d'équité avec mark-to-market.
 
     Args:
         df: DataFrame OHLCV (pour l'index)
@@ -1077,6 +1147,7 @@ def calculate_equity_fast(
 
     Returns:
         pd.Series de l'équité avec la même sémantique que calculate_equity_curve()
+
     """
     n_bars = len(df)
 
@@ -1088,7 +1159,7 @@ def calculate_equity_fast(
     exit_ts = pd.to_datetime(trades_df["exit_ts"])
 
     # Harmoniser les timezones avec df.index
-    if hasattr(df.index, 'tz') and df.index.tz is not None:
+    if hasattr(df.index, "tz") and df.index.tz is not None:
         if entry_ts.dt.tz is None:
             entry_ts = entry_ts.dt.tz_localize(df.index.tz)
         elif entry_ts.dt.tz != df.index.tz:
@@ -1121,7 +1192,7 @@ def calculate_equity_fast(
     side_signs = np.where(sides == "SHORT", -1, 1).astype(np.int8)
 
     # Prix close pour mark-to-market
-    close_prices = df['close'].values.astype(np.float64)
+    close_prices = df["close"].values.astype(np.float64)
 
     if HAS_NUMBA:
         equity_arr = _calculate_equity_numba(
@@ -1133,7 +1204,7 @@ def calculate_equity_fast(
             sizes,
             side_signs,
             close_prices,
-            initial_capital
+            initial_capital,
         )
     else:
         capital_changes = np.zeros(n_bars, dtype=np.float64)
@@ -1168,10 +1239,7 @@ def calculate_equity_fast(
         active_long_entry = np.cumsum(long_entry_delta[:-1])
         active_short_entry = np.cumsum(short_entry_delta[:-1])
         unrealized = (
-            close_prices * active_long_size
-            - active_long_entry
-            + active_short_entry
-            - close_prices * active_short_size
+            close_prices * active_long_size - active_long_entry + active_short_entry - close_prices * active_short_size
         )
         equity_arr = realized + unrealized
 
@@ -1182,7 +1250,9 @@ def calculate_returns_fast(equity: pd.Series) -> pd.Series:
     """Calcul vectorisé des rendements."""
     equity_arr = equity.values
     returns = np.zeros_like(equity_arr)
-    returns[1:] = (equity_arr[1:] - equity_arr[:-1]) / equity_arr[:-1]
+    prev = equity_arr[:-1]
+    safe_prev = np.where(prev == 0.0, 1.0, prev)
+    returns[1:] = np.where(prev == 0.0, 0.0, (equity_arr[1:] - prev) / safe_prev)
     returns = np.nan_to_num(returns, 0.0)
     return pd.Series(returns, index=equity.index, dtype=np.float64)
 
@@ -1191,14 +1261,14 @@ def calculate_returns_fast(equity: pd.Series) -> pd.Series:
 # BATCH PROCESSING
 # =============================================================================
 
+
 def simulate_batch(
     df: pd.DataFrame,
-    signals_batch: List[pd.Series],
-    params_batch: List[Dict[str, Any]],
-    n_jobs: int = -1
-) -> List[pd.DataFrame]:
-    """
-    Simule plusieurs backtests en parallèle.
+    signals_batch: list[pd.Series],
+    params_batch: list[dict[str, Any]],
+    n_jobs: int = -1,
+) -> list[pd.DataFrame]:
+    """Simule plusieurs backtests en parallèle.
 
     Args:
         df: DataFrame OHLCV partagé
@@ -1208,6 +1278,7 @@ def simulate_batch(
 
     Returns:
         Liste de DataFrames de trades
+
     """
     import os
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1217,7 +1288,7 @@ def simulate_batch(
 
     results = [None] * len(signals_batch)
 
-    def run_single(idx: int) -> Tuple[int, pd.DataFrame]:
+    def run_single(idx: int) -> tuple[int, pd.DataFrame]:
         trades = simulate_trades_fast(df, signals_batch[idx], params_batch[idx])
         return idx, trades
 
@@ -1231,9 +1302,9 @@ def simulate_batch(
 
 
 __all__ = [
-    "simulate_trades_fast",
+    "HAS_NUMBA",
     "calculate_equity_fast",
     "calculate_returns_fast",
     "simulate_batch",
-    "HAS_NUMBA"
+    "simulate_trades_fast",
 ]

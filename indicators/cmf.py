@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.cmf
+"""Module-ID: indicators.cmf
 
 Purpose: Chaikin Money Flow (CMF).
 """
@@ -59,4 +58,4 @@ register_indicator(
 )
 
 
-__all__ = ["cmf", "calculate_cmf", "CMFSettings"]
+__all__ = ["CMFSettings", "calculate_cmf", "cmf"]

@@ -1,5 +1,4 @@
-"""
-Module-ID: indicators.hma
+"""Module-ID: indicators.hma
 
 Purpose: Hull Moving Average (HMA).
 """
@@ -47,4 +46,4 @@ register_indicator(
 )
 
 
-__all__ = ["hma", "calculate_hma", "HMASettings"]
+__all__ = ["HMASettings", "calculate_hma", "hma"]

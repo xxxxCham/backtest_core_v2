@@ -1,5 +1,4 @@
-"""
-Module-ID: agents.builder_constants
+"""Module-ID: agents.builder_constants
 
 Purpose: Constantes partagées entre les sous-modules du Strategy Builder.
 
@@ -12,7 +11,6 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Dict
 
 from backtest.result_store import get_builder_sessions_dir
 
@@ -42,7 +40,7 @@ _AST_PARSE_RECOVERABLE_EXCEPTIONS = (
 # Nombre mini d'itérations backtestées avant d'autoriser un arrêt LLM "stop"
 MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP = 5
 # Checkpoints de progression positive pour arrêter tôt les sessions peu prometteuses
-POSITIVE_PROGRESS_GATE_CHECKPOINTS: Dict[int, int] = {6: 1, 9: 2}
+POSITIVE_PROGRESS_GATE_CHECKPOINTS: dict[int, int] = {6: 1, 9: 2}
 MIN_TRADES_FOR_POSITIVE_PROGRESS = 1
 # Quota max de fallbacks positifs comptabilisés dans la progression
 MAX_POSITIVE_FALLBACK_COUNT = 1
@@ -62,7 +60,7 @@ _LLM_PHASE_TIMEOUT_CODE = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_CODE", "180"))
 _LLM_PHASE_TIMEOUT_ANALYSIS = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_ANALYSIS", "90"))
 _LLM_PHASE_TIMEOUT_DEFAULT = int(os.getenv("BACKTEST_BUILDER_TIMEOUT_DEFAULT", "120"))
 
-_LLM_PHASE_TIMEOUTS: Dict[str, int] = {
+_LLM_PHASE_TIMEOUTS: dict[str, int] = {
     "proposal": _LLM_PHASE_TIMEOUT_PROPOSAL,
     "code": _LLM_PHASE_TIMEOUT_CODE,
     "analysis": _LLM_PHASE_TIMEOUT_ANALYSIS,
@@ -101,7 +99,7 @@ _DICT_INDICATOR_NAMES = {
     "fibonacci_levels",
 }
 
-_DICT_INDICATOR_ALLOWED_KEYS: Dict[str, set[str]] = {
+_DICT_INDICATOR_ALLOWED_KEYS: dict[str, set[str]] = {
     "bollinger": {"upper", "middle", "lower"},
     "macd": {"macd", "signal", "histogram"},
     "stochastic": {"stoch_k", "stoch_d"},

@@ -1,5 +1,4 @@
-"""
-Module-ID: backtest.optuna_optimizer
+"""Module-ID: backtest.optuna_optimizer
 
 Purpose: Optimiser les paramètres via Optuna (bayésien TPE/CMA-ES) avec pruning et support multi-objectif.
 
@@ -25,8 +24,9 @@ from __future__ import annotations
 import gc
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -37,6 +37,7 @@ try:
     import optuna
     from optuna.pruners import HyperbandPruner, MedianPruner
     from optuna.samplers import CmaEsSampler, TPESampler
+
     OPTUNA_AVAILABLE = True
 except ImportError:
     OPTUNA_AVAILABLE = False
@@ -57,18 +58,20 @@ logger = logging.getLogger(__name__)
 # DATA CLASSES
 # ============================================================================
 
+
 @dataclass
 class ParamSpec:
     """Spécification d'un paramètre à optimiser."""
+
     name: str
     param_type: str  # "int", "float", "categorical"
-    low: Optional[float] = None
-    high: Optional[float] = None
-    choices: Optional[List[Any]] = None
-    step: Optional[float] = None
+    low: float | None = None
+    high: float | None = None
+    choices: list[Any] | None = None
+    step: float | None = None
     log: bool = False  # Échelle logarithmique
 
-    def suggest(self, trial: "optuna.Trial") -> Any:
+    def suggest(self, trial: optuna.Trial) -> Any:
         """Suggère une valeur pour ce paramètre."""
         if self.param_type == "int":
             return trial.suggest_int(
@@ -78,7 +81,7 @@ class ParamSpec:
                 step=int(self.step) if self.step else 1,
                 log=self.log,
             )
-        elif self.param_type == "float":
+        if self.param_type == "float":
             return trial.suggest_float(
                 self.name,
                 self.low,
@@ -86,37 +89,44 @@ class ParamSpec:
                 step=self.step,
                 log=self.log,
             )
-        elif self.param_type == "categorical":
+        if self.param_type == "categorical":
             return trial.suggest_categorical(self.name, self.choices)
-        else:
-            raise ValueError(f"Type de paramètre inconnu: {self.param_type}")
+        raise ValueError(f"Type de paramètre inconnu: {self.param_type}")
 
 
 @dataclass
 class OptimizationResult:
     """Résultat d'une optimisation Optuna."""
-    best_params: Dict[str, Any]
+
+    best_params: dict[str, Any]
     best_value: float
     best_metrics: PerformanceMetricsPct
     n_trials: int
     n_completed: int
     n_pruned: int
     total_time: float
-    history: List[Dict[str, Any]] = field(default_factory=list)
-    study: Optional[Any] = None  # optuna.Study
+    history: list[dict[str, Any]] = field(default_factory=list)
+    study: Any | None = None  # optuna.Study
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convertit l'historique en DataFrame."""
         return pd.DataFrame(self.history)
 
     def get_top_n(
-        self, n: int = 10, ascending: bool = False
+        self,
+        n: int = 10,
+        ascending: bool = False,
     ) -> pd.DataFrame:
         """Retourne les N meilleurs trials."""
         df = self.to_dataframe()
         if "value" in df.columns:
-            return df.nsmallest(n, "value") if ascending else df.nlargest(
-                n, "value"
+            return (
+                df.nsmallest(n, "value")
+                if ascending
+                else df.nlargest(
+                    n,
+                    "value",
+                )
             )
         return df.head(n)
 
@@ -134,19 +144,20 @@ Best Parameters:
 {self.best_params}
 
 Best Metrics:
-  Sharpe: {self.best_metrics.get('sharpe_ratio', 'N/A')}
-  Total Return: {self.best_metrics.get('total_return_pct', 'N/A')}
-  Max Drawdown: {self.best_metrics.get('max_drawdown_pct', 'N/A')}
+  Sharpe: {self.best_metrics.get("sharpe_ratio", "N/A")}
+  Total Return: {self.best_metrics.get("total_return_pct", "N/A")}
+  Max Drawdown: {self.best_metrics.get("max_drawdown_pct", "N/A")}
 """
 
 
 @dataclass
 class MultiObjectiveResult:
     """Résultat d'une optimisation multi-objectif."""
-    pareto_front: List[Dict[str, Any]]
+
+    pareto_front: list[dict[str, Any]]
     n_trials: int
     total_time: float
-    study: Optional[Any] = None
+    study: Any | None = None
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convertit le front de Pareto en DataFrame."""
@@ -157,9 +168,9 @@ class MultiObjectiveResult:
 # OPTIMIZER CLASS
 # ============================================================================
 
+
 class OptunaOptimizer:
-    """
-    Optimiseur bayésien pour stratégies de trading.
+    """Optimiseur bayésien pour stratégies de trading.
 
     Utilise Optuna (TPE sampler par défaut) pour explorer efficacement
     l'espace des paramètres avec moins d'évaluations que le grid search.
@@ -182,25 +193,25 @@ class OptunaOptimizer:
         ...     constraints=[("slow_period", ">", "fast_period")],
         ... )
         >>> result = optimizer.optimize(n_trials=100)
+
     """
 
     def __init__(
         self,
         strategy_name: str,
         data: pd.DataFrame,
-        param_space: Dict[str, Dict[str, Any]],
+        param_space: dict[str, dict[str, Any]],
         *,
         initial_capital: float = 10000.0,
-        constraints: Optional[List[Tuple[str, str, str]]] = None,
+        constraints: list[tuple[str, str, str]] | None = None,
         seed: int = 42,
         auto_save: bool = True,
-        early_stop_patience: Optional[int] = None,
-        config: Optional["Config"] = None,
+        early_stop_patience: int | None = None,
+        config: Config | None = None,
         symbol: str = "UNKNOWN",
         timeframe: str = "1m",
     ):
-        """
-        Initialise l'optimiseur.
+        """Initialise l'optimiseur.
 
         Args:
             strategy_name: Nom de la stratégie à optimiser
@@ -216,11 +227,11 @@ class OptunaOptimizer:
             config: Configuration du moteur (frais, slippage, etc.)
             symbol: Symbole pour les metadonnees
             timeframe: Timeframe pour les metadonnees
+
         """
         if not OPTUNA_AVAILABLE:
             raise ImportError(
-                "Optuna n'est pas installé. "
-                "Installez-le avec: pip install optuna"
+                "Optuna n'est pas installé. Installez-le avec: pip install optuna",
             )
 
         self.strategy_name = strategy_name
@@ -240,14 +251,16 @@ class OptunaOptimizer:
 
         # Logger avec contexte
         self.logger = get_obs_logger(
-            __name__, run_id=self.run_id, strategy=strategy_name
+            __name__,
+            run_id=self.run_id,
+            strategy=strategy_name,
         )
 
         # Compteurs de performance
         self.counters = PerfCounters()
 
         # Cache pour éviter les recalculs
-        self._engine: Optional[BacktestEngine] = None
+        self._engine: BacktestEngine | None = None
         self._best_metrics: PerformanceMetricsPct = {}
 
         # Tracking en temps réel pour l'UI (accessible depuis callbacks)
@@ -258,12 +271,15 @@ class OptunaOptimizer:
 
         self.logger.info(
             "optuna_optimizer_init params=%s constraints=%s early_stop=%s",
-            len(self.param_specs), len(self.constraints), early_stop_patience or "disabled"
+            len(self.param_specs),
+            len(self.constraints),
+            early_stop_patience or "disabled",
         )
 
     def _parse_param_space(
-        self, param_space: Dict[str, Dict[str, Any]]
-    ) -> List[ParamSpec]:
+        self,
+        param_space: dict[str, dict[str, Any]],
+    ) -> list[ParamSpec]:
         """Parse l'espace des paramètres en ParamSpec."""
         specs = []
         for name, config in param_space.items():
@@ -279,7 +295,7 @@ class OptunaOptimizer:
             specs.append(spec)
         return specs
 
-    def _check_constraints(self, params: Dict[str, Any]) -> bool:
+    def _check_constraints(self, params: dict[str, Any]) -> bool:
         """Vérifie que les contraintes sont respectées."""
         for left, op, right in self.constraints:
             left_val = params.get(left, 0)
@@ -307,10 +323,12 @@ class OptunaOptimizer:
         return True
 
     def _create_early_stop_callback(
-        self, patience: int, direction: str = "maximize", metric_index: int = 0
-    ) -> Callable[["optuna.Study", "optuna.Trial"], None]:
-        """
-        Crée un callback d'early stopping pour Optuna.
+        self,
+        patience: int,
+        direction: str = "maximize",
+        metric_index: int = 0,
+    ) -> Callable[[optuna.Study, optuna.Trial], None]:
+        """Crée un callback d'early stopping pour Optuna.
 
         Arrête l'optimisation après 'patience' trials sans amélioration.
 
@@ -321,11 +339,12 @@ class OptunaOptimizer:
 
         Returns:
             Callback Optuna
+
         """
-        best_score: Optional[float] = None
+        best_score: float | None = None
         no_improve_trials = 0
 
-        def callback(study: "optuna.Study", trial: "optuna.Trial") -> None:
+        def callback(study: optuna.Study, trial: optuna.Trial) -> None:
             nonlocal best_score, no_improve_trials
 
             # Ignorer les trials pruned ou failed
@@ -345,18 +364,18 @@ class OptunaOptimizer:
                 no_improve_trials = 0
                 self.logger.debug(
                     "early_stop_init best_score=%.4f trial=%s",
-                    score, trial.number
+                    score,
+                    trial.number,
                 )
             else:
-                improved = (
-                    score > best_score if direction == "maximize"
-                    else score < best_score
-                )
+                improved = score > best_score if direction == "maximize" else score < best_score
 
                 if improved:
                     self.logger.debug(
                         "early_stop_improve old=%.4f new=%.4f trial=%s",
-                        best_score, score, trial.number
+                        best_score,
+                        score,
+                        trial.number,
                     )
                     best_score = score
                     no_improve_trials = 0
@@ -364,14 +383,17 @@ class OptunaOptimizer:
                     no_improve_trials += 1
                     self.logger.debug(
                         "early_stop_no_improve count=%s/%s trial=%s",
-                        no_improve_trials, patience, trial.number
+                        no_improve_trials,
+                        patience,
+                        trial.number,
                     )
 
             # Arrêt anticipé si patience dépassée
             if no_improve_trials >= patience:
                 self.logger.info(
                     "early_stop_triggered trials_without_improvement=%s best_score=%.4f",
-                    no_improve_trials, best_score
+                    no_improve_trials,
+                    best_score,
                 )
                 study.stop()
 
@@ -382,9 +404,8 @@ class OptunaOptimizer:
         metric: str = "sharpe_ratio",
         direction: str = "maximize",
         use_walk_forward: bool = False,
-    ) -> Callable[["optuna.Trial"], float]:
-        """
-        Crée la fonction objectif pour Optuna.
+    ) -> Callable[[optuna.Trial], float]:
+        """Crée la fonction objectif pour Optuna.
 
         Args:
             metric: Métrique à optimiser
@@ -393,6 +414,7 @@ class OptunaOptimizer:
 
         Returns:
             Fonction objectif callable
+
         """
         # Créer l'engine une seule fois
         if self._engine is None:
@@ -404,7 +426,7 @@ class OptunaOptimizer:
                 engine_kwargs["config"] = self.config
             self._engine = BacktestEngine(**engine_kwargs)
 
-        def objective(trial: "optuna.Trial") -> float:
+        def objective(trial: optuna.Trial) -> float:
             # Suggérer les paramètres
             params = {}
             for spec in self.param_specs:
@@ -423,8 +445,8 @@ class OptunaOptimizer:
                     params=params,
                     symbol=self.symbol,
                     timeframe=self.timeframe,
-                    silent_mode=True,     # Pas de logs pour performance
-                    fast_metrics=True,    # Mode NumPy pur pour Sharpe (10x plus rapide)
+                    silent_mode=True,  # Pas de logs pour performance
+                    fast_metrics=True,  # Mode NumPy pur pour Sharpe (10x plus rapide)
                 )
 
                 # Log des métriques disponibles au premier trial
@@ -433,7 +455,7 @@ class OptunaOptimizer:
                     self.logger.info(
                         "trial_0_metrics_available count=%s metrics=[%s]",
                         len(available_metrics),
-                        ", ".join(available_metrics)
+                        ", ".join(available_metrics),
                     )
 
                 # Extraire la métrique (STRICT: crash si absente)
@@ -471,17 +493,30 @@ class OptunaOptimizer:
                     gc.collect()
 
                 # Stocker les meilleures métriques
-                if (direction == "maximize" and value > self._best_metrics.get(
-                    metric, float("-inf")
-                )) or (direction == "minimize" and value < self._best_metrics.get(
-                    metric, float("inf")
-                )):
+                if (
+                    direction == "maximize"
+                    and value
+                    > self._best_metrics.get(
+                        metric,
+                        float("-inf"),
+                    )
+                ) or (
+                    direction == "minimize"
+                    and value
+                    < self._best_metrics.get(
+                        metric,
+                        float("inf"),
+                    )
+                ):
                     self._best_metrics = normalize_metrics(result.metrics, "pct")
 
                 # Log pour debug
                 self.logger.debug(
                     "trial_%s params=%s %s=%.4f",
-                    trial.number, params, metric, value
+                    trial.number,
+                    params,
+                    metric,
+                    value,
                 )
 
                 return value
@@ -490,7 +525,9 @@ class OptunaOptimizer:
                 raise
             except Exception as e:
                 self.logger.warning(
-                    "trial_%s_failed error=%s", trial.number, str(e)
+                    "trial_%s_failed error=%s",
+                    trial.number,
+                    str(e),
                 )
                 # Retourner une valeur très mauvaise
                 return float("-inf") if direction == "maximize" else float("inf")
@@ -503,16 +540,15 @@ class OptunaOptimizer:
         metric: str = "sharpe_ratio",
         direction: str = "maximize",
         *,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
         sampler: str = "tpe",
         pruner: str = "median",
         n_startup_trials: int = 10,
         show_progress: bool = True,
-        callbacks: Optional[List[Callable]] = None,
-        early_stop_patience: Optional[int] = None,
+        callbacks: list[Callable] | None = None,
+        early_stop_patience: int | None = None,
     ) -> OptimizationResult:
-        """
-        Lance l'optimisation.
+        """Lance l'optimisation.
 
         Args:
             n_trials: Nombre de trials à exécuter
@@ -528,10 +564,13 @@ class OptunaOptimizer:
 
         Returns:
             OptimizationResult avec les meilleurs paramètres
+
         """
         self.logger.info(
             "optimization_start n_trials=%s metric=%s direction=%s",
-            n_trials, metric, direction
+            n_trials,
+            metric,
+            direction,
         )
 
         self.counters.start("total")
@@ -592,7 +631,8 @@ class OptunaOptimizer:
             final_callbacks.append(early_stop_cb)
             self.logger.info(
                 "early_stop_enabled patience=%s direction=%s",
-                patience, direction
+                patience,
+                direction,
             )
 
         # Lancer l'optimisation
@@ -600,7 +640,7 @@ class OptunaOptimizer:
             objective,
             n_trials=n_trials,
             timeout=timeout,
-            callbacks=final_callbacks if final_callbacks else None,
+            callbacks=final_callbacks or None,
             show_progress_bar=show_progress,
         )
 
@@ -611,21 +651,17 @@ class OptunaOptimizer:
         history = []
         for trial in study.trials:
             if trial.state == optuna.trial.TrialState.COMPLETE:
-                history.append({
-                    "trial": trial.number,
-                    "value": trial.value,
-                    **trial.params,
-                })
+                history.append(
+                    {
+                        "trial": trial.number,
+                        "value": trial.value,
+                        **trial.params,
+                    },
+                )
 
         # Compter les trials
-        n_completed = len([
-            t for t in study.trials
-            if t.state == optuna.trial.TrialState.COMPLETE
-        ])
-        n_pruned = len([
-            t for t in study.trials
-            if t.state == optuna.trial.TrialState.PRUNED
-        ])
+        n_completed = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
+        n_pruned = len([t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED])
 
         result = OptimizationResult(
             best_params=study.best_params,
@@ -641,7 +677,9 @@ class OptunaOptimizer:
 
         self.logger.info(
             "optimization_end duration=%.1fs best_%s=%.4f",
-            total_time, metric, study.best_value
+            total_time,
+            metric,
+            study.best_value,
         )
 
         # Sauvegarde automatique si activée
@@ -654,7 +692,7 @@ class OptunaOptimizer:
 
                 storage = get_storage()
 
-                n_bars = int(len(self.data))
+                n_bars = len(self.data)
                 period_start = ""
                 period_end = ""
                 if isinstance(self.data.index, pd.DatetimeIndex) and n_bars > 0:
@@ -682,7 +720,7 @@ class OptunaOptimizer:
                         "period_start": period_start,
                         "period_end": period_end,
                         "duration_sec": float(result.total_time),
-                    }
+                    },
                 )
 
                 saved_run_id = storage.save_result(run_result)
@@ -696,15 +734,14 @@ class OptunaOptimizer:
     def optimize_multi_objective(
         self,
         n_trials: int = 100,
-        metrics: List[str] = None,
-        directions: List[str] = None,
+        metrics: list[str] = None,
+        directions: list[str] = None,
         *,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
         show_progress: bool = True,
-        early_stop_patience: Optional[int] = None,
+        early_stop_patience: int | None = None,
     ) -> MultiObjectiveResult:
-        """
-        Optimisation multi-objectif (front de Pareto).
+        """Optimisation multi-objectif (front de Pareto).
 
         Args:
             n_trials: Nombre de trials
@@ -723,13 +760,15 @@ class OptunaOptimizer:
             ...     metrics=["sharpe_ratio", "max_drawdown_pct"],
             ...     directions=["maximize", "minimize"],
             ... )
+
         """
         metrics = metrics or ["sharpe_ratio", "max_drawdown_pct"]
         directions = directions or ["maximize", "minimize"]
 
         self.logger.info(
             "multi_objective_start n_trials=%s metrics=%s",
-            n_trials, metrics
+            n_trials,
+            metrics,
         )
 
         start_time = time.time()
@@ -744,7 +783,7 @@ class OptunaOptimizer:
                 engine_kwargs["config"] = self.config
             self._engine = BacktestEngine(**engine_kwargs)
 
-        def multi_objective(trial: "optuna.Trial") -> List[float]:
+        def multi_objective(trial: optuna.Trial) -> list[float]:
             # Suggérer les paramètres
             params = {}
             for spec in self.param_specs:
@@ -752,10 +791,7 @@ class OptunaOptimizer:
 
             # Vérifier les contraintes
             if not self._check_constraints(params):
-                return [
-                    float("-inf") if d == "maximize" else float("inf")
-                    for d in directions
-                ]
+                return [float("-inf") if d == "maximize" else float("inf") for d in directions]
 
             try:
                 result = self._engine.run(
@@ -772,7 +808,7 @@ class OptunaOptimizer:
                     self.logger.info(
                         "multi_obj_trial_0_metrics count=%s metrics=[%s]",
                         len(available_metrics),
-                        ", ".join(available_metrics)
+                        ", ".join(available_metrics),
                     )
 
                 # Extraire les métriques (STRICT: crash si absente)
@@ -793,7 +829,7 @@ class OptunaOptimizer:
                 self.logger.debug(
                     "trial_%s metrics_extracted %s",
                     trial.number,
-                    dict(zip(metrics, values))
+                    dict(zip(metrics, values)),
                 )
 
                 return values
@@ -802,12 +838,11 @@ class OptunaOptimizer:
                 raise
             except Exception as e:
                 self.logger.warning(
-                    "trial_%s_failed error=%s", trial.number, str(e)
+                    "trial_%s_failed error=%s",
+                    trial.number,
+                    str(e),
                 )
-                return [
-                    float("-inf") if d == "maximize" else float("inf")
-                    for d in directions
-                ]
+                return [float("-inf") if d == "maximize" else float("inf") for d in directions]
 
         # Créer l'étude multi-objectif
         study = optuna.create_study(
@@ -827,19 +862,20 @@ class OptunaOptimizer:
             early_stop_cb = self._create_early_stop_callback(
                 patience,
                 directions[0],
-                metric_index=0  # Première métrique
+                metric_index=0,  # Première métrique
             )
             callbacks.append(early_stop_cb)
             self.logger.info(
                 "early_stop_enabled patience=%s primary_metric=%s",
-                patience, metrics[0]
+                patience,
+                metrics[0],
             )
 
         study.optimize(
             multi_objective,
             n_trials=n_trials,
             timeout=timeout,
-            callbacks=callbacks if callbacks else None,
+            callbacks=callbacks or None,
             show_progress_bar=show_progress,
         )
 
@@ -864,7 +900,8 @@ class OptunaOptimizer:
 
         self.logger.info(
             "multi_objective_end duration=%.1fs pareto_size=%s",
-            total_time, len(pareto_front)
+            total_time,
+            len(pareto_front),
         )
 
         return result
@@ -874,16 +911,16 @@ class OptunaOptimizer:
 # CONVENIENCE FUNCTIONS
 # ============================================================================
 
+
 def quick_optimize(
     strategy_name: str,
     data: pd.DataFrame,
-    param_space: Dict[str, Dict[str, Any]],
+    param_space: dict[str, dict[str, Any]],
     n_trials: int = 100,
     metric: str = "sharpe_ratio",
     **kwargs,
 ) -> OptimizationResult:
-    """
-    Raccourci pour une optimisation rapide.
+    """Raccourci pour une optimisation rapide.
 
     Args:
         strategy_name: Nom de la stratégie
@@ -907,6 +944,7 @@ def quick_optimize(
         ...     n_trials=50,
         ...     constraints=[("slow_period", ">", "fast_period")],
         ... )
+
     """
     if not OPTUNA_AVAILABLE:
         raise ImportError("Optuna non installé: pip install optuna")
@@ -924,15 +962,15 @@ def quick_optimize(
     return optimizer.optimize(n_trials=n_trials, metric=metric)
 
 
-def suggest_param_space(strategy_name: str) -> Dict[str, Dict[str, Any]]:
-    """
-    Suggère un espace de paramètres pour une stratégie.
+def suggest_param_space(strategy_name: str) -> dict[str, dict[str, Any]]:
+    """Suggère un espace de paramètres pour une stratégie.
 
     Args:
         strategy_name: Nom de la stratégie
 
     Returns:
         Dict avec l'espace des paramètres suggéré
+
     """
     # Espaces par défaut pour les stratégies connues
     default_spaces = {
@@ -973,13 +1011,13 @@ def suggest_param_space(strategy_name: str) -> Dict[str, Dict[str, Any]]:
 # ============================================================================
 
 __all__ = [
-    "OptunaOptimizer",
-    "OptimizationResult",
+    "OPTUNA_AVAILABLE",
     "MultiObjectiveResult",
+    "OptimizationResult",
+    "OptunaOptimizer",
     "ParamSpec",
     "quick_optimize",
     "suggest_param_space",
-    "OPTUNA_AVAILABLE",
 ]
 
 

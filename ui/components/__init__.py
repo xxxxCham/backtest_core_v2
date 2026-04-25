@@ -1,5 +1,4 @@
-"""
-Module-ID: ui.components.__init__
+"""Module-ID: ui.components.__init__
 
 Purpose: Package UI components - centralizes re-exports (charts, monitor, selector, validation, sweep).
 
