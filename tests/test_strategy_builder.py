@@ -4837,7 +4837,7 @@ class TestBuilderRobustnessProfitFactor:
 
 
 class TestBuilderSummaryLeaderboard:
-    def test_save_session_summary_writes_leaderboard_files(self):
+    def test_save_session_summary_writes_leaderboard_files(self, monkeypatch):
         builder = StrategyBuilder.__new__(StrategyBuilder)
         session_dir = Path(".tmp") / f"summary_test_{uuid4().hex[:8]}"
         session = BuilderSession(
@@ -4924,6 +4924,19 @@ class TestBuilderSummaryLeaderboard:
                 "reason": "test",
             }
         ]
+        monkeypatch.setattr(
+            builder_session_io_module,
+            "_collect_code_provenance",
+            lambda: {
+                "schema": "builder_code_provenance_v1",
+                "available": True,
+                "git_commit": "abc123buildertest",
+                "git_branch": "test-builder-provenance",
+                "git_commit_time": "2026-04-25T20:00:00+00:00",
+                "git_dirty": True,
+                "captured_at": "2026-04-25T22:00:00",
+            },
+        )
 
         try:
             builder._save_session_summary(session)
@@ -4937,10 +4950,17 @@ class TestBuilderSummaryLeaderboard:
             assert md_path.exists()
 
             payload = json.loads(summary_path.read_text(encoding="utf-8"))
+            assert payload["summary_schema_version"] == 2
+            assert payload["git_commit"] == "abc123buildertest"
+            assert payload["git_branch"] == "test-builder-provenance"
+            assert payload["git_dirty"] is True
+            assert payload["code_provenance"]["schema"] == "builder_code_provenance_v1"
             assert "leaderboard" in payload
             assert len(payload["leaderboard"]) == 2
             assert payload["leaderboard"][0]["iteration"] == 2
             assert payload["leaderboard"][0]["total_pnl"] == 3750.0
+            assert payload["iterations"][0]["timestamp"]
+            assert payload["iterations"][0]["session_elapsed_seconds"] >= 0.0
             assert payload["auto_reset_count"] == 1
             assert payload["recovery_events"][0]["trigger"] == "consecutive_failures"
             assert payload["symbol"] == "ETHUSDC"

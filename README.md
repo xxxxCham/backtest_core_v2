@@ -32,6 +32,20 @@ Le point important pour les assistants VS Code : toute la racine n'est pas du co
 - `examples/README.md` : point d'entree des exemples legers versionnes
 - `examples/end_to_end/README.md` : mini parcours de bout en bout
 
+## Sauvegarde GitHub des sessions Builder
+
+Les sources canoniques des sessions Builder restent les fichiers :
+
+- `C:\Users\o3-Pro\Documents\backtest_results\_builder_sessions\*\session_summary.json`
+
+Il y a bien un `session_summary.json` par dossier de session. Pour les sauvegarder dans GitHub sans versionner tout le dossier runtime, utiliser :
+
+```powershell
+python tools\export_builder_session_summary_backup.py
+```
+
+La sortie versionnable est écrite dans `github_backups\builder_session_summaries\` avec un manifeste CSV et une archive NDJSON compressée contenant un enregistrement par session.
+
 ## Hygiene de contexte pour les agents
 
 Ce `README.md` reste volontairement compact.

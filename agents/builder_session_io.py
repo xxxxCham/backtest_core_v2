@@ -15,6 +15,7 @@ import csv
 import json
 import os
 import re
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -79,6 +80,70 @@ _BUILDER_MEMORY_STOPWORDS = {
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _coerce_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if value:
+        try:
+            return datetime.fromisoformat(str(value))
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _datetime_isoformat(value: Any) -> str:
+    dt = _coerce_datetime(value)
+    return dt.isoformat() if dt else ""
+
+
+def _elapsed_seconds(start: Any, end: Any) -> float | None:
+    start_dt = _coerce_datetime(start)
+    end_dt = _coerce_datetime(end)
+    if start_dt is None or end_dt is None:
+        return None
+    try:
+        return max((end_dt - start_dt).total_seconds(), 0.0)
+    except TypeError:
+        # Handles naive/aware mixes from older restored sessions.
+        start_naive = start_dt.replace(tzinfo=None)
+        end_naive = end_dt.replace(tzinfo=None)
+        return max((end_naive - start_naive).total_seconds(), 0.0)
+
+
+def _git_output(*args: str) -> str:
+    repo_root = Path(__file__).resolve().parents[1]
+    try:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if completed.returncode != 0:
+        return ""
+    return completed.stdout.strip()
+
+
+def _collect_code_provenance() -> dict[str, Any]:
+    commit = _git_output("rev-parse", "HEAD")
+    branch = _git_output("rev-parse", "--abbrev-ref", "HEAD")
+    dirty_status = _git_output("status", "--porcelain", "--untracked-files=no")
+    commit_time = _git_output("show", "-s", "--format=%cI", "HEAD") if commit else ""
+    return {
+        "schema": "builder_code_provenance_v1",
+        "available": bool(commit),
+        "git_commit": commit,
+        "git_branch": branch,
+        "git_commit_time": commit_time,
+        "git_dirty": bool(dirty_status),
+        "captured_at": datetime.now().isoformat(),
+    }
 
 
 def _truncate_runtime_traceback_tail(
@@ -767,6 +832,8 @@ def save_session_summary(session: BuilderSession) -> None:
         )
         row = {
             "iteration": it.iteration,
+            "timestamp": _datetime_isoformat(it.timestamp),
+            "session_elapsed_seconds": _elapsed_seconds(session.start_time, it.timestamp),
             "hypothesis": it.hypothesis,
             "change_type": it.change_type,
             "diagnostic_category": it.diagnostic_category,
@@ -840,11 +907,17 @@ def save_session_summary(session: BuilderSession) -> None:
     generation_stats = compute_session_generation_stats(session)
     end_time = datetime.now(session.start_time.tzinfo) if getattr(session.start_time, "tzinfo", None) else datetime.now()
     session_duration_seconds = max((end_time - session.start_time).total_seconds(), 0.0)
+    code_provenance = _collect_code_provenance()
 
     summary = {
+        "summary_schema_version": 2,
         "session_id": session.session_id,
         "objective": session.objective,
         "model_name": session.model_name,
+        "code_provenance": code_provenance,
+        "git_commit": code_provenance.get("git_commit", ""),
+        "git_branch": code_provenance.get("git_branch", ""),
+        "git_dirty": code_provenance.get("git_dirty", False),
         "status": session.status,
         "generation_stats": generation_stats,
         "best_sharpe": session.best_sharpe,
