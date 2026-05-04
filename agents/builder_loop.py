@@ -10,6 +10,7 @@ facade stable while moving the orchestration logic out of
 from __future__ import annotations
 
 import math
+import os
 import time
 from typing import Any
 
@@ -80,6 +81,19 @@ def run_builder_loop_v2(
     last_iteration: BuilderIteration | None = None
     consecutive_failures = 0
     fallback_count = 0  # compteur de fallbacks déterministes dans la session
+
+    # Env kill-switch: force mono-LLM regardless of UI/multi-LLM manager state.
+    # Why: pendant la stabilisation du builder, on neutralise le routage multi-LLM
+    # qui complexifie les chemins d'erreur et masque les vraies causes de fallback.
+    _force_mono = os.getenv("BACKTEST_BUILDER_FORCE_MONO_LLM", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+    if _force_mono and getattr(builder, "_multi_llm_manager", None) is not None:
+        logger.warning(
+            "builder_force_mono_llm: multi_llm_manager neutralise via "
+            "env BACKTEST_BUILDER_FORCE_MONO_LLM=1",
+        )
+        builder._multi_llm_manager = None  # type: ignore[attr-defined]
 
     for i in range(1, max_iterations + 1):
         # ── Multi-LLM: fix models for this iteration, rotate between iterations ──
