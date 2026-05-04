@@ -173,6 +173,44 @@ class SessionOutcome:
 # =============================================================================
 
 
+_VALUE_LIKE_TOKENS = {"value", "values", "default", "out", "output", "result"}
+
+
+def _normalize_atom(atom: Any, *, series_by_alias: dict[str, pd.Series]) -> Any:
+    """Normalise les formes LLM courantes vers la forme canonique du DSL.
+
+    Tolerances appliquees AVANT _resolve_atom (jamais silencieuses cote logs : seul
+    le format est ramene a la forme canonique, la semantique reste stricte) :
+
+      ['rsi14', 'value']         -> 'rsi14'         (alias mono-output + token 'value')
+      ['bb', 'upper']             -> 'bb.upper'      (alias multi-output explicit)
+      {'$ref': 'rsi14'}           -> 'rsi14'        (notation JSON-Schema observee)
+
+    Tout autre tuple / objet non reconnu est laisse tel quel : _resolve_atom levera
+    l'exception typee correspondante.
+    """
+    if isinstance(atom, dict):
+        ref = atom.get("$ref") or atom.get("alias") or atom.get("name")
+        if isinstance(ref, str):
+            return ref
+        return atom
+
+    if not isinstance(atom, list):
+        return atom
+
+    if len(atom) == 2 and isinstance(atom[0], str) and isinstance(atom[1], str):
+        head, tail = atom[0], atom[1]
+        # ['rsi14', 'value'] -> 'rsi14' si l'alias est mono-output
+        if tail.lower() in _VALUE_LIKE_TOKENS and head in series_by_alias:
+            return head
+        # ['bb', 'upper'] -> 'bb.upper' si la notation pointee existe
+        candidate = f"{head}.{tail}"
+        if candidate in series_by_alias:
+            return candidate
+    # Toute autre liste reste invalide ; on retourne tel quel pour erreur typee.
+    return atom
+
+
 def _resolve_atom(
     atom: Any,
     *,
@@ -180,7 +218,11 @@ def _resolve_atom(
     series_by_alias: dict[str, pd.Series],
 ) -> pd.Series | float:
     """Resout un atome (nombre, colonne, alias d'indicateur)."""
-    if isinstance(atom, (int, float)) and not isinstance(atom, bool):
+    atom = _normalize_atom(atom, series_by_alias=series_by_alias)
+    if isinstance(atom, bool):
+        # bool est subclass de int -> on le rejette explicitement.
+        raise DslCompileError(f"atome booleen non supporte: {atom!r}")
+    if isinstance(atom, (int, float)):
         return float(atom)
     if not isinstance(atom, str):
         raise DslCompileError(f"atome inattendu: {atom!r}")
@@ -554,38 +596,76 @@ def build_user_prompt(
     available_indicators: list[str],
     last_failure_reason: str | None = None,
 ) -> str:
-    schema = {
-        "strategy_name": "string non-vide",
+    # Exemple complet et minimal, pour ancrer le format attendu cote LLM.
+    example_simple = {
+        "strategy_name": "rsi_oversold_bounce",
+        "indicators": [
+            {"alias": "rsi14", "name": "rsi", "params": {"period": 14}},
+            {"alias": "ema50", "name": "ema", "params": {"period": 50}},
+        ],
+        "entry_long": ["all", [
+            ["lt", "rsi14", 30],
+            ["gt", "close", "ema50"],
+        ]],
+        "exit_long": ["any", [
+            ["gt", "rsi14", 70],
+        ]],
+        "stop_loss_pct": 2.0,
+        "take_profit_pct": 4.0,
+    }
+    # Exemple multi-output pour bollinger.
+    example_bb = {
+        "strategy_name": "bollinger_breakout",
         "indicators": [
             {
-                "alias": "string unique (ex: rsi14)",
-                "name": "nom canonique du registry (ex: rsi)",
-                "params": {"...": "valeur"},
-                "outputs": ["liste si l'indicateur retourne un tuple, ex: bollinger -> [upper, middle, lower]"],
-            }
+                "alias": "bb",
+                "name": "bollinger",
+                "params": {"period": 20, "std_dev": 2.0},
+                "outputs": ["upper", "middle", "lower"],
+            },
         ],
-        "entry_long": ["all", [["lt", "rsi14", 30]]],
-        "exit_long": ["any", [["gt", "rsi14", 70]]],
-        "stop_loss_pct": "(optionnel) 0 < x < 100",
-        "take_profit_pct": "(optionnel) 0 < x < 1000",
+        "entry_long": ["all", [["gt", "close", "bb.upper"]]],
+        "exit_long": ["any", [["lt", "close", "bb.middle"]]],
     }
-    dsl_help = (
-        "Operateurs DSL: lt, gt, le, ge, eq, crosses_above, crosses_below, all, any, not. "
-        "Atomes : nombres, colonnes OHLCV ('open','high','low','close','volume'), "
-        "ou alias d'indicateur ('rsi14', 'bb.upper', etc.)."
-    )
+
+    forbidden_examples = [
+        '"entry_long": ["all", [["lt", ["rsi14", "value"], 30]]]   ← FAUX',
+        '"entry_long": ["all", [["lt", ["outputs", 0, "rsi14"], 30]]]   ← FAUX',
+        '"entry_long": [["lt", "rsi14", 30]]   ← FAUX (manque "all")',
+        '"entry_long": "rsi14 < 30"   ← FAUX (pas de string libre)',
+    ]
+
     parts = [
-        f"Objectif : {objective}",
-        f"Indicateurs disponibles dans le registry : {', '.join(sorted(available_indicators))}.",
-        dsl_help,
-        "Schema attendu :",
-        json.dumps(schema, ensure_ascii=False, indent=2),
-        "Reponds UNIQUEMENT avec le JSON, sans texte autour.",
+        f"OBJECTIF : {objective}",
+        "FORMAT : tu produis EXCLUSIVEMENT un objet JSON, conforme au schema ci-dessous. "
+        "Pas de prose, pas de markdown, pas de balises <think>, pas de commentaires.",
+        f"INDICATEURS DISPONIBLES (registry) : {', '.join(sorted(available_indicators))}.",
+        # Reglement DSL strict avec exemples
+        "REGLES DSL :",
+        "  1. Chaque expression est une LISTE dont le PREMIER element est un operateur "
+        "string parmi : lt, gt, le, ge, eq, crosses_above, crosses_below, all, any, not.",
+        "  2. Operateurs binaires (lt, gt, le, ge, eq, crosses_*) attendent EXACTEMENT 2 arguments.",
+        "  3. Operateurs n-aires (all, any) attendent UNE liste d'expressions enfants.",
+        "  4. Un atome est SOIT un nombre, SOIT une string : "
+        "colonne OHLCV ('open','high','low','close','volume') OU alias d'indicateur.",
+        "  5. Un alias est juste son nom, ex : 'rsi14'. JAMAIS ['rsi14','value'] ou autre tuple.",
+        "  6. Pour un indicateur multi-output (ex: bollinger), reference le sous-output via "
+        "la notation 'alias.nom_output' (ex: 'bb.upper'). C'est une string entiere.",
+        "  7. 'entry_long' et 'exit_long' DOIVENT commencer par 'all' ou 'any' suivi d'une liste.",
+        "  8. stop_loss_pct doit etre dans (0, 100). take_profit_pct dans (0, 1000).",
+        "EXEMPLE 1 (simple, mono-output) :",
+        json.dumps(example_simple, ensure_ascii=False, indent=2),
+        "EXEMPLE 2 (multi-output bollinger) :",
+        json.dumps(example_bb, ensure_ascii=False, indent=2),
+        "FORMES INTERDITES (a NE PAS reproduire) :",
+        "\n".join(f"  - {ex}" for ex in forbidden_examples),
+        "Reponds UNIQUEMENT avec le JSON. Pas de texte avant ou apres.",
     ]
     if last_failure_reason:
         parts.append(
-            f"Iteration precedente refusee. Raison : {last_failure_reason}. "
-            "Corrige le tir.",
+            f"L'ITERATION PRECEDENTE A ETE REFUSEE. Raison exacte : {last_failure_reason}\n"
+            "Corrige PRECISEMENT cette erreur dans le nouveau JSON. "
+            "Ne reproduis pas la meme forme.",
         )
     return "\n\n".join(parts)
 

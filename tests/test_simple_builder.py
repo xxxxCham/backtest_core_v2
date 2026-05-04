@@ -21,6 +21,7 @@ from agents.simple_builder import (
     IndicatorNotFoundError,
     JsonValidationError,
     SimpleBuilder,
+    _normalize_atom,
     check_indicators_against_registry,
     compile_strategy_from_proposal,
     decide,
@@ -355,3 +356,94 @@ def test_pipeline_fails_explicitly_on_invalid_schema(synthetic_ohlcv, tmp_path):
     )
     assert session.iterations[0].status == "failed"
     assert session.iterations[0].error_code == "ERR_JSON_SCHEMA"
+
+
+# =============================================================================
+# _normalize_atom : tolérance aux formes LLM hors-spec
+# =============================================================================
+
+
+def _make_series_map(**kwargs: int) -> dict:
+    """Cree un dict d'alias -> Series fictive (valeurs constantes)."""
+    return {k: pd.Series([float(v)] * 10) for k, v in kwargs.items()}
+
+
+def test_normalize_atom_passthrough_string():
+    assert _normalize_atom("rsi14", series_by_alias=_make_series_map(rsi14=0)) == "rsi14"
+
+
+def test_normalize_atom_passthrough_number():
+    assert _normalize_atom(30, series_by_alias={}) == 30
+
+
+def test_normalize_atom_list_alias_value_token():
+    """['rsi14', 'value'] doit etre resolu en 'rsi14'."""
+    aliases = _make_series_map(rsi14=0)
+    result = _normalize_atom(["rsi14", "value"], series_by_alias=aliases)
+    assert result == "rsi14"
+
+
+def test_normalize_atom_list_alias_output_token():
+    """['ema50', 'output'] doit etre resolu en 'ema50'."""
+    aliases = _make_series_map(ema50=0)
+    result = _normalize_atom(["ema50", "output"], series_by_alias=aliases)
+    assert result == "ema50"
+
+
+def test_normalize_atom_list_multi_output_dotted():
+    """['bb', 'upper'] doit etre resolu en 'bb.upper' si alias existe."""
+    aliases = _make_series_map(**{"bb.upper": 0, "bb.middle": 0, "bb.lower": 0})
+    result = _normalize_atom(["bb", "upper"], series_by_alias=aliases)
+    assert result == "bb.upper"
+
+
+def test_normalize_atom_list_unknown_stays_list():
+    """Liste non reconnue retourne la liste -> _resolve_atom levera l'erreur."""
+    aliases = _make_series_map(rsi14=0)
+    atom = ["outputs", 0, "rsi14"]
+    result = _normalize_atom(atom, series_by_alias=aliases)
+    assert result == atom  # inchange, pas normalise en silence
+
+
+def test_normalize_atom_dict_ref():
+    """{'$ref': 'rsi14'} -> 'rsi14'."""
+    result = _normalize_atom({"$ref": "rsi14"}, series_by_alias={})
+    assert result == "rsi14"
+
+
+def test_normalize_atom_dict_alias_key():
+    """{'alias': 'ema50', 'name': 'ema'} -> 'ema50'."""
+    result = _normalize_atom({"alias": "ema50", "name": "ema"}, series_by_alias={})
+    assert result == "ema50"
+
+
+def test_dsl_tolerates_alias_value_list_form(synthetic_ohlcv):
+    """['rsi14', 'value'] dans une expression DSL doit etre compile sans erreur."""
+    proposal = {
+        "strategy_name": "tolerance_test",
+        "indicators": [
+            {"alias": "rsi14", "name": "rsi", "params": {"period": 14}},
+            {"alias": "ema50", "name": "ema", "params": {"period": 50}},
+        ],
+        # Forme erronee que le LLM produit : ["rsi14", "value"] au lieu de "rsi14"
+        "entry_long": ["all", [["lt", ["rsi14", "value"], 30]]],
+        "exit_long": ["any", [["gt", ["rsi14", "value"], 70]]],
+    }
+    strat = compile_strategy_from_proposal(proposal)
+    signals = strat.generate_signals(synthetic_ohlcv, indicators={}, params={})
+    assert signals.dtype.kind in ("i", "u")
+
+
+def test_dsl_rejects_outputs_index_form(synthetic_ohlcv):
+    """['outputs', 0, 'rsi14'] doit lever DslCompileError (non normalisable)."""
+    proposal = {
+        "strategy_name": "bad_outputs_form",
+        "indicators": [
+            {"alias": "rsi14", "name": "rsi", "params": {"period": 14}},
+        ],
+        "entry_long": ["all", [["lt", ["outputs", 0, "rsi14"], 30]]],
+        "exit_long": ["any", [["gt", "rsi14", 70]]],
+    }
+    strat = compile_strategy_from_proposal(proposal)
+    with pytest.raises(DslCompileError):
+        strat.generate_signals(synthetic_ohlcv, indicators={}, params={})
