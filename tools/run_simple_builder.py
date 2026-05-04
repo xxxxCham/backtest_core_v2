@@ -33,8 +33,52 @@ if str(ROOT) not in sys.path:
 # Side-effect: enregistre les indicateurs
 import indicators.registry  # noqa: F401, E402
 
-from agents.llm_client import LLMConfig  # noqa: E402
+from agents.llm_client import (  # noqa: E402
+    LLMClient,
+    LLMConfig,
+    LLMProvider,
+    LLMResponse,
+)
 from agents.simple_builder import SimpleBuilder  # noqa: E402
+
+
+class _CannedLLM(LLMClient):
+    """LLM stub deterministe pour smoke test sans dependance externe.
+
+    Retourne toujours la meme proposition JSON valide : RSI mean reversion
+    avec confirmation EMA. Utile pour valider que tout le pipeline tourne
+    (validation, DSL, backtest, log) sans Ollama ni OpenAI.
+    """
+
+    _PAYLOAD: dict = {
+        "strategy_name": "rsi_mean_reversion_canned",
+        "indicators": [
+            {"alias": "rsi14", "name": "rsi", "params": {"period": 14}},
+            {"alias": "ema50", "name": "ema", "params": {"period": 50}},
+        ],
+        "entry_long": ["all", [
+            ["lt", "rsi14", 35],
+            ["gt", "close", "ema50"],
+        ]],
+        "exit_long": ["any", [
+            ["gt", "rsi14", 65],
+        ]],
+        "stop_loss_pct": 2.0,
+        "take_profit_pct": 4.0,
+    }
+
+    def __init__(self):
+        super().__init__(LLMConfig(provider=LLMProvider.OLLAMA, model="canned"))
+
+    def chat(self, messages, temperature=None, max_tokens=None, json_mode=False):
+        return LLMResponse(
+            content=json.dumps(self._PAYLOAD),
+            model="canned",
+            provider=LLMProvider.OLLAMA,
+        )
+
+    def is_available(self) -> bool:
+        return True
 
 
 def _build_synthetic(*, n_bars: int, seed: int) -> pd.DataFrame:
@@ -92,6 +136,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Surcharge BACKTEST_LLM_MODEL")
     parser.add_argument("--sessions-dir", type=Path, default=None,
                         help="Dossier de sortie NDJSON. Defaut: BACKTEST_RESULTS_DIR/_builder_sessions/_simple_builder")
+    parser.add_argument("--canned", action="store_true",
+                        help="Utilise un LLM stub deterministe (smoke test sans Ollama).")
     args = parser.parse_args(argv)
 
     if args.data is not None:
@@ -103,20 +149,29 @@ def main(argv: list[str] | None = None) -> int:
         data = _build_synthetic(n_bars=int(args.bars), seed=int(args.seed))
         print(f"[data] synthetiques bars={len(data)} seed={args.seed}")
 
-    cfg = LLMConfig.from_env()
-    if args.ollama_host:
-        cfg.ollama_host = args.ollama_host
-    if args.model:
-        cfg.model = args.model
-    print(f"[llm] provider={cfg.provider.value} model={cfg.model} host={cfg.ollama_host}")
-
-    builder = SimpleBuilder(
-        llm_config=cfg,
-        max_iterations=int(args.iterations),
-        retry_on_invalid_json=int(args.retry_on_invalid_json),
-        initial_capital=float(args.initial_capital),
-        sessions_dir=args.sessions_dir,
-    )
+    if args.canned:
+        print("[llm] CANNED stub (deterministe, sans appel reseau)")
+        builder = SimpleBuilder(
+            llm_client=_CannedLLM(),
+            max_iterations=int(args.iterations),
+            retry_on_invalid_json=int(args.retry_on_invalid_json),
+            initial_capital=float(args.initial_capital),
+            sessions_dir=args.sessions_dir,
+        )
+    else:
+        cfg = LLMConfig.from_env()
+        if args.ollama_host:
+            cfg.ollama_host = args.ollama_host
+        if args.model:
+            cfg.model = args.model
+        print(f"[llm] provider={cfg.provider.value} model={cfg.model} host={cfg.ollama_host}")
+        builder = SimpleBuilder(
+            llm_config=cfg,
+            max_iterations=int(args.iterations),
+            retry_on_invalid_json=int(args.retry_on_invalid_json),
+            initial_capital=float(args.initial_capital),
+            sessions_dir=args.sessions_dir,
+        )
     session = builder.build(
         objective=args.objective, data=data,
         symbol=args.symbol, timeframe=args.timeframe,
