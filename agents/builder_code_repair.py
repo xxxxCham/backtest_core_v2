@@ -1089,6 +1089,101 @@ class _VectorizeTransformer(ast.NodeTransformer):
         return ast.fix_missing_locations(result)
 
 
+def _auto_repair_vectorize(code: str) -> tuple[str, int]:
+    """Répare les anti-patterns de vectorisation détectables par AST et regex.
+
+    Corrections :
+    1. ``and``/``or`` sur masques vectorisés → ``&``/``|`` (AST)
+    2. ``signals.loc[mask]`` → ``signals[mask]`` (1D write/read)
+    3. ``signals.isnull()``/``notnull()`` → ``(signals == 0)``/``(signals != 0)``
+    4. ``ParameterSpec(min=`` → ``min_val=``, ``max=`` → ``max_val=``
+    5. ``np.diff(x)`` sans ``np.insert`` → ``np.insert(np.diff(x), 0, 0.0)``
+
+    Returns
+    -------
+    (repaired_code, fix_count)
+
+    """
+    fix_count = 0
+
+    # 1. AST : and/or → &/| sur masques vectorisés
+    try:
+        tree = ast.parse(code)
+        transformer = _VectorizeTransformer()
+        new_tree = transformer.visit(tree)
+        if transformer.fix_count > 0:
+            code = ast.unparse(new_tree)
+            fix_count += transformer.fix_count
+    except SyntaxError:
+        pass
+
+    # 2a. signals.loc[mask] = val → signals[mask] = val  (écriture 1D)
+    #     Note : le cas 2D (mask, 'long'/'short') est déjà traité par
+    #     _rewrite_signals_loc_assignments() dans _repair_code.
+    new_code, n = re.subn(
+        r"signals\.loc\[\s*([^,\]\n]+?)\s*\](\s*=)",
+        r"signals[\1]\2",
+        code,
+    )
+    if n:
+        code = new_code
+        fix_count += n
+
+    # 2b. signals.loc[mask] lecture → signals[mask]
+    new_code, n = re.subn(
+        r"signals\.loc\[\s*([^\]\n]+?)\s*\]",
+        r"signals[\1]",
+        code,
+    )
+    if n:
+        code = new_code
+        fix_count += n
+
+    # 3. signals.isnull()/isna() → (signals == 0), notnull()/notna() → (signals != 0)
+    for method, replacement in [
+        ("isnull", "(signals == 0)"),
+        ("isna", "(signals == 0)"),
+        ("notnull", "(signals != 0)"),
+        ("notna", "(signals != 0)"),
+    ]:
+        new_code, n = re.subn(
+            rf"signals\.{method}\(\s*\)",
+            replacement,
+            code,
+        )
+        if n:
+            code = new_code
+            fix_count += n
+
+    # 4. ParameterSpec(min= → min_val=, max= → max_val=, paramtype= → param_type=)
+    for old_kw, new_kw in [
+        ("min=", "min_val="),
+        ("max=", "max_val="),
+        ("paramtype=", "param_type="),
+    ]:
+        new_code, n = re.subn(
+            rf"(ParameterSpec\([^)]*?)\b{re.escape(old_kw)}",
+            rf"\1{new_kw}",
+            code,
+        )
+        if n:
+            code = new_code
+            fix_count += n
+
+    # 5. np.diff(x) → np.insert(np.diff(x), 0, 0.0) quand np.insert absent
+    if "np.diff(" in code and "np.insert" not in code and "np.concatenate" not in code:
+        new_code, n = re.subn(
+            r"np\.diff\(([^)]+)\)",
+            r"np.insert(np.diff(\1), 0, 0.0)",
+            code,
+        )
+        if n:
+            code = new_code
+            fix_count += n
+
+    return code, fix_count
+
+
 def _repair_code(
     code: str, required_indicators: list[str] | None = None, *, enable_indicator_binding: bool = True,
 ) -> str:
