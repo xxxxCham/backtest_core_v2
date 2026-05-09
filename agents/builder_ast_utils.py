@@ -98,6 +98,47 @@ def _indicator_name_from_get_call(node: ast.AST) -> Optional[str]:
     if isinstance(key, str):
         return key
     return None
+
+
+def _is_np_nan_to_num_call(node: ast.AST) -> bool:
+    """Vérifie si le noeud est un appel np.nan_to_num(...)."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "np"
+        and node.func.attr == "nan_to_num"
+    )
+
+
+def _is_params_get_call(node: ast.AST) -> bool:
+    """Vérifie si le noeud est un appel params.get(...)."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "params"
+        and node.func.attr == "get"
+    )
+
+
+def _is_params_subscript(node: ast.AST) -> bool:
+    """Vérifie si le noeud est params['x']."""
+    return isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id == "params"
+
+
+def _is_scalar_cast_call(node: ast.AST) -> bool:
+    """Vérifie si le noeud est un cast scalaire (float/int/bool)."""
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {"float", "int", "bool"}
+
+
+def _is_numeric_nonbool_constant(node: ast.AST) -> bool:
+    """True si le noeud est une constante numérique non-bool."""
+    if not isinstance(node, ast.Constant):
+        return False
+    return isinstance(node.value, (int, float)) and not isinstance(node.value, bool)
+
+
 def _iter_generated_class_methods(tree: ast.AST):
     """Yield each method (FunctionDef/AsyncFunctionDef) in the generated class body."""
     for node in ast.walk(tree):
@@ -161,6 +202,69 @@ def _collect_indicator_names(tree: ast.AST) -> set[str]:
             if got:
                 names.add(got)
     return names
+
+
+def _collect_indicator_names_in_class(tree: ast.AST) -> set[str]:
+    """Collecte les indicateurs référencés dans toute la classe générée."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
+            continue
+        for sub in ast.walk(node):
+            sub_name = _indicator_name_from_subscript(sub)
+            if sub_name:
+                names.add(sub_name)
+            get_name = _indicator_name_from_get_call(sub)
+            if get_name:
+                names.add(get_name)
+        break
+    return names
+
+
+def _collect_bound_names(fn: ast.AST) -> set[str]:
+    """Collecte les noms localement définis dans une fonction/méthode."""
+    bound: set[str] = set()
+
+    args = getattr(getattr(fn, "args", None), "args", []) or []
+    bound.update(arg.arg for arg in args if getattr(arg, "arg", None))
+    kwonlyargs = getattr(getattr(fn, "args", None), "kwonlyargs", []) or []
+    bound.update(arg.arg for arg in kwonlyargs if getattr(arg, "arg", None))
+
+    _load_names, store_names = _collect_name_load_store_sets(fn)
+    bound.update(store_names)
+
+    for node in ast.walk(fn):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) or (
+            isinstance(node, ast.ExceptHandler) and isinstance(node.name, str)
+        ):
+            bound.add(node.name)
+        elif isinstance(node, ast.Import) or isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                bound.add(alias.asname or alias.name.split(".")[0])
+
+    return bound
+
+
+def _collect_module_level_bound_names(tree: ast.AST) -> set[str]:
+    """Collecte les noms disponibles au scope module pour éviter les faux NameError."""
+    bound: set[str] = set()
+
+    for node in getattr(tree, "body", []) or []:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bound.add(node.name)
+        elif isinstance(node, ast.Import) or isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                bound.add(alias.asname or alias.name.split(".")[0])
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    bound.add(target.id)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            bound.add(node.target.id)
+
+    return bound
+
+
 def _normalize_required_indicator_names(required_indicators: Optional[List[str]]) -> List[str]:
     normalized: List[str] = []
     if not required_indicators:
@@ -172,6 +276,14 @@ def _normalize_required_indicator_names(required_indicators: Optional[List[str]]
         if indicator_name and indicator_name not in normalized:
             normalized.append(indicator_name)
     return normalized
+
+
+def _indicator_name_from_hint_expression(expr: str) -> Optional[str]:
+    """Extrait le nom d'indicateur d'une expression hint."""
+    match = re.search(r"indicators\[['\"]([A-Za-z0-9_]+)['\"]\]", str(expr or ""))
+    if not match:
+        return None
+    return str(match.group(1)).strip().lower() or None
 
 
 def _strip_leading_list_marker(line: str) -> str:
@@ -307,6 +419,65 @@ def _strip_non_python_noise(text: str) -> str:
         if cleaned_lines:
             return "\n".join(cleaned_lines)
     return ""
+
+
+def _extract_json_from_response(text: str) -> Dict[str, Any]:
+    """Extrait un bloc JSON depuis une réponse LLM (gère ```json ... ```, <think>, etc.)."""
+
+    def _parse_json_dict(payload: str) -> Dict[str, Any]:
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    # Nettoyer les tags <think> des modèles de raisonnement (qwen3, deepseek-r1, gemma4, etc.)
+    # Garder le contenu brut en réserve pour salvage si la réponse hors-think est vide.
+    raw_text = text
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
+    text = text.strip()
+
+    if not text:
+        # Salvage : tenter d'extraire du JSON depuis l'intérieur des blocs <think>
+        think_match = re.search(r"<think>(.*?)(?:</think>|$)", raw_text, re.DOTALL)
+        if think_match:
+            think_body = think_match.group(1).strip()
+            brace = re.search(r"\{.*\}", think_body, re.DOTALL)
+            if brace:
+                parsed = _parse_json_dict(brace.group(0))
+                if parsed:
+                    logger.info("extract_json: JSON salvagé depuis un bloc <think>")
+                    return parsed
+        logger.warning("extract_json: réponse vide après nettoyage des tags <think>")
+        return {}
+
+    # Chercher bloc ```json ... ```
+    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
+    if match:
+        parsed = _parse_json_dict(match.group(1).strip())
+        if parsed:
+            return parsed
+
+    # Essayer le texte brut
+    parsed = _parse_json_dict(text.strip())
+    if parsed:
+        return parsed
+
+    # Chercher premier { ... } englobant
+    brace_match = re.search(r"\{.*\}", text, re.DOTALL)
+    if brace_match:
+        parsed = _parse_json_dict(brace_match.group(0))
+        if parsed:
+            return parsed
+
+    logger.warning(
+        "extract_json: aucun JSON valide trouvé. Début réponse: %.200s",
+        text[:200],
+    )
+    return {}
+
+
 def _extract_python_from_response(text: str) -> str:
     """Extrait un bloc Python depuis une réponse LLM."""
     # Nettoyer les tags <think> des modèles de raisonnement

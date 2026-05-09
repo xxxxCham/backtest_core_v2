@@ -176,6 +176,18 @@ def _telemetry_score_from_metrics(
 # ---------------------------------------------------------------------------
 # Ranking et sélection d'itérations
 # ---------------------------------------------------------------------------
+def _ranking_sharpe(
+    metrics: dict[str, Any],
+    *,
+    target_sharpe: float = 1.0,
+) -> float:
+    """Alias de compatibilité vers ``_telemetry_score_from_metrics()``."""
+    return _telemetry_score_from_metrics(
+        metrics,
+        target_sharpe=target_sharpe,
+    ).get("score", -100.0)
+
+
 def _builder_iteration_selection_key(
     metrics: dict[str, Any],
     *,
@@ -220,6 +232,17 @@ def _builder_iteration_selection_key(
         trades,
         win_rate,
     )
+
+
+def _metrics_fingerprint(metrics: dict[str, Any]) -> str:
+    """Retourne un fingerprint stable des métriques clés pour détecter la stagnation."""
+    keys = ("total_return_pct", "max_drawdown_pct", "total_trades", "win_rate_pct", "profit_factor")
+    parts = []
+    for k in keys:
+        parts.append(f"{k}={_metric_float(metrics, k, 0.0):.4f}")
+    return "|".join(parts)
+
+
 def _is_accept_candidate(
     metrics: dict[str, Any],
     *,
@@ -322,6 +345,40 @@ def _is_positive_progress_iteration(metrics: dict[str, Any]) -> bool:
     ret = _metric_float(metrics, "total_return_pct", 0.0)
     trades = int(metrics.get("total_trades", 0) or 0)
     return ret > 0.0 and trades >= MIN_TRADES_FOR_POSITIVE_PROGRESS
+
+
+def _count_positive_iterations(iterations: list) -> int:
+    """Compte les itérations backtestées positives dans l'historique de session.
+
+    Fallback iterations with positive metrics are counted towards the quota,
+    but limited to MAX_POSITIVE_FALLBACK_COUNT to prevent accepting
+    sessions with only deterministic logic.
+    """
+    count = 0
+    fallback_positive_count = 0
+
+    for it in iterations:
+        if it.backtest_result is None:
+            continue
+
+        metrics = it.backtest_result.metrics or {}
+        is_positive = _is_positive_progress_iteration(metrics)
+
+        if it.is_fallback:
+            if is_positive and fallback_positive_count < MAX_POSITIVE_FALLBACK_COUNT:
+                count += 1
+                fallback_positive_count += 1
+        elif is_positive:
+            count += 1
+
+    return count
+
+
+def _required_positive_count_for_iteration(iteration_index: int) -> int:
+    """Retourne le quota de runs positifs requis au checkpoint courant."""
+    return int(POSITIVE_PROGRESS_GATE_CHECKPOINTS.get(iteration_index, 0) or 0)
+
+
 def compute_diagnostic(
     metrics: dict[str, Any],
     iteration_history: list[dict[str, Any]],
