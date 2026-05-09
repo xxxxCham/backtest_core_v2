@@ -21,21 +21,20 @@ from typing import Any
 import pandas as pd
 
 from .store_metadata import (
+    _coerce_metrics,
     build_store_row_from_metadata,
+    coerce_iso_timestamp,
     derive_migration_status,
     find_run_artifacts,
     list_missing_run_artifacts,
     load_metadata_payload,
+    safe_int,
 )
 
 STORE_SCHEMA_VERSION = 3
 DEFAULT_ROOT_DIR = "backtest_results"
 RUNS_SUBDIR = "runs"
 DB_FILENAME = "index.sqlite3"
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _json_default(value: Any) -> Any:
@@ -63,45 +62,6 @@ def _to_json_text(payload: Any) -> str:
 
 def _normalize_root(root: str | Path) -> Path:
     return Path(root).expanduser().resolve()
-
-
-def _coerce_iso_timestamp(value: Any) -> str:
-    if isinstance(value, datetime):
-        dt = value
-    elif isinstance(value, pd.Timestamp):
-        dt = value.to_pydatetime()
-    elif value:
-        text = str(value).strip()
-        try:
-            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
-        except Exception:
-            return _utc_now_iso()
-    else:
-        return _utc_now_iso()
-
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    else:
-        dt = dt.astimezone(timezone.utc)
-    return dt.isoformat(timespec="seconds").replace("+00:00", "Z")
-
-
-def _coerce_metrics(value: Any) -> dict[str, Any]:
-    if value is None:
-        return {}
-    if isinstance(value, dict):
-        return dict(value)
-    if hasattr(value, "to_dict"):
-        try:
-            data = value.to_dict()
-            if isinstance(data, dict):
-                return dict(data)
-        except Exception:
-            pass
-    try:
-        return dict(value)
-    except Exception:
-        return {}
 
 
 def _coerce_dataframe(value: Any, *, default_column: str, index_name: str | None = None) -> pd.DataFrame:
@@ -147,15 +107,6 @@ def _safe_float(value: Any) -> float | None:
     if math.isnan(number) or math.isinf(number):
         return None
     return number
-
-
-def _safe_int(value: Any) -> int | None:
-    try:
-        if value is None or value == "":
-            return None
-        return int(float(value))
-    except Exception:
-        return None
 
 
 def _normalize_status(status: Any) -> str:
@@ -322,7 +273,7 @@ class BacktestStoreV3:
         total_return_pct = _safe_float(metrics.get("total_return_pct"))
         sharpe_ratio = _safe_float(metrics.get("sharpe_ratio"))
         max_drawdown_pct = _safe_float(metrics.get("max_drawdown_pct"))
-        total_trades_metric = _safe_int(metrics.get("total_trades"))
+        total_trades_metric = safe_int(metrics.get("total_trades"))
 
         if metrics and total_return_pct is None:
             validation_errors.append("invalid_total_return_pct")
@@ -390,7 +341,7 @@ class BacktestStoreV3:
         metrics = _coerce_metrics(metrics)
         extra = dict(extra or {})
 
-        created_at_iso = _coerce_iso_timestamp(created_at)
+        created_at_iso = coerce_iso_timestamp(created_at)
         selected_root = self._choose_root()
         allocated_run_id, run_dir = self._create_run_dir(selected_root, run_id)
 

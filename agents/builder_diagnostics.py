@@ -19,6 +19,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from agents.builder_constants import (
+    ELITE_MIN_TRADES,
+    ELITE_SHARPE_BONUS_RATIO,
     MAX_DRAWDOWN_PCT_FOR_ACCEPT,
     MAX_POSITIVE_FALLBACK_COUNT,
     MIN_PROFIT_FACTOR_FOR_ACCEPT,
@@ -26,6 +28,9 @@ from agents.builder_constants import (
     MIN_TRADES_FOR_ACCEPT,
     MIN_TRADES_FOR_POSITIVE_PROGRESS,
     POSITIVE_PROGRESS_GATE_CHECKPOINTS,
+    SHARPE_TOLERANCE_RATIO,
+    TOLERANT_MAX_DRAWDOWN_PCT,
+    TOLERANT_MIN_PROFIT_FACTOR,
 )
 
 if TYPE_CHECKING:
@@ -171,20 +176,6 @@ def _telemetry_score_from_metrics(
 # ---------------------------------------------------------------------------
 # Ranking et sélection d'itérations
 # ---------------------------------------------------------------------------
-
-
-def _ranking_sharpe(
-    metrics: dict[str, Any],
-    *,
-    target_sharpe: float = 1.0,
-) -> float:
-    """Alias de compatibilité vers ``_telemetry_score_from_metrics()``."""
-    return _telemetry_score_from_metrics(
-        metrics,
-        target_sharpe=target_sharpe,
-    )
-
-
 def _builder_iteration_selection_key(
     metrics: dict[str, Any],
     *,
@@ -229,22 +220,6 @@ def _builder_iteration_selection_key(
         trades,
         win_rate,
     )
-
-
-def _metrics_fingerprint(metrics: dict[str, Any]) -> str:
-    """Retourne un fingerprint stable des métriques clés pour détecter la stagnation."""
-    keys = ("total_return_pct", "max_drawdown_pct", "total_trades", "win_rate_pct", "profit_factor")
-    parts = []
-    for k in keys:
-        parts.append(f"{k}={_metric_float(metrics, k, 0.0):.4f}")
-    return "|".join(parts)
-
-
-# ---------------------------------------------------------------------------
-# Critères d'acceptation et progression
-# ---------------------------------------------------------------------------
-
-
 def _is_accept_candidate(
     metrics: dict[str, Any],
     *,
@@ -255,21 +230,89 @@ def _is_accept_candidate(
     trades = int(metrics.get("total_trades", 0) or 0)
     ret = _metric_float(metrics, "total_return_pct", 0.0)
     max_dd = abs(_metric_float(metrics, "max_drawdown_pct", 0.0))
-    profit_factor = _metric_float(metrics, "profit_factor", MIN_PROFIT_FACTOR_FOR_ACCEPT)
+    # If profit_factor is missing/None, treat as missing (not as the floor),
+    # so we don't punish strategies whose backtest didn't compute it.
+    pf_raw = metrics.get("profit_factor")
+    pf_present = pf_raw is not None and not (
+        isinstance(pf_raw, str) and pf_raw.strip().lower() in {"", "n/a", "na", "nan", "none"}
+    )
+    profit_factor = _metric_float(metrics, "profit_factor", 0.0) if pf_present else None
 
     if _is_ruined_metrics(metrics):
         return False, "ruined_metrics"
-    if trades < MIN_TRADES_FOR_ACCEPT:
+    # Elite path: very strong sharpe with at least ELITE_MIN_TRADES trades is
+    # accepted. Otherwise apply the standard floor.
+    elite_trades_ok = trades >= ELITE_MIN_TRADES and sharpe >= float(target_sharpe) * float(ELITE_SHARPE_BONUS_RATIO)
+    if trades < MIN_TRADES_FOR_ACCEPT and not elite_trades_ok:
         return False, "insufficient_trades"
-    if sharpe < target_sharpe:
-        return False, "target_sharpe_not_reached"
     if ret <= MIN_RETURN_PCT_FOR_ACCEPT:
         return False, "non_positive_return"
-    if profit_factor < MIN_PROFIT_FACTOR_FOR_ACCEPT:
+    if profit_factor is not None and profit_factor < MIN_PROFIT_FACTOR_FOR_ACCEPT:
         return False, "profit_factor_too_low"
     if max_dd > (MAX_DRAWDOWN_PCT_FOR_ACCEPT + 25.0):
         return False, "drawdown_extreme"
+    # Tolerant Sharpe gate: accept if sharpe >= target * tolerance ratio
+    # AND profit factor (when known) and drawdown are stronger than nominal.
+    tolerance_floor = float(target_sharpe) * float(SHARPE_TOLERANCE_RATIO)
+    if sharpe < tolerance_floor:
+        return False, "target_sharpe_not_reached"
+    if sharpe < target_sharpe:
+        # Tolerant gate when sharpe between [tolerance_floor, target_sharpe[
+        if max_dd > TOLERANT_MAX_DRAWDOWN_PCT:
+            return False, "target_sharpe_not_reached"
+        # Profit factor only enforced when it was actually computed.
+        if profit_factor is not None and profit_factor < TOLERANT_MIN_PROFIT_FACTOR:
+            return False, "target_sharpe_not_reached"
     return True, "ok"
+
+
+def resolve_builder_completion_status(
+    session: Any,
+    *,
+    fallback_status: str = "max_iterations",
+) -> tuple[str, str]:
+    """Résout le statut terminal d'une session depuis son meilleur candidat.
+
+    Le statut brut de boucle indique pourquoi la boucle s'arrête. Cette fonction
+    répond à une autre question: est-ce qu'une itération backtestée mérite quand
+    même le statut ``success`` selon le même contrat que l'acceptation runtime ?
+    """
+    target_sharpe = _metric_float(
+        {"target_sharpe": getattr(session, "target_sharpe", 1.0)},
+        "target_sharpe",
+        1.0,
+    )
+    iterations = list(getattr(session, "iterations", []) or [])
+    best_iteration = getattr(session, "best_iteration", None)
+    if best_iteration is not None and all(best_iteration is not item for item in iterations):
+        iterations.append(best_iteration)
+
+    best_metrics: dict[str, Any] = {}
+    best_key: tuple[Any, ...] | None = None
+    for iteration in iterations:
+        backtest_result = getattr(iteration, "backtest_result", None)
+        metrics = getattr(backtest_result, "metrics", None)
+        if not isinstance(metrics, dict) or not metrics:
+            continue
+        candidate_key = _builder_iteration_selection_key(
+            metrics,
+            is_fallback=bool(getattr(iteration, "is_fallback", False)),
+            target_sharpe=target_sharpe,
+        )
+        if best_key is None or candidate_key > best_key:
+            best_key = candidate_key
+            best_metrics = metrics
+
+    if not best_metrics:
+        return fallback_status, "no_backtest_metrics"
+
+    accepted, reason = _is_accept_candidate(
+        best_metrics,
+        target_sharpe=target_sharpe,
+    )
+    if accepted:
+        return "success", "best_iteration_accept_candidate"
+    return fallback_status, reason
 
 
 def _is_positive_progress_iteration(metrics: dict[str, Any]) -> bool:
@@ -279,45 +322,6 @@ def _is_positive_progress_iteration(metrics: dict[str, Any]) -> bool:
     ret = _metric_float(metrics, "total_return_pct", 0.0)
     trades = int(metrics.get("total_trades", 0) or 0)
     return ret > 0.0 and trades >= MIN_TRADES_FOR_POSITIVE_PROGRESS
-
-
-def _count_positive_iterations(iterations: list[BuilderIteration]) -> int:
-    """Compte les itérations backtestées positives dans l'historique de session.
-
-    Fallback iterations with positive metrics are counted towards the quota,
-    but limited to MAX_POSITIVE_FALLBACK_COUNT to prevent accepting
-    sessions with only deterministic logic.
-    """
-    count = 0
-    fallback_positive_count = 0
-
-    for it in iterations:
-        if it.backtest_result is None:
-            continue
-
-        metrics = it.backtest_result.metrics or {}
-        is_positive = _is_positive_progress_iteration(metrics)
-
-        if it.is_fallback:
-            if is_positive and fallback_positive_count < MAX_POSITIVE_FALLBACK_COUNT:
-                count += 1
-                fallback_positive_count += 1
-        elif is_positive:
-            count += 1
-
-    return count
-
-
-def _required_positive_count_for_iteration(iteration_index: int) -> int:
-    """Retourne le quota de runs positifs requis au checkpoint courant."""
-    return int(POSITIVE_PROGRESS_GATE_CHECKPOINTS.get(iteration_index, 0) or 0)
-
-
-# ---------------------------------------------------------------------------
-# Diagnostic déterministe
-# ---------------------------------------------------------------------------
-
-
 def compute_diagnostic(
     metrics: dict[str, Any],
     iteration_history: list[dict[str, Any]],
@@ -346,6 +350,10 @@ def compute_diagnostic(
     avg_l = abs(_metric_float(metrics, "avg_loss", 0.0))
     vol = _metric_float(metrics, "volatility_annual", 0.0)
     _rr = _metric_float(metrics, "risk_reward_ratio", 0.0)
+    precheck_skip_reason = str(metrics.get("precheck_skip_reason") or "").strip()
+    precheck_signal_density = _metric_float(metrics, "precheck_signal_density", 0.0)
+    precheck_transition_density = _metric_float(metrics, "precheck_transition_density", 0.0)
+    precheck_repeated_same_ratio = _metric_float(metrics, "precheck_repeated_same_ratio", 0.0)
 
     # --- Score card A/B/C/D/F ---
     def _g(v, thresholds):
@@ -378,7 +386,38 @@ def compute_diagnostic(
     )
 
     # --- Catégorie principale (par gravité décroissante) ---
-    if n == 0:
+    if precheck_skip_reason == "no_trade_signal_profile":
+        cat, sev, ct = "no_trades", "critical", "logic"
+        summary = "Précheck bloquant — aucun signal d'entrée détecté avant backtest"
+        actions = [
+            "Relâcher la condition d'entrée la plus restrictive",
+            "Réduire le nombre de conditions AND combinées",
+            "Vérifier NaN handling: np.nan_to_num() avant comparaison",
+            "Vérifier que generate_signals renvoie bien 1.0/-1.0 et non des booléens",
+        ]
+        donts = [
+            "Ne PAS lancer un sweep de paramètres sur une logique sans signal",
+            "Ne PAS ajouter plus de filtres avant d'avoir rétabli des entrées réelles",
+        ]
+    elif precheck_skip_reason == "pathological_signal_density":
+        cat, sev, ct = "signal_always_true", "critical", "logic"
+        summary = (
+            "Précheck bloquant — densité de signaux pathologique "
+            f"(density {precheck_signal_density:.2f}, transitions {precheck_transition_density:.2f}, "
+            f"repeat {precheck_repeated_same_ratio:.2f})"
+        )
+        actions = [
+            "URGENT: Vérifier accès indicateurs dict — utiliser indicators['bollinger']['upper'] pas bb.upper ni bollinger.upper",
+            "URGENT: Vérifier que les conditions LONG et SHORT ne se déclenchent pas sur une grande majorité des barres",
+            "Isoler : tester une seule condition LONG puis une seule condition SHORT sur 100 barres",
+            "Ajouter np.nan_to_num() sur TOUS les indicateurs avant comparaison",
+            "Réécrire la logique depuis zéro avec conditions explicites et sans alias bb/kelt/stoch",
+        ]
+        donts = [
+            "Ne PAS garder la même logique avec des paramètres ajustés",
+            "Ne PAS lancer le backtest complet tant que la densité reste pathologique au précheck",
+        ]
+    elif n == 0:
         cat, sev, ct = "no_trades", "critical", "logic"
         summary = "Aucun trade — conditions d'entrée trop restrictives"
         actions = [

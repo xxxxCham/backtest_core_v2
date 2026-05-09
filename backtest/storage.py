@@ -37,7 +37,9 @@ import pandas as pd
 from backtest.engine import RunResult
 from backtest.result_store import get_results_root_dir
 from backtest.store_metadata import (
+    as_jsonable,
     build_store_row_from_metadata,
+    dump_json_payload,
     is_native_result_metadata,
     is_v3_result_metadata,
     load_metadata_payload,
@@ -72,6 +74,15 @@ _NATIVE_EXTRA_METADATA_KEYS = (
     "universe_mode",
     "universe_purpose",
     "universe_strategy_type",
+)
+_CATALOG_METADATA_FIELDS = (
+    "timestamp", "mode", "status", "strategy", "symbol", "timeframe",
+    "n_bars", "n_trades", "duration_sec", "period_start", "period_end",
+)
+_UNIFIED_ENTRY_FIELDS = (
+    "artifact_type", "schema", "path", "parent_scope", "run_id", "timestamp",
+    "mode", "status", "strategy", "symbol", "timeframe", "loadable",
+    "n_bars", "n_trades", "duration_sec", "period_start", "period_end",
 )
 
 
@@ -142,64 +153,8 @@ def _ensure_writable_tempdir() -> None:
 # =============================================================================
 
 
-def _safe_to_parquet(
-    df: pd.DataFrame,
-    path: Path,
-    *,
-    compression: str | None = None,
-    index: bool | None = None,
-) -> None:
-    try:
-        if index is None:
-            index = True
-        df.to_parquet(path, compression=compression, index=index)
-    except Exception as e:
-        logger.warning(f"⚠️ Parquet non écrit ({path.name}): {e}")
-
-
-def _write_series_csv(series: pd.Series, path: Path, name: str) -> None:
-    df = series.to_frame(name=name)
-    df.to_csv(path, index=True, encoding="utf-8")
-
-
-def _write_dataframe_csv(df: pd.DataFrame, path: Path) -> None:
-    df.to_csv(path, index=False, encoding="utf-8")
-
-
 def _load_json_file(path: Path) -> dict[str, Any]:
     return load_metadata_payload(path)
-
-
-def _as_jsonable(value: Any) -> Any:
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, pd.Timestamp):
-        return value.isoformat()
-    if isinstance(value, pd.Series):
-        return {str(k): _as_jsonable(v) for k, v in value.to_dict().items()}
-    if isinstance(value, pd.DataFrame):
-        return value.to_dict(orient="records")
-    if isinstance(value, dict):
-        return {str(k): _as_jsonable(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple, set)):
-        return [_as_jsonable(v) for v in value]
-    if hasattr(value, "item"):
-        try:
-            return value.item()
-        except Exception:
-            pass
-    return str(value)
-
-
-def _dump_json(path: Path, payload: Any) -> None:
-    path.write_text(
-        json.dumps(_as_jsonable(payload), indent=2, ensure_ascii=False, default=str),
-        encoding="utf-8",
-    )
 
 
 def _extract_result_extra_metadata(meta: dict[str, Any]) -> dict[str, Any]:
@@ -388,6 +343,36 @@ class StoredResultMetadata:
             status=str(data.get("status", "ok") or "ok"),
             extra_metadata=dict(data.get("extra_metadata", {}) or {}),
         )
+
+
+def _extend_prefixed(row: dict[str, Any], prefix: str, values: dict[str, Any] | None) -> None:
+    for key, value in (values or {}).items():
+        row[f"{prefix}_{key}"] = value
+
+
+def _build_native_catalog_row(metadata: StoredResultMetadata) -> dict[str, Any]:
+    row = {
+        "type": "run",
+        "id": metadata.run_id,
+        "run_id": metadata.run_id,
+        "path": metadata.run_id,
+        "storage_path": f"runs/{metadata.run_id}",
+        **{field: getattr(metadata, field) for field in _CATALOG_METADATA_FIELDS},
+    }
+    _extend_prefixed(row, "params", metadata.params)
+    _extend_prefixed(row, "metrics", metadata.metrics)
+    _extend_prefixed(row, "extra", metadata.extra_metadata)
+    row["flags_account_ruined"] = bool(metadata.metrics.get("account_ruined", False))
+    return row
+
+
+def _build_unified_catalog_row(entry: dict[str, Any]) -> dict[str, Any]:
+    row = {field: entry.get(field) for field in _UNIFIED_ENTRY_FIELDS}
+    row["issues"] = "; ".join(entry.get("issues", []))
+    _extend_prefixed(row, "params", entry.get("params", {}) or {})
+    _extend_prefixed(row, "metrics", entry.get("metrics", {}) or {})
+    _extend_prefixed(row, "extra", entry.get("extra_metadata", {}) or {})
+    return row
 
 
 # =============================================================================
@@ -611,8 +596,8 @@ class ResultStorage:
             extra_metadata = _extract_result_extra_metadata(result.meta)
             mode = str(result.meta.get("mode") or result.meta.get("origin") or "backtest")
             status = "partial" if extra_metadata.get("ui_partial_run") else str(result.meta.get("status") or "ok")
-            period_start = _as_jsonable(result.meta.get("period_start", ""))
-            period_end = _as_jsonable(result.meta.get("period_end", ""))
+            period_start = as_jsonable(result.meta.get("period_start", ""))
+            period_end = as_jsonable(result.meta.get("period_end", ""))
             saved = self._store_v3.save_run(
                 run_id=run_id or result.meta.get("run_id"),
                 mode=mode,
@@ -702,7 +687,7 @@ class ResultStorage:
             }
 
             summary_path = sweep_dir / "summary.json"
-            _dump_json(summary_path, summary)
+            dump_json_payload(summary_path, summary)
 
             # Sauvegarder tous les résultats en DataFrame
             results_df = sweep_results.to_dataframe()
@@ -1085,7 +1070,7 @@ class ResultStorage:
         try:
             index_data = {run_id: meta.to_dict() for run_id, meta in self._index.items()}
 
-            _dump_json(self.index_path, index_data)
+            dump_json_payload(self.index_path, index_data)
 
         except Exception as e:
             logger.error(f"❌ Erreur lors de la sauvegarde de l'index: {e}")
@@ -1223,7 +1208,7 @@ class ResultStorage:
 
         if write_report:
             report_path = catalog_dir / "storage_audit.json"
-            _dump_json(report_path, report)
+            dump_json_payload(report_path, report)
 
         return report
 
@@ -1251,36 +1236,7 @@ class ResultStorage:
 
         rows = []
         for run_id, metadata in self._index.items():
-            row = {
-                "type": "run",
-                "id": run_id,
-                "run_id": run_id,
-                "path": run_id,
-                "storage_path": f"runs/{run_id}",
-                "timestamp": metadata.timestamp,
-                "mode": metadata.mode,
-                "status": metadata.status,
-                "strategy": metadata.strategy,
-                "symbol": metadata.symbol,
-                "timeframe": metadata.timeframe,
-                "n_bars": metadata.n_bars,
-                "n_trades": metadata.n_trades,
-                "duration_sec": metadata.duration_sec,
-                "period_start": metadata.period_start,
-                "period_end": metadata.period_end,
-            }
-
-            for key, value in (metadata.params or {}).items():
-                row[f"params_{key}"] = value
-
-            for key, value in (metadata.metrics or {}).items():
-                row[f"metrics_{key}"] = value
-
-            for key, value in (metadata.extra_metadata or {}).items():
-                row[f"extra_{key}"] = value
-
-            row["flags_account_ruined"] = bool(metadata.metrics.get("account_ruined", False))
-            rows.append(row)
+            rows.append(_build_native_catalog_row(metadata))
 
         if rows:
             df = pd.DataFrame(rows)
@@ -1308,33 +1264,7 @@ class ResultStorage:
         audit_report = self.audit_storage(write_report=True)
         unified_rows = []
         for entry in audit_report["entries"]:
-            row = {
-                "artifact_type": entry.get("artifact_type"),
-                "schema": entry.get("schema"),
-                "path": entry.get("path"),
-                "parent_scope": entry.get("parent_scope"),
-                "run_id": entry.get("run_id"),
-                "timestamp": entry.get("timestamp"),
-                "mode": entry.get("mode"),
-                "status": entry.get("status"),
-                "strategy": entry.get("strategy"),
-                "symbol": entry.get("symbol"),
-                "timeframe": entry.get("timeframe"),
-                "loadable": entry.get("loadable"),
-                "n_bars": entry.get("n_bars"),
-                "n_trades": entry.get("n_trades"),
-                "duration_sec": entry.get("duration_sec"),
-                "period_start": entry.get("period_start"),
-                "period_end": entry.get("period_end"),
-                "issues": "; ".join(entry.get("issues", [])),
-            }
-            for key, value in (entry.get("params", {}) or {}).items():
-                row[f"params_{key}"] = value
-            for key, value in (entry.get("metrics", {}) or {}).items():
-                row[f"metrics_{key}"] = value
-            for key, value in (entry.get("extra_metadata", {}) or {}).items():
-                row[f"extra_{key}"] = value
-            unified_rows.append(row)
+            unified_rows.append(_build_unified_catalog_row(entry))
 
         unified_df = pd.DataFrame(unified_rows)
         if not unified_df.empty and "timestamp" in unified_df.columns:

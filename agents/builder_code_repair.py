@@ -9,6 +9,13 @@ import ast
 import re
 import textwrap
 
+from agents.builder_ast_utils import (
+    _drop_obvious_non_python_lines,
+    _indicator_name_from_hint_expression,
+    _normalize_required_indicator_names,
+    _salvage_complex_ast_syntax,
+    _sanitize_python_list_markers,
+)
 from agents.builder_code_validation import (
     _AST_PARSE_RECOVERABLE_EXCEPTIONS,
     _BUILDER_ALLOWED_WRITE_DF_COLUMNS,
@@ -30,9 +37,25 @@ from agents.indicator_context import (
 
 _DICT_INDICATOR_SAFE_SCALAR_KEYS: dict[str, str] = {
     "adx": "adx",
+    "amplitude_hunter": "score",
     "supertrend": "supertrend",
     "directional_bias": "net_bias",
     "markov_switching": "regime",
+}
+
+_DICT_INDICATOR_SAFE_SCALAR_ASSIGNMENT_ALIASES: dict[str, set[str]] = {
+    "adx": {"adx_val", "adx_value"},
+    "amplitude_hunter": {
+        "amp_score",
+        "amplitude_score",
+        "amplitude_hunter_score",
+        "score",
+        "vol_expansion_score",
+        "volatility_expansion_score",
+    },
+    "directional_bias": {"directional_bias_net", "net_bias"},
+    "markov_switching": {"markov_regime", "regime"},
+    "supertrend": {"supertrend_value", "supertrend_level"},
 }
 
 # Fast-path pre-scan compilé à l'import.
@@ -126,10 +149,28 @@ _INDICATOR_ACCESS_REWRITE_HINTS = {
     "atr_14": "indicators['atr']",
     "volume_osc": "indicators['volume_oscillator']",
     # Archives live : LLM confond paramètres et indicateurs, ou utilise des noms de variables
+    "amplitude_hunter_score": "indicators['amplitude_hunter']['score']",
+    "average_true_range": "indicators['atr']",
+    "coppock": "indicators['coppock_curve']",
+    "dmi": "indicators['adx']",
+    "donchian_breakout": "indicators['donchian']",
+    "donchian_channels": "indicators['donchian']",
     "ema_fast": "indicators['ema']",
     "ema_slow": "indicators['ema']",
+    "stoch": "indicators['stochastic']",
+    "stochastic_k": "indicators['stochastic']['stoch_k']",
+    "stochastic_d": "indicators['stochastic']['stoch_d']",
+    "stochastic_rsi": "indicators['stoch_rsi']",
+    "sar": "indicators['psar']['sar']",
+    "super_trend": "indicators['supertrend']",
     "adx_val": "indicators['adx']",
     "adx_value": "indicators['adx']",
+    "adx_plus": "indicators['adx']['plus_di']",
+    "adx_minus": "indicators['adx']['minus_di']",
+    "adx_dplus": "indicators['adx']['plus_di']",
+    "adx_dminus": "indicators['adx']['minus_di']",
+    "adx_d_plus": "indicators['adx']['plus_di']",
+    "adx_d_minus": "indicators['adx']['minus_di']",
     "rsi_value": "indicators['rsi']",
     "mfi_val": "indicators['mfi']",
     "mfi_value": "indicators['mfi']",
@@ -138,13 +179,44 @@ _INDICATOR_ACCESS_REWRITE_HINTS = {
     "cmf_val": "indicators['cmf']",
     "atr_val": "indicators['atr']",
     "atr_value": "indicators['atr']",
-    "macd_line": "indicators['macd']['macd_line']",
-    "macd_signal": "indicators['macd']['signal_line']",
+    "macd_line": "indicators['macd']['macd']",
+    "macd_signal": "indicators['macd']['signal']",
     "macd_histogram": "indicators['macd']['histogram']",
+    "vortex_plus": "indicators['vortex']['vi_plus']",
+    "vortex_minus": "indicators['vortex']['vi_minus']",
+    "fvg_bullish": "indicators['fvg']['fvg_bullish']",
+    "fvg_bearish": "indicators['fvg']['fvg_bearish']",
+    "markov": "indicators['markov_switching']",
+    "markov_regime": "indicators['markov_switching']['regime']",
     "swing_high": "indicators['swing']['swing_high']",
     "swing_low": "indicators['swing']['swing_low']",
     "smart_leg_bullish": "indicators['smart_legs']['smart_leg_bullish']",
     "smart_leg_bearish": "indicators['smart_legs']['smart_leg_bearish']",
+}
+
+_INVALID_DICT_SUBKEY_REWRITE_HINTS: dict[tuple[str, str], str] = {
+    ("bollinger", "close"): "np.nan_to_num(df['close'].values.astype(np.float64))",
+    ("donchian", "close"): "np.nan_to_num(df['close'].values.astype(np.float64))",
+    ("keltner", "close"): "np.nan_to_num(df['close'].values.astype(np.float64))",
+    ("bollinger", "std"): (
+        "(np.nan_to_num(indicators['bollinger']['upper']) "
+        "- np.nan_to_num(indicators['bollinger']['middle']))"
+    ),
+    ("bollinger", "width"): (
+        "(np.nan_to_num(indicators['bollinger']['upper']) "
+        "- np.nan_to_num(indicators['bollinger']['lower']))"
+    ),
+    ("donchian", "width"): (
+        "(np.nan_to_num(indicators['donchian']['upper']) "
+        "- np.nan_to_num(indicators['donchian']['lower']))"
+    ),
+    ("keltner", "width"): (
+        "(np.nan_to_num(indicators['keltner']['upper']) "
+        "- np.nan_to_num(indicators['keltner']['lower']))"
+    ),
+    ("donchian", "supertrend"): "indicators['supertrend']['supertrend']",
+    ("fvg", "fvg_bullish_gap"): "indicators['fvg']['fvg_bullish']",
+    ("fvg", "fvg_bearish_gap"): "indicators['fvg']['fvg_bearish']",
 }
 
 
@@ -176,6 +248,20 @@ _PARAM_ACCESS_REWRITE_HINTS = {
     "rsi_period": "params.get('rsi_period', 14)",
     "bias_strength_filter": "params.get('bias_strength_filter', 0.5)",
 }
+
+_INDICATOR_ACCESS_ALIAS_SCAN: re.Pattern[str] = re.compile(
+    r"(?:indicators\s*\[\s*|indicators\.get\(\s*)['\"](?:"
+    + "|".join(
+        re.escape(k)
+        for k in sorted(
+            set(_INDICATOR_ACCESS_REWRITE_HINTS) | set(_PARAM_ACCESS_REWRITE_HINTS),
+            key=len,
+            reverse=True,
+        )
+    )
+    + r")['\"]",
+    re.IGNORECASE,
+)
 
 
 _LOG_PREFIX_RE = re.compile(r"^\s*\d{2}:\d{2}:\d{2}\s*\|\s*\w+\s*\|", re.IGNORECASE)
@@ -250,75 +336,6 @@ _CODE_LINE_STARTS = (
 )
 
 
-def _strip_leading_list_marker(line: str) -> str:
-    """Retire `1.`/`-` au début d'une ligne en conservant l'indentation utile."""
-    match = re.match(r"^(\s*)(?:[-*]|\d+[\.)])(.*)$", line)
-    if not match:
-        return line
-    leading_ws, remainder = match.groups()
-    if remainder.startswith((" ", "\t")):
-        remainder = remainder[1:]
-    return leading_ws + remainder
-
-
-def _strip_non_python_noise(text: str) -> str:
-    """Retire le bruit fréquent des réponses LLM autour du code Python."""
-    raw_lines = str(text or "").splitlines()
-    cleaned_lines: list[str] = []
-    seen_code = False
-
-    for line in raw_lines:
-        stripped = line.strip()
-
-        if not stripped:
-            if seen_code:
-                cleaned_lines.append("")
-            continue
-
-        if stripped.startswith("```"):
-            continue
-        if stripped.lower() == "python":
-            continue
-        if _LOG_PREFIX_RE.match(line) or _PIPE_LOG_PREFIX_RE.match(line):
-            continue
-        if _TRACEBACK_LINE_RE.match(line) or _WINDOWS_PATH_LINE_RE.match(line):
-            continue
-
-        candidate = _strip_leading_list_marker(line)
-        candidate_stripped = candidate.strip()
-
-        if not seen_code:
-            if _NATURAL_LANGUAGE_LINE_RE.match(candidate_stripped):
-                continue
-            if _PYTHONISH_LINE_RE.match(candidate_stripped) or candidate_stripped.startswith("#"):
-                seen_code = True
-                cleaned_lines.append(candidate)
-            continue
-
-        if _NATURAL_LANGUAGE_LINE_RE.match(candidate_stripped) and not _PYTHONISH_LINE_RE.match(candidate_stripped):
-            continue
-        cleaned_lines.append(candidate)
-
-    if cleaned_lines:
-        while cleaned_lines and not cleaned_lines[-1].strip():
-            cleaned_lines.pop()
-        if cleaned_lines:
-            return "\n".join(cleaned_lines)
-    return ""
-
-
-def _sanitize_python_list_markers(code: str) -> str:
-    """Supprime les marqueurs de liste LLM devant des lignes Python valides."""
-    fixed_lines: list[str] = []
-    for line in str(code or "").splitlines():
-        candidate = _strip_leading_list_marker(line)
-        if candidate != line and (_PYTHONISH_LINE_RE.match(candidate.lstrip()) or candidate.lstrip().startswith("#")):
-            fixed_lines.append(candidate)
-        else:
-            fixed_lines.append(line)
-    return "\n".join(fixed_lines)
-
-
 def _strip_docstrings(code: str) -> str:
     """Supprime tous les blocs triple-quoted, y compris non terminés.
 
@@ -364,22 +381,6 @@ def _strip_docstrings(code: str) -> str:
     return "\n".join(result)
 
 
-def _drop_obvious_non_python_lines(code: str) -> str:
-    """Supprime les lignes manifestement non Python après extraction."""
-    kept_lines: list[str] = []
-    for line in str(code or "").splitlines():
-        stripped = line.strip()
-        if not stripped:
-            kept_lines.append(line)
-            continue
-        if stripped.startswith("```") or stripped.lower() == "python":
-            continue
-        if _NATURAL_LANGUAGE_LINE_RE.match(stripped) and not _PYTHONISH_LINE_RE.match(stripped):
-            continue
-        kept_lines.append(line)
-    return "\n".join(kept_lines)
-
-
 def _fix_class_name(code: str) -> str:
     """Renomme la première sous-classe StrategyBase en GENERATED_CLASS_NAME."""
     if re.search(rf"\bclass\s+{GENERATED_CLASS_NAME}\s*\(", code):
@@ -402,88 +403,6 @@ def _fix_class_name(code: str) -> str:
             count=1,
         )
     return code
-
-
-def _balance_brackets_outside_strings(code: str) -> str:
-    """Rééquilibre prudemment les parenthèses/crochets/accolades hors chaînes."""
-    open_to_close = {"(": ")", "[": "]", "{": "}"}
-    closing_to_open = {")": "(", "]": "[", "}": "{"}
-    stack: list[str] = []
-    output: list[str] = []
-    in_single = False
-    in_double = False
-    escape = False
-
-    for ch in str(code or ""):
-        if escape:
-            output.append(ch)
-            escape = False
-            continue
-        if ch == "\\":
-            output.append(ch)
-            escape = True
-            continue
-        if ch == "'" and not in_double:
-            in_single = not in_single
-            output.append(ch)
-            continue
-        if ch == '"' and not in_single:
-            in_double = not in_double
-            output.append(ch)
-            continue
-        if in_single or in_double:
-            output.append(ch)
-            continue
-        if ch in open_to_close:
-            stack.append(ch)
-            output.append(ch)
-            continue
-        if ch in closing_to_open:
-            expected_open = closing_to_open[ch]
-            if stack and stack[-1] == expected_open:
-                stack.pop()
-                output.append(ch)
-            else:
-                continue
-            continue
-        output.append(ch)
-
-    while stack:
-        output.append(open_to_close[stack.pop()])
-
-    return "".join(output)
-
-
-def _salvage_complex_ast_syntax(code: str) -> str:
-    """Tente des réparations syntaxiques conservatrices avant fallback.
-
-    Objectif: corriger le bruit de sortie LLM et les déséquilibres simples qui
-    empêchent `ast.parse` de construire l'arbre, sans réécrire la logique métier.
-    """
-    candidate = _strip_non_python_noise(code)
-    candidate = _drop_obvious_non_python_lines(candidate)
-    candidate = _sanitize_python_list_markers(candidate)
-
-    attempts = [
-        candidate,
-        textwrap.dedent(candidate),
-        _balance_brackets_outside_strings(candidate),
-        _balance_brackets_outside_strings(textwrap.dedent(candidate)),
-    ]
-
-    seen: set[str] = set()
-    for attempt in attempts:
-        attempt = attempt.strip("\n")
-        if not attempt or attempt in seen:
-            continue
-        seen.add(attempt)
-        try:
-            ast.parse(attempt)
-            return attempt
-        except SyntaxError:
-            continue
-
-    return candidate
 
 
 def _infer_required_indicator_names_from_code(
@@ -532,19 +451,6 @@ def _infer_required_indicator_names_from_code(
             inferred_set.add(indicator_name)
 
     return inferred
-
-
-def _normalize_required_indicator_names(required_indicators: list[str] | None) -> list[str]:
-    normalized: list[str] = []
-    if not required_indicators:
-        return normalized
-    for item in required_indicators:
-        if not isinstance(item, str):
-            continue
-        indicator_name = item.strip().lower()
-        if indicator_name and indicator_name not in normalized:
-            normalized.append(indicator_name)
-    return normalized
 
 
 def _build_generate_signals_indicator_binding_groups(
@@ -599,13 +505,6 @@ def _build_generate_signals_indicator_binding_groups(
         groups.append((indicator_name, base_lines, alias_lines))
 
     return groups
-
-
-def _indicator_name_from_hint_expression(expr: str) -> str | None:
-    match = re.search(r"indicators\[['\"]([A-Za-z0-9_]+)['\"]\]", str(expr or ""))
-    if not match:
-        return None
-    return str(match.group(1)).strip().lower() or None
 
 
 def _inject_generate_signals_indicator_bindings(
@@ -855,6 +754,130 @@ def _inject_generate_signals_core_param_aliases(code: str) -> str:
     return "\n".join(lines)
 
 
+def _rewrite_generate_signals_param_source_aliases(code: str) -> str:
+    """Normalise `parameters/default_params.get(...)` vers le contrat runtime `params`."""
+    try:
+        tree = ast.parse(code)
+    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
+        return code
+
+    fns = _iter_generate_signals_functions(tree)
+    if not fns:
+        return code
+
+    lines = code.split("\n")
+    replacements: list[tuple[int, int, list[str]]] = []
+    pattern = re.compile(r"\b(?:parameters|default_params)\s*(?=\.get\s*\(|\[)")
+    for fn in fns:
+        start_idx = max(0, int(fn.lineno) - 1)
+        end_idx = max(start_idx, int(getattr(fn, "end_lineno", fn.lineno)))
+        segment = "\n".join(lines[start_idx:end_idx])
+        fixed_segment = pattern.sub("params", segment)
+        if fixed_segment != segment:
+            replacements.append((start_idx, end_idx, fixed_segment.split("\n")))
+
+    for start_idx, end_idx, fixed_lines in sorted(replacements, key=lambda item: item[0], reverse=True):
+        lines[start_idx:end_idx] = fixed_lines
+
+    return "\n".join(lines)
+
+
+def _normalize_generate_signals_mask_aliases(code: str) -> str:
+    """Corrige les alias inversés `mask_long/mask_short` quand `long_mask/short_mask` existe."""
+    try:
+        tree = ast.parse(code)
+    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
+        return code
+
+    fns = _iter_generate_signals_functions(tree)
+    if not fns:
+        return code
+
+    aliases_to_rewrite: set[str] = set()
+    for fn in fns:
+        load_names, store_names = _collect_name_load_store_sets(fn)
+        if "mask_long" in load_names and "mask_long" not in store_names and "long_mask" in store_names:
+            aliases_to_rewrite.add("mask_long")
+        if "mask_short" in load_names and "mask_short" not in store_names and "short_mask" in store_names:
+            aliases_to_rewrite.add("mask_short")
+
+    if not aliases_to_rewrite:
+        return code
+
+    fixed = code
+    if "mask_long" in aliases_to_rewrite:
+        fixed = re.sub(r"\bmask_long\b", "long_mask", fixed)
+    if "mask_short" in aliases_to_rewrite:
+        fixed = re.sub(r"\bmask_short\b", "short_mask", fixed)
+    return fixed
+
+
+def _repair_invalid_warmup_zero_slices(code: str) -> str:
+    """Réécrit les warmups destructifs courants vers `signals.iloc[:warmup] = 0.0`."""
+    fixed_lines: list[str] = []
+    pattern = re.compile(
+        r"^(?P<indent>\s*)signals(?:\.iloc)?\s*\[\s*(?:warmup\s*:\s*|:\s*)\]\s*="
+        r"\s*(?:0(?:\.0+)?|np\.nan)\s*(?P<comment>#.*)?$",
+    )
+    for line in str(code or "").splitlines():
+        match = pattern.match(line)
+        if not match:
+            fixed_lines.append(line)
+            continue
+        comment = f" {match.group('comment').strip()}" if match.group("comment") else ""
+        fixed_lines.append(f"{match.group('indent')}signals.iloc[:warmup] = 0.0{comment}")
+    return "\n".join(fixed_lines)
+
+
+def _rewrite_invalid_dict_indicator_subkeys(code: str) -> str:
+    """Répare quelques sous-clés dict hallucinées quand la cible sûre est déterministe."""
+    fixed = code
+    for (indicator_name, subkey), replacement in _INVALID_DICT_SUBKEY_REWRITE_HINTS.items():
+        fixed = re.sub(
+            rf"indicators\s*\[\s*['\"]{re.escape(indicator_name)}['\"]\s*\]"
+            rf"\s*\[\s*['\"]{re.escape(subkey)}['\"]\s*\]",
+            replacement,
+            fixed,
+            flags=re.IGNORECASE,
+        )
+        fixed = re.sub(
+            rf"indicators\.get\(\s*['\"]{re.escape(indicator_name)}['\"]\s*(?:,\s*[^)]*)?\)"
+            rf"\s*\[\s*['\"]{re.escape(subkey)}['\"]\s*\]",
+            replacement,
+            fixed,
+            flags=re.IGNORECASE,
+        )
+    return fixed
+
+
+def _fill_empty_python_blocks_with_pass(code: str) -> str:
+    """Ajoute `pass` dans les blocs vides produits par le LLM pour récupérer l'AST."""
+    lines = str(code or "").splitlines()
+    if not lines:
+        return code
+
+    fixed_lines: list[str] = []
+    for idx, line in enumerate(lines):
+        fixed_lines.append(line)
+        stripped = line.strip()
+        if not stripped.endswith(":"):
+            continue
+
+        current_indent = len(line) - len(line.lstrip(" "))
+        block_has_statement = False
+        for next_line in lines[idx + 1 :]:
+            next_stripped = next_line.strip()
+            if not next_stripped or next_stripped.startswith("#"):
+                continue
+            next_indent = len(next_line) - len(next_line.lstrip(" "))
+            block_has_statement = next_indent > current_indent
+            break
+        if not block_has_statement:
+            fixed_lines.append(" " * (current_indent + 4) + "pass")
+
+    return "\n".join(fixed_lines)
+
+
 def _rewrite_invalid_indicator_accesses(text: str) -> str:
     fixed = text
     for alias, replacement in _INDICATOR_ACCESS_REWRITE_HINTS.items():
@@ -907,6 +930,43 @@ def _rewrite_safe_dict_indicator_comparisons(code: str) -> str:
                     lambda m, replacement=scalar_expr: f"{m.group(1)} {replacement}",
                     line,
                 )
+        rewritten_lines.append(line)
+    return "\n".join(rewritten_lines)
+
+
+def _rewrite_safe_dict_indicator_scalar_assignments(code: str) -> str:
+    """Réécrit les affectations scalaires évidentes qui capturent un indicator dict complet.
+
+    Le LLM écrit parfois `net_bias = indicators['directional_bias']` ou
+    `amp_score = indicators['amplitude_hunter']`, puis compare ces variables à un seuil.
+    Dans ces cas, le nom de variable révèle la sous-clé attendue et on peut préserver la
+    logique exploratoire sans basculer en fallback déterministe.
+    """
+    rewritten_lines: list[str] = []
+    for raw_line in str(code or "").splitlines():
+        line = raw_line
+        for indicator_name, aliases in _DICT_INDICATOR_SAFE_SCALAR_ASSIGNMENT_ALIASES.items():
+            subkey = _DICT_INDICATOR_SAFE_SCALAR_KEYS.get(indicator_name)
+            if not subkey:
+                continue
+            alias_group = "|".join(re.escape(alias) for alias in sorted(aliases, key=len, reverse=True))
+            if not alias_group:
+                continue
+            direct_expr = (
+                rf"(?:indicators\s*\[\s*['\"]{re.escape(indicator_name)}['\"]\s*\]"
+                rf"|indicators\.get\(\s*['\"]{re.escape(indicator_name)}['\"]\s*(?:,\s*[^)]*)?\))"
+                rf"(?!\s*\[)"
+            )
+            line = re.sub(
+                rf"^(?P<indent>\s*)(?P<lhs>{alias_group})\s*=\s*{direct_expr}\s*(?P<comment>#.*)?$",
+                lambda m, ind=indicator_name, key=subkey: (
+                    f"{m.group('indent')}{m.group('lhs')} = "
+                    f"np.nan_to_num(indicators['{ind}']['{key}'])"
+                    f"{(' ' + m.group('comment').strip()) if m.group('comment') else ''}"
+                ),
+                line,
+                flags=re.IGNORECASE,
+            )
         rewritten_lines.append(line)
     return "\n".join(rewritten_lines)
 
@@ -1029,101 +1089,6 @@ class _VectorizeTransformer(ast.NodeTransformer):
         return ast.fix_missing_locations(result)
 
 
-def _auto_repair_vectorize(code: str) -> tuple[str, int]:
-    """Répare les anti-patterns de vectorisation détectables par AST et regex.
-
-    Corrections :
-    1. ``and``/``or`` sur masques vectorisés → ``&``/``|`` (AST)
-    2. ``signals.loc[mask]`` → ``signals[mask]`` (1D write/read)
-    3. ``signals.isnull()``/``notnull()`` → ``(signals == 0)``/``(signals != 0)``
-    4. ``ParameterSpec(min=`` → ``min_val=``, ``max=`` → ``max_val=``
-    5. ``np.diff(x)`` sans ``np.insert`` → ``np.insert(np.diff(x), 0, 0.0)``
-
-    Returns
-    -------
-    (repaired_code, fix_count)
-
-    """
-    fix_count = 0
-
-    # 1. AST : and/or → &/| sur masques vectorisés
-    try:
-        tree = ast.parse(code)
-        transformer = _VectorizeTransformer()
-        new_tree = transformer.visit(tree)
-        if transformer.fix_count > 0:
-            code = ast.unparse(new_tree)
-            fix_count += transformer.fix_count
-    except SyntaxError:
-        pass
-
-    # 2a. signals.loc[mask] = val → signals[mask] = val  (écriture 1D)
-    #     Note : le cas 2D (mask, 'long'/'short') est déjà traité par
-    #     _rewrite_signals_loc_assignments() dans _repair_code.
-    new_code, n = re.subn(
-        r"signals\.loc\[\s*([^,\]\n]+?)\s*\](\s*=)",
-        r"signals[\1]\2",
-        code,
-    )
-    if n:
-        code = new_code
-        fix_count += n
-
-    # 2b. signals.loc[mask] lecture → signals[mask]
-    new_code, n = re.subn(
-        r"signals\.loc\[\s*([^\]\n]+?)\s*\]",
-        r"signals[\1]",
-        code,
-    )
-    if n:
-        code = new_code
-        fix_count += n
-
-    # 3. signals.isnull()/isna() → (signals == 0), notnull()/notna() → (signals != 0)
-    for method, replacement in [
-        ("isnull", "(signals == 0)"),
-        ("isna", "(signals == 0)"),
-        ("notnull", "(signals != 0)"),
-        ("notna", "(signals != 0)"),
-    ]:
-        new_code, n = re.subn(
-            rf"signals\.{method}\(\s*\)",
-            replacement,
-            code,
-        )
-        if n:
-            code = new_code
-            fix_count += n
-
-    # 4. ParameterSpec(min= → min_val=, max= → max_val=, paramtype= → param_type=)
-    for old_kw, new_kw in [
-        ("min=", "min_val="),
-        ("max=", "max_val="),
-        ("paramtype=", "param_type="),
-    ]:
-        new_code, n = re.subn(
-            rf"(ParameterSpec\([^)]*?)\b{re.escape(old_kw)}",
-            rf"\1{new_kw}",
-            code,
-        )
-        if n:
-            code = new_code
-            fix_count += n
-
-    # 5. np.diff(x) → np.insert(np.diff(x), 0, 0.0) quand np.insert absent
-    if "np.diff(" in code and "np.insert" not in code and "np.concatenate" not in code:
-        new_code, n = re.subn(
-            r"np\.diff\(([^)]+)\)",
-            r"np.insert(np.diff(\1), 0, 0.0)",
-            code,
-        )
-        if n:
-            code = new_code
-            fix_count += n
-
-    return code, fix_count
-
-
 def _repair_code(
     code: str, required_indicators: list[str] | None = None, *, enable_indicator_binding: bool = True,
 ) -> str:
@@ -1164,6 +1129,8 @@ def _repair_code(
     except SyntaxError as e:
         _parse_ok = False
         msg = str(getattr(e, "msg", "") or "").lower()
+        if "expected an indented block" in msg:
+            code = _fill_empty_python_blocks_with_pass(code)
         if "unexpected indent" in msg or "unindent" in msg or "indentation" in msg:
             code = textwrap.dedent(code)
         code = _strip_docstrings(code)
@@ -1173,6 +1140,10 @@ def _repair_code(
     code = _fix_class_name(code)
     code = _rewrite_base_strategy_aliases(code)
     code = _repair_generate_signals_body_indentation(code)
+    code = _rewrite_generate_signals_param_source_aliases(code)
+    code = _normalize_generate_signals_mask_aliases(code)
+    code = _repair_invalid_warmup_zero_slices(code)
+    code = _rewrite_invalid_dict_indicator_subkeys(code)
 
     # _structurally_sound: True pour du code LLM propre (parse OK, classe présente,
     # generate_signals présent, patterns LLM problématiques absents).
@@ -1188,8 +1159,8 @@ def _repair_code(
 
     # 3b. Gated: faux accès indicators[...] désignant des alias ou des params.
     #     Ex. indicators["warmup"] → params.get("warmup", 50).
-    #     Inutile pour du code LLM propre (_structurally_sound).
-    if not _structurally_sound:
+    #     Même un code syntaxiquement propre peut contenir indicators["stoch"].
+    if not _structurally_sound or _INDICATOR_ACCESS_ALIAS_SCAN.search(code):
         code = _rewrite_invalid_indicator_accesses(code)
         for alias, correct in _SEMANTIC_INDICATOR_ALIAS_HINTS.items():
             code = re.sub(
@@ -1300,6 +1271,7 @@ def _repair_code(
     code = _inject_generate_signals_indicator_aliases(code)
     code = _rewrite_signals_loc_assignments(code)
     code = _rewrite_safe_dict_indicator_comparisons(code)
+    code = _rewrite_safe_dict_indicator_scalar_assignments(code)
 
     # 11. Bare indicator variable repair — gate par pre-scan rapide.
     # 164 re.sub calls évitées si le code ne contient pas de variables nues d'indicateurs dict.

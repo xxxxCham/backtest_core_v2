@@ -1,4 +1,5 @@
-"""Module-ID: agents.builder_ast_utils
+"""
+Module-ID: agents.builder_ast_utils
 
 Purpose: Utilitaires AST et parsing LLM extraits de strategy_builder.
 
@@ -15,7 +16,7 @@ import json
 import logging
 import re
 import textwrap
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from agents.builder_constants import (
     _AST_PARSE_RECOVERABLE_EXCEPTIONS,
@@ -71,7 +72,7 @@ def _const_value(node: ast.AST) -> Any:
     return None
 
 
-def _indicator_name_from_subscript(node: ast.AST) -> str | None:
+def _indicator_name_from_subscript(node: ast.AST) -> Optional[str]:
     """Retourne le nom d'indicateur pour indicators['name']."""
     if not isinstance(node, ast.Subscript):
         return None
@@ -83,7 +84,7 @@ def _indicator_name_from_subscript(node: ast.AST) -> str | None:
     return None
 
 
-def _indicator_name_from_get_call(node: ast.AST) -> str | None:
+def _indicator_name_from_get_call(node: ast.AST) -> Optional[str]:
     """Retourne le nom d'indicateur pour indicators.get('name', ...)."""
     if not isinstance(node, ast.Call):
         return None
@@ -97,47 +98,6 @@ def _indicator_name_from_get_call(node: ast.AST) -> str | None:
     if isinstance(key, str):
         return key
     return None
-
-
-def _is_np_nan_to_num_call(node: ast.AST) -> bool:
-    """Vérifie si le noeud est un appel np.nan_to_num(...)."""
-    return (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "np"
-        and node.func.attr == "nan_to_num"
-    )
-
-
-def _is_params_get_call(node: ast.AST) -> bool:
-    """Vérifie si le noeud est un appel params.get(...)."""
-    return (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "params"
-        and node.func.attr == "get"
-    )
-
-
-def _is_params_subscript(node: ast.AST) -> bool:
-    """Vérifie si le noeud est params['x']."""
-    return isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id == "params"
-
-
-def _is_scalar_cast_call(node: ast.AST) -> bool:
-    """Vérifie si le noeud est un cast scalaire (float/int/bool)."""
-    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {"float", "int", "bool"}
-
-
-def _is_numeric_nonbool_constant(node: ast.AST) -> bool:
-    """True si le noeud est une constante numérique non-bool."""
-    if not isinstance(node, ast.Constant):
-        return False
-    return isinstance(node.value, (int, float)) and not isinstance(node.value, bool)
-
-
 def _iter_generated_class_methods(tree: ast.AST):
     """Yield each method (FunctionDef/AsyncFunctionDef) in the generated class body."""
     for node in ast.walk(tree):
@@ -148,7 +108,7 @@ def _iter_generated_class_methods(tree: ast.AST):
             return
 
 
-def _iter_generate_signals_functions(tree: ast.AST) -> list[ast.FunctionDef]:
+def _iter_generate_signals_functions(tree: ast.AST) -> List[ast.FunctionDef]:
     """Extrait les méthodes generate_signals de BuilderGeneratedStrategy."""
     return [
         m
@@ -201,71 +161,8 @@ def _collect_indicator_names(tree: ast.AST) -> set[str]:
             if got:
                 names.add(got)
     return names
-
-
-def _collect_indicator_names_in_class(tree: ast.AST) -> set[str]:
-    """Collecte les indicateurs référencés dans toute la classe générée."""
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef) or node.name != GENERATED_CLASS_NAME:
-            continue
-        for sub in ast.walk(node):
-            sub_name = _indicator_name_from_subscript(sub)
-            if sub_name:
-                names.add(sub_name)
-            get_name = _indicator_name_from_get_call(sub)
-            if get_name:
-                names.add(get_name)
-        break
-    return names
-
-
-def _collect_bound_names(fn: ast.AST) -> set[str]:
-    """Collecte les noms localement définis dans une fonction/méthode."""
-    bound: set[str] = set()
-
-    args = getattr(getattr(fn, "args", None), "args", []) or []
-    bound.update(arg.arg for arg in args if getattr(arg, "arg", None))
-    kwonlyargs = getattr(getattr(fn, "args", None), "kwonlyargs", []) or []
-    bound.update(arg.arg for arg in kwonlyargs if getattr(arg, "arg", None))
-
-    _load_names, store_names = _collect_name_load_store_sets(fn)
-    bound.update(store_names)
-
-    for node in ast.walk(fn):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) or (
-            isinstance(node, ast.ExceptHandler) and isinstance(node.name, str)
-        ):
-            bound.add(node.name)
-        elif isinstance(node, ast.Import) or isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                bound.add(alias.asname or alias.name.split(".")[0])
-
-    return bound
-
-
-def _collect_module_level_bound_names(tree: ast.AST) -> set[str]:
-    """Collecte les noms disponibles au scope module pour éviter les faux NameError."""
-    bound: set[str] = set()
-
-    for node in getattr(tree, "body", []) or []:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            bound.add(node.name)
-        elif isinstance(node, ast.Import) or isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                bound.add(alias.asname or alias.name.split(".")[0])
-        elif isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    bound.add(target.id)
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            bound.add(node.target.id)
-
-    return bound
-
-
-def _normalize_required_indicator_names(required_indicators: list[str] | None) -> list[str]:
-    normalized: list[str] = []
+def _normalize_required_indicator_names(required_indicators: Optional[List[str]]) -> List[str]:
+    normalized: List[str] = []
     if not required_indicators:
         return normalized
     for item in required_indicators:
@@ -290,7 +187,7 @@ def _strip_leading_list_marker(line: str) -> str:
 
 def _sanitize_python_list_markers(code: str) -> str:
     """Supprime les marqueurs de liste LLM devant des lignes Python valides."""
-    fixed_lines: list[str] = []
+    fixed_lines: List[str] = []
     for line in str(code or "").splitlines():
         candidate = _strip_leading_list_marker(line)
         if candidate != line and (_PYTHONISH_LINE_RE.match(candidate.lstrip()) or candidate.lstrip().startswith("#")):
@@ -302,7 +199,7 @@ def _sanitize_python_list_markers(code: str) -> str:
 
 def _drop_obvious_non_python_lines(code: str) -> str:
     """Supprime les lignes manifestement non Python après extraction."""
-    kept_lines: list[str] = []
+    kept_lines: List[str] = []
     for line in str(code or "").splitlines():
         stripped = line.strip()
         if not stripped:
@@ -320,8 +217,8 @@ def _balance_brackets_outside_strings(code: str) -> str:
     """Rééquilibre prudemment les parenthèses/crochets/accolades hors chaînes."""
     open_to_close = {"(": ")", "[": "]", "{": "}"}
     closing_to_open = {")": "(", "]": "[", "}": "{"}
-    stack: list[str] = []
-    output: list[str] = []
+    stack: List[str] = []
+    output: List[str] = []
     in_single = False
     in_double = False
     escape = False
@@ -369,7 +266,7 @@ def _balance_brackets_outside_strings(code: str) -> str:
 def _strip_non_python_noise(text: str) -> str:
     """Retire le bruit fréquent des réponses LLM autour du code Python."""
     raw_lines = str(text or "").splitlines()
-    cleaned_lines: list[str] = []
+    cleaned_lines: List[str] = []
     seen_code = False
 
     for line in raw_lines:
@@ -410,65 +307,6 @@ def _strip_non_python_noise(text: str) -> str:
         if cleaned_lines:
             return "\n".join(cleaned_lines)
     return ""
-
-
-def _extract_json_from_response(text: str) -> dict[str, Any]:
-    """Extrait un bloc JSON depuis une réponse LLM (gère ```json ... ```, <think>, etc.)."""
-
-    def _parse_json_dict(payload: str) -> dict[str, Any]:
-        try:
-            data = json.loads(payload)
-        except json.JSONDecodeError:
-            return {}
-        return data if isinstance(data, dict) else {}
-
-    # Nettoyer les tags <think> des modèles de raisonnement (qwen3, deepseek-r1, gemma4, etc.)
-    # Garder le contenu brut en réserve pour salvage si la réponse hors-think est vide.
-    raw_text = text
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
-    text = text.strip()
-
-    if not text:
-        # Salvage : tenter d'extraire du JSON depuis l'intérieur des blocs <think>
-        think_match = re.search(r"<think>(.*?)(?:</think>|$)", raw_text, re.DOTALL)
-        if think_match:
-            think_body = think_match.group(1).strip()
-            brace = re.search(r"\{.*\}", think_body, re.DOTALL)
-            if brace:
-                parsed = _parse_json_dict(brace.group(0))
-                if parsed:
-                    logger.info("extract_json: JSON salvagé depuis un bloc <think>")
-                    return parsed
-        logger.warning("extract_json: réponse vide après nettoyage des tags <think>")
-        return {}
-
-    # Chercher bloc ```json ... ```
-    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-    if match:
-        parsed = _parse_json_dict(match.group(1).strip())
-        if parsed:
-            return parsed
-
-    # Essayer le texte brut
-    parsed = _parse_json_dict(text.strip())
-    if parsed:
-        return parsed
-
-    # Chercher premier { ... } englobant
-    brace_match = re.search(r"\{.*\}", text, re.DOTALL)
-    if brace_match:
-        parsed = _parse_json_dict(brace_match.group(0))
-        if parsed:
-            return parsed
-
-    logger.warning(
-        "extract_json: aucun JSON valide trouvé. Début réponse: %.200s",
-        text[:200],
-    )
-    return {}
-
-
 def _extract_python_from_response(text: str) -> str:
     """Extrait un bloc Python depuis une réponse LLM."""
     # Nettoyer les tags <think> des modèles de raisonnement
@@ -525,16 +363,7 @@ def _salvage_complex_ast_syntax(code: str) -> str:
             continue
 
     return candidate
-
-
-def _indicator_name_from_hint_expression(expr: str) -> str | None:
-    match = re.search(r"indicators\[['\"]([A-Za-z0-9_]+)['\"]\]", str(expr or ""))
-    if not match:
-        return None
-    return str(match.group(1)).strip().lower() or None
-
-
-def _extract_declared_required_indicators(code: str) -> list[str]:
+def _extract_declared_required_indicators(code: str) -> List[str]:
     try:
         tree = ast.parse(code)
     except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
@@ -546,7 +375,7 @@ def _extract_declared_required_indicators(code: str) -> list[str]:
         for stmt in node.body:
             if not isinstance(stmt, ast.Return) or not isinstance(stmt.value, ast.List):
                 continue
-            items: list[str] = []
+            items: List[str] = []
             for elt in stmt.value.elts:
                 if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
                     items.append(str(elt.value))
@@ -556,7 +385,7 @@ def _extract_declared_required_indicators(code: str) -> list[str]:
 
 def _extract_generate_signals_logic_block(code: str) -> str:
     """Extrait le bloc logique de generate_signals depuis une réponse LLM."""
-    candidates: list[str] = []
+    candidates: List[str] = []
     direct = str(code or "")
     salvaged = _salvage_complex_ast_syntax(direct)
     extracted = _extract_python_from_response(direct)
@@ -587,7 +416,7 @@ def _extract_generate_signals_logic_block(code: str) -> str:
             start = int(fn.body[0].lineno) - 1
             end = int(getattr(fn.body[-1], "end_lineno", fn.body[-1].lineno))
             block_lines = lines[start:end]
-            stripped: list[str] = []
+            stripped: List[str] = []
             for line in block_lines:
                 s = line.strip()
                 if not s:
@@ -643,7 +472,7 @@ def _extract_generate_signals_signature(code: str) -> str:
     return ""
 
 
-def _extract_default_params_signature(code: str) -> dict[str, Any]:
+def _extract_default_params_signature(code: str) -> Dict[str, Any]:
     """Retourne le dict literal de default_params depuis le code généré."""
     try:
         tree = ast.parse(code)
