@@ -45,7 +45,13 @@ except ImportError:
 from backtest.result_store import get_builder_sessions_dir, get_results_root_dir, get_saved_runs_dir
 from backtest.storage import ResultStorage
 from catalog.strategy_catalog import CATEGORY_ORDER, list_entries, upsert_from_saved_run
-from ui.helpers import coerce_metric_float, compute_period_days, format_pnl_with_daily
+from ui.helpers import (
+    coerce_metric_float,
+    coerce_metric_int,
+    compute_period_days,
+    first_present_non_empty,
+    format_pnl_with_daily,
+)
 from utils.run_tracker import RunTracker
 
 RESULTS_DIR = get_results_root_dir()
@@ -85,24 +91,6 @@ def _safe_read_csv(path: Path, dtype: dict[str, str] | None = None) -> pd.DataFr
         return pd.DataFrame()
 
 
-def _to_float(value: Any) -> float | None:
-    try:
-        if value is None or value == "":
-            return None
-        return float(value)
-    except Exception:
-        return None
-
-
-def _to_int(value: Any) -> int | None:
-    try:
-        if value is None or value == "":
-            return None
-        return int(float(value))
-    except Exception:
-        return None
-
-
 def _as_listish(value: Any) -> list[str]:
     if value is None:
         return []
@@ -119,7 +107,7 @@ def _as_listish(value: Any) -> list[str]:
         if text.startswith("[") and text.endswith("]"):
             try:
                 parsed = json.loads(text)
-            except Exception:
+            except (ValueError, json.JSONDecodeError):
                 parsed = None
             if isinstance(parsed, list):
                 return [str(item).strip() for item in parsed if str(item).strip()]
@@ -127,7 +115,7 @@ def _as_listish(value: Any) -> list[str]:
     try:
         if pd.isna(value):
             return []
-    except Exception:
+    except TypeError:
         pass
     return [str(value).strip()] if str(value).strip() else []
 
@@ -138,7 +126,7 @@ def _clean_text_token(value: Any) -> str:
     try:
         if pd.isna(value):
             return ""
-    except Exception:
+    except TypeError:
         pass
     return str(value).strip()
 
@@ -344,7 +332,7 @@ def _load_log_tail(filename: str, *, max_lines: int = 25) -> str:
         return ""
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except Exception:
+    except OSError:
         return ""
     return "\n".join(lines[-max_lines:])
 
@@ -353,7 +341,7 @@ def _safe_int(value: Any, default: int = 0) -> int:
     try:
         if value is None or (isinstance(value, float) and pd.isna(value)):
             return default
-    except Exception:
+    except (TypeError, AttributeError):
         pass
     try:
         return int(value)
@@ -1113,151 +1101,6 @@ def _render_candidate_report_section(
         st.json(selected_row)
 
 
-def _render_graduation_tab() -> None:
-    st.caption("Lecture du pipeline sandbox → graduation depuis `catalog/graduation_results`.")
-
-    control_col_a, control_col_b, control_col_c, control_col_d, control_col_e, control_col_f, control_col_g = st.columns(
-        [1, 1, 1, 1, 1.1, 1.2, 0.8],
-    )
-    sync_catalog = control_col_e.checkbox(
-        "Synchroniser le strategy catalog",
-        value=True,
-        key="graduation_sync_catalog",
-    )
-    include_legacy_artifact_roots = control_col_f.checkbox(
-        "Inclure roots legacy",
-        value=False,
-        key="graduation_include_legacy_roots",
-        help="N'ajoute les racines legacy codées en dur à l'import positif que si cette option est cochée.",
-    )
-    if control_col_g.button("Rafraîchir", key="graduation_refresh", use_container_width=True):
-        st.rerun()
-    if control_col_a.button("Scanner P1", key="graduation_run_p1", use_container_width=True):
-        from catalog.graduation import (
-            GraduationConfig,
-            save_graduation_report,
-            scan_sandbox,
-            sync_graduation_to_catalog,
-        )
-
-        with st.spinner("Scan P1 en cours..."):
-            config = GraduationConfig(sync_catalog=sync_catalog)
-            candidates = scan_sandbox(config)
-            synced = sync_graduation_to_catalog(candidates, config) if sync_catalog else []
-            save_graduation_report(
-                candidates,
-                config.output_dir,
-                phase="P1_repechage",
-                filename="graduation_p1.json",
-            )
-        st.session_state["graduation_status_msg"] = f"P1 terminé: {len(candidates)} candidat(s)" + (
-            f", {len(synced)} sync catalogue" if sync_catalog else ""
-        )
-        st.session_state["graduation_status_error"] = False
-        st.rerun()
-
-    if control_col_b.button("Lancer P1→P6", key="graduation_run_full", type="primary", use_container_width=True):
-        args = ["--full"]
-        if sync_catalog:
-            args.append("--sync-catalog")
-        ok, message = _start_background_graduation_job(
-            args=args,
-            log_filename=FULL_GRADUATION_LOG_FILENAME,
-            progress_filename=FULL_GRADUATION_PROGRESS_FILENAME,
-        )
-        st.session_state["graduation_status_msg"] = message
-        st.session_state["graduation_status_error"] = not ok
-        st.rerun()
-
-    if control_col_c.button(
-        "Importer positifs",
-        key="graduation_import_positive_artifacts",
-        use_container_width=True,
-    ):
-        from catalog.graduation import GraduationConfig, import_positive_artifacts_to_catalog
-
-        with st.spinner("Import des artefacts positifs en cours..."):
-            report = import_positive_artifacts_to_catalog(
-                GraduationConfig(
-                    sync_catalog=sync_catalog,
-                    include_legacy_artifact_roots=include_legacy_artifact_roots,
-                ),
-            )
-        stats = report.get("stats") or {}
-        st.session_state["graduation_status_msg"] = (
-            f"Import positifs terminé: {stats.get('catalog_entries_touched', 0)} entrée(s), "
-            f"{stats.get('builder_sessions_copied', 0)} session(s) copiée(s), "
-            f"{stats.get('duplicates_skipped', 0)} doublon(s) ignoré(s)"
-        )
-        st.session_state["graduation_status_error"] = False
-        st.rerun()
-
-    if control_col_d.button(
-        "Traiter positifs",
-        key="graduation_run_positive_imports",
-        type="secondary",
-        use_container_width=True,
-    ):
-        args = ["--positive-import-full"]
-        if sync_catalog:
-            args.append("--sync-catalog")
-        ok, message = _start_background_graduation_job(
-            args=args,
-            log_filename=POSITIVE_IMPORTS_LOG_FILENAME,
-            progress_filename=POSITIVE_IMPORTS_PROGRESS_FILENAME,
-        )
-        st.session_state["graduation_status_msg"] = message
-        st.session_state["graduation_status_error"] = not ok
-        st.rerun()
-
-    status_msg = st.session_state.get("graduation_status_msg")
-    if status_msg:
-        if st.session_state.get("graduation_status_error"):
-            st.error(status_msg)
-        else:
-            st.info(status_msg)
-
-    sandbox_payload, sandbox_df = _load_graduation_report()
-    positive_payload, positive_df = _load_positive_import_report()
-    full_progress = _load_progress_payload(FULL_GRADUATION_PROGRESS_FILENAME)
-    positive_progress = _load_progress_payload(POSITIVE_IMPORTS_PROGRESS_FILENAME)
-    if not sandbox_payload and not positive_payload and not full_progress and not positive_progress:
-        st.write(
-            "ℹ️ Aucun rapport de graduation trouvé. Exécutez `python -m catalog.graduation --full`, "
-            "`python -m catalog.graduation --import-positive-artifacts` ou "
-            "`python -m catalog.graduation --positive-import-full`.",
-        )
-        return
-
-    if full_progress:
-        _render_progress_section(
-            title="État du pipeline sandbox P1→P6",
-            payload=full_progress,
-            log_filename=FULL_GRADUATION_LOG_FILENAME,
-        )
-        st.markdown("---")
-
-    _render_candidate_report_section(
-        title="Pipeline Sandbox",
-        payload=sandbox_payload,
-        df=sandbox_df,
-        key_prefix="graduation_sandbox",
-    )
-    st.markdown("---")
-    _render_progress_section(
-        title="État du traitement des artefacts positifs",
-        payload=positive_progress,
-        log_filename=POSITIVE_IMPORTS_LOG_FILENAME,
-    )
-    st.markdown("---")
-    _render_candidate_report_section(
-        title="Artefacts Positifs",
-        payload=positive_payload,
-        df=positive_df,
-        key_prefix="graduation_positive",
-    )
-
-
 def _coerce_numeric(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     if df.empty:
         return df
@@ -1434,69 +1277,6 @@ def _load_builder_store_payload() -> tuple[pd.DataFrame, pd.DataFrame, dict[str,
     return builder_df, builder_iterations_df, builder_catalog_audit
 
 
-def _render_builder_sessions_tab(
-    builder_df: pd.DataFrame,
-    builder_iterations_df: pd.DataFrame,
-    builder_catalog_audit: dict[str, Any],
-) -> None:
-    try:
-        from ui.results_store_view import _render_builder_tab
-    except Exception as exc:
-        logger.warning("Failed to import builder tab renderer in results_hub: %s", exc)
-        if builder_df.empty:
-            st.info("Aucune session Builder detectee dans le store externe.")
-            return
-        display_cols = [
-            column
-            for column in [
-                "session_id",
-                "status",
-                "best_return_pct",
-                "positive_iterations",
-                "best_sharpe",
-                "total_iterations",
-                "strategy_versions",
-                "last_modified",
-                "objective_excerpt",
-            ]
-            if column in builder_df.columns
-        ]
-        st.dataframe(builder_df[display_cols], width="stretch", hide_index=True)
-        return
-
-    _render_builder_tab(builder_df, builder_iterations_df, RESULTS_DIR, builder_catalog_audit)
-
-
-def _render_builder_iterations_tab(builder_iterations_df: pd.DataFrame) -> None:
-    try:
-        from ui.results_store_view import _render_builder_iterations_tab as _render_results_store_builder_iterations_tab
-    except Exception as exc:
-        logger.warning("Failed to import builder iterations renderer in results_hub: %s", exc)
-        if builder_iterations_df.empty:
-            st.info("Aucune itération Builder détectée dans le store externe.")
-            return
-        display_cols = [
-            column
-            for column in [
-                "session_id",
-                "iteration",
-                "leaderboard_rank",
-                "return_pct",
-                "sharpe",
-                "profit_factor",
-                "trades",
-                "diagnostic_category",
-                "params_used_preview",
-                "objective_excerpt",
-            ]
-            if column in builder_iterations_df.columns
-        ]
-        st.dataframe(builder_iterations_df[display_cols], width="stretch", hide_index=True)
-        return
-
-    _render_results_store_builder_iterations_tab(builder_iterations_df, RESULTS_DIR)
-
-
 def _path_to_uri(path: Path) -> str:
     try:
         return path.resolve().as_uri()
@@ -1504,21 +1284,7 @@ def _path_to_uri(path: Path) -> str:
         return str(path)
 
 
-def _add_open_links_backtest(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty or "path" not in df.columns:
-        return df
-    df = df.copy()
-    df["open_folder"] = df["path"].apply(
-        lambda value: (
-            ""
-            if value is None or (isinstance(value, float) and pd.isna(value)) or value == ""
-            else _path_to_uri(RESULTS_DIR / str(value))
-        ),
-    )
-    return df
-
-
-def _add_open_links_unified(df: pd.DataFrame) -> pd.DataFrame:
+def _add_open_links_from_results_path(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "path" not in df.columns:
         return df
     df = df.copy()
@@ -1583,51 +1349,38 @@ def _metric_from_snapshot(snapshot: dict[str, Any], *keys: str) -> Any:
     return None
 
 
-def _meta_first_present(meta: dict[str, Any], *keys: str) -> Any:
-    if not isinstance(meta, dict):
-        return None
-    for key in keys:
-        if key not in meta:
-            continue
-        value = meta.get(key)
-        if value is None or value == "" or value == [] or value == {}:
-            continue
-        return value
-    return None
-
-
 def _extract_catalog_postfilter_fields(entry: dict[str, Any]) -> dict[str, Any]:
     metrics = entry.get("last_metrics_snapshot") or {}
     meta = entry.get("meta") or {}
     if not isinstance(meta, dict):
         meta = {}
 
-    benchmark_consensus = _meta_first_present(
+    benchmark_consensus = first_present_non_empty(
         meta,
         "benchmark_consensus",
         "positive_pipeline_benchmark_consensus",
     )
-    benchmark_results = _meta_first_present(
+    benchmark_results = first_present_non_empty(
         meta,
         "benchmark_results",
         "positive_pipeline_benchmark_results",
     )
-    configured_contexts = _meta_first_present(
+    configured_contexts = first_present_non_empty(
         meta,
         "configured_contexts",
         "positive_pipeline_configured_contexts",
     )
-    loaded_contexts = _meta_first_present(
+    loaded_contexts = first_present_non_empty(
         meta,
         "loaded_contexts",
         "positive_pipeline_loaded_contexts",
     )
-    missing_contexts = _meta_first_present(
+    missing_contexts = first_present_non_empty(
         meta,
         "missing_contexts",
         "positive_pipeline_missing_contexts",
     )
-    tested_timeframes = _meta_first_present(
+    tested_timeframes = first_present_non_empty(
         meta,
         "tested_timeframes",
         "positive_pipeline_tested_timeframes",
@@ -1652,7 +1405,7 @@ def _extract_catalog_postfilter_fields(entry: dict[str, Any]) -> dict[str, Any]:
     tested_tokens = sorted(tested_tokens)
 
     if not tested_tokens:
-        source_symbol = str(_meta_first_present(meta, "source_symbol", "positive_pipeline_source_symbol") or "").strip()
+        source_symbol = str(first_present_non_empty(meta, "source_symbol", "positive_pipeline_source_symbol") or "").strip()
         if source_symbol:
             tested_tokens = [source_symbol]
 
@@ -1674,31 +1427,36 @@ def _extract_catalog_postfilter_fields(entry: dict[str, Any]) -> dict[str, Any]:
         elif benchmarks_total > 0:
             contradiction_state = "failed"
 
-    passed_context_count = _to_int(
-        _meta_first_present(meta, "positive_pipeline_passed_count"),
+    passed_context_count = coerce_metric_int(
+        first_present_non_empty(meta, "positive_pipeline_passed_count"),
+        default=None,
     )
-    total_context_count = _to_int(
-        _meta_first_present(meta, "positive_pipeline_total_contexts"),
+    total_context_count = coerce_metric_int(
+        first_present_non_empty(meta, "positive_pipeline_total_contexts"),
+        default=None,
     )
     if passed_context_count is None:
-        passed_context_count = _to_int(_metric_from_snapshot(metrics, "multi_context_passed"))
+        passed_context_count = coerce_metric_int(_metric_from_snapshot(metrics, "multi_context_passed"), default=None)
     if total_context_count is None:
-        total_context_count = _to_int(_metric_from_snapshot(metrics, "multi_context_total"))
+        total_context_count = coerce_metric_int(_metric_from_snapshot(metrics, "multi_context_total"), default=None)
     context_pass_summary = (
         f"{passed_context_count}/{total_context_count}"
-        if total_context_count is not None and total_context_count > 0 and passed_context_count is not None
+        if passed_context_count is not None and total_context_count is not None and total_context_count > 0
         else ""
     )
 
     return {
-        "phase": str(_meta_first_present(meta, "phase", "positive_pipeline_phase") or "").strip(),
-        "decision": str(_meta_first_present(meta, "decision", "positive_pipeline_decision") or "").strip(),
-        "p2_verdict": str(_meta_first_present(meta, "p2_verdict", "positive_pipeline_p2_verdict") or "").strip(),
-        "p3_verdict": str(_meta_first_present(meta, "p3_verdict", "positive_pipeline_p3_verdict") or "").strip(),
-        "p4_verdict": str(_meta_first_present(meta, "p4_verdict", "positive_pipeline_p4_verdict") or "").strip(),
-        "p5_verdict": str(_meta_first_present(meta, "p5_verdict", "positive_pipeline_p5_verdict") or "").strip(),
-        "p6_verdict": str(_meta_first_present(meta, "p6_verdict", "positive_pipeline_p6_verdict") or "").strip(),
-        "coverage_pct": _to_float(_meta_first_present(meta, "coverage_pct", "positive_pipeline_coverage_pct")),
+        "phase": str(first_present_non_empty(meta, "phase", "positive_pipeline_phase") or "").strip(),
+        "decision": str(first_present_non_empty(meta, "decision", "positive_pipeline_decision") or "").strip(),
+        "p2_verdict": str(first_present_non_empty(meta, "p2_verdict", "positive_pipeline_p2_verdict") or "").strip(),
+        "p3_verdict": str(first_present_non_empty(meta, "p3_verdict", "positive_pipeline_p3_verdict") or "").strip(),
+        "p4_verdict": str(first_present_non_empty(meta, "p4_verdict", "positive_pipeline_p4_verdict") or "").strip(),
+        "p5_verdict": str(first_present_non_empty(meta, "p5_verdict", "positive_pipeline_p5_verdict") or "").strip(),
+        "p6_verdict": str(first_present_non_empty(meta, "p6_verdict", "positive_pipeline_p6_verdict") or "").strip(),
+        "coverage_pct": coerce_metric_float(
+            first_present_non_empty(meta, "coverage_pct", "positive_pipeline_coverage_pct"),
+            default=None,
+        ),
         "configured_context_count": len(configured_context_list),
         "loaded_context_count": len(loaded_context_list),
         "missing_context_count": len(missing_context_list),
@@ -2049,6 +1807,23 @@ def _pick_latest_from_catalogs(
     return candidates[0]
 
 
+def _render_metric_row(items: tuple[tuple[str, Any], ...]) -> None:
+    for column, (label, value) in zip(st.columns(len(items)), items):
+        with column:
+            st.metric(label, value)
+
+
+def _render_backtest_metric_row(metrics: Mapping[str, Any], period_days: Any) -> None:
+    _render_metric_row(
+        (
+            ("PnL", format_pnl_with_daily(metrics.get("total_pnl", 0), period_days)),
+            ("Return", f"{coerce_metric_float(metrics.get('total_return_pct', 0)):.1f}%"),
+            ("Sharpe", f"{coerce_metric_float(metrics.get('sharpe_ratio', 0)):.2f}"),
+            ("Max DD", f"{coerce_metric_float(metrics.get('max_drawdown_pct', 0)):.1f}%"),
+        ),
+    )
+
+
 def _render_latest_run(
     backtest_overview: pd.DataFrame,
     runs_overview: pd.DataFrame,
@@ -2066,18 +1841,7 @@ def _render_latest_run(
             meta.get("period_start"),
             meta.get("period_end"),
         )
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric(
-                "PnL",
-                format_pnl_with_daily(metrics.get("total_pnl", 0), period_days),
-            )
-        with col2:
-            st.metric("Return", f"{coerce_metric_float(metrics.get('total_return_pct', 0)):.1f}%")
-        with col3:
-            st.metric("Sharpe", f"{coerce_metric_float(metrics.get('sharpe_ratio', 0)):.2f}")
-        with col4:
-            st.metric("Max DD", f"{coerce_metric_float(metrics.get('max_drawdown_pct', 0)):.1f}%")
+        _render_backtest_metric_row(metrics, period_days)
 
         st.caption(
             f"Run: {meta.get('run_id', 'n/a')} | "
@@ -2094,23 +1858,12 @@ def _render_latest_run(
         return
 
     if latest["source"] == "backtest_results":
-        col1, col2, col3, col4 = st.columns(4)
         metrics = latest.get("metrics", {})
         period_days = compute_period_days(
             latest.get("period_start"),
             latest.get("period_end"),
         )
-        with col1:
-            st.metric(
-                "PnL",
-                format_pnl_with_daily(metrics.get("total_pnl", 0), period_days),
-            )
-        with col2:
-            st.metric("Return", f"{coerce_metric_float(metrics.get('total_return_pct', 0)):.1f}%")
-        with col3:
-            st.metric("Sharpe", f"{coerce_metric_float(metrics.get('sharpe_ratio', 0)):.2f}")
-        with col4:
-            st.metric("Max DD", f"{coerce_metric_float(metrics.get('max_drawdown_pct', 0)):.1f}%")
+        _render_backtest_metric_row(metrics, period_days)
         st.caption(
             f"{latest.get('kind', '')} | {latest.get('id', '')} | "
             f"{latest.get('strategy', '')} {latest.get('symbol', '')}/{latest.get('timeframe', '')} | "
@@ -2119,15 +1872,14 @@ def _render_latest_run(
     else:
         metrics = latest.get("metrics", {})
         if latest["source"] == "builder_sessions":
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Best return", f"{coerce_metric_float(metrics.get('best_return_pct', 0)):.1f}%")
-            with col2:
-                st.metric("Best sharpe", f"{coerce_metric_float(metrics.get('best_sharpe', 0)):.2f}")
-            with col3:
-                st.metric("Itérations", f"{int(coerce_metric_float(metrics.get('total_iterations', 0))):d}")
-            with col4:
-                st.metric("Statut", str(metrics.get("status", "") or "n/a"))
+            _render_metric_row(
+                (
+                    ("Best return", f"{coerce_metric_float(metrics.get('best_return_pct', 0)):.1f}%"),
+                    ("Best sharpe", f"{coerce_metric_float(metrics.get('best_sharpe', 0)):.2f}"),
+                    ("Itérations", f"{int(coerce_metric_float(metrics.get('total_iterations', 0))):d}"),
+                    ("Statut", str(metrics.get("status", "") or "n/a")),
+                ),
+            )
             st.caption(
                 f"Session Builder disque: {latest.get('id', '')} | "
                 f"{latest.get('timestamp', '')}",
@@ -2266,111 +2018,102 @@ def _build_sharpe_drawdown_chart(df: pd.DataFrame, chart_mode: str):
     )
 
 
+def _text_column_config(*specs: tuple[str, str, str]) -> dict[str, Any]:
+    return {
+        key: st.column_config.TextColumn(label, width=width)
+        for key, label, width in specs
+    }
+
+
+def _number_column_config(
+    format_specs: Mapping[str, tuple[tuple[str, str], ...]],
+) -> dict[str, Any]:
+    return {
+        key: st.column_config.NumberColumn(label, format=fmt)
+        for fmt, specs in format_specs.items()
+        for key, label in specs
+    }
+
+
+_RESULTS_HUB_TEXT_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("hub_source", "Source", "medium"), ("hub_type", "Type", "medium"),
+    ("hub_action_scope", "Action", "small"), ("type", "Type", "small"), ("id", "Id", "small"),
+    ("run_id", "Run", "small"), ("session_id", "Session", "medium"),
+    ("entry_id", "Entrée", "medium"), ("candidate_id", "Candidate", "medium"),
+    ("path", "Path", "medium"), ("storage_path", "Storage", "medium"),
+    ("timestamp", "Timestamp", "medium"), ("mode", "Mode", "small"), ("status", "Status", "small"),
+    ("strategy", "Strategy", "large"), ("symbol", "Symbol", "small"), ("timeframe", "TF", "small"),
+    ("source_ref", "Source", "medium"), ("source_run_id", "Run source", "small"),
+    ("period_start", "Début", "medium"), ("period_end", "Fin", "medium"),
+    ("artifact_type", "Artefact", "small"), ("category", "Catégorie", "small"),
+    ("catalog_category", "Catégorie cat.", "small"), ("catalog_status", "Statut cat.", "small"),
+    ("phase", "Phase", "small"), ("decision", "Décision", "small"),
+    ("benchmark_pass_summary", "Benchmarks", "small"), ("context_pass_summary", "Contextes", "small"),
+    ("required_benchmark_name", "Benchmark requis", "medium"), ("contradiction_state", "Consensus", "small"),
+    ("rejection_reason", "Rejet / diagnostic", "large"), ("params_used_preview", "Params", "large"),
+)
+
+
+_RESULTS_HUB_NUMBER_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
+    "$%.2f": (
+        ("total_pnl", "PnL ($)"), ("pnl_per_day", "PnL/jour ($)"),
+        ("pnl_per_day_covered", "PnL/jour (données)"), ("metrics_total_pnl", "PnL ($)"),
+        ("pnl", "PnL ($)"),
+    ),
+    "%.2f%%": (
+        ("total_return_pct", "Return (%)"), ("benchmark_return_pct", "Buy & Hold (%)"),
+        ("alpha_simple_pct", "Alpha simple (%)"), ("metrics_total_return_pct", "Return (%)"),
+        ("metrics_benchmark_return_pct", "Buy & Hold (%)"), ("metrics_alpha_simple_pct", "Alpha simple (%)"),
+        ("best_return_pct", "Best return (%)"), ("wfa_avg_test_return_pct", "WFA return test (%)"),
+        ("return_pct", "Return (%)"),
+    ),
+    "%.1f%%": (
+        ("max_drawdown_pct", "Max DD (%)"), ("win_rate_pct", "Win Rate (%)"),
+        ("data_coverage_pct", "Couverture données (%)"), ("catalog_coverage_pct", "Couverture validation (%)"),
+        ("metrics_max_drawdown_pct", "Max DD (%)"), ("best_max_drawdown_pct", "Best DD (%)"),
+        ("sweep_robustness_pct", "Robustesse sweep (%)"), ("coverage_pct", "Couverture ctx uniques (%)"),
+        ("benchmark_slot_coverage_pct", "Couverture packs (%)"),
+    ),
+    "%.2f": (
+        ("sharpe_ratio", "Sharpe"), ("profit_factor", "PF"), ("metrics_sharpe_ratio", "Sharpe"),
+        ("metrics_profit_factor", "PF"), ("best_sharpe", "Best Sharpe"),
+        ("best_profit_factor", "Best PF"), ("wfa_stability", "WFA stabilité"),
+        ("wfa_avg_test_sharpe", "WFA Sharpe test"), ("wfa_overfitting_ratio", "WFA overfit"),
+        ("sharpe", "Sharpe"),
+    ),
+    "%d": (
+        ("total_trades", "Trades"), ("n_bars", "Bars"), ("n_trades", "Trades"),
+        ("n_completed", "Complétés"), ("n_failed", "Échecs"), ("n_trials", "Trials"),
+        ("n_pruned", "Prunés"), ("total_combinations", "Combinaisons"), ("max_combos", "Max combos"),
+        ("n_workers", "Workers"), ("iteration", "Itération"), ("builder_iteration", "Iter builder"),
+        ("leaderboard_rank", "Rank"), ("total_iterations", "Itérations"), ("total_llm_tokens", "Tokens LLM"),
+        ("total_llm_calls", "Appels LLM"), ("metrics_total_trades", "Trades"), ("best_trades", "Best trades"),
+        ("trades", "Trades"), ("configured_context_count", "Ctx uniques cfg"),
+        ("loaded_context_count", "Ctx uniques chargés"), ("missing_context_count", "Ctx exclus/manquants"),
+    ),
+    "%.4f": (("best_value", "Meilleure val."),),
+    "%.1f": (("total_time_sec", "Durée (s)"),),
+}
+
+
 def _get_numeric_column_config() -> dict[str, Any]:
     """Configuration des colonnes pour un tableau dense et lisible dans st.dataframe."""
-    return {
+    config: dict[str, Any] = {
         "select": st.column_config.CheckboxColumn("Sel.", width="small"),
-        "hub_source": st.column_config.TextColumn("Source", width="medium"),
-        "hub_type": st.column_config.TextColumn("Type", width="medium"),
-        "hub_action_scope": st.column_config.TextColumn("Action", width="small"),
-        "type": st.column_config.TextColumn("Type", width="small"),
-        "id": st.column_config.TextColumn("Id", width="small"),
-        "run_id": st.column_config.TextColumn("Run", width="small"),
-        "session_id": st.column_config.TextColumn("Session", width="medium"),
-        "entry_id": st.column_config.TextColumn("Entrée", width="medium"),
-        "candidate_id": st.column_config.TextColumn("Candidate", width="medium"),
-        "path": st.column_config.TextColumn("Path", width="medium"),
-        "storage_path": st.column_config.TextColumn("Storage", width="medium"),
-        "timestamp": st.column_config.TextColumn("Timestamp", width="medium"),
-        "mode": st.column_config.TextColumn("Mode", width="small"),
-        "status": st.column_config.TextColumn("Status", width="small"),
-        "strategy": st.column_config.TextColumn("Strategy", width="large"),
         "strategy_name_link": st.column_config.LinkColumn(
             "Stratégie",
             width="large",
             display_text=r".*#(.*)$",
         ),
-        "symbol": st.column_config.TextColumn("Symbol", width="small"),
-        "timeframe": st.column_config.TextColumn("TF", width="small"),
-        "source_ref": st.column_config.TextColumn("Source", width="medium"),
-        "source_run_id": st.column_config.TextColumn("Run source", width="small"),
         "replayable": st.column_config.CheckboxColumn("Replay", width="small"),
-        "period_start": st.column_config.TextColumn("Début", width="medium"),
-        "period_end": st.column_config.TextColumn("Fin", width="medium"),
-        "artifact_type": st.column_config.TextColumn("Artefact", width="small"),
-        "category": st.column_config.TextColumn("Catégorie", width="small"),
-        "catalog_category": st.column_config.TextColumn("Catégorie cat.", width="small"),
-        "catalog_status": st.column_config.TextColumn("Statut cat.", width="small"),
-        "phase": st.column_config.TextColumn("Phase", width="small"),
-        "decision": st.column_config.TextColumn("Décision", width="small"),
-        "benchmark_pass_summary": st.column_config.TextColumn("Benchmarks", width="small"),
-        "context_pass_summary": st.column_config.TextColumn("Contextes", width="small"),
-        "required_benchmark_name": st.column_config.TextColumn("Benchmark requis", width="medium"),
-        "contradiction_state": st.column_config.TextColumn("Consensus", width="small"),
-        "rejection_reason": st.column_config.TextColumn("Rejet / diagnostic", width="large"),
         "open_folder": st.column_config.LinkColumn("Dossier", display_text="📂 Ouvrir"),
-        "total_pnl": st.column_config.NumberColumn("PnL ($)", format="$%.2f"),
-        "pnl_per_day": st.column_config.NumberColumn("PnL/jour ($)", format="$%.2f"),
-        "pnl_per_day_covered": st.column_config.NumberColumn("PnL/jour (données)", format="$%.2f"),
-        "total_return_pct": st.column_config.NumberColumn("Return (%)", format="%.2f%%"),
-        "benchmark_return_pct": st.column_config.NumberColumn("Buy & Hold (%)", format="%.2f%%"),
-        "alpha_simple_pct": st.column_config.NumberColumn("Alpha simple (%)", format="%.2f%%"),
-        "sharpe_ratio": st.column_config.NumberColumn("Sharpe", format="%.2f"),
-        "max_drawdown_pct": st.column_config.NumberColumn("Max DD (%)", format="%.1f%%"),
-        "win_rate_pct": st.column_config.NumberColumn("Win Rate (%)", format="%.1f%%"),
-        "data_coverage_pct": st.column_config.NumberColumn("Couverture données (%)", format="%.1f%%"),
-        "catalog_coverage_pct": st.column_config.NumberColumn("Couverture validation (%)", format="%.1f%%"),
-        "profit_factor": st.column_config.NumberColumn("PF", format="%.2f"),
-        "total_trades": st.column_config.NumberColumn("Trades", format="%d"),
-        "n_bars": st.column_config.NumberColumn("Bars", format="%d"),
-        "n_trades": st.column_config.NumberColumn("Trades", format="%d"),
-        "n_completed": st.column_config.NumberColumn("Complétés", format="%d"),
-        "n_failed": st.column_config.NumberColumn("Échecs", format="%d"),
-        "n_trials": st.column_config.NumberColumn("Trials", format="%d"),
-        "n_pruned": st.column_config.NumberColumn("Prunés", format="%d"),
-        "best_value": st.column_config.NumberColumn("Meilleure val.", format="%.4f"),
-        "total_time_sec": st.column_config.NumberColumn("Durée (s)", format="%.1f"),
-        "total_combinations": st.column_config.NumberColumn("Combinaisons", format="%d"),
-        "max_combos": st.column_config.NumberColumn("Max combos", format="%d"),
-        "n_workers": st.column_config.NumberColumn("Workers", format="%d"),
-        "iteration": st.column_config.NumberColumn("Itération", format="%d"),
-        "builder_iteration": st.column_config.NumberColumn("Iter builder", format="%d"),
-        "leaderboard_rank": st.column_config.NumberColumn("Rank", format="%d"),
-        "total_iterations": st.column_config.NumberColumn("Itérations", format="%d"),
-        "total_llm_tokens": st.column_config.NumberColumn("Tokens LLM", format="%d"),
-        "total_llm_calls": st.column_config.NumberColumn("Appels LLM", format="%d"),
-        "metrics_total_pnl": st.column_config.NumberColumn("PnL ($)", format="$%.2f"),
-        "metrics_total_return_pct": st.column_config.NumberColumn("Return (%)", format="%.2f%%"),
-        "metrics_benchmark_return_pct": st.column_config.NumberColumn("Buy & Hold (%)", format="%.2f%%"),
-        "metrics_alpha_simple_pct": st.column_config.NumberColumn("Alpha simple (%)", format="%.2f%%"),
-        "metrics_sharpe_ratio": st.column_config.NumberColumn("Sharpe", format="%.2f"),
-        "metrics_max_drawdown_pct": st.column_config.NumberColumn("Max DD (%)", format="%.1f%%"),
-        "metrics_profit_factor": st.column_config.NumberColumn("PF", format="%.2f"),
-        "metrics_total_trades": st.column_config.NumberColumn("Trades", format="%d"),
-        "best_return_pct": st.column_config.NumberColumn("Best return (%)", format="%.2f%%"),
-        "best_sharpe": st.column_config.NumberColumn("Best Sharpe", format="%.2f"),
-        "best_trades": st.column_config.NumberColumn("Best trades", format="%d"),
-        "best_profit_factor": st.column_config.NumberColumn("Best PF", format="%.2f"),
-        "best_max_drawdown_pct": st.column_config.NumberColumn("Best DD (%)", format="%.1f%%"),
-        "sweep_robustness_pct": st.column_config.NumberColumn("Robustesse sweep (%)", format="%.1f%%"),
-        "wfa_stability": st.column_config.NumberColumn("WFA stabilité", format="%.2f"),
-        "wfa_avg_test_return_pct": st.column_config.NumberColumn("WFA return test (%)", format="%.2f%%"),
-        "wfa_avg_test_sharpe": st.column_config.NumberColumn("WFA Sharpe test", format="%.2f"),
-        "wfa_overfitting_ratio": st.column_config.NumberColumn("WFA overfit", format="%.2f"),
-        "return_pct": st.column_config.NumberColumn("Return (%)", format="%.2f%%"),
-        "sharpe": st.column_config.NumberColumn("Sharpe", format="%.2f"),
-        "pnl": st.column_config.NumberColumn("PnL ($)", format="$%.2f"),
-        "trades": st.column_config.NumberColumn("Trades", format="%d"),
-        "params_used_preview": st.column_config.TextColumn("Params", width="large"),
-        "coverage_pct": st.column_config.NumberColumn("Couverture ctx uniques (%)", format="%.1f%%"),
-        "benchmark_slot_coverage_pct": st.column_config.NumberColumn("Couverture packs (%)", format="%.1f%%"),
-        "configured_context_count": st.column_config.NumberColumn("Ctx uniques cfg", format="%d"),
-        "loaded_context_count": st.column_config.NumberColumn("Ctx uniques chargés", format="%d"),
-        "missing_context_count": st.column_config.NumberColumn("Ctx exclus/manquants", format="%d"),
         "_row_key": None,
         "_row_origin": None,
         "_origin_index": None,
     }
+    config.update(_text_column_config(*_RESULTS_HUB_TEXT_COLUMNS))
+    config.update(_number_column_config(_RESULTS_HUB_NUMBER_COLUMNS))
+    return config
 
 
 _RESULTS_HUB_TABLE_COLUMNS = [
@@ -2931,96 +2674,127 @@ def _render_graduation_controls_and_progress(
     positive_df: pd.DataFrame,
 ) -> None:
     st.markdown("### Filtrage intelligent des résultats")
-    control_col_a, control_col_b, control_col_c, control_col_d, control_col_e, control_col_f, control_col_g = st.columns(
-        [1, 1, 1, 1, 1.1, 1.2, 0.8],
-    )
-    sync_catalog = control_col_e.checkbox(
+
+    main_col_a, main_col_b, main_col_c = st.columns([1.2, 2, 2])
+    if main_col_a.button(
+        "🔄 Tout rafraîchir",
+        key="graduation_refresh",
+        type="primary",
+        use_container_width=True,
+        help="Recharge l'état affiché (rapports, progress, logs). Ne relance aucun pipeline.",
+    ):
+        st.rerun()
+    sync_catalog = main_col_b.checkbox(
         "Synchroniser le strategy catalog",
         value=True,
         key="graduation_sync_catalog",
     )
-    include_legacy_artifact_roots = control_col_f.checkbox(
+    include_legacy_artifact_roots = main_col_c.checkbox(
         "Inclure roots legacy",
         value=False,
         key="graduation_include_legacy_roots",
         help="N'ajoute les racines legacy codées en dur à l'import positif que si cette option est cochée.",
     )
-    if control_col_g.button("Rafraîchir", key="graduation_refresh", use_container_width=True):
-        st.rerun()
-    if control_col_a.button("Scanner P1", key="graduation_run_p1", use_container_width=True):
-        from catalog.graduation import (
-            GraduationConfig,
-            save_graduation_report,
-            scan_sandbox,
-            sync_graduation_to_catalog,
-        )
 
-        with st.spinner("Scan sandbox en cours..."):
-            config = GraduationConfig(sync_catalog=sync_catalog)
-            candidates = scan_sandbox(config)
-            synced = sync_graduation_to_catalog(candidates, config) if sync_catalog else []
-            save_graduation_report(
-                candidates,
-                config,
-                synced_entries=synced,
-                filename="graduation_p1.json",
+    with st.expander("⚙️ Actions avancées", expanded=False):
+        st.caption(
+            "Ordre logique : (1) Inventaire ou (3) Ingestion en amont, "
+            "puis (2) Graduation sandbox ou (4) Graduation des artefacts ingérés.",
+        )
+        adv_col_a, adv_col_b, adv_col_c, adv_col_d = st.columns(4)
+        if adv_col_a.button(
+            "Inventaire sandbox",
+            key="graduation_run_p1",
+            use_container_width=True,
+            help="Liste les candidats du sandbox sans backtest (diagnostic rapide).",
+        ):
+            from catalog.graduation import (
+                GraduationConfig,
+                save_graduation_report,
+                scan_sandbox,
+                sync_graduation_to_catalog,
             )
-        st.session_state["graduation_status_msg"] = f"P1 terminé: {len(candidates)} candidat(s)" + (
-            f", {len(synced)} sync catalogue" if sync_catalog else ""
-        )
-        st.session_state["graduation_status_error"] = False
-        st.rerun()
-    if control_col_b.button("Lancer P1→P6", key="graduation_run_full", type="primary", use_container_width=True):
-        args = ["--full"]
-        if sync_catalog:
-            args.append("--sync-catalog")
-        ok, message = _start_background_graduation_job(
-            args=args,
-            log_filename=FULL_GRADUATION_LOG_FILENAME,
-            progress_filename=FULL_GRADUATION_PROGRESS_FILENAME,
-        )
-        st.session_state["graduation_status_msg"] = message
-        st.session_state["graduation_status_error"] = not ok
-        st.rerun()
-    if control_col_c.button(
-        "Importer positifs",
-        key="graduation_import_positive_artifacts",
-        use_container_width=True,
-    ):
-        from catalog.graduation import GraduationConfig, import_positive_artifacts_to_catalog
 
-        with st.spinner("Import des artefacts positifs..."):
-            report = import_positive_artifacts_to_catalog(
-                GraduationConfig(
-                    sync_catalog=sync_catalog,
-                    include_legacy_artifact_roots=include_legacy_artifact_roots,
-                ),
+            with st.spinner("Inventaire sandbox en cours..."):
+                config = GraduationConfig(sync_catalog=sync_catalog)
+                candidates = scan_sandbox(config)
+                synced = sync_graduation_to_catalog(candidates, config) if sync_catalog else []
+                save_graduation_report(
+                    candidates,
+                    config.output_dir,
+                    phase="P1_repechage",
+                    filename="graduation_p1.json",
+                    stats={"catalog_synced": len(synced)},
+                )
+            st.session_state["graduation_status_msg"] = f"P1 terminé: {len(candidates)} candidat(s)" + (
+                f", {len(synced)} sync catalogue" if sync_catalog else ""
             )
-        stats = report.get("stats", {}) if isinstance(report, dict) else {}
-        st.session_state["graduation_status_msg"] = (
-            f"Import positifs terminé: {stats.get('catalog_entries_touched', 0)} entrée(s), "
-            f"{stats.get('catalog_new_entries', 0)} nouvelles."
-        )
-        st.session_state["graduation_status_error"] = False
-        st.rerun()
-    if control_col_d.button(
-        "Positifs P1→P6",
-        key="graduation_run_positive_imports",
-        use_container_width=True,
-    ):
-        args = ["--positive-import-full"]
-        if include_legacy_artifact_roots:
-            args.append("--include-legacy-artifact-roots")
-        if sync_catalog:
-            args.append("--sync-catalog")
-        ok, message = _start_background_graduation_job(
-            args=args,
-            log_filename=POSITIVE_IMPORTS_LOG_FILENAME,
-            progress_filename=POSITIVE_IMPORTS_PROGRESS_FILENAME,
-        )
-        st.session_state["graduation_status_msg"] = message
-        st.session_state["graduation_status_error"] = not ok
-        st.rerun()
+            st.session_state["graduation_status_error"] = False
+            st.rerun()
+        if adv_col_b.button(
+            "Grader le sandbox (P1→P6)",
+            key="graduation_run_full",
+            use_container_width=True,
+            help="Pipeline complet de graduation sur le sandbox local. Job en arrière-plan.",
+        ):
+            args = ["--full"]
+            if sync_catalog:
+                args.append("--sync-catalog")
+            ok, message = _start_background_graduation_job(
+                args=args,
+                log_filename=FULL_GRADUATION_LOG_FILENAME,
+                progress_filename=FULL_GRADUATION_PROGRESS_FILENAME,
+            )
+            st.session_state["graduation_status_msg"] = message
+            st.session_state["graduation_status_error"] = not ok
+            st.rerun()
+        if adv_col_c.button(
+            "Ingérer artefacts positifs",
+            key="graduation_import_positive_artifacts",
+            use_container_width=True,
+            help=(
+                "Importe dans le strategy catalog les runs/sweeps à return > 0 (legacy + courant) "
+                "avec le tag `positive_import`. Aucun filtrage ; pré-requis du bouton suivant."
+            ),
+        ):
+            from catalog.graduation import GraduationConfig, import_positive_artifacts_to_catalog
+
+            with st.spinner("Ingestion des artefacts positifs..."):
+                report = import_positive_artifacts_to_catalog(
+                    GraduationConfig(
+                        sync_catalog=sync_catalog,
+                        include_legacy_artifact_roots=include_legacy_artifact_roots,
+                    ),
+                )
+            stats = report.get("stats", {}) if isinstance(report, dict) else {}
+            st.session_state["graduation_status_msg"] = (
+                f"Import positifs terminé: {stats.get('catalog_entries_touched', 0)} entrée(s), "
+                f"{stats.get('catalog_new_entries', 0)} nouvelles."
+            )
+            st.session_state["graduation_status_error"] = False
+            st.rerun()
+        if adv_col_d.button(
+            "Grader artefacts ingérés (P2→P5)",
+            key="graduation_run_positive_imports",
+            use_container_width=True,
+            help=(
+                "Re-grade (P2→P5) les entrées catalog taggées `positive_import`. "
+                "Nécessite d'avoir cliqué « Ingérer artefacts positifs » au préalable."
+            ),
+        ):
+            args = ["--positive-import-full"]
+            if include_legacy_artifact_roots:
+                args.append("--include-legacy-artifact-roots")
+            if sync_catalog:
+                args.append("--sync-catalog")
+            ok, message = _start_background_graduation_job(
+                args=args,
+                log_filename=POSITIVE_IMPORTS_LOG_FILENAME,
+                progress_filename=POSITIVE_IMPORTS_PROGRESS_FILENAME,
+            )
+            st.session_state["graduation_status_msg"] = message
+            st.session_state["graduation_status_error"] = not ok
+            st.rerun()
 
     status_msg = st.session_state.get("graduation_status_msg")
     if status_msg:
@@ -3062,8 +2836,8 @@ def render_results_hub(*, embedded: bool = False) -> None:
 
     backtest_overview, unified_overview, runs_overview = _load_catalogs(refresh=refresh)
     builder_sessions_df, builder_iterations_df, builder_catalog_audit = _load_builder_store_payload()
-    backtest_overview = _add_open_links_backtest(backtest_overview)
-    unified_overview = _add_open_links_unified(unified_overview)
+    backtest_overview = _add_open_links_from_results_path(backtest_overview)
+    unified_overview = _add_open_links_from_results_path(unified_overview)
     runs_overview = _add_open_links_runs(runs_overview)
     backtest_overview = _add_pnl_per_day(backtest_overview)
     strategy_catalog_df = _load_strategy_catalog_df()
