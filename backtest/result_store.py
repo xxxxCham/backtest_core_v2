@@ -5,7 +5,6 @@ Lightweight v2 result store used by CLI shadow/v2 persistence mode.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
@@ -19,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 import pandas as pd
 
+from .store_metadata import dump_json_payload
 from .store_v3 import BacktestStoreV3
 
 ARTIFACTS_DIR_ENV_VAR = "BACKTEST_ARTIFACTS_DIR"
@@ -182,38 +182,6 @@ def _coerce_created_at(value: Any) -> datetime:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
-
-
-def _as_jsonable(value: Any) -> Any:
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, pd.Timestamp):
-        return value.isoformat()
-    if isinstance(value, pd.Series):
-        return {str(k): _as_jsonable(v) for k, v in value.to_dict().items()}
-    if isinstance(value, pd.DataFrame):
-        return value.to_dict(orient="records")
-    if isinstance(value, dict):
-        return {str(k): _as_jsonable(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple, set)):
-        return [_as_jsonable(v) for v in value]
-    if hasattr(value, "item"):
-        try:
-            return value.item()
-        except Exception as exc:
-            logger.debug("item() conversion failed for %r: %s", type(value).__name__, exc)
-    return str(value)
-
-
-def _json_dump(path: Path, payload: Any) -> None:
-    path.write_text(
-        json.dumps(_as_jsonable(payload), indent=2, ensure_ascii=False, default=str),
-        encoding="utf-8",
-    )
 
 
 @dataclass
@@ -415,10 +383,10 @@ class ResultStore:
         config_snapshot: dict[str, Any],
         diagnostics: Any = None,
     ) -> None:
-        _json_dump(run_dir / "metadata.json", metadata)
-        _json_dump(run_dir / "metrics.json", metrics)
-        _json_dump(run_dir / "config_snapshot.json", config_snapshot)
-        _json_dump(
+        dump_json_payload(run_dir / "metadata.json", metadata)
+        dump_json_payload(run_dir / "metrics.json", metrics)
+        dump_json_payload(run_dir / "config_snapshot.json", config_snapshot)
+        dump_json_payload(
             run_dir / "versions.json",
             {
                 "schema_version": "2.0",
@@ -427,7 +395,7 @@ class ResultStore:
             },
         )
         if diagnostics is not None:
-            _json_dump(run_dir / "diagnostics.json", diagnostics)
+            dump_json_payload(run_dir / "diagnostics.json", diagnostics)
 
     def _record_from_payload(
         self,

@@ -70,8 +70,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "keep_alive_minutes": 20,
         "unload_after_run": True,
         "auto_start_ollama": True,
-        "multi_llm_enabled": False,
-        "multi_llm_profile": "",
         "flow_analysis_enabled": False,
         "flow_analysis_ablation": {},
     },
@@ -302,9 +300,6 @@ def build_resume_ui_state(config: dict[str, Any]) -> dict[str, Any]:
         "builder_keep_alive_minutes": int(builder.get("keep_alive_minutes") or 20),
         "builder_unload_after_run": bool(builder.get("unload_after_run", True)),
         "builder_auto_start_ollama": bool(builder.get("auto_start_ollama", True)),
-        "builder_multi_llm_enabled": bool(builder.get("multi_llm_enabled", False)),
-        "builder_multi_llm_profile": str(builder.get("multi_llm_profile") or ""),
-        "builder_multi_llm_role_overrides": dict(builder.get("multi_llm_role_overrides") or {}),
         "builder_flow_analysis_enabled": bool(builder.get("flow_analysis_enabled", False)),
         "builder_flow_analysis_ablation": dict(builder.get("flow_analysis_ablation") or {}),
     }

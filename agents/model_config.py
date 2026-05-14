@@ -137,20 +137,191 @@ def _normalize_model_name(name: str) -> str:
     return normalize_model_name(name)
 
 
+def _strip_cloud_runtime_suffix(model_name: str) -> str:
+    normalized = str(model_name or "").strip()
+    lowered = normalized.lower()
+    for suffix in ("-cloud", ":cloud"):
+        if lowered.endswith(suffix):
+            return normalized[: -len(suffix)]
+    return normalized
+
+
 def is_cloud_only_model(model_name: str) -> bool:
     """Retourne True si le modèle est défini comme cloud-only dans le registre."""
-    resolved_name = _normalize_model_name(str(model_name or "").strip())
+    raw_name = str(model_name or "").strip()
+    resolved_name = _normalize_model_name(_strip_cloud_runtime_suffix(raw_name))
     if not resolved_name:
         return False
-    info = KNOWN_MODELS.get(resolved_name) or KNOWN_MODELS.get(str(model_name or "").strip())
+    info = KNOWN_MODELS.get(resolved_name) or KNOWN_MODELS.get(raw_name)
     return bool(info and info.cloud_only)
 
 
-def list_cloud_only_model_names() -> list[str]:
-    """Retourne la liste canonique des modèles Ollama Cloud supportés par le projet."""
+def list_cloud_only_model_names(*, include_subscription: bool = True) -> list[str]:
+    """Retourne la liste canonique des modèles Ollama Cloud supportés par le projet.
+
+    Args:
+        include_subscription: Si False, exclut les modèles cloud nécessitant un plan
+            Pro/Max payant (`requires_subscription=True`). Défaut True pour rétrocompat.
+
+    """
     return sorted(
-        {info.name for info in KNOWN_MODELS.values() if bool(getattr(info, "cloud_only", False))},
+        {
+            info.name
+            for info in KNOWN_MODELS.values()
+            if bool(getattr(info, "cloud_only", False))
+            and (include_subscription or not bool(getattr(info, "requires_subscription", False)))
+        },
     )
+
+
+@dataclass(frozen=True)
+class BackendCapabilities:
+    """Contrat canonique des capacités par backend modèle."""
+
+    backend: str
+    detectable: bool = False
+    installable: bool = False
+    selectable: bool = False
+    runnable: bool = False
+
+    def to_dict(self) -> dict[str, bool | str]:
+        return {
+            "backend": self.backend,
+            "detectable": self.detectable,
+            "installable": self.installable,
+            "selectable": self.selectable,
+            "runnable": self.runnable,
+        }
+
+
+_BACKEND_CAPABILITIES: dict[str, BackendCapabilities] = {
+    "ollama": BackendCapabilities(
+        backend="ollama",
+        detectable=True,
+        installable=True,
+        selectable=True,
+        runnable=True,
+    ),
+    "openai": BackendCapabilities(
+        backend="openai",
+        detectable=False,
+        installable=False,
+        selectable=True,
+        runnable=True,
+    ),
+    "huggingface": BackendCapabilities(
+        backend="huggingface",
+        detectable=True,
+        installable=False,
+        selectable=False,
+        runnable=False,
+    ),
+    "diffusion": BackendCapabilities(
+        backend="diffusion",
+        detectable=True,
+        installable=False,
+        selectable=False,
+        runnable=False,
+    ),
+}
+
+_MODEL_SELECTOR_FALLBACK_ORDER: tuple[str, ...] = (
+    # Local — préférés
+    "gemma4:31b",
+    "gemma4:26b",
+    "qwen3.6:35b",
+    "qwen3.5:35b",
+    "qwen3-vl:32b",
+    "lfm2:24b",
+    "devstral-small-2:24b",
+    "ministral-3:14b",
+    "rnj-1:8b-instruct-fp16",
+    "qwen3-coder:30b",
+    "deepseek-r1:70b",
+    "deepseek-r1:32b",
+    "qwq:32b",
+    "qwen2.5:32b",
+    "mistral:22b",
+    "deepseek-r1-distill:14b",
+    "deepseek-r1:8b",
+    "mistral:7b-instruct",
+    "granite4.1:30b-q6_K",
+    "nemotron-3-nano:30b-a3b-q4_K_M",
+    "nemotron-3-super:120b-a12b-q4_K_M",
+    "nemotron-3-nano:30b",
+    # Cloud Free uniquement (probe ollama.com 2026-05-09)
+    "qwen3-coder:480b",
+    "qwen3-coder-next",
+    "qwen3-next:80b",
+    "qwen3-vl:235b",
+    "devstral-2:123b",
+    "glm-4.7",
+    "glm-4.6",
+    "minimax-m2.5",
+    "minimax-m2.1",
+    "gpt-oss:120b",
+    "gpt-oss:20b",
+    "cogito-2.1:671b",
+)
+
+_MODEL_RECOMMENDATIONS_BY_CONTEXT: dict[str, tuple[str, ...]] = {
+    "analysis": ("gemma4:26b", "qwen3-vl:32b", "ministral-3:14b", "qwen3.6:35b", "nemotron-3-nano:30b-a3b-q4_K_M"),
+    "strategy": ("gemma4:26b", "gemma4:31b", "rnj-1:8b-instruct-fp16", "qwen3.6:35b", "granite4.1:30b-q6_K", "nemotron-3-nano:30b-a3b-q4_K_M"),
+    "criticism": ("gemma4:31b", "qwen3.6:35b", "deepseek-r1:32b", "granite4.1:30b-q6_K", "nemotron-3-super:120b-a12b-q4_K_M"),
+    "fast": ("gemma4:26b", "lfm2:24b", "mistral:7b-instruct"),
+}
+
+_MODEL_OPTIMAL_CONFIG_BY_ROLE: dict[str, tuple[str, ...]] = {
+    "analyst": ("gemma4:26b", "qwen3-vl:32b", "nemotron-3-nano:30b-a3b-q4_K_M"),
+    "strategist": ("gemma4:26b", "gemma4:31b", "granite4.1:30b-q6_K", "nemotron-3-nano:30b-a3b-q4_K_M"),
+    "critic": ("gemma4:31b", "qwen3.6:35b", "granite4.1:30b-q6_K", "nemotron-3-super:120b-a12b-q4_K_M"),
+    "validator": ("gemma4:31b", "deepseek-r1:32b", "nemotron-3-super:120b-a12b-q4_K_M"),
+}
+
+_MODEL_OPTIMAL_FALLBACK_BY_ROLE: dict[str, tuple[str, ...]] = {
+    "analyst": ("lfm2:24b", "gemma4:26b"),
+    "strategist": ("qwen3-coder:30b", "devstral-small-2:24b"),
+    "critic": ("gemma4:26b", "mistral:22b"),
+    "validator": ("gemma4:26b", "qwq:32b"),
+}
+
+
+def get_backend_capabilities(backend: str | None) -> BackendCapabilities:
+    normalized = str(backend or "").strip().lower()
+    if not normalized:
+        return BackendCapabilities(backend="unknown")
+    return _BACKEND_CAPABILITIES.get(normalized, BackendCapabilities(backend=normalized))
+
+
+def backend_is_detectable(backend: str | None) -> bool:
+    return get_backend_capabilities(backend).detectable
+
+
+def backend_is_installable(backend: str | None) -> bool:
+    return get_backend_capabilities(backend).installable
+
+
+def backend_is_selectable(backend: str | None) -> bool:
+    return get_backend_capabilities(backend).selectable
+
+
+def backend_is_runnable(backend: str | None) -> bool:
+    return get_backend_capabilities(backend).runnable
+
+
+def get_model_selector_fallback_order() -> list[str]:
+    return list(_MODEL_SELECTOR_FALLBACK_ORDER)
+
+
+def get_model_recommendations(context: str | None) -> list[str]:
+    normalized = str(context or "").strip().lower()
+    return list(_MODEL_RECOMMENDATIONS_BY_CONTEXT.get(normalized, ()))
+
+
+def get_model_optimal_candidates(role: str | None, *, fallback: bool = False) -> list[str]:
+    normalized = str(role or "").strip().lower()
+    source = _MODEL_OPTIMAL_FALLBACK_BY_ROLE if fallback else _MODEL_OPTIMAL_CONFIG_BY_ROLE
+    return list(source.get(normalized, ()))
 
 
 class ModelCategory(Enum):
@@ -172,6 +343,7 @@ class ModelInfo:
     avg_response_time_s: float = 30.0  # Temps de réponse moyen estimé
     params_billions: float = 0.0  # Nombre de paramètres en milliards (0 = inconnu)
     cloud_only: bool = False  # True = hébergé sur Ollama Cloud, nécessite des crédits
+    requires_subscription: bool = False  # True = Ollama Cloud Pro/Max requis (HTTP 403 sur Free)
 
     @property
     def requires_manual_approval(self) -> bool:
@@ -197,6 +369,15 @@ KNOWN_MODELS: dict[str, ModelInfo] = {
         recommended_for=["analyst", "strategist"],
         avg_response_time_s=15.0,
         params_billions=8.0,
+    ),
+    "rnj-1:8b-instruct-fp16": ModelInfo(
+        name="rnj-1:8b-instruct-fp16",
+        category=ModelCategory.MEDIUM,
+        description="Rnj-1 8B Instruct FP16 - code, STEM et tool use, telechargeable via Ollama",
+        recommended_for=["strategist", "critic"],
+        avg_response_time_s=35.0,
+        params_billions=8.31,
+        cloud_only=False,
     ),
     "mistral:7b-instruct": ModelInfo(
         name="mistral:7b-instruct",
@@ -238,6 +419,15 @@ KNOWN_MODELS: dict[str, ModelInfo] = {
         recommended_for=["strategist", "critic", "validator"],
         avg_response_time_s=60.0,
         params_billions=14.0,
+    ),
+    "ministral-3:14b": ModelInfo(
+        name="ministral-3:14b",
+        category=ModelCategory.MEDIUM,
+        description="Ministral 3 14B - edge multimodal, tools et JSON, telechargeable via Ollama",
+        recommended_for=["analyst", "strategist", "critic"],
+        avg_response_time_s=45.0,
+        params_billions=13.9,
+        cloud_only=False,
     ),
     "mistral:22b": ModelInfo(
         name="mistral:22b",
@@ -543,6 +733,36 @@ KNOWN_MODELS: dict[str, ModelInfo] = {
         params_billions=671.0,
         cloud_only=False,
     ),
+    # IBM Granite 4.1
+    "granite4.1:30b-q6_K": ModelInfo(
+        name="granite4.1:30b-q6_K",
+        category=ModelCategory.HEAVY,
+        description="IBM Granite 4.1 30B Q6_K - Code + raisonnement + tools, 128K ctx, tient dans 24 GB VRAM (quantization maximale locale)",
+        recommended_for=["strategist", "critic"],
+        avg_response_time_s=90.0,
+        params_billions=30.0,
+        cloud_only=False,
+    ),
+    # NVIDIA Nemotron-3 Nano (local)
+    "nemotron-3-nano:30b-a3b-q4_K_M": ModelInfo(
+        name="nemotron-3-nano:30b-a3b-q4_K_M",
+        category=ModelCategory.HEAVY,
+        description="NVIDIA Nemotron-3 Nano 30B MoE (3B actifs) Q4_K_M - Tools + thinking, contexte 1M, 24 GB VRAM",
+        recommended_for=["strategist", "analyst"],
+        avg_response_time_s=45.0,
+        params_billions=30.0,
+        cloud_only=False,
+    ),
+    # NVIDIA Nemotron-3 Super (local, offloading CPU+GPU requis)
+    "nemotron-3-super:120b-a12b-q4_K_M": ModelInfo(
+        name="nemotron-3-super:120b-a12b-q4_K_M",
+        category=ModelCategory.HEAVY,
+        description="NVIDIA Nemotron-3 Super 120B MoE (12B actifs) Q4_K_M - Tools + thinking, 256K ctx, 87 Go (offloading CPU requis, >50B: approbation manuelle)",
+        recommended_for=["critic", "validator"],
+        avg_response_time_s=180.0,
+        params_billions=120.0,
+        cloud_only=False,
+    ),
     # ── Modèles CLOUD-ONLY (hébergés sur Ollama Cloud, non téléchargeables) ───
     # Ces modèles nécessitent des crédits Ollama Cloud pour fonctionner.
     # Ils ne peuvent pas tourner localement, quelle que soit la configuration GPU.
@@ -550,20 +770,42 @@ KNOWN_MODELS: dict[str, ModelInfo] = {
     "deepseek-v3.2": ModelInfo(
         name="deepseek-v3.2",
         category=ModelCategory.HEAVY,
-        description="DeepSeek V3.2 671B - Thinking + non-thinking hybride, dernier flagship DeepSeek ☁️ Cloud",
+        description="DeepSeek V3.2 671B - Thinking + non-thinking hybride, dernier flagship DeepSeek ☁️ Cloud Pro",
         recommended_for=["strategist", "critic", "validator"],
         avg_response_time_s=60.0,
         params_billions=671.0,
         cloud_only=True,
+        requires_subscription=True,
     ),
     "deepseek-v3.1": ModelInfo(
         name="deepseek-v3.1",
         category=ModelCategory.HEAVY,
-        description="DeepSeek V3.1 671B - Mode thinking et non-thinking hybride ☁️ Cloud",
+        description="DeepSeek V3.1 671B - Mode thinking et non-thinking hybride ☁️ Cloud Pro",
         recommended_for=["critic", "validator"],
         avg_response_time_s=60.0,
         params_billions=671.0,
         cloud_only=True,
+        requires_subscription=True,
+    ),
+    "deepseek-v4-pro": ModelInfo(
+        name="deepseek-v4-pro",
+        category=ModelCategory.HEAVY,
+        description="DeepSeek V4 Pro 1.6T MoE (49B actifs) - raisonnement frontier, contexte 1M ☁️ Cloud Pro",
+        recommended_for=["critic", "validator"],
+        avg_response_time_s=95.0,
+        params_billions=1600.0,
+        cloud_only=True,
+        requires_subscription=True,
+    ),
+    "deepseek-v4-flash": ModelInfo(
+        name="deepseek-v4-flash",
+        category=ModelCategory.HEAVY,
+        description="DeepSeek V4 Flash 284B MoE (13B actifs) - raisonnement efficace, contexte 1M ☁️ Cloud Pro",
+        recommended_for=["strategist", "critic", "validator"],
+        avg_response_time_s=55.0,
+        params_billions=284.0,
+        cloud_only=True,
+        requires_subscription=True,
     ),
     # GLM family (Z.ai / Zhipu)
     "glm-4.7": ModelInfo(
@@ -587,39 +829,51 @@ KNOWN_MODELS: dict[str, ModelInfo] = {
     "glm-5.1": ModelInfo(
         name="glm-5.1",
         category=ModelCategory.HEAVY,
-        description="GLM-5.1 - Raisonnement avancé, coding et long contexte (Z.ai) ☁️ Cloud",
+        description="GLM-5.1 - Raisonnement avancé, coding et long contexte (Z.ai) ☁️ Cloud Pro",
         recommended_for=["strategist", "critic", "validator"],
         avg_response_time_s=50.0,
         params_billions=0.0,
         cloud_only=True,
+        requires_subscription=True,
     ),
     "glm-5": ModelInfo(
         name="glm-5",
         category=ModelCategory.HEAVY,
-        description="GLM-5 744B MoE (40B actifs) - Raisonnement long + systèmes complexes (Z.ai) ☁️ Cloud",
+        description="GLM-5 744B MoE (40B actifs) - Raisonnement long + systèmes complexes (Z.ai) ☁️ Cloud Pro",
         recommended_for=["critic", "validator"],
         avg_response_time_s=50.0,
         params_billions=744.0,
         cloud_only=True,
+        requires_subscription=True,
     ),
     # Qwen cloud (tailles non téléchargeables)
     "qwen3-coder:480b": ModelInfo(
         name="qwen3-coder:480b",
         category=ModelCategory.HEAVY,
-        description="Qwen3 Coder 480B - Meilleur modèle code agentique Alibaba ☁️ Cloud",
+        description="Qwen3 Coder 480B - Meilleur modèle code agentique Alibaba ☁️ Cloud Free",
         recommended_for=["strategist", "critic"],
         avg_response_time_s=90.0,
         params_billions=480.0,
         cloud_only=True,
     ),
+    "qwen3-coder-next": ModelInfo(
+        name="qwen3-coder-next",
+        category=ModelCategory.HEAVY,
+        description="Qwen3 Coder Next - Itération récente du coder agentique Alibaba (tools) ☁️ Cloud Free",
+        recommended_for=["strategist", "critic"],
+        avg_response_time_s=85.0,
+        params_billions=0.0,
+        cloud_only=True,
+    ),
     "qwen3.5:122b": ModelInfo(
         name="qwen3.5:122b",
         category=ModelCategory.HEAVY,
-        description="Qwen3.5 122B - Vision + tools + thinking haut de gamme ☁️ Cloud",
+        description="Qwen3.5 122B - Vision + tools + thinking ☁️ Cloud (slug retiré côté Ollama)",
         recommended_for=["analyst", "critic", "validator"],
         avg_response_time_s=70.0,
         params_billions=122.0,
         cloud_only=True,
+        requires_subscription=True,
     ),
     "qwen3-next:80b": ModelInfo(
         name="qwen3-next:80b",
@@ -643,46 +897,69 @@ KNOWN_MODELS: dict[str, ModelInfo] = {
     "kimi-k2": ModelInfo(
         name="kimi-k2",
         category=ModelCategory.HEAVY,
-        description="Kimi K2 MoE - Excellent agent code, benchmarks SOTA open-source (Moonshot) ☁️ Cloud",
+        description="Kimi K2 MoE - Excellent agent code, benchmarks SOTA open-source (Moonshot) ☁️ Cloud Pro (alias kimi-k2:1t)",
         recommended_for=["strategist", "critic"],
         avg_response_time_s=55.0,
         params_billions=0.0,
         cloud_only=True,
+        requires_subscription=True,
     ),
     "kimi-k2-thinking": ModelInfo(
         name="kimi-k2-thinking",
         category=ModelCategory.HEAVY,
-        description="Kimi K2 Thinking - Meilleur raisonnement open-source Moonshot ☁️ Cloud",
+        description="Kimi K2 Thinking - Meilleur raisonnement open-source Moonshot ☁️ Cloud Pro",
         recommended_for=["critic", "validator"],
         avg_response_time_s=90.0,
         params_billions=0.0,
         cloud_only=True,
+        requires_subscription=True,
     ),
     "kimi-k2.5": ModelInfo(
         name="kimi-k2.5",
         category=ModelCategory.HEAVY,
-        description="Kimi K2.5 - Multimodal agentique (vision + thinking + instant) ☁️ Cloud",
+        description="Kimi K2.5 - Multimodal agentique (vision + thinking + instant) ☁️ Cloud Pro",
         recommended_for=["analyst", "strategist"],
         avg_response_time_s=50.0,
         params_billions=0.0,
         cloud_only=True,
+        requires_subscription=True,
+    ),
+    "kimi-k2.6": ModelInfo(
+        name="kimi-k2.6",
+        category=ModelCategory.HEAVY,
+        description="Kimi K2.6 - Multimodal agentique long-horizon pour code et workflows autonomes ☁️ Cloud Pro",
+        recommended_for=["analyst", "strategist", "critic"],
+        avg_response_time_s=55.0,
+        params_billions=0.0,
+        cloud_only=True,
+        requires_subscription=True,
     ),
     # MiniMax
     "minimax-m2.7": ModelInfo(
         name="minimax-m2.7",
         category=ModelCategory.HEAVY,
-        description="MiniMax M2.7 - Code + workflows agentiques + productivité (dernier MiniMax) ☁️ Cloud",
+        description="MiniMax M2.7 - Code + workflows agentiques + productivité (dernier MiniMax) ☁️ Cloud Pro",
         recommended_for=["strategist", "critic"],
         avg_response_time_s=50.0,
         params_billions=0.0,
         cloud_only=True,
+        requires_subscription=True,
     ),
     "minimax-m2.5": ModelInfo(
         name="minimax-m2.5",
         category=ModelCategory.HEAVY,
-        description="MiniMax M2.5 - Productivité et code SOTA ☁️ Cloud",
+        description="MiniMax M2.5 - Productivité et code SOTA ☁️ Cloud Free",
         recommended_for=["strategist", "critic"],
         avg_response_time_s=45.0,
+        params_billions=0.0,
+        cloud_only=True,
+    ),
+    "minimax-m2.1": ModelInfo(
+        name="minimax-m2.1",
+        category=ModelCategory.HEAVY,
+        description="MiniMax M2.1 - Workflows agentiques + tools ☁️ Cloud Free",
+        recommended_for=["strategist", "critic"],
+        avg_response_time_s=40.0,
         params_billions=0.0,
         cloud_only=True,
     ),
@@ -690,17 +967,18 @@ KNOWN_MODELS: dict[str, ModelInfo] = {
     "nemotron-3-super:120b": ModelInfo(
         name="nemotron-3-super:120b",
         category=ModelCategory.HEAVY,
-        description="NVIDIA Nemotron-3 Super 120B MoE (12B actifs) - Multi-agent, tools + thinking ☁️ Cloud",
+        description="NVIDIA Nemotron-3 Super 120B MoE (12B actifs) ☁️ Cloud (slug retiré, voir nemotron-3-super:120b-a12b-q4_K_M local)",
         recommended_for=["critic", "validator"],
         avg_response_time_s=60.0,
         params_billions=120.0,
         cloud_only=True,
+        requires_subscription=True,
     ),
     # Mistral cloud
     "devstral-2:123b": ModelInfo(
         name="devstral-2:123b",
         category=ModelCategory.HEAVY,
-        description="Devstral-2 123B - Meilleur agent code open-source toutes tailles (Mistral) ☁️ Cloud",
+        description="Devstral-2 123B - Meilleur agent code open-source toutes tailles (Mistral) ☁️ Cloud Free",
         recommended_for=["strategist", "critic"],
         avg_response_time_s=75.0,
         params_billions=123.0,
@@ -709,11 +987,12 @@ KNOWN_MODELS: dict[str, ModelInfo] = {
     "mistral-large-3": ModelInfo(
         name="mistral-large-3",
         category=ModelCategory.HEAVY,
-        description="Mistral Large 3 - Vision + tools, flagship enterprise Mistral ☁️ Cloud",
+        description="Mistral Large 3 - Vision + tools, flagship enterprise Mistral ☁️ Cloud Pro (alias mistral-large-3:675b)",
         recommended_for=["critic", "validator"],
         avg_response_time_s=65.0,
         params_billions=0.0,
         cloud_only=True,
+        requires_subscription=True,
     ),
     # GPT-OSS (OpenAI open weights)
     "gpt-oss:120b": ModelInfo(
@@ -817,9 +1096,11 @@ class RoleModelConfig:
                 "cogito:8b",
                 "qwen3.5:9b",
                 "mistral:7b-instruct",
+                "rnj-1:8b-instruct-fp16",
                 # Medium
                 "gemma4:26b",
                 "deepseek-moe-16b-local",
+                "ministral-3:14b",
                 "glm-4.7-flash-23b-local",
                 "lfm2:24b",
                 # Heavy
@@ -842,10 +1123,12 @@ class RoleModelConfig:
                 "deepseek-r1:8b",
                 "qwen3:8b",
                 "cogito:8b",
+                "rnj-1:8b-instruct-fp16",
                 # Medium
                 "gemma4:26b",
                 "phi4:14b",
                 "qwen3:14b",
+                "ministral-3:14b",
                 "cogito:14b",
                 "deepseek-r1-distill:14b",
                 "mistral:22b",
@@ -861,15 +1144,17 @@ class RoleModelConfig:
                 "qwen3-coder:30b",
                 "qwen3.6:35b",
                 "qwen3.5:35b",
-                # Cloud-only (☁️ crédits Ollama requis)
-                "deepseek-v3.2",
+                # Cloud Free (☁️ Ollama Cloud, plan Free)
                 "glm-4.7",
                 "glm-4.6",
                 "qwen3-coder:480b",
-                "kimi-k2",
-                "kimi-k2.5",
-                "minimax-m2.7",
+                "qwen3-coder-next",
+                "qwen3-next:80b",
+                "minimax-m2.5",
+                "minimax-m2.1",
                 "devstral-2:123b",
+                "gpt-oss:120b",
+                "gpt-oss:20b",
             ],
             allow_heavy_after_iteration=3,
         ),
@@ -885,6 +1170,7 @@ class RoleModelConfig:
                 "qwen3:14b",
                 "cogito:14b",
                 "deepseek-r1-distill:14b",
+                "ministral-3:14b",
                 "mistral:22b",
                 "glm-4.7-flash-23b-local",
                 "devstral:24b",
@@ -902,17 +1188,17 @@ class RoleModelConfig:
                 "deepseek-coder-33b-local",
                 "qwen3.6:35b",
                 "qwen3.5:35b",
-                # Cloud-only (☁️ crédits Ollama requis)
-                "deepseek-v3.2",
+                # Cloud Free (☁️ Ollama Cloud, plan Free)
                 "glm-4.7",
                 "glm-4.6",
-                "glm-5.1",
-                "glm-5",
-                "minimax-m2.7",
                 "minimax-m2.5",
-                "nemotron-3-super:120b",
+                "minimax-m2.1",
+                "qwen3-vl:235b",
+                "qwen3-coder:480b",
+                "qwen3-next:80b",
                 "devstral-2:123b",
-                "mistral-large-3",
+                "gpt-oss:120b",
+                "cogito-2.1:671b",
             ],
             allow_heavy_after_iteration=2,
         ),
@@ -941,16 +1227,13 @@ class RoleModelConfig:
                 "nemotron:70b",
                 "llama3.3:70b-instruct-q4_K_M",
                 "llama3.3-70b-2gpu",
-                # Cloud-only (☁️ crédits Ollama requis)
-                "deepseek-v3.2",
-                "deepseek-v3.1",
-                "glm-5.1",
-                "glm-5",
+                # Cloud Free (☁️ Ollama Cloud, plan Free)
                 "qwen3-vl:235b",
-                "kimi-k2-thinking",
-                "nemotron-3-super:120b",
+                "qwen3-next:80b",
+                "qwen3-coder:480b",
                 "gpt-oss:120b",
                 "cogito-2.1:671b",
+                "devstral-2:123b",
                 # deepseek-r1:671b et deepseek-v3:671b sont téléchargeables (non cloud), retirés ici
             ],
             allow_heavy_after_iteration=3,
@@ -1126,8 +1409,14 @@ class RoleModelConfig:
         return config
 
 
-def list_available_models() -> list[ModelInfo]:
-    """Liste tous les modèles installés ou présents dans models.json."""
+def list_available_models(*, include_subscription: bool = True) -> list[ModelInfo]:
+    """Liste tous les modèles installés ou présents dans models.json.
+
+    Args:
+        include_subscription: Si False, exclut les modèles cloud nécessitant un plan
+            Pro/Max payant (`requires_subscription=True`). Défaut True pour rétrocompat.
+
+    """
     result_by_name: dict[str, ModelInfo] = {}
 
     for entry in get_all_ollama_models():
@@ -1171,14 +1460,27 @@ def list_available_models() -> list[ModelInfo]:
                 recommended_for=["analyst", "strategist"],
             )
 
-    for model_name in list_cloud_only_model_names():
+    for model_name in list_cloud_only_model_names(include_subscription=include_subscription):
         info = KNOWN_MODELS.get(model_name)
         if info is not None:
             result_by_name.setdefault(model_name, info)
 
+    if not include_subscription:
+        result_by_name = {
+            name: info
+            for name, info in result_by_name.items()
+            if not bool(getattr(info, "requires_subscription", False))
+        }
+
     if not result_by_name:
         # Fallback: retourner les modèles connus (utile pour l'UI quand Ollama est lent)
-        return list(KNOWN_MODELS.values())
+        candidates = list(KNOWN_MODELS.values())
+        if not include_subscription:
+            candidates = [
+                info for info in candidates
+                if not bool(getattr(info, "requires_subscription", False))
+            ]
+        return candidates
 
     return sorted(result_by_name.values(), key=lambda info: info.name)
 
@@ -1208,13 +1510,22 @@ def set_global_model_config(config: RoleModelConfig) -> None:
 
 
 __all__ = [
+    "BackendCapabilities",
     "KNOWN_MODELS",
     "MAX_AUTO_SELECT_PARAMS_B",
     "ModelCategory",
     "ModelInfo",
     "RoleModelAssignment",
     "RoleModelConfig",
+    "backend_is_detectable",
+    "backend_is_installable",
+    "backend_is_runnable",
+    "backend_is_selectable",
+    "get_backend_capabilities",
     "get_global_model_config",
+    "get_model_optimal_candidates",
+    "get_model_recommendations",
+    "get_model_selector_fallback_order",
     "get_models_by_category",
     "is_cloud_only_model",
     "list_available_models",

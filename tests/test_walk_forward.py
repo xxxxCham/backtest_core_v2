@@ -18,8 +18,10 @@ import pandas as pd
 import pytest
 
 from backtest.walk_forward import (
+    FoldResult,
     WalkForwardConfig,
     WalkForwardSummary,
+    _aggregate,
     check_wfa_feasibility,
     run_walk_forward,
 )
@@ -266,6 +268,9 @@ class TestSerialization:
             "n_valid_folds",
             "avg_train_sharpe",
             "avg_test_sharpe",
+            "classic_overfitting_ratio",
+            "robust_overfitting_score",
+            "positive_test_folds_pct",
             "avg_overfitting_ratio",
             "degradation_pct",
             "test_stability_std",
@@ -284,6 +289,9 @@ class TestSerialization:
             "test_sharpe",
             "overfitting_ratio",
             "classic_ratio",
+            "classic_overfitting_ratio",
+            "robust_overfitting_score",
+            "positive_test_folds_pct",
             "degradation_pct",
             "test_stability_std",
             "n_valid_folds",
@@ -297,6 +305,59 @@ class TestSerialization:
             assert "train_range" in fd
             assert "test_range" in fd
             assert "overfitting_ratio" in fd
+
+
+class TestSemanticWfaMetrics:
+    def test_classic_ratio_and_robust_score_are_distinct_when_test_sharpe_varies(self) -> None:
+        cfg = WalkForwardConfig(n_folds=2)
+        folds = [
+            FoldResult(
+                fold_id=0,
+                train_start=0,
+                train_end=100,
+                test_start=100,
+                test_end=150,
+                train_metrics={"sharpe_ratio": 2.0},
+                test_metrics={"sharpe_ratio": 1.0, "total_return_pct": 4.0},
+            ),
+            FoldResult(
+                fold_id=1,
+                train_start=0,
+                train_end=100,
+                test_start=150,
+                test_end=200,
+                train_metrics={"sharpe_ratio": 2.0},
+                test_metrics={"sharpe_ratio": 2.0, "total_return_pct": -1.0},
+            ),
+        ]
+
+        summary = _aggregate(folds, cfg)
+
+        assert summary.classic_overfitting_ratio == pytest.approx(2.0 / 1.5)
+        assert summary.robust_overfitting_score == pytest.approx(
+            summary.classic_overfitting_ratio + 2 * summary.test_stability_std,
+        )
+        assert summary.robust_overfitting_score != pytest.approx(summary.classic_overfitting_ratio)
+        assert summary.avg_overfitting_ratio == pytest.approx(summary.robust_overfitting_score)
+        assert summary.positive_test_folds_pct == pytest.approx(50.0)
+
+    def test_confidence_score_is_bounded_between_zero_and_one(self) -> None:
+        cfg = WalkForwardConfig(n_folds=1)
+        folds = [
+            FoldResult(
+                fold_id=0,
+                train_start=0,
+                train_end=100,
+                test_start=100,
+                test_end=150,
+                train_metrics={"sharpe_ratio": -10.0},
+                test_metrics={"sharpe_ratio": 1.0, "total_return_pct": 3.0},
+            ),
+        ]
+
+        summary = _aggregate(folds, cfg)
+
+        assert 0.0 <= summary.confidence_score <= 1.0
 
 
 # ---------------------------------------------------------------------------

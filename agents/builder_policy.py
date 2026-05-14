@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from agents.builder_constants import (
+    LATE_UPGRADE_REMAINING_ITERS,
     MAX_POSITIVE_FALLBACK_COUNT,
     MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP,
 )
@@ -240,6 +241,29 @@ def evaluate_decision_policies(
         )
         result.restrictions.append(
             PolicyRestriction("accept_override", "helper"),
+        )
+
+    # ── Late-iteration upgrade ─────────────────────────────────────────
+    # If the LLM keeps emitting continue/stop near the end of the budget but
+    # the current iteration is actually a valid accept candidate, upgrade
+    # to accept rather than walk away with status=max_iterations/failed.
+    remaining = max(0, max_iterations - iteration_num)
+    if (
+        result.decision in {"continue", "stop"}
+        and result.accept_allowed
+        and remaining <= LATE_UPGRADE_REMAINING_ITERS
+        and not bool(getattr(iteration, "is_fallback", False))
+    ):
+        prior_decision = result.decision
+        result.decision = "accept"
+        result.analysis = (
+            f"{result.analysis}\n"
+            f"[Policy] late-iteration upgrade {prior_decision} → accept "
+            f"(remaining={remaining}, accept_reason={result.accept_reason})."
+        )
+        result.feedback.accept_overridden = True
+        result.restrictions.append(
+            PolicyRestriction("late_iteration_upgrade", "helper"),
         )
 
     # ── Code-quality gate ──────────────────────────────────────────────

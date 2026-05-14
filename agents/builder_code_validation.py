@@ -29,6 +29,18 @@ from agents.builder_ast_utils import (
 )
 from agents.builder_constants import GENERATED_CLASS_NAME
 from indicators.registry import list_indicators
+from indicators.schema import (
+    DICT_INDICATOR_NAMES as SCHEMA_DICT_INDICATOR_NAMES,
+    DICT_INDICATOR_OUTPUT_KEYS,
+    INDICATOR_ACCESS_ALIASES,
+    canonical_indicator_name,
+    classify_indicator_token,
+    get_builder_access_example,
+    get_output_key_alias,
+    is_dict_indicator,
+    parse_derived_feature,
+    parse_parameterized_indicator_instance,
+)
 
 ERR_CLASS = "CLASS001"
 
@@ -100,6 +112,15 @@ _DICT_INDICATOR_ALLOWED_KEYS: dict[str, set[str]] = {
 }
 
 
+_DICT_INDICATOR_HINT_KEYS: dict[str, str] = {
+    "adx": "adx",
+    "amplitude_hunter": "score",
+    "directional_bias": "net_bias",
+    "markov_switching": "regime",
+    "supertrend": "supertrend",
+}
+
+
 _INDICATOR_ALIAS_HINTS = {
     "bollinger_upper": "indicators['bollinger']['upper']",
     "bollinger_middle": "indicators['bollinger']['middle']",
@@ -115,6 +136,10 @@ _INDICATOR_ALIAS_HINTS = {
     "bb_lower": "indicators['bollinger']['lower']",
     "bb_mid": "indicators['bollinger']['middle']",
     "bb_std": "indicators['bollinger']['upper']",
+    "stoch": "indicators['stochastic']",
+    "stochastic_k": "indicators['stochastic']['stoch_k']",
+    "stochastic_d": "indicators['stochastic']['stoch_d']",
+    "stochastic_rsi": "indicators['stoch_rsi']",
     "macd_line": "indicators['macd']['macd']",
     "macd_signal": "indicators['macd']['signal']",
     "macd_histogram": "indicators['macd']['histogram']",
@@ -148,6 +173,8 @@ _INDICATOR_ALIAS_HINTS = {
     "vortex_oscillator": "indicators['vortex']['oscillator']",
     "vi_plus": "indicators['vortex']['vi_plus']",
     "vi_minus": "indicators['vortex']['vi_minus']",
+    "vortex_plus": "indicators['vortex']['vi_plus']",
+    "vortex_minus": "indicators['vortex']['vi_minus']",
     "aroon_up": "indicators['aroon']['aroon_up']",
     "aroon_down": "indicators['aroon']['aroon_down']",
     "aroon_upper": "indicators['aroon']['aroon_up']",
@@ -162,8 +189,15 @@ _INDICATOR_ALIAS_HINTS = {
     "adx_value": "indicators['adx']['adx']",
     "plus_di": "indicators['adx']['plus_di']",
     "minus_di": "indicators['adx']['minus_di']",
+    "adx_plus": "indicators['adx']['plus_di']",
+    "adx_minus": "indicators['adx']['minus_di']",
+    "adx_dplus": "indicators['adx']['plus_di']",
+    "adx_dminus": "indicators['adx']['minus_di']",
+    "adx_d_plus": "indicators['adx']['plus_di']",
+    "adx_d_minus": "indicators['adx']['minus_di']",
     "supertrend_value": "indicators['supertrend']['supertrend']",
     "supertrend_direction": "indicators['supertrend']['direction']",
+    "super_trend": "indicators['supertrend']",
     "stoch_k": "indicators['stochastic']['stoch_k']",
     "stoch_d": "indicators['stochastic']['stoch_d']",
     "stoch_rsi_k": "indicators['stoch_rsi']['k']",
@@ -173,7 +207,38 @@ _INDICATOR_ALIAS_HINTS = {
     "srsi_d": "indicators['stoch_rsi']['d']",
     "fibonacci_levels_high": "indicators['fibonacci_levels']['high']",
     "fibonacci_levels_low": "indicators['fibonacci_levels']['low']",
+    "amplitude_hunter_score": "indicators['amplitude_hunter']['score']",
+    "coppock": "indicators['coppock_curve']",
+    "dmi": "indicators['adx']",
+    "donchian_breakout": "indicators['donchian']",
+    "donchian_channels": "indicators['donchian']",
+    "average_true_range": "indicators['atr']",
+    "market_volatility": "indicators['vix']",
+    "volatility": "indicators['vix']",
+    "vix_proxy": "indicators['vix']",
+    "mci": "indicators['choppiness_index']",
+    "chop": "indicators['choppiness_index']",
+    "choppiness": "indicators['choppiness_index']",
+    "market_choppiness_index": "indicators['choppiness_index']",
+    "sar": "indicators['psar']['sar']",
+    "fvg_bullish": "indicators['fvg']['fvg_bullish']",
+    "fvg_bearish": "indicators['fvg']['fvg_bearish']",
+    "markov": "indicators['markov_switching']",
+    "markov_regime": "indicators['markov_switching']['regime']",
 }
+
+# Active source of truth: indicators.schema. The literal tables above are kept
+# only as a fallback for older imports/tests that introspect this module.
+_DICT_INDICATOR_NAMES = set(SCHEMA_DICT_INDICATOR_NAMES)
+_DICT_INDICATOR_ALLOWED_KEYS = {name: set(keys) for name, keys in DICT_INDICATOR_OUTPUT_KEYS.items()}
+_DICT_INDICATOR_HINT_KEYS = {
+    "adx": "adx",
+    "amplitude_hunter": "score",
+    "directional_bias": "net_bias",
+    "markov_switching": "regime",
+    "supertrend": "supertrend",
+}
+_INDICATOR_ALIAS_HINTS = dict(INDICATOR_ACCESS_ALIASES)
 
 
 _BUILDER_ALLOWED_WRITE_DF_COLUMNS = {
@@ -263,11 +328,13 @@ def _dict_indicator_key_is_valid(indicator_name: str, key: Any) -> bool:
     """Valide une sous-clé pour un indicateur dict connu."""
     if not isinstance(key, str):
         return True
-    name = indicator_name.lower()
+    name = canonical_indicator_name(indicator_name) or indicator_name.lower()
     allowed = _DICT_INDICATOR_ALLOWED_KEYS.get(name)
     if not allowed:
         return True
     if key in allowed:
+        return True
+    if get_output_key_alias(name, key):
         return True
     if name in {"fibonacci", "fibonacci_levels"} and key.startswith("level_"):
         return True
@@ -276,7 +343,7 @@ def _dict_indicator_key_is_valid(indicator_name: str, key: Any) -> bool:
 
 def _dict_indicator_allowed_keys_hint(indicator_name: str) -> str:
     """Construit un hint compact des sous-clés valides."""
-    name = indicator_name.lower()
+    name = canonical_indicator_name(indicator_name) or indicator_name.lower()
     allowed = sorted(_DICT_INDICATOR_ALLOWED_KEYS.get(name, set()))
     if name in {"fibonacci", "fibonacci_levels"}:
         allowed = [*allowed, "level_XXX"]
@@ -297,9 +364,10 @@ def _binding_info_for_expr(
     if indicator_name is None:
         indicator_name = _indicator_name_from_get_call(node)
     if indicator_name is not None:
+        canonical = canonical_indicator_name(indicator_name) or indicator_name.lower()
         return {
-            "kind": "dict" if indicator_name.lower() in _DICT_INDICATOR_NAMES else "array",
-            "indicator": indicator_name,
+            "kind": "dict" if is_dict_indicator(canonical) else "array",
+            "indicator": canonical,
         }
 
     if _is_np_nan_to_num_call(node) and getattr(node, "args", None):
@@ -341,7 +409,13 @@ def _indicator_access_hint(indicator_name: str) -> str:
     alias_hint = _INDICATOR_ALIAS_HINTS.get(name)
     if alias_hint:
         return alias_hint
+    schema_name = canonical_indicator_name(name)
+    if schema_name and schema_name != name:
+        return get_builder_access_example(schema_name)
     if name in _DICT_INDICATOR_NAMES:
+        preferred_key = _DICT_INDICATOR_HINT_KEYS.get(name)
+        if preferred_key:
+            return f"indicators['{name}']['{preferred_key}']"
         keys = sorted(_DICT_INDICATOR_ALLOWED_KEYS.get(name, set()))
         if keys:
             return f"indicators['{name}']['{keys[0]}']"
@@ -489,6 +563,19 @@ def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
     return True, ""
 
 
+def _first_dict_hint_key(binding: dict[str, Any], label: str) -> str:
+    """Retourne la première sous-clé valide d'un indicator dict, pour les messages d'erreur."""
+    indicator_name = str(binding.get("indicator") or label).strip().lower()
+    preferred_key = _DICT_INDICATOR_HINT_KEYS.get(indicator_name)
+    if preferred_key:
+        return preferred_key
+    return (
+        _dict_indicator_allowed_keys_hint(indicator_name)
+        .split(",")[0]
+        .strip()
+    )
+
+
 def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
     """Validation AST des usages indicateurs pour éviter erreurs runtime récurrentes."""
     try:
@@ -522,17 +609,21 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
             ind_name = _indicator_name_from_subscript(value)
             kind: str | None = None
             if ind_name is not None:
-                kind = "dict" if ind_name.lower() in _DICT_INDICATOR_NAMES else "array"
+                canonical = canonical_indicator_name(ind_name) or ind_name.lower()
+                kind = "dict" if is_dict_indicator(canonical) else "array"
+                ind_name = canonical
             elif _is_np_nan_to_num_call(value) and getattr(value, "args", None):
                 arg0 = value.args[0]
                 ind_name = _indicator_name_from_subscript(arg0)
                 if ind_name is not None:
-                    if ind_name.lower() in _DICT_INDICATOR_NAMES:
+                    canonical = canonical_indicator_name(ind_name) or ind_name.lower()
+                    if is_dict_indicator(canonical):
                         return (
                             False,
                             f"Usage invalide: np.nan_to_num(indicators['{ind_name}']) (indicator dict).",
                         )
                     kind = "array"
+                    ind_name = canonical
                 elif isinstance(arg0, ast.Name) and arg0.id in bindings:
                     if bindings[arg0.id]["kind"] == "dict":
                         return (
@@ -565,13 +656,7 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                 value_binding = _binding_info_for_expr(node.func.value, bindings)
                 if value_binding and value_binding["kind"] == "dict" and attr not in {"get"}:
                     label = _binding_expr_label(node.func.value, value_binding)
-                    hint_key = (
-                        _dict_indicator_allowed_keys_hint(
-                            str(value_binding.get("indicator") or label),
-                        )
-                        .split(",")[0]
-                        .strip()
-                    )
+                    hint_key = _first_dict_hint_key(value_binding, label)
                     if hint_key:
                         return (
                             False,
@@ -665,7 +750,8 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                 ind_name = _indicator_name_from_subscript(node.value)
                 if ind_name:
                     key = _const_value(node.slice)
-                    if ind_name.lower() in _DICT_INDICATOR_NAMES:
+                    canonical = canonical_indicator_name(ind_name) or ind_name.lower()
+                    if is_dict_indicator(canonical):
                         if isinstance(key, (int, float)):
                             return (
                                 False,
@@ -687,7 +773,8 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                 get_name = _indicator_name_from_get_call(node.value)
                 if get_name:
                     key = _const_value(node.slice)
-                    if get_name.lower() in _DICT_INDICATOR_NAMES:
+                    canonical = canonical_indicator_name(get_name) or get_name.lower()
+                    if is_dict_indicator(canonical):
                         if isinstance(key, (int, float)):
                             return (
                                 False,
@@ -714,13 +801,7 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                     binding = _binding_info_for_expr(operand, bindings)
                     if binding and binding["kind"] == "dict":
                         label = _binding_expr_label(operand, binding)
-                        hint_key = (
-                            _dict_indicator_allowed_keys_hint(
-                                str(binding.get("indicator") or label),
-                            )
-                            .split(",")[0]
-                            .strip()
-                        )
+                        hint_key = _first_dict_hint_key(binding, label)
                         return (
                             False,
                             f"Usage invalide: comparaison `{label} ...` alors que "
@@ -733,13 +814,7 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                     binding = _binding_info_for_expr(operand, bindings)
                     if binding and binding["kind"] == "dict":
                         label = _binding_expr_label(operand, binding)
-                        hint_key = (
-                            _dict_indicator_allowed_keys_hint(
-                                str(binding.get("indicator") or label),
-                            )
-                            .split(",")[0]
-                            .strip()
-                        )
+                        hint_key = _first_dict_hint_key(binding, label)
                         return (
                             False,
                             f"Usage invalide: opération arithmétique sur `{label}` "
@@ -752,13 +827,7 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                         binding = _binding_info_for_expr(operand, bindings)
                         if binding and binding["kind"] == "dict":
                             label = _binding_expr_label(operand, binding)
-                            hint_key = (
-                                _dict_indicator_allowed_keys_hint(
-                                    str(binding.get("indicator") or label),
-                                )
-                                .split(",")[0]
-                                .strip()
-                            )
+                            hint_key = _first_dict_hint_key(binding, label)
                             return (
                                 False,
                                 f"Usage invalide: opérateur logique bitwise appliqué à `{label}` "
@@ -786,13 +855,7 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                     binding = _binding_info_for_expr(operand, bindings)
                     if binding and binding["kind"] == "dict":
                         label = _binding_expr_label(operand, binding)
-                        hint_key = (
-                            _dict_indicator_allowed_keys_hint(
-                                str(binding.get("indicator") or label),
-                            )
-                            .split(",")[0]
-                            .strip()
-                        )
+                        hint_key = _first_dict_hint_key(binding, label)
                         return (
                             False,
                             f"Usage invalide: test booléen direct sur `{label}` "
@@ -804,13 +867,7 @@ def _validate_indicator_usage_semantics(code: str) -> tuple[bool, str]:
                 binding = _binding_info_for_expr(node.test, bindings)
                 if binding and binding["kind"] == "dict":
                     label = _binding_expr_label(node.test, binding)
-                    hint_key = (
-                        _dict_indicator_allowed_keys_hint(
-                            str(binding.get("indicator") or label),
-                        )
-                        .split(",")[0]
-                        .strip()
-                    )
+                    hint_key = _first_dict_hint_key(binding, label)
                     return (
                         False,
                         f"Usage invalide: condition `{label}` alors que `{label}` est un "
@@ -908,6 +965,37 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
                 "Signature invalide: generate_signals doit accepter (self, df, indicators, params).",
             ),
         )
+
+    # 3b-bis. Hard cap on declared leverage in default_params: must be ≤ 2.
+    # Why: the prompt only documents this; nothing else enforces it. A LLM
+    # that emits leverage=3+ wipes the account on the very first iteration.
+    for item in _iter_generated_class_methods(tree):
+        if item.name != "default_params":
+            continue
+        for sub in ast.walk(item):
+            if not isinstance(sub, ast.Return):
+                continue
+            if not isinstance(sub.value, ast.Dict):
+                continue
+            for k_node, v_node in zip(sub.value.keys, sub.value.values):
+                key_str: str | None = None
+                if isinstance(k_node, ast.Constant) and isinstance(k_node.value, str):
+                    key_str = k_node.value
+                if key_str != "leverage":
+                    continue
+                lev_val = None
+                if isinstance(v_node, ast.Constant) and isinstance(v_node.value, (int, float)):
+                    lev_val = float(v_node.value)
+                elif isinstance(v_node, ast.UnaryOp) and isinstance(v_node.op, ast.USub) and isinstance(
+                    v_node.operand, ast.Constant
+                ) and isinstance(v_node.operand.value, (int, float)):
+                    lev_val = -float(v_node.operand.value)
+                if lev_val is not None and lev_val > 2.0:
+                    return False, _err(
+                        ERR_PARAM,
+                        f"default_params['leverage']={lev_val:g} > 2 interdit "
+                        "(risque ruined account). Utiliser 1 ou 2.",
+                    )
 
     # 3c. default_params doit retourner un dict concret (pas une variable globale implicite)
     for item in _iter_generated_class_methods(tree):
@@ -1111,9 +1199,44 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
     # 5b. Indicateurs inconnus via indicators[...] / indicators.get(...)
     used_indicators = _collect_indicator_names(tree) | _collect_indicator_names_in_class(tree)
     if known_indicators and used_indicators:
-        unknown = sorted(
-            {name for name in used_indicators if name.lower() not in known_indicators},
-        )
+        unknown: list[str] = []
+        derived_errors: list[str] = []
+        parameter_misuses: list[str] = []
+        for name in sorted(used_indicators):
+            low = name.lower()
+            if low in known_indicators:
+                continue
+            if parse_parameterized_indicator_instance(low):
+                continue
+            derived = parse_derived_feature(low)
+            if derived is not None:
+                if derived.supported:
+                    continue
+                derived_errors.append(f"{name}: {derived.reason}")
+                continue
+            classification = classify_indicator_token(low)
+            if classification.category == "parameter_alias":
+                parameter_misuses.append(f"{name} -> {classification.reason}")
+                continue
+            unknown.append(name)
+        if parameter_misuses:
+            return (
+                False,
+                _err(
+                    ERR_IND,
+                    "Paramètre(s) de stratégie utilisés via `indicators[...]`: "
+                    f"{parameter_misuses}. Utiliser `params.get(...)`.",
+                ),
+            )
+        if derived_errors:
+            return (
+                False,
+                _err(
+                    ERR_IND,
+                    "Feature(s) dérivée(s) non supportée(s) via indicators: "
+                    f"{derived_errors}.",
+                ),
+            )
         if unknown:
             ohlcv_and_runtime_cols = {
                 "open",
@@ -1164,7 +1287,13 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
     if known_indicators:
         declared_indicators = _extract_required_indicators_from_ast(tree)
         unknown_declared = sorted(
-            {name for name in declared_indicators if name.lower() not in known_indicators},
+            {
+                name
+                for name in declared_indicators
+                if name.lower() not in known_indicators
+                and parse_parameterized_indicator_instance(name) is None
+                and not (parse_derived_feature(name) and parse_derived_feature(name).supported)
+            },
         )
         if unknown_declared:
             hints = [

@@ -221,6 +221,7 @@ header[data-testid="stHeader"] {
 }
 [data-testid="stSidebar"] button[kind="header"],
 [data-testid="stSidebar"] button[kind="headerNoPadding"],
+[data-testid="stExpandSidebarButton"],
 [data-testid="collapsedControl"] {
     display: flex !important;
     visibility: visible !important;
@@ -233,11 +234,13 @@ header[data-testid="stHeader"] {
     border: 1px solid rgba(96, 165, 250, 0.35) !important;
     box-shadow: 0 10px 24px rgba(2, 8, 23, 0.30) !important;
 }
+[data-testid="stExpandSidebarButton"],
 [data-testid="stSidebar"] button[kind="header"],
 [data-testid="stSidebar"] button[kind="headerNoPadding"] {
     min-width: 2.35rem !important;
     min-height: 2.35rem !important;
 }
+[data-testid="stExpandSidebarButton"],
 [data-testid="collapsedControl"] {
     position: fixed !important;
     top: 0.7rem;
@@ -246,10 +249,14 @@ header[data-testid="stHeader"] {
 }
 [data-testid="stSidebar"] button[kind="header"] svg,
 [data-testid="stSidebar"] button[kind="headerNoPadding"] svg,
+[data-testid="stExpandSidebarButton"] svg,
 [data-testid="collapsedControl"] svg {
     fill: #dbeafe !important;
 }
-[data-testid="stToolbar"],
+[data-testid="stToolbar"] {
+    background: transparent !important;
+    box-shadow: none !important;
+}
 [data-testid="stDecoration"],
 [data-testid="stStatusWidget"],
 #MainMenu,
@@ -328,14 +335,14 @@ def main() -> None:
     best_pnl_tracker = install_best_pnl_tracker()
 
     try:
-        from ui.builder_view import restore_builder_autonomous_ui_state_from_runtime
-
-        explicit_mode = str(st.session_state.get("optimization_mode", "") or "").strip()
-        builder_autonomous_flag = bool(
-            st.session_state.get("builder_autonomous", False),
+        from ui.builder_view import (
+            reset_inactive_builder_live_thoughts,
         )
-        if not explicit_mode or (explicit_mode == "🏗️ Strategy Builder" and not builder_autonomous_flag):
-            restore_builder_autonomous_ui_state_from_runtime()
+
+        reset_inactive_builder_live_thoughts(
+            reason="app_start",
+            respect_session_running=False,
+        )
     except Exception:
         pass
 

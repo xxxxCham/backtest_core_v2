@@ -1,4 +1,4 @@
-# ruff: noqa: I001
+# ruff: noqa: I001,F401
 """
 Module-ID: agents.strategy_builder
 
@@ -30,21 +30,18 @@ from __future__ import annotations
 
 import ast
 import concurrent.futures
-import csv
 import importlib.util
-import itertools
 import json
 import os
-import pprint
 import re
+import shutil
 import sys
 import textwrap
 import threading
-import traceback
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable, Dict, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, cast
 
 import numpy as np
 import pandas as pd
@@ -55,10 +52,18 @@ from agents.indicator_context import (
     get_indicator_builder_access_example,
     get_indicator_builder_stable_alias_map,
     rank_indicator_selection,
+    shuffle_indicator_presentation_order,
 )
 from backtest.engine import BacktestEngine
 from backtest.result_store import get_builder_sessions_dir
 from indicators.registry import list_indicators
+from indicators.schema import (
+    DICT_INDICATOR_NAMES as SCHEMA_DICT_INDICATOR_NAMES,
+    DICT_INDICATOR_OUTPUT_KEYS,
+    INDICATOR_ACCESS_ALIASES,
+    PARAMETER_ALIAS_ACCESS,
+    SEMANTIC_INDICATOR_ALIASES,
+)
 from metrics_types import normalize_metrics
 from utils.observability import generate_run_id, get_obs_logger
 from utils.template import render_prompt
@@ -73,7 +78,6 @@ from agents.builder_state import (
     BuilderIteration,
     BuilderSession,
     IterationContext,
-    _select_session_recovery_anchor,
 )
 from config.market_selection import (
     evaluate_market_dataset,
@@ -97,86 +101,58 @@ MAX_PHASE_REALIGN_ATTEMPTS = 2
 # -- Constantes importées depuis builder_constants (source unique) --
 from agents.builder_constants import (  # noqa: E402
     GENERATED_CLASS_NAME,
-    MAX_DETERMINISTIC_FALLBACKS,
-    MAX_DRAWDOWN_PCT_FOR_ACCEPT,
-    MAX_POSITIVE_FALLBACK_COUNT,
-    MIN_PROFIT_FACTOR_FOR_ACCEPT,
-    MIN_RETURN_PCT_FOR_ACCEPT,
-    MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP,
-    MIN_TRADES_FOR_ACCEPT,
-    MIN_TRADES_FOR_POSITIVE_PROGRESS,
     POSITIVE_PROGRESS_GATE_CHECKPOINTS,
     _AST_PARSE_RECOVERABLE_EXCEPTIONS,
+)
+
+from agents.builder_code_validation import (  # noqa: E402
+    validate_generated_code,
+    _get_known_indicator_names,
+    _is_allowed_import,
+    _validate_signal_loop_and_warmup,
+)
+
+from agents.builder_code_repair import (  # noqa: E402
+    _repair_code,
+    _infer_required_indicator_names_from_code,
+    _inject_generate_signals_core_param_aliases,
+    _inject_generate_signals_indicator_aliases,
+    _inject_generate_signals_indicator_bindings,
+    _rewrite_safe_dict_indicator_comparisons,
+    _rewrite_invalid_indicator_accesses,
 )
 
 # -- Fonctions scoring/diagnostic re-exportées depuis builder_diagnostics --
 from agents.builder_diagnostics import (  # noqa: E402
     _builder_iteration_selection_key,
-    _clamp,
     _count_positive_iterations,
     _is_accept_candidate,
-    _is_positive_progress_iteration,
-    _is_ruined_metrics,
-    _metric_float,
-    _metrics_fingerprint,
     _ranking_sharpe,
-    _required_positive_count_for_iteration,
-    _telemetry_score_from_metrics,
     compute_builder_telemetry_score,
     compute_continuous_builder_score,
-    compute_diagnostic,
 )
 
 # -- Utilitaires AST et parsing importés depuis builder_ast_utils --
 from agents.builder_ast_utils import (  # noqa: E402
-    _LOG_PREFIX_RE,
-    _NATURAL_LANGUAGE_LINE_RE,
-    _PIPE_LOG_PREFIX_RE,
-    _PYTHONISH_LINE_RE,
-    _TRACEBACK_LINE_RE,
-    _WINDOWS_PATH_LINE_RE,
-    _balance_brackets_outside_strings,
     _collect_bound_names,
-    _collect_indicator_names,
-    _collect_indicator_names_in_class,
-    _collect_module_level_bound_names,
     _collect_name_load_store_sets,
     _const_value,
-    _drop_obvious_non_python_lines,
     _extract_declared_required_indicators,
     _extract_default_params_signature,
     _extract_generate_signals_logic_block,
-    _extract_generate_signals_signature,
     _extract_json_from_response,
     _extract_python_from_response,
-    _extract_required_indicators_signature,
     _indicator_name_from_get_call,
-    _indicator_name_from_hint_expression,
     _indicator_name_from_subscript,
     _is_np_nan_to_num_call,
-    _is_numeric_nonbool_constant,
-    _is_params_get_call,
-    _is_params_subscript,
-    _is_scalar_cast_call,
-    _iter_child_nodes_excluding_nested_scopes,
     _iter_generate_signals_functions,
     _normalize_required_indicator_names,
-    _salvage_complex_ast_syntax,
-    _sanitize_python_list_markers,
-    _strip_leading_list_marker,
-    _strip_non_python_noise,
 )
 
 # -- Parsing d'objectifs et noms d'indicateurs depuis builder_objective_parser --
 from agents.builder_objective_parser import (  # noqa: E402
-    _INDICATOR_CANONICAL_ALIASES,
-    _build_indicator_override_reason,
     _canonicalize_indicator_name,
-    _extract_indicator_names_from_text,
     _extract_objective_indicator_names,
-    _indicator_phrase_pattern,
-    _looks_like_prompt_instruction_leakage,
-    _strip_objective_prompt_leakage,
     sanitize_objective_text,
 )
 
@@ -184,7 +160,6 @@ from agents.builder_objective_parser import (  # noqa: E402
 from agents.builder_session_io import (  # noqa: E402
     BUILDER_MEMORY_CODE_MAX_CHARS,
     BUILDER_MEMORY_PROPOSAL_MAX_CHARS,
-    _truncate_runtime_traceback_tail,
     create_session_id,
     format_builder_cross_session_memory,
     get_session_dir,
@@ -194,7 +169,10 @@ from agents.builder_session_io import (  # noqa: E402
     safe_save_session_summary,
     save_session_summary,
     attempt_session_auto_reset,
-    MAX_SESSION_AUTO_RESETS,
+)
+
+from agents.builder_state import (  # noqa: E402
+    _select_session_recovery_anchor,
 )
 
 # -- Utilitaires texte depuis builder_text_utils --
@@ -203,37 +181,24 @@ from agents.builder_text_utils import (  # noqa: E402
     _format_python_dict_literal,
     _normalize_llm_text,
     _looks_like_log_pollution,
-    _safe_format_exception,
 )
 
 # -- Helpers de proposition depuis builder_proposal_helpers --
 from agents.builder_proposal_helpers import (  # noqa: E402
-    _BUILDER_PROPOSAL_REQUIRED_KEYS,
-    _PROPOSAL_PLACEHOLDER_VALUES,
     _build_builder_sweep_plan,
-    _build_builder_sweep_values,
-    _build_deterministic_proposal_fallback,
-    _coerce_builder_sweep_value,
-    _dedupe_preserve_order,
-    _flatten_nested_logic,
     _infer_direction_constraint_from_objective,
-    _is_empty_proposal,
-    _is_invalid_proposal,
-    _is_logic_like_change_type,
-    _is_placeholder_text,
-    _looks_pathological_param_name,
     _normalize_change_type,
     _normalize_proposal_keys,
-    _params_only_contract_respected,
     _proposal_changes_indicator_set_in_params_mode,
     _proposal_error_code,
     _proposal_has_meaningful_param_delta,
-    _proposal_has_placeholder_fields,
     _proposal_issues,
-    _proposal_reuses_previous_indicator_set,
-    _rewrite_default_params_from_proposal,
     _sanitize_param_mapping,
     _sanitize_proposal_payload,
+)
+
+from agents.builder_model_profiles import (  # noqa: E402
+    build_builder_model_prompt_guidance,
 )
 
 # -- Helpers de politique depuis builder_policy_helpers --
@@ -250,11 +215,17 @@ from agents.builder_policy_helpers import (  # noqa: E402
 PROPOSAL_REALIGN_ATTEMPTS = 1
 MIN_BUILDER_BARS = 300
 MIN_SIGNAL_COUNT_FOR_DENSITY_PRECHECK = int(os.getenv("BACKTEST_BUILDER_MIN_SIGNAL_COUNT_FOR_DENSITY_PRECHECK", "200"))
-MAX_SIGNAL_DENSITY_PRECHECK = float(os.getenv("BACKTEST_BUILDER_MAX_SIGNAL_DENSITY_PRECHECK", "0.85"))
+MAX_SIGNAL_DENSITY_PRECHECK = float(os.getenv("BACKTEST_BUILDER_MAX_SIGNAL_DENSITY_PRECHECK", "0.55"))
+MAX_SIGNAL_TRANSITION_DENSITY_PRECHECK = float(
+    os.getenv(
+        "BACKTEST_BUILDER_MAX_SIGNAL_TRANSITION_DENSITY_PRECHECK",
+        "0.30",
+    )
+)
 MAX_REPEATED_SAME_SIGNAL_RATIO_PRECHECK = float(
     os.getenv(
         "BACKTEST_BUILDER_MAX_REPEATED_SAME_SIGNAL_RATIO_PRECHECK",
-        "0.80",
+        "0.65",
     )
 )
 
@@ -305,6 +276,175 @@ _BUILDER_SWEEP_EXCLUDED_PARAMS = frozenset(
         "slippage_bps",
     }
 )
+
+
+def _resume_safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _resume_safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _resume_parse_datetime(value: Any) -> datetime:
+    text = str(value or "").strip()
+    if not text:
+        return datetime.now()
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.now()
+
+
+def _resume_session_id(parent_session_id: str, mode: str) -> str:
+    parent_slug = re.sub(r"[^a-zA-Z0-9]+", "_", str(parent_session_id or "session")).strip("_")
+    if not parent_slug:
+        parent_slug = "session"
+    parent_slug = parent_slug[-52:]
+    mode_slug = re.sub(r"[^a-zA-Z0-9]+", "_", str(mode or "resume")).strip("_") or "resume"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{timestamp}_resume_{mode_slug}_{parent_slug}"
+
+
+def _resume_strategy_path(source_session_dir: Path, iteration_num: int) -> Path | None:
+    candidates = [
+        source_session_dir / f"strategy_v{iteration_num}.py",
+        source_session_dir / f"strategy_v{iteration_num:03d}.py",
+    ]
+    if iteration_num <= 0:
+        candidates.append(source_session_dir / "strategy.py")
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return None
+
+
+def _resume_strategy_code(source_session_dir: Path, iteration_num: int) -> str:
+    candidate = _resume_strategy_path(source_session_dir, iteration_num)
+    if candidate is None and iteration_num > 0:
+        candidate = source_session_dir / "strategy.py"
+    if candidate is None or not candidate.exists() or not candidate.is_file():
+        return ""
+    try:
+        return candidate.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _resume_metrics_from_iteration_row(row: dict[str, Any]) -> dict[str, Any]:
+    metrics = {
+        "sharpe_ratio": row.get("sharpe"),
+        "total_pnl": row.get("total_pnl"),
+        "total_return_pct": row.get("return_pct"),
+        "max_drawdown_pct": row.get("max_drawdown_pct"),
+        "profit_factor": row.get("profit_factor"),
+        "win_rate_pct": row.get("win_rate_pct"),
+        "total_trades": row.get("trades"),
+    }
+    return {key: value for key, value in metrics.items() if value is not None}
+
+
+def _resume_load_seed_iterations(summary: dict[str, Any], source_session_dir: Path) -> list[BuilderIteration]:
+    rows = summary.get("iterations") if isinstance(summary.get("iterations"), list) else []
+    seed_iterations: list[BuilderIteration] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        iteration_num = _resume_safe_int(row.get("iteration"))
+        if iteration_num <= 0:
+            continue
+        metrics = _resume_metrics_from_iteration_row(row)
+        phase_feedback = row.get("phase_feedback") if isinstance(row.get("phase_feedback"), dict) else {}
+        seed_iterations.append(
+            BuilderIteration(
+                iteration=iteration_num,
+                hypothesis=str(row.get("hypothesis") or ""),
+                code=_resume_strategy_code(source_session_dir, iteration_num),
+                backtest_result=SimpleNamespace(metrics=metrics) if metrics else None,
+                error=str(row.get("error") or "") or None,
+                decision=str(row.get("decision") or ""),
+                change_type=str(row.get("change_type") or ""),
+                diagnostic_category=str(row.get("diagnostic_category") or ""),
+                phase_feedback=phase_feedback,
+                timestamp=_resume_parse_datetime(row.get("timestamp")),
+                is_fallback=bool(row.get("is_fallback", False)),
+                used_indicators=[
+                    str(indicator)
+                    for indicator in list(row.get("used_indicators") or [])
+                    if str(indicator or "").strip()
+                ],
+            ),
+        )
+    return sorted(seed_iterations, key=lambda candidate: int(candidate.iteration or 0))
+
+
+def _resume_copy_strategy_files(source_session_dir: Path, target_session_dir: Path) -> None:
+    target_session_dir.mkdir(parents=True, exist_ok=True)
+    for source_path in sorted(source_session_dir.glob("strategy*.py")):
+        if not source_path.is_file():
+            continue
+        target_path = target_session_dir / source_path.name
+        if target_path.exists():
+            continue
+        try:
+            shutil.copy2(source_path, target_path)
+        except OSError:
+            logger.debug(
+                "builder_resume_strategy_copy_failed source=%s target=%s",
+                source_path,
+                target_path,
+                exc_info=True,
+            )
+
+
+def _resume_seed_session_state(session: BuilderSession, seed_iterations: list[BuilderIteration]) -> None:
+    session.iterations = sorted(seed_iterations, key=lambda candidate: int(candidate.iteration or 0))
+    for iteration in session.iterations:
+        metrics = (
+            iteration.backtest_result.metrics
+            if iteration.backtest_result is not None
+            and isinstance(getattr(iteration.backtest_result, "metrics", None), dict)
+            else {}
+        )
+        if not metrics:
+            continue
+        sharpe = _resume_safe_float(metrics.get("sharpe_ratio"), float("-inf"))
+        if np.isfinite(sharpe) and sharpe > session.best_sharpe:
+            session.best_sharpe = sharpe
+        candidate_key = _builder_iteration_selection_key(
+            metrics,
+            is_fallback=bool(iteration.is_fallback),
+            target_sharpe=session.target_sharpe,
+        )
+        best_metrics = (
+            session.best_iteration.backtest_result.metrics
+            if session.best_iteration is not None
+            and session.best_iteration.backtest_result is not None
+            and isinstance(getattr(session.best_iteration.backtest_result, "metrics", None), dict)
+            else {}
+        )
+        best_key = (
+            _builder_iteration_selection_key(
+                best_metrics,
+                is_fallback=bool(getattr(session.best_iteration, "is_fallback", False)),
+                target_sharpe=session.target_sharpe,
+            )
+            if best_metrics
+            else None
+        )
+        if session.best_iteration is None or best_key is None or candidate_key > best_key:
+            session.best_iteration = iteration
+            score_payload = compute_builder_telemetry_score(
+                metrics,
+                target_sharpe=session.target_sharpe,
+            )
+            session.best_score = float(score_payload.get("score", float("-inf")) or float("-inf"))
 
 
 def _is_interpreter_shutdown_runtime_error(exc: BaseException) -> bool:
@@ -483,13 +623,6 @@ _DICT_INDICATOR_ALLOWED_KEYS: Dict[str, set[str]] = {
     "markov_switching": {"regime", "prob_regime_0", "prob_regime_1", "prob_regime_2", "prob_regime_3"},
 }
 
-_DICT_INDICATOR_SAFE_SCALAR_KEYS: Dict[str, str] = {
-    "adx": "adx",
-    "supertrend": "supertrend",
-    "directional_bias": "net_bias",
-    "markov_switching": "regime",
-}
-
 _INDICATOR_ALIAS_HINTS = {
     "bollinger_upper": "indicators['bollinger']['upper']",
     "bollinger_middle": "indicators['bollinger']['middle']",
@@ -563,6 +696,13 @@ _INDICATOR_ALIAS_HINTS = {
     "srsi_d": "indicators['stoch_rsi']['d']",
     "fibonacci_levels_high": "indicators['fibonacci_levels']['high']",
     "fibonacci_levels_low": "indicators['fibonacci_levels']['low']",
+    "market_volatility": "indicators['vix']",
+    "volatility": "indicators['vix']",
+    "vix_proxy": "indicators['vix']",
+    "mci": "indicators['choppiness_index']",
+    "chop": "indicators['choppiness_index']",
+    "choppiness": "indicators['choppiness_index']",
+    "market_choppiness_index": "indicators['choppiness_index']",
 }
 
 _SEMANTIC_INDICATOR_ALIAS_HINTS = {
@@ -597,6 +737,16 @@ _INDICATOR_ACCESS_REWRITE_HINTS = {
     "rsi_data": "indicators['rsi']",
     "atr_14": "indicators['atr']",
     "volume_osc": "indicators['volume_oscillator']",
+    "market_volatility": "indicators['vix']",
+    "volatility": "indicators['vix']",
+    "vix_proxy": "indicators['vix']",
+    "implied_volatility_proxy": "indicators['vix']",
+    "mci": "indicators['choppiness_index']",
+    "chop": "indicators['choppiness_index']",
+    "choppiness": "indicators['choppiness_index']",
+    "market_choppiness_index": "indicators['choppiness_index']",
+    "trix_line": "indicators['trix']",
+    "trix_value": "indicators['trix']",
 }
 
 _PARAM_ACCESS_REWRITE_HINTS = {
@@ -609,56 +759,14 @@ _PARAM_ACCESS_REWRITE_HINTS = {
     "tp_factor": "params.get('tp_atr_mult', 3.0)",
 }
 
-_PROPOSAL_PLACEHOLDER_VALUES = {
-    "",
-    "-",
-    "—",
-    # EN
-    "n/a",
-    "na",
-    "none",
-    "null",
-    "brief description",
-    "what you expect this change to achieve and why",
-    "when to buy",
-    "when to sell",
-    "when to close",
-    # FR
-    "aucun",
-    "aucune",
-    "néant",
-    "sans objet",
-    "non applicable",
-    "description brève",
-    "brève description",
-    "ce que vous attendez de ce changement et pourquoi",
-    "quand acheter",
-    "quand vendre",
-    "quand clôturer",
-    "condition d'achat",
-    "condition de vente",
-    "condition de sortie",
-}
-
-_BUILDER_PROPOSAL_REQUIRED_KEYS = {
-    "strategy_name",
-    "used_indicators",
-    "entry_long_logic",
-    "exit_logic",
-    "risk_management",
-    "default_params",
-    "parameter_specs",
-}
-
-_BUILDER_ALLOWED_WRITE_DF_COLUMNS = {
-    "bb_stop_long",
-    "bb_tp_long",
-    "bb_stop_short",
-    "bb_tp_short",
-    "sl_level",
-    "tp_level",
-}
-
+# Active source of truth: indicators.schema. These module-level names remain
+# for compatibility, but their runtime content is schema-derived.
+_DICT_INDICATOR_NAMES = set(SCHEMA_DICT_INDICATOR_NAMES)
+_DICT_INDICATOR_ALLOWED_KEYS = {name: set(keys) for name, keys in DICT_INDICATOR_OUTPUT_KEYS.items()}
+_INDICATOR_ALIAS_HINTS = dict(SEMANTIC_INDICATOR_ALIASES)
+_SEMANTIC_INDICATOR_ALIAS_HINTS = dict(SEMANTIC_INDICATOR_ALIASES)
+_INDICATOR_ACCESS_REWRITE_HINTS = dict(INDICATOR_ACCESS_ALIASES)
+_PARAM_ACCESS_REWRITE_HINTS = dict(PARAMETER_ALIAS_ACCESS)
 
 def _safe_path_mode() -> str:
     """Retourne le mode safe-path normalisé: off|prefer|strict."""
@@ -668,12 +776,6 @@ def _safe_path_mode() -> str:
     if raw in {"1", "true", "yes", "on"}:
         return "prefer"
     return "off"
-
-
-def _is_allowed_import(module_name: str) -> bool:
-    """Allowlist stricte des imports dans le code généré."""
-    root = (module_name or "").split(".")[0]
-    return root in {"typing", "numpy", "pandas", "strategies", "utils"}
 
 
 def _strict_sandbox_enabled() -> bool:
@@ -719,96 +821,6 @@ def _sandbox_import(name: str, global_ns=None, local_ns=None, fromlist=(), level
     if not _is_allowed_import(name):
         raise ImportError(_err(ERR_SANDBOX, f"Import runtime interdit: '{name}'"))
     return __import__(name, global_ns, local_ns, fromlist, level)
-
-
-def _validate_signal_loop_and_warmup(tree: ast.AST) -> tuple[bool, str]:
-    """Valide des patterns signaux/warmup dangereux.
-
-    - Interdit les boucles indexées qui écrivent `signals.iloc[i]`
-    - Interdit warmup destructif (`signals.iloc[x:] = 0`, `signals[:] = 0`)
-    - Interdit l'indexation 2D sur `signals` (Series 1D uniquement)
-    """
-    for fn in _iter_generate_signals_functions(tree):
-        for node in ast.walk(fn):
-            if isinstance(node, ast.For):
-                if (
-                    isinstance(node.target, ast.Name)
-                    and isinstance(node.iter, ast.Call)
-                    and isinstance(node.iter.func, ast.Name)
-                    and node.iter.func.id == "range"
-                ):
-                    return False, _err(
-                        ERR_SIG,
-                        "Boucle `for i in range(...)` interdite dans generate_signals. "
-                        "Utiliser une logique vectorisée.",
-                    )
-                for sub in ast.walk(node):
-                    if not isinstance(sub, ast.Subscript):
-                        continue
-                    # signals.iloc[i] = ...
-                    if (
-                        isinstance(sub.value, ast.Attribute)
-                        and sub.value.attr == "iloc"
-                        and isinstance(sub.value.value, ast.Name)
-                        and sub.value.value.id == "signals"
-                    ):
-                        return False, _err(
-                            ERR_SIG,
-                            "Boucle indexée avec `signals.iloc[i]` interdite. Utiliser des masques vectorisés.",
-                        )
-
-            # Warmup checks sur assignations
-            if isinstance(node, (ast.Assign, ast.AnnAssign)):
-                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                for tgt in targets:
-                    if not isinstance(tgt, ast.Subscript):
-                        continue
-
-                    # Pattern signals[...] ou signals.iloc[...]
-                    is_signals_sub = isinstance(tgt.value, ast.Name) and tgt.value.id == "signals"
-                    is_signals_loc_sub = (
-                        isinstance(tgt.value, ast.Attribute)
-                        and tgt.value.attr == "loc"
-                        and isinstance(tgt.value.value, ast.Name)
-                        and tgt.value.value.id == "signals"
-                    )
-                    is_signals_iloc_sub = (
-                        isinstance(tgt.value, ast.Attribute)
-                        and tgt.value.attr == "iloc"
-                        and isinstance(tgt.value.value, ast.Name)
-                        and tgt.value.value.id == "signals"
-                    )
-                    if not (is_signals_sub or is_signals_loc_sub or is_signals_iloc_sub):
-                        continue
-
-                    sl = tgt.slice
-                    if isinstance(sl, ast.Tuple):
-                        return False, _err(
-                            ERR_SIG,
-                            "Indexation 2D interdite sur `signals`: cette variable doit "
-                            "rester une `pd.Series` 1D. Ne jamais écrire "
-                            "`signals.loc[mask, 'long'/'short']`; utiliser "
-                            "`signals[long_mask] = 1.0` et `signals[short_mask] = -1.0`.",
-                        )
-                    if isinstance(sl, ast.Slice):
-                        lower = _const_value(sl.lower) if sl.lower is not None else None
-                        # Autorisé: [:N] = 0 (warmup préfixe), N constant ou variable
-                        if lower is None and sl.upper is not None:
-                            continue
-                        # Interdit: [N:] / [:] / [N:M]
-                        return False, _err(
-                            ERR_WARM,
-                            "Warmup invalide: seule la forme `signals.iloc[:N] = 0.0` "
-                            "(ou `signals[:N] = 0.0`) est autorisée.",
-                        )
-
-            if isinstance(node, ast.While):
-                return False, _err(
-                    ERR_SIG,
-                    "Boucle `while` interdite dans generate_signals. Utiliser une logique vectorisée.",
-                )
-
-    return True, ""
 
 
 # ---------------------------------------------------------------------------
@@ -869,90 +881,6 @@ def _binding_info_for_expr(
     return None
 
 
-def _binding_expr_label(node: ast.AST, binding: Optional[Dict[str, Any]] = None) -> str:
-    """Construit un libellé court pour les messages d'erreur AST."""
-    if isinstance(node, ast.Name):
-        return node.id
-
-    indicator_name = ""
-    if binding is not None:
-        indicator_name = str(binding.get("indicator") or "")
-    if not indicator_name:
-        indicator_name = _indicator_name_from_subscript(node) or _indicator_name_from_get_call(node) or ""
-    if indicator_name:
-        return f"indicators['{indicator_name}']"
-
-    return "indicator expression"
-
-
-def _dict_indicator_key_is_valid(indicator_name: str, key: Any) -> bool:
-    """Valide une sous-clé pour un indicateur dict connu."""
-    if not isinstance(key, str):
-        return True
-    name = indicator_name.lower()
-    allowed = _DICT_INDICATOR_ALLOWED_KEYS.get(name)
-    if not allowed:
-        return True
-    if key in allowed:
-        return True
-    if name in {"fibonacci", "fibonacci_levels"} and key.startswith("level_"):
-        return True
-    return False
-
-
-def _dict_indicator_allowed_keys_hint(indicator_name: str) -> str:
-    """Construit un hint compact des sous-clés valides."""
-    name = indicator_name.lower()
-    allowed = sorted(_DICT_INDICATOR_ALLOWED_KEYS.get(name, set()))
-    if name in {"fibonacci", "fibonacci_levels"}:
-        allowed = [*allowed, "level_XXX"]
-    if not allowed:
-        return "sous-clés string attendues"
-    return ", ".join(allowed)
-
-
-def _timeframe_to_timedelta(timeframe: str) -> Optional[pd.Timedelta]:
-    """Convertit un timeframe texte en timedelta."""
-    tf = str(timeframe or "").strip()
-    match = re.match(r"^(\d+)([mhdwM])$", tf)
-    if not match:
-        return None
-    n = int(match.group(1))
-    unit = match.group(2)
-    if unit == "m":
-        return pd.Timedelta(minutes=n)
-    if unit == "h":
-        return pd.Timedelta(hours=n)
-    if unit == "d":
-        return pd.Timedelta(days=n)
-    if unit == "w":
-        return pd.Timedelta(weeks=n)
-    if unit == "M":
-        return pd.Timedelta(days=30 * n)
-    return None
-
-
-def _max_contiguous_segment_bars(df: pd.DataFrame, timeframe: str) -> int:
-    """Retourne la taille max d'un segment continu hors gaps majeurs."""
-    if df.empty:
-        return 0
-    expected = _timeframe_to_timedelta(timeframe)
-    if expected is None:
-        return len(df)
-    idx = df.index
-    if not isinstance(idx, pd.DatetimeIndex) or len(idx) <= 1:
-        return len(df)
-    diffs = idx[1:] - idx[:-1]
-    major_gap = diffs > (expected * 3)
-    if not np.any(major_gap):
-        return len(df)
-    cut_positions = np.where(major_gap)[0]
-    starts = [0, *[int(pos) + 1 for pos in cut_positions]]
-    ends = [*[int(pos) + 1 for pos in cut_positions], len(df)]
-    lengths = [end - start for start, end in zip(starts, ends)]
-    return max(lengths) if lengths else len(df)
-
-
 def _validate_builder_dataset_exploitability(
     data: pd.DataFrame,
     *,
@@ -981,7 +909,29 @@ def _validate_builder_dataset_exploitability(
     reasons = list(evaluation.get("exclusion_reasons", []) or [])
     if not reasons:
         return False, f"Dataset non exploitable sur {symbol}/{timeframe}."
-    return False, f"{symbol}/{timeframe}: " + " | ".join(str(reason) for reason in reasons)
+    return False, f"{symbol}/{timeframe}: " + " | ".join(
+        _format_builder_dataset_exclusion_reason(str(reason)) for reason in reasons
+    )
+
+
+def _format_builder_dataset_exclusion_reason(reason: str) -> str:
+    """Garde les diagnostics Builder compatibles avec l'UI/tests historiques."""
+    text = str(reason or "").strip()
+    lower = text.lower()
+    translations = (
+        ("continuous segment insufficient", "segment continu insuffisant"),
+        ("dataset insufficient", "dataset insuffisant"),
+        ("tradable ratio too low", "trop peu tradable"),
+        ("outside canonical universe", "hors univers canonique"),
+        ("listing too recent", "listing trop recent"),
+        ("tradable ratio below canonical threshold", "ratio tradable sous seuil canonique"),
+        ("median dollar volume insufficient", "volume dollar median insuffisant"),
+        ("median volume insufficient", "volume median insuffisant"),
+    )
+    for prefix, replacement in translations:
+        if lower.startswith(prefix):
+            return replacement + text[len(prefix) :]
+    return text
 
 
 def validate_builder_dataset_exploitability(
@@ -1004,131 +954,6 @@ def validate_builder_dataset_exploitability(
         purpose=purpose,
         objective=objective,
     )
-
-
-def _fix_class_name(code: str) -> str:
-    """Renomme la première sous-classe StrategyBase en GENERATED_CLASS_NAME."""
-    if re.search(rf"\bclass\s+{GENERATED_CLASS_NAME}\s*\(", code):
-        return code
-    # Chercher une sous-classe de StrategyBase
-    match = re.search(r"class\s+(\w+)\s*\([^)]*StrategyBase[^)]*\)", code)
-    if match:
-        old_name = match.group(1)
-        if old_name != GENERATED_CLASS_NAME:
-            code = re.sub(rf"\b{re.escape(old_name)}\b", GENERATED_CLASS_NAME, code)
-        return code
-    # Pas de StrategyBase — renommer la première classe
-    match = re.search(r"class\s+(\w+)\s*\(", code)
-    if match:
-        old_name = match.group(1)
-        code = re.sub(
-            rf"class\s+{re.escape(old_name)}\s*\(",
-            f"class {GENERATED_CLASS_NAME}(",
-            code,
-            count=1,
-        )
-    return code
-
-
-def _get_known_indicator_names() -> set[str]:
-    """Retourne les noms d'indicateurs du registre, en minuscules."""
-    try:
-        return {str(ind or "").strip().lower() for ind in list_indicators() if str(ind or "").strip()}
-    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
-        return set(_DICT_INDICATOR_NAMES)
-
-
-def _indicator_access_hint(indicator_name: str) -> str:
-    """Retourne le hint d'accès recommandé pour un indicateur donné."""
-    name = str(indicator_name or "").strip().lower()
-    alias_hint = _INDICATOR_ALIAS_HINTS.get(name)
-    if alias_hint:
-        return alias_hint
-    if name in _DICT_INDICATOR_NAMES:
-        keys = sorted(_DICT_INDICATOR_ALLOWED_KEYS.get(name, set()))
-        if keys:
-            return f"indicators['{name}']['{keys[0]}']"
-        return f"indicators['{name}']"
-    return f"np.nan_to_num(indicators['{name}'])"
-
-
-def _infer_required_indicator_names_from_code(
-    code: str,
-    required_indicators: Optional[List[str]] = None,
-) -> List[str]:
-    """Infère les indicateurs réellement nécessaires à partir du code et des alias connus."""
-    known = _get_known_indicator_names()
-    inferred = _normalize_required_indicator_names(required_indicators)
-    inferred_set = set(inferred)
-
-    try:
-        tree = ast.parse(code)
-    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
-        tree = None
-
-    if tree is not None:
-        for name in _collect_indicator_names(tree) | _collect_indicator_names_in_class(tree):
-            normalized_name = str(name or "").strip().lower()
-            if normalized_name in known and normalized_name not in inferred_set:
-                inferred.append(normalized_name)
-                inferred_set.add(normalized_name)
-
-    search_space = [
-        *_INDICATOR_ALIAS_HINTS.items(),
-        *_INDICATOR_ACCESS_REWRITE_HINTS.items(),
-    ]
-    for alias, hint in search_space:
-        if not re.search(rf"\b{re.escape(alias)}\b", code, flags=re.IGNORECASE):
-            continue
-        indicator_name = _indicator_name_from_hint_expression(hint)
-        if indicator_name and indicator_name in known and indicator_name not in inferred_set:
-            inferred.append(indicator_name)
-            inferred_set.add(indicator_name)
-
-    for indicator_name in sorted(known):
-        if (
-            re.search(
-                rf"\b{re.escape(indicator_name)}_(?:arr|array|data|values?)\b",
-                code,
-                flags=re.IGNORECASE,
-            )
-            and indicator_name not in inferred_set
-        ):
-            inferred.append(indicator_name)
-            inferred_set.add(indicator_name)
-
-    return inferred
-
-
-def _rewrite_invalid_indicator_accesses(text: str) -> str:
-    fixed = text
-    for alias, replacement in _INDICATOR_ACCESS_REWRITE_HINTS.items():
-        fixed = re.sub(
-            rf"indicators\s*\[\s*['\"]{re.escape(alias)}['\"]\s*\]",
-            replacement,
-            fixed,
-            flags=re.IGNORECASE,
-        )
-        fixed = re.sub(
-            rf"indicators\.get\(\s*['\"]{re.escape(alias)}['\"]\s*(?:,\s*[^)]*)?\)",
-            replacement,
-            fixed,
-            flags=re.IGNORECASE,
-        )
-    for name, replacement in _PARAM_ACCESS_REWRITE_HINTS.items():
-        fixed = re.sub(
-            rf"indicators\s*\[\s*['\"]{re.escape(name)}['\"]\s*\]",
-            replacement,
-            fixed,
-            flags=re.IGNORECASE,
-        )
-        fixed = re.sub(
-            rf"indicators\.get\(\s*['\"]{re.escape(name)}['\"]\s*(?:,\s*[^)]*)?\)",
-            replacement,
-            fixed,
-            flags=re.IGNORECASE,
-        )
-    return fixed
 
 
 def _build_generate_signals_indicator_binding_lines(required_indicators: Optional[List[str]]) -> List[str]:
@@ -1184,382 +1009,6 @@ def _build_generate_signals_indicator_binding_lines(required_indicators: Optiona
                     binding_lines.append(alias_line)
 
     return binding_lines
-
-
-def _build_generate_signals_indicator_binding_groups(
-    required_indicators: Optional[List[str]],
-) -> List[Tuple[str, List[str], List[str]]]:
-    """Construit les lignes de binding par indicateur en séparant base et alias.
-
-    Les lignes de base extraient l'indicateur depuis `indicators[...]`.
-    Les alias dérivés (`rsi_arr = rsi`, `bollinger_upper = upper`, etc.) ne sont
-    sûrs que si la base est injectée au même endroit ou déjà disponible avant.
-    """
-    groups: List[Tuple[str, List[str], List[str]]] = []
-
-    for indicator_name in _normalize_required_indicator_names(required_indicators):
-        base_lines: List[str] = []
-        alias_lines: List[str] = []
-        seen_local: set[str] = set()
-
-        if indicator_name in _DICT_INDICATOR_NAMES:
-            access_example = get_indicator_builder_access_example(indicator_name)
-            raw_lines = re.split(r";\s*|\n+", access_example)
-            candidate_lines = [line.strip() for line in raw_lines if line.strip()]
-        else:
-            candidate_lines = [f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])"]
-
-        for line in candidate_lines:
-            normalized_line = line
-            if re.match(r"^value\s*=", normalized_line):
-                normalized_line = re.sub(r"^value\b", indicator_name, normalized_line)
-            base_lines.append(normalized_line)
-            match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=", normalized_line)
-            if match:
-                seen_local.add(match.group(1))
-
-        if indicator_name in _DICT_INDICATOR_NAMES:
-            stable_alias_map = get_indicator_builder_stable_alias_map(indicator_name)
-            for lhs_name in list(seen_local):
-                if lhs_name == indicator_name:
-                    continue
-                stable_alias_name = stable_alias_map.get(lhs_name, f"{indicator_name}_{lhs_name}")
-                alias_lines.append(f"{stable_alias_name} = {lhs_name}")
-        else:
-            alias_lines.extend(
-                [
-                    f"{indicator_name}_arr = {indicator_name}",
-                    f"{indicator_name}_data = {indicator_name}",
-                ]
-            )
-
-        groups.append((indicator_name, base_lines, alias_lines))
-
-    return groups
-
-
-def _inject_generate_signals_indicator_bindings(
-    code: str,
-    required_indicators: Optional[List[str]] = None,
-) -> str:
-    """Injecte un préambule de bindings indicateurs dans generate_signals."""
-    indicator_names = _infer_required_indicator_names_from_code(code, required_indicators)
-    if not indicator_names:
-        return code
-
-    try:
-        tree = ast.parse(code)
-    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
-        return code
-
-    fns = _iter_generate_signals_functions(tree)
-    if not fns:
-        return code
-
-    binding_groups = _build_generate_signals_indicator_binding_groups(indicator_names)
-    if not binding_groups:
-        return code
-
-    lines = code.split("\n")
-    insertions: List[Tuple[int, List[str]]] = []
-
-    for fn in fns:
-        fn_start = max(0, int(fn.lineno) - 1)
-        fn_end = max(fn_start, int(getattr(fn, "end_lineno", fn.lineno)))
-        fn_source = "\n".join(lines[fn_start:fn_end])
-
-        binding_lines: List[str] = []
-        for _indicator_name, base_lines, alias_lines in binding_groups:
-            existing_base = any(line in fn_source for line in base_lines)
-            if existing_base:
-                continue
-            binding_lines.extend(line for line in base_lines if line not in fn_source)
-            binding_lines.extend(line for line in alias_lines if line not in fn_source)
-
-        if not binding_lines:
-            continue
-
-        if fn.body:
-            first_stmt = fn.body[0]
-            _first_val = getattr(first_stmt, "value", None)
-            if (
-                isinstance(first_stmt, ast.Expr)
-                and isinstance(_first_val, ast.Constant)
-                and isinstance(_first_val.value, str)
-            ):
-                end = getattr(first_stmt, "end_lineno", None) or first_stmt.lineno
-                insert_lineno = int(end) + 1
-            else:
-                insert_lineno = int(first_stmt.lineno)
-        else:
-            insert_lineno = int((getattr(fn, "end_lineno", None) or fn.lineno) + 1)
-
-        insert_idx = max(0, min(len(lines), insert_lineno - 1))
-        if 0 <= insert_idx < len(lines) and lines:
-            _m = re.match(r"^(\s*)", lines[insert_idx])
-            indent = _m.group(1) if _m else ""
-        else:
-            def_line_idx = max(0, min(len(lines) - 1, int(fn.lineno) - 1)) if lines else 0
-            _dm = re.match(r"^(\s*)", lines[def_line_idx]) if lines else None
-            def_indent = _dm.group(1) if _dm else ""
-            indent = def_indent + "    "
-
-        insertions.append((insert_idx, [indent + line for line in binding_lines]))
-
-    if not insertions:
-        return code
-
-    for idx, new_lines in sorted(insertions, key=lambda x: x[0], reverse=True):
-        lines[idx:idx] = new_lines
-
-    return "\n".join(lines)
-
-
-def _inject_generate_signals_core_param_aliases(code: str) -> str:
-    """Injecte des alias pour éviter des NameError de variables coeur.
-
-    Cas fréquent: `def generate_signals(self, data, indicators, params):` mais le
-    corps fait `signals = ... index=df.index` / `close = df["close"]...`.
-    On insère alors `df = data` en tête de méthode (idem pour `indicators/params`).
-    """
-    try:
-        tree = ast.parse(code)
-    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
-        return code
-
-    fns = _iter_generate_signals_functions(tree)
-    if not fns:
-        return code
-
-    lines = code.split("\n")
-    insertions: List[Tuple[int, List[str]]] = []
-
-    for fn in fns:
-        args = [a.arg for a in fn.args.args]
-        if len(args) < 4:
-            continue
-
-        df_arg, ind_arg, params_arg = args[1], args[2], args[3]
-        load_names, store_names = _collect_name_load_store_sets(fn)
-
-        alias_raw: List[str] = []
-        if "df" in load_names and "df" not in args and "df" not in store_names and df_arg != "df":
-            alias_raw.append(f"df = {df_arg}")
-        if (
-            "indicators" in load_names
-            and "indicators" not in args
-            and "indicators" not in store_names
-            and ind_arg != "indicators"
-        ):
-            alias_raw.append(f"indicators = {ind_arg}")
-        if "params" in load_names and "params" not in args and "params" not in store_names and params_arg != "params":
-            alias_raw.append(f"params = {params_arg}")
-        if "warmup" in load_names and "warmup" not in args and "warmup" not in store_names:
-            warmup_source = "params"
-            if params_arg and params_arg in args and params_arg != "params":
-                warmup_source = params_arg
-            alias_raw.append(f"warmup = int({warmup_source}.get('warmup', 50))")
-
-        for param_name, replacement in _PARAM_ACCESS_REWRITE_HINTS.items():
-            if param_name == "warmup":
-                continue
-            if param_name in load_names and param_name not in args and param_name not in store_names:
-                alias_raw.append(f"{param_name} = {replacement}")
-
-        for ohlcv_col in ("open", "high", "low", "close", "volume"):
-            if ohlcv_col in load_names and ohlcv_col not in args and ohlcv_col not in store_names:
-                alias_raw.append(f"{ohlcv_col} = np.nan_to_num(df['{ohlcv_col}'].values.astype(np.float64))")
-        if "price" in load_names and "price" not in args and "price" not in store_names:
-            if not any(line.startswith("close = ") for line in alias_raw):
-                alias_raw.append("close = np.nan_to_num(df['close'].values.astype(np.float64))")
-            alias_raw.append("price = close")
-
-        if not alias_raw:
-            continue
-
-        insert_lineno: int
-        if fn.body:
-            first_stmt = fn.body[0]
-            _first_val = getattr(first_stmt, "value", None)
-            if (
-                isinstance(first_stmt, ast.Expr)
-                and isinstance(_first_val, ast.Constant)
-                and isinstance(_first_val.value, str)
-            ):
-                end = getattr(first_stmt, "end_lineno", None) or first_stmt.lineno
-                insert_lineno = int(end) + 1
-            else:
-                insert_lineno = int(first_stmt.lineno)
-        else:
-            insert_lineno = int((getattr(fn, "end_lineno", None) or fn.lineno) + 1)
-
-        insert_idx = max(0, min(len(lines), insert_lineno - 1))
-
-        # Indentation = indentation de la première ligne de body (ou fallback def+4)
-        indent = ""
-        if 0 <= insert_idx < len(lines) and lines:
-            _m = re.match(r"^(\s*)", lines[insert_idx])
-            indent = _m.group(1) if _m else ""
-        else:
-            def_line_idx = max(0, min(len(lines) - 1, int(fn.lineno) - 1)) if lines else 0
-            _dm = re.match(r"^(\s*)", lines[def_line_idx]) if lines else None
-            def_indent = _dm.group(1) if _dm else ""
-            indent = def_indent + "    "
-
-        insertions.append((insert_idx, [indent + line for line in alias_raw]))
-
-    if not insertions:
-        return code
-
-    # Appliquer en reverse pour préserver les index
-    for idx, new_lines in sorted(insertions, key=lambda x: x[0], reverse=True):
-        lines[idx:idx] = new_lines
-
-    return "\n".join(lines)
-
-
-def _inject_generate_signals_indicator_aliases(code: str) -> str:
-    """Injecte des alias d'indicateurs nus dans generate_signals quand l'intention est claire."""
-    try:
-        tree = ast.parse(code)
-    except _AST_PARSE_RECOVERABLE_EXCEPTIONS:
-        return code
-
-    fns = _iter_generate_signals_functions(tree)
-    if not fns:
-        return code
-
-    known_indicators = _get_known_indicator_names()
-    if not known_indicators:
-        return code
-
-    lines = code.split("\n")
-    insertions: List[Tuple[int, List[str]]] = []
-
-    for fn in fns:
-        load_names, _store_names = _collect_name_load_store_sets(fn)
-        bound_names = _collect_bound_names(fn)
-        missing_indicator_names = sorted(
-            {name for name in load_names if name in known_indicators and name not in bound_names}
-        )
-        if not missing_indicator_names:
-            continue
-
-        alias_raw: List[str] = []
-        for indicator_name in missing_indicator_names:
-            if indicator_name in _DICT_INDICATOR_NAMES:
-                alias_raw.append(f"{indicator_name} = indicators['{indicator_name}']")
-            else:
-                alias_raw.append(f"{indicator_name} = np.nan_to_num(indicators['{indicator_name}'])")
-
-        if fn.body:
-            first_stmt = fn.body[0]
-            _first_val = getattr(first_stmt, "value", None)
-            if (
-                isinstance(first_stmt, ast.Expr)
-                and isinstance(_first_val, ast.Constant)
-                and isinstance(_first_val.value, str)
-            ):
-                end = getattr(first_stmt, "end_lineno", None) or first_stmt.lineno
-                insert_lineno = int(end) + 1
-            else:
-                insert_lineno = int(first_stmt.lineno)
-        else:
-            insert_lineno = int((getattr(fn, "end_lineno", None) or fn.lineno) + 1)
-
-        insert_idx = max(0, min(len(lines), insert_lineno - 1))
-        if 0 <= insert_idx < len(lines) and lines:
-            _m = re.match(r"^(\s*)", lines[insert_idx])
-            indent = _m.group(1) if _m else ""
-        else:
-            def_line_idx = max(0, min(len(lines) - 1, int(fn.lineno) - 1)) if lines else 0
-            _dm = re.match(r"^(\s*)", lines[def_line_idx]) if lines else None
-            def_indent = _dm.group(1) if _dm else ""
-            indent = def_indent + "    "
-
-        insertions.append((insert_idx, [indent + line for line in alias_raw]))
-
-    if not insertions:
-        return code
-
-    for idx, new_lines in sorted(insertions, key=lambda x: x[0], reverse=True):
-        lines[idx:idx] = new_lines
-
-    return "\n".join(lines)
-
-
-def _rewrite_base_strategy_aliases(code: str) -> str:
-    """Normalise l'ancien alias BaseStrategy vers StrategyBase."""
-    fixed = re.sub(
-        r"from\s+strategies\.base_strategy\s+import\s+BaseStrategy\b",
-        "from strategies.base import StrategyBase",
-        code,
-    )
-    fixed = re.sub(r"\bBaseStrategy\b", "StrategyBase", fixed)
-    return fixed
-
-
-def _rewrite_signals_loc_assignments(code: str) -> str:
-    """Réécrit les patterns `signals.loc[mask, 'long'/'short'] = ...` vers une série 1D."""
-
-    def _replacement(match: re.Match[str]) -> str:
-        mask_expr = str(match.group("mask") or "").strip()
-        side = str(match.group("side") or "").strip().lower()
-        raw_value = str(match.group("value") or "").strip()
-        normalized_value = raw_value
-        if side == "short":
-            if re.fullmatch(r"0(?:\.0+)?", raw_value):
-                normalized_value = "0.0"
-            else:
-                normalized_value = "-1.0"
-        elif side == "long":
-            if re.fullmatch(r"0(?:\.0+)?", raw_value):
-                normalized_value = "0.0"
-            else:
-                normalized_value = "1.0"
-        elif re.fullmatch(r"1(?:\.0+)?", raw_value):
-            normalized_value = "1.0"
-        elif re.fullmatch(r"-1(?:\.0+)?", raw_value):
-            normalized_value = "-1.0"
-        elif re.fullmatch(r"0(?:\.0+)?", raw_value):
-            normalized_value = "0.0"
-        return f"signals[{mask_expr}] = {normalized_value}"
-
-    return re.sub(
-        r"signals\s*\.loc\s*\[\s*(?P<mask>[^,\]\n]+)\s*,\s*['\"](?P<side>long|short)['\"]\s*\]\s*=\s*(?P<value>[^\n#]+)",
-        _replacement,
-        code,
-        flags=re.IGNORECASE,
-    )
-
-
-def _rewrite_safe_dict_indicator_comparisons(code: str) -> str:
-    """Réécrit quelques comparaisons directes ambiguës sur indicateurs dict quand la sous-clé sûre est connue."""
-    compare_ops = r"(==|!=|>=|<=|>|<)"
-    rewritten_lines: List[str] = []
-    for raw_line in str(code or "").splitlines():
-        line = raw_line
-        for indicator_name, subkey in _DICT_INDICATOR_SAFE_SCALAR_KEYS.items():
-            scalar_expr = f"np.nan_to_num(indicators['{indicator_name}']['{subkey}'])"
-            indicator_expr = rf"indicators\s*\[\s*['\"]{re.escape(indicator_name)}['\"]\s*\](?!\s*\[)"
-            get_expr = rf"indicators\.get\(\s*['\"]{re.escape(indicator_name)}['\"]\s*(?:,\s*[^)]*)?\)(?!\s*\[)"
-            for expr in (indicator_expr, get_expr):
-                line = re.sub(
-                    rf"({expr})\s*{compare_ops}",
-                    lambda m, replacement=scalar_expr: (  # type: ignore[misc]
-                        f"{replacement} {m.group(2)}"
-                    ),
-                    line,
-                )
-                line = re.sub(
-                    rf"{compare_ops}\s*({expr})",
-                    lambda m, replacement=scalar_expr: (  # type: ignore[misc]
-                        f"{m.group(1)} {replacement}"
-                    ),
-                    line,
-                )
-        rewritten_lines.append(line)
-    return "\n".join(rewritten_lines)
 
 
 def _normalize_signal_assignments(logic: str) -> str:
@@ -1787,6 +1236,51 @@ def _format_parameter_specs_code(specs: Dict[str, Any]) -> str:
     return "".join(out)
 
 
+def _sanitize_indicator_params_for_code(
+    raw: Any,
+    required_indicators: List[str],
+) -> Dict[str, Dict[str, Any]]:
+    """Normalise les `indicator_params` d'une proposition pour le code généré."""
+    if not isinstance(raw, dict) or not raw:
+        return {}
+    known = {str(ind or "").strip().lower() for ind in required_indicators if str(ind or "").strip()}
+    sanitized: Dict[str, Dict[str, Any]] = {}
+    for raw_name, raw_params in raw.items():
+        if not isinstance(raw_name, str):
+            continue
+        indicator_name = _canonicalize_indicator_name(raw_name, known=known) or raw_name.strip().lower()
+        if not indicator_name or (known and indicator_name not in known):
+            continue
+        params = _sanitize_param_mapping(raw_params)
+        if params:
+            sanitized[indicator_name] = params
+    return sanitized
+
+
+def _format_indicator_params_method_code(
+    indicator_params: Dict[str, Dict[str, Any]],
+) -> str:
+    """Construit une surcharge `get_indicator_params` pour préserver le raisonnement LLM."""
+    if not indicator_params:
+        return ""
+    literal = _format_python_dict_literal(indicator_params)
+    literal_lines = literal.splitlines() or ["{}"]
+    if len(literal_lines) == 1:
+        static_params_block = f"        static_params = {literal_lines[0]}\n"
+    else:
+        static_params_block = f"        static_params = {literal_lines[0]}\n"
+        static_params_block += "".join(f"        {line}\n" for line in literal_lines[1:])
+    return (
+        "    def get_indicator_params(self, indicator_name: str, params: Dict[str, Any]) -> Dict[str, Any]:\n"
+        f"{static_params_block}"
+        "        key = str(indicator_name or '').strip().lower()\n"
+        "        base_params = super().get_indicator_params(indicator_name, params)\n"
+        "        merged = dict(static_params.get(key, {}))\n"
+        "        merged.update(base_params)\n"
+        "        return merged\n\n"
+    )
+
+
 def _build_deterministic_strategy_code(
     proposal: Dict[str, Any],
     llm_logic: str,
@@ -1817,6 +1311,11 @@ def _build_deterministic_strategy_code(
         default_params_block += "\n"
 
     specs_block = _format_parameter_specs_code(proposal.get("parameter_specs", {}))
+    indicator_params = _sanitize_indicator_params_for_code(
+        proposal.get("indicator_params"),
+        required_indicators,
+    )
+    indicator_params_method_block = _format_indicator_params_method_code(indicator_params)
     normalized_logic = textwrap.dedent(llm_logic).strip("\n")
     logic_lines = normalized_logic.splitlines() if normalized_logic else ["pass"]
     logic_block = "\n".join(f"        {line}" if line.strip() else "" for line in logic_lines)
@@ -1846,6 +1345,7 @@ def _build_deterministic_strategy_code(
         "    @property\n"
         "    def parameter_specs(self) -> Dict[str, ParameterSpec]:\n"
         f"{specs_block}\n"
+        f"{indicator_params_method_block}"
         "    def generate_signals(self, df: pd.DataFrame, indicators: Dict[str, Any], params: Dict[str, Any]) -> pd.Series:\n"
         "        signals = pd.Series(0.0, index=df.index, dtype=np.float64)\n"
         "        n = len(df)\n"
@@ -2109,79 +1609,6 @@ def _build_deterministic_fallback_code(
     )
 
 
-# Prefixes de ligne indiquant du vrai code Python (pas du texte de docstring)
-_CODE_LINE_STARTS = (
-    "def ",
-    "class ",
-    "@",
-    "return ",
-    "import ",
-    "from ",
-    "self.",
-    "super(",
-    "if ",
-    "for ",
-    "while ",
-    "try:",
-    "with ",
-    "raise ",
-    "yield ",
-    "assert ",
-    "pass",
-    "break",
-    "continue",
-    "signals",
-    "result",
-    "n =",
-    "n=",
-)
-
-
-def _strip_docstrings(code: str) -> str:
-    """Supprime tous les blocs triple-quoted, y compris non terminés.
-
-    Utilise une heuristique pour détecter la fin d'un docstring non terminé:
-    si une ligne ressemble à du code Python (def, class, @, return, ...),
-    on considère que le docstring est terminé et on préserve la ligne.
-    """
-    lines = code.split("\n")
-    result = []
-    in_docstring = False
-
-    for line in lines:
-        stripped = line.strip()
-
-        if in_docstring:
-            # Fermeture explicite du docstring
-            if '"""' in stripped or "'''" in stripped:
-                in_docstring = False
-                continue
-            # Heuristique: si la ligne ressemble à du code, le docstring
-            # non terminé est considéré comme fini → préserver la ligne
-            if stripped.startswith(_CODE_LINE_STARTS):
-                in_docstring = False
-                result.append(line)
-                continue
-            # Toujours dans le docstring → ignorer
-            continue
-
-        # Détecter l'ouverture d'un triple-quote
-        for tq in ['"""', "'''"]:
-            if tq in stripped:
-                cnt = stripped.count(tq)
-                if cnt >= 2:
-                    # Docstring fermé sur la même ligne → ignorer la ligne
-                    break
-                # Docstring multi-ligne ouvert → commencer à ignorer
-                in_docstring = True
-                break
-        else:
-            # Pas de triple-quote → conserver la ligne
-            result.append(line)
-
-    return "\n".join(result)
-
-
 def _extract_phase_feedback(
     iteration: Optional["BuilderIteration"],
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
@@ -2225,9 +1652,9 @@ def _format_sweep_context_lines(backtest_feedback: Dict[str, Any]) -> List[str]:
         "### Sweep paramétrique",
         (
             f"- Combinaisons testées: "
-            f"{int(backtest_feedback.get('sweep_total_tested', 0) or 0)} "
-            f"({int(backtest_feedback.get('sweep_success', 0) or 0)} ok / "
-            f"{int(backtest_feedback.get('sweep_failed', 0) or 0)} échec)"
+            f"{int(backtest_feedback.get('sweep_total_tested', 0))} "
+            f"({int(backtest_feedback.get('sweep_success', 0))} ok / "
+            f"{int(backtest_feedback.get('sweep_failed', 0))} échec)"
         ),
         (
             " - Meilleurs paramètres: "
@@ -2247,11 +1674,11 @@ def _format_sweep_context_lines(backtest_feedback: Dict[str, Any]) -> List[str]:
                 "  - Top {rank}: score={score:.2f} sharpe={sharpe:.3f} "
                 "ret={ret:+.2f}% dd={dd:.2f}% trades={trades} params={params}".format(
                     rank=rank,
-                    score=float(row.get("telemetry_score", 0.0) or 0.0),
-                    sharpe=float(row.get("sharpe_ratio", 0.0) or 0.0),
-                    ret=float(row.get("total_return_pct", 0.0) or 0.0),
-                    dd=float(row.get("max_drawdown_pct", 0.0) or 0.0),
-                    trades=int(row.get("total_trades", 0) or 0),
+                    score=float(row.get("telemetry_score", 0.0)),
+                    sharpe=float(row.get("sharpe_ratio", 0.0)),
+                    ret=float(row.get("total_return_pct", 0.0)),
+                    dd=float(row.get("max_drawdown_pct", 0.0)),
+                    trades=int(row.get("total_trades", 0)),
                     params=json.dumps(
                         row.get("params", {}) or {},
                         ensure_ascii=False,
@@ -2361,17 +1788,6 @@ def _looks_like_json_object(text: str) -> bool:
     return stripped.startswith("{") and stripped.endswith("}")
 
 
-def _looks_like_strategy_code(raw_text: str, code: str) -> bool:
-    """Validation heuristique du contenu attendu en phase code."""
-    if _is_empty_code(code):
-        return False
-    if _looks_like_json_object(raw_text) and not _looks_like_python_code(raw_text):
-        return False
-
-    lowered = code.lower()
-    return "class " in lowered and "generate_signals" in lowered
-
-
 def _classify_raw_response(text: str) -> str:
     """Retourne la nature d'une réponse brute LLM pour debug de phase."""
     if not text or not text.strip():
@@ -2444,10 +1860,6 @@ class StrategyBuilder:
         }
         self.builder_execution_mode: str = "mono_single_llm"
         self.orchestration_mode: str = "single_llm"
-        self.multi_llm_profile: str = ""
-        self.multi_llm_role_overrides: Dict[str, Any] = {}
-        self.multi_llm_assignments: List[Dict[str, Any]] = []
-        self._multi_llm_manager: Any = None  # set externally for iteration-level rotation
         if isinstance(llm_topology_config, dict):
             llm_topology_config = LLMTopologyConfig.from_dict(llm_topology_config)
         self.llm_topology_config = llm_topology_config or build_phase1_topology(
@@ -2581,7 +1993,7 @@ class StrategyBuilder:
 
     def _build_live_event(self, event: str, **payload: Any) -> Dict[str, Any]:
         raw_payload = dict(payload or {})
-        iteration = int(raw_payload.pop("iteration", 0) or 0)
+        iteration = int(raw_payload.pop("iteration", 0))
         phase = str(raw_payload.pop("phase", "") or "")
         branch_label = str(raw_payload.pop("branch_label", "") or "")
         selected_branch_label = str(raw_payload.pop("selected_branch_label", "") or "")
@@ -2633,7 +2045,7 @@ class StrategyBuilder:
             market = f" sur {symbol} {timeframe}".rstrip()
             return f"Initialisation de la session Builder{market}"
         if event == "iteration_start":
-            total = int(payload.get("max_iterations", 0) or 0)
+            total = int(payload.get("max_iterations", 0))
             return f"Iteration {iteration}/{total or '?'} demarree"
         if event == "proposal_candidate":
             proposal = dict(payload.get("proposal") or {})
@@ -2696,7 +2108,7 @@ class StrategyBuilder:
                 f"Iteration {iteration} en erreur - {error_text}" if error_text else f"Iteration {iteration} en erreur"
             )
         if event == "session_done":
-            total_iterations = int(payload.get("total_iterations", 0) or 0)
+            total_iterations = int(payload.get("total_iterations", 0))
             return f"Session terminee - {status} ({total_iterations} iterations)"
         return str(payload.get("detail", "") or "").strip()
 
@@ -2918,12 +2330,21 @@ class StrategyBuilder:
         )
         client_config = getattr(llm_client, "config", None)
         original_host = getattr(client_config, "ollama_host", None) if client_config else None
+        route_snapshot: dict[str, str] | None = None
+        route_restore = None
         route = self.llm_topology_config.resolve_builder_phase_route(
             phase,
             fallback_host=original_host,
         )
-        if client_config is not None and route.ollama_host:
-            client_config.ollama_host = route.ollama_host
+        route_host = str(route.ollama_host or "").rstrip("/")
+        current_host = str(original_host or "").rstrip("/")
+        if route_host and route_host != current_host:
+            set_runtime_route = getattr(llm_client, "set_runtime_route", None)
+            route_restore = getattr(llm_client, "restore_runtime_route", None)
+            if callable(set_runtime_route) and callable(route_restore):
+                route_snapshot = set_runtime_route(ollama_host=route_host)
+            elif client_config is not None:
+                client_config.ollama_host = route_host
 
         # Capture les référencees au moment de la définition du closure pour éviter
         # que des threads résiduels (après timeout) écrivent dans le mauvais stream.
@@ -2960,13 +2381,27 @@ class StrategyBuilder:
                         except Exception:  # noqa: BLE001
                             pass
 
-                return llm_client.chat_stream(
-                    msgs_,
-                    on_chunk=_on_chunk,
-                    json_mode=json_mode,
-                    temperature=temp_,
-                    max_tokens=max_tokens,
-                )
+                # Pass per-phase timeout to httpx so the in-flight stream
+                # actually closes when the Builder's per-phase budget is hit,
+                # rather than dangling on the default 600s adaptive timeout.
+                try:
+                    return llm_client.chat_stream(
+                        msgs_,
+                        on_chunk=_on_chunk,
+                        json_mode=json_mode,
+                        temperature=temp_,
+                        max_tokens=max_tokens,
+                        http_timeout=float(timeout_sec) + 5.0,
+                    )
+                except TypeError:
+                    # Older client signature without http_timeout.
+                    return llm_client.chat_stream(
+                        msgs_,
+                        on_chunk=_on_chunk,
+                        json_mode=json_mode,
+                        temperature=temp_,
+                        max_tokens=max_tokens,
+                    )
             return llm_client.chat(
                 msgs_,
                 json_mode=json_mode,
@@ -3029,42 +2464,53 @@ class StrategyBuilder:
                 )
                 return SimpleNamespace(content="")
 
-        pool = _new_streamlit_aware_thread_pool(max_workers=1)
         try:
-            result = _submit_to_pool(_do_call, pool, "main")
-        finally:
-            pool.shutdown(wait=False)
-            if client_config is not None:
-                client_config.ollama_host = original_host
-
-        # --- Corrective kick si boucle de répétition détectée ---
-        if result is not None and getattr(result, "aborted", False):
-            self._emit_progress(
-                "repetition_kick",
-                phase=phase,
-                status="warning",
-                message=(
-                    f"⚡ Boucle de répétition détectée ({phase}) — relance correctrice avec instruction explicite"
-                ),
-            )
-            logger.warning(
-                "builder_llm_repetition_kick phase=%s model=%s",
-                phase,
-                getattr(client_config, "model", "?") if client_config else "?",
-            )
-            corrected_msgs = self._make_corrective_messages(messages)
-            corrective_temp = min((temperature or 0.5) + 0.15, 1.0)
-            pool_kick = _new_streamlit_aware_thread_pool(max_workers=1)
+            pool = _new_streamlit_aware_thread_pool(max_workers=1)
             try:
-                result = _submit_to_pool(
-                    lambda: _do_call(corrected_msgs, corrective_temp, self._StreamRepetitionGuard()),
-                    pool_kick,
-                    "repetition_kick",
-                )
+                result = _submit_to_pool(_do_call, pool, "main")
             finally:
-                pool_kick.shutdown(wait=False)
+                pool.shutdown(wait=False)
 
-        return result
+            # --- Corrective kick si boucle de répétition détectée ---
+            if result is not None and getattr(result, "aborted", False):
+                self._emit_progress(
+                    "repetition_kick",
+                    phase=phase,
+                    status="warning",
+                    message=(
+                        f"⚡ Boucle de répétition détectée ({phase}) — relance correctrice avec instruction explicite"
+                    ),
+                )
+                logger.warning(
+                    "builder_llm_repetition_kick phase=%s model=%s",
+                    phase,
+                    getattr(client_config, "model", "?") if client_config else "?",
+                )
+                corrected_msgs = self._make_corrective_messages(messages)
+                corrective_temp = min((temperature or 0.5) + 0.15, 1.0)
+                pool_kick = _new_streamlit_aware_thread_pool(max_workers=1)
+                try:
+                    result = _submit_to_pool(
+                        lambda: _do_call(corrected_msgs, corrective_temp, self._StreamRepetitionGuard()),
+                        pool_kick,
+                        "repetition_kick",
+                    )
+                finally:
+                    pool_kick.shutdown(wait=False)
+
+            return result
+        finally:
+            if route_snapshot is not None and callable(route_restore):
+                try:
+                    route_restore(route_snapshot)
+                except Exception:  # noqa: BLE001
+                    logger.debug(
+                        "builder_llm_route_restore_failed phase=%s",
+                        phase,
+                        exc_info=True,
+                    )
+            elif client_config is not None:
+                client_config.ollama_host = original_host
 
     # ------------------------------------------------------------------
     # Session helpers
@@ -3082,7 +2528,21 @@ class StrategyBuilder:
         safe_save_session_summary(session)
 
     def _attempt_session_auto_reset(self, session, **kwargs):
-        return attempt_session_auto_reset(session, **kwargs)
+        def _save_callback(target_session: BuilderSession) -> None:
+            save_func = getattr(self, "_save_session_summary", None)
+            if callable(save_func):
+                try:
+                    save_func(target_session)
+                    return
+                except Exception:  # noqa: BLE001
+                    logger.debug(
+                        "builder_auto_reset_instance_save_failed session=%s",
+                        getattr(target_session, "session_id", "unknown"),
+                        exc_info=True,
+                    )
+            safe_save_session_summary(target_session)
+
+        return attempt_session_auto_reset(session, save_callback=_save_callback, **kwargs)
 
     def _build_cross_session_memory_prompt(
         self,
@@ -3092,6 +2552,23 @@ class StrategyBuilder:
     ) -> str:
         entries = list(getattr(session, "cross_session_memory", []) or [])
         return format_builder_cross_session_memory(entries, max_chars=max_chars)
+
+    def _build_mono_llm_model_prompt_context(
+        self,
+        session: BuilderSession,
+        *,
+        phase: str,
+    ) -> Dict[str, Any]:
+        model_name = str(
+            getattr(session, "model_name", "")
+            or getattr(getattr(self.llm, "config", None), "model", "")
+            or ""
+        )
+        return build_builder_model_prompt_guidance(
+            model_name,
+            phase=cast(Literal["proposal", "code"], str(phase or "proposal")),
+            builder_execution_mode=str(getattr(session, "builder_execution_mode", "") or ""),
+        )
 
     # ------------------------------------------------------------------
     # Indicator ranking (shared between proposal & code phases)
@@ -3108,11 +2585,15 @@ class StrategyBuilder:
     ) -> List[str]:
         """Rank available indicators using inter-session diversity policy.
 
-        Returns a sorted list of indicator names, or the flat list when
-        the ``indicator_ranking`` ablation step is disabled.
+        Returns a sorted list of indicator names, or a prompt-local randomized
+        presentation order when the ``indicator_ranking`` ablation step is
+        disabled.
         """
         if not self.ablation.is_enabled("indicator_ranking"):
-            return list(self.available_indicators)
+            return shuffle_indicator_presentation_order(
+                self.available_indicators,
+                session_seed=session_seed,
+            )
 
         from config.indicator_history import (  # noqa: PLC0415,I001
             get_banned_indicators,
@@ -3146,6 +2627,21 @@ class StrategyBuilder:
     # LLM interactions
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _build_session_market_context(session: "BuilderSession") -> Dict[str, Any]:
+        """Champs de contexte marché communs aux prompts proposal et code."""
+        return {
+            "objective": session.objective,
+            "direction_constraint": session.direction_constraint,
+            "symbol": session.symbol,
+            "timeframe": session.timeframe,
+            "n_bars": session.n_bars,
+            "fees_bps": session.fees_bps,
+            "slippage_bps": session.slippage_bps,
+            "initial_capital": session.initial_capital,
+            "cross_session_memory_count": len(session.cross_session_memory or []),
+        }
+
     def _ask_proposal(
         self,
         session: BuilderSession,
@@ -3170,26 +2666,19 @@ class StrategyBuilder:
         )
 
         context = {
-            "objective": session.objective,
+            **self._build_session_market_context(session),
+            **self._build_mono_llm_model_prompt_context(session, phase="proposal"),
             "available_indicators": ordered_prompt_indicators,
             "available_indicator_guide": build_indicator_selection_guide(ordered_prompt_indicators),
             "cross_session_memory_prompt": self._build_cross_session_memory_prompt(
                 session,
                 max_chars=BUILDER_MEMORY_PROPOSAL_MAX_CHARS,
             ),
-            "cross_session_memory_count": len(list(session.cross_session_memory or [])),
             "iteration": len(session.iterations) + 1,
             "max_iterations": session.max_iterations,
-            "direction_constraint": session.direction_constraint,
-            # Contexte de marché
-            "symbol": session.symbol,
-            "timeframe": session.timeframe,
-            "n_bars": session.n_bars,
+            # Contexte de marché étendu (proposal seulement)
             "date_range_start": session.date_range_start,
             "date_range_end": session.date_range_end,
-            "fees_bps": session.fees_bps,
-            "slippage_bps": session.slippage_bps,
-            "initial_capital": session.initial_capital,
             "objective_indicators": list(session.objective_indicators or []),
             "indicator_lock_mode": str(session.indicator_lock_mode or ""),
         }
@@ -3278,7 +2767,7 @@ class StrategyBuilder:
         if best_ctx.has_backtest:
             bm = best_ctx.metrics
             context["best_so_far"] = {
-                "iteration": best_ctx.raw.iteration,
+                "iteration": best_ctx.raw.iteration if best_ctx.raw else 0,
                 "hypothesis": best_ctx.hypothesis,
                 "indicators": best_ctx.used_indicators,
                 "sharpe": bm.get("sharpe_ratio", 0),
@@ -3320,6 +2809,7 @@ class StrategyBuilder:
                     available_indicators=self.available_indicators,
                     objective=session.objective,
                     direction_constraint=session.direction_constraint,
+                    market_symbol=session.symbol,
                 )
             return prop, _proposal_issues(prop)
 
@@ -3528,7 +3018,8 @@ class StrategyBuilder:
         )
 
         context = {
-            "objective": session.objective,
+            **self._build_session_market_context(session),
+            **self._build_mono_llm_model_prompt_context(session, phase="code"),
             "proposal": proposal,
             "available_indicators": ordered_code_indicators,
             "available_indicator_guide": build_indicator_selection_guide(ordered_code_indicators),
@@ -3536,16 +3027,7 @@ class StrategyBuilder:
                 session,
                 max_chars=BUILDER_MEMORY_CODE_MAX_CHARS,
             ),
-            "cross_session_memory_count": len(list(session.cross_session_memory or [])),
             "class_name": GENERATED_CLASS_NAME,
-            "direction_constraint": session.direction_constraint,
-            # Contexte de marché
-            "symbol": session.symbol,
-            "timeframe": session.timeframe,
-            "n_bars": session.n_bars,
-            "fees_bps": session.fees_bps,
-            "slippage_bps": session.slippage_bps,
-            "initial_capital": session.initial_capital,
             "previous_code": ctx.code,
             # Diagnostic de l'itération précédente (injecté dans le template)
             "diagnostic_actions": diag_actions,
@@ -3750,7 +3232,8 @@ class StrategyBuilder:
             "- stochastic keys are separate: indicators['stochastic']['stoch_k'] and ['stoch_d'] (no 'signal' key)\n"
             "- do not compare dict indicators directly (e.g. NEVER `adx > 25`)\n"
             "- for `&` / `|`, ensure both sides are boolean masks (no float/int scalar in bitwise op)\n\n"
-            "- ema/rsi/atr are plain arrays: NEVER use indicators['ema']['ema_21'] style\n\n"
+            "- ema/rsi/atr are plain arrays. For multiple EMA/ATR periods, use named keys supplied by the host "
+            "such as indicators['ema_21'] and indicators['ema_50']; NEVER use indicators['ema']['ema_21'] style.\n\n"
             "- ALWAYS include leverage=1 in default_params\n"
             "- If using ATR-based SL/TP: write df['bb_stop_long/bb_tp_long/bb_stop_short/bb_tp_short'] on entry bars\n\n"
             "- write only statements compatible with this pre-existing context:\n"
@@ -3792,7 +3275,8 @@ class StrategyBuilder:
             "pass what you need as arguments.\n"
             "- Use indicators dict correctly (dict indicators via sub-keys)\n"
             "- Indicator values are numpy arrays; never call .iloc/.loc on indicators\n"
-            "- Plain arrays (no sub-keys): ema, rsi, atr, cci, obv, mfi\n"
+            "- Plain arrays (no sub-keys): ema, rsi, atr, cci, obv, mfi. Parameterized instances are separate "
+            "keys such as indicators['ema_21'], indicators['ema_50'], indicators['atr_20'].\n"
             "- Dict indicators (access sub-keys first):\n"
             "  bollinger['upper'/'middle'/'lower'], keltner['upper'/'middle'/'lower'],\n"
             "  donchian['upper'/'middle'/'lower'], macd['macd'/'signal'/'histogram'],\n"
@@ -3901,11 +3385,11 @@ class StrategyBuilder:
                 prev_ctx = IterationContext(prev_it)
                 if prev_ctx.has_backtest:
                     pm = prev_ctx.metrics
-                    ps = float(pm.get("sharpe_ratio", 0) or 0)
-                    pr = float(pm.get("total_return_pct", 0) or 0)
-                    pd_ = float(pm.get("max_drawdown_pct", 0) or 0)
-                    pt = int(pm.get("total_trades", 0) or 0)
-                    pwr = float(pm.get("win_rate_pct", 0) or 0)
+                    ps = float(pm.get("sharpe_ratio", 0))
+                    pr = float(pm.get("total_return_pct", 0))
+                    pd_ = float(pm.get("max_drawdown_pct", 0))
+                    pt = int(pm.get("total_trades", 0))
+                    pwr = float(pm.get("win_rate_pct", 0))
                     best_mark = (
                         " ★"
                         if session.best_iteration is not None and prev_it.iteration == session.best_iteration.iteration
@@ -4170,6 +3654,7 @@ CRITICAL RULES:
 15. Indicator values are numpy arrays (or dict of numpy arrays): NEVER use .iloc/.loc/.shift/.rolling on indicators.
 16. Bollinger must be used via separate sub-keys like indicators['bollinger']['upper'] / ['middle'] / ['lower'] (never indicators['bollinger_upper']).
 17. EMA/RSI/ATR/CCI are plain arrays: NEVER use sub-keys like indicators['ema']['ema_21'].
+    If the proposal uses parameterized instances, access separate keys like indicators['ema_21'] / indicators['ema_50'].
     CCI is a plain array: use np.nan_to_num(indicators['cci']) directly.
 18. ADX must be used via separate sub-keys indicators['adx']['adx'] / ['plus_di'] / ['minus_di'] (never compare indicators['adx'] directly).
 19. Supertrend must be used via indicators['supertrend']['supertrend'] and ['direction'] (no upper/lower keys).
@@ -4407,41 +3892,97 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         if not signal_probe.get("ok"):
             return False
 
-        total_signals = int(signal_probe.get("total_signals", 0) or 0)
-        signal_density = float(signal_probe.get("signal_density", 0.0) or 0.0)
-        repeated_same_ratio = float(signal_probe.get("repeated_same_ratio", 0.0) or 0.0)
+        total_signals = int(signal_probe.get("total_signals", 0))
+        signal_density = float(signal_probe.get("signal_density", 0.0))
+        transition_density = float(signal_probe.get("transition_density", 0.0))
+        repeated_same_ratio = float(signal_probe.get("repeated_same_ratio", 0.0))
 
         if total_signals < MIN_SIGNAL_COUNT_FOR_DENSITY_PRECHECK:
             return False
 
+        if signal_density < MAX_SIGNAL_DENSITY_PRECHECK:
+            return False
+
         return (
-            signal_density >= MAX_SIGNAL_DENSITY_PRECHECK
-            and repeated_same_ratio >= MAX_REPEATED_SAME_SIGNAL_RATIO_PRECHECK
+            repeated_same_ratio >= MAX_REPEATED_SAME_SIGNAL_RATIO_PRECHECK
+            or transition_density >= MAX_SIGNAL_TRANSITION_DENSITY_PRECHECK
         )
 
-    @staticmethod
-    def _build_precheck_overtrading_result(
+    def _classify_signal_precheck_block(
+        self,
         signal_probe: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Retourne la décision synthétique de précheck, ou None si backtest utile."""
+        if not signal_probe.get("ok"):
+            return None
+
+        total_signals = int(signal_probe.get("total_signals", 0))
+        bar_count = int(signal_probe.get("bar_count", 0))
+        if bar_count > 0 and total_signals == 0:
+            skip_reason = "no_trade_signal_profile"
+            return {
+                "flag": skip_reason,
+                "skip_reason": skip_reason,
+                "detail": "précheck bloquant: aucun signal d'entrée détecté",
+                "result": self._build_precheck_blocked_result(signal_probe, skip_reason=skip_reason),
+            }
+
+        if self._is_pathological_signal_profile(signal_probe):
+            skip_reason = "pathological_signal_density"
+            return {
+                "flag": skip_reason,
+                "skip_reason": skip_reason,
+                "detail": "précheck bloquant: densité de signaux pathologique",
+                "result": self._build_precheck_blocked_result(signal_probe, skip_reason=skip_reason),
+            }
+
+        return None
+
+    @staticmethod
+    def _build_precheck_blocked_result(
+        signal_probe: Dict[str, Any],
+        *,
+        skip_reason: str,
     ) -> SimpleNamespace:
-        """Construit un résultat synthétique pour classifier un spam de signaux."""
-        total_signals = int(signal_probe.get("total_signals", 0) or 0)
-        signal_density = float(signal_probe.get("signal_density", 0.0) or 0.0)
-        repeated_same_ratio = float(signal_probe.get("repeated_same_ratio", 0.0) or 0.0)
+        """Construit un résultat synthétique pour un blocage pré-backtest."""
+        total_signals = int(signal_probe.get("total_signals", 0))
+        bar_count = int(signal_probe.get("bar_count", 0))
+        signal_density = float(signal_probe.get("signal_density", 0.0))
+        transition_density = float(signal_probe.get("transition_density", 0.0))
+        repeated_same_ratio = float(signal_probe.get("repeated_same_ratio", 0.0))
 
         metrics = {
-            "total_return_pct": -10.0,
-            "sharpe_ratio": -5.0,
-            "sortino_ratio": -5.0,
-            "calmar_ratio": -1.0,
-            "max_drawdown_pct": -25.0,
-            "total_trades": total_signals,
+            "total_return_pct": 0.0,
+            "sharpe_ratio": 0.0,
+            "sortino_ratio": 0.0,
+            "calmar_ratio": 0.0,
+            "max_drawdown_pct": 0.0,
+            "total_trades": 0,
             "win_rate_pct": 0.0,
-            "profit_factor": 0.5,
-            "expectancy": -0.05,
+            "profit_factor": 1.0,
+            "expectancy": 0.0,
             "avg_win": 0.0,
-            "avg_loss": -1.0,
+            "avg_loss": 0.0,
             "volatility_annual": 0.0,
+            "precheck_skip_reason": skip_reason,
+            "precheck_signal_density": signal_density,
+            "precheck_transition_density": transition_density,
+            "precheck_repeated_same_ratio": repeated_same_ratio,
         }
+        if skip_reason == "pathological_signal_density":
+            metrics.update(
+                {
+                    "total_return_pct": -10.0,
+                    "sharpe_ratio": -5.0,
+                    "sortino_ratio": -5.0,
+                    "calmar_ratio": -1.0,
+                    "max_drawdown_pct": -25.0,
+                    "total_trades": total_signals,
+                    "profit_factor": 0.5,
+                    "expectancy": -0.05,
+                    "avg_loss": -1.0,
+                },
+            )
 
         return SimpleNamespace(
             success=True,
@@ -4453,8 +3994,10 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             execution_time_ms=0,
             meta={
                 "precheck_skipped": True,
-                "skip_reason": "pathological_signal_density",
+                "skip_reason": skip_reason,
+                "bar_count": bar_count,
                 "signal_density": signal_density,
+                "transition_density": transition_density,
                 "repeated_same_ratio": repeated_same_ratio,
             },
         )
@@ -4709,6 +4252,16 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         universe_purpose: str = "builder",
         universe_strategy_type: str = "",
         universe_meta: Optional[Dict[str, Any]] = None,
+        session_id: str | None = None,
+        resume_seed_iterations: Optional[List[BuilderIteration]] = None,
+        resume_parent_session_id: str = "",
+        resume_mode: str = "",
+        resume_from_iteration: int = 0,
+        resume_extra_iterations: int = 0,
+        resume_original_status: str = "",
+        resume_source_summary_path: str = "",
+        resume_original_model_name: str = "",
+        resume_source_session_dir: Path | str | None = None,
     ) -> BuilderSession:
         """
         Lance la boucle complète de construction de stratégie.
@@ -4749,7 +4302,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         if not objective:
             raise ValueError("Objectif Builder vide ou invalide après nettoyage (probable collage de logs/traceback).")
 
-        session_id = self.create_session_id(objective)
+        session_id = str(session_id or "").strip() or self.create_session_id(objective)
         session_dir = self.get_session_dir(session_id)
         session_dir.mkdir(parents=True, exist_ok=True)
         objective_indicators = _extract_objective_indicator_names(
@@ -4806,9 +4359,13 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             orchestration_mode=str(self.orchestration_mode or "single_llm"),
             instrumentation_enabled=bool(self.instrumentation.enabled),
             ablation_config=dict(self.ablation.get_config()),
-            multi_llm_profile=str(self.multi_llm_profile or ""),
-            multi_llm_role_overrides=dict(self.multi_llm_role_overrides or {}),
-            multi_llm_assignments=list(self.multi_llm_assignments or []),
+            resume_parent_session_id=str(resume_parent_session_id or ""),
+            resume_mode=str(resume_mode or ""),
+            resume_from_iteration=int(resume_from_iteration or 0),
+            resume_extra_iterations=int(resume_extra_iterations or 0),
+            resume_original_status=str(resume_original_status or ""),
+            resume_source_summary_path=str(resume_source_summary_path or ""),
+            resume_original_model_name=str(resume_original_model_name or ""),
         )
         session.direction_constraint = _infer_direction_constraint_from_objective(objective)
         try:
@@ -4825,6 +4382,11 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             session.cross_session_memory = []
         model_name = getattr(getattr(self.llm, "config", None), "model", "?")
         session.model_name = model_name
+        session.resume_requested_model_name = str(model_name or "")
+        if resume_seed_iterations:
+            _resume_seed_session_state(session, list(resume_seed_iterations))
+        if resume_source_session_dir is not None:
+            _resume_copy_strategy_files(Path(resume_source_session_dir), session_dir)
         thought_stream = ThoughtStream(session_id, objective, model_name)
         previous_thought_stream = self._active_thought_stream
         previous_session_id = self._active_builder_session_id
@@ -4970,6 +4532,118 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
 
         return session
 
+    def resume_from_summary(
+        self,
+        summary_path: Path | str,
+        data: pd.DataFrame,
+        *,
+        mode: Literal["exact_continue", "objective_restart"] = "exact_continue",
+        extra_iterations: int = 10,
+        restart_max_iterations: int = 20,
+        target_sharpe: float | None = None,
+        initial_capital: float | None = None,
+        symbol: str | None = None,
+        timeframe: str | None = None,
+        fees_bps: float | None = None,
+        slippage_bps: float | None = None,
+        universe_mode: str | None = None,
+        universe_purpose: str | None = None,
+        universe_strategy_type: str | None = None,
+        universe_meta: Optional[Dict[str, Any]] = None,
+    ) -> BuilderSession:
+        """Reprend une session Builder arrêtée à `max_iterations`.
+
+        `exact_continue` réinjecte les itérations déjà persistées et ajoute
+        `extra_iterations` au compteur existant. `objective_restart` conserve
+        uniquement l'objectif et les paramètres de marché, avec un plafond neuf.
+        """
+        source_summary_path = Path(summary_path)
+        summary = json.loads(source_summary_path.read_text(encoding="utf-8"))
+        if not isinstance(summary, dict):
+            raise ValueError(f"Résumé Builder invalide: {source_summary_path}")
+
+        source_session_dir = source_summary_path.parent
+        parent_session_id = str(summary.get("session_id") or source_session_dir.name or "").strip()
+        objective = str(summary.get("objective") or "").strip()
+        if not objective:
+            raise ValueError(f"Résumé Builder sans objectif exploitable: {source_summary_path}")
+
+        requested_mode = str(mode or "exact_continue").strip()
+        seed_iterations: list[BuilderIteration] = []
+        resolved_mode = "objective_restart"
+        resume_from_iteration = 0
+        max_iterations = max(1, int(restart_max_iterations or 20))
+        if requested_mode == "exact_continue":
+            seed_iterations = _resume_load_seed_iterations(summary, source_session_dir)
+            resume_from_iteration = max(
+                (int(getattr(iteration, "iteration", 0) or 0) for iteration in seed_iterations),
+                default=0,
+            )
+            if resume_from_iteration > 0:
+                resolved_mode = "exact_continue"
+                max_iterations = resume_from_iteration + max(1, int(extra_iterations or 10))
+            else:
+                seed_iterations = []
+
+        run_symbol = str(symbol or summary.get("symbol") or "UNKNOWN").strip() or "UNKNOWN"
+        run_timeframe = str(timeframe or summary.get("timeframe") or "1h").strip() or "1h"
+        run_initial_capital = (
+            float(initial_capital)
+            if initial_capital is not None
+            else _resume_safe_float(summary.get("initial_capital"), 10000.0)
+        )
+        run_target_sharpe = (
+            float(target_sharpe)
+            if target_sharpe is not None
+            else _resume_safe_float(summary.get("target_sharpe"), 1.0)
+        )
+        run_fees_bps = float(fees_bps) if fees_bps is not None else _resume_safe_float(summary.get("fees_bps"), 10.0)
+        run_slippage_bps = (
+            float(slippage_bps)
+            if slippage_bps is not None
+            else _resume_safe_float(summary.get("slippage_bps"), 5.0)
+        )
+        source_universe_meta = summary.get("universe_meta") if isinstance(summary.get("universe_meta"), dict) else {}
+        resume_session_id = _resume_session_id(parent_session_id, resolved_mode)
+
+        return self.run(
+            objective,
+            data,
+            max_iterations=max_iterations,
+            target_sharpe=run_target_sharpe,
+            initial_capital=run_initial_capital,
+            symbol=run_symbol,
+            timeframe=run_timeframe,
+            fees_bps=run_fees_bps,
+            slippage_bps=run_slippage_bps,
+            universe_mode=str(universe_mode or summary.get("universe_mode") or "canonical"),
+            universe_purpose=str(universe_purpose or summary.get("universe_purpose") or "builder"),
+            universe_strategy_type=str(
+                universe_strategy_type
+                if universe_strategy_type is not None
+                else summary.get("universe_strategy_type") or "",
+            ),
+            universe_meta=(
+                dict(universe_meta)
+                if isinstance(universe_meta, dict)
+                else dict(source_universe_meta)
+            ),
+            session_id=resume_session_id,
+            resume_seed_iterations=seed_iterations if resolved_mode == "exact_continue" else None,
+            resume_parent_session_id=parent_session_id,
+            resume_mode=resolved_mode,
+            resume_from_iteration=resume_from_iteration,
+            resume_extra_iterations=(
+                max(1, int(extra_iterations or 10))
+                if resolved_mode == "exact_continue"
+                else max_iterations
+            ),
+            resume_original_status=str(summary.get("status") or ""),
+            resume_source_summary_path=str(source_summary_path),
+            resume_original_model_name=str(summary.get("model_name") or ""),
+            resume_source_session_dir=source_session_dir if resolved_mode == "exact_continue" else None,
+        )
+
     # ------------------------------------------------------------------
     # Persistence
     # ------------------------------------------------------------------
@@ -5048,6 +4722,12 @@ def generate_llm_objective_from_seed(
         stream_callback=stream_callback,
         recent_markets=recent_markets,
     )
+
+
+def align_objective_market_context(objective: str, *, symbol: str, timeframe: str) -> str:
+    from agents.builder_objectives import align_objective_market_context as _impl
+
+    return _impl(objective, symbol=symbol, timeframe=timeframe)
 
 
 def recommend_market_context(

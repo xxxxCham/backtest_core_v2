@@ -421,7 +421,7 @@ def analyze_repetition_patterns(sessions: list[dict]) -> dict:
     # Count models with repetition
     model_rep = Counter()
     for s in sessions:
-        has_rep = any("répétition" in l.lower() or "repetition" in l.lower() for l in s["info_lines"])
+        has_rep = any("répétition" in line.lower() or "repetition" in line.lower() for line in s["info_lines"])
         if has_rep:
             model_rep[s["model"]] += 1
 

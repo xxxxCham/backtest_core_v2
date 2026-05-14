@@ -7,7 +7,6 @@ import json
 import math
 import os
 import threading
-import time
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from datetime import datetime, timezone
@@ -19,6 +18,7 @@ import pandas as pd
 import streamlit as st
 
 from backtest.result_store import get_builder_sessions_dir
+from ui.builder_runtime import build_unique_atomic_tmp_path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 SANDBOX_ROOT = get_builder_sessions_dir()
@@ -57,10 +57,8 @@ _BUILDER_MODEL_PRIORITY_COLUMNS: tuple[str, ...] = (
     "avg_duration_s",
     "sessions_per_hour",
     "expected_return_per_hour_pct",
-    "multi_llm_sessions",
     "single_llm_sessions",
     "source_modes",
-    "profiles",
     "symbols",
     "timeframes",
     "first_session_num",
@@ -82,7 +80,6 @@ _SESSION_PRIORITY_COLUMNS: tuple[str, ...] = (
     "timeframe",
     "source_mode",
     "orchestration_mode",
-    "multi_llm_profile",
     "builder_model",
     "session_duration_seconds",
     "start_time",
@@ -136,17 +133,12 @@ def _sanitize_model_stats_state(payload: Any) -> dict[str, Any]:
     return state
 
 
-def _build_unique_tmp_path(target_path: Path) -> Path:
-    suffix = f".{os.getpid()}.{threading.get_ident()}.{time.time_ns()}.tmp"
-    return target_path.with_name(f"{target_path.name}{suffix}")
-
-
 def _write_json_atomically(target_path: Path, payload: dict[str, Any]) -> None:
     target_path.parent.mkdir(parents=True, exist_ok=True)
     serialized = json.dumps(payload, indent=2, ensure_ascii=False, default=str)
 
     with _MODEL_STATS_STATE_LOCK:
-        tmp_path = _build_unique_tmp_path(target_path)
+        tmp_path = build_unique_atomic_tmp_path(target_path)
         try:
             tmp_path.write_text(serialized, encoding="utf-8")
             os.replace(tmp_path, target_path)
@@ -436,14 +428,13 @@ def _build_record(entry: dict[str, Any], *, model: str) -> dict[str, Any]:
         "instrumentation_enabled": bool(entry.get("instrumentation_enabled", False)),
         "trace_fallback_rate": _safe_float(instrumentation_summary.get("fallback_rate")),
         "trace_repair_rate": _safe_float(instrumentation_summary.get("repair_rate")),
-        "multi_llm_profile": _normalize_text_label(entry.get("multi_llm_profile")),
         "objective": _normalize_text_label(entry.get("objective"), fallback=""),
     }
 
 
 def extract_builder_model_records(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
-        _build_record(entry, model=entry.get("multi_llm_builder_model") or entry.get("model_name"))
+        _build_record(entry, model=entry.get("model_name"))
         for entry in list(history or [])
         if isinstance(entry, dict)
     ]
@@ -478,8 +469,7 @@ def _compact_session_rows(entries: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "timeframe": _normalize_text_label(entry.get("timeframe")),
                 "source_mode": _normalize_text_label(entry.get("source_mode")),
                 "orchestration_mode": _normalize_text_label(entry.get("orchestration_mode")),
-                "multi_llm_profile": _normalize_text_label(entry.get("multi_llm_profile")),
-                "builder_model": _normalize_model_label(entry.get("multi_llm_builder_model")),
+                "builder_model": _normalize_model_label(entry.get("model_name")),
                 "session_duration_seconds": _duration_from_record_payload(entry),
                 "start_time": start_time,
                 "end_time": end_time,
@@ -511,10 +501,8 @@ def aggregate_model_records(records: list[dict[str, Any]]) -> list[dict[str, Any
                 "sharpes": [],
                 "trades": [],
                 "durations": [],
-                "multi_llm": 0,
                 "single_llm": 0,
                 "source_modes": set(),
-                "profiles": set(),
                 "symbols": set(),
                 "timeframes": set(),
                 "first_session_num": None,
@@ -563,15 +551,10 @@ def aggregate_model_records(records: list[dict[str, Any]]) -> list[dict[str, Any
             bucket["durations"].append(duration)
 
         orchestration_mode = _normalize_text_label(record.get("orchestration_mode"))
-        if orchestration_mode == "multi_llm":
-            bucket["multi_llm"] += 1
-        elif orchestration_mode == "single_llm":
+        if orchestration_mode == "single_llm":
             bucket["single_llm"] += 1
 
         bucket["source_modes"].add(_normalize_text_label(record.get("source_mode")))
-        profile = _normalize_text_label(record.get("multi_llm_profile"), fallback="")
-        if profile and profile != "-":
-            bucket["profiles"].add(profile)
         bucket["symbols"].add(_normalize_text_label(record.get("symbol")))
         bucket["timeframes"].add(_normalize_text_label(record.get("timeframe")))
 
@@ -642,10 +625,8 @@ def aggregate_model_records(records: list[dict[str, Any]]) -> list[dict[str, Any
                 "avg_duration_s": avg_duration_s,
                 "sessions_per_hour": sessions_per_hour,
                 "expected_return_per_hour_pct": expected_return_per_hour_pct,
-                "multi_llm_sessions": int(bucket["multi_llm"]),
                 "single_llm_sessions": int(bucket["single_llm"]),
                 "source_modes": ", ".join(sorted(bucket["source_modes"])) or "-",
-                "profiles": ", ".join(sorted(bucket["profiles"])) or "-",
                 "symbols": ", ".join(sorted(bucket["symbols"])) or "-",
                 "timeframes": ", ".join(sorted(bucket["timeframes"])) or "-",
                 "first_session_num": bucket["first_session_num"],
@@ -681,7 +662,6 @@ def summarize_window(entries: list[dict[str, Any]]) -> dict[str, Any]:
     negative_returns = 0
     flat_or_missing_returns = 0
     distinct_builder_models = set()
-    multi_llm_sessions = 0
     single_llm_sessions = 0
     instrumented_sessions = 0
     fallback_rates: list[float] = []
@@ -690,7 +670,7 @@ def summarize_window(entries: list[dict[str, Any]]) -> dict[str, Any]:
     for entry in list(entries or []):
         if not isinstance(entry, dict):
             continue
-        distinct_builder_models.add(_normalize_model_label(entry.get("multi_llm_builder_model")))
+        distinct_builder_models.add(_normalize_model_label(entry.get("model_name")))
         best_return = _safe_float(entry.get("best_return"))
         if best_return is None:
             flat_or_missing_returns += 1
@@ -702,9 +682,7 @@ def summarize_window(entries: list[dict[str, Any]]) -> dict[str, Any]:
             flat_or_missing_returns += 1
 
         orchestration_mode = _normalize_text_label(entry.get("orchestration_mode"))
-        if orchestration_mode == "multi_llm":
-            multi_llm_sessions += 1
-        elif orchestration_mode == "single_llm":
+        if orchestration_mode == "single_llm":
             single_llm_sessions += 1
         if bool(entry.get("instrumentation_enabled", False)):
             instrumented_sessions += 1
@@ -728,7 +706,6 @@ def summarize_window(entries: list[dict[str, Any]]) -> dict[str, Any]:
         "max_iterations_status": int(status_counts.get("max_iterations", 0)),
         "error_status": int(status_counts.get("error", 0)),
         "crash_status": int(status_counts.get("crash", 0)),
-        "multi_llm_sessions": multi_llm_sessions,
         "single_llm_sessions": single_llm_sessions,
         "instrumented_sessions": instrumented_sessions,
         "avg_trace_fallback_rate": _mean_or_none(fallback_rates, 4),
@@ -909,7 +886,7 @@ def _render_overview_cards(overview: dict[str, Any], *, archives_count: int) -> 
     with col12:
         st.metric("Mono", int(overview.get("single_llm_sessions", 0) or 0))
     with col13:
-        st.metric("Multi-LLM", int(overview.get("multi_llm_sessions", 0) or 0))
+        st.metric("Modèles", int(overview.get("distinct_builder_models", 0) or 0))
     with col14:
         fallback_rate = _safe_float(overview.get("avg_trace_fallback_rate"))
         repair_rate = _safe_float(overview.get("avg_trace_repair_rate"))

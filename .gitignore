@@ -292,6 +292,10 @@ backtest_results_organized/
 output/
 sweep_diagnostics/
 profiling_results/
+github_backups/
+/catalog/generated/
+/catalog/graduation_results/
+.llm_archive/
 .coverage
 analysis_report.html
 analysis_report_filtered.html

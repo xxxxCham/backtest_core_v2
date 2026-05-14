@@ -126,8 +126,12 @@ def _import_modules() -> dict[str, Any]:
     mods: dict[str, Any] = {}
 
     try:
-        from agents.builder_code_repair import _repair_code
+        from agents.builder_code_repair import (
+            _inject_generate_signals_indicator_bindings,
+            _repair_code,
+        )
 
+        mods["inject_bindings"] = _inject_generate_signals_indicator_bindings
         mods["repair_code"] = _repair_code
     except ImportError as exc:
         mods["repair_code_err"] = str(exc)
@@ -135,14 +139,12 @@ def _import_modules() -> dict[str, Any]:
     try:
         from agents.strategy_builder import (
             _build_deterministic_fallback_code,
-            _inject_generate_signals_indicator_bindings,
             _params_only_contract_respected,
             _postprocess_llm_logic_block,
             _sanitize_proposal_payload,
             sanitize_objective_text,
         )
 
-        mods["inject_bindings"] = _inject_generate_signals_indicator_bindings
         mods["postprocess"] = _postprocess_llm_logic_block
         mods["det_fallback"] = _build_deterministic_fallback_code
         mods["sanitize_proposal"] = _sanitize_proposal_payload
@@ -155,13 +157,8 @@ def _import_modules() -> dict[str, Any]:
         from agents.indicator_context import rank_indicator_selection
 
         mods["rank_indicators"] = rank_indicator_selection
-    except ImportError:
-        try:
-            from agents.strategy_builder import rank_indicator_selection  # type: ignore
-
-            mods["rank_indicators"] = rank_indicator_selection
-        except ImportError as exc:
-            mods["rank_indicators_err"] = str(exc)
+    except ImportError as exc:
+        mods["rank_indicators_err"] = str(exc)
 
     try:
         from agents.builder_code_validation import (

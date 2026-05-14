@@ -38,6 +38,15 @@ from backtest.result_store import (
     get_results_root_dir,
     get_saved_runs_dir,
 )
+from catalog.strategy_catalog import (
+    CATEGORY_ORDER,
+    build_builder_candidate_entry_id,
+    build_entry_from_saved_run,
+    compute_builder_candidate_params_hash,
+    list_entries,
+    prepare_saved_run_entry,
+    upsert_entries,
+)
 
 # pylint: disable=broad-exception-caught
 
@@ -50,6 +59,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 SANDBOX_DIR = get_builder_sessions_dir()
+
+WFA_CONFIDENCE_TIER_STRICT = "strict"
+WFA_CONFIDENCE_TIER_LOW = "low_confidence"
+WFA_CONFIDENCE_TIER_REJECTED = "rejected"
+P6_VERDICT_STRICT = "PROMOTED_STRICT"
+P6_VERDICT_LOW_CONFIDENCE = "PROMOTED_LOW_CONFIDENCE"
 
 
 def _default_postfilter_benchmark_names() -> list[str]:
@@ -73,6 +88,24 @@ def _default_promotion_dir() -> Path:
     if raw:
         return Path(raw)
     return Path("strategies/graduated")
+
+
+def _default_source_min_history_bars() -> dict[str, int]:
+    return {
+        "1m": 20000,
+        "3m": 15000,
+        "5m": 12000,
+        "15m": 8000,
+        "30m": 5000,
+        "1h": 2500,
+        "2h": 1800,
+        "4h": 1200,
+        "6h": 900,
+        "8h": 750,
+        "12h": 600,
+        "1d": 500,
+        "1w": 120,
+    }
 
 
 def _env_flag(name: str) -> bool:
@@ -140,12 +173,22 @@ class GraduationConfig:
     sweep_max_combinations: int = 81
     sweep_max_drawdown_drift_pct: float = 15.0
 
+    # Phase 4/5 — Validation marche source
+    source_market_first: bool = True
+    source_min_history_bars_by_timeframe: dict[str, int] = field(default_factory=_default_source_min_history_bars)
+    source_min_history_bars_default: int = 1000
+
     # Phase 5 — WFA
     wfa_folds: int = 5
     wfa_train_ratio: float = 0.8
     wfa_min_stability: float = 0.5
     wfa_min_test_sharpe: float = 0.3
+    # Legacy: avg_overfitting_ratio est maintenant un alias du score robuste WFA.
     wfa_max_overfitting_ratio: float = 1.8
+    wfa_strict_max_robust_score: float = 10.0
+    wfa_watchlist_max_robust_score: float = 30.0
+    wfa_min_positive_folds_pct: float = 80.0
+    wfa_hard_min_positive_folds_pct: float = 60.0
 
     # Output
     output_dir: Path = field(default_factory=lambda: Path("catalog/graduation_results"))
@@ -210,11 +253,26 @@ class GraduationCandidate:
     tested_timeframes: list[str] = field(default_factory=list)
     coverage_pct: float | None = None
     sweep_robustness_pct: float | None = None
+    sensitivity_scope: str = ""
+    sensitivity_symbol: str = ""
+    sensitivity_timeframe: str = ""
+    sensitivity_history_bars: int = 0
+    sensitivity_min_history_bars: int = 0
     wfa_stability: float | None = None
     wfa_avg_test_return_pct: float | None = None
     wfa_avg_test_sharpe: float | None = None
     wfa_overfitting_ratio: float | None = None
+    wfa_classic_overfitting_ratio: float | None = None
+    wfa_robust_overfitting_score: float | None = None
     wfa_is_robust: bool | None = None
+    wfa_valid_folds: int = 0
+    wfa_positive_folds_pct: float | None = None
+    wfa_confidence_tier: str = ""
+    wfa_scope: str = ""
+    wfa_symbol: str = ""
+    wfa_timeframe: str = ""
+    wfa_history_bars: int = 0
+    wfa_min_history_bars: int = 0
     rejection_reason: str = ""
     catalog_category: str | None = None
     catalog_entry_id: str | None = None
@@ -302,11 +360,26 @@ class GraduationCandidate:
             "coverage_pct": self.coverage_pct,
             "benchmark_slot_coverage_pct": _safe_round(multi_ctx.get("benchmark_slot_coverage_pct"), 1),
             "sweep_robustness_pct": self.sweep_robustness_pct,
+            "sensitivity_scope": self.sensitivity_scope,
+            "sensitivity_symbol": self.sensitivity_symbol,
+            "sensitivity_timeframe": self.sensitivity_timeframe,
+            "sensitivity_history_bars": self.sensitivity_history_bars,
+            "sensitivity_min_history_bars": self.sensitivity_min_history_bars,
             "wfa_stability": self.wfa_stability,
             "wfa_avg_test_return_pct": self.wfa_avg_test_return_pct,
             "wfa_avg_test_sharpe": self.wfa_avg_test_sharpe,
             "wfa_overfitting_ratio": self.wfa_overfitting_ratio,
+            "wfa_classic_overfitting_ratio": self.wfa_classic_overfitting_ratio,
+            "wfa_robust_overfitting_score": self.wfa_robust_overfitting_score,
             "wfa_is_robust": self.wfa_is_robust,
+            "wfa_valid_folds": self.wfa_valid_folds,
+            "wfa_positive_folds_pct": self.wfa_positive_folds_pct,
+            "wfa_confidence_tier": self.wfa_confidence_tier,
+            "wfa_scope": self.wfa_scope,
+            "wfa_symbol": self.wfa_symbol,
+            "wfa_timeframe": self.wfa_timeframe,
+            "wfa_history_bars": self.wfa_history_bars,
+            "wfa_min_history_bars": self.wfa_min_history_bars,
             "rejection_reason": self.rejection_reason,
             "catalog_category": self.catalog_category,
             "catalog_entry_id": self.catalog_entry_id,
@@ -322,6 +395,14 @@ def _safe_round(value: Any, digits: int) -> float | None:
     if not math.isfinite(number):
         return None
     return round(number, digits)
+
+
+def _safe_float_metric(value: Any, default: float | None = None) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return number if math.isfinite(number) else default
 
 
 def _json_safe(value: Any) -> Any:
@@ -511,6 +592,13 @@ def _save_progress_state(
         encoding="utf-8",
     )
     return path
+
+
+def _draft_report_filename(filename: str) -> str:
+    """Return the non-canonical report filename used while a run is still active."""
+    path = Path(filename)
+    suffix = path.suffix or ".json"
+    return str(path.with_name(f"{path.stem}.running{suffix}"))
 
 
 # ---------------------------------------------------------------------------
@@ -830,8 +918,6 @@ def scan_positive_import_candidates(
     if config is None:
         config = GraduationConfig()
 
-    from catalog.strategy_catalog import list_entries
-
     entries = list_entries(path=config.catalog_path, tags=["positive_import"], status="active")
     workspace_root = _workspace_root()
     candidates: list[GraduationCandidate] = []
@@ -975,6 +1061,7 @@ def save_graduation_report(
     phase: str = "P1_repechage",
     filename: str | None = None,
     stats: dict[str, Any] | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> Path:
     """Sauvegarde le rapport de graduation en JSON."""
     if output_dir is None:
@@ -989,6 +1076,7 @@ def save_graduation_report(
         "by_phase": {},
         "by_decision": {},
         "stats": _json_safe(stats or {}),
+        "meta": _json_safe(meta or {}),
         "candidates": [c.to_dict() for c in candidates],
     }
 
@@ -1052,6 +1140,96 @@ class _PipelineCtx:
     current_candidate: GraduationCandidate | None = None
 
 
+def _ctx_report_filename(ctx: _PipelineCtx, *, final: bool = False) -> str:
+    return ctx.report_filename if final else _draft_report_filename(ctx.report_filename)
+
+
+def _ctx_report_path(ctx: _PipelineCtx, *, final: bool = False) -> Path:
+    return ctx.config.output_dir / _ctx_report_filename(ctx, final=final)
+
+
+def _graduation_phase_contract() -> dict[str, dict[str, str]]:
+    return {
+        "P1": {
+            "name": "Inventaire",
+            "purpose": "Collecter les candidats Builder/imports et normaliser leur source.",
+        },
+        "P2": {
+            "name": "Positif observé",
+            "purpose": "Garder les candidats avec performance minimale crédible sur leur observation initiale.",
+        },
+        "P3": {
+            "name": "Benchmark consensus",
+            "purpose": "Mesurer la généralisation cross-token/cross-timeframe sur les packs de benchmarks.",
+        },
+        "P4": {
+            "name": "Sensibilité paramétrique",
+            "purpose": "Tester la robustesse locale des paramètres, source-first si le marché source est connu.",
+        },
+        "P5": {
+            "name": "Walk-forward",
+            "purpose": "Valider la stabilité temporelle out-of-sample, source-first si le marché source est connu.",
+        },
+        "P6": {
+            "name": "Promotion",
+            "purpose": "Promouvoir les survivants en candidats paper/production et synchroniser le catalogue.",
+        },
+    }
+
+
+def _graduation_config_snapshot(config: GraduationConfig) -> dict[str, Any]:
+    return {
+        "sandbox_dir": str(config.sandbox_dir),
+        "sync_catalog": config.sync_catalog,
+        "source_market_first": config.source_market_first,
+        "source_min_history_bars_by_timeframe": dict(config.source_min_history_bars_by_timeframe or {}),
+        "source_min_history_bars_default": config.source_min_history_bars_default,
+        "p2_min_return_pct": config.p2_min_return_pct,
+        "p2_min_trades": config.p2_min_trades,
+        "p2_min_profit_factor": config.p2_min_profit_factor,
+        "benchmark_names": list(config.benchmark_names),
+        "required_benchmark_name": config.required_benchmark_name,
+        "min_benchmarks_pass": config.min_benchmarks_pass,
+        "validation_tokens": list(config.validation_tokens),
+        "validation_timeframes": list(config.validation_timeframes),
+        "min_context_coverage_pct": config.min_context_coverage_pct,
+        "sweep_neighborhood": config.sweep_neighborhood,
+        "sweep_min_profitable_pct": config.sweep_min_profitable_pct,
+        "sweep_max_combinations": config.sweep_max_combinations,
+        "sweep_max_drawdown_drift_pct": config.sweep_max_drawdown_drift_pct,
+        "wfa_folds": config.wfa_folds,
+        "wfa_train_ratio": config.wfa_train_ratio,
+        "wfa_min_stability": config.wfa_min_stability,
+        "wfa_min_test_sharpe": config.wfa_min_test_sharpe,
+        "wfa_max_overfitting_ratio": config.wfa_max_overfitting_ratio,
+        "wfa_strict_max_robust_score": config.wfa_strict_max_robust_score,
+        "wfa_watchlist_max_robust_score": config.wfa_watchlist_max_robust_score,
+        "wfa_min_positive_folds_pct": config.wfa_min_positive_folds_pct,
+        "wfa_hard_min_positive_folds_pct": config.wfa_hard_min_positive_folds_pct,
+    }
+
+
+def _pipeline_cli_equivalent(ctx: _PipelineCtx) -> str:
+    args = ["python", "-m", "catalog.graduation"]
+    if ctx.pipeline_label == "full_graduation":
+        args.append("--full")
+    elif ctx.pipeline_label == "positive_imports":
+        args.append("--positive-import-full")
+        if ctx.config.include_legacy_artifact_roots:
+            args.append("--include-legacy-artifact-roots")
+    if ctx.config.sync_catalog:
+        args.append("--sync-catalog")
+    return " ".join(args)
+
+
+def _pipeline_contract_payload(ctx: _PipelineCtx) -> dict[str, Any]:
+    return {
+        "cli_equivalent": _pipeline_cli_equivalent(ctx),
+        "phase_contract": _graduation_phase_contract(),
+        "config_snapshot": _graduation_config_snapshot(ctx.config),
+    }
+
+
 def _ctx_write_progress(
     ctx: _PipelineCtx,
     *,
@@ -1064,6 +1242,9 @@ def _ctx_write_progress(
     extra: dict[str, Any] | None = None,
     error: str = "",
 ) -> None:
+    stable_report_path = _ctx_report_path(ctx, final=True)
+    draft_report_path = _ctx_report_path(ctx, final=False)
+    report_path = stable_report_path if status == "completed" else draft_report_path
     payload: dict[str, Any] = {
         "pipeline": ctx.pipeline_label,
         "status": status,
@@ -1074,7 +1255,10 @@ def _ctx_write_progress(
         "current_index": index,
         "current_total": total,
         "stats": dict(ctx.stats),
-        "report_path": str(ctx.config.output_dir / ctx.report_filename),
+        "report_path": str(report_path),
+        "stable_report_path": str(stable_report_path),
+        "draft_report_path": str(draft_report_path),
+        **_pipeline_contract_payload(ctx),
     }
     if candidate is not None:
         payload["current_candidate"] = _candidate_progress_payload(candidate)
@@ -1085,14 +1269,27 @@ def _ctx_write_progress(
     _save_progress_state(ctx.config.output_dir, ctx.progress_filename, payload)
 
 
-def _ctx_save_report(ctx: _PipelineCtx) -> Path:
-    return save_graduation_report(
+def _ctx_save_report(ctx: _PipelineCtx, *, final: bool = False) -> Path:
+    report_path = save_graduation_report(
         ctx.all_candidates,
         ctx.config.output_dir,
         phase=ctx.report_label,
-        filename=ctx.report_filename,
+        filename=_ctx_report_filename(ctx, final=final),
         stats=ctx.stats,
+        meta={
+            "pipeline": ctx.pipeline_label,
+            "started_at": ctx.started_at,
+            **_pipeline_contract_payload(ctx),
+        },
     )
+    if final:
+        draft_path = _ctx_report_path(ctx, final=False)
+        if draft_path != report_path and draft_path.exists():
+            try:
+                draft_path.unlink()
+            except OSError:
+                pass
+    return report_path
 
 
 def _ctx_sync_catalog(ctx: _PipelineCtx) -> list[dict[str, Any]]:
@@ -1121,7 +1318,7 @@ def _ctx_exit_no_survivors(ctx: _PipelineCtx, phase: str) -> dict[str, Any]:
     ctx.stats["p6_promoted"] = 0
     ctx.synced = _ctx_sync_catalog(ctx)
     ctx.stats["catalog_synced"] = len(ctx.synced)
-    _ctx_save_report(ctx)
+    _ctx_save_report(ctx, final=True)
     prev_key = _PREV_SURVIVORS_KEY.get(phase, "p1_candidates")
     _ctx_write_progress(
         ctx,
@@ -1451,8 +1648,6 @@ def import_positive_artifacts_to_catalog(
     """
     if config is None:
         config = GraduationConfig()
-
-    from catalog.strategy_catalog import build_entry_from_saved_run, list_entries, prepare_saved_run_entry, upsert_entries
 
     roots = [Path(root) for root in (source_roots or _default_positive_artifact_roots(config))]
     seen_artifacts: set[str] = set()
@@ -2351,7 +2546,7 @@ def run_multi_context_validation(
 
 
 # ---------------------------------------------------------------------------
-# Phase 3 — Sensibilité paramétrique
+# Phase 4 — Sensibilité paramétrique
 # ---------------------------------------------------------------------------
 
 
@@ -2466,6 +2661,69 @@ def _generate_neighborhood(
     return result
 
 
+def _validation_anchor_symbol(config: GraduationConfig) -> str:
+    if config.validation_tokens:
+        return str(config.validation_tokens[0]).strip() or "BTCUSDC"
+    return "BTCUSDC"
+
+
+def _validation_anchor_timeframe(config: GraduationConfig) -> str:
+    if config.validation_timeframes:
+        return str(config.validation_timeframes[0]).strip() or "1h"
+    return "1h"
+
+
+def _candidate_validation_market(candidate: GraduationCandidate, config: GraduationConfig) -> tuple[str, str, str]:
+    source_symbol = str(candidate.source_symbol or "").strip()
+    source_timeframe = str(candidate.source_timeframe or "").strip()
+    if config.source_market_first and source_symbol and source_timeframe:
+        return source_symbol, source_timeframe, "source_market"
+    return _validation_anchor_symbol(config), _validation_anchor_timeframe(config), "validation_anchor"
+
+
+def _source_min_history_bars(config: GraduationConfig, timeframe: str, scope: str) -> int:
+    if scope != "source_market":
+        return 0
+    key = str(timeframe or "").strip().lower()
+    configured = config.source_min_history_bars_by_timeframe or {}
+    if key in configured:
+        return max(0, int(configured[key]))
+    return max(0, int(config.source_min_history_bars_default))
+
+
+def _load_validation_dataframe(
+    *,
+    load_ohlcv: Callable[[str, str], Any],
+    cache: dict[tuple[str, str], Any],
+    symbol: str,
+    timeframe: str,
+) -> Any:
+    cache_key = (symbol, timeframe)
+    if cache_key not in cache:
+        cache[cache_key] = load_ohlcv(symbol, timeframe)
+    return cache[cache_key]
+
+
+def _market_progress_extra(
+    *,
+    symbol: str,
+    timeframe: str,
+    scope: str,
+    history_bars: int = 0,
+    min_history_bars: int = 0,
+    **extra: Any,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "token": symbol,
+        "timeframe": timeframe,
+        "validation_scope": scope,
+        "history_bars": history_bars,
+        "min_history_bars": min_history_bars,
+    }
+    payload.update(extra)
+    return payload
+
+
 def run_parameter_sensitivity(
     candidates: list[GraduationCandidate],
     config: GraduationConfig | None = None,
@@ -2493,15 +2751,9 @@ def run_parameter_sensitivity(
     from data.loader import load_ohlcv
 
     engine = BacktestEngine(initial_capital=10000.0)
-
-    # Charger le contexte principal (premier token, premier TF)
-    token = config.validation_tokens[0]
-    tf = config.validation_timeframes[0]
-    try:
-        df = load_ohlcv(token, tf)
-    except Exception as e:
-        logger.error("Cannot load %s/%s for Phase 3: %s", token, tf, e)
-        return candidates
+    dataframe_cache: dict[tuple[str, str], Any] = {}
+    anchor_symbol = _validation_anchor_symbol(config)
+    anchor_timeframe = _validation_anchor_timeframe(config)
 
     survivors: list[GraduationCandidate] = []
 
@@ -2515,10 +2767,26 @@ def run_parameter_sensitivity(
             index=0,
             total=len(candidates),
             survivors=0,
-            extra={"token": token, "timeframe": tf},
+            extra={
+                "market_mode": "source_first" if config.source_market_first else "validation_anchor",
+                "fallback_token": anchor_symbol,
+                "fallback_timeframe": anchor_timeframe,
+            },
         )
 
     for index, candidate in enumerate(candidates, 1):
+        symbol, timeframe, scope = _candidate_validation_market(candidate, config)
+        min_history_bars = _source_min_history_bars(config, timeframe, scope)
+        candidate.sensitivity_scope = scope
+        candidate.sensitivity_symbol = symbol
+        candidate.sensitivity_timeframe = timeframe
+        candidate.sensitivity_min_history_bars = min_history_bars
+        market_extra = _market_progress_extra(
+            symbol=symbol,
+            timeframe=timeframe,
+            scope=scope,
+            min_history_bars=min_history_bars,
+        )
         if progress_callback:
             progress_callback(
                 phase="P4",
@@ -2527,8 +2795,61 @@ def run_parameter_sensitivity(
                 index=index,
                 total=len(candidates),
                 survivors=len(survivors),
-                extra={"token": token, "timeframe": tf},
+                extra=market_extra,
             )
+        try:
+            df = _load_validation_dataframe(
+                load_ohlcv=load_ohlcv,
+                cache=dataframe_cache,
+                symbol=symbol,
+                timeframe=timeframe,
+            )
+            history_bars = len(df)
+            candidate.sensitivity_history_bars = history_bars
+            market_extra = _market_progress_extra(
+                symbol=symbol,
+                timeframe=timeframe,
+                scope=scope,
+                history_bars=history_bars,
+                min_history_bars=min_history_bars,
+            )
+        except Exception as e:
+            candidate.decision = "REJECTED"
+            candidate.rejection_reason = f"P4 validation data unavailable {symbol}/{timeframe}: {e}"
+            candidate.phase = "P4"
+            candidate.p4_verdict = "REJECTED"
+            if progress_callback:
+                progress_callback(
+                    phase="P4",
+                    event="candidate_done",
+                    candidate=candidate,
+                    index=index,
+                    total=len(candidates),
+                    survivors=len(survivors),
+                    extra=market_extra,
+                )
+            continue
+
+        if min_history_bars > 0 and candidate.sensitivity_history_bars < min_history_bars:
+            candidate.decision = "REJECTED"
+            candidate.rejection_reason = (
+                f"P4 source history insufficient {symbol}/{timeframe}: "
+                f"{candidate.sensitivity_history_bars}<{min_history_bars} bars"
+            )
+            candidate.phase = "P4"
+            candidate.p4_verdict = "REJECTED"
+            if progress_callback:
+                progress_callback(
+                    phase="P4",
+                    event="candidate_done",
+                    candidate=candidate,
+                    index=index,
+                    total=len(candidates),
+                    survivors=len(survivors),
+                    extra=market_extra,
+                )
+            continue
+
         try:
             strategy, candidate_params = _load_strategy_for_candidate(candidate)
         except Exception as e:
@@ -2544,7 +2865,7 @@ def run_parameter_sensitivity(
                     index=index,
                     total=len(candidates),
                     survivors=len(survivors),
-                    extra={"token": token, "timeframe": tf},
+                    extra=market_extra,
                 )
             continue
 
@@ -2568,7 +2889,7 @@ def run_parameter_sensitivity(
                     index=index,
                     total=len(candidates),
                     survivors=len(survivors),
-                    extra={"token": token, "timeframe": tf},
+                    extra=market_extra,
                 )
             continue
 
@@ -2651,7 +2972,7 @@ def run_parameter_sensitivity(
                 index=index,
                 total=len(candidates),
                 survivors=len(survivors),
-                extra={"token": token, "timeframe": tf},
+                extra=market_extra,
             )
 
     logger.info("Phase 4 done: %d/%d survived", len(survivors), len(candidates))
@@ -2663,7 +2984,11 @@ def run_parameter_sensitivity(
             index=len(candidates),
             total=len(candidates),
             survivors=len(survivors),
-            extra={"token": token, "timeframe": tf},
+            extra={
+                "market_mode": "source_first" if config.source_market_first else "validation_anchor",
+                "fallback_token": anchor_symbol,
+                "fallback_timeframe": anchor_timeframe,
+            },
         )
     return survivors
 
@@ -2681,7 +3006,8 @@ def run_wfa_validation(
 ) -> list[GraduationCandidate]:
     """Phase 5 — Walk-Forward Analysis.
 
-    Pour chaque candidat, exécute un WFA (expanding window) sur le token principal.
+    Pour chaque candidat, exécute un WFA (expanding window) sur le marché source
+    quand il est connu, sinon sur l'ancre de validation historique.
     Rejette si stability_score < wfa_min_stability.
     """
     if config is None:
@@ -2697,14 +3023,9 @@ def run_wfa_validation(
     from backtest.walk_forward import WalkForwardConfig, run_walk_forward
     from data.loader import load_ohlcv
 
-    token = config.validation_tokens[0]
-    tf = config.validation_timeframes[0]
-
-    try:
-        df = load_ohlcv(token, tf)
-    except Exception as e:
-        logger.error("Cannot load %s/%s for Phase 5: %s", token, tf, e)
-        return candidates
+    dataframe_cache: dict[tuple[str, str], Any] = {}
+    anchor_symbol = _validation_anchor_symbol(config)
+    anchor_timeframe = _validation_anchor_timeframe(config)
 
     wfa_cfg = WalkForwardConfig(
         n_folds=config.wfa_folds,
@@ -2724,10 +3045,28 @@ def run_wfa_validation(
             index=0,
             total=len(candidates),
             survivors=0,
-            extra={"token": token, "timeframe": tf, "folds": config.wfa_folds},
+            extra={
+                "market_mode": "source_first" if config.source_market_first else "validation_anchor",
+                "fallback_token": anchor_symbol,
+                "fallback_timeframe": anchor_timeframe,
+                "folds": config.wfa_folds,
+            },
         )
 
     for index, candidate in enumerate(candidates, 1):
+        symbol, timeframe, scope = _candidate_validation_market(candidate, config)
+        min_history_bars = _source_min_history_bars(config, timeframe, scope)
+        candidate.wfa_scope = scope
+        candidate.wfa_symbol = symbol
+        candidate.wfa_timeframe = timeframe
+        candidate.wfa_min_history_bars = min_history_bars
+        market_extra = _market_progress_extra(
+            symbol=symbol,
+            timeframe=timeframe,
+            scope=scope,
+            min_history_bars=min_history_bars,
+            folds=config.wfa_folds,
+        )
         if progress_callback:
             progress_callback(
                 phase="P5",
@@ -2736,8 +3075,62 @@ def run_wfa_validation(
                 index=index,
                 total=len(candidates),
                 survivors=len(survivors),
-                extra={"token": token, "timeframe": tf, "folds": config.wfa_folds},
+                extra=market_extra,
             )
+        try:
+            df = _load_validation_dataframe(
+                load_ohlcv=load_ohlcv,
+                cache=dataframe_cache,
+                symbol=symbol,
+                timeframe=timeframe,
+            )
+            history_bars = len(df)
+            candidate.wfa_history_bars = history_bars
+            market_extra = _market_progress_extra(
+                symbol=symbol,
+                timeframe=timeframe,
+                scope=scope,
+                history_bars=history_bars,
+                min_history_bars=min_history_bars,
+                folds=config.wfa_folds,
+            )
+        except Exception as e:
+            candidate.decision = "REJECTED"
+            candidate.rejection_reason = f"P5 validation data unavailable {symbol}/{timeframe}: {e}"
+            candidate.phase = "P5"
+            candidate.p5_verdict = "REJECTED"
+            if progress_callback:
+                progress_callback(
+                    phase="P5",
+                    event="candidate_done",
+                    candidate=candidate,
+                    index=index,
+                    total=len(candidates),
+                    survivors=len(survivors),
+                    extra=market_extra,
+                )
+            continue
+
+        if min_history_bars > 0 and candidate.wfa_history_bars < min_history_bars:
+            candidate.decision = "REJECTED"
+            candidate.rejection_reason = (
+                f"P5 source history insufficient {symbol}/{timeframe}: "
+                f"{candidate.wfa_history_bars}<{min_history_bars} bars"
+            )
+            candidate.phase = "P5"
+            candidate.p5_verdict = "REJECTED"
+            if progress_callback:
+                progress_callback(
+                    phase="P5",
+                    event="candidate_done",
+                    candidate=candidate,
+                    index=index,
+                    total=len(candidates),
+                    survivors=len(survivors),
+                    extra=market_extra,
+                )
+            continue
+
         try:
             strategy, params = _load_strategy_for_candidate(candidate)
         except Exception as e:
@@ -2753,7 +3146,7 @@ def run_wfa_validation(
                     index=index,
                     total=len(candidates),
                     survivors=len(survivors),
-                    extra={"token": token, "timeframe": tf, "folds": config.wfa_folds},
+                    extra=market_extra,
                 )
             continue
 
@@ -2773,52 +3166,103 @@ def run_wfa_validation(
                 if fold.is_valid and fold.test_metrics is not None
             ]
             avg_test_return_pct = sum(valid_test_returns) / len(valid_test_returns) if valid_test_returns else 0.0
+            positive_folds = sum(1 for value in valid_test_returns if value > 0)
+            positive_folds_pct = _safe_float_metric(
+                getattr(summary, "positive_test_folds_pct", None),
+                None,
+            )
+            if positive_folds_pct is None:
+                positive_folds_pct = (positive_folds / len(valid_test_returns)) * 100 if valid_test_returns else 0.0
 
             stability = float(summary.confidence_score or 0.0)
+            classic_overfitting_ratio = _safe_float_metric(
+                getattr(summary, "classic_overfitting_ratio", None),
+                _safe_float_metric(getattr(summary, "avg_overfitting_ratio", None), None),
+            )
+            robust_overfitting_score = _safe_float_metric(
+                getattr(summary, "robust_overfitting_score", None),
+                _safe_float_metric(getattr(summary, "avg_overfitting_ratio", None), None),
+            )
             candidate.wfa_stability = round(stability, 3)
             candidate.wfa_avg_test_return_pct = round(avg_test_return_pct, 2)
             candidate.wfa_avg_test_sharpe = _safe_round(summary.avg_test_sharpe, 3)
-            candidate.wfa_overfitting_ratio = _safe_round(summary.avg_overfitting_ratio, 3)
+            candidate.wfa_classic_overfitting_ratio = _safe_round(classic_overfitting_ratio, 3)
+            candidate.wfa_robust_overfitting_score = _safe_round(robust_overfitting_score, 3)
+            candidate.wfa_overfitting_ratio = candidate.wfa_robust_overfitting_score
             candidate.wfa_is_robust = bool(summary.is_robust)
+            candidate.wfa_valid_folds = int(summary.n_valid_folds or len(valid_test_returns))
+            candidate.wfa_positive_folds_pct = round(positive_folds_pct, 1)
             candidate.phase = "P5"
 
-            if (
-                stability >= config.wfa_min_stability
-                and avg_test_return_pct > 0
-                and candidate.wfa_avg_test_sharpe is not None
-                and candidate.wfa_avg_test_sharpe >= config.wfa_min_test_sharpe
-                and candidate.wfa_overfitting_ratio is not None
-                and candidate.wfa_overfitting_ratio <= config.wfa_max_overfitting_ratio
-            ):
+            hard_reject_reasons: list[str] = []
+            if avg_test_return_pct <= 0:
+                hard_reject_reasons.append(f"WFA avg_test_return={avg_test_return_pct:.2f}%<=0")
+            if candidate.wfa_avg_test_sharpe is None:
+                hard_reject_reasons.append("WFA avg_test_sharpe=None (non calculable)")
+            elif candidate.wfa_avg_test_sharpe < config.wfa_min_test_sharpe:
+                hard_reject_reasons.append(
+                    f"WFA avg_test_sharpe={candidate.wfa_avg_test_sharpe:.2f}<{config.wfa_min_test_sharpe}",
+                )
+            if positive_folds_pct < config.wfa_hard_min_positive_folds_pct:
+                hard_reject_reasons.append(
+                    f"WFA positive_folds_pct={positive_folds_pct:.1f}<{config.wfa_hard_min_positive_folds_pct}",
+                )
+
+            score_ready = candidate.wfa_robust_overfitting_score is not None
+            base_pass = (
+                not hard_reject_reasons
+                and positive_folds_pct >= config.wfa_min_positive_folds_pct
+                and score_ready
+            )
+            strict_pass = bool(
+                base_pass
+                and candidate.wfa_robust_overfitting_score <= config.wfa_strict_max_robust_score
+            )
+            watchlist_pass = bool(
+                base_pass
+                and candidate.wfa_robust_overfitting_score <= config.wfa_watchlist_max_robust_score
+            )
+
+            if strict_pass:
+                candidate.wfa_confidence_tier = WFA_CONFIDENCE_TIER_STRICT
                 candidate.decision = "WATCHLIST"
                 candidate.p5_verdict = "PASSED"
                 survivors.append(candidate)
                 logger.debug(
-                    "P5 PASS: %s — stability=%.3f avg_test_return=%.2f%% robust=%s",
+                    "P5 PASS strict: %s — return=%.2f%% sharpe=%s robust_score=%s folds+=%.1f%%",
                     candidate.session_id,
-                    stability,
                     avg_test_return_pct,
-                    summary.is_robust,
+                    candidate.wfa_avg_test_sharpe,
+                    candidate.wfa_robust_overfitting_score,
+                    positive_folds_pct,
+                )
+            elif watchlist_pass:
+                candidate.wfa_confidence_tier = WFA_CONFIDENCE_TIER_LOW
+                candidate.decision = "WATCHLIST"
+                candidate.p5_verdict = "PASSED"
+                survivors.append(candidate)
+                logger.debug(
+                    "P5 PASS low-confidence: %s — return=%.2f%% sharpe=%s robust_score=%s folds+=%.1f%%",
+                    candidate.session_id,
+                    avg_test_return_pct,
+                    candidate.wfa_avg_test_sharpe,
+                    candidate.wfa_robust_overfitting_score,
+                    positive_folds_pct,
                 )
             else:
+                candidate.wfa_confidence_tier = WFA_CONFIDENCE_TIER_REJECTED
                 candidate.decision = "REJECTED"
                 candidate.p5_verdict = "REJECTED"
-                reasons = []
-                if stability < config.wfa_min_stability:
-                    reasons.append(f"WFA instable {stability:.2f}<{config.wfa_min_stability}")
-                if avg_test_return_pct <= 0:
-                    reasons.append(f"WFA avg_test_return={avg_test_return_pct:.2f}%<=0")
-                if candidate.wfa_avg_test_sharpe is None:
-                    reasons.append("WFA avg_test_sharpe=None (non calculable)")
-                elif candidate.wfa_avg_test_sharpe < config.wfa_min_test_sharpe:
+                reasons = list(hard_reject_reasons)
+                if positive_folds_pct < config.wfa_min_positive_folds_pct and positive_folds_pct >= config.wfa_hard_min_positive_folds_pct:
                     reasons.append(
-                        f"WFA avg_test_sharpe={candidate.wfa_avg_test_sharpe:.2f}<{config.wfa_min_test_sharpe}",
+                        f"WFA positive_folds_pct={positive_folds_pct:.1f}<{config.wfa_min_positive_folds_pct}",
                     )
-                if candidate.wfa_overfitting_ratio is None:
-                    reasons.append("WFA overfitting_ratio=None (non calculable)")
-                elif candidate.wfa_overfitting_ratio > config.wfa_max_overfitting_ratio:
+                if candidate.wfa_robust_overfitting_score is None:
+                    reasons.append("WFA robust_overfitting_score=None (non calculable)")
+                elif candidate.wfa_robust_overfitting_score > config.wfa_watchlist_max_robust_score:
                     reasons.append(
-                        f"WFA overfitting={candidate.wfa_overfitting_ratio:.2f}>{config.wfa_max_overfitting_ratio}",
+                        f"WFA robust_overfitting_score={candidate.wfa_robust_overfitting_score:.2f}>{config.wfa_watchlist_max_robust_score}",
                     )
                 candidate.rejection_reason = "; ".join(reasons)
 
@@ -2837,7 +3281,7 @@ def run_wfa_validation(
                 index=index,
                 total=len(candidates),
                 survivors=len(survivors),
-                extra={"token": token, "timeframe": tf, "folds": config.wfa_folds},
+                extra=market_extra,
             )
 
     logger.info("Phase 5 done: %d/%d survived", len(survivors), len(candidates))
@@ -2849,7 +3293,12 @@ def run_wfa_validation(
             index=len(candidates),
             total=len(candidates),
             survivors=len(survivors),
-            extra={"token": token, "timeframe": tf, "folds": config.wfa_folds},
+            extra={
+                "market_mode": "source_first" if config.source_market_first else "validation_anchor",
+                "fallback_token": anchor_symbol,
+                "fallback_timeframe": anchor_timeframe,
+                "folds": config.wfa_folds,
+            },
         )
     return survivors
 
@@ -2906,14 +3355,18 @@ def promote_to_strategies(
                 f"  Best Return: {candidate.best_return_pct:.1f}%\n"
                 f"  Contexts:   {candidate.multi_ctx_results.get('passed_count', '?')}/{candidate.multi_ctx_results.get('total_contexts', '?')}\n"
                 f"  Sweep:      {candidate.sweep_robustness_pct}%\n"
-                f"  WFA:        {candidate.wfa_stability}\n"
+                f"  WFA:        {candidate.wfa_stability} ({candidate.wfa_confidence_tier or 'unknown'})\n"
+                f"  WFA robust: {candidate.wfa_robust_overfitting_score}\n"
                 f'"""\n\n'
             )
 
             target.write_text(header + code, encoding="utf-8")
 
             candidate.decision = "PROMOTED"
-            candidate.p6_verdict = "PROMOTED"
+            if candidate.wfa_confidence_tier == WFA_CONFIDENCE_TIER_LOW:
+                candidate.p6_verdict = P6_VERDICT_LOW_CONFIDENCE
+            else:
+                candidate.p6_verdict = P6_VERDICT_STRICT
             candidate.phase = "P6"
             candidate.strategy_file = str(target)
             promoted.append(candidate)
@@ -2956,8 +3409,16 @@ def _candidate_catalog_category(
     candidate: GraduationCandidate,
     _config: GraduationConfig,
 ) -> str:
-    if candidate.decision == "PROMOTED" or candidate.p6_verdict == "PROMOTED":
-        return "p6_paper_candidate"
+    is_p6 = candidate.phase == "P6" or candidate.decision == "PROMOTED"
+    if is_p6:
+        if candidate.p6_verdict == P6_VERDICT_LOW_CONFIDENCE or candidate.wfa_confidence_tier == WFA_CONFIDENCE_TIER_LOW:
+            return "p6_paper_candidate_low_confidence"
+
+        if candidate.p6_verdict == P6_VERDICT_STRICT or candidate.wfa_confidence_tier == WFA_CONFIDENCE_TIER_STRICT:
+            return "p6_paper_candidate_strict"
+
+        if candidate.p6_verdict == "PROMOTED":
+            return "p6_paper_candidate"
 
     if candidate.p5_verdict == "PASSED":
         return "p5_wfa_candidate"
@@ -2975,6 +3436,26 @@ def _candidate_catalog_category(
     return "p1_builder_inbox"
 
 
+def _candidate_builder_state(candidate: GraduationCandidate) -> str:
+    """État catalogue lisible, dérivé de la graduation plutôt que du seul statut Builder."""
+    passed_verdicts = {
+        str(candidate.p2_verdict or "").upper(),
+        str(candidate.p3_verdict or "").upper(),
+        str(candidate.p4_verdict or "").upper(),
+        str(candidate.p5_verdict or "").upper(),
+        str(candidate.p6_verdict or "").upper(),
+    }
+    if (
+        str(candidate.decision or "").upper() in {"WATCHLIST", "PROMOTED"}
+        or "PASSED" in passed_verdicts
+        or str(candidate.origin_status or "").strip().lower() == "success"
+    ):
+        return "completed"
+    if str(candidate.origin_status or "").strip().lower() == "running":
+        return "in_progress"
+    return "stopped"
+
+
 def sync_graduation_to_catalog(
     candidates: list[GraduationCandidate],
     config: GraduationConfig | None = None,
@@ -2986,18 +3467,11 @@ def sync_graduation_to_catalog(
       - P3 benchmark consensus -> p3_benchmark_consensus
       - P4 robustesse paramétrique -> p4_param_robust
       - P5 walk-forward -> p5_wfa_candidate
-      - P6 promotion finale -> p6_paper_candidate
+      - P6 promotion finale stricte -> p6_paper_candidate_strict
+      - P6 observation prudente -> p6_paper_candidate_low_confidence
     """
     if config is None:
         config = GraduationConfig()
-
-    from catalog.strategy_catalog import (
-        CATEGORY_ORDER,
-        build_builder_candidate_entry_id,
-        compute_builder_candidate_params_hash,
-        list_entries,
-        upsert_entries,
-    )
 
     synced: list[dict[str, Any]] = []
     existing_entries = list_entries(path=config.catalog_path, status=None)
@@ -3048,8 +3522,23 @@ def sync_graduation_to_catalog(
             "multi_context_passed": (candidate.multi_ctx_results or {}).get("passed_count"),
             "multi_context_total": (candidate.multi_ctx_results or {}).get("total_contexts"),
             "sweep_robustness_pct": candidate.sweep_robustness_pct,
+            "sensitivity_scope": candidate.sensitivity_scope,
+            "sensitivity_symbol": candidate.sensitivity_symbol,
+            "sensitivity_timeframe": candidate.sensitivity_timeframe,
+            "sensitivity_history_bars": candidate.sensitivity_history_bars,
             "wfa_stability": candidate.wfa_stability,
             "wfa_avg_test_return_pct": candidate.wfa_avg_test_return_pct,
+            "wfa_avg_test_sharpe": candidate.wfa_avg_test_sharpe,
+            "wfa_overfitting_ratio": candidate.wfa_overfitting_ratio,
+            "wfa_classic_overfitting_ratio": candidate.wfa_classic_overfitting_ratio,
+            "wfa_robust_overfitting_score": candidate.wfa_robust_overfitting_score,
+            "wfa_valid_folds": candidate.wfa_valid_folds,
+            "wfa_positive_folds_pct": candidate.wfa_positive_folds_pct,
+            "wfa_confidence_tier": candidate.wfa_confidence_tier,
+            "wfa_scope": candidate.wfa_scope,
+            "wfa_symbol": candidate.wfa_symbol,
+            "wfa_timeframe": candidate.wfa_timeframe,
+            "wfa_history_bars": candidate.wfa_history_bars,
         }
 
         tags = [
@@ -3077,7 +3566,7 @@ def sync_graduation_to_catalog(
             "params_hash": params_hash,
             "category": target_category,
             "status": "active",
-            "builder_state": "completed" if candidate.origin_status == "success" else "stopped",
+            "builder_state": _candidate_builder_state(candidate),
             "source": "graduation",
             "tags": tags,
             "note": " | ".join(note_parts),
@@ -3116,6 +3605,21 @@ def sync_graduation_to_catalog(
                     "p4_verdict": candidate.p4_verdict,
                     "p5_verdict": candidate.p5_verdict,
                     "p6_verdict": candidate.p6_verdict,
+                    "sensitivity_scope": candidate.sensitivity_scope or None,
+                    "sensitivity_symbol": candidate.sensitivity_symbol or None,
+                    "sensitivity_timeframe": candidate.sensitivity_timeframe or None,
+                    "sensitivity_history_bars": candidate.sensitivity_history_bars or None,
+                    "sensitivity_min_history_bars": candidate.sensitivity_min_history_bars or None,
+                    "wfa_scope": candidate.wfa_scope or None,
+                    "wfa_symbol": candidate.wfa_symbol or None,
+                    "wfa_timeframe": candidate.wfa_timeframe or None,
+                    "wfa_history_bars": candidate.wfa_history_bars or None,
+                    "wfa_min_history_bars": candidate.wfa_min_history_bars or None,
+                    "wfa_valid_folds": candidate.wfa_valid_folds or None,
+                    "wfa_positive_folds_pct": candidate.wfa_positive_folds_pct,
+                    "wfa_classic_overfitting_ratio": candidate.wfa_classic_overfitting_ratio,
+                    "wfa_robust_overfitting_score": candidate.wfa_robust_overfitting_score,
+                    "wfa_confidence_tier": candidate.wfa_confidence_tier or None,
                     "promoted_strategy_path": candidate.strategy_file if candidate.decision == "PROMOTED" else None,
                 },
             ),
@@ -3162,8 +3666,6 @@ def sync_positive_import_candidates_to_catalog(
     if config is None:
         config = GraduationConfig()
 
-    from catalog.strategy_catalog import CATEGORY_ORDER, list_entries, upsert_entries
-
     synced: list[dict[str, Any]] = []
     existing_entries = list_entries(path=config.catalog_path, status=None)
     existing_by_id = {str(entry.get("id") or ""): entry for entry in existing_entries}
@@ -3199,8 +3701,23 @@ def sync_positive_import_candidates_to_catalog(
                     "multi_context_passed": (candidate.multi_ctx_results or {}).get("passed_count"),
                     "multi_context_total": (candidate.multi_ctx_results or {}).get("total_contexts"),
                     "sweep_robustness_pct": candidate.sweep_robustness_pct,
+                    "sensitivity_scope": candidate.sensitivity_scope,
+                    "sensitivity_symbol": candidate.sensitivity_symbol,
+                    "sensitivity_timeframe": candidate.sensitivity_timeframe,
+                    "sensitivity_history_bars": candidate.sensitivity_history_bars,
                     "wfa_stability": candidate.wfa_stability,
                     "wfa_avg_test_return_pct": candidate.wfa_avg_test_return_pct,
+                    "wfa_avg_test_sharpe": candidate.wfa_avg_test_sharpe,
+                    "wfa_overfitting_ratio": candidate.wfa_overfitting_ratio,
+                    "wfa_classic_overfitting_ratio": candidate.wfa_classic_overfitting_ratio,
+                    "wfa_robust_overfitting_score": candidate.wfa_robust_overfitting_score,
+                    "wfa_valid_folds": candidate.wfa_valid_folds,
+                    "wfa_positive_folds_pct": candidate.wfa_positive_folds_pct,
+                    "wfa_confidence_tier": candidate.wfa_confidence_tier,
+                    "wfa_scope": candidate.wfa_scope,
+                    "wfa_symbol": candidate.wfa_symbol,
+                    "wfa_timeframe": candidate.wfa_timeframe,
+                    "wfa_history_bars": candidate.wfa_history_bars,
                 },
             ),
         )
@@ -3240,6 +3757,21 @@ def sync_positive_import_candidates_to_catalog(
                     "positive_pipeline_p4_verdict": candidate.p4_verdict,
                     "positive_pipeline_p5_verdict": candidate.p5_verdict,
                     "positive_pipeline_p6_verdict": candidate.p6_verdict,
+                    "positive_pipeline_sensitivity_scope": candidate.sensitivity_scope or None,
+                    "positive_pipeline_sensitivity_symbol": candidate.sensitivity_symbol or None,
+                    "positive_pipeline_sensitivity_timeframe": candidate.sensitivity_timeframe or None,
+                    "positive_pipeline_sensitivity_history_bars": candidate.sensitivity_history_bars or None,
+                    "positive_pipeline_sensitivity_min_history_bars": candidate.sensitivity_min_history_bars or None,
+                    "positive_pipeline_wfa_scope": candidate.wfa_scope or None,
+                    "positive_pipeline_wfa_symbol": candidate.wfa_symbol or None,
+                    "positive_pipeline_wfa_timeframe": candidate.wfa_timeframe or None,
+                    "positive_pipeline_wfa_history_bars": candidate.wfa_history_bars or None,
+                    "positive_pipeline_wfa_min_history_bars": candidate.wfa_min_history_bars or None,
+                    "positive_pipeline_wfa_valid_folds": candidate.wfa_valid_folds or None,
+                    "positive_pipeline_wfa_positive_folds_pct": candidate.wfa_positive_folds_pct,
+                    "positive_pipeline_wfa_classic_overfitting_ratio": candidate.wfa_classic_overfitting_ratio,
+                    "positive_pipeline_wfa_robust_overfitting_score": candidate.wfa_robust_overfitting_score,
+                    "positive_pipeline_wfa_confidence_tier": candidate.wfa_confidence_tier or None,
                     "positive_pipeline_tokens": config.validation_tokens,
                     "positive_pipeline_timeframes": config.validation_timeframes,
                     "positive_pipeline_passed_count": (candidate.multi_ctx_results or {}).get("passed_count"),
@@ -3258,6 +3790,7 @@ def sync_positive_import_candidates_to_catalog(
         entry.update(
             {
                 "category": target_category,
+                "builder_state": _candidate_builder_state(candidate),
                 "tags": tags,
                 "note": note,
                 "last_metrics_snapshot": metrics_snapshot,
@@ -3344,7 +3877,7 @@ def run_positive_import_graduation(
         ctx.stats["p6_promoted"] = 0
         ctx.synced = _ctx_sync_catalog(ctx)
         ctx.stats["catalog_synced"] = len(ctx.synced)
-        _ctx_save_report(ctx)
+        _ctx_save_report(ctx, final=True)
         _ctx_write_progress(
             ctx, status="completed", event="completed",
             phase=ctx.current_phase, candidate=ctx.current_candidate,
@@ -3458,7 +3991,7 @@ def run_full_graduation(
 
         ctx.synced = _ctx_sync_catalog(ctx)
         ctx.stats["catalog_synced"] = len(ctx.synced)
-        _ctx_save_report(ctx)
+        _ctx_save_report(ctx, final=True)
         _ctx_write_progress(
             ctx, status="completed", event="pipeline_completed", phase="P6",
             candidate=None, index=len(promoted),

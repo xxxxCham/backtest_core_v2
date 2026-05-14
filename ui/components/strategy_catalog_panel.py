@@ -15,6 +15,7 @@ import streamlit as st
 
 from backtest.result_store import get_builder_sessions_dir
 from catalog.strategy_catalog import CATEGORY_ORDER, STATUS_VALUES, list_entries, move_entries
+from ui.helpers import as_listish, coerce_metric_float, coerce_metric_int, first_present_non_empty
 
 _NOTE_ID_RE = re.compile(r"(?im)^\s*id\s*:\s*([a-z0-9_]+)\s*$")
 _NOTE_ARCHETYPE_RE = re.compile(r"(?im)^\s*archetype\s*:\s*([a-z0-9_]+)\s*$")
@@ -49,60 +50,12 @@ def _resolve_strategy_key(entry: dict[str, object], available_keys: set[str]) ->
     return ""
 
 
-def _to_float(value: Any) -> float | None:
-    try:
-        if value is None or value == "":
-            return None
-        return float(value)
-    except Exception:
-        return None
-
-
-def _to_int(value: Any) -> int | None:
-    try:
-        if value is None or value == "":
-            return None
-        return int(float(value))
-    except Exception:
-        return None
-
-
 def _first_present(mapping: dict[str, Any], *keys: str) -> Any:
     for key in keys:
         if key in mapping:
             value = mapping.get(key)
             if value is not None and value != "":
                 return value
-    return None
-
-
-def _as_listish(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if isinstance(value, tuple):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if isinstance(value, set):
-        return sorted(str(item).strip() for item in value if str(item).strip())
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return []
-        return [part.strip() for part in text.split(",") if part.strip()]
-    return [str(value).strip()] if str(value).strip() else []
-
-
-def _meta_postfilter_value(meta: dict[str, Any], *keys: str) -> Any:
-    if not isinstance(meta, dict):
-        return None
-    for key in keys:
-        if key not in meta:
-            continue
-        value = meta.get(key)
-        if value is None or value == "" or value == [] or value == {}:
-            continue
-        return value
     return None
 
 
@@ -114,7 +67,7 @@ def _catalog_postfilter_fields(entry: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(metrics, dict):
         metrics = {}
 
-    benchmark_consensus = _meta_postfilter_value(
+    benchmark_consensus = first_present_non_empty(
         meta,
         "benchmark_consensus",
         "positive_pipeline_benchmark_consensus",
@@ -124,7 +77,7 @@ def _catalog_postfilter_fields(entry: dict[str, Any]) -> dict[str, Any]:
     benchmark_summary = ""
     if isinstance(benchmark_consensus, dict):
         required_benchmark_name = str(benchmark_consensus.get("required_benchmark_name") or "").strip()
-        passed_names = _as_listish(benchmark_consensus.get("benchmarks_passed", []))
+        passed_names = as_listish(benchmark_consensus.get("benchmarks_passed", []))
         benchmarks_total = int(benchmark_consensus.get("benchmarks_total") or 0)
         benchmark_summary = f"{len(passed_names)}/{benchmarks_total}" if benchmarks_total > 0 else ""
         if bool(benchmark_consensus.get("consensus_passed")):
@@ -134,19 +87,22 @@ def _catalog_postfilter_fields(entry: dict[str, Any]) -> dict[str, Any]:
         elif benchmarks_total > 0:
             contradiction_state = "failed"
 
-    coverage_pct = _to_float(
-        _meta_postfilter_value(meta, "coverage_pct", "positive_pipeline_coverage_pct"),
+    coverage_pct = coerce_metric_float(
+        first_present_non_empty(meta, "coverage_pct", "positive_pipeline_coverage_pct"),
+        default=None,
     )
-    passed_context_count = _to_int(
-        _meta_postfilter_value(meta, "passed_context_count", "positive_pipeline_passed_count"),
+    passed_context_count = coerce_metric_int(
+        first_present_non_empty(meta, "passed_context_count", "positive_pipeline_passed_count"),
+        default=None,
     )
-    total_context_count = _to_int(
-        _meta_postfilter_value(meta, "total_context_count", "positive_pipeline_total_contexts"),
+    total_context_count = coerce_metric_int(
+        first_present_non_empty(meta, "total_context_count", "positive_pipeline_total_contexts"),
+        default=None,
     )
     if passed_context_count is None:
-        passed_context_count = _to_int(metrics.get("multi_context_passed"))
+        passed_context_count = coerce_metric_int(metrics.get("multi_context_passed"), default=None)
     if total_context_count is None:
-        total_context_count = _to_int(metrics.get("multi_context_total"))
+        total_context_count = coerce_metric_int(metrics.get("multi_context_total"), default=None)
     context_summary = (
         f"{passed_context_count}/{total_context_count}"
         if passed_context_count is not None and total_context_count is not None and total_context_count > 0
@@ -154,8 +110,8 @@ def _catalog_postfilter_fields(entry: dict[str, Any]) -> dict[str, Any]:
     )
 
     return {
-        "phase": str(_meta_postfilter_value(meta, "phase", "positive_pipeline_phase") or "").strip(),
-        "decision": str(_meta_postfilter_value(meta, "decision", "positive_pipeline_decision") or "").strip(),
+        "phase": str(first_present_non_empty(meta, "phase", "positive_pipeline_phase") or "").strip(),
+        "decision": str(first_present_non_empty(meta, "decision", "positive_pipeline_decision") or "").strip(),
         "benchmark_summary": benchmark_summary,
         "context_summary": context_summary,
         "coverage_pct": coverage_pct,
@@ -191,10 +147,10 @@ def _best_iteration_metrics(summary: dict[str, Any]) -> dict[str, Any]:
     for item in iterations:
         if not isinstance(item, dict):
             continue
-        sharpe = _to_float(item.get("sharpe"))
-        ret = _to_float(item.get("return_pct"))
-        pnl = _to_float(_first_present(item, "total_pnl", "pnl"))
-        trades = _to_int(item.get("trades"))
+        sharpe = coerce_metric_float(item.get("sharpe"), default=None)
+        ret = coerce_metric_float(item.get("return_pct"), default=None)
+        pnl = coerce_metric_float(_first_present(item, "total_pnl", "pnl"), default=None)
+        trades = coerce_metric_int(item.get("trades"), default=None)
         if sharpe is None and ret is None and pnl is None and trades is None:
             continue
 
@@ -228,7 +184,7 @@ def _metrics_for_entry(entry: dict[str, Any]) -> dict[str, Any]:
 
     ret = _first_present(metrics, "total_return_pct")
     if ret is None:
-        total_return_ratio = _to_float(_first_present(metrics, "total_return"))
+        total_return_ratio = coerce_metric_float(_first_present(metrics, "total_return"), default=None)
         if total_return_ratio is not None:
             ret = total_return_ratio * 100.0
 
@@ -275,10 +231,10 @@ def _metrics_for_entry(entry: dict[str, Any]) -> dict[str, Any]:
         if trades is None:
             trades = fallback.get("trades")
 
-    sharpe_value = _to_float(sharpe)
-    return_pct_value = _to_float(ret)
-    pnl_value = _to_float(pnl)
-    initial_capital_value = _to_float(initial_capital)
+    sharpe_value = coerce_metric_float(sharpe, default=None)
+    return_pct_value = coerce_metric_float(ret, default=None)
+    pnl_value = coerce_metric_float(pnl, default=None)
+    initial_capital_value = coerce_metric_float(initial_capital, default=None)
     if initial_capital_value is None or initial_capital_value <= 0:
         initial_capital_value = 10000.0
 
@@ -289,7 +245,7 @@ def _metrics_for_entry(entry: dict[str, Any]) -> dict[str, Any]:
         pnl_value = initial_capital_value * (return_pct_value / 100.0)
 
     # Conserver None si la donnée n'existe pas réellement: mieux qu'un faux 0.
-    trades_value = _to_int(trades)
+    trades_value = coerce_metric_int(trades, default=None)
 
     return {
         "sharpe": sharpe_value,

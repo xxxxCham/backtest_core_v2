@@ -59,10 +59,8 @@ from .diagram_factory import (
 
 # Model selector
 from .model_selector import (
-    FALLBACK_LLM_MODELS,
     get_available_models_for_ui,
     get_model_info,
-    get_optimal_config_for_role,
     render_model_selector,
 )
 
@@ -124,10 +122,8 @@ __all__ = [
     "create_atr_channel_diagram",
     "render_strategy_diagram",
     # Model selector
-    "FALLBACK_LLM_MODELS",
     "get_available_models_for_ui",
     "get_model_info",
-    "get_optimal_config_for_role",
     "render_model_selector",
     # Monitor
     "ResourceReading",

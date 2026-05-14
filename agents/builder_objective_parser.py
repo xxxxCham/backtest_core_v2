@@ -21,6 +21,7 @@ from agents.builder_ast_utils import (
     _WINDOWS_PATH_LINE_RE,
 )
 from indicators import list_indicators
+from indicators.schema import canonicalize_indicator_alias
 
 logger = logging.getLogger(__name__)
 
@@ -285,11 +286,13 @@ def _canonicalize_indicator_name(
 
     normalized = raw.replace("-", "_").replace(" ", "_")
     normalized = re.sub(r"_+", "_", normalized).strip("_")
-    candidate = _INDICATOR_CANONICAL_ALIASES.get(normalized, normalized)
+    candidate = canonicalize_indicator_alias(normalized) or _INDICATOR_CANONICAL_ALIASES.get(normalized, normalized)
 
     if known is None:
         return candidate
     if candidate in known:
+        return candidate
+    if candidate and (candidate == normalized or re.search(r"_\d+$", candidate)):
         return candidate
     if normalized in known:
         return normalized

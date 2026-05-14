@@ -478,6 +478,368 @@ default = 20
 description = "Rolling window length"
 
 # ==========================================================================
+# VOLUME FLOW AND PRESSURE INDICATORS
+# ==========================================================================
+
+[chaikin_oscillator.fast_period]
+min = 2
+max = 8
+step = 1
+default = 3
+description = "Fast ADL EMA period"
+
+[chaikin_oscillator.slow_period]
+min = 8
+max = 30
+step = 1
+default = 10
+description = "Slow ADL EMA period"
+
+[cmf.period]
+min = 10
+max = 40
+step = 1
+default = 20
+description = "Chaikin Money Flow lookback period"
+
+[force_index.period]
+min = 2
+max = 30
+step = 1
+default = 13
+description = "EMA smoothing period for Force Index"
+
+[kvo.short_period]
+min = 20
+max = 45
+step = 1
+default = 34
+description = "Klinger short EMA period"
+
+[kvo.long_period]
+min = 45
+max = 80
+step = 1
+default = 55
+description = "Klinger long EMA period"
+
+[kvo.signal_period]
+min = 5
+max = 25
+step = 1
+default = 13
+description = "Klinger signal EMA period"
+
+[eom.period]
+min = 5
+max = 30
+step = 1
+default = 14
+description = "Ease of Movement smoothing period"
+
+# ==========================================================================
+# MOMENTUM AND CYCLE INDICATORS
+# ==========================================================================
+
+[cmo.period]
+min = 7
+max = 30
+step = 1
+default = 14
+description = "Chande Momentum Oscillator lookback period"
+
+[coppock_curve.short_roc]
+min = 8
+max = 20
+step = 1
+default = 11
+description = "Short ROC period for Coppock Curve"
+
+[coppock_curve.long_roc]
+min = 12
+max = 30
+step = 1
+default = 14
+description = "Long ROC period for Coppock Curve"
+
+[coppock_curve.period]
+min = 5
+max = 20
+step = 1
+default = 10
+description = "Weighted moving average period for Coppock Curve"
+
+[dpo.period]
+min = 10
+max = 40
+step = 1
+default = 20
+description = "Detrended Price Oscillator cycle period"
+
+[fisher_transform.period]
+min = 5
+max = 20
+step = 1
+default = 10
+description = "Fisher Transform lookback period"
+
+[kst.roc1]
+min = 5
+max = 15
+step = 1
+default = 10
+description = "KST first ROC period"
+
+[kst.roc2]
+min = 10
+max = 25
+step = 1
+default = 15
+description = "KST second ROC period"
+
+[kst.roc3]
+min = 15
+max = 35
+step = 1
+default = 20
+description = "KST third ROC period"
+
+[kst.roc4]
+min = 20
+max = 50
+step = 1
+default = 30
+description = "KST fourth ROC period"
+
+[kst.ma1]
+min = 5
+max = 15
+step = 1
+default = 10
+description = "KST first ROC smoothing period"
+
+[kst.ma2]
+min = 5
+max = 15
+step = 1
+default = 10
+description = "KST second ROC smoothing period"
+
+[kst.ma3]
+min = 5
+max = 15
+step = 1
+default = 10
+description = "KST third ROC smoothing period"
+
+[kst.ma4]
+min = 10
+max = 25
+step = 1
+default = 15
+description = "KST fourth ROC smoothing period"
+
+[stoch_rsi.rsi_period]
+min = 7
+max = 21
+step = 1
+default = 14
+description = "RSI period used by Stochastic RSI"
+
+[stoch_rsi.stoch_period]
+min = 7
+max = 21
+step = 1
+default = 14
+description = "Stochastic lookback applied to RSI"
+
+[stoch_rsi.k_smooth]
+min = 1
+max = 5
+step = 1
+default = 3
+description = "Stochastic RSI %K smoothing period"
+
+[stoch_rsi.d_smooth]
+min = 1
+max = 5
+step = 1
+default = 3
+description = "Stochastic RSI %D smoothing period"
+
+[stoch_rsi.oversold]
+min = 10
+max = 30
+step = 5
+default = 20
+description = "Stochastic RSI oversold threshold"
+
+[stoch_rsi.overbought]
+min = 70
+max = 90
+step = 5
+default = 80
+description = "Stochastic RSI overbought threshold"
+
+[tsi.long_period]
+min = 15
+max = 40
+step = 1
+default = 25
+description = "True Strength Index first EMA period"
+
+[tsi.short_period]
+min = 7
+max = 25
+step = 1
+default = 13
+description = "True Strength Index second EMA period"
+
+[ultimate_oscillator.period1]
+min = 5
+max = 10
+step = 1
+default = 7
+description = "Ultimate Oscillator short period"
+
+[ultimate_oscillator.period2]
+min = 10
+max = 21
+step = 1
+default = 14
+description = "Ultimate Oscillator medium period"
+
+[ultimate_oscillator.period3]
+min = 21
+max = 42
+step = 1
+default = 28
+description = "Ultimate Oscillator long period"
+
+# ==========================================================================
+# ADDITIONAL TREND AND SMOOTHING INDICATORS
+# ==========================================================================
+
+[elder_ray.period]
+min = 8
+max = 30
+step = 1
+default = 13
+description = "Elder Ray EMA period"
+
+[hma.period]
+min = 9
+max = 80
+step = 1
+default = 20
+description = "Hull Moving Average period"
+
+[mass_index.period]
+min = 6
+max = 14
+step = 1
+default = 9
+description = "Mass Index EMA period"
+
+[mass_index.ema_period]
+min = 18
+max = 35
+step = 1
+default = 25
+description = "Mass Index summation period"
+
+[tma.period]
+min = 10
+max = 60
+step = 1
+default = 20
+description = "Triangular Moving Average period"
+
+[wma.period]
+min = 5
+max = 60
+step = 1
+default = 14
+description = "Weighted Moving Average period"
+
+# ==========================================================================
+# REGIME FILTERS
+# ==========================================================================
+
+[markov_switching.k_regimes]
+min = 2
+max = 4
+step = 1
+default = 3
+description = "Number of Markov regimes"
+
+[markov_switching.min_periods]
+min = 100
+max = 500
+step = 25
+default = 252
+description = "Minimum bars required before fitting Markov model"
+
+[markov_switching.resample_to]
+options = ["30min", "1h", "4h", "1d"]
+default = "1h"
+description = "Higher timeframe used to stabilize Markov regime fitting"
+
+[markov_switching.price_column]
+options = ["close"]
+default = "close"
+description = "Price column used for Markov returns"
+
+# ==========================================================================
+# STRUCTURAL INDICATORS WITHOUT TUNABLE RANGES
+# ==========================================================================
+
+# directional_bias, fva, fvg, smart_legs and swing intentionally do not expose
+# optimization ranges here: their current implementations ignore **params and
+# use strict structural definitions. Adding synthetic ranges would create a
+# false optimization surface for the autonomous Builder.
+
+# ==========================================================================
+# VIX-STYLE REALIZED VOLATILITY
+# ==========================================================================
+
+[vix.period]
+min = 10
+max = 60
+step = 1
+default = 20
+description = "Rolling log-return volatility window"
+
+[vix.periods_per_year]
+min = 252
+max = 8760
+step = 1
+default = 365
+description = "Annualization factor for the volatility proxy"
+
+# ==========================================================================
+# TRIX
+# ==========================================================================
+
+[trix.period]
+min = 5
+max = 60
+step = 1
+default = 18
+description = "Triple EMA period"
+
+# ==========================================================================
+# CHOPPINESS INDEX
+# ==========================================================================
+
+[choppiness_index.period]
+min = 7
+max = 50
+step = 1
+default = 14
+description = "Range-vs-trend regime window"
+
+# ==========================================================================
 # FIBONACCI LEVELS
 # ==========================================================================
 

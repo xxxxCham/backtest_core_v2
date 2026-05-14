@@ -26,6 +26,7 @@ from backtest.result_store import get_builder_sessions_dir
 
 STREAM_FILE = get_builder_sessions_dir() / "_live_thoughts.md"
 STREAM_ARCHIVE_DIR = get_builder_sessions_dir() / "_live_thoughts_archives"
+_IDLE_STREAM_TITLE = "STRATEGY BUILDER - Aucun flux live actif"
 
 _LIVE_STREAM_LABELS = {
     "proposal": ("IDEA", "Proposition"),
@@ -131,7 +132,13 @@ class ThoughtStream:
                 self._stream_closed = True
                 self._stream_phase = ""
                 self._stream_char_count = 0
-            self._archive_current_session()
+            archive_target = self._archive_current_session()
+            self._write_idle_state(
+                reason="session_done",
+                last_session_id=self.session_id,
+                archive_path=archive_target,
+                timestamp=payload.get("timestamp"),
+            )
 
     # ------------------------------------------------------------------ #
     # Backward-compatible helpers
@@ -256,13 +263,31 @@ class ThoughtStream:
             f"{char_count} caracteres recus (verbatim masque dans le flux canonique)\n",
         )
 
-    def _archive_current_session(self) -> None:
+    def _archive_current_session(self) -> Path | None:
         with self._lock:
             if self._archived or not self.path.exists():
-                return
+                return None
             archive_target = self.archive_dir / f"{self.session_id or 'builder_session'}.md"
             shutil.copyfile(self.path, archive_target)
             self._archived = True
+            return archive_target
+
+    def _write_idle_state(
+        self,
+        *,
+        reason: str = "",
+        last_session_id: str = "",
+        archive_path: Path | None = None,
+        timestamp: Any = None,
+    ) -> None:
+        self._overwrite(
+            render_idle_live_stream(
+                reason=reason,
+                last_session_id=last_session_id,
+                archive_path=archive_path,
+                timestamp=timestamp,
+            )
+        )
 
     # ------------------------------------------------------------------ #
     # Rendering
@@ -451,6 +476,49 @@ class ThoughtStream:
         with self._lock, open(self.path, "a", encoding="utf-8") as handle:
             handle.write(text)
             handle.flush()
+
+
+def render_idle_live_stream(
+    *,
+    reason: str = "",
+    last_session_id: str = "",
+    archive_path: Path | None = None,
+    timestamp: Any = None,
+) -> str:
+    updated_at = _format_datetime(timestamp or _now_iso())
+    lines = [
+        "=" * 68,
+        f"  {_IDLE_STREAM_TITLE}",
+        "-" * 68,
+        "  ETAT     : en attente d'une nouvelle session",
+        f"  MAJ      : {updated_at}",
+    ]
+    if last_session_id:
+        lines.append(f"  DERNIERE : {last_session_id}")
+    if archive_path is not None:
+        lines.append(f"  ARCHIVE  : {archive_path}")
+    if reason:
+        lines.append(f"  RAISON   : {reason}")
+    lines.extend(["=" * 68, ""])
+    return "\n".join(lines)
+
+
+def reset_live_stream(
+    *,
+    path: Path = STREAM_FILE,
+    reason: str = "",
+    last_session_id: str = "",
+    archive_path: Path | None = None,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        render_idle_live_stream(
+            reason=reason,
+            last_session_id=last_session_id,
+            archive_path=archive_path,
+        ),
+        encoding="utf-8",
+    )
 
 
 def _trunc(text: Any, max_len: int = 140) -> str:

@@ -19,6 +19,11 @@ from .chaikin_oscillator import (
     calculate_chaikin_oscillator,
     chaikin_oscillator,
 )
+from .choppiness_index import (
+    ChoppinessIndexSettings,
+    calculate_choppiness_index,
+    choppiness_index,
+)
 from .cmf import CMFSettings, calculate_cmf, cmf
 from .cmo import CMOSettings, calculate_cmo, cmo
 from .coppock_curve import (
@@ -99,6 +104,7 @@ from .supertrend import SuperTrendSettings, supertrend
 # FairValOseille indicators (03/01/2026)
 from .swing import calculate_swing_high, calculate_swing_low, swing
 from .tma import TMASettings, calculate_tma, tma
+from .trix import TRIXSettings, calculate_trix, trix
 from .tsi import TSISettings, calculate_tsi, tsi
 from .ultimate_oscillator import (
     UltimateOscillatorSettings,
@@ -112,6 +118,7 @@ from .volume_oscillator import (
     calculate_volume_oscillator,
     volume_oscillator,
 )
+from .vix import VIXSettings, calculate_vix, vix
 from .vortex import calculate_vortex, vortex, vortex_signal
 
 # Indicateurs ajoutés 12/12/2025
@@ -128,6 +135,9 @@ __all__ = [
     "chaikin_oscillator",
     "calculate_chaikin_oscillator",
     "ChaikinOscillatorSettings",
+    "choppiness_index",
+    "calculate_choppiness_index",
+    "ChoppinessIndexSettings",
     "cmf",
     "calculate_cmf",
     "CMFSettings",
@@ -203,6 +213,9 @@ __all__ = [
     "tma",
     "calculate_tma",
     "TMASettings",
+    "trix",
+    "calculate_trix",
+    "TRIXSettings",
     "tsi",
     "calculate_tsi",
     "TSISettings",
@@ -226,6 +239,9 @@ __all__ = [
     "volume_oscillator",
     "calculate_volume_oscillator",
     "VolumeOscillatorSettings",
+    "vix",
+    "calculate_vix",
+    "VIXSettings",
     "standard_deviation",
     "calculate_standard_deviation",
     "StandardDeviationSettings",

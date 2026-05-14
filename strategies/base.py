@@ -103,6 +103,17 @@ class StrategyBase(ABC):
         """
 
     @property
+    def required_indicator_configs(self) -> dict[str, dict[str, Any]]:
+        """Instances nommées optionnelles d'indicateurs.
+
+        Format rétrocompatible pour calculer plusieurs variantes du même
+        indicateur sous des clés distinctes:
+        {"ema_21": {"name": "ema", "params": {"period": 21}}}.
+        Les stratégies existantes peuvent ignorer cette propriété.
+        """
+        return {}
+
+    @property
     def default_params(self) -> dict[str, Any]:
         """Paramètres par défaut de la stratégie.
 

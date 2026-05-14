@@ -22,7 +22,6 @@ import agents.llm_client as llm_client_module
 import agents.model_config as model_config_module
 import agents.ollama_manager as ollama_manager_module
 import backtest.worker as worker_module
-import core.llm_multi.model_discovery as model_discovery_module
 import ui.app as app_module
 import ui.builder_view as builder_view_module
 import ui.components.agent_timeline as agent_timeline_module
@@ -92,17 +91,20 @@ from ui.results_hub import (
     _extract_catalog_postfilter_fields,
     _format_p3_zero_survivor_message,
     _get_numeric_column_config,
+    _graduation_cli_command,
     _normalize_backtest_overview_df,
     _normalize_graduation_candidate_df,
+    _payload_cli_equivalent,
+    _payload_config_snapshot,
+    _payload_phase_contract,
     _pick_latest_from_catalogs,
+    _report_has_source_validation_fields,
     _resolve_candidate_phase_filter,
     _resolve_candidate_phase_focus_default,
     _safe_read_csv,
 )
 from ui.sidebar import _apply_catalog_replay_request_to_state, _apply_config_guard, _resolve_default_cpu_workers
 from ui.state import (
-    BUILDER_EXECUTION_MODE_DUAL_LANE,
-    BUILDER_EXECUTION_MODE_EXPERT,
     BUILDER_EXECUTION_MODE_MONO,
     UI_EXECUTION_PHASE_IDLE,
     UI_EXECUTION_PHASE_LAUNCH_PENDING,
@@ -116,10 +118,8 @@ from ui.state import (
     get_ui_execution_phase,
     mark_ui_run_started,
     mark_ui_stop_requested,
-    resolve_builder_dual_lane_preferences,
     resolve_builder_execution_preferences,
     resolve_builder_flow_analysis_preferences,
-    resolve_builder_multi_llm_preferences,
     resolve_builder_runtime_preferences,
 )
 
@@ -252,11 +252,6 @@ def _sample_sidebar_state(**overrides) -> SidebarState:
         "builder_auto_pause": 10,
         "builder_auto_use_llm": True,
         "builder_execution_mode": BUILDER_EXECUTION_MODE_MONO,
-        "builder_dual_lane_primary_model": "deepseek-r1:32b",
-        "builder_dual_lane_critic_model": "deepseek-r1:32b",
-        "builder_multi_llm_enabled": False,
-        "builder_multi_llm_profile": "24GB_balanced",
-        "builder_multi_llm_role_overrides": {},
         "builder_flow_analysis_enabled": False,
         "builder_flow_analysis_ablation": {},
         "builder_use_parametric_catalog": False,
@@ -520,14 +515,6 @@ def test_render_main_skips_forced_market_load_for_builder(monkeypatch):
 
     assert captured["mode"] == "🏗️ Strategy Builder"
     assert captured["df"] is None
-
-
-def test_sample_sidebar_state_defaults_multi_llm_disabled():
-    state = _sample_sidebar_state(optimization_mode="🏗️ Strategy Builder")
-
-    assert state.builder_multi_llm_enabled is False
-    assert state.builder_multi_llm_profile == "24GB_balanced"
-    assert state.builder_multi_llm_role_overrides == {}
 
 
 def test_compute_period_days_handles_mixed_naive_and_utc_inputs():
@@ -1342,6 +1329,82 @@ def test_normalize_graduation_candidate_df_derives_benchmark_matrix_columns():
     assert normalized.loc[0, "loaded_benchmark_slot_count"] == 3
     assert normalized.loc[0, "excluded_context_count"] == 1
     assert normalized.loc[0, "configured_unique_coverage_pct"] == pytest.approx(66.7, abs=0.1)
+
+
+def test_normalize_graduation_candidate_df_keeps_source_validation_metrics_numeric():
+    df = pd.DataFrame(
+        [
+            {
+                "strategy_name": "eth_source",
+                "source_symbol": "ETHUSDC",
+                "source_timeframe": "1d",
+                "sensitivity_scope": "source_market",
+                "sensitivity_history_bars": "2616",
+                "sensitivity_min_history_bars": "500",
+                "wfa_scope": "source_market",
+                "wfa_symbol": "ETHUSDC",
+                "wfa_timeframe": "1d",
+                "wfa_history_bars": "2616",
+                "wfa_min_history_bars": "500",
+                "wfa_valid_folds": "5",
+                "wfa_positive_folds_pct": "80.0",
+                "wfa_overfitting_ratio": "162.114",
+            },
+        ],
+    )
+
+    normalized = _normalize_graduation_candidate_df(df)
+
+    assert _report_has_source_validation_fields(normalized) is True
+    assert normalized.loc[0, "sensitivity_history_bars"] == 2616
+    assert normalized.loc[0, "wfa_valid_folds"] == 5
+    assert normalized.loc[0, "wfa_positive_folds_pct"] == pytest.approx(80.0)
+    assert normalized.loc[0, "wfa_overfitting_ratio"] == pytest.approx(162.114)
+
+
+def test_report_has_source_validation_fields_detects_legacy_graduation_report():
+    legacy_df = pd.DataFrame([{"strategy_name": "old", "wfa_overfitting_ratio": 7.04}])
+
+    assert _report_has_source_validation_fields(legacy_df) is False
+    assert _report_has_source_validation_fields(pd.DataFrame()) is True
+
+
+def test_graduation_payload_contract_helpers_read_progress_and_report_meta():
+    report_payload = {
+        "meta": {
+            "cli_equivalent": "python -m catalog.graduation --full --sync-catalog",
+            "phase_contract": {"P1": {"name": "Inventaire", "purpose": "scan"}},
+            "config_snapshot": {"source_market_first": True},
+        },
+    }
+
+    assert _graduation_cli_command(["--full", "--sync-catalog"]) == (
+        "python -m catalog.graduation --full --sync-catalog"
+    )
+    assert _payload_cli_equivalent({}, report_payload) == "python -m catalog.graduation --full --sync-catalog"
+    assert _payload_phase_contract(report_payload)["P1"]["name"] == "Inventaire"
+    assert _payload_config_snapshot(report_payload)["source_market_first"] is True
+
+
+def test_phase_processed_counts_do_not_infer_future_phases_for_live_progress():
+    stats = {
+        "p1_candidates": 2454,
+        "p2_processed": 2454,
+        "p2_survivors": 2195,
+    }
+
+    live_counts = results_hub_module._phase_processed_counts(stats, 2454, infer_missing=False)
+    report_counts = results_hub_module._phase_processed_counts(stats, 2454)
+
+    assert live_counts["P2"] == 2454
+    assert live_counts["P3"] == 0
+    assert live_counts["P4"] == 0
+    assert report_counts["P3"] == 2195
+
+
+def test_is_pid_running_accepts_current_process():
+    assert results_hub_module._is_pid_running(os.getpid()) is True
+    assert results_hub_module._is_pid_running(-1) is False
 
 
 def test_build_p3_diagnostic_summary_distinguishes_eligible_vs_configured():
@@ -2866,56 +2929,6 @@ def test_ollama_client_routes_cloud_model_to_direct_api_with_authorization(monke
     assert cast(Any, client)._http_client.headers["Authorization"] == "Bearer ollama-test-key"
 
 
-def test_prepare_multi_llm_role_runtime_with_failover_uses_next_candidate(monkeypatch):
-    attempts: list[str] = []
-
-    assignment = SimpleNamespace(
-        role="builder_llm",
-        available=True,
-        requested_model="kimi-k2",
-        resolved_model="kimi-k2",
-        alternatives=["qwen3-coder:480b"],
-    )
-    route = SimpleNamespace(ollama_host="http://127.0.0.1:11434", gpu_target="")
-
-    class _Manager:
-        def resolve_role_assignment(self, role):
-            return assignment if role == "builder_llm" else None
-
-        def resolve_role_route(self, _role):
-            return route
-
-        def select_next_role_candidate(self, role, *, rejected_model="", reason=""):
-            _ = reason
-            if role != "builder_llm" or rejected_model != "kimi-k2":
-                return None
-            assignment.requested_model = "qwen3-coder:480b"
-            assignment.resolved_model = "qwen3-coder:480b"
-            assignment.alternatives = []
-            return "qwen3-coder:480b"
-
-    def _prepare_stub(**kwargs):
-        model_name = str(kwargs.get("model") or "")
-        attempts.append(model_name)
-        if model_name == "kimi-k2":
-            return False, "rejected", "kimi-k2"
-        return True, "ok", "qwen3-coder:480b"
-
-    monkeypatch.setattr(builder_view_module, "_prepare_builder_llm", _prepare_stub)
-
-    ok, msg, resolved_model = builder_view_module._prepare_multi_llm_role_runtime_with_failover(
-        _Manager(),
-        role="builder_llm",
-        preload_model=False,
-        keep_alive_minutes=20,
-        auto_start_ollama=True,
-    )
-
-    assert ok is True
-    assert resolved_model == "qwen3-coder:480b"
-    assert attempts == ["kimi-k2", "qwen3-coder:480b"]
-
-
 def test_role_model_config_prefers_catalog_when_ollama_is_down(monkeypatch):
     warnings: list[str] = []
     sleeps: list[float] = []
@@ -3382,6 +3395,70 @@ def test_render_builder_view_autonomous_idle_skips_probe_and_runtime_prepare(
     assert st.session_state["is_running"] is False
 
 
+def test_render_builder_view_autonomous_idle_renders_empty_recap_immediately(
+    monkeypatch,
+):
+    st.session_state.clear()
+    st.session_state["is_running"] = False
+    recap_calls: list[tuple[list[dict[str, object]], dict[str, object]]] = []
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_autonomous=True,
+        builder_auto_market_pick=True,
+        available_tokens=["ETHUSDC", "BTCUSDC"],
+        available_timeframes=["15m", "1h"],
+        symbol="",
+        timeframe="",
+    )
+
+    monkeypatch.setattr(builder_view_module, "_inject_builder_view_styles", lambda: None)
+    monkeypatch.setattr(builder_view_module, "_render_builder_mode_hero", lambda **kwargs: None)
+    monkeypatch.setattr(builder_view_module, "_render_builder_runtime_notes", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_autonomous_recap",
+        lambda history, supervisor: recap_calls.append((list(history), dict(supervisor))),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_load_autonomous_supervisor_state",
+        lambda: {"history": [], "supervisor": {"soft_reset_count": 0}},
+    )
+    monkeypatch.setattr(builder_view_module.st, "info", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_mark_builder_autonomous_runtime_started",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("Le runtime autonome ne doit pas démarrer en mode idle"),
+        ),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_find_first_valid_builder_market",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("La sonde marché ne doit pas tourner en mode idle"),
+        ),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_prepare_builder_llm_resilient",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("Le warmup LLM ne doit pas démarrer en mode idle"),
+        ),
+    )
+
+    builder_view_module.render_builder_view(
+        state=state,
+        df=None,
+        status_container=nullcontext(),
+    )
+
+    assert recap_calls == [([], {"soft_reset_count": 0})]
+    assert st.session_state["is_running"] is False
+
+
 def test_render_builder_view_autonomous_passes_unload_preference_to_session(
     monkeypatch,
 ):
@@ -3430,6 +3507,63 @@ def test_render_builder_view_autonomous_passes_unload_preference_to_session(
 
     assert len(run_calls) == 1
     assert run_calls[0]["unload_after_run"] is False
+
+
+def test_render_builder_view_autonomous_running_renders_recap_before_first_session(
+    monkeypatch,
+):
+    st.session_state.clear()
+    st.session_state["is_running"] = True
+    sample_df = _sample_ohlcv()
+    recap_snapshots: list[list[dict[str, object]]] = []
+
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_autonomous=True,
+        builder_auto_market_pick=False,
+        builder_auto_pause=0,
+        symbol="BTCUSDT",
+        timeframe="1h",
+        available_tokens=["BTCUSDT"],
+        available_timeframes=["1h"],
+    )
+
+    _patch_autonomous_builder_shell(monkeypatch)
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_autonomous_recap",
+        lambda history, supervisor: recap_snapshots.append(list(history)),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_prepare_builder_llm_resilient",
+        lambda **kwargs: (True, "runtime prêt", "qwen3-coder:30b", False),
+    )
+
+    def _run_stub(**kwargs):
+        assert recap_snapshots
+        assert recap_snapshots[0] == []
+        st.session_state["is_running"] = False
+        return SimpleNamespace(
+            status="success",
+            best_sharpe=1.0,
+            best_score=1.0,
+            iterations=[],
+            session_id="autonomous-first-session",
+            start_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            model_name="qwen3-coder:30b",
+        )
+
+    monkeypatch.setattr(builder_view_module, "_run_single_builder_session", _run_stub)
+
+    builder_view_module.render_builder_view(
+        state=state,
+        df=sample_df,
+        status_container=nullcontext(),
+    )
+
+    assert recap_snapshots[0] == []
+    assert any(snapshot for snapshot in recap_snapshots[1:])
 
 
 def test_render_builder_view_autonomous_repreloads_after_unloaded_session(
@@ -4071,7 +4205,7 @@ def test_get_autonomous_recap_status_badge_marks_failed_positive_return_as_posit
     assert badge == {"icon": "+", "label": "positif", "tone": "positive"}
 
 
-def test_get_autonomous_recap_status_badge_keeps_extreme_drawdown_failed_positive_as_failure():
+def test_get_autonomous_recap_status_badge_marks_any_failed_positive_return_as_positive():
     badge = _get_autonomous_recap_status_badge(
         {
             "status": "failed",
@@ -4084,7 +4218,7 @@ def test_get_autonomous_recap_status_badge_keeps_extreme_drawdown_failed_positiv
         },
     )
 
-    assert badge == {"icon": "✖", "label": "echec", "tone": "crash"}
+    assert badge == {"icon": "+", "label": "positif", "tone": "positive"}
 
 
 def test_get_autonomous_recap_status_badge_marks_fallback_best_positive_snapshot_as_positive():
@@ -4104,10 +4238,10 @@ def test_get_autonomous_recap_status_badge_marks_fallback_best_positive_snapshot
     assert badge == {"icon": "+", "label": "positif", "tone": "positive"}
 
 
-def test_get_autonomous_recap_status_badge_promotes_strict_accept_metrics_to_success():
+def test_get_autonomous_recap_status_badge_keeps_actual_success_as_success():
     badge = _get_autonomous_recap_status_badge(
         {
-            "status": "failed",
+            "status": "success",
             "target_sharpe": 1.0,
             "best_return": 18.4,
             "best_return_sharpe": 1.22,
@@ -4118,6 +4252,20 @@ def test_get_autonomous_recap_status_badge_promotes_strict_accept_metrics_to_suc
     )
 
     assert badge == {"icon": "✚", "label": "succes", "tone": "positive"}
+
+
+def test_get_autonomous_recap_status_badge_marks_positive_best_despite_negative_final():
+    badge = _get_autonomous_recap_status_badge(
+        {
+            "status": "failed",
+            "best_return": 143.69,
+            "final_return": -190.0,
+            "best_max_dd": -37.34,
+            "final_max_dd": -100.0,
+        },
+    )
+
+    assert badge == {"icon": "+", "label": "positif", "tone": "positive"}
 
 
 def test_get_autonomous_recap_status_badge_keeps_max_iterations_status_even_with_positive_best_return():
@@ -4352,76 +4500,6 @@ def test_recover_autonomous_history_entry_from_disk_uses_runtime_checkpoint_with
     assert recovered["recovered_from_runtime_checkpoint"] is True
 
 
-def test_finalize_multi_llm_session_review_persists_continuity_context(tmp_path):
-    session_dir = tmp_path / "builder_session_multi"
-    session_dir.mkdir(parents=True)
-    (session_dir / "session_summary.json").write_text(
-        json.dumps({"session_id": session_dir.name, "status": "success"}),
-        encoding="utf-8",
-    )
-
-    class _RoleOutput:
-        def __init__(self, payload):
-            self._payload = payload
-
-        def to_dict(self):
-            return dict(self._payload)
-
-    class _Manager:
-        def review_builder_session(self, **_kwargs):
-            return {
-                "router_decision": {
-                    "action": "iterate",
-                    "reason": "tighten exits",
-                    "confidence": 0.82,
-                },
-                "role_outputs": {
-                    "critic_llm": _RoleOutput(
-                        {
-                            "role": "critic_llm",
-                            "model": "deepseek-r1:14b",
-                            "available": True,
-                            "error": "",
-                            "content": "Focus on exits and reduce lag.",
-                            "metadata": {"score": 0.8},
-                        },
-                    ),
-                },
-            }
-
-        def consume_shared_memory(self):
-            return {
-                "continuity_context": {
-                    "recent_sessions": [{"session_num": 7, "symbol": "BTCUSDT"}],
-                    "best_recent_session": {"session_num": 7, "symbol": "BTCUSDT"},
-                    "carry_over_focus": ["tighten exits"],
-                    "recurring_risks": ["drawdown spike"],
-                },
-                "router_context": {"action": "iterate", "reason": "tighten exits"},
-            }
-
-    session = SimpleNamespace(session_dir=session_dir)
-
-    payload = builder_view_module._finalize_multi_llm_session_review(
-        objective="Builder multi role",
-        session=session,
-        target_sharpe=1.2,
-        multi_llm_manager=_Manager(),
-        persist_summary=True,
-    )
-
-    saved = json.loads((session_dir / "session_summary.json").read_text(encoding="utf-8"))
-
-    assert payload["continuity_context"]["carry_over_focus"] == ["tighten exits"]
-    assert session.multi_llm_router_decision["action"] == "iterate"
-    assert session.multi_llm_shared_memory["router_context"]["action"] == "iterate"
-    assert saved["multi_llm_router_decision"]["confidence"] == 0.82
-    assert saved["continuity_context"]["recurring_risks"] == ["drawdown spike"]
-    assert saved["multi_llm_role_outputs"]["critic_llm"]["content_excerpt"].startswith(
-        "Focus on exits",
-    )
-
-
 def test_render_autonomous_recap_recovers_empty_entry_from_disk(tmp_path, monkeypatch):
     st.session_state.clear()
     sandbox_root = tmp_path / "sandbox_strategies"
@@ -4517,6 +4595,64 @@ def test_render_autonomous_recap_recovers_empty_entry_from_disk(tmp_path, monkey
     assert any("22:52:41" in html for html in rendered_html)
     assert download_payloads
     assert session_dir.name in str(download_payloads[0])
+
+
+def test_render_autonomous_recap_renders_empty_table_shell(monkeypatch):
+    st.session_state.clear()
+    rendered_html = []
+    captured_tabs = []
+    info_messages = []
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_save_autonomous_supervisor_state",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(builder_view_module, "_load_autonomous_runtime_state", dict)
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda text, **kwargs: rendered_html.append(str(text)))
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "info", lambda message, *args, **kwargs: info_messages.append(str(message)))
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "download_button",
+        lambda *args, **kwargs: pytest.fail("export should not be rendered without history"),
+    )
+
+    class _DummyContext:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _DummyColumn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(builder_view_module.st, "columns", lambda *args, **kwargs: (_DummyColumn(), _DummyColumn()))
+    monkeypatch.setattr(builder_view_module.st, "button", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "tabs",
+        lambda labels: captured_tabs.append(list(labels)) or [_DummyContext() for _ in labels],
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_render_builder_live_thoughts_panel",
+        lambda *args, **kwargs: None,
+    )
+
+    builder_view_module._render_autonomous_recap([], {"soft_reset_count": 0})
+
+    joined_html = "\n".join(rendered_html)
+    assert captured_tabs == [["Vue d'ensemble", "Historique (0)", "Pensées en direct"]]
+    assert "Aucune session enregistrée pour le moment." in joined_html
+    assert "<table class=\"builder-autonomous-recap-table\">" in joined_html
+    assert info_messages == ["Aucune session autonome enregistrée pour le moment."]
 
 
 def test_load_builder_live_thoughts_preview_tails_file(tmp_path):
@@ -4814,94 +4950,6 @@ def test_render_autonomous_recap_wraps_heavy_sections_in_tabs_and_expanders(monk
     assert "Flux de pensée live" in captured["expanders"]
     assert any("Get-Content" in text for text in captured["code"])
     assert any("Generation de code" in text for text in captured["code"])
-
-
-def test_render_autonomous_recap_hides_multi_llm_panels_when_current_mode_is_mono(monkeypatch):
-    st.session_state.clear()
-    calls = []
-
-    class _DummyContext:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    monkeypatch.setattr(
-        builder_view_module,
-        "_recover_autonomous_history_from_disk",
-        lambda history, runtime_state=None: (history, False),
-    )
-    monkeypatch.setattr(
-        builder_view_module,
-        "_save_autonomous_supervisor_state",
-        lambda *args, **kwargs: None,
-    )
-    monkeypatch.setattr(builder_view_module.st, "markdown", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "success", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "download_button", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "button", lambda *args, **kwargs: False)
-    monkeypatch.setattr(
-        builder_view_module.st,
-        "columns",
-        lambda *args, **kwargs: (_DummyContext(), _DummyContext()),
-    )
-    monkeypatch.setattr(
-        builder_view_module.st,
-        "tabs",
-        lambda labels: [_DummyContext() for _ in labels],
-    )
-    monkeypatch.setattr(
-        builder_view_module.st,
-        "expander",
-        lambda *args, **kwargs: _DummyContext(),
-    )
-    monkeypatch.setattr(
-        builder_view_module,
-        "_render_builder_live_thoughts_panel",
-        lambda *args, **kwargs: None,
-    )
-    monkeypatch.setattr(
-        builder_view_module,
-        "_render_builder_campaign_memory_card",
-        lambda *args, **kwargs: calls.append("campaign"),
-    )
-    monkeypatch.setattr(
-        builder_view_module,
-        "_render_multi_llm_session_analysis_panel",
-        lambda *args, **kwargs: calls.append("analysis"),
-    )
-
-    history = [
-        {
-            "session_num": 3366,
-            "objective": "Objectif multi-LLM historique",
-            "source_label": "LLM",
-            "status": "failed",
-            "best_score": -26.0,
-            "best_sharpe": 0.0,
-            "best_return": 0.0,
-            "best_max_dd": 0.0,
-            "best_trades": 0,
-            "duration": 8.0,
-            "symbol": "SOLUSDC",
-            "timeframe": "15m",
-            "orchestration_mode": "multi_llm",
-        },
-    ]
-
-    builder_view_module._render_autonomous_recap(history, {})
-
-    assert calls == []
-
-    builder_view_module._render_autonomous_recap(
-        history,
-        {},
-        show_multi_llm_details=True,
-    )
-
-    assert calls == ["campaign", "analysis"]
 
 
 def test_recover_autonomous_history_from_disk_reports_changed_when_entry_rehydrated(tmp_path, monkeypatch):
@@ -5291,7 +5339,7 @@ def test_render_autonomous_recap_displays_persisted_session_num_instead_of_row_i
     assert ">2</td>" not in joined_html
 
 
-def test_render_autonomous_recap_prefers_final_metrics_and_session_status_over_best_return(monkeypatch):
+def test_render_autonomous_recap_uses_best_metrics_and_negative_status_without_positive_run(monkeypatch):
     st.session_state.clear()
     rendered_html = []
 
@@ -5343,13 +5391,68 @@ def test_render_autonomous_recap_prefers_final_metrics_and_session_status_over_b
 
     joined_html = "\n".join(rendered_html)
     assert "<th>Date/heure</th>" in joined_html
-    assert "<th>Sharpe fin.</th>" in joined_html
-    assert "<th>Return fin.</th>" in joined_html
+    assert 'title="Meilleur Sharpe atteint pendant la session (best run)">Sharpe</th>' in joined_html
+    assert 'title="Meilleur return atteint pendant la session (best run)">Return</th>' in joined_html
     assert "22/03/2026 17:56:58" in joined_html
-    assert "-2808.48%" in joined_html
-    assert "-100.00%" in joined_html
-    assert ">8214</td>" in joined_html
+    assert "+0.00%" in joined_html
+    assert "0.00%" in joined_html
+    assert ">0</td>" in joined_html
     assert "− negatif" in joined_html
+
+
+def test_render_autonomous_recap_marks_positive_best_run_even_when_final_regresses(monkeypatch):
+    st.session_state.clear()
+    rendered_html = []
+
+    monkeypatch.setattr(
+        builder_view_module,
+        "_save_autonomous_supervisor_state",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(builder_view_module.st, "markdown", lambda text, **kwargs: rendered_html.append(str(text)))
+    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "download_button", lambda *args, **kwargs: None)
+
+    class _DummyColumn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(builder_view_module.st, "columns", lambda *args, **kwargs: (_DummyColumn(), _DummyColumn()))
+    monkeypatch.setattr(builder_view_module.st, "button", lambda *args, **kwargs: False)
+
+    history = [
+        {
+            "session_num": 344,
+            "session_id": "20260512_080741_xrpusdc",
+            "objective": "Objectif XRPUSDC avec run positif puis regression finale",
+            "source_label": "LLM",
+            "status": "failed",
+            "best_sharpe": 0.468,
+            "best_return": 143.69,
+            "best_max_dd": -37.34,
+            "best_trades": 51,
+            "final_sharpe": -20.0,
+            "final_return": -190.0,
+            "final_max_dd": -100.0,
+            "duration": 370.0,
+            "symbol": "XRPUSDC",
+            "timeframe": "1d",
+        },
+    ]
+
+    builder_view_module._render_autonomous_recap(history, {})
+
+    joined_html = "\n".join(rendered_html)
+    assert "+ positif" in joined_html
+    assert "+143.69%" in joined_html
+    assert "↓ -190%" in joined_html
+    assert "− negatif" not in joined_html
 
 
 def test_render_autonomous_recap_displays_gain_total_days_and_gain_per_day_for_positive_completed_runs(monkeypatch):
@@ -5836,98 +5939,6 @@ def test_render_main_preserves_builder_launch_pending_until_builder_view_runs(mo
     assert captured["mode"] == "🏗️ Strategy Builder"
     assert captured["running"] is True
     assert captured["pending"] is False
-
-
-def test_restore_builder_autonomous_ui_state_from_runtime_rehydrates_builder_mode(
-    monkeypatch,
-):
-    st.session_state.clear()
-
-    monkeypatch.setattr(
-        builder_view_module,
-        "_load_autonomous_runtime_state",
-        lambda: {
-            "active": True,
-            "manual_stop": False,
-            "run_id": "supervisor-run-1",
-            "claim_source": "external_supervisor",
-            "owner_pid": 0,
-            "resume_ui_state": {
-                "builder_execution_mode": BUILDER_EXECUTION_MODE_DUAL_LANE,
-                "builder_model_single_llm": "qwen3:30b",
-                "builder_ollama_host": "http://127.0.0.1:22434",
-                "builder_auto_pause": 17,
-                "builder_auto_use_llm": True,
-                "builder_auto_market_pick": True,
-                "builder_universe_mode": "exploratory",
-                "builder_preload_model": False,
-                "builder_keep_alive_minutes": 35,
-                "builder_unload_after_run": True,
-                "builder_auto_start_ollama": False,
-                "builder_multi_llm_enabled": True,
-                "builder_multi_llm_profile": "24GB_light_test",
-                "builder_multi_llm_role_overrides": {
-                    "idea_llm": "qwen3:30b",
-                    "builder_llm": "qwen3:30b",
-                    "critic_llm": "deepseek-r1:14b",
-                    "risk_llm": "deepseek-r1:14b",
-                },
-                "builder_dual_lane_primary_model": "qwen3:30b",
-                "builder_dual_lane_critic_model": "deepseek-r1:14b",
-            },
-        },
-    )
-
-    should_resume, payload = builder_view_module.restore_builder_autonomous_ui_state_from_runtime()
-
-    assert should_resume is True
-    assert payload["active"] is True
-    assert st.session_state["optimization_mode"] == "🏗️ Strategy Builder"
-    assert st.session_state["exec_mode_selector"] == "🏗️ Strategy Builder"
-    assert st.session_state["builder_autonomous"] is True
-    assert st.session_state["_builder_autonomous_toggle_sync"] is True
-    assert st.session_state["builder_execution_mode"] == BUILDER_EXECUTION_MODE_DUAL_LANE
-    assert st.session_state["builder_execution_mode_select"] == BUILDER_EXECUTION_MODE_DUAL_LANE
-    assert st.session_state["builder_ollama_host"] == "http://127.0.0.1:22434"
-    assert st.session_state["builder_auto_pause_slider"] == 17
-    assert st.session_state["builder_universe_mode"] == "exploratory"
-    assert st.session_state["builder_multi_llm_profile_select"] == "24GB_light_test"
-    assert st.session_state["builder_dual_lane_primary_model_select"] == "qwen3:30b"
-    assert st.session_state["builder_dual_lane_critic_model_select"] == "deepseek-r1:14b"
-
-
-def test_should_auto_resume_builder_autonomous_rejects_foreign_runtime_claim(
-    monkeypatch,
-):
-    st.session_state.clear()
-
-    state = _sample_sidebar_state(
-        optimization_mode="🏗️ Strategy Builder",
-        builder_autonomous=True,
-        builder_objective="Ne pas relancer au boot",
-    )
-
-    monkeypatch.setattr(
-        builder_view_module,
-        "_load_autonomous_runtime_state",
-        lambda: {
-            "active": True,
-            "manual_stop": False,
-            "run_id": "external-run-1",
-            "claim_source": "external_supervisor",
-            "owner_pid": 0,
-            "resume_ui_state": {
-                "builder_execution_mode": BUILDER_EXECUTION_MODE_DUAL_LANE,
-            },
-        },
-    )
-
-    should_resume, payload = builder_view_module.should_auto_resume_builder_autonomous(
-        state,
-    )
-
-    assert should_resume is False
-    assert payload["active"] is True
 
 
 def test_save_autonomous_runtime_state_retries_transient_windows_lock(
@@ -7333,141 +7344,6 @@ def test_render_builder_view_manual_session_releases_running_flag(monkeypatch):
     assert st.session_state["builder_last_objective"] == "Construire une stratégie robuste"
 
 
-def test_run_single_builder_session_runs_without_live_thoughts_panel_kwargs(
-    monkeypatch,
-    tmp_path,
-):
-    st.session_state.clear()
-    stream_file = tmp_path / "_live_thoughts.md"
-    stream_file.write_text("snapshot initial", encoding="utf-8")
-
-    class _DummyContext:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def container(self):
-            return self
-
-        def empty(self):
-            return None
-
-    class _DummyProgress:
-        def progress(self, *args, **kwargs):
-            return None
-
-    class _FakeAblation:
-        def enable_all(self):
-            return None
-
-        def disable(self, _step):
-            return None
-
-    class _FakeBuilder:
-        def __init__(self, **kwargs):
-            self.progress_callback = kwargs["progress_callback"]
-            self.stream_callback = kwargs["stream_callback"]
-            self.instrumentation = SimpleNamespace(enabled=False)
-            self.ablation = _FakeAblation()
-
-        def run(self, **kwargs):
-            stream_file.write_text("snapshot progress", encoding="utf-8")
-            self.progress_callback(
-                {
-                    "event": "phase_start",
-                    "phase": "proposal",
-                    "iteration": 1,
-                    "payload": {"max_iterations": 1},
-                    "message": "Proposition en cours",
-                },
-            )
-            stream_file.write_text("snapshot stream", encoding="utf-8")
-            self.stream_callback("proposal", "chunk")
-            return SimpleNamespace(iterations=[], status="success")
-
-    tick = {"value": 0.0}
-
-    def _perf_counter():
-        tick["value"] += 0.5
-        return tick["value"]
-
-    monkeypatch.setattr(builder_view_module, "STREAM_FILE", stream_file)
-    monkeypatch.setattr(builder_view_module.time, "perf_counter", _perf_counter)
-    monkeypatch.setattr(builder_view_module, "StrategyBuilder", _FakeBuilder)
-    monkeypatch.setattr(
-        builder_view_module,
-        "_sync_builder_runtime_diagnostic",
-        lambda *args, **kwargs: None,
-    )
-    monkeypatch.setattr(
-        builder_view_module,
-        "_get_builder_compatible_indicators",
-        lambda df: [],
-    )
-    monkeypatch.setattr(
-        builder_view_module,
-        "render_iteration_card",
-        lambda *args, **kwargs: None,
-    )
-    monkeypatch.setattr(
-        builder_view_module,
-        "render_session_summary",
-        lambda *args, **kwargs: None,
-    )
-    monkeypatch.setattr(
-        builder_view_module,
-        "_render_builder_flow_analysis_panel",
-        lambda *args, **kwargs: None,
-    )
-    monkeypatch.setattr(
-        builder_view_module,
-        "_render_builder_campaign_memory_card",
-        lambda *args, **kwargs: None,
-    )
-    monkeypatch.setattr(
-        builder_view_module,
-        "_render_multi_llm_session_analysis_panel",
-        lambda *args, **kwargs: None,
-    )
-    monkeypatch.setattr(
-        builder_view_module.st,
-        "progress",
-        lambda *args, **kwargs: _DummyProgress(),
-    )
-    monkeypatch.setattr(builder_view_module.st, "empty", lambda: _DummyContext())
-    monkeypatch.setattr(builder_view_module.st, "container", lambda: _DummyContext())
-    monkeypatch.setattr(builder_view_module.st, "markdown", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "code", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "warning", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "info", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "error", lambda *args, **kwargs: None)
-
-    session = builder_view_module._run_single_builder_session(
-        objective="Construire une stratégie robuste",
-        model="gemma4:26b",
-        ollama_host="http://127.0.0.1:11434",
-        preload_model=False,
-        keep_alive_minutes=5,
-        unload_after_run=False,
-        auto_start_ollama=False,
-        max_iterations=1,
-        target_sharpe=1.0,
-        capital=10_000.0,
-        symbol="BTCUSDC",
-        timeframe="1h",
-        fees_bps=10.0,
-        slippage_bps=5.0,
-        df=_sample_ohlcv(),
-        skip_llm_prepare=True,
-    )
-
-    assert session.status == "success"
-    assert stream_file.read_text(encoding="utf-8") == "snapshot stream"
-
-
 def test_render_builder_view_manual_passes_live_thoughts_placeholder_to_session(
     monkeypatch,
 ):
@@ -7536,101 +7412,6 @@ def test_render_builder_view_manual_passes_live_thoughts_placeholder_to_session(
         "tail_lines": 180,
     }
     assert captured["auto_start_ollama"] is True
-
-
-def test_app_builder_expert_mode_shows_only_expert_controls():
-    at = AppTest.from_file("ui/app.py")
-    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
-    at.session_state["builder_autonomous"] = False
-    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_EXPERT
-
-    at.run(timeout=60)
-
-    assert at.exception == []
-    assert any(
-        radio.label == "Architecture Builder" and radio.value == BUILDER_EXECUTION_MODE_EXPERT for radio in at.radio
-    )
-    if exec_tabs_module._MULTI_LLM_AVAILABLE:
-        assert any(selectbox.label == "Profil multi-LLM" for selectbox in at.selectbox)
-        assert any(multiselect.label == "builder_llm" for multiselect in at.multiselect)
-    assert all(selectbox.label != "Modele LLM" for selectbox in at.selectbox)
-    assert all(selectbox.label != "Modele lane principale" for selectbox in at.selectbox)
-
-
-def test_app_builder_expert_mode_exposes_profile_save_toggle():
-    at = AppTest.from_file("ui/app.py")
-    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
-    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_EXPERT
-
-    at.run(timeout=60)
-
-    assert at.exception == []
-    if exec_tabs_module._MULTI_LLM_AVAILABLE:
-        assert any(toggle.label == "💾 Enregistrer cette présélection" for toggle in at.toggle)
-
-
-def test_app_builder_expert_mode_applies_deferred_profile_sync_before_widget():
-    at = AppTest.from_file("ui/app.py")
-    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
-    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_EXPERT
-    at.session_state["builder_multi_llm_profile"] = "24GB_balanced"
-    at.session_state["_builder_multi_llm_profile_sync"] = "24GB_light_test"
-    at.session_state["_builder_multi_llm_profile_saved_notice"] = (
-        "Présélection `24GB_light_test` ajoutée aux profils multi-LLM."
-    )
-
-    at.run(timeout=60)
-
-    assert at.exception == []
-    assert at.session_state["builder_multi_llm_profile"] == "24GB_light_test"
-    assert at.session_state["builder_multi_llm_profile_select"] == "24GB_light_test"
-    assert "_builder_multi_llm_profile_sync" not in at.session_state
-    assert "_builder_multi_llm_profile_saved_notice" not in at.session_state
-
-
-def test_app_builder_expert_mode_loads_saved_custom_profile_into_role_multiselects():
-    at = AppTest.from_file("ui/app.py")
-    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
-    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_EXPERT
-
-    at.run(timeout=60)
-
-    profile_select = next(selectbox for selectbox in at.selectbox if selectbox.label == "Profil multi-LLM")
-    profile_select.set_value("24GB_custom")
-    at.run(timeout=60)
-
-    assert at.exception == []
-    assert at.session_state["builder_multi_llm_profile_select"] == "24GB_custom"
-    assert next(m for m in at.multiselect if m.label == "idea_llm").value == [
-        "alia-40b-local",
-        "llama3.3:70b-instruct-q4_K_M",
-        "qwen3-48b-savant",
-        "gpt-oss:20b",
-        "nemotron-3-nano:30b",
-        "glm-4.7-flash-23b-local",
-    ]
-    assert next(m for m in at.multiselect if m.label == "builder_llm").value == [
-        "gpt-oss:20b",
-        "nemotron-orchestrator-8b",
-        "qwen3-vl:32b",
-    ]
-
-
-def test_app_builder_expert_mode_manual_role_multiselect_persists_selection():
-    at = AppTest.from_file("ui/app.py")
-    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
-    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_EXPERT
-
-    at.run(timeout=60)
-
-    at.session_state["builder_multi_llm_role_override_select_builder_llm"] = [
-        "gpt-oss:20b",
-        "devstral-small-2:24b",
-    ]
-    at.run(timeout=60)
-
-    assert at.exception == []
-    assert any(multiselect.label == "builder_llm" for multiselect in at.multiselect)
 
 
 def test_app_builder_mono_mode_shows_only_single_model_selector():
@@ -7734,53 +7515,6 @@ def test_render_builder_tab_places_model_selector_between_host_and_runtime(monke
 
     assert render_order.index("ollama_url") < render_order.index("model_selector")
     assert render_order.index("model_selector") < render_order.index("runtime_action")
-
-
-def test_app_builder_multi_llm_purges_legacy_builder_model_state():
-    at = AppTest.from_file("ui/app.py")
-    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
-    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_MONO
-    at.session_state["builder_model"] = "alia-40b-local:latest"
-
-    at.run(timeout=60)
-
-    assert at.exception == []
-    assert "builder_model" not in at.session_state
-    assert str(at.session_state["builder_model_single_llm"]).startswith(
-        "alia-40b-local",
-    )
-
-
-def test_app_builder_dual_lane_shows_only_lane_controls():
-    at = AppTest.from_file("ui/app.py")
-    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
-    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_DUAL_LANE
-
-    at.run(timeout=60)
-
-    assert at.exception == []
-    assert any(selectbox.label == "Modele lane principale" for selectbox in at.selectbox)
-    assert any(selectbox.label == "Modele lane critique" for selectbox in at.selectbox)
-    assert all(selectbox.label != "Modele LLM" for selectbox in at.selectbox)
-    assert all(expander.label != "🧩 Configuration Expert Multi-Role" for expander in at.expander)
-    assert at.session_state["builder_llm_routing_mode"] == exec_tabs_module.LLM_ROUTING_MODE_COOPERATIVE
-    assert at.session_state["builder_multi_llm_enabled"] is True
-
-
-def test_app_builder_mode_switch_hides_previous_mode_controls():
-    at = AppTest.from_file("ui/app.py")
-    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
-    at.session_state["builder_execution_mode"] = BUILDER_EXECUTION_MODE_MONO
-
-    at.run(timeout=60)
-
-    builder_mode_radio = next(radio for radio in at.radio if radio.label == "Architecture Builder")
-    builder_mode_radio.set_value(BUILDER_EXECUTION_MODE_DUAL_LANE)
-    at.run(timeout=60)
-
-    assert at.exception == []
-    assert any(selectbox.label == "Modele lane principale" for selectbox in at.selectbox)
-    assert all(selectbox.label != "Modele LLM" for selectbox in at.selectbox)
 
 
 def test_summarize_topology_runtime_status_collapses_shared_endpoint():
@@ -8287,144 +8021,6 @@ def test_resolve_builder_runtime_preferences_prefers_live_widget_values():
     }
 
 
-def test_resolve_builder_execution_preferences_prefers_live_mode_widget():
-    resolved = resolve_builder_execution_preferences(
-        {
-            "builder_execution_mode": BUILDER_EXECUTION_MODE_MONO,
-            "builder_execution_mode_select": BUILDER_EXECUTION_MODE_DUAL_LANE,
-        },
-    )
-
-    assert resolved == {
-        "builder_execution_mode": BUILDER_EXECUTION_MODE_DUAL_LANE,
-        "builder_multi_llm_enabled": True,
-        "builder_llm_routing_mode": "cooperative_multi_gpu",
-    }
-
-
-def test_resolve_builder_execution_preferences_migrates_legacy_multi_llm_state():
-    resolved = resolve_builder_execution_preferences(
-        {
-            "builder_multi_llm_enabled_toggle": True,
-            "builder_llm_routing_mode": "single_endpoint",
-        },
-    )
-
-    assert resolved == {
-        "builder_execution_mode": BUILDER_EXECUTION_MODE_EXPERT,
-        "builder_multi_llm_enabled": True,
-        "builder_llm_routing_mode": "single_endpoint",
-    }
-
-
-def test_resolve_builder_dual_lane_preferences_prefers_live_widget_values():
-    resolved = resolve_builder_dual_lane_preferences(
-        {
-            "builder_model_single_llm": "qwen3:30b",
-            "builder_multi_llm_role_overrides": {
-                "builder_llm": "gemma4:26b",
-                "critic_llm": "deepseek-r1:14b",
-            },
-            "builder_dual_lane_primary_model": "mistral:7b-instruct",
-            "builder_dual_lane_critic_model": "llama3.1:8b",
-            "builder_dual_lane_primary_model_select": "qwen2.5:14b",
-            "builder_dual_lane_critic_model_select": "mistral:22b",
-        },
-    )
-
-    assert resolved == {
-        "builder_dual_lane_primary_model": "qwen2.5:14b",
-        "builder_dual_lane_critic_model": "mistral:22b",
-    }
-
-
-def test_resolve_builder_multi_llm_preferences_prefers_live_widget_values():
-    resolved = resolve_builder_multi_llm_preferences(
-        {
-            "builder_execution_mode": BUILDER_EXECUTION_MODE_EXPERT,
-            "builder_multi_llm_enabled": False,
-            "builder_multi_llm_profile": "24GB_balanced",
-            "builder_multi_llm_role_overrides": {
-                "builder_llm": ["qwen3-coder:30b", "gemma4:26b"],
-                "critic_llm": "deepseek-r1-distill:14b",
-            },
-            "builder_multi_llm_enabled_toggle": True,
-            "builder_multi_llm_profile_select": "24GB_light_test",
-            "builder_multi_llm_role_override_select_builder_llm": [
-                "gemma4:26b",
-                "qwen3-coder:30b",
-            ],
-            "builder_multi_llm_role_override_select_critic_llm": [],
-            "builder_multi_llm_role_override_select_risk_llm": [
-                "mistral:7b-instruct",
-                "deepseek-r1:14b",
-            ],
-        },
-    )
-
-    assert resolved == {
-        "builder_execution_mode": BUILDER_EXECUTION_MODE_EXPERT,
-        "builder_multi_llm_enabled": True,
-        "builder_multi_llm_profile": "24GB_light_test",
-        "builder_multi_llm_role_overrides": {
-            "builder_llm": ["gemma4:26b", "qwen3-coder:30b"],
-            "risk_llm": ["mistral:7b-instruct", "deepseek-r1:14b"],
-        },
-    }
-
-
-def test_resolve_builder_multi_llm_preferences_maps_dual_lane_to_four_roles():
-    resolved = resolve_builder_multi_llm_preferences(
-        {
-            "builder_execution_mode": BUILDER_EXECUTION_MODE_DUAL_LANE,
-            "builder_dual_lane_primary_model_select": "qwen3:30b",
-            "builder_dual_lane_critic_model_select": "deepseek-r1:14b",
-        },
-    )
-
-    assert resolved == {
-        "builder_execution_mode": BUILDER_EXECUTION_MODE_DUAL_LANE,
-        "builder_multi_llm_enabled": True,
-        "builder_multi_llm_profile": "24GB_balanced",
-        "builder_multi_llm_role_overrides": {
-            "idea_llm": ["qwen3:30b"],
-            "builder_llm": ["qwen3:30b"],
-            "critic_llm": ["deepseek-r1:14b"],
-            "risk_llm": ["deepseek-r1:14b"],
-        },
-    }
-
-
-def test_resolve_builder_multi_llm_preferences_uses_profile_role_pools_after_profile_switch():
-    resolved = resolve_builder_multi_llm_preferences(
-        {
-            "builder_execution_mode": BUILDER_EXECUTION_MODE_EXPERT,
-            "builder_multi_llm_profile_select": "24GB_diverse_roles",
-            "_builder_multi_llm_applied_profile": "24GB_balanced",
-            "builder_multi_llm_role_overrides": {
-                "builder_llm": ["gemma4:26b"],
-            },
-            "builder_multi_llm_role_override_select_builder_llm": [
-                "gemma4:26b",
-            ],
-        },
-    )
-
-    assert resolved["builder_multi_llm_enabled"] is True
-    assert resolved["builder_multi_llm_profile"] == "24GB_diverse_roles"
-    assert resolved["builder_multi_llm_role_overrides"]["idea_llm"][:3] == [
-        "qwen3.5:35b",
-        "mistral:22b",
-        "lfm2:24b",
-    ]
-    assert resolved["builder_multi_llm_role_overrides"]["builder_llm"] == [
-        "gpt-oss:20b",
-        "devstral-small-2:24b",
-        "qwen3-coder:30b",
-        "qwen3-30b-a3b:q4_k_m",
-    ]
-
-
 def test_resolve_requested_model_passes_through_cloud_only_without_local_alias_fallback():
     resolved_model, message, found = _resolve_requested_model(
         "qwen3-coder:480b",
@@ -8714,30 +8310,6 @@ def test_assignment_resolution_transport_label_detects_cloud_via_signin():
     assert exec_tabs_module._assignment_resolution_transport_label(assignment) == "cloud_via_signin"
 
 
-def test_builder_multi_llm_resolution_success_message_mentions_local_and_cloud():
-    assignments = [
-        SimpleNamespace(
-            source="resolved_locally",
-            backend="ollama",
-            resolved_model="gemma4:26b",
-            metadata={},
-            available=True,
-        ),
-        SimpleNamespace(
-            source="ollama_cloud_local_runtime",
-            backend="ollama",
-            resolved_model="glm-5",
-            metadata={"cloud_only": True},
-            available=True,
-        ),
-    ]
-
-    assert (
-        exec_tabs_module._builder_multi_llm_resolution_success_message(assignments)
-        == "Tous les roles du profil sont résolus pour le runtime courant (local + cloud)."
-    )
-
-
 def test_resolve_builder_flow_analysis_preferences_prefers_widget_and_disabled_steps():
     resolved = resolve_builder_flow_analysis_preferences(
         {
@@ -8786,87 +8358,6 @@ def test_builder_flow_analysis_presets_keep_fast_and_debug_runtime_targets():
     assert "runtime_fix" in debug_disabled
     assert "code_repair" in debug_disabled
     assert "indicator_binding" in debug_disabled
-
-
-def test_sync_builder_multi_llm_profile_role_pools_hydrates_and_clears_session_state():
-    st.session_state.clear()
-
-    seeded = exec_tabs_module._sync_builder_multi_llm_profile_role_pools(
-        "24GB_diverse_roles",
-    )
-
-    assert seeded["builder_llm"] == [
-        "gpt-oss:20b",
-        "devstral-small-2:24b",
-        "qwen3-coder:30b",
-        "qwen3-30b-a3b:q4_k_m",
-    ]
-    assert st.session_state["builder_multi_llm_role_overrides"]["critic_llm"][0] == ("qwen3.5:35b")
-    assert st.session_state["builder_multi_llm_role_override_select_risk_llm"] == [
-        "fin-llama-33b:33b",
-        "qwen3.5:35b",
-        "deepseek-r1:32b",
-        "deepseek-r1-distill:14b",
-        "qwq:32b",
-    ]
-
-    cleared = exec_tabs_module._sync_builder_multi_llm_profile_role_pools(
-        "24GB_balanced",
-    )
-
-    assert cleared["idea_llm"] == ["qwen2.5:32b", "gemma4:26b"]
-    assert cleared["builder_llm"] == [
-        "qwen3-30b-a3b:q4_k_m",
-        "qwen3-coder:30b",
-    ]
-    assert st.session_state["builder_multi_llm_role_overrides"]["critic_llm"] == [
-        "deepseek-r1-distill:14b",
-    ]
-    assert st.session_state["builder_multi_llm_role_override_select_builder_llm"] == [
-        "qwen3-30b-a3b:q4_k_m",
-        "qwen3-coder:30b",
-    ]
-
-
-def test_sync_builder_multi_llm_profile_role_pools_refreshes_same_profile_when_definition_changes(monkeypatch):
-    st.session_state.clear()
-    st.session_state["_builder_multi_llm_applied_profile"] = "cloud_power_roles"
-    st.session_state["_builder_multi_llm_applied_profile_signature"] = "old-signature"
-    st.session_state["builder_multi_llm_role_overrides"] = {
-        "idea_llm": ["glm-4.7"],
-        "builder_llm": ["glm-4.7"],
-    }
-    st.session_state["builder_multi_llm_role_override_select_idea_llm"] = ["glm-4.7"]
-    st.session_state["builder_multi_llm_role_override_select_builder_llm"] = ["glm-4.7"]
-
-    monkeypatch.setattr(
-        exec_tabs_module,
-        "get_profile_role_pools",
-        lambda name: {
-            "idea_llm": ["deepseek-v3.1", "gpt-oss:120b"],
-            "builder_llm": ["gpt-oss:120b", "deepseek-v3.1"],
-        },
-    )
-    monkeypatch.setattr(
-        exec_tabs_module,
-        "get_profile_definition",
-        lambda name: {
-            "name": name,
-            "updated_at": "2026-03-28T21:45:00Z",
-            "roles": {},
-        },
-    )
-
-    refreshed = exec_tabs_module._sync_builder_multi_llm_profile_role_pools(
-        "cloud_power_roles",
-    )
-
-    assert refreshed["idea_llm"] == ["deepseek-v3.1", "gpt-oss:120b"]
-    assert refreshed["builder_llm"] == ["gpt-oss:120b", "deepseek-v3.1"]
-    assert st.session_state["builder_multi_llm_role_override_select_idea_llm"] == [
-        "deepseek-v3.1",
-        "gpt-oss:120b",
-    ]
 
 
 def test_pick_builder_session_role_overrides_freezes_ordered_queue_per_role(monkeypatch):
@@ -9024,251 +8515,6 @@ def test_pick_builder_session_role_overrides_tries_cloud_before_local_when_pool_
     )
 
     assert selected["builder_llm"] == ["qwen3-coder:480b", "devstral-2:123b", "gemma4:26b"]
-
-
-def test_init_autonomous_loop_runtime_uses_startup_role_overrides_for_multi_llm_validation(
-    monkeypatch,
-):
-    st.session_state.clear()
-    captured: dict[str, Any] = {}
-
-    class _Manager:
-        def __init__(self, *args, **kwargs):
-            captured["role_overrides"] = dict(kwargs.get("role_overrides") or {})
-            self.assignments = [
-                SimpleNamespace(
-                    role="idea_llm",
-                    resolved_model="qwen3-coder:480b",
-                    requested_model="qwen3-coder:480b",
-                    available=True,
-                ),
-                SimpleNamespace(
-                    role="builder_llm",
-                    resolved_model="nemotron-orchestrator-8b",
-                    requested_model="nemotron-orchestrator-8b",
-                    available=True,
-                ),
-                SimpleNamespace(
-                    role="critic_llm",
-                    resolved_model="deepseek-r1-distill:14b",
-                    requested_model="deepseek-r1-distill:14b",
-                    available=True,
-                ),
-                SimpleNamespace(
-                    role="risk_llm",
-                    resolved_model="deepseek-r1-distill:14b",
-                    requested_model="deepseek-r1-distill:14b",
-                    available=True,
-                ),
-            ]
-            self.missing_roles = []
-
-        def resolve_role_assignment(self, role):
-            for assignment in self.assignments:
-                if assignment.role == role:
-                    return assignment
-            return None
-
-        @staticmethod
-        def resolve_role_route(_role):
-            return SimpleNamespace(ollama_host="http://127.0.0.1:11434", gpu_target="")
-
-    monkeypatch.setattr(builder_view_module, "_MULTI_LLM_RUNTIME_AVAILABLE", True)
-    monkeypatch.setattr(
-        builder_view_module,
-        "discover_local_models",
-        lambda **kwargs: SimpleNamespace(live_ollama_reachable=True, live_ollama_host="http://127.0.0.1:11434"),
-    )
-    monkeypatch.setattr(
-        builder_view_module,
-        "_pick_builder_session_role_overrides",
-        lambda role_pools, inventory=None: {
-            "idea_llm": "qwen3-coder:480b",
-            "builder_llm": "nemotron-orchestrator-8b",
-            "critic_llm": "deepseek-r1-distill:14b",
-            "risk_llm": "deepseek-r1-distill:14b",
-        },
-    )
-    monkeypatch.setattr(builder_view_module, "MultiLLMSessionManager", _Manager)
-    monkeypatch.setattr(builder_view_module, "_ensure_multi_llm_runtime_hosts", lambda manager: (True, ["ok"]))
-    monkeypatch.setattr(builder_view_module, "_sync_builder_runtime_diagnostic", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module, "_load_autonomous_supervisor_state", lambda: {"history": [], "supervisor": {}})
-    monkeypatch.setattr(builder_view_module, "_load_autonomous_runtime_state", lambda: {})
-    monkeypatch.setattr(builder_view_module, "_render_builder_mode_hero", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module, "_render_builder_runtime_notes", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module, "_render_builder_live_thoughts_panel", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module, "_resolve_single_llm_runtime_route", lambda *args, **kwargs: ("http://127.0.0.1:11434", ""))
-    monkeypatch.setattr(builder_view_module, "_get_builder_compatible_indicators", lambda df: ["ema"])
-    monkeypatch.setattr(builder_view_module, "_resolve_autonomous_session_counter_seed", lambda history, runtime: 0)
-
-    def _sync_autonomous_state(history, supervisor, trim=False, persist=False):
-        st.session_state["builder_autonomous_history"] = list(history)
-        st.session_state["builder_autonomous_supervisor"] = dict(supervisor)
-
-    monkeypatch.setattr(builder_view_module, "_sync_autonomous_state", _sync_autonomous_state)
-    monkeypatch.setattr(builder_view_module, "_heartbeat_builder_autonomous_runtime", lambda **kwargs: {})
-    monkeypatch.setattr(builder_view_module, "mark_builder_autonomous_runtime_stopped", lambda **kwargs: None)
-    monkeypatch.setattr(builder_view_module, "clear_execution_state", lambda session_state: None)
-    monkeypatch.setattr(builder_view_module, "show_status", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "markdown", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "warning", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "error", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "empty", lambda: SimpleNamespace())
-
-    cfg = {
-        "model": "gemma4:26b",
-        "ollama_host": "http://127.0.0.1:11434",
-        "max_iterations": 3,
-        "target_sharpe": 1.0,
-        "capital": 1000.0,
-        "auto_market_pick": True,
-        "orchestration_label": "multi",
-        "preload_model": False,
-        "keep_alive_minutes": 20,
-        "unload_after_run": False,
-        "auto_start_ollama": True,
-        "builder_execution_mode": BUILDER_EXECUTION_MODE_EXPERT,
-        "orchestration_mode": "multi_llm",
-        "builder_multi_llm_enabled": True,
-        "builder_flow_analysis_enabled": True,
-        "builder_flow_analysis_ablation": {},
-        "builder_multi_llm_profile": "2 local 2 cloud",
-        "llm_inference_global_settings": {},
-        "llm_inference_model_profiles": {},
-        "builder_multi_llm_role_overrides": {
-            "idea_llm": ["qwen3-coder:480b"],
-            "builder_llm": ["nemotron-orchestrator-8b"],
-            "critic_llm": ["deepseek-r1-distill:14b"],
-            "risk_llm": ["deepseek-r1-distill:14b"],
-        },
-    }
-
-    ctx = builder_view_module._init_autonomous_loop_runtime(
-        SimpleNamespace(builder_auto_pause=10, llm_topology_config=None),
-        df=None,
-        status_container=nullcontext(),
-        cfg=cfg,
-        symbol="BTCUSDT",
-        timeframe="1h",
-        all_symbols=["BTCUSDT"],
-        all_timeframes=["1h"],
-        autonomous_resume_ui_state={},
-    )
-
-    assert ctx is not None
-    assert captured["role_overrides"] == {}
-    assert ctx["builder_multi_llm_role_overrides"]["builder_llm"] == ["nemotron-orchestrator-8b"]
-
-
-def test_format_multi_llm_runtime_summary_uses_effective_host_and_transport():
-    class _Assignment:
-        def __init__(self, role: str):
-            self.role = role
-
-        def to_dict(self) -> dict[str, Any]:
-            return {"role": self.role}
-
-    class _Manager:
-        assignments = [_Assignment("builder_llm"), _Assignment("critic_llm"), _Assignment("risk_llm")]
-
-        @staticmethod
-        def runtime_flow_snapshot() -> dict[str, Any]:
-            return {
-                "role_rows": [
-                    {
-                        "role": "builder_llm",
-                        "requested_model": "qwen3-coder:480b",
-                        "resolved_model": "qwen3-coder:480b-cloud",
-                        "host": "https://ollama.com",
-                        "host_effective": "https://ollama.com",
-                        "host_logique": "http://127.0.0.1:11434",
-                        "transport": "cloud_direct",
-                        "available": True,
-                    },
-                    {
-                        "role": "critic_llm",
-                        "requested_model": "deepseek-r1:32b",
-                        "resolved_model": "deepseek-r1:32b",
-                        "host": "http://127.0.0.1:11434",
-                        "host_effective": "http://127.0.0.1:11434",
-                        "host_logique": "http://127.0.0.1:11434",
-                        "transport": "local",
-                        "available": True,
-                    },
-                    {
-                        "role": "risk_llm",
-                        "requested_model": "gemma4:31b",
-                        "resolved_model": "",
-                        "host": "http://127.0.0.1:11434",
-                        "host_effective": "http://127.0.0.1:11434",
-                        "host_logique": "http://127.0.0.1:11434",
-                        "transport": "local",
-                        "available": False,
-                    },
-                ],
-            }
-
-    summary = builder_view_module._format_multi_llm_runtime_summary(_Manager())
-
-    assert (
-        "builder_llm=`qwen3-coder:480b->qwen3-coder:480b-cloud`@https://ollama.com [cloud_direct]"
-        in summary
-    )
-    assert "critic_llm=`deepseek-r1:32b`@http://127.0.0.1:11434 [local]" in summary
-    assert "risk_llm=`gemma4:31b`@http://127.0.0.1:11434 [local] [indisponible]" in summary
-
-
-def test_serialize_multi_llm_runtime_assignments_enriches_host_transport():
-    class _Assignment:
-        def __init__(self, role: str, requested_model: str, resolved_model: str):
-            self.role = role
-            self.requested_model = requested_model
-            self.resolved_model = resolved_model
-
-        def to_dict(self) -> dict[str, Any]:
-            return {
-                "role": self.role,
-                "requested_model": self.requested_model,
-                "resolved_model": self.resolved_model,
-                "available": True,
-            }
-
-    class _Manager:
-        assignments = [_Assignment("builder_llm", "qwen3-coder:480b", "qwen3-coder:480b-cloud")]
-
-        @staticmethod
-        def runtime_flow_snapshot() -> dict[str, Any]:
-            return {
-                "role_rows": [
-                    {
-                        "role": "builder_llm",
-                        "request_model": "qwen3-coder:480b",
-                        "host": "https://ollama.com",
-                        "host_effective": "https://ollama.com",
-                        "host_logique": "http://127.0.0.1:11434",
-                        "transport": "cloud_direct",
-                        "direct_cloud": True,
-                    },
-                ],
-            }
-
-    assignments = builder_view_module._serialize_multi_llm_runtime_assignments(_Manager())
-
-    assert assignments == [
-        {
-            "role": "builder_llm",
-            "requested_model": "qwen3-coder:480b",
-            "resolved_model": "qwen3-coder:480b-cloud",
-            "available": True,
-            "request_model": "qwen3-coder:480b",
-            "host": "https://ollama.com",
-            "host_effective": "https://ollama.com",
-            "host_logique": "http://127.0.0.1:11434",
-            "transport": "cloud_direct",
-            "direct_cloud": True,
-        },
-    ]
 
 
 def test_results_hub_chart_builders_switch_between_points_and_columns(monkeypatch: pytest.MonkeyPatch) -> None:

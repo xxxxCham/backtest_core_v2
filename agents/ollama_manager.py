@@ -41,7 +41,6 @@ from agents.model_config import is_cloud_only_model
 from agents.ollama_runtime import (
     _get_ollama_host,
     _is_local_ollama_host,
-    _is_ollama_cloud_host,
     _ollama_url,
     get_ollama_cloud_runtime_model_candidates,
     is_ollama_cloud_model,
@@ -718,6 +717,27 @@ def probe_model_runtime_acceptance(
 
         return result
     except httpx.TimeoutException:
+        # Pour un modèle local non-cloud avec un petit timeout initial, le premier
+        # timeout peut indiquer que le modèle est en cours de chargement GPU (ex: 35B
+        # après reboot). On retente une seule fois avec un délai et un timeout plus long.
+        is_local_non_cloud = (
+            _is_local_ollama_host(normalized_host)
+            and not bool(request_ctx.get("direct_cloud"))
+            and not is_cloud_only_model(result.get("resolved_model") or "")
+            and timeout_s < 45.0
+        )
+        if is_local_non_cloud:
+            import time as _time_mod  # noqa: PLC0415
+            _time_mod.sleep(8)
+            return probe_model_runtime_acceptance(
+                model_name,
+                requested_model=requested_model,
+                ollama_host=ollama_host,
+                tags_payload=tags_payload,
+                tags_status_code=tags_status_code,
+                tags_error=tags_error,
+                timeout_s=max(60.0, timeout_s * 3),
+            )
         result["status"] = "runtime_timeout"
         result["message"] = (
             f"L'hôte {normalized_host} est joignable, mais le probe runtime sur `{result['resolved_model']}` a expiré."

@@ -16,7 +16,7 @@ Skip-if: Vous ne touchez pas à la boucle itérative du builder.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from agents.builder_constants import (
     ELITE_MIN_TRADES,
@@ -32,10 +32,6 @@ from agents.builder_constants import (
     TOLERANT_MAX_DRAWDOWN_PCT,
     TOLERANT_MIN_PROFIT_FACTOR,
 )
-
-if TYPE_CHECKING:
-    from agents.builder_state import BuilderIteration
-
 
 _METRIC_ALIASES: dict[str, tuple[str, ...]] = {
     "total_trades": ("trades",),

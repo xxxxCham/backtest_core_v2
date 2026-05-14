@@ -213,10 +213,17 @@ class BuilderSession:
     pipeline_traces_path: str = ""
     restriction_events: dict[str, int] = field(default_factory=dict)
     model_name: str = ""
-    multi_llm_profile: str = ""
-    multi_llm_role_overrides: dict[str, Any] = field(default_factory=dict)
-    multi_llm_assignments: list[dict[str, Any]] = field(default_factory=list)
     cross_session_memory: list[dict[str, Any]] = field(default_factory=list)
+
+    # Reprise de session Builder max_iterations
+    resume_parent_session_id: str = ""
+    resume_mode: str = ""
+    resume_from_iteration: int = 0
+    resume_extra_iterations: int = 0
+    resume_original_status: str = ""
+    resume_source_summary_path: str = ""
+    resume_original_model_name: str = ""
+    resume_requested_model_name: str = ""
 
 
 def _iteration_is_recovery_anchor(

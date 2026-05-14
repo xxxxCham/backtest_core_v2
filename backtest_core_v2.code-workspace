@@ -19,6 +19,7 @@
 			"**/.pytest_tmp_local/**": true,
 			"**/pytest_temp/**": true,
 			"**/.codex/**": true,
+			"**/.llm_archive/**": true,
 			"**/catalog/generated/**": true,
 			"**/catalog/graduation_results/**": true,
 			"**/docs/**": true,
@@ -41,6 +42,8 @@
 			"**/*.pyc": true,
 			"**/*.pyo": true,
 			"**/*.egg-info": true,
+			"**/build/**": true,
+			"**/dist/**": true,
 			"**/.mypy_cache": true,
 			"docs/cahier de maintenance_sauvegarde": true
 		},
@@ -59,6 +62,7 @@
 			"**/logs/**": true,
 			"**/profiling_results/**": true,
 			"**/sweep_diagnostics/**": true,
+			"**/.llm_archive/**": true,
 			"**/ui/components/archive/**": true,
 			"**/.claude/**": true,
 			"**/.tmp/**": true,
@@ -67,6 +71,10 @@
 			"**/.numba_cache/**": true,
 			"**/.mypy_cache/**": true,
 			"**/.venv/**": true,
+			"**/node_modules/**": true,
+			"**/*.parquet": true,
+			"**/*.feather": true,
+			"tests/**": true,
 			"**/*.bak": true,
 			"**/*.bak_*": true,
 			"**/data/**": true,
@@ -79,6 +87,7 @@
 			"docs/cahier de maintenance_sauvegarde": true
 		},
 		"python.analysis.exclude": [
+			".venv/**",
 			"**/backtest_results/**",
 			"**/backtest_results_organized/**",
 			"**/catalog/generated/**",
@@ -102,7 +111,9 @@
 			"**/.mypy_cache/**",
 			"**/.pytest_cache/**",
 			"**/.pytest_tmp/**",
+			"**/.pytest_tmp_*/**",
 			"**/.codex/**",
+			"**/.llm_archive/**",
 			"**/.venv/**",
 			"**/data/**",
 			"**/node_modules/**"
@@ -110,9 +121,21 @@
 		"github.copilot.chat.codebaseIndexing.exclusionGlobs": [
 			"AGEND_HISTORY.md",
 			".claude/**",
+			".venv/**",
+			"**/.mypy_cache/**",
+			"**/.pytest_cache/**",
+			"**/.pytest_tmp/**",
+			"**/.pytest_tmp_*/**",
+			"**/.tmp/**",
 			"docs/**",
 			"examples/**",
 			"labs/**",
+			"**/output/**",
+			"**/profiling_results/**",
+			"**/sweep_diagnostics/**",
+			"**/data/**",
+			"tests/**",
+			".llm_archive/**",
 			"catalog/generated/**",
 			"catalog/graduation_results/**",
 			"ui/components/archive/**",
@@ -129,21 +152,75 @@
 		],
 		"python.envFile": "${workspaceFolder}\\.env",
 		"editor.formatOnSave": false,
+		"editor.rulers": [
+			120
+		],
 		"python.analysis.typeCheckingMode": "basic",
 		"python.analysis.diagnosticMode": "openFilesOnly",
+		"python.analysis.diagnosticSeverityOverrides": {
+			"reportMissingImports": "none",
+			"reportMissingTypeStubs": "none",
+			"reportUnusedImport": "warning",
+			"reportUnusedVariable": "none",
+			"reportGeneralTypeIssues": "none",
+			"reportOptionalMemberAccess": "none",
+			"reportPrivateUsage": "none",
+			"reportArgumentType": "none",
+			"reportReturnType": "none",
+			"reportAssignmentType": "none",
+			"reportUnnecessaryIsInstance": "none",
+			"reportUnnecessaryCast": "none",
+			"reportConstantRedefinition": "none",
+			"reportIncompatibleMethodOverride": "none",
+			"reportIncompatibleVariableOverride": "none",
+			"reportInconsistentConstructor": "none",
+			"reportUnusedExpression": "none",
+			"reportUnusedCallResult": "none"
+		},
+		"python.analysis.extraPaths": [
+			"."
+		],
 		"files.associations": {
 			"*.toml": "toml",
 			"*.yaml": "yaml",
 			"*.yml": "yaml"
 		},
 		"explorer.compactFolders": false,
+		"cSpell.language": "fr,en",
+		"cSpell.ignorePaths": [
+			"**/*.md"
+		],
 		"github.copilot.chat.claudeCode.debug": false,
 		"chat.useAgentSkills": false,
 		"powershell.cwd": "${workspaceFolder}",
 		"claudeCode.initialPermissionMode": "bypassPermissions",
+		"python.linting.enabled": false,
 		"python.linting.pylintEnabled": false,
 		"python.linting.flake8Enabled": false,
 		"python.linting.mypyEnabled": false,
+		"files.trimTrailingWhitespace": true,
+		"markdownlint.enable": false,
+		"[python]": {
+			"editor.formatOnSave": false,
+			"editor.defaultFormatter": "ms-python.black-formatter"
+		},
+		"[markdown]": {
+			"editor.defaultFormatter": null,
+			"editor.formatOnSave": false
+		},
+		"markdown.linters.markdownlint": {
+			"config": {
+				"MD003": false,
+				"MD004": false,
+				"MD012": false,
+				"MD022": false,
+				"MD025": false,
+				"MD031": false,
+				"MD032": false,
+				"MD051": false,
+				"MD060": false
+			}
+		},
 		"codeQL.githubDatabase.download": "never",
 		"git.autofetch": false,
 		"git.autoRefresh": false,
@@ -154,7 +231,8 @@
 			"**/backtest_results/**": true,
 			"**/backtest_results_organized/**": true,
 			"**/sandbox_strategies/**": true,
-			"**/catalog/**": true,
+			"**/catalog/generated/**": true,
+			"**/catalog/graduation_results/**": true,
 			"**/docs/**": true,
 			"**/examples/**": true,
 			"**/labs/**": true,
@@ -164,11 +242,13 @@
 			"**/.git/objects/**": true,
 			"**/.git/lfs/**": true,
 			"**/.pytest_tmp/**": true,
+			"**/.pytest_tmp_*/**": true,
 			"**/.pytest_cache/**": true,
 			"**/.mypy_cache/**": true,
 			"**/.indicator_cache/**": true,
 			"**/.numba_cache/**": true,
 			"**/.codex/**": true,
+			"**/.llm_archive/**": true,
 			"**/.claude/**": true,
 			"**/data/**": true,
 			"**/runs/**": true,
@@ -186,48 +266,66 @@
 	},
 	"extensions": {
 		"recommendations": [
+			"anthropic.claude-code",
+			"github.copilot",
+			"github.copilot-chat",
 			"ms-python.python",
 			"ms-python.vscode-pylance",
+			"ms-python.black-formatter",
 			"ms-toolsai.jupyter",
 			"charliermarsh.ruff",
-			"tamasfe.even-better-toml",
-			"anthropic.claude-code"
+			"tamasfe.even-better-toml"
 		]
 	},
 	"launch": {
 		"version": "0.2.0",
 		"configurations": [
 			{
-				"name": "Streamlit UI",
-				"type": "debugpy",
+				"name": "Streamlit UI (app.py - RECOMMANDE)",
+				"type": "python",
 				"request": "launch",
 				"module": "streamlit",
 				"args": [
 					"run",
-					"ui/app.py"
+					"ui/app.py",
+					"--server.headless=false"
 				],
-				"console": "integratedTerminal"
+				"console": "integratedTerminal",
+				"justMyCode": false,
+				"envFile": "${workspaceFolder}\\.env",
+				"env": {
+					"PYTHONPATH": "${workspaceFolder}",
+					"CUDA_VISIBLE_DEVICES": "0,1"
+				}
 			},
 			{
-				"name": "Run Backtest",
-				"type": "debugpy",
+				"name": "Python: Test actuel",
+				"type": "python",
 				"request": "launch",
-				"program": "${workspaceFolder}/run_grid_backtest.py",
-				"console": "integratedTerminal"
+				"program": "${file}",
+				"console": "integratedTerminal",
+				"justMyCode": false,
+				"envFile": "${workspaceFolder}\\.env",
+				"env": {
+					"PYTHONPATH": "${workspaceFolder}"
+				}
 			},
 			{
-				"name": "LLM Optimization",
-				"type": "debugpy",
+				"name": "Python: Pytest (fichier actuel)",
+				"type": "python",
 				"request": "launch",
-				"program": "${workspaceFolder}/run_llm_optimization.py",
-				"console": "integratedTerminal"
-			},
-			{
-				"name": "Data Manager",
-				"type": "debugpy",
-				"request": "launch",
-				"program": "D:/.my_soft/gestionnaire_telechargement_multi-timeframe_clean/crypto_data_manager.py",
-				"console": "integratedTerminal"
+				"module": "pytest",
+				"args": [
+					"${file}",
+					"-v",
+					"-s"
+				],
+				"console": "integratedTerminal",
+				"justMyCode": false,
+				"envFile": "${workspaceFolder}\\.env",
+				"env": {
+					"PYTHONPATH": "${workspaceFolder}"
+				}
 			}
 		]
 	}

@@ -9,6 +9,7 @@
 .pytest_tmp/
 .tmp/
 .codex/
+.llm_archive/
 __pycache__/
 
 # Données et résultats générés

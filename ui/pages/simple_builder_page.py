@@ -1,7 +1,6 @@
 """Page Streamlit dediee au Simple Builder mono-LLM canonique.
 
-Cette page est volontairement isolee de `ui/builder_view.py` (8000+ lignes,
-fortement couple au multi-LLM). Elle invoque `agents.simple_builder.SimpleBuilder`
+Cette page est volontairement isolee de `ui/builder_view.py`. Elle invoque `agents.simple_builder.SimpleBuilder`
 directement, sans aucune relance externe ni watchdog.
 
 Lancement standalone (recommande pour tests) :

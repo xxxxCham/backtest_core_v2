@@ -8,7 +8,7 @@ import pandas as pd
 from agents.autonomous_strategist import AutonomousStrategist, IterationDecision
 from agents.backtest_executor import BacktestExecutor, BacktestRequest
 from agents.base_agent import AgentContext
-from agents.builder_objectives import generate_random_objective
+from agents.builder_objectives import _INDICATOR_FAMILIES, generate_random_objective
 from agents.critic import CriticAgent
 
 
@@ -47,6 +47,15 @@ def test_generate_random_objective_handles_market_lists_without_nameerror() -> N
 
     assert any(symbol in objective for symbol in ("BTCUSDC", "ETHUSDC"))
     assert any(timeframe in objective for timeframe in ("15m", "1h"))
+
+
+def test_model_requested_indicators_are_seeded_in_autonomous_families() -> None:
+    assert "markov_switching" in _INDICATOR_FAMILIES["regime-adaptive"]["primary"]
+    assert "directional_bias" in _INDICATOR_FAMILIES["regime-adaptive"]["primary"]
+    assert "amplitude_hunter" in _INDICATOR_FAMILIES["breakout"]["primary"]
+    assert "fvg" in _INDICATOR_FAMILIES["breakout"]["primary"]
+    assert "coppock_curve" in _INDICATOR_FAMILIES["momentum"]["primary"]
+    assert "psar" in _INDICATOR_FAMILIES["trend-following"]["primary"]
 
 
 def test_autonomous_strategist_stops_on_partial_next_parameters() -> None:

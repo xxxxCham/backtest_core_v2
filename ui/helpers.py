@@ -23,6 +23,7 @@ from __future__ import annotations
 
 # pylint: disable=too-many-lines
 import math
+import json
 import statistics
 import time
 import traceback
@@ -101,7 +102,7 @@ def compute_period_days_from_df(df: pd.DataFrame) -> int:
     return compute_period_days(df.index[0], df.index[-1])
 
 
-def coerce_metric_float(value: Any, default: float = 0.0) -> float:
+def coerce_metric_float(value: Any, default: float | None = 0.0) -> float | None:
     """Convertit une métrique potentiellement sérialisée en float exploitable."""
     if value is None:
         return default
@@ -130,6 +131,60 @@ def coerce_metric_float(value: Any, default: float = 0.0) -> float:
     except (TypeError, ValueError):
         return default
     return number if math.isfinite(number) else default
+
+
+def coerce_metric_int(value: Any, default: int | None = 0) -> int | None:
+    """Convertit une métrique potentiellement sérialisée en int exploitable."""
+    coerced = coerce_metric_float(value, default=None)
+    if coerced is None:
+        return default
+    try:
+        return int(coerced)
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def first_present_non_empty(mapping: dict[str, Any] | None, *keys: str) -> Any:
+    if not isinstance(mapping, dict):
+        return None
+    for key in keys:
+        if key not in mapping:
+            continue
+        value = mapping.get(key)
+        if value is None or value == "" or value == [] or value == {}:
+            continue
+        return value
+    return None
+
+
+def as_listish(value: Any) -> list[str]:
+    """Normalise une valeur scalaire, CSV ou JSON-list en liste de chaînes non vides."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, tuple):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, set):
+        return sorted(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                parsed = json.loads(text)
+            except (ValueError, json.JSONDecodeError):
+                parsed = None
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+        return [part.strip() for part in text.split(",") if part.strip()]
+    try:
+        if pd.isna(value):
+            return []
+    except TypeError:
+        pass
+    return [str(value).strip()] if str(value).strip() else []
 
 
 def format_pnl_with_daily(

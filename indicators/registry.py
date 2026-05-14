@@ -564,6 +564,7 @@ register_indicator(
 for _module_name in (
     "amplitude_hunter",
     "chaikin_oscillator",
+    "choppiness_index",
     "cmf",
     "cmo",
     "coppock_curve",
@@ -591,8 +592,10 @@ for _module_name in (
     "standard_deviation",
     "swing",
     "tma",
+    "trix",
     "tsi",
     "ultimate_oscillator",
+    "vix",
     "volume_oscillator",
     "vortex",
     "wma",

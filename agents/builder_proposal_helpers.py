@@ -34,55 +34,13 @@ from agents.builder_constants import (
     ERR_DSL,
     ERR_JSON,
     ERR_PARAM,
+    _BUILDER_PROPOSAL_REQUIRED_KEYS,
+    _PROPOSAL_PLACEHOLDER_VALUES,
 )
 from agents.builder_text_utils import (
     _format_python_dict_literal,
 )
 
-
-# ---------------------------------------------------------------------------
-# Constantes locales
-# ---------------------------------------------------------------------------
-_PROPOSAL_PLACEHOLDER_VALUES = {
-    "",
-    "-",
-    "—",
-    # EN
-    "n/a",
-    "na",
-    "none",
-    "null",
-    "brief description",
-    "what you expect this change to achieve and why",
-    "when to buy",
-    "when to sell",
-    "when to close",
-    # FR
-    "aucun",
-    "aucune",
-    "néant",
-    "sans objet",
-    "non applicable",
-    "description brève",
-    "brève description",
-    "ce que vous attendez de ce changement et pourquoi",
-    "quand acheter",
-    "quand vendre",
-    "quand clôturer",
-    "condition d'achat",
-    "condition de vente",
-    "condition de sortie",
-}
-
-_BUILDER_PROPOSAL_REQUIRED_KEYS = {
-    "strategy_name",
-    "used_indicators",
-    "entry_long_logic",
-    "exit_logic",
-    "risk_management",
-    "default_params",
-    "parameter_specs",
-}
 
 _BUILDER_SWEEP_MAX_COMBINATIONS = max(
     1,
@@ -99,6 +57,26 @@ _BUILDER_SWEEP_EXCLUDED_PARAMS = frozenset(
         "fees_bps",
         "slippage_bps",
     },
+)
+
+_MARKET_SYMBOL_RE = re.compile(r"\b[A-Z0-9]{2,24}(?:USDC|USDT|BUSD|FDUSD)\b")
+_PROPOSAL_MARKET_TEXT_FIELDS = (
+    "hypothesis",
+    "indicator_override_reason",
+    "entry_long_logic",
+    "entry_short_logic",
+    "exit_logic",
+    "risk_management",
+)
+
+_PROPOSAL_INDICATOR_TEXT_FIELDS = (
+    "strategy_name",
+    "hypothesis",
+    "indicator_override_reason",
+    "entry_long_logic",
+    "entry_short_logic",
+    "exit_logic",
+    "risk_management",
 )
 
 
@@ -354,12 +332,32 @@ def _sanitize_param_mapping(raw: Any) -> dict[str, Any]:
     return cleaned
 
 
+def _normalize_market_symbol(value: Any) -> str:
+    return str(value or "").strip().upper()
+
+
+def _rewrite_foreign_market_symbols(value: Any, *, allowed_symbol: str) -> Any:
+    """Réécrit les références à un autre token dans les champs narratifs."""
+    if not isinstance(value, str):
+        return value
+    target = _normalize_market_symbol(allowed_symbol)
+    if not target or target == "UNKNOWN" or not _MARKET_SYMBOL_RE.fullmatch(target):
+        return value
+
+    def _replace(match: re.Match[str]) -> str:
+        found = _normalize_market_symbol(match.group(0))
+        return target if found and found != target else match.group(0)
+
+    return _MARKET_SYMBOL_RE.sub(_replace, value)
+
+
 def _sanitize_proposal_payload(
     proposal: dict[str, Any],
     *,
     available_indicators: list[str],
     objective: str = "",
     direction_constraint: str | None = None,
+    market_symbol: str = "",
 ) -> dict[str, Any]:
     """Nettoie/sauve une proposition LLM sans relâcher le contrat final."""
     if not isinstance(proposal, dict):
@@ -405,6 +403,13 @@ def _sanitize_proposal_payload(
         objective,
         available_indicators=available_indicators,
     )
+    proposal_text_indicators = _extract_objective_indicator_names(
+        " ".join(
+            str(cleaned.get(field, "") or "")
+            for field in _PROPOSAL_INDICATOR_TEXT_FIELDS
+        ),
+        available_indicators=available_indicators,
+    )
     used = cleaned.get("used_indicators", [])
     normalized_used: list[str] = []
     if isinstance(used, list):
@@ -412,23 +417,42 @@ def _sanitize_proposal_payload(
             ind = _canonicalize_indicator_name(item, known=known)
             if ind and ind not in normalized_used:
                 normalized_used.append(ind)
+    for ind in proposal_text_indicators:
+        if ind not in normalized_used:
+            normalized_used.append(ind)
     if not normalized_used:
         if objective_locked_indicators:
             normalized_used = list(objective_locked_indicators)
+        elif proposal_text_indicators:
+            normalized_used = list(proposal_text_indicators)
         else:
             normalized_used = ["atr"] if "atr" in known else sorted(known)[:2]
     cleaned["used_indicators"] = normalized_used
 
     default_params = _sanitize_param_mapping(cleaned.get("default_params"))
-    default_params["leverage"] = min(2, max(1, int(default_params.get("leverage", 1) or 1)))
-    default_params.setdefault("stop_atr_mult", 1.5)
-    default_params.setdefault("tp_atr_mult", 3.0)
+    # Hard clamp leverage to [1, 2] regardless of what the LLM returned.
+    try:
+        _lev_raw = float(default_params.get("leverage", 1) or 1)
+    except (TypeError, ValueError):
+        _lev_raw = 1.0
+    default_params["leverage"] = int(min(2.0, max(1.0, _lev_raw)))
+    # Clamp stop/tp ATR multipliers to safe bounds documented in the prompt.
+    try:
+        _stop_raw = float(default_params.get("stop_atr_mult", 1.5) or 1.5)
+    except (TypeError, ValueError):
+        _stop_raw = 1.5
+    default_params["stop_atr_mult"] = max(1.0, min(2.5, _stop_raw))
+    try:
+        _tp_raw = float(default_params.get("tp_atr_mult", 3.0) or 3.0)
+    except (TypeError, ValueError):
+        _tp_raw = 3.0
+    default_params["tp_atr_mult"] = max(2.0, min(5.0, _tp_raw))
     default_params.setdefault("warmup", 50)
     cleaned["default_params"] = default_params
 
     specs = _sanitize_param_mapping(cleaned.get("parameter_specs"))
-    if "leverage" not in specs:
-        specs["leverage"] = {"min": 1, "max": 2, "default": default_params["leverage"], "type": "int", "step": 1}
+    # Force the leverage spec to [1,2] even if the LLM emitted broader bounds.
+    specs["leverage"] = {"min": 1, "max": 2, "default": default_params["leverage"], "type": "int", "step": 1}
     if "stop_atr_mult" not in specs:
         specs["stop_atr_mult"] = {
             "min": 1.0,
@@ -456,6 +480,16 @@ def _sanitize_proposal_payload(
     ).strip()
 
     cleaned["strategy_name"] = str(cleaned.get("strategy_name", "builder_strategy") or "builder_strategy").strip()
+    objective_symbols = _MARKET_SYMBOL_RE.findall(str(objective or "").upper())
+    allowed_market_symbol = _normalize_market_symbol(market_symbol)
+    if not allowed_market_symbol and len(set(objective_symbols)) == 1:
+        allowed_market_symbol = objective_symbols[0]
+    if allowed_market_symbol:
+        for field in _PROPOSAL_MARKET_TEXT_FIELDS:
+            cleaned[field] = _rewrite_foreign_market_symbols(
+                cleaned.get(field, ""),
+                allowed_symbol=allowed_market_symbol,
+            )
     effective_direction = (
         str(
             direction_constraint or _infer_direction_constraint_from_objective(objective),
@@ -469,6 +503,7 @@ def _sanitize_proposal_payload(
 
     if objective_locked_indicators:
         objective_set = set(objective_locked_indicators)
+        proposal_text_indicator_set = set(proposal_text_indicators)
         proposal_indicators = _normalize_required_indicator_names(
             cast("list[str] | None", cleaned.get("used_indicators")),
         )
@@ -479,13 +514,19 @@ def _sanitize_proposal_payload(
             and len(proposal_indicators) <= max(1, len(objective_locked_indicators) + 1)
             and ((len(added) == 1 and len(removed) == 0) or (len(added) == 1 and len(removed) == 1))
         )
+        allows_narrative_completion = (
+            cleaned["change_type"] in {"logic", "both"}
+            and bool(added)
+            and not removed
+            and all(ind in proposal_text_indicator_set for ind in added)
+        )
         if not proposal_indicators:
             cleaned["used_indicators"] = list(objective_locked_indicators)
             cleaned.pop("indicator_override_reason", None)
         elif not added and not removed:
             cleaned["used_indicators"] = proposal_indicators
             cleaned.pop("indicator_override_reason", None)
-        elif allows_semi_open_override:
+        elif allows_semi_open_override or allows_narrative_completion:
             cleaned["used_indicators"] = proposal_indicators
             cleaned["indicator_override_reason"] = raw_override_reason or _build_indicator_override_reason(
                 objective_locked_indicators,
@@ -498,6 +539,13 @@ def _sanitize_proposal_payload(
         cleaned["indicator_override_reason"] = raw_override_reason
     else:
         cleaned.pop("indicator_override_reason", None)
+
+    if allowed_market_symbol:
+        for field in _PROPOSAL_MARKET_TEXT_FIELDS:
+            cleaned[field] = _rewrite_foreign_market_symbols(
+                cleaned.get(field, ""),
+                allowed_symbol=allowed_market_symbol,
+            )
 
     for key in ("entry_long_logic", "entry_short_logic", "exit_logic"):
         val = cleaned.get(key, "")

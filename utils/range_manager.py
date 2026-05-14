@@ -83,14 +83,10 @@ class RangeManager:
         with open(self.config_path, "rb") as f:
             data = tomli.load(f)
 
-        # Convertir les données en RangeConfig
-        for category_param, values in data.items():
-            if "." in category_param:
-                category, param = category_param.rsplit(".", 1)
-            else:
-                category = "global"
-                param = category_param
+        self.ranges = {}
 
+        # Convertir les données en RangeConfig
+        for category, param, values in self._iter_range_entries(data):
             if category not in self.ranges:
                 self.ranges[category] = {}
 
@@ -103,6 +99,41 @@ class RangeManager:
                 options=values.get("options"),
                 param_type=values.get("type"),
             )
+
+    @staticmethod
+    def _looks_like_range_spec(values: Any) -> bool:
+        if not isinstance(values, dict):
+            return False
+        return any(
+            key in values
+            for key in ("min", "max", "step", "default", "description", "options", "type")
+        )
+
+    @classmethod
+    def _iter_range_entries(cls, data: dict[str, Any]):
+        """Itère sur les entrées TOML plates ou imbriquées.
+
+        Le fichier source utilise des tables TOML `[indicator.param]`, que
+        `tomllib` expose sous la forme `{"indicator": {"param": {...}}}`.
+        L'ancien éditeur a pu produire des clés littérales `indicator.param`;
+        ce lecteur accepte les deux formats pour compatibilité.
+        """
+        for category_key, values in data.items():
+            if cls._looks_like_range_spec(values):
+                if "." in category_key:
+                    category, param = category_key.rsplit(".", 1)
+                else:
+                    category, param = "global", category_key
+                yield category, param, values
+                continue
+
+            if not isinstance(values, dict):
+                continue
+
+            for param, spec in values.items():
+                if not cls._looks_like_range_spec(spec):
+                    continue
+                yield category_key, str(param), spec
 
     def get_range(self, category: str, param: str) -> RangeConfig | None:
         """Récupère la configuration d'une plage.
@@ -185,8 +216,8 @@ class RangeManager:
         data = {}
         for category, params in sorted(self.ranges.items()):
             for param, range_cfg in sorted(params.items()):
-                key = f"{category}.{param}"
-                data[key] = {
+                target = data if category == "global" else data.setdefault(category, {})
+                target[param] = {
                     "min": range_cfg.min,
                     "max": range_cfg.max,
                     "step": range_cfg.step,
@@ -194,9 +225,9 @@ class RangeManager:
                     "description": range_cfg.description,
                 }
                 if range_cfg.options:
-                    data[key]["options"] = range_cfg.options
+                    target[param]["options"] = range_cfg.options
                 if range_cfg.param_type:
-                    data[key]["type"] = range_cfg.param_type
+                    target[param]["type"] = range_cfg.param_type
 
         if tomli_w is not None:
             with open(self.config_path, "wb") as f:

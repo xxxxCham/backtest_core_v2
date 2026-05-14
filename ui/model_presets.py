@@ -38,31 +38,31 @@ MODEL_PRESETS_DIR = Path("data") / "model_presets"
 BUILTIN_PRESETS: dict[str, dict[str, Any]] = {
     "Optimal": {
         "name": "Optimal",
-        "description": "Configuration optimale basée sur benchmarks Dec 2025",
+        "description": "Configuration optimale - modeles 24-35B locaux installes",
         "models": {
-            "analyst": ["qwen2.5:32b"],
+            "analyst": ["gemma4:26b"],
             "strategist": ["lfm2:24b"],
-            "critic": ["llama3.3:70b-instruct-q4_K_M"],
-            "validator": ["llama3.3:70b-instruct-q4_K_M"],
+            "critic": ["qwen3.6:35b"],
+            "validator": ["gemma4:31b"],
         },
         "builtin": True,
     },
     "Rapide": {
         "name": "Rapide",
-        "description": "Modèles légers pour exploration rapide",
+        "description": "Modeles legers pour exploration rapide",
         "models": {
-            "analyst": ["gemma4:26b"],
-            "strategist": ["mistral:22b"],
-            "critic": ["deepseek-r1:32b"],
+            "analyst": ["mistral:7b-instruct"],
+            "strategist": ["deepseek-r1-distill:14b"],
+            "critic": ["acereason-nemotron:14b-q5_k_m"],
             "validator": ["deepseek-r1:32b"],
         },
         "builtin": True,
     },
-    "Équilibré": {
-        "name": "Équilibré",
+    "Equilibre": {
+        "name": "Equilibre",
         "description": "Mix light/medium/heavy pour compromis performance/vitesse",
         "models": {
-            "analyst": ["qwen2.5:32b"],
+            "analyst": ["gemma4:26b"],
             "strategist": ["lfm2:24b"],
             "critic": ["deepseek-r1:32b"],
             "validator": ["qwq:32b"],
@@ -71,7 +71,7 @@ BUILTIN_PRESETS: dict[str, dict[str, Any]] = {
     },
     "Gemma 4": {
         "name": "Gemma 4",
-        "description": "Preset local dédié aux nouveaux modèles Google Gemma 4 26B/31B",
+        "description": "Preset local dedie aux modeles Google Gemma 4 26B/31B",
         "models": {
             "analyst": ["gemma4:26b"],
             "strategist": ["gemma4:26b"],
@@ -82,12 +82,23 @@ BUILTIN_PRESETS: dict[str, dict[str, Any]] = {
     },
     "Puissant": {
         "name": "Puissant",
-        "description": "Heavy models pour analyses complexes et ajustements fins",
+        "description": "Heavy models locaux 30-120B pour analyses complexes",
         "models": {
-            "analyst": ["qwen2.5:32b"],
-            "strategist": ["deepseek-r1:32b"],
-            "critic": ["llama3.3:70b-instruct-q4_K_M"],
-            "validator": ["llama3.3:70b-instruct-q4_K_M"],
+            "analyst": ["qwen3-vl:32b"],
+            "strategist": ["qwen3-coder:30b"],
+            "critic": ["qwen3.6:35b"],
+            "validator": ["nemotron-3-super:120b-a12b-q4_K_M"],
+        },
+        "builtin": True,
+    },
+    "Cloud Power": {
+        "name": "Cloud Power",
+        "description": "Modeles Cloud Ollama plan Free - top frontier 2026 (probe ollama.com 2026-05-09)",
+        "models": {
+            "analyst": ["qwen3-vl:235b"],
+            "strategist": ["qwen3-coder:480b"],
+            "critic": ["cogito-2.1:671b"],
+            "validator": ["gpt-oss:120b"],
         },
         "builtin": True,
     },

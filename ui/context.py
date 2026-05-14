@@ -82,21 +82,7 @@ create_optimizer_from_engine = None
 create_orchestrator_with_backtest = None
 get_strategy_param_bounds = None
 get_strategy_param_space = None
-LLMConfig = None
-LLMProvider = None
 create_llm_client = None
-
-KNOWN_MODELS = None
-ModelCategory = None
-ModelInfo = None
-RoleModelConfig = None
-get_global_model_config = None
-get_models_by_category = None
-list_available_models = None
-set_global_model_config = None
-
-ensure_ollama_running = None
-is_ollama_available = None
 
 OrchestrationLogger = None
 generate_session_id = None
@@ -107,10 +93,6 @@ AgentActivityTimeline = None
 AgentType = None
 render_agent_timeline = None
 render_mini_timeline = None
-
-RECOMMENDED_FOR_STRATEGY = None
-get_available_models_for_ui = None
-get_model_info = None
 
 render_mini_monitor = None
 render_deep_trace_viewer = None
@@ -138,18 +120,7 @@ try:
         get_strategy_param_bounds,
         get_strategy_param_space,
     )
-    from agents.llm_client import LLMConfig, LLMProvider, create_llm_client  # noqa: F401
-    from agents.model_config import (  # noqa: F401
-        KNOWN_MODELS,
-        ModelCategory,
-        ModelInfo,
-        RoleModelConfig,
-        get_global_model_config,
-        get_models_by_category,
-        list_available_models,
-        set_global_model_config,
-    )
-    from agents.ollama_manager import ensure_ollama_running, is_ollama_available  # noqa: F401
+    from agents.llm_client import create_llm_client  # noqa: F401
     from agents.orchestration_logger import OrchestrationLogger, generate_session_id  # noqa: F401
     from agents.strategy_builder import StrategyBuilder  # noqa: F401
     from ui.components.agent_timeline import (  # noqa: F401
@@ -159,14 +130,6 @@ try:
         AgentType,
         render_agent_timeline,
         render_mini_timeline,
-    )
-    from ui.components.model_selector import (  # noqa: F401
-        OPTIMAL_CONFIG_BY_ROLE,
-        OPTIMAL_CONFIG_FALLBACK,
-        RECOMMENDED_FOR_STRATEGY,
-        get_available_models_for_ui,
-        get_model_info,
-        get_optimal_config_for_role,
     )
     from ui.components.monitor import render_mini_monitor  # noqa: F401
     from ui.deep_trace_viewer import (  # noqa: F401

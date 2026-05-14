@@ -19,6 +19,7 @@ from backtest.result_store import (
     get_results_analysis_dir,
     get_results_root_dir,
 )
+from ui.helpers import _maybe_auto_save_run, coerce_metric_float, coerce_metric_int
 from ui.model_stats_view import (
     build_model_stats_report,
     load_autonomous_history,
@@ -38,46 +39,32 @@ except ImportError:
     PipelineTrace = None
 
 
-def _coerce_float(value: Any) -> float | None:
-    try:
-        if value is None or value == "":
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _coerce_int(value: Any) -> int | None:
-    try:
-        if value is None or value == "" or pd.isna(value):
-            return None
-    except (TypeError, ValueError):
-        if value is None or value == "":
-            return None
-    try:
-        return int(value)
-    except (TypeError, ValueError, OverflowError):
-        coerced = _coerce_float(value)
-        if coerced is None or pd.isna(coerced):
-            return None
-        try:
-            return int(coerced)
-        except (TypeError, ValueError, OverflowError):
-            return None
+    return coerce_metric_int(value, default=None)
 
 
 def _display_float(value: Any) -> float:
-    coerced = _coerce_float(value)
+    coerced = coerce_metric_float(value, default=None)
     if coerced is None or pd.isna(coerced):
         return 0.0
     return float(coerced)
 
 
 def _display_int(value: Any, default: int = 0) -> int:
-    coerced = _coerce_int(value)
+    coerced = coerce_metric_int(value, default=None)
     if coerced is None:
         return default
     return coerced
+
+
+_BUILDER_STATUS_LABELS = {
+    "running": "À finir - stratégie non aboutie",
+}
+
+
+def _builder_status_label(status: Any) -> str:
+    raw_status = str(status or "unknown").strip() or "unknown"
+    return _BUILDER_STATUS_LABELS.get(raw_status, raw_status)
 
 
 def _safe_read_json(path: Path) -> dict[str, Any]:
@@ -119,109 +106,6 @@ def _trace_strategy_sort_key(trace: PipelineTrace) -> tuple[float, ...]:
         trades,
         float(_display_int(getattr(trace, "iteration_num", 0))),
     )
-
-
-def _summary_dict(summary: dict[str, Any], key: str) -> dict[str, Any]:
-    value = summary.get(key)
-    return dict(value or {}) if isinstance(value, dict) else {}
-
-
-def _summary_list(summary: dict[str, Any], key: str) -> list[Any]:
-    value = summary.get(key)
-    return list(value or []) if isinstance(value, list) else []
-
-
-def _render_multi_llm_session_memory_panel(summary: dict[str, Any]) -> None:
-    if str(summary.get("orchestration_mode") or "") != "multi_llm":
-        return
-
-    shared_memory = _summary_dict(summary, "multi_llm_shared_memory")
-    continuity = _summary_dict(summary, "continuity_context") or _summary_dict(
-        shared_memory,
-        "continuity_context",
-    )
-    router_decision = _summary_dict(summary, "multi_llm_router_decision")
-    role_outputs = _summary_dict(summary, "multi_llm_role_outputs")
-    assignments = _summary_list(summary, "multi_llm_assignments")
-
-    if not continuity and not shared_memory and not router_decision and not assignments:
-        st.info("Aucune mémoire multi-LLM persistée pour cette session.")
-        return
-
-    st.markdown("**Mémoire de campagne**")
-    st.caption(
-        "Référence partagée entre les rôles multi-LLM pour conserver les meilleurs runs récents, "
-        "les focus à reprendre et les risques récurrents.",
-    )
-
-    recent_sessions = list(continuity.get("recent_sessions", []) or [])
-    carry_over_focus = list(continuity.get("carry_over_focus", []) or [])
-    recurring_risks = list(continuity.get("recurring_risks", []) or [])
-    router_context = _summary_dict(shared_memory, "router_context")
-
-    metric_cols = st.columns(4)
-    metric_cols[0].metric("Sessions récentes", len(recent_sessions))
-    metric_cols[1].metric("Focus", len(carry_over_focus))
-    metric_cols[2].metric("Risques", len(recurring_risks))
-    metric_cols[3].metric(
-        "Décision routeur",
-        str(
-            router_decision.get("action") or router_context.get("action") or "n/a",
-        ),
-    )
-
-    best_recent = _summary_dict(continuity, "best_recent_session")
-    if best_recent:
-        st.caption(
-            "Meilleur run récent transmis: "
-            f"session #{best_recent.get('session_num', '?')} | "
-            f"{best_recent.get('symbol', '?')} {best_recent.get('timeframe', '?')} | "
-            f"Sharpe {best_recent.get('best_sharpe', 'n/a')}",
-        )
-
-    if carry_over_focus:
-        st.markdown("**Focus à reprendre**")
-        for item in carry_over_focus:
-            st.markdown(f"- {item}")
-    if recurring_risks:
-        st.markdown("**Risques récurrents**")
-        for item in recurring_risks:
-            st.markdown(f"- {item}")
-
-    st.markdown("**Analyse avancée multi-LLM**")
-    if assignments:
-        assignment_rows = [
-            {
-                "role": str(item.get("role", "") or ""),
-                "demande": str(item.get("requested_model", "") or ""),
-                "résolu": str(item.get("resolved_model", "") or ""),
-                "host": str(item.get("host", "") or ""),
-                "disponible": bool(item.get("available", False)),
-            }
-            for item in assignments
-            if isinstance(item, dict)
-        ]
-        with st.expander("Rôles et résolutions effectives", expanded=False):
-            st.dataframe(assignment_rows, width="stretch", hide_index=True)
-
-    if role_outputs:
-        role_rows = [
-            {
-                "role": role,
-                "modèle": str(payload.get("model", "") or ""),
-                "disponible": bool(payload.get("available", False)),
-                "erreur": str(payload.get("error", "") or ""),
-                "aperçu": str(payload.get("content_excerpt", "") or ""),
-            }
-            for role, payload in role_outputs.items()
-            if isinstance(payload, dict)
-        ]
-        with st.expander("Sorties compactes des rôles", expanded=False):
-            st.dataframe(role_rows, width="stretch", hide_index=True)
-
-    if shared_memory:
-        with st.expander("Mémoire partagée multi-LLM", expanded=False):
-            st.json(shared_memory)
 
 
 def _trace_from_dict(payload: dict[str, Any]) -> PipelineTrace | None:
@@ -309,12 +193,12 @@ def _pick_strategy_file_for_iteration(session_dir: Path, iteration_num: Any) -> 
 
 def _compute_builder_best_return(summary: dict[str, Any]) -> float | None:
     candidates: list[float] = []
-    direct_value = _coerce_float(summary.get("best_return_pct"))
+    direct_value = coerce_metric_float(summary.get("best_return_pct"), default=None)
     if direct_value is not None:
         candidates.append(direct_value)
 
     for iteration in summary.get("iterations") or []:
-        value = _coerce_float((iteration or {}).get("return_pct"))
+        value = coerce_metric_float((iteration or {}).get("return_pct"), default=None)
         if value is not None:
             candidates.append(value)
     if not candidates:
@@ -328,7 +212,7 @@ def _collect_positive_iteration_metrics(summary: dict[str, Any]) -> tuple[int, l
         if not isinstance(iteration, dict):
             continue
         iteration_num = _display_int(iteration.get("iteration"))
-        return_pct = _coerce_float(iteration.get("return_pct"))
+        return_pct = coerce_metric_float(iteration.get("return_pct"), default=None)
         if return_pct is None or return_pct <= 0.0:
             continue
         positive_rows.append((iteration_num, return_pct))
@@ -385,11 +269,15 @@ def collect_builder_sessions(builder_root: Path) -> list[dict[str, Any]]:
             {
                 "session_id": session_dir.name,
                 "status": str(summary.get("status") or "unknown"),
-                "best_sharpe": _coerce_float(summary.get("best_sharpe")),
-                "best_telemetry_score": _coerce_float(
+                "model_name": str(summary.get("model_name") or ""),
+                "symbol": str(summary.get("symbol") or ""),
+                "timeframe": str(summary.get("timeframe") or ""),
+                "best_sharpe": coerce_metric_float(summary.get("best_sharpe"), default=None),
+                "best_telemetry_score": coerce_metric_float(
                     summary.get("best_telemetry_score", summary.get("best_score")),
+                    default=None,
                 ),
-                "best_score": _coerce_float(summary.get("best_score")),
+                "best_score": coerce_metric_float(summary.get("best_score"), default=None),
                 "best_return_pct": _compute_builder_best_return(summary),
                 "best_return_iteration": best_return_iteration,
                 "total_iterations": _display_int(
@@ -408,6 +296,13 @@ def collect_builder_sessions(builder_root: Path) -> list[dict[str, Any]]:
                 "orchestration_mode": str(
                     summary.get("orchestration_mode") or "single_llm",
                 ),
+                "resume_parent_session_id": str(summary.get("resume_parent_session_id") or ""),
+                "resume_mode": str(summary.get("resume_mode") or ""),
+                "resume_from_iteration": _display_int(summary.get("resume_from_iteration")),
+                "resume_extra_iterations": _display_int(summary.get("resume_extra_iterations")),
+                "resume_original_status": str(summary.get("resume_original_status") or ""),
+                "resume_original_model_name": str(summary.get("resume_original_model_name") or ""),
+                "resume_requested_model_name": str(summary.get("resume_requested_model_name") or ""),
                 "instrumentation_enabled": bool(
                     summary.get("instrumentation_enabled", False),
                 ),
@@ -415,18 +310,6 @@ def collect_builder_sessions(builder_root: Path) -> list[dict[str, Any]]:
                     dict(summary.get("instrumentation_summary", {}) or {})
                     if isinstance(summary.get("instrumentation_summary"), dict)
                     else {}
-                ),
-                "multi_llm_profile": str(summary.get("multi_llm_profile") or ""),
-                "multi_llm_assignments": _summary_list(summary, "multi_llm_assignments"),
-                "multi_llm_router_decision": _summary_dict(summary, "multi_llm_router_decision"),
-                "multi_llm_role_outputs": _summary_dict(summary, "multi_llm_role_outputs"),
-                "multi_llm_shared_memory": _summary_dict(summary, "multi_llm_shared_memory"),
-                "continuity_context": (
-                    _summary_dict(summary, "continuity_context")
-                    or _summary_dict(
-                        _summary_dict(summary, "multi_llm_shared_memory"),
-                        "continuity_context",
-                    )
                 ),
                 "session_dir": str(session_dir),
                 "summary_path": str(summary_path) if summary_path.exists() else "",
@@ -472,7 +355,7 @@ def collect_builder_iterations(builder_root: Path) -> list[dict[str, Any]]:
             iteration_num = _display_int(iteration_payload.get("iteration"))
             strategy_path = _pick_strategy_file_for_iteration(session_dir, iteration_num)
             params_used = iteration_payload.get("params_used") if isinstance(iteration_payload.get("params_used"), dict) else {}
-            return_pct = _coerce_float(iteration_payload.get("return_pct"))
+            return_pct = coerce_metric_float(iteration_payload.get("return_pct"), default=None)
             rows.append(
                 {
                     "candidate_id": f"builder:{session_dir.name}:{iteration_num}" if iteration_num > 0 else session_dir.name,
@@ -482,9 +365,9 @@ def collect_builder_iterations(builder_root: Path) -> list[dict[str, Any]]:
                     "leaderboard_rank": rank_by_iteration.get(iteration_num),
                     "return_pct": return_pct,
                     "positive_return": bool(return_pct is not None and return_pct > 0.0),
-                    "sharpe": _coerce_float(iteration_payload.get("sharpe")),
-                    "profit_factor": _coerce_float(iteration_payload.get("profit_factor")),
-                    "max_drawdown_pct": _coerce_float(iteration_payload.get("max_drawdown_pct")),
+                    "sharpe": coerce_metric_float(iteration_payload.get("sharpe"), default=None),
+                    "profit_factor": coerce_metric_float(iteration_payload.get("profit_factor"), default=None),
+                    "max_drawdown_pct": coerce_metric_float(iteration_payload.get("max_drawdown_pct"), default=None),
                     "trades": _display_int(iteration_payload.get("trades")),
                     "change_type": str(iteration_payload.get("change_type") or ""),
                     "diagnostic_category": str(iteration_payload.get("diagnostic_category") or ""),
@@ -872,6 +755,233 @@ def _render_builder_catalog_audit(audit: dict[str, Any]) -> None:
             )
 
 
+def _resume_cell_text(value: Any) -> str:
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(value).strip()
+
+
+def _collect_builder_max_iteration_resume_candidates(builder_df: pd.DataFrame) -> pd.DataFrame:
+    if builder_df.empty:
+        return pd.DataFrame()
+
+    frame = builder_df.copy()
+    if "session_id" not in frame.columns or "status" not in frame.columns:
+        return pd.DataFrame()
+
+    if "resume_parent_session_id" not in frame.columns:
+        frame["resume_parent_session_id"] = ""
+    resumed_parent_ids = {
+        _resume_cell_text(value)
+        for value in frame["resume_parent_session_id"].tolist()
+        if _resume_cell_text(value)
+    }
+
+    status_series = frame["status"].map(_resume_cell_text)
+    session_series = frame["session_id"].map(_resume_cell_text)
+    parent_series = frame["resume_parent_session_id"].map(_resume_cell_text)
+    mask = (
+        status_series.eq("max_iterations")
+        & parent_series.eq("")
+        & ~session_series.isin(resumed_parent_ids)
+    )
+    candidates = frame[mask].copy()
+    if candidates.empty:
+        return candidates
+    return candidates.sort_values("last_modified", ascending=False, na_position="last")
+
+
+def _selected_builder_resume_model() -> str:
+    session_state = getattr(st, "session_state", {})
+    for key in ("builder_model_single_llm", "builder_model_select", "builder_model_effective"):
+        value = _resume_cell_text(session_state.get(key) if hasattr(session_state, "get") else "")
+        if value:
+            return value
+    return ""
+
+
+def _builder_resume_runtime_settings() -> dict[str, Any]:
+    session_state = getattr(st, "session_state", {})
+    get_state = session_state.get if hasattr(session_state, "get") else lambda key, default=None: default
+    try:
+        keep_alive_minutes = int(get_state("builder_keep_alive_minutes", 20) or 20)
+    except (TypeError, ValueError):
+        keep_alive_minutes = 20
+    return {
+        "ollama_host": _resume_cell_text(get_state("builder_ollama_host", "")) or "http://127.0.0.1:11434",
+        "keep_alive_minutes": max(0, keep_alive_minutes),
+        "llm_inference_global_settings": (
+            dict(get_state("llm_inference_global_settings", {}) or {})
+            if isinstance(get_state("llm_inference_global_settings", {}), dict)
+            else {}
+        ),
+        "llm_inference_model_profiles": (
+            dict(get_state("llm_inference_model_profiles", {}) or {})
+            if isinstance(get_state("llm_inference_model_profiles", {}), dict)
+            else {}
+        ),
+    }
+
+
+def _run_builder_max_iterations_resume_batch(
+    candidates_df: pd.DataFrame,
+    *,
+    model: str,
+    mode: str,
+    status_callback: Any = None,
+) -> dict[str, Any]:
+    from agents.strategy_builder import StrategyBuilder
+    from data.loader import load_ohlcv
+    from ui.builder_runtime import build_builder_base_llm_config
+
+    runtime_settings = _builder_resume_runtime_settings()
+    llm_config = build_builder_base_llm_config(
+        model=model,
+        ollama_host=runtime_settings["ollama_host"],
+        keep_alive_minutes=runtime_settings["keep_alive_minutes"],
+        llm_inference_global_settings=runtime_settings["llm_inference_global_settings"],
+        llm_inference_model_profiles=runtime_settings["llm_inference_model_profiles"],
+    )
+    results: list[dict[str, Any]] = []
+    total = len(candidates_df)
+    for offset, row in enumerate(candidates_df.to_dict("records"), start=1):
+        session_id = _resume_cell_text(row.get("session_id"))
+        symbol = _resume_cell_text(row.get("symbol"))
+        timeframe = _resume_cell_text(row.get("timeframe"))
+        summary_path = _resume_cell_text(row.get("summary_path"))
+        if callable(status_callback):
+            status_callback(offset, total, session_id)
+        if not summary_path or not Path(summary_path).exists():
+            results.append({"session_id": session_id, "status": "skipped", "reason": "summary_missing"})
+            continue
+        if not symbol or not timeframe:
+            results.append({"session_id": session_id, "status": "skipped", "reason": "market_context_missing"})
+            continue
+        try:
+            data = load_ohlcv(symbol, timeframe)
+            builder = StrategyBuilder(
+                llm_config=llm_config,
+                backtest_completed_callback=_maybe_auto_save_run,
+            )
+            session = builder.resume_from_summary(
+                summary_path,
+                data,
+                mode="exact_continue" if mode == "exact_continue" else "objective_restart",
+                extra_iterations=10,
+                restart_max_iterations=20,
+            )
+            results.append(
+                {
+                    "session_id": session_id,
+                    "status": "resumed",
+                    "new_session_id": session.session_id,
+                    "resume_mode": session.resume_mode,
+                    "total_iterations": len(session.iterations),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            results.append(
+                {
+                    "session_id": session_id,
+                    "status": "error",
+                    "reason": f"{type(exc).__name__}: {exc}",
+                },
+            )
+    return {
+        "total": total,
+        "resumed": sum(1 for row in results if row.get("status") == "resumed"),
+        "skipped": sum(1 for row in results if row.get("status") == "skipped"),
+        "errors": sum(1 for row in results if row.get("status") == "error"),
+        "rows": results,
+    }
+
+
+def _render_builder_max_iterations_resume_panel(builder_df: pd.DataFrame) -> None:
+    candidates = _collect_builder_max_iteration_resume_candidates(builder_df)
+    if candidates.empty:
+        return
+
+    selected_model = _selected_builder_resume_model()
+    with st.expander(
+        f"Reprendre les sessions max_iterations ({len(candidates)})",
+        expanded=False,
+    ):
+        st.caption(
+            "Fonction séparée du Builder standard: elle relance uniquement les sessions terminées en "
+            "`max_iterations` qui n'ont pas déjà une session enfant de reprise."
+        )
+        preview_columns = [
+            column
+            for column in [
+                "session_id",
+                "symbol",
+                "timeframe",
+                "total_iterations",
+                "best_return_pct",
+                "positive_iterations",
+                "model_name",
+                "last_modified",
+                "objective_excerpt",
+            ]
+            if column in candidates.columns
+        ]
+        st.dataframe(candidates[preview_columns], width="stretch", hide_index=True)
+        st.caption(f"Modèle utilisé pour la reprise: `{selected_model or 'aucun modèle sélectionné'}`")
+        mode = st.radio(
+            "Mode de reprise",
+            options=["exact_continue", "objective_restart"],
+            format_func=lambda value: (
+                "Reprendre après la dernière itération (+10)"
+                if value == "exact_continue"
+                else "Relancer depuis l'objectif (20 itérations max)"
+            ),
+            horizontal=True,
+            key="results-store-builder-resume-mode",
+        )
+        confirmed = st.checkbox(
+            "Confirmer la reprise batch de toutes les sessions max_iterations listées",
+            value=False,
+            key="results-store-builder-resume-confirm",
+        )
+        disabled = not selected_model or not confirmed
+        if st.button(
+            "Reprendre toutes les max_iterations",
+            key="results-store-builder-resume-all",
+            disabled=disabled,
+            use_container_width=True,
+        ):
+            progress = st.progress(0.0)
+            status_line = st.empty()
+
+            def _update(offset: int, total: int, session_id: str) -> None:
+                progress.progress(min(offset / max(total, 1), 1.0))
+                status_line.caption(f"Reprise {offset}/{total}: `{session_id}`")
+
+            result = _run_builder_max_iterations_resume_batch(
+                candidates,
+                model=selected_model,
+                mode=str(mode),
+                status_callback=_update,
+            )
+            progress.progress(1.0)
+            if result["errors"]:
+                st.warning(
+                    f"Reprise terminée avec erreurs: {result['resumed']} reprises, "
+                    f"{result['skipped']} ignorées, {result['errors']} erreurs."
+                )
+            else:
+                st.success(
+                    f"Reprise terminée: {result['resumed']} sessions reprises, "
+                    f"{result['skipped']} ignorées."
+                )
+            st.dataframe(pd.DataFrame(result["rows"]), width="stretch", hide_index=True)
+
+
 def _render_builder_tab(
     builder_df: pd.DataFrame,
     builder_iterations_df: pd.DataFrame,
@@ -885,8 +995,10 @@ def _render_builder_tab(
 
     st.caption("Chaque ligne ci-dessous correspond à un dossier de session Builder détecté dans `_builder_sessions`.")
     _render_builder_catalog_audit(builder_catalog_audit)
+    _render_builder_max_iterations_resume_panel(builder_df)
 
     filtered = builder_df.copy()
+    filtered["status_label"] = filtered["status"].map(_builder_status_label)
     search_term = st.text_input(
         "Recherche session / recette / objectif",
         placeholder="session id, symbole, objectif, statut...",
@@ -897,6 +1009,7 @@ def _render_builder_tab(
         "Statuts Builder",
         options=status_options,
         default=status_options,
+        format_func=_builder_status_label,
         key="results-store-builder-status",
     )
     if selected_status:
@@ -907,11 +1020,14 @@ def _render_builder_tab(
             filtered["session_id"].astype(str).str.lower().str.contains(lower_term, na=False)
             | filtered["objective"].astype(str).str.lower().str.contains(lower_term, na=False)
             | filtered["status"].astype(str).str.lower().str.contains(lower_term, na=False)
+            | filtered["status_label"].astype(str).str.lower().str.contains(lower_term, na=False)
         ]
 
     filtered = filtered.sort_values("last_modified", ascending=False, na_position="last")
+    display_filtered = filtered.copy()
+    display_filtered["status"] = display_filtered["status_label"]
     st.dataframe(
-        filtered[
+        display_filtered[
             [
                 "session_id",
                 "status",
@@ -946,7 +1062,7 @@ def _render_builder_tab(
     latest_strategy_path = Path(str(selected_row.get("latest_strategy_path") or ""))
 
     info_cols = st.columns(6)
-    info_cols[0].metric("Statut", str(selected_row.get("status") or "?"))
+    info_cols[0].metric("Statut", _builder_status_label(selected_row.get("status")))
     info_cols[1].metric("Best return %", f"{_display_float(selected_row.get('best_return_pct')):.2f}")
     info_cols[2].metric("Best sharpe", f"{_display_float(selected_row.get('best_sharpe')):.2f}")
     info_cols[3].metric("Iterations", _display_int(selected_row.get("total_iterations")))
@@ -955,7 +1071,7 @@ def _render_builder_tab(
         "Traces live",
         "oui" if bool(selected_row.get("instrumentation_enabled")) else "non",
     )
-    best_return_iteration = _coerce_int(selected_row.get("best_return_iteration"))
+    best_return_iteration = coerce_metric_int(selected_row.get("best_return_iteration"), default=None)
     st.caption(
         "Fichiers stratégie: "
         f"{_display_int(selected_row.get('strategy_versions'))}"
@@ -977,9 +1093,6 @@ def _render_builder_tab(
     if selected_row.get("objective"):
         st.markdown("**Recette / objectif source**")
         st.write(str(selected_row["objective"]))
-
-    if str(selected_row.get("orchestration_mode") or "") == "multi_llm":
-        _render_multi_llm_session_memory_panel(selected_row)
 
     action_cols = st.columns(5)
     with action_cols[0]:
@@ -1132,143 +1245,6 @@ def _render_builder_tab(
             if column in linked_runs_df.columns
         ]
         st.dataframe(linked_runs_df[display_cols], width="stretch", hide_index=True)
-
-
-def _render_builder_iterations_tab(iterations_df: pd.DataFrame, results_root: Path) -> None:
-    st.markdown("### Itérations Builder")
-    if iterations_df.empty:
-        st.info("Aucune itération Builder détectée dans le store externe.")
-        return
-
-    st.caption(
-        "Chaque ligne correspond à une itération/run Builder. "
-        "Le filtre par défaut garde uniquement les itérations à retour positif.",
-    )
-
-    filtered = iterations_df.copy()
-    search_term = st.text_input(
-        "Recherche session / itération / objectif",
-        placeholder="session id, catégorie, mode, params...",
-        key="results-store-builder-iterations-search",
-    ).strip()
-    positive_only = st.checkbox(
-        "Retour positif uniquement",
-        value=True,
-        key="results-store-builder-iterations-positive-only",
-    )
-    status_options = sorted(filtered["status"].dropna().astype(str).unique().tolist())
-    selected_status = st.multiselect(
-        "Statuts session",
-        options=status_options,
-        default=status_options,
-        key="results-store-builder-iterations-status",
-    )
-    if positive_only and "positive_return" in filtered.columns:
-        filtered = filtered[filtered["positive_return"] == True]  # noqa: E712
-    if selected_status:
-        filtered = filtered[filtered["status"].astype(str).isin(selected_status)]
-    if search_term:
-        lower_term = search_term.lower()
-        filtered = filtered[
-            filtered["session_id"].astype(str).str.lower().str.contains(lower_term, na=False)
-            | filtered["diagnostic_category"].astype(str).str.lower().str.contains(lower_term, na=False)
-            | filtered["objective_excerpt"].astype(str).str.lower().str.contains(lower_term, na=False)
-            | filtered["params_used_preview"].astype(str).str.lower().str.contains(lower_term, na=False)
-        ]
-
-    filtered = filtered.sort_values(
-        ["return_pct", "sharpe", "leaderboard_rank", "last_modified"],
-        ascending=[False, False, True, False],
-        na_position="last",
-    )
-    st.dataframe(
-        filtered[
-            [
-                "session_id",
-                "iteration",
-                "leaderboard_rank",
-                "return_pct",
-                "sharpe",
-                "profit_factor",
-                "max_drawdown_pct",
-                "trades",
-                "decision",
-                "diagnostic_category",
-                "params_used_preview",
-                "last_modified",
-                "objective_excerpt",
-            ]
-        ],
-        width="stretch",
-        hide_index=True,
-    )
-
-    if filtered.empty:
-        st.info("Aucune itération Builder ne correspond aux filtres.")
-        return
-
-    detail_labels: list[str] = []
-    detail_map: dict[str, dict[str, Any]] = {}
-    for row in filtered.to_dict(orient="records"):
-        label = (
-            f"{row.get('session_id')} | iter {_display_int(row.get('iteration'))} | "
-            f"{_display_float(row.get('return_pct')):+.2f}%"
-        )
-        detail_labels.append(label)
-        detail_map[label] = row
-
-    selected_label = st.selectbox(
-        "Explorer une itération Builder",
-        options=detail_labels,
-        key="results-store-builder-iterations-select",
-    )
-    selected_row = detail_map[selected_label]
-
-    info_cols = st.columns(6)
-    info_cols[0].metric("Session", str(selected_row.get("session_id") or "?"))
-    info_cols[1].metric("Itération", _display_int(selected_row.get("iteration")))
-    info_cols[2].metric("Return %", f"{_display_float(selected_row.get('return_pct')):.2f}")
-    info_cols[3].metric("Sharpe", f"{_display_float(selected_row.get('sharpe')):.2f}")
-    info_cols[4].metric("PF", f"{_display_float(selected_row.get('profit_factor')):.2f}")
-    info_cols[5].metric("Trades", _display_int(selected_row.get("trades")))
-
-    st.caption(f"Session: {selected_row.get('session_dir') or ''}")
-    if selected_row.get("params_used_preview"):
-        st.caption(f"Params: {selected_row['params_used_preview']}")
-
-    action_cols = st.columns(4)
-    session_dir = Path(str(selected_row.get("session_dir") or ""))
-    summary_path = Path(str(selected_row.get("summary_path") or ""))
-    strategy_path = Path(str(selected_row.get("strategy_path") or ""))
-    with action_cols[0]:
-        _handle_open_action(
-            session_dir,
-            button_label="Ouvrir dossier session",
-            key=f"open-builder-iteration-session-{selected_row.get('candidate_id')}",
-        )
-    with action_cols[1]:
-        if str(selected_row.get("summary_path") or ""):
-            _handle_open_action(
-                summary_path,
-                button_label="Ouvrir session_summary.json",
-                key=f"open-builder-iteration-summary-{selected_row.get('candidate_id')}",
-            )
-    with action_cols[2]:
-        if str(selected_row.get("strategy_path") or ""):
-            _handle_open_action(
-                strategy_path,
-                button_label="Ouvrir strategy_vN.py",
-                key=f"open-builder-iteration-strategy-{selected_row.get('candidate_id')}",
-            )
-    with action_cols[3]:
-        _handle_open_action(
-            results_root,
-            button_label="Ouvrir dossier résultats",
-            key=f"open-builder-iteration-results-{selected_row.get('candidate_id')}",
-        )
-
-    with st.expander("Détail itération", expanded=False):
-        st.json(selected_row)
 
 
 def _render_artifacts_tab(inventory_df: pd.DataFrame, analysis_files_df: pd.DataFrame) -> None:

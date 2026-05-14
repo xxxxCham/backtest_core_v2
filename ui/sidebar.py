@@ -75,6 +75,7 @@ from ui.helpers import (
     render_saved_runs_panel,
     validate_param,
 )
+from ui.keeper_mode import render_keeper_mode_control
 from ui.state import (
     BUILDER_AUTO_START_OLLAMA_DEFAULT,
     BUILDER_EXECUTION_MODE_MONO,
@@ -86,10 +87,8 @@ from ui.state import (
     arm_ui_run_request,
     clear_execution_state,
     ensure_ui_execution_state_defaults,
-    resolve_builder_dual_lane_preferences,
     resolve_builder_execution_preferences,
     resolve_builder_flow_analysis_preferences,
-    resolve_builder_multi_llm_preferences,
     resolve_builder_runtime_preferences,
 )
 from utils.observability import is_debug_enabled, set_log_level
@@ -126,10 +125,12 @@ SIDEBAR_STYLE_CSS = """
     color-scheme: dark;
     --bc-border: #33465f;
     --bc-soft: #172437;
+}
+[data-testid="stSidebar"][aria-expanded="true"] {
     min-width: 22rem;
     max-width: 22rem;
 }
-[data-testid="stSidebar"] > div:first-child {
+[data-testid="stSidebar"][aria-expanded="true"] > div:first-child {
     background: linear-gradient(180deg, #0a1221 0%, #0d1b31 45%, #13233f 100%);
     width: 22rem;
 }
@@ -530,13 +531,6 @@ def _build_config_signature(state: SidebarState) -> str:
         "builder_auto_pause": state.builder_auto_pause,
         "builder_auto_use_llm": state.builder_auto_use_llm,
         "builder_execution_mode": state.builder_execution_mode,
-        "builder_dual_lane_primary_model": state.builder_dual_lane_primary_model,
-        "builder_dual_lane_critic_model": state.builder_dual_lane_critic_model,
-        "builder_multi_llm_enabled": state.builder_multi_llm_enabled,
-        "builder_multi_llm_profile": state.builder_multi_llm_profile,
-        "builder_multi_llm_role_overrides": {
-            str(role): str(model) for role, model in sorted((state.builder_multi_llm_role_overrides or {}).items())
-        },
         "builder_use_parametric_catalog": state.builder_use_parametric_catalog,
     }
 
@@ -1879,6 +1873,9 @@ def render_sidebar() -> SidebarState:
 
     # (Versioned Presets moved to bottom)
 
+    st.sidebar.markdown("---")
+    render_keeper_mode_control()
+
     _sidebar_section("🔄 Mode d'exécution")
 
     if "optimization_mode" not in st.session_state:
@@ -2023,11 +2020,6 @@ def render_sidebar() -> SidebarState:
     builder_auto_pause = 10
     builder_auto_use_llm = True
     builder_execution_mode = BUILDER_EXECUTION_MODE_MONO
-    builder_dual_lane_primary_model = "deepseek-r1:32b"
-    builder_dual_lane_critic_model = "deepseek-r1:32b"
-    builder_multi_llm_enabled = False
-    builder_multi_llm_profile = "24GB_balanced"
-    builder_multi_llm_role_overrides: dict[str, list[str]] = {}
     builder_flow_analysis_enabled = False
     builder_flow_analysis_ablation: dict[str, bool] = {}
     builder_use_parametric_catalog = False
@@ -2086,34 +2078,6 @@ def render_sidebar() -> SidebarState:
         )
         st.session_state["builder_execution_mode"] = builder_execution_mode
         st.session_state["builder_llm_routing_mode"] = llm_routing_mode
-        dual_lane_preferences = resolve_builder_dual_lane_preferences(
-            st.session_state,
-        )
-        builder_dual_lane_primary_model = str(
-            dual_lane_preferences["builder_dual_lane_primary_model"],
-        )
-        builder_dual_lane_critic_model = str(
-            dual_lane_preferences["builder_dual_lane_critic_model"],
-        )
-        st.session_state["builder_dual_lane_primary_model"] = builder_dual_lane_primary_model
-        st.session_state["builder_dual_lane_critic_model"] = builder_dual_lane_critic_model
-        builder_multi_llm_preferences = resolve_builder_multi_llm_preferences(
-            st.session_state,
-        )
-        builder_multi_llm_enabled = bool(
-            builder_multi_llm_preferences["builder_multi_llm_enabled"],
-        )
-        builder_multi_llm_profile = str(
-            builder_multi_llm_preferences["builder_multi_llm_profile"],
-        )
-        builder_multi_llm_role_overrides = dict(
-            builder_multi_llm_preferences["builder_multi_llm_role_overrides"],
-        )
-        st.session_state["builder_multi_llm_enabled"] = builder_multi_llm_enabled
-        st.session_state["builder_multi_llm_profile"] = builder_multi_llm_profile
-        st.session_state["builder_multi_llm_role_overrides"] = dict(
-            builder_multi_llm_role_overrides,
-        )
         builder_flow_analysis_preferences = resolve_builder_flow_analysis_preferences(
             st.session_state,
         )
@@ -2647,11 +2611,6 @@ def render_sidebar() -> SidebarState:
         builder_auto_pause=builder_auto_pause,
         builder_auto_use_llm=builder_auto_use_llm,
         builder_execution_mode=builder_execution_mode,
-        builder_dual_lane_primary_model=builder_dual_lane_primary_model,
-        builder_dual_lane_critic_model=builder_dual_lane_critic_model,
-        builder_multi_llm_enabled=builder_multi_llm_enabled,
-        builder_multi_llm_profile=builder_multi_llm_profile,
-        builder_multi_llm_role_overrides=builder_multi_llm_role_overrides,
         builder_flow_analysis_enabled=builder_flow_analysis_enabled,
         builder_flow_analysis_ablation=builder_flow_analysis_ablation,
         # Catalogue paramétrique

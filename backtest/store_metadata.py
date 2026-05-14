@@ -18,6 +18,38 @@ def load_metadata_payload(path: Path) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def as_jsonable(value: Any) -> Any:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, pd.Series):
+        return {str(k): as_jsonable(v) for k, v in value.to_dict().items()}
+    if isinstance(value, pd.DataFrame):
+        return value.to_dict(orient="records")
+    if isinstance(value, dict):
+        return {str(k): as_jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [as_jsonable(v) for v in value]
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            pass
+    return str(value)
+
+
+def dump_json_payload(path: Path, payload: Any) -> None:
+    path.write_text(
+        json.dumps(as_jsonable(payload), indent=2, ensure_ascii=False, default=str),
+        encoding="utf-8",
+    )
+
+
 def is_native_result_metadata(meta: dict[str, Any]) -> bool:
     return "timestamp" in meta and isinstance(meta.get("metrics"), dict)
 

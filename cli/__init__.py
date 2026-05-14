@@ -21,7 +21,6 @@ Skip-if: Vous appelez main() depuis __main__.py.
 
 import argparse
 import os
-from typing import Optional
 
 from backtest.result_store import get_results_root_dir
 
@@ -39,7 +38,6 @@ from .commands import (
     cmd_info,
     cmd_list,
     cmd_llm_optimize,
-    cmd_multi_llm,
     cmd_optuna,
     cmd_sweep,
     cmd_validate,
@@ -1211,58 +1209,7 @@ Exemples:
         "--model",
         type=str,
         default=None,
-        help="Modèle LLM à utiliser (single-LLM, ou fallback builder si --multi-llm)",
-    )
-    builder_parser.add_argument(
-        "--multi-llm",
-        action="store_true",
-        help="Active la variante Builder multi-LLM dans le workspace parallèle.",
-    )
-    builder_parser.add_argument(
-        "--multi-llm-profile",
-        type=str,
-        default="24GB_balanced",
-        help="Profil de roles multi-LLM (défaut: 24GB_balanced).",
-    )
-
-    # === MULTI-LLM ===
-    multi_llm_parser = subparsers.add_parser(
-        "multi-llm",
-        parents=[common_parser],
-        help="Auditer et gérer la variante Builder multi-LLM",
-        description="Audit local des modèles, validation des profils et installation des manquants.",
-    )
-    multi_llm_parser.add_argument(
-        "--profile",
-        type=str,
-        default="24GB_balanced",
-        help="Profil multi-LLM à résoudre (défaut: 24GB_balanced).",
-    )
-    multi_llm_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Sortie JSON.",
-    )
-    multi_llm_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="N'exécute pas les installations, affiche seulement le plan.",
-    )
-    multi_llm_sub = multi_llm_parser.add_subparsers(dest="multi_llm_action")
-    multi_llm_sub.add_parser(
-        "audit",
-        parents=[common_parser],
-        help="Scanner les modèles locaux et produire un inventaire.",
-    )
-    multi_llm_sub.add_parser(
-        "validate",
-        parents=[common_parser],
-        help="Valider le profil multi-LLM demandé contre l'inventaire local.",
-    )
-    multi_llm_sub.add_parser(
-        "install",
-        parents=[common_parser],
-        help="Installer les modèles manquants du profil via Ollama quand possible.",
+        help="Modèle LLM à utiliser.",
     )
 
     # === CATALOG ===
@@ -1364,7 +1311,6 @@ def main(args: list | None = None) -> int:
         "analyze": cmd_analyze,
         "cycle": cmd_cycle,
         "builder": cmd_builder,
-        "multi-llm": cmd_multi_llm,
         "catalog": cmd_catalog,
     }
 

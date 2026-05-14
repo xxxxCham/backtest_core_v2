@@ -7,14 +7,13 @@ Aucun lancement Streamlit : pipeline pur en memoire.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from agents.llm_client import LLMClient, LLMConfig, LLMMessage, LLMResponse, LLMProvider
+from agents.llm_client import LLMClient, LLMConfig, LLMProvider, LLMResponse
 from agents.simple_builder import (
     DEFAULT_ACCEPT_CRITERIA,
     DslCompileError,

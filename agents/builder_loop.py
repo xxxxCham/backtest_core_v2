@@ -10,7 +10,6 @@ facade stable while moving the orchestration logic out of
 from __future__ import annotations
 
 import math
-import os
 import time
 from typing import Any
 
@@ -27,6 +26,7 @@ from agents.builder_diagnostics import (
     _metrics_fingerprint,
     compute_builder_telemetry_score,
     compute_diagnostic,
+    resolve_builder_completion_status,
 )
 from agents.builder_policy import (
     DecisionPolicyFeedback,
@@ -67,6 +67,75 @@ def _record_policy_restrictions(
         )
 
 
+def _recover_invalid_proposal(
+    builder: Any,
+    *,
+    session: Any,
+    proposal_feedback: dict[str, Any],
+    last_iteration: BuilderIteration | None,
+    iteration_num: int,
+    iteration_trace: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Tente le retry contractuel, puis bascule sur fallback déterministe."""
+    retry_proposal: dict[str, Any] = {}
+    retry_issues: list[str] = []
+    try:
+        retry_raw = builder._retry_proposal_simple(session.objective)  # type: ignore[protected-access]
+        retry_proposal = _sanitize_proposal_payload(
+            retry_raw,
+            available_indicators=builder.available_indicators,
+            objective=session.objective,
+            direction_constraint=session.direction_constraint,
+        )
+        retry_issues = _proposal_issues(retry_proposal)
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as retry_exc:
+        retry_issues = [f"{type(retry_exc).__name__}: {retry_exc}"]
+
+    proposal_feedback["contract_retry_attempted"] = True
+    proposal_feedback["contract_retry_issues"] = retry_issues
+    proposal_feedback["issues_after_retry"] = retry_issues
+    if retry_proposal and not retry_issues:
+        proposal_feedback["contract_retry_used"] = True
+        proposal_feedback["source"] = "proposal_contract_retry"
+        proposal_feedback["final_valid"] = True
+        builder._emit_progress(
+            "proposal_retry",
+            iteration=iteration_num,
+            phase="proposal",
+            message="Proposition reparée par retry contractuel",
+        )
+        return retry_proposal, proposal_feedback
+
+    builder._emit_progress(
+        "warning",
+        iteration=iteration_num,
+        phase="proposal",
+        message="Proposition invalide apres retry contractuel - fallback deterministe",
+    )
+    fallback = _build_deterministic_proposal_fallback(
+        objective=session.objective,
+        available_indicators=builder.available_indicators,
+        last_iteration=last_iteration,
+    )
+    fallback = _sanitize_proposal_payload(
+        fallback,
+        available_indicators=builder.available_indicators,
+        objective=session.objective,
+        direction_constraint=session.direction_constraint,
+    )
+    proposal_feedback["fallback_deterministic_used"] = True
+    proposal_feedback["source"] = "deterministic_fallback"
+    proposal_feedback["final_valid"] = False
+    if builder.instrumentation.enabled:
+        builder.instrumentation.record_restriction(
+            iteration_trace,
+            "proposal_fallback",
+            effect="helper",
+            phase="proposal",
+        )
+    return fallback, proposal_feedback
+
+
 def run_builder_loop_v2(
     builder: Any,
     *,
@@ -78,32 +147,21 @@ def run_builder_loop_v2(
     del thought_stream
     session_id = session.session_id
     max_iterations = session.max_iterations
-    last_iteration: BuilderIteration | None = None
+    existing_iterations = [
+        candidate
+        for candidate in list(getattr(session, "iterations", []) or [])
+        if isinstance(candidate, BuilderIteration)
+    ]
+    last_iteration: BuilderIteration | None = max(
+        existing_iterations,
+        key=lambda candidate: int(getattr(candidate, "iteration", 0) or 0),
+        default=None,
+    )
+    start_iteration = int(getattr(last_iteration, "iteration", 0) or 0) + 1 if last_iteration is not None else 1
     consecutive_failures = 0
     fallback_count = 0  # compteur de fallbacks déterministes dans la session
 
-    # Env kill-switch: force mono-LLM regardless of UI/multi-LLM manager state.
-    # Why: pendant la stabilisation du builder, on neutralise le routage multi-LLM
-    # qui complexifie les chemins d'erreur et masque les vraies causes de fallback.
-    _force_mono = os.getenv("BACKTEST_BUILDER_FORCE_MONO_LLM", "0").strip().lower() in (
-        "1", "true", "yes", "on",
-    )
-    if _force_mono and getattr(builder, "_multi_llm_manager", None) is not None:
-        logger.warning(
-            "builder_force_mono_llm: multi_llm_manager neutralise via "
-            "env BACKTEST_BUILDER_FORCE_MONO_LLM=1",
-        )
-        builder._multi_llm_manager = None  # type: ignore[attr-defined]
-
-    for i in range(1, max_iterations + 1):
-        # ── Multi-LLM: fix models for this iteration, rotate between iterations ──
-        _mlm = getattr(builder, "_multi_llm_manager", None)
-        if _mlm is not None:
-            if i == 1:
-                _mlm.pin_iteration_roles()
-            else:
-                _mlm.advance_iteration()
-
+    for i in range(start_iteration, max_iterations + 1):
         iteration = BuilderIteration(iteration=i)
         # ── Instrumentation: début d'itération ──
         _itrace = builder.instrumentation.begin_iteration(i, session_id)
@@ -117,7 +175,7 @@ def run_builder_loop_v2(
         # ── Circuit breaker ──
         if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
             recovered, last_iteration, consecutive_failures, fallback_count, reset_event = (
-                builder._attempt_session_auto_reset(
+                builder._attempt_session_auto_reset(  # type: ignore[protected-access]
                     session,
                     iteration_num=i,
                     trigger="consecutive_failures",
@@ -158,7 +216,7 @@ def run_builder_loop_v2(
         # ── Circuit breaker fallback ──
         if fallback_count >= MAX_DETERMINISTIC_FALLBACKS:
             recovered, last_iteration, consecutive_failures, fallback_count, reset_event = (
-                builder._attempt_session_auto_reset(
+                builder._attempt_session_auto_reset(  # type: ignore[protected-access]
                     session,
                     iteration_num=i,
                     trigger="deterministic_fallbacks",
@@ -210,7 +268,7 @@ def run_builder_loop_v2(
                 ),
             )
             t0 = time.perf_counter()
-            proposal, proposal_feedback = builder._ask_proposal(
+            proposal, proposal_feedback = builder._ask_proposal(  # type: ignore[protected-access]
                 session,
                 last_iteration,
             )
@@ -220,35 +278,15 @@ def run_builder_loop_v2(
 
             # Garde : proposition vide → retry avec prompt simplifié
             if _is_invalid_proposal(proposal):
-                builder._emit_progress(
-                    "warning",
-                    iteration=i,
-                    phase="proposal",
-                    message=("Proposition invalide apres retry contractuel - fallback deterministe"),
-                )
-                issues = _proposal_issues(proposal)
-                proposal_feedback["issues_after_retry"] = issues
-                proposal = _build_deterministic_proposal_fallback(
-                    objective=session.objective,
-                    available_indicators=builder.available_indicators,
+                proposal, proposal_feedback = _recover_invalid_proposal(
+                    builder,
+                    session=session,
+                    proposal_feedback=proposal_feedback,
                     last_iteration=last_iteration,
+                    iteration_num=i,
+                    iteration_trace=_itrace,
                 )
-                proposal = _sanitize_proposal_payload(
-                    proposal,
-                    available_indicators=builder.available_indicators,
-                    objective=session.objective,
-                    direction_constraint=session.direction_constraint,
-                )
-                proposal_feedback["fallback_deterministic_used"] = True
-                proposal_feedback["source"] = "deterministic_fallback"
                 iteration.phase_feedback["proposal"] = proposal_feedback
-                if builder.instrumentation.enabled:
-                    builder.instrumentation.record_restriction(
-                        _itrace,
-                        "proposal_fallback",
-                        effect="helper",
-                        phase="proposal",
-                    )
 
             branch_specs: list[dict[str, str]] = []
             proposal_candidates: list[dict[str, Any]] = []
@@ -259,7 +297,7 @@ def run_builder_loop_v2(
                     _previous_iteration_indicators(last_iteration),
                 )
                 for spec in branch_specs:
-                    candidate_proposal, candidate_feedback = builder._ask_proposal(
+                    candidate_proposal, candidate_feedback = builder._ask_proposal(  # type: ignore[protected-access]
                         session,
                         last_iteration,
                         branch_directive=spec["directive"],
@@ -368,12 +406,12 @@ def run_builder_loop_v2(
                 )
 
             logger.info("builder_iter_%d_codegen", i)
-            builder._emit_progress("phase_start", iteration=i, phase="code")
+            builder._emit_progress("phase_start", iteration=i, phase="code")  # type: ignore[protected-access]
             t0 = time.perf_counter()
 
             branch_outcomes: list[dict[str, Any]] = []
             for candidate in proposal_candidates:
-                candidate_outcome, fallback_count = builder._execute_proposal_candidate(
+                candidate_outcome, fallback_count = builder._execute_proposal_candidate(  # type: ignore[protected-access]
                     session=session,
                     proposal=candidate["proposal"],
                     proposal_feedback=candidate["proposal_feedback"],
@@ -435,7 +473,7 @@ def run_builder_loop_v2(
                     ],
                 }
                 session.iterations.append(iteration)
-                builder._safe_save_session_summary(session)
+                builder._safe_save_session_summary(session)  # type: ignore[protected-access]
                 builder._emit_progress(
                     "iteration_error",
                     iteration=i,
@@ -461,7 +499,7 @@ def run_builder_loop_v2(
             iteration.code_quality_score = float(
                 selected_outcome.get("code_quality_score", 1.0) or 1.0,
             )
-            builder._persist_session_strategy_code(session, code)
+            builder._persist_session_strategy_code(session, code)  # type: ignore[protected-access]
             iteration.phase_feedback["proposal"] = selected_outcome.get("proposal_feedback", {})
             if len(proposal_candidates) > 1:
                 iteration.phase_feedback.setdefault("proposal", {})["branching"] = {
@@ -515,7 +553,7 @@ def run_builder_loop_v2(
             )
 
             logger.info("builder_iter_%d_backtest", i)
-            builder._emit_completed_backtest(
+            builder._emit_completed_backtest(  # type: ignore[protected-access]
                 bt_result,
                 session=session,
                 iteration_num=i,
@@ -715,7 +753,7 @@ def run_builder_loop_v2(
                     )
                     builder.instrumentation.finalize_iteration(_itrace)
                 session.iterations.append(iteration)
-                builder._safe_save_session_summary(session)
+                builder._safe_save_session_summary(session)  # type: ignore[protected-access]
                 builder._emit_progress(
                     "iteration_done",
                     iteration=i,
@@ -739,11 +777,11 @@ def run_builder_loop_v2(
                 diag["category"],
                 diag["severity"],
             )
-            builder._emit_progress("phase_start", iteration=i, phase="analysis")
+            builder._emit_progress("phase_start", iteration=i, phase="analysis")  # type: ignore[protected-access]
             pre_reflection_text = ""
             t0 = time.perf_counter()
             if builder.ablation.is_enabled("llm_analysis"):
-                analysis, decision = builder._ask_analysis(
+                analysis, decision = builder._ask_analysis(  # type: ignore[protected-access]
                     session,
                     iteration,
                     diag,
@@ -895,7 +933,7 @@ def run_builder_loop_v2(
                 builder.instrumentation.finalize_iteration(_itrace)
 
             session.iterations.append(iteration)
-            builder._safe_save_session_summary(session)
+            builder._safe_save_session_summary(session)  # type: ignore[protected-access]
             builder._emit_progress(
                 "iteration_done",
                 iteration=i,
@@ -921,11 +959,17 @@ def run_builder_loop_v2(
                 if accept_now:
                     session.status = "success"
                 else:
-                    session.status = "failed"
+                    fallback_status = "max_iterations" if i >= max_iterations else "failed"
+                    session.status, completion_reason = resolve_builder_completion_status(
+                        session,
+                        fallback_status=fallback_status,
+                    )
                     logger.info(
-                        "builder_iter_%d_accept_rejected reason=%s",
+                        "builder_iter_%d_accept_rejected reason=%s completion_status=%s completion_reason=%s",
                         i,
                         accept_now_reason,
+                        session.status,
+                        completion_reason,
                     )
                 break
             if decision == "stop":
@@ -969,7 +1013,7 @@ def run_builder_loop_v2(
             if builder.instrumentation.enabled:
                 builder.instrumentation.finalize_iteration(_itrace)
             session.iterations.append(iteration)
-            builder._safe_save_session_summary(session)
+            builder._safe_save_session_summary(session)  # type: ignore[protected-access]
             builder._emit_progress(
                 "iteration_error",
                 iteration=i,
@@ -978,6 +1022,15 @@ def run_builder_loop_v2(
             last_iteration = iteration
 
     else:
-        session.status = "max_iterations"
+        session.status, completion_reason = resolve_builder_completion_status(
+            session,
+            fallback_status="max_iterations",
+        )
+        if session.status == "success":
+            logger.info(
+                "builder_max_iterations_reclassified_success reason=%s best_sharpe=%.3f",
+                completion_reason,
+                session.best_sharpe,
+            )
 
     return session

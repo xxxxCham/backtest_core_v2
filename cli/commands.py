@@ -4366,86 +4366,15 @@ def cmd_builder(args) -> int:
     print(f"{Colors.BOLD}{'─' * 60}{Colors.RESET}")
     print()
 
-    multi_cycle = None
-    if getattr(args, "multi_llm", False):
-        from core.llm_multi import MultiLLMSessionManager, discover_local_models
-
-        inventory = discover_local_models(
-            ollama_host=llm_config.ollama_host,
-            include_live_ollama=True,
-        )
-        manager = MultiLLMSessionManager(
-            profile_name=args.multi_llm_profile,
-            base_llm_config=llm_config,
-            inventory=inventory,
-        )
-        print(f"  🧩 Multi-LLM : actif ({manager.profile_name})")
-        builder_assignment = manager.resolve_role_assignment("builder_llm")
-        if builder_assignment is None or not builder_assignment.available:
-            print(
-                f"  ❌ builder_llm indisponible sur l'hôte Ollama actif pour ce profil ({llm_config.ollama_host})",
-            )
-            return 2
-        if manager.missing_roles:
-            print(
-                f"  ⚠️  Roles manquants : {', '.join(manager.missing_roles)} (fallbacks deterministes conserves)",
-            )
-        else:
-            print("  ✅ Tous les roles LLM actifs sont resolus localement")
-        print()
-
-        def _builder_runner(run_objective: str, run_model: str):
-            run_llm_config = LLMConfig(
-                provider=llm_config.provider,
-                model=run_model,
-                ollama_host=llm_config.ollama_host,
-                openai_api_key=llm_config.openai_api_key,
-                openai_base_url=llm_config.openai_base_url,
-                temperature=llm_config.temperature,
-                max_tokens=llm_config.max_tokens,
-                top_p=llm_config.top_p,
-                timeout_seconds=llm_config.timeout_seconds,
-                max_retries=llm_config.max_retries,
-                retry_delay_seconds=llm_config.retry_delay_seconds,
-            )
-            run_builder = StrategyBuilder(llm_config=run_llm_config)
-            return run_builder.run(
-                objective=run_objective,
-                data=df,
-                max_iterations=args.max_iterations,
-                target_sharpe=args.target_sharpe,
-                initial_capital=args.capital,
-                symbol=getattr(args, "symbol", None) or "UNKNOWN",
-                timeframe=getattr(args, "timeframe", None) or "1h",
-            )
-
-        multi_cycle = manager.run_cycle(
-            symbols=[getattr(args, "symbol", None) or "UNKNOWN"],
-            timeframes=[getattr(args, "timeframe", None) or "1h"],
-            available_indicators=builder.available_indicators,
-            history_tail=[],
-            target_sharpe=args.target_sharpe,
-            builder_runner=_builder_runner,
-            fallback_objective=objective,
-        )
-        objective = multi_cycle.objective
-        session = multi_cycle.builder_session
-        print(f"  🎯 Objectif final : {objective}")
-        print(f"  🏗️  builder_llm  : {multi_cycle.builder_model}")
-        print(
-            f"  🧭 Routeur local : {multi_cycle.router_decision.get('action', 'iterate')} "
-            f"| {multi_cycle.router_decision.get('reason', '')}",
-        )
-    else:
-        session = builder.run(
-            objective=objective,
-            data=df,
-            max_iterations=args.max_iterations,
-            target_sharpe=args.target_sharpe,
-            initial_capital=args.capital,
-            symbol=getattr(args, "symbol", None) or "UNKNOWN",
-            timeframe=getattr(args, "timeframe", None) or "1h",
-        )
+    session = builder.run(
+        objective=objective,
+        data=df,
+        max_iterations=args.max_iterations,
+        target_sharpe=args.target_sharpe,
+        initial_capital=args.capital,
+        symbol=getattr(args, "symbol", None) or "UNKNOWN",
+        timeframe=getattr(args, "timeframe", None) or "1h",
+    )
 
     # Afficher le résumé
     print()
@@ -4503,9 +4432,6 @@ def cmd_builder(args) -> int:
             "iterations": len(session.iterations),
             "best_iteration": session.best_iteration.iteration if session.best_iteration else None,
             "session_dir": str(session.session_dir),
-            "multi_llm": bool(getattr(args, "multi_llm", False)),
-            "multi_llm_profile": getattr(args, "multi_llm_profile", ""),
-            "multi_llm_router_decision": (multi_cycle.router_decision if multi_cycle is not None else {}),
         },
         metadata={
             "period_start": str(df.index[0]) if len(df) else None,
@@ -4515,8 +4441,6 @@ def cmd_builder(args) -> int:
             "config_snapshot_extra": {
                 "command": "builder",
                 "model": llm_config.model,
-                "multi_llm": bool(getattr(args, "multi_llm", False)),
-                "multi_llm_profile": getattr(args, "multi_llm_profile", ""),
                 "max_iterations": args.max_iterations,
                 "target_sharpe": args.target_sharpe,
                 "session_id": session.session_id,
@@ -4531,95 +4455,3 @@ def cmd_builder(args) -> int:
     print()
     return 0
 
-
-def cmd_multi_llm(args) -> int:
-    """Audit / validation / installation helpers for the parallel multi-LLM builder."""
-    from core.llm_multi import (
-        discover_local_models,
-        install_missing_models,
-        plan_missing_downloads,
-        resolve_profile_assignments,
-    )
-
-    action = getattr(args, "multi_llm_action", None) or "audit"
-    inventory = discover_local_models(
-        ollama_host=os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434"),
-        include_live_ollama=True,
-    )
-    profile = getattr(args, "profile", "24GB_balanced")
-    require_live_ollama = bool(inventory.live_ollama_reachable)
-
-    if action == "audit":
-        payload = inventory.to_dict()
-        if args.json:
-            print(json.dumps(payload, indent=2, ensure_ascii=False))
-        else:
-            summary = payload["summary"]
-            print_header("Inventaire multi-LLM")
-            print(f"Racines scannées : {len(summary['scanned_roots'])}")
-            print(f"Modèles vérifiés : {summary['verified_models']}")
-            print(f"Références catalogue seules : {summary['catalog_only_models']}")
-            print(f"Backends : {summary['by_backend']}")
-            if summary["missing_roots"]:
-                print(f"Racines absentes : {', '.join(summary['missing_roots'])}")
-        return 0
-
-    resolution = resolve_profile_assignments(
-        profile,
-        inventory,
-        require_live_ollama=require_live_ollama,
-    )
-    if action == "validate":
-        payload = {
-            "profile_name": resolution["profile_name"],
-            "description": resolution["description"],
-            "missing_roles": resolution["missing_roles"],
-            "assignments": [assignment.to_dict() for assignment in resolution["assignments"]],
-        }
-        if args.json:
-            print(json.dumps(payload, indent=2, ensure_ascii=False))
-        else:
-            print_header(f"Validation multi-LLM: {resolution['profile_name']}")
-            for assignment in resolution["assignments"]:
-                status = "OK" if assignment.available else "MISSING"
-                print(
-                    f"{assignment.role:>24}: {status:<7} | "
-                    f"request={assignment.requested_model or '-'} | "
-                    f"resolved={assignment.resolved_model or '-'}",
-                )
-        return 0 if not resolution["missing_roles"] else 2
-
-    if action == "install":
-        requests = plan_missing_downloads(
-            profile,
-            inventory,
-            require_live_ollama=require_live_ollama,
-        )
-        if args.json:
-            print(
-                json.dumps(
-                    {
-                        "profile": profile,
-                        "requests": [request.to_dict() for request in requests],
-                    },
-                    indent=2,
-                    ensure_ascii=False,
-                ),
-            )
-        if not requests:
-            print("Aucun modèle manquant à installer.")
-            return 0
-        results = install_missing_models(
-            requests,
-            ollama_host=os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434"),
-            dry_run=bool(getattr(args, "dry_run", False)),
-        )
-        for result in results:
-            status = "OK" if result.success else "FAIL"
-            print(f"{status:>4} | {result.role:>24} | {result.model_name}")
-            if result.log_path:
-                print(f"      log: {result.log_path}")
-        return 0 if all(result.success for result in results) else 1
-
-    print_error(f"Action multi-LLM inconnue: {action}")
-    return 1

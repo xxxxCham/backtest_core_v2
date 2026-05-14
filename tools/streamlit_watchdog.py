@@ -8,6 +8,7 @@ ou s'est fermé.
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import socket
@@ -24,6 +25,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from backtest.result_store import get_builder_sessions_dir
+from ui.builder_runtime import (
+    build_unique_atomic_tmp_path,
+    cleanup_atomic_tmp_file,
+    is_transient_atomic_write_error,
+    parse_runtime_timestamp,
+)
 
 try:
     import psutil
@@ -39,28 +46,23 @@ _RUNTIME_STATE_SAVE_RETRIES = 3
 _RUNTIME_STATE_SAVE_RETRY_DELAY_SEC = 0.2
 
 
-def _parse_runtime_timestamp(value: Any) -> datetime | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except Exception:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
 def _load_runtime_state(path: Path) -> dict[str, Any]:
     default = {
         "active": False,
         "manual_stop": False,
+        "run_id": "",
+        "claim_source": "",
+        "claim_reason": "",
+        "owner_pid": 0,
+        "owner_started_at": "",
+        "owner_signature": "",
         "last_heartbeat_at": "",
         "last_stop_reason": "",
         "last_error": "",
         "last_session_num": 0,
         "last_session_status": "",
+        "current_session_num": 0,
+        "current_session_id": "",
     }
     if not path.exists():
         return default
@@ -89,15 +91,15 @@ def _save_runtime_state(path: Path, runtime: dict[str, Any]) -> None:
 
     with _RUNTIME_STATE_LOCK:
         for attempt in range(_RUNTIME_STATE_SAVE_RETRIES):
-            tmp_path = _build_unique_runtime_tmp_path(path)
+            tmp_path = build_unique_atomic_tmp_path(path)
             try:
                 tmp_path.write_text(serialized, encoding="utf-8")
                 os.replace(tmp_path, path)
                 return
             except Exception as exc:
                 last_exc = exc
-                _cleanup_runtime_tmp_file(tmp_path)
-                should_retry = attempt < (_RUNTIME_STATE_SAVE_RETRIES - 1) and _is_transient_runtime_save_error(exc)
+                cleanup_atomic_tmp_file(tmp_path)
+                should_retry = attempt < (_RUNTIME_STATE_SAVE_RETRIES - 1) and is_transient_atomic_write_error(exc)
                 if should_retry:
                     time.sleep(_RUNTIME_STATE_SAVE_RETRY_DELAY_SEC * (attempt + 1))
                     continue
@@ -105,29 +107,6 @@ def _save_runtime_state(path: Path, runtime: dict[str, Any]) -> None:
 
     if last_exc is not None:
         raise last_exc
-
-
-def _is_transient_runtime_save_error(exc: BaseException) -> bool:
-    if isinstance(exc, PermissionError):
-        return True
-    winerror = getattr(exc, "winerror", None)
-    errno = getattr(exc, "errno", None)
-    return winerror == 32 or errno in {13, 32}
-
-
-def _cleanup_runtime_tmp_file(tmp_path: Path) -> None:
-    try:
-        if tmp_path.exists():
-            tmp_path.unlink()
-    except Exception:
-        pass
-
-
-def _build_unique_runtime_tmp_path(target_path: Path) -> Path:
-    suffix = f".{os.getpid()}.{threading.get_ident()}.{time.time_ns()}.tmp"
-    return target_path.with_name(f"{target_path.name}{suffix}")
-
-
 def _runtime_requests_restart(runtime: dict[str, Any]) -> bool:
     return bool(runtime.get("active")) and not bool(runtime.get("manual_stop"))
 
@@ -185,7 +164,7 @@ def maybe_clear_orphaned_runtime_claim(
     if not _runtime_requests_restart(runtime):
         return False, ""
 
-    heartbeat_at = _parse_runtime_timestamp(runtime.get("last_heartbeat_at"))
+    heartbeat_at = parse_runtime_timestamp(runtime.get("last_heartbeat_at"))
     if heartbeat_at is None:
         return False, ""
 
@@ -197,10 +176,32 @@ def maybe_clear_orphaned_runtime_claim(
     if runtime_pid <= 0:
         return False, ""
 
+    if not str(runtime.get("run_id") or "").strip():
+        return True, f"legacy_stale_runtime(pid={runtime_pid},age={heartbeat_age:.0f}s)"
+
     pid_exists = _pid_exists(runtime_pid)
     if pid_exists is False:
         return True, f"orphaned_stale_runtime(pid={runtime_pid},missing,age={heartbeat_age:.0f}s)"
     return False, ""
+
+
+def _runtime_claim_is_stale(
+    runtime: dict[str, Any],
+    *,
+    now: datetime,
+    stale_runtime_claim_timeout_sec: int,
+) -> tuple[bool, str]:
+    if not _runtime_requests_restart(runtime):
+        return False, ""
+
+    heartbeat_at = parse_runtime_timestamp(runtime.get("last_heartbeat_at"))
+    if heartbeat_at is None:
+        return True, "runtime_active_without_heartbeat"
+
+    heartbeat_age = (now - heartbeat_at).total_seconds()
+    if heartbeat_age <= float(stale_runtime_claim_timeout_sec):
+        return False, ""
+    return True, f"runtime_heartbeat_stale(age={heartbeat_age:.0f}s)"
 
 
 def decide_stall_restart(
@@ -293,6 +294,43 @@ def _port_owner_info(port: int) -> dict[str, Any]:
     return {}
 
 
+def _http_probe_streamlit(port: int, *, timeout_sec: float = 1.0) -> tuple[bool, str]:
+    probe_paths = ("/_stcore/health", "/healthz", "/")
+    last_reason = "no_probe_attempted"
+    for path in probe_paths:
+        conn: http.client.HTTPConnection | None = None
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", int(port), timeout=timeout_sec)
+            conn.request("GET", path)
+            response = conn.getresponse()
+            response.read(128)
+            status = int(response.status)
+            if 200 <= status < 500:
+                return True, f"http_{status}:{path}"
+            last_reason = f"http_{status}:{path}"
+        except Exception as exc:
+            last_reason = f"{type(exc).__name__}:{path}"
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+    return False, last_reason
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    value = str(raw).strip().lower()
+    if value in {"1", "true", "yes", "y", "on"}:
+        return True
+    if value in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
+
+
 def _is_same_streamlit_app_owner(owner: dict[str, Any], root: Path) -> bool:
     if not owner:
         return False
@@ -306,25 +344,114 @@ def _is_same_streamlit_app_owner(owner: dict[str, Any], root: Path) -> bool:
     return root_text in lowered
 
 
+def _should_replace_same_streamlit_owner(
+    owner: dict[str, Any],
+    port: int,
+    runtime: dict[str, Any],
+    *,
+    now: datetime,
+    stale_runtime_claim_timeout_sec: int,
+) -> tuple[bool, str]:
+    runtime_stale, runtime_reason = _runtime_claim_is_stale(
+        runtime,
+        now=now,
+        stale_runtime_claim_timeout_sec=stale_runtime_claim_timeout_sec,
+    )
+    if runtime_stale:
+        return True, runtime_reason
+
+    healthy, health_reason = _http_probe_streamlit(port)
+    if healthy:
+        return False, health_reason
+
+    owner_pid = int(owner.get("pid", 0) or 0)
+    return True, f"same_app_unhealthy(pid={owner_pid or 'unknown'},health={health_reason})"
+
+
 def _resolve_launch_plan(
     root: Path,
     requested_port: int,
     *,
     max_port_tries: int = 20,
+    runtime: dict[str, Any] | None = None,
+    stale_runtime_claim_timeout_sec: int = 120,
+    now: datetime | None = None,
 ) -> tuple[str, int, str]:
     owner = _port_owner_info(requested_port)
     if _port_is_available(requested_port):
         return "launch", requested_port, ""
 
+    if _is_same_streamlit_app_owner(owner, root):
+        owner_pid = int(owner.get("pid", 0) or 0)
+        should_replace, reason = _should_replace_same_streamlit_owner(
+            owner,
+            requested_port,
+            runtime or {},
+            now=now or datetime.now(timezone.utc),
+            stale_runtime_claim_timeout_sec=int(stale_runtime_claim_timeout_sec),
+        )
+        if should_replace:
+            return "replace", requested_port, reason
+        return "reuse", requested_port, f"same_app_running({requested_port},pid={owner_pid or 'unknown'},health={reason})"
+
     for candidate in range(int(requested_port) + 1, int(requested_port) + max_port_tries + 1):
         if _port_is_available(candidate):
             owner_pid = int(owner.get("pid", 0) or 0)
-            same_app = _is_same_streamlit_app_owner(owner, root)
-            reason_kind = "port_in_use_by_same_app" if same_app else "port_in_use"
-            reason = f"{reason_kind}({requested_port},pid={owner_pid or 'unknown'})"
+            reason = f"port_in_use({requested_port},pid={owner_pid or 'unknown'})"
             return "launch", candidate, reason
 
     return "error", requested_port, f"no_free_port_from_{requested_port}_to_{requested_port + max_port_tries}"
+
+
+def _terminate_port_owner(owner: dict[str, Any], *, timeout_sec: float = 15.0) -> bool:
+    pid = int(owner.get("pid", 0) or 0)
+    if pid <= 0:
+        return False
+
+    if _HAS_PSUTIL:
+        try:
+            process = psutil.Process(pid)
+            processes = [process, *process.children(recursive=True)]
+            for proc in reversed(processes):
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+            _, alive = psutil.wait_procs(processes, timeout=timeout_sec)
+            for proc in alive:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+            if alive:
+                psutil.wait_procs(alive, timeout=5.0)
+            return not psutil.pid_exists(pid)
+        except Exception:
+            return _pid_exists(pid) is False
+
+    if os.name == "nt":
+        result = subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.returncode == 0 or _pid_exists(pid) is False
+
+    try:
+        os.kill(pid, 15)
+    except Exception:
+        return _pid_exists(pid) is False
+    return _pid_exists(pid) is False
+
+
+def _wait_for_port_available(port: int, *, timeout_sec: float = 15.0) -> bool:
+    deadline = time.monotonic() + max(float(timeout_sec), 0.1)
+    while time.monotonic() < deadline:
+        if _port_is_available(port):
+            return True
+        time.sleep(0.25)
+    return _port_is_available(port)
 
 
 def _launch_streamlit(root: Path, port: int) -> subprocess.Popen[Any]:
@@ -352,6 +479,48 @@ def _launch_streamlit(root: Path, port: int) -> subprocess.Popen[Any]:
     )
 
 
+def _launch_supervisor_loop(root: Path) -> bool:
+    runner = root / "tools" / "run_autonomous_builder_supervisor_loop.ps1"
+    if not runner.exists():
+        print(f"[watchdog] supervisor loop runner missing: {runner}", flush=True)
+        return False
+    if os.name == "nt":
+        cmd = [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+            str(runner),
+        ]
+        kwargs: dict[str, Any] = {
+            "creationflags": int(
+                getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+            ),
+        }
+    else:
+        cmd = ["pwsh", "-NoProfile", "-File", str(runner)]
+        kwargs = {}
+    try:
+        subprocess.Popen(
+            cmd,
+            cwd=str(root),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            **kwargs,
+        )
+    except Exception as exc:
+        print(f"[watchdog] supervisor launch skipped: {exc}", flush=True)
+        return False
+    print(f"[watchdog] supervisor loop launch requested: {runner}", flush=True)
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Watchdog Streamlit autonome")
     parser.add_argument("--port", type=int, required=True)
@@ -363,11 +532,34 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=get_builder_sessions_dir() / "_autonomous_runtime_state.json",
     )
+    parser.set_defaults(
+        launch_supervisor_loop=_env_flag("BACKTEST_STREAMLIT_LAUNCH_SUPERVISOR_LOOP", False),
+    )
+    parser.add_argument(
+        "--launch-supervisor-loop",
+        dest="launch_supervisor_loop",
+        action="store_true",
+        help="Start the external autonomous Builder supervisor loop with Streamlit.",
+    )
+    parser.add_argument(
+        "--no-launch-supervisor-loop",
+        dest="launch_supervisor_loop",
+        action="store_false",
+        help="Keep the external autonomous Builder supervisor loop disabled.",
+    )
     args = parser.parse_args(argv)
 
     root = Path(__file__).resolve().parent.parent
     runtime_state_path = (root / args.runtime_state).resolve()
     restart_count = 0
+    if bool(args.launch_supervisor_loop):
+        _launch_supervisor_loop(root)
+    else:
+        print(
+            "[watchdog] supervisor loop disabled "
+            "(set BACKTEST_STREAMLIT_LAUNCH_SUPERVISOR_LOOP=1 or pass --launch-supervisor-loop to enable)",
+            flush=True,
+        )
 
     while True:
         runtime = _load_runtime_state(runtime_state_path)
@@ -391,6 +583,8 @@ def main(argv: list[str] | None = None) -> int:
         launch_action, effective_port, launch_reason = _resolve_launch_plan(
             root,
             int(args.port),
+            runtime=runtime,
+            stale_runtime_claim_timeout_sec=int(args.stale_runtime_claim_timeout_sec),
         )
         if launch_action == "reuse":
             print(
@@ -398,14 +592,41 @@ def main(argv: list[str] | None = None) -> int:
                 flush=True,
             )
             return 0
+        if launch_action == "replace":
+            owner = _port_owner_info(effective_port)
+            owner_pid = int(owner.get("pid", 0) or 0)
+            print(
+                f"[watchdog] replacing unhealthy existing app on port {effective_port} "
+                f"(pid={owner_pid or 'unknown'}, reason={launch_reason})",
+                flush=True,
+            )
+            if not _terminate_port_owner(owner):
+                print(
+                    f"[watchdog] stop: unable_to_terminate_existing_app(pid={owner_pid or 'unknown'})",
+                    flush=True,
+                )
+                return 1
+            if not _wait_for_port_available(effective_port):
+                print(
+                    f"[watchdog] stop: port_still_busy_after_terminate({effective_port})",
+                    flush=True,
+                )
+                return 1
+            launch_reason = f"replaced_existing_app({launch_reason})"
         if launch_action == "error":
             print(f"[watchdog] stop: {launch_reason}", flush=True)
             return 1
         if launch_reason:
-            print(
-                f"[watchdog] requested port {args.port} busy, switching to {effective_port} ({launch_reason})",
-                flush=True,
-            )
+            if int(effective_port) != int(args.port):
+                print(
+                    f"[watchdog] requested port {args.port} busy, switching to {effective_port} ({launch_reason})",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[watchdog] launching on requested port {effective_port} ({launch_reason})",
+                    flush=True,
+                )
 
         proc = _launch_streamlit(root, effective_port)
         restart_reason = ""

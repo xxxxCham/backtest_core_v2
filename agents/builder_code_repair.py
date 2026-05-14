@@ -34,6 +34,16 @@ from agents.indicator_context import (
     get_indicator_builder_access_example,
     get_indicator_builder_stable_alias_map,
 )
+from indicators.schema import (
+    INDICATOR_ACCESS_ALIASES,
+    INVALID_DICT_SUBKEY_REWRITE_HINTS as SCHEMA_INVALID_DICT_SUBKEY_REWRITE_HINTS,
+    OUTPUT_KEY_ALIASES,
+    PARAMETER_ALIAS_ACCESS,
+    SAFE_DICT_INDICATOR_ASSIGNMENT_ALIASES,
+    SAFE_DICT_INDICATOR_KEYS,
+    SEMANTIC_INDICATOR_ALIASES,
+    parse_parameterized_indicator_instance,
+)
 
 _DICT_INDICATOR_SAFE_SCALAR_KEYS: dict[str, str] = {
     "adx": "adx",
@@ -192,6 +202,16 @@ _INDICATOR_ACCESS_REWRITE_HINTS = {
     "swing_low": "indicators['swing']['swing_low']",
     "smart_leg_bullish": "indicators['smart_legs']['smart_leg_bullish']",
     "smart_leg_bearish": "indicators['smart_legs']['smart_leg_bearish']",
+    "market_volatility": "indicators['vix']",
+    "volatility": "indicators['vix']",
+    "vix_proxy": "indicators['vix']",
+    "implied_volatility_proxy": "indicators['vix']",
+    "mci": "indicators['choppiness_index']",
+    "chop": "indicators['choppiness_index']",
+    "choppiness": "indicators['choppiness_index']",
+    "market_choppiness_index": "indicators['choppiness_index']",
+    "trix_line": "indicators['trix']",
+    "trix_value": "indicators['trix']",
 }
 
 _INVALID_DICT_SUBKEY_REWRITE_HINTS: dict[tuple[str, str], str] = {
@@ -248,6 +268,18 @@ _PARAM_ACCESS_REWRITE_HINTS = {
     "rsi_period": "params.get('rsi_period', 14)",
     "bias_strength_filter": "params.get('bias_strength_filter', 0.5)",
 }
+
+# Active source of truth: indicators.schema. The local literals above remain
+# as compatibility fallback, then schema values override the runtime mappings.
+_DICT_INDICATOR_SAFE_SCALAR_KEYS = dict(SAFE_DICT_INDICATOR_KEYS)
+_DICT_INDICATOR_SAFE_SCALAR_ASSIGNMENT_ALIASES = {
+    name: set(aliases)
+    for name, aliases in SAFE_DICT_INDICATOR_ASSIGNMENT_ALIASES.items()
+}
+_SEMANTIC_INDICATOR_ALIAS_HINTS = dict(SEMANTIC_INDICATOR_ALIASES)
+_INDICATOR_ACCESS_REWRITE_HINTS = dict(INDICATOR_ACCESS_ALIASES)
+_PARAM_ACCESS_REWRITE_HINTS = dict(PARAMETER_ALIAS_ACCESS)
+_INVALID_DICT_SUBKEY_REWRITE_HINTS.update(SCHEMA_INVALID_DICT_SUBKEY_REWRITE_HINTS)
 
 _INDICATOR_ACCESS_ALIAS_SCAN: re.Pattern[str] = re.compile(
     r"(?:indicators\s*\[\s*|indicators\.get\(\s*)['\"](?:"
@@ -422,7 +454,11 @@ def _infer_required_indicator_names_from_code(
     if tree is not None:
         for name in _collect_indicator_names(tree) | _collect_indicator_names_in_class(tree):
             normalized_name = str(name or "").strip().lower()
-            if normalized_name in known and normalized_name not in inferred_set:
+            instance = parse_parameterized_indicator_instance(normalized_name)
+            if instance is not None and instance.alias not in inferred_set:
+                inferred.append(instance.alias)
+                inferred_set.add(instance.alias)
+            elif normalized_name in known and normalized_name not in inferred_set:
                 inferred.append(normalized_name)
                 inferred_set.add(normalized_name)
 
@@ -832,6 +868,24 @@ def _repair_invalid_warmup_zero_slices(code: str) -> str:
 def _rewrite_invalid_dict_indicator_subkeys(code: str) -> str:
     """Répare quelques sous-clés dict hallucinées quand la cible sûre est déterministe."""
     fixed = code
+    for indicator_name, aliases in OUTPUT_KEY_ALIASES.items():
+        for alias, canonical_key in aliases.items():
+            if alias == canonical_key:
+                continue
+            fixed = re.sub(
+                rf"indicators\s*\[\s*['\"]{re.escape(indicator_name)}['\"]\s*\]"
+                rf"\s*\[\s*['\"]{re.escape(alias)}['\"]\s*\]",
+                f"indicators['{indicator_name}']['{canonical_key}']",
+                fixed,
+                flags=re.IGNORECASE,
+            )
+            fixed = re.sub(
+                rf"indicators\.get\(\s*['\"]{re.escape(indicator_name)}['\"]\s*(?:,\s*[^)]*)?\)"
+                rf"\s*\[\s*['\"]{re.escape(alias)}['\"]\s*\]",
+                f"indicators['{indicator_name}']['{canonical_key}']",
+                fixed,
+                flags=re.IGNORECASE,
+            )
     for (indicator_name, subkey), replacement in _INVALID_DICT_SUBKEY_REWRITE_HINTS.items():
         fixed = re.sub(
             rf"indicators\s*\[\s*['\"]{re.escape(indicator_name)}['\"]\s*\]"
@@ -1309,11 +1363,20 @@ def _repair_code(
 
         # 6. indicators['ema']['ema_XX'] → indicators['ema']
         for arr_ind in ("ema", "rsi", "atr", "sma", "cci", "mfi", "williams_r", "momentum", "obv", "roc"):
-            code = re.sub(
-                r"indicators\s*\[\s*['\"]" + re.escape(arr_ind) + r"['\"]\s*\]\s*\[\s*['\"][^'\"]*['\"]\s*\]",
-                f'indicators["{arr_ind}"]',
-                code,
+            pattern = (
+                r"indicators\s*\[\s*['\"]"
+                + re.escape(arr_ind)
+                + r"['\"]\s*\]\s*\[\s*['\"](?P<subkey>[^'\"]+)['\"]\s*\]"
             )
+
+            def _array_subkey_replacement(match: re.Match[str], base: str = arr_ind) -> str:
+                subkey = str(match.group("subkey") or "").strip().lower()
+                instance = parse_parameterized_indicator_instance(subkey)
+                if instance is not None and instance.name == base:
+                    return f"indicators['{instance.alias}']"
+                return f'indicators["{base}"]'
+
+            code = re.sub(pattern, _array_subkey_replacement, code)
 
         # 7. Supprimer les imports incorrects "from indicators import ..."
         code = re.sub(

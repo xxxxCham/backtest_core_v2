@@ -46,6 +46,7 @@ from backtest.result_store import get_builder_sessions_dir, get_results_root_dir
 from backtest.storage import ResultStorage
 from catalog.strategy_catalog import CATEGORY_ORDER, list_entries, upsert_from_saved_run
 from ui.helpers import (
+    as_listish,
     coerce_metric_float,
     coerce_metric_int,
     compute_period_days,
@@ -91,35 +92,6 @@ def _safe_read_csv(path: Path, dtype: dict[str, str] | None = None) -> pd.DataFr
         return pd.DataFrame()
 
 
-def _as_listish(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if isinstance(value, tuple):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if isinstance(value, set):
-        return sorted(str(item).strip() for item in value if str(item).strip())
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return []
-        if text.startswith("[") and text.endswith("]"):
-            try:
-                parsed = json.loads(text)
-            except (ValueError, json.JSONDecodeError):
-                parsed = None
-            if isinstance(parsed, list):
-                return [str(item).strip() for item in parsed if str(item).strip()]
-        return [part.strip() for part in text.split(",") if part.strip()]
-    try:
-        if pd.isna(value):
-            return []
-    except TypeError:
-        pass
-    return [str(value).strip()] if str(value).strip() else []
-
-
 def _clean_text_token(value: Any) -> str:
     if value is None:
         return ""
@@ -154,14 +126,14 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
             missing_mask = numeric_counts.isna()
             if missing_mask.any():
                 df.loc[missing_mask, count_col] = df.loc[missing_mask, source_col].apply(
-                    lambda value: len(_as_listish(value)),
+                    lambda value: len(as_listish(value)),
                 )
         else:
-            df[count_col] = df[source_col].apply(lambda value: len(_as_listish(value)))
+            df[count_col] = df[source_col].apply(lambda value: len(as_listish(value)))
 
     if "tested_timeframes" in df.columns and "timeframes_tested" not in df.columns:
         df["timeframes_tested"] = df["tested_timeframes"].apply(
-            lambda value: ",".join(sorted(_as_listish(value))),
+            lambda value: ",".join(sorted(as_listish(value))),
         )
 
     if "benchmark_results" in df.columns:
@@ -209,12 +181,12 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
             )
         if "passed_benchmark_names" not in df.columns:
             df["passed_benchmark_names"] = df["benchmark_consensus"].apply(
-                lambda value: ",".join(sorted(_as_listish(_consensus_value(value, "benchmarks_passed", [])))),
+                lambda value: ",".join(sorted(as_listish(_consensus_value(value, "benchmarks_passed", [])))),
             )
         if "benchmark_pass_summary" not in df.columns:
             df["benchmark_pass_summary"] = df["benchmark_consensus"].apply(
                 lambda value: (
-                    f"{len(_as_listish(_consensus_value(value, 'benchmarks_passed', [])))}/"
+                    f"{len(as_listish(_consensus_value(value, 'benchmarks_passed', [])))}/"
                     f"{int(_consensus_value(value, 'benchmarks_total', 0) or 0)}"
                     if int(_consensus_value(value, "benchmarks_total", 0) or 0) > 0
                     else ""
@@ -249,6 +221,48 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
             df["total_context_count"] = df["multi_ctx_results"].apply(
                 lambda value: _ctx_metric(value, "total_contexts"),
             )
+        if "configured_context_count" not in df.columns:
+            df["configured_context_count"] = df["multi_ctx_results"].apply(
+                lambda value: _ctx_metric(value, "configured_context_count"),
+            )
+        if "loaded_context_count" not in df.columns:
+            df["loaded_context_count"] = df["multi_ctx_results"].apply(
+                lambda value: _ctx_metric(value, "loaded_context_count"),
+            )
+        if "eligible_context_count" not in df.columns:
+            df["eligible_context_count"] = df["multi_ctx_results"].apply(
+                lambda value: _ctx_metric(value, "eligible_context_count"),
+            )
+        if "configured_benchmark_slot_count" not in df.columns:
+            df["configured_benchmark_slot_count"] = df["multi_ctx_results"].apply(
+                lambda value: _ctx_metric(value, "configured_benchmark_slots"),
+            )
+        if "loaded_benchmark_slot_count" not in df.columns:
+            df["loaded_benchmark_slot_count"] = df["multi_ctx_results"].apply(
+                lambda value: _ctx_metric(value, "loaded_benchmark_slots"),
+            )
+        if "excluded_context_count" not in df.columns:
+            df["excluded_context_count"] = df["multi_ctx_results"].apply(
+                lambda value: _ctx_metric(value, "excluded_context_count"),
+            )
+        if "configured_unique_coverage_pct" not in df.columns:
+            configured_counts = pd.to_numeric(df.get("configured_context_count"), errors="coerce")
+            eligible_counts = pd.to_numeric(df.get("eligible_context_count"), errors="coerce")
+            df["configured_unique_coverage_pct"] = [
+                round((float(eligible) / float(configured)) * 100, 1)
+                if pd.notna(configured) and float(configured) > 0 and pd.notna(eligible)
+                else None
+                for configured, eligible in zip(configured_counts, eligible_counts)
+            ]
+        if "benchmark_slot_coverage_pct" not in df.columns:
+            configured_slots = pd.to_numeric(df.get("configured_benchmark_slot_count"), errors="coerce")
+            loaded_slots = pd.to_numeric(df.get("loaded_benchmark_slot_count"), errors="coerce")
+            df["benchmark_slot_coverage_pct"] = [
+                round((float(loaded) / float(configured)) * 100, 1)
+                if pd.notna(configured) and float(configured) > 0 and pd.notna(loaded)
+                else None
+                for configured, loaded in zip(configured_slots, loaded_slots)
+            ]
         if "context_pass_summary" not in df.columns:
             df["context_pass_summary"] = df.apply(
                 lambda row: (
@@ -270,6 +284,7 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
         "configured_context_count",
         "loaded_context_count",
         "missing_context_count",
+        "eligible_context_count",
         "configured_benchmark_count",
         "configured_benchmark_slot_count",
         "loaded_benchmark_slot_count",
@@ -277,12 +292,21 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
         "passed_context_count",
         "total_context_count",
         "coverage_pct",
+        "configured_unique_coverage_pct",
         "benchmark_slot_coverage_pct",
         "sweep_robustness_pct",
+        "sensitivity_history_bars",
+        "sensitivity_min_history_bars",
         "wfa_stability",
         "wfa_avg_test_return_pct",
         "wfa_avg_test_sharpe",
         "wfa_overfitting_ratio",
+        "wfa_classic_overfitting_ratio",
+        "wfa_robust_overfitting_score",
+        "wfa_valid_folds",
+        "wfa_positive_folds_pct",
+        "wfa_history_bars",
+        "wfa_min_history_bars",
     ]
     df = _coerce_numeric(df, numeric_cols)
     return df
@@ -312,6 +336,71 @@ def _load_graduation_report() -> tuple[dict[str, Any], pd.DataFrame]:
 
 def _load_positive_import_report() -> tuple[dict[str, Any], pd.DataFrame]:
     return _load_candidate_report("positive_imports_graduation.json", "positive_artifacts_import.json")
+
+
+def _report_has_source_validation_fields(df: pd.DataFrame) -> bool:
+    if df.empty:
+        return True
+    return any(
+        column in df.columns
+        for column in (
+            "wfa_scope",
+            "wfa_symbol",
+            "wfa_timeframe",
+            "wfa_history_bars",
+            "sensitivity_scope",
+        )
+    )
+
+
+def _graduation_cli_command(args: list[str]) -> str:
+    return " ".join(["python", "-m", "catalog.graduation", *[str(arg) for arg in args]])
+
+
+def _payload_meta(payload: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    meta = payload.get("meta")
+    return meta if isinstance(meta, dict) else {}
+
+
+def _payload_cli_equivalent(*payloads: dict[str, Any] | None) -> str:
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        value = str(payload.get("cli_equivalent") or "").strip()
+        if value:
+            return value
+        meta_value = str(_payload_meta(payload).get("cli_equivalent") or "").strip()
+        if meta_value:
+            return meta_value
+    return ""
+
+
+def _payload_phase_contract(*payloads: dict[str, Any] | None) -> dict[str, Any]:
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        value = payload.get("phase_contract")
+        if isinstance(value, dict) and value:
+            return value
+        meta_value = _payload_meta(payload).get("phase_contract")
+        if isinstance(meta_value, dict) and meta_value:
+            return meta_value
+    return {}
+
+
+def _payload_config_snapshot(*payloads: dict[str, Any] | None) -> dict[str, Any]:
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        value = payload.get("config_snapshot")
+        if isinstance(value, dict) and value:
+            return value
+        meta_value = _payload_meta(payload).get("config_snapshot")
+        if isinstance(meta_value, dict) and meta_value:
+            return meta_value
+    return {}
 
 
 def _load_progress_payload(filename: str) -> dict[str, Any]:
@@ -352,7 +441,20 @@ def _safe_int(value: Any, default: int = 0) -> int:
             return default
 
 
-def _phase_processed_counts(stats: dict[str, Any], total_candidates: int) -> dict[str, int]:
+def _phase_processed_counts(
+    stats: dict[str, Any],
+    total_candidates: int,
+    *,
+    infer_missing: bool = True,
+) -> dict[str, int]:
+    if not infer_missing:
+        return {
+            "P2": _safe_int(stats.get("p2_processed")),
+            "P3": _safe_int(stats.get("p3_processed")),
+            "P4": _safe_int(stats.get("p4_processed")),
+            "P5": _safe_int(stats.get("p5_processed")),
+            "P6": _safe_int(stats.get("p6_processed")),
+        }
     return {
         "P2": _safe_int(stats.get("p2_processed"), total_candidates),
         "P3": _safe_int(stats.get("p3_processed"), _safe_int(stats.get("p2_survivors"))),
@@ -449,6 +551,22 @@ def _is_pid_running(pid: Any) -> bool:
         return False
     if resolved <= 0:
         return False
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+            kernel32.OpenProcess.restype = ctypes.c_void_p
+            kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+            kernel32.CloseHandle.restype = ctypes.c_int
+            handle = kernel32.OpenProcess(0x1000, 0, resolved)  # PROCESS_QUERY_LIMITED_INFORMATION
+            if handle:
+                kernel32.CloseHandle(handle)
+                return True
+            return ctypes.get_last_error() == 5  # ERROR_ACCESS_DENIED still means the PID exists.
+        except Exception:
+            return False
     try:
         os.kill(resolved, 0)
     except ProcessLookupError:
@@ -729,7 +847,10 @@ def _build_phase_focus_preview_df(df: pd.DataFrame, phase: str) -> pd.DataFrame:
             "wfa_stability",
             "wfa_avg_test_return_pct",
             "wfa_avg_test_sharpe",
-            "wfa_overfitting_ratio",
+            "wfa_classic_overfitting_ratio",
+            "wfa_robust_overfitting_score",
+            "wfa_positive_folds_pct",
+            "wfa_confidence_tier",
             "rejection_reason",
         ],
     }
@@ -876,7 +997,7 @@ def _render_progress_section(
     stats = payload.get("stats") or {}
     candidate = payload.get("current_candidate") or {}
     total_candidates = _safe_int(stats.get("p1_candidates"), _safe_int(stats.get("import_candidates")))
-    processed_counts = _phase_processed_counts(stats, total_candidates)
+    processed_counts = _phase_processed_counts(stats, total_candidates, infer_missing=False)
     survivor_counts = _phase_survivor_counts(stats)
     phase_distribution = _phase_distribution_counts(report_payload or {}, report_df)
     display_phase = _resolve_completed_phase(payload, processed_counts, phase_distribution)
@@ -911,8 +1032,28 @@ def _render_progress_section(
     updated_at = str(payload.get("updated_at") or "").strip()
     if updated_at:
         st.caption(f"Dernière mise à jour: {updated_at} UTC" + (f" ({age_label})" if age_label else ""))
+    cli_command = _payload_cli_equivalent(payload, report_payload)
+    if cli_command:
+        st.caption(f"Commande CLI équivalente: `{cli_command}`")
     st.caption(_format_phase_counts("Survivants", survivor_counts))
     st.caption(_format_phase_counts("Phase finale des candidats", phase_distribution))
+
+    phase_contract = _payload_phase_contract(payload, report_payload)
+    config_snapshot = _payload_config_snapshot(payload, report_payload)
+    if phase_contract or config_snapshot:
+        with st.expander("Contrat P1→P6 et paramètres CLI", expanded=False):
+            if phase_contract:
+                contract_rows = [
+                    {
+                        "phase": phase,
+                        "nom": data.get("name", "") if isinstance(data, dict) else "",
+                        "rôle": data.get("purpose", "") if isinstance(data, dict) else "",
+                    }
+                    for phase, data in phase_contract.items()
+                ]
+                st.dataframe(pd.DataFrame(contract_rows), width="stretch", hide_index=True)
+            if config_snapshot:
+                st.json(config_snapshot)
 
     if payload.get("status") == "running" and age_seconds is not None and age_seconds > 180:
         st.warning("Le run est marqué `running` mais la progression n'a pas bougé depuis plus de 3 minutes.")
@@ -946,6 +1087,7 @@ def _start_background_graduation_job(
             return False, f"Un run est déjà actif{pid_suffix}. Rafraîchissez la page pour suivre sa progression."
     log_path = output_dir / log_filename
     command = [sys.executable, "-m", "catalog.graduation", *args]
+    cli_command = _graduation_cli_command(args)
     try:
         with open(log_path, "a", encoding="utf-8") as log_handle:
             process = subprocess.Popen(
@@ -956,7 +1098,18 @@ def _start_background_graduation_job(
             )
     except Exception as exc:
         return False, f"Échec du lancement: {exc}"
-    return True, f"Run lancé en arrière-plan (PID {process.pid}). Log: {log_path}"
+    return True, f"Run lancé en arrière-plan (PID {process.pid}). Commande: `{cli_command}`. Log: {log_path}"
+
+
+def _launch_full_graduation_from_ui(*, sync_catalog: bool) -> tuple[bool, str]:
+    args = ["--full"]
+    if sync_catalog:
+        args.append("--sync-catalog")
+    return _start_background_graduation_job(
+        args=args,
+        log_filename=FULL_GRADUATION_LOG_FILENAME,
+        progress_filename=FULL_GRADUATION_PROGRESS_FILENAME,
+    )
 
 
 def _render_candidate_report_section(
@@ -986,8 +1139,32 @@ def _render_candidate_report_section(
     metric_cols[6].metric("P6 promues", survivor_counts.get("P6", 0))
     metric_cols[7].metric("Sync", int(stats.get("catalog_synced", 0)))
     st.caption(f"Source: {payload.get('_report_path', '')}")
+    cli_command = _payload_cli_equivalent(payload)
+    if cli_command:
+        st.caption(f"Commande CLI équivalente: `{cli_command}`")
     st.caption(_format_phase_counts("Survivants", survivor_counts))
     st.caption(_format_phase_counts("Phase finale des candidats", phase_distribution))
+    if not _report_has_source_validation_fields(df):
+        st.warning(
+            "Ce rapport ne contient pas les champs de validation marché source ajoutés récemment. "
+            "Relancez la graduation complète pour recalculer P4/P5 avec le mode source-first.",
+        )
+    phase_contract = _payload_phase_contract(payload)
+    config_snapshot = _payload_config_snapshot(payload)
+    if phase_contract or config_snapshot:
+        with st.expander("Contrat P1→P6 et paramètres CLI", expanded=False):
+            if phase_contract:
+                contract_rows = [
+                    {
+                        "phase": phase,
+                        "nom": data.get("name", "") if isinstance(data, dict) else "",
+                        "rôle": data.get("purpose", "") if isinstance(data, dict) else "",
+                    }
+                    for phase, data in phase_contract.items()
+                ]
+                st.dataframe(pd.DataFrame(contract_rows), width="stretch", hide_index=True)
+            if config_snapshot:
+                st.json(config_snapshot)
 
     if df.empty:
         st.write("ℹ️ Le rapport est présent mais ne contient aucun candidat.")
@@ -1050,10 +1227,23 @@ def _render_candidate_report_section(
         "tested_tokens",
         "timeframes_tested",
         "sweep_robustness_pct",
+        "sensitivity_scope",
+        "sensitivity_symbol",
+        "sensitivity_timeframe",
+        "sensitivity_history_bars",
         "wfa_stability",
         "wfa_avg_test_return_pct",
         "wfa_avg_test_sharpe",
+        "wfa_classic_overfitting_ratio",
+        "wfa_robust_overfitting_score",
         "wfa_overfitting_ratio",
+        "wfa_valid_folds",
+        "wfa_positive_folds_pct",
+        "wfa_confidence_tier",
+        "wfa_scope",
+        "wfa_symbol",
+        "wfa_timeframe",
+        "wfa_history_bars",
         "rejection_reason",
         "catalog_category",
         "catalog_entry_id",
@@ -1386,10 +1576,10 @@ def _extract_catalog_postfilter_fields(entry: dict[str, Any]) -> dict[str, Any]:
         "positive_pipeline_tested_timeframes",
     )
 
-    configured_context_list = _as_listish(configured_contexts)
-    loaded_context_list = _as_listish(loaded_contexts)
-    missing_context_list = _as_listish(missing_contexts)
-    tested_timeframe_list = sorted(_as_listish(tested_timeframes))
+    configured_context_list = as_listish(configured_contexts)
+    loaded_context_list = as_listish(loaded_contexts)
+    missing_context_list = as_listish(missing_contexts)
+    tested_timeframe_list = sorted(as_listish(tested_timeframes))
 
     tested_benchmark_names: list[str] = []
     tested_tokens: list[str] = []
@@ -1417,7 +1607,7 @@ def _extract_catalog_postfilter_fields(entry: dict[str, Any]) -> dict[str, Any]:
     if isinstance(benchmark_consensus, dict):
         required_benchmark_name = str(benchmark_consensus.get("required_benchmark_name") or "").strip()
         required_benchmark_passed = bool(benchmark_consensus.get("required_passed", False))
-        passed_benchmark_names = sorted(_as_listish(benchmark_consensus.get("benchmarks_passed", [])))
+        passed_benchmark_names = sorted(as_listish(benchmark_consensus.get("benchmarks_passed", [])))
         benchmarks_total = int(benchmark_consensus.get("benchmarks_total") or 0)
         benchmark_pass_summary = f"{len(passed_benchmark_names)}/{benchmarks_total}" if benchmarks_total > 0 else ""
         if bool(benchmark_consensus.get("consensus_passed")):
@@ -1698,19 +1888,6 @@ def _build_catalog_replay_request(
     return request, f"Replay prêt ({action_label}) depuis {source_ref}."
 
 
-def _sort_by_metrics(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
-    sort_cols = []
-    if "total_pnl" in df.columns:
-        sort_cols.append("total_pnl")
-    if "sharpe_ratio" in df.columns:
-        sort_cols.append("sharpe_ratio")
-    if sort_cols:
-        df = df.sort_values(sort_cols, ascending=[False] * len(sort_cols), na_position="last")
-    return df
-
-
 def _pick_latest_from_catalogs(
     backtest_overview: pd.DataFrame,
     runs_overview: pd.DataFrame,
@@ -1899,35 +2076,6 @@ def _render_latest_run(
                 )
 
 
-def _render_overview_filters(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
-    types = sorted([t for t in df.get("type", pd.Series()).dropna().unique().tolist() if t])
-    strategies = sorted([s for s in df.get("strategy", pd.Series()).dropna().unique().tolist() if s])
-    symbols = sorted([s for s in df.get("symbol", pd.Series()).dropna().unique().tolist() if s])
-    timeframes = sorted([t for t in df.get("timeframe", pd.Series()).dropna().unique().tolist() if t])
-
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        selected_types = st.multiselect("Type", options=types, default=types)
-    with col2:
-        selected_strategies = st.multiselect("Stratégie", options=strategies, default=strategies)
-    with col3:
-        selected_symbols = st.multiselect("Symbole", options=symbols, default=symbols)
-    with col4:
-        selected_timeframes = st.multiselect("Timeframe", options=timeframes, default=timeframes)
-
-    if selected_types:
-        df = df[df["type"].isin(selected_types)]
-    if selected_strategies:
-        df = df[df["strategy"].isin(selected_strategies)]
-    if selected_symbols:
-        df = df[df["symbol"].isin(selected_symbols)]
-    if selected_timeframes:
-        df = df[df["timeframe"].isin(selected_timeframes)]
-    return df
-
-
 def _render_charts(df: pd.DataFrame) -> None:
     if df.empty:
         return
@@ -2048,6 +2196,10 @@ _RESULTS_HUB_TEXT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("artifact_type", "Artefact", "small"), ("category", "Catégorie", "small"),
     ("catalog_category", "Catégorie cat.", "small"), ("catalog_status", "Statut cat.", "small"),
     ("phase", "Phase", "small"), ("decision", "Décision", "small"),
+    ("sensitivity_scope", "Scope P4", "small"), ("sensitivity_symbol", "Symbole P4", "small"),
+    ("sensitivity_timeframe", "TF P4", "small"),
+    ("wfa_scope", "Scope WFA", "small"), ("wfa_symbol", "Symbole WFA", "small"),
+    ("wfa_timeframe", "TF WFA", "small"),
     ("benchmark_pass_summary", "Benchmarks", "small"), ("context_pass_summary", "Contextes", "small"),
     ("required_benchmark_name", "Benchmark requis", "medium"), ("contradiction_state", "Consensus", "small"),
     ("rejection_reason", "Rejet / diagnostic", "large"), ("params_used_preview", "Params", "large"),
@@ -2065,7 +2217,7 @@ _RESULTS_HUB_NUMBER_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("alpha_simple_pct", "Alpha simple (%)"), ("metrics_total_return_pct", "Return (%)"),
         ("metrics_benchmark_return_pct", "Buy & Hold (%)"), ("metrics_alpha_simple_pct", "Alpha simple (%)"),
         ("best_return_pct", "Best return (%)"), ("wfa_avg_test_return_pct", "WFA return test (%)"),
-        ("return_pct", "Return (%)"),
+        ("wfa_positive_folds_pct", "WFA folds + (%)"), ("return_pct", "Return (%)"),
     ),
     "%.1f%%": (
         ("max_drawdown_pct", "Max DD (%)"), ("win_rate_pct", "Win Rate (%)"),
@@ -2078,7 +2230,10 @@ _RESULTS_HUB_NUMBER_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("sharpe_ratio", "Sharpe"), ("profit_factor", "PF"), ("metrics_sharpe_ratio", "Sharpe"),
         ("metrics_profit_factor", "PF"), ("best_sharpe", "Best Sharpe"),
         ("best_profit_factor", "Best PF"), ("wfa_stability", "WFA stabilité"),
-        ("wfa_avg_test_sharpe", "WFA Sharpe test"), ("wfa_overfitting_ratio", "WFA overfit"),
+        ("wfa_avg_test_sharpe", "WFA Sharpe test"),
+        ("wfa_classic_overfitting_ratio", "WFA ratio classique"),
+        ("wfa_robust_overfitting_score", "WFA score robuste"),
+        ("wfa_overfitting_ratio", "WFA score legacy"),
         ("sharpe", "Sharpe"),
     ),
     "%d": (
@@ -2090,6 +2245,9 @@ _RESULTS_HUB_NUMBER_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("total_llm_calls", "Appels LLM"), ("metrics_total_trades", "Trades"), ("best_trades", "Best trades"),
         ("trades", "Trades"), ("configured_context_count", "Ctx uniques cfg"),
         ("loaded_context_count", "Ctx uniques chargés"), ("missing_context_count", "Ctx exclus/manquants"),
+        ("sensitivity_history_bars", "Barres P4"), ("sensitivity_min_history_bars", "Min P4"),
+        ("wfa_valid_folds", "Folds WFA"), ("wfa_history_bars", "Barres WFA"),
+        ("wfa_min_history_bars", "Min WFA"),
     ),
     "%.4f": (("best_value", "Meilleure val."),),
     "%.1f": (("total_time_sec", "Durée (s)"),),
@@ -2163,10 +2321,23 @@ _RESULTS_HUB_TABLE_COLUMNS = [
     "loaded_context_count",
     "missing_context_count",
     "sweep_robustness_pct",
+    "sensitivity_scope",
+    "sensitivity_symbol",
+    "sensitivity_timeframe",
+    "sensitivity_history_bars",
     "wfa_stability",
     "wfa_avg_test_return_pct",
     "wfa_avg_test_sharpe",
+    "wfa_classic_overfitting_ratio",
+    "wfa_robust_overfitting_score",
     "wfa_overfitting_ratio",
+    "wfa_valid_folds",
+    "wfa_positive_folds_pct",
+    "wfa_confidence_tier",
+    "wfa_scope",
+    "wfa_symbol",
+    "wfa_timeframe",
+    "wfa_history_bars",
     "rejection_reason",
     "source_ref",
     "source_run_id",
@@ -2350,6 +2521,8 @@ def _build_results_hub_table_df(
         "wfa_stability",
         "wfa_avg_test_return_pct",
         "wfa_avg_test_sharpe",
+        "wfa_classic_overfitting_ratio",
+        "wfa_robust_overfitting_score",
         "wfa_overfitting_ratio",
     ]
     table_df = _coerce_numeric(table_df, numeric_columns)
@@ -2675,9 +2848,9 @@ def _render_graduation_controls_and_progress(
 ) -> None:
     st.markdown("### Filtrage intelligent des résultats")
 
-    main_col_a, main_col_b, main_col_c = st.columns([1.2, 2, 2])
+    main_col_a, main_col_b, main_col_c, main_col_d = st.columns([1.2, 1.8, 1.8, 1.6])
     if main_col_a.button(
-        "🔄 Tout rafraîchir",
+        "🔄 Rafraîchir affichage",
         key="graduation_refresh",
         type="primary",
         use_container_width=True,
@@ -2689,7 +2862,20 @@ def _render_graduation_controls_and_progress(
         value=True,
         key="graduation_sync_catalog",
     )
-    include_legacy_artifact_roots = main_col_c.checkbox(
+    if main_col_c.button(
+        "▶️ Relancer P1→P6",
+        key="graduation_run_full",
+        use_container_width=True,
+        help=(
+            "Relance réellement la graduation complète via `python -m catalog.graduation --full`. "
+            "Nécessaire après changement des règles P4/P5."
+        ),
+    ):
+        ok, message = _launch_full_graduation_from_ui(sync_catalog=sync_catalog)
+        st.session_state["graduation_status_msg"] = message
+        st.session_state["graduation_status_error"] = not ok
+        st.rerun()
+    include_legacy_artifact_roots = main_col_d.checkbox(
         "Inclure roots legacy",
         value=False,
         key="graduation_include_legacy_roots",
@@ -2701,7 +2887,7 @@ def _render_graduation_controls_and_progress(
             "Ordre logique : (1) Inventaire ou (3) Ingestion en amont, "
             "puis (2) Graduation sandbox ou (4) Graduation des artefacts ingérés.",
         )
-        adv_col_a, adv_col_b, adv_col_c, adv_col_d = st.columns(4)
+        adv_col_a, adv_col_b, adv_col_c = st.columns(3)
         if adv_col_a.button(
             "Inventaire sandbox",
             key="graduation_run_p1",
@@ -2732,23 +2918,6 @@ def _render_graduation_controls_and_progress(
             st.session_state["graduation_status_error"] = False
             st.rerun()
         if adv_col_b.button(
-            "Grader le sandbox (P1→P6)",
-            key="graduation_run_full",
-            use_container_width=True,
-            help="Pipeline complet de graduation sur le sandbox local. Job en arrière-plan.",
-        ):
-            args = ["--full"]
-            if sync_catalog:
-                args.append("--sync-catalog")
-            ok, message = _start_background_graduation_job(
-                args=args,
-                log_filename=FULL_GRADUATION_LOG_FILENAME,
-                progress_filename=FULL_GRADUATION_PROGRESS_FILENAME,
-            )
-            st.session_state["graduation_status_msg"] = message
-            st.session_state["graduation_status_error"] = not ok
-            st.rerun()
-        if adv_col_c.button(
             "Ingérer artefacts positifs",
             key="graduation_import_positive_artifacts",
             use_container_width=True,
@@ -2773,7 +2942,7 @@ def _render_graduation_controls_and_progress(
             )
             st.session_state["graduation_status_error"] = False
             st.rerun()
-        if adv_col_d.button(
+        if adv_col_c.button(
             "Grader artefacts ingérés (P2→P5)",
             key="graduation_run_positive_imports",
             use_container_width=True,

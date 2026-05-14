@@ -333,6 +333,27 @@ def get_strategy_requirements(strategy_type: str) -> dict[str, Any]:
     return requirements.get(normalized_type, default_reqs)
 
 
+def is_strategy_timeframe_compatible(strategy_type: str, timeframe: str) -> bool:
+    """Retourne False uniquement pour les incompatibilités style/TF dures.
+
+    Les timeframes de `strategy_requirements` restent généralement des
+    recommandations. Le scalping fait exception: l'exécuter sur 1d/1w produit
+    un objectif contradictoire et des métriques peu interprétables.
+    """
+    normalized_type = infer_strategy_type(strategy_type=strategy_type)
+    normalized_timeframe = str(timeframe or "").strip()
+    if not normalized_timeframe or "{" in normalized_timeframe or "}" in normalized_timeframe:
+        return True
+    if normalized_type != "scalping":
+        return True
+    allowed_timeframes = {
+        str(tf or "").strip()
+        for tf in get_strategy_requirements(normalized_type).get("timeframes", [])
+        if str(tf or "").strip()
+    }
+    return not allowed_timeframes or normalized_timeframe in allowed_timeframes
+
+
 def infer_strategy_type(
     *,
     strategy_type: str = "",
@@ -644,6 +665,7 @@ def evaluate_market_dataset(
         "min_median_volume_canonical": min_median_volume,
         "volatility_preferred": list(requirements.get("volatility_preferred", ["medium"])),
         "liquidity_min": str(requirements.get("liquidity_min", "medium") or "medium"),
+        "strategy_allowed_timeframes": list(requirements.get("timeframes", []) or []),
         "volatility_window_bars": volatility_window_bars,
     }
 
@@ -704,6 +726,12 @@ def evaluate_market_dataset(
 
     exclusion_reasons: list[str] = result["exclusion_reasons"]
     warnings: list[str] = result["warnings"]
+
+    if not is_strategy_timeframe_compatible(normalized_strategy, normalized_timeframe):
+        allowed = ", ".join(str(tf) for tf in requirements.get("timeframes", []) or []) or "timeframes courts"
+        exclusion_reasons.append(
+            f"strategy/timeframe incompatible ({normalized_strategy} requires {allowed}, got {normalized_timeframe})",
+        )
 
     if n_bars < min_segment_bars_floor:
         exclusion_reasons.append(

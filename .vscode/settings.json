@@ -438,5 +438,9 @@
       "envManager": "ms-python.python:venv",
       "packageManager": "ms-python.python:pip"
     }
-  ]
+  ],
+  "chat.editing.explainChanges.enabled": true,
+  "C_Cpp.inlayHints.autoDeclarationTypes.enabled": true,
+  "github.copilot.chat.languageContext.fix.typescript.enabled": true,
+  "github.copilot.chat.languageContext.inline.typescript.enabled": true
 }

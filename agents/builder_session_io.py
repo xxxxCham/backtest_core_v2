@@ -16,6 +16,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,7 @@ from utils.observability import get_obs_logger
 logger = get_obs_logger(__name__)
 
 SANDBOX_ROOT = get_builder_sessions_dir()
+_CODE_PROVENANCE_CACHE: dict[str, Any] | None = None
 
 MAX_SESSION_AUTO_RESETS = int(os.getenv("BACKTEST_BUILDER_MAX_SESSION_RESETS", "2"))
 BUILDER_MEMORY_MAX_SCAN = int(os.getenv("BACKTEST_BUILDER_MEMORY_MAX_SCAN", "250"))
@@ -130,12 +132,43 @@ def _git_output(*args: str) -> str:
     return completed.stdout.strip()
 
 
-def _collect_code_provenance() -> dict[str, Any]:
+def _write_text_atomic(path: Path, content: str, *, encoding: str = "utf-8") -> None:
+    """Écrit un fichier texte via un fichier temporaire puis remplace la cible atomiquement."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding=encoding,
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+            temp_path = Path(handle.name)
+        temp_path.replace(path)
+    except Exception:
+        if temp_path is not None:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+
+
+def _collect_code_provenance(*, refresh: bool = False) -> dict[str, Any]:
+    global _CODE_PROVENANCE_CACHE
+    if _CODE_PROVENANCE_CACHE is not None and not refresh:
+        return dict(_CODE_PROVENANCE_CACHE)
+
     commit = _git_output("rev-parse", "HEAD")
     branch = _git_output("rev-parse", "--abbrev-ref", "HEAD")
     dirty_status = _git_output("status", "--porcelain", "--untracked-files=no")
     commit_time = _git_output("show", "-s", "--format=%cI", "HEAD") if commit else ""
-    return {
+    _CODE_PROVENANCE_CACHE = {
         "schema": "builder_code_provenance_v1",
         "available": bool(commit),
         "git_commit": commit,
@@ -144,6 +177,7 @@ def _collect_code_provenance() -> dict[str, Any]:
         "git_dirty": bool(dirty_status),
         "captured_at": datetime.now().isoformat(),
     }
+    return dict(_CODE_PROVENANCE_CACHE)
 
 
 def _truncate_runtime_traceback_tail(
@@ -914,6 +948,14 @@ def save_session_summary(session: BuilderSession) -> None:
         "session_id": session.session_id,
         "objective": session.objective,
         "model_name": session.model_name,
+        "resume_parent_session_id": session.resume_parent_session_id,
+        "resume_mode": session.resume_mode,
+        "resume_from_iteration": session.resume_from_iteration,
+        "resume_extra_iterations": session.resume_extra_iterations,
+        "resume_original_status": session.resume_original_status,
+        "resume_source_summary_path": session.resume_source_summary_path,
+        "resume_original_model_name": session.resume_original_model_name,
+        "resume_requested_model_name": session.resume_requested_model_name,
         "code_provenance": code_provenance,
         "git_commit": code_provenance.get("git_commit", ""),
         "git_branch": code_provenance.get("git_branch", ""),
@@ -923,6 +965,7 @@ def save_session_summary(session: BuilderSession) -> None:
         "best_sharpe": session.best_sharpe,
         "best_telemetry_score": session.best_score,
         "best_score": session.best_score,
+        "target_sharpe": session.target_sharpe,
         "symbol": session.symbol,
         "timeframe": session.timeframe,
         "n_bars": session.n_bars,
@@ -949,11 +992,6 @@ def save_session_summary(session: BuilderSession) -> None:
         "ablation_config": session.ablation_config,
         "pipeline_traces_path": session.pipeline_traces_path,
         "restriction_events": session.restriction_events,
-        "multi_llm_profile": (session.multi_llm_profile if session.orchestration_mode == "multi_llm" else ""),
-        "multi_llm_role_overrides": (
-            session.multi_llm_role_overrides if session.orchestration_mode == "multi_llm" else {}
-        ),
-        "multi_llm_assignments": (session.multi_llm_assignments if session.orchestration_mode == "multi_llm" else []),
         "last_runtime_error": last_runtime_feedback.get("last_runtime_error"),
         "last_runtime_error_iteration": last_runtime_feedback.get("last_runtime_error_iteration"),
         "last_runtime_traceback_tail": last_runtime_feedback.get("last_runtime_traceback_tail"),
@@ -963,7 +1001,8 @@ def save_session_summary(session: BuilderSession) -> None:
     }
 
     summary_path = session.session_dir / "session_summary.json"
-    summary_path.write_text(
+    _write_text_atomic(
+        summary_path,
         json.dumps(summary, indent=2, default=str),
         encoding="utf-8",
     )
@@ -1044,6 +1083,7 @@ def attempt_session_auto_reset(
     last_iteration: BuilderIteration | None,
     consecutive_failures: int,
     fallback_count: int,
+    save_callback: Any | None = None,
 ) -> tuple[bool, BuilderIteration | None, int, int, dict[str, Any]]:
     """Réinitialise proprement la session autour du meilleur ancrage disponible."""
     if session.auto_reset_count >= MAX_SESSION_AUTO_RESETS:
@@ -1085,5 +1125,8 @@ def attempt_session_auto_reset(
         anchor_source,
         anchor.iteration if anchor else None,
     )
-    safe_save_session_summary(session)
+    if callable(save_callback):
+        save_callback(session)
+    else:
+        safe_save_session_summary(session)
     return True, anchor, 0, 0, event

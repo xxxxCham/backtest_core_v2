@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import random
 import re
+import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -19,11 +20,17 @@ from agents.builder_objective_parser import (
     sanitize_objective_text,
 )
 from agents.builder_text_utils import _normalize_llm_text
+from agents.indicator_context import (
+    build_compact_indicator_catalog,
+    build_model_demand_indicator_notes,
+    shuffle_indicator_presentation_order,
+)
 from agents.llm_client import LLMMessage
 from agents.strategy_builder import _build_deterministic_fallback_code
 from config.market_selection import (
     get_strategy_requirements,
     infer_strategy_type,
+    is_strategy_timeframe_compatible,
     rank_tokens_for_strategy,
 )
 from indicators.registry import list_indicators
@@ -39,7 +46,19 @@ logger = get_obs_logger(__name__)
 _INDICATOR_FAMILIES: dict[str, dict[str, Any]] = {
     "trend-following": {
         "label": "Trend-following",
-        "primary": ["ema", "sma", "macd", "supertrend", "adx", "ichimoku", "vortex", "aroon"],
+        "primary": [
+            "ema",
+            "sma",
+            "macd",
+            "supertrend",
+            "adx",
+            "psar",
+            "ichimoku",
+            "vortex",
+            "aroon",
+            "directional_bias",
+            "markov_switching",
+        ],
         "entry_templates": [
             "Entrée long quand {ind1} confirme une tendance haussière et {ind2} valide le momentum.",
             "Entrée sur croisement haussier de {ind1} avec filtre de tendance {ind2}.",
@@ -52,7 +71,20 @@ _INDICATOR_FAMILIES: dict[str, dict[str, Any]] = {
     },
     "mean-reversion": {
         "label": "Mean-reversion",
-        "primary": ["bollinger", "rsi", "stochastic", "cci", "williams_r", "stoch_rsi", "keltner", "mfi", "obv"],
+        "primary": [
+            "bollinger",
+            "rsi",
+            "stochastic",
+            "cci",
+            "williams_r",
+            "stoch_rsi",
+            "keltner",
+            "mfi",
+            "obv",
+            "fvg",
+            "swing",
+            "pivot_points",
+        ],
         "entry_templates": [
             "Entrée quand le prix touche la bande extrême de {ind1} avec {ind2} en zone de survente/surachat.",
             "Achat en survente ({ind1} < seuil) avec confirmation {ind2}, vente en surachat.",
@@ -65,7 +97,19 @@ _INDICATOR_FAMILIES: dict[str, dict[str, Any]] = {
     },
     "momentum": {
         "label": "Momentum",
-        "primary": ["rsi", "macd", "momentum", "roc", "stochastic", "mfi"],
+        "primary": [
+            "rsi",
+            "macd",
+            "momentum",
+            "roc",
+            "stochastic",
+            "mfi",
+            "coppock_curve",
+            "tsi",
+            "trix",
+            "force_index",
+            "kst",
+        ],
         "entry_templates": [
             "Entrée quand {ind1} dépasse son seuil de momentum avec confirmation {ind2}.",
             "Position quand le momentum ({ind1}) accélère et {ind2} est aligné.",
@@ -78,7 +122,23 @@ _INDICATOR_FAMILIES: dict[str, dict[str, Any]] = {
     },
     "breakout": {
         "label": "Breakout",
-        "primary": ["bollinger", "donchian", "keltner", "atr", "supertrend", "adx", "pivot_points", "psar", "ichimoku"],
+        "primary": [
+            "bollinger",
+            "donchian",
+            "keltner",
+            "atr",
+            "supertrend",
+            "adx",
+            "choppiness_index",
+            "pivot_points",
+            "psar",
+            "ichimoku",
+            "amplitude_hunter",
+            "fvg",
+            "swing",
+            "directional_bias",
+            "volume_oscillator",
+        ],
         "entry_templates": [
             "Entrée sur cassure de la bande supérieure/inférieure de {ind1} avec volume confirmé.",
             "Position quand le prix sort du range {ind1} avec {ind2} montrant une expansion de volatilité.",
@@ -91,7 +151,7 @@ _INDICATOR_FAMILIES: dict[str, dict[str, Any]] = {
     },
     "scalping": {
         "label": "Scalping",
-        "primary": ["ema", "macd", "rsi", "stochastic", "vwap", "bollinger"],
+        "primary": ["ema", "macd", "rsi", "stochastic", "stoch_rsi", "vwap", "bollinger"],
         "entry_templates": [
             "Entrée rapide sur signal {ind1} avec confirmation {ind2} sur timeframe court.",
             "Scalp quand {ind1} croise en zone extrême avec {ind2} aligné.",
@@ -104,7 +164,26 @@ _INDICATOR_FAMILIES: dict[str, dict[str, Any]] = {
     },
     "multi-factor": {
         "label": "Multi-factor",
-        "primary": ["ema", "rsi", "macd", "bollinger", "adx", "supertrend", "stochastic", "obv"],
+        "primary": [
+            "ema",
+            "rsi",
+            "macd",
+            "bollinger",
+            "adx",
+            "supertrend",
+            "stochastic",
+            "obv",
+            "vwap",
+            "cmf",
+            "directional_bias",
+            "amplitude_hunter",
+            "markov_switching",
+            "coppock_curve",
+            "fvg",
+            "trix",
+            "vix",
+            "choppiness_index",
+        ],
         "entry_templates": [
             "Entrée quand au moins 3 facteurs sont alignés : tendance ({ind1}), momentum ({ind2}), volatilité ({ind3}).",
             "Signal composite : {ind1} + {ind2} + {ind3} doivent tous confirmer la direction.",
@@ -116,7 +195,26 @@ _INDICATOR_FAMILIES: dict[str, dict[str, Any]] = {
     },
     "regime-adaptive": {
         "label": "Regime-adaptatif",
-        "primary": ["adx", "atr", "bollinger", "keltner", "supertrend", "rsi", "vwap", "obv", "ema"],
+        "primary": [
+            "markov_switching",
+            "directional_bias",
+            "adx",
+            "atr",
+            "bollinger",
+            "keltner",
+            "supertrend",
+            "rsi",
+            "vwap",
+            "obv",
+            "ema",
+            "amplitude_hunter",
+            "standard_deviation",
+            "vix",
+            "choppiness_index",
+            "fvg",
+            "swing",
+            "volume_oscillator",
+        ],
         "entry_templates": [
             "Entrée en mode tendance si {ind1} signale un regime fort, sinon bascule en mode reversion avec {ind2}.",
             "Signal adaptatif : si volatilite elevee ({ind1}), suivre la cassure ; sinon trader le retour a la moyenne via {ind2}.",
@@ -143,6 +241,166 @@ _MAX_RECENT_INDICATORS = 8  # Évite de réutiliser les 8 derniers indicateurs p
 _RECENT_FAMILIES: list[str] = []
 _MAX_RECENT_FAMILIES = 3  # Évite de réutiliser les 3 dernières familles
 
+# Pool d'axes de différenciation — pioche aléatoire dans `_build_objective_prompt_focus`
+# pour casser le biais structurel "trend/breakout" ressenti sur 1d/4h.
+_OBJECTIVE_FOCUS_AXES_POOL: list[str] = [
+    "continuite de tendance avec stop trailing adaptatif",
+    "breakout filtre par expansion ATR ou volume anormal",
+    "retour a la moyenne sur extremes statistiques (Bollinger, Keltner)",
+    "momentum confirme avec divergence prix/oscillateur",
+    "regime adaptatif tendance vs range detecte par volatilite",
+    "structure de marche (pivots, swings, niveaux Fibonacci) comme support de decision",
+    "pression d'achat/vente lue via OBV, MFI ou volume oscillator",
+    "trading de canal (range) entre supports et resistances stables",
+    "filtre anti faux signaux simple et lisible",
+    "logique multi-facteurs avec vote majoritaire d'indicateurs",
+    "exit asymetrique avec take-profit en multiple ATR > stop",
+    "biais directionnel issu d'un indicateur de tendance long terme",
+    "entree contrariante sur extreme statistique avec confirmation",
+]
+
+# Pool de comportements / cadrage — sample aleatoire idem.
+_OBJECTIVE_BEHAVIORS_POOL: list[str] = [
+    "preferer une seule logique principale avec un seul filtre de confirmation",
+    "varier la famille d'indicateurs par rapport aux dernieres sessions",
+    "explorer une logique non-classique (range, regime, divergence) si l'univers s'y prete",
+    "privilegier robustesse et lisibilite avant originalite",
+    "envisager un exit asymetrique (TP > SL en multiple ATR)",
+    "eviter les approches multi-timeframe floues",
+    "preferer un ensemble compact d'indicateurs (2 a 4 max)",
+    "donner la priorite a une hypothese testable et falsifiable",
+    "eviter d'empiler des pseudo-filtres exotiques",
+]
+
+# Contraintes dures par TF — restent stables, ne sont PAS randomisees.
+_OBJECTIVE_TF_CONSTRAINTS_SHORT: tuple[str, ...] = (
+    "filtre de liquidite ou de volume simple et explicitement codable",
+    "gestion du risque ATR courte et non ambigue",
+    "privilegier 2 a 3 indicateurs maximum",
+)
+_OBJECTIVE_TF_CONSTRAINTS_LONG: tuple[str, ...] = (
+    "horizon swing ou tendance multi-bars coherent avec le timeframe",
+    "eviter les filtres microstructure ou horaires",
+)
+
+
+def _family_is_compatible_with_timeframe(family_key: str, timeframe: str) -> bool:
+    if "{" in str(timeframe or "") or "}" in str(timeframe or ""):
+        return True
+    strategy_type = "scalping" if family_key == "scalping" else ""
+    return is_strategy_timeframe_compatible(strategy_type, timeframe) if strategy_type else True
+
+
+def _build_objective_prompt_focus(
+    timeframes: list[str],
+    *,
+    recent_families: list[str] | None = None,
+) -> tuple[list[str], list[str]]:
+    """Construit (axes, behaviors) en piochant aleatoirement dans des pools.
+
+    Garde une contrainte TF dure (intraday / swing) mais randomise les axes
+    pour casser le biais structurel vers trend/breakout.
+
+    `recent_families` (familles d'indicateurs vues recemment) sert a sous-ponderer
+    les axes correspondants, sans les exclure totalement.
+    """
+    normalized_timeframes = {
+        str(timeframe or "").strip().lower()
+        for timeframe in (timeframes or [])
+        if str(timeframe or "").strip()
+    }
+    short_timeframes = {"1m", "3m", "5m"}
+    long_timeframes = {"1d", "1w"}
+
+    if normalized_timeframes and normalized_timeframes.issubset(short_timeframes):
+        tf_axes: list[str] = list(_OBJECTIVE_TF_CONSTRAINTS_SHORT)
+        tf_behaviors: list[str] = []
+        n_axes_extra = 1
+        n_behaviors = 2
+    elif normalized_timeframes & long_timeframes:
+        tf_axes = list(_OBJECTIVE_TF_CONSTRAINTS_LONG)
+        tf_behaviors = []
+        n_axes_extra = 2
+        n_behaviors = 2
+    else:
+        tf_axes = []
+        tf_behaviors = []
+        n_axes_extra = 3
+        n_behaviors = 2
+
+    # Mapping famille -> mots-cles d'axes a sous-ponderer (best-effort).
+    family_axis_keywords: dict[str, tuple[str, ...]] = {
+        "trend-following": ("tendance", "trailing"),
+        "breakout": ("breakout", "expansion"),
+        "mean-reversion": ("retour a la moyenne", "extremes"),
+        "momentum": ("momentum",),
+        "scalping": ("liquidite",),
+        "multi-factor": ("multi-facteurs",),
+        "regime-adaptive": ("regime adaptatif",),
+    }
+    recent_set = {str(fam or "").strip().lower() for fam in (recent_families or []) if str(fam or "").strip()}
+    discouraged_keywords: set[str] = set()
+    for fam in recent_set:
+        for kw in family_axis_keywords.get(fam, ()):  # type: ignore[arg-type]
+            discouraged_keywords.add(kw)
+
+    pool = list(_OBJECTIVE_FOCUS_AXES_POOL)
+    primary, secondary = [], []
+    for axis in pool:
+        axis_lower = axis.lower()
+        if any(kw in axis_lower for kw in discouraged_keywords):
+            secondary.append(axis)
+        else:
+            primary.append(axis)
+    random.shuffle(primary)
+    random.shuffle(secondary)
+    ordered_pool = primary + secondary
+
+    extra_axes = ordered_pool[: max(0, n_axes_extra)]
+    sampled_behaviors = random.sample(
+        _OBJECTIVE_BEHAVIORS_POOL,
+        k=min(n_behaviors, len(_OBJECTIVE_BEHAVIORS_POOL)),
+    )
+
+    selected_axes = tf_axes + extra_axes
+    selected_behaviors = tf_behaviors + sampled_behaviors
+    return selected_axes, selected_behaviors
+
+
+def _pick_objective_style_hint(
+    timeframes: list[str],
+    recent_families: list[str] | None = None,
+) -> tuple[str, str]:
+    """Choisit un (family_key, label) compatible avec le TF, en evitant les recents.
+
+    Combine `_RECENT_FAMILIES` (cache process) et `recent_families` (historique
+    inter-sessions) pour eviter de re-suggerer 3 fois de suite la meme famille.
+    """
+    tf_text = ""
+    if timeframes:
+        for candidate in timeframes:
+            tf_candidate = str(candidate or "").strip()
+            if tf_candidate:
+                tf_text = tf_candidate
+                break
+
+    compatible = [
+        family_key
+        for family_key in _INDICATOR_FAMILIES
+        if _family_is_compatible_with_timeframe(family_key, tf_text)
+    ] or list(_INDICATOR_FAMILIES.keys())
+
+    avoid: set[str] = set(_RECENT_FAMILIES)
+    avoid.update(str(fam or "").strip().lower() for fam in (recent_families or []) if str(fam or "").strip())
+
+    fresh = [family_key for family_key in compatible if family_key not in avoid]
+    if not fresh:
+        fresh = compatible
+
+    chosen = random.choice(fresh)
+    label = str(_INDICATOR_FAMILIES[chosen].get("label") or chosen)
+    return chosen, label
+
 
 def generate_random_objective(
     symbol: str | list[str] = "BTCUSDC",
@@ -161,8 +419,6 @@ def generate_random_objective(
         Objectif structuré en français prêt à être passé au StrategyBuilder.
 
     """
-    global _RECENT_INDICATORS, _RECENT_FAMILIES
-
     # Normaliser listes → valeur unique (choix aléatoire)
     if isinstance(symbol, list):
         symbol = random.choice(symbol) if symbol else "BTCUSDC"
@@ -175,7 +431,11 @@ def generate_random_objective(
     avail_lower = {ind.lower() for ind in available_indicators}
 
     # 🎯 Choisir une famille en évitant les récentes
-    all_families = list(_INDICATOR_FAMILIES.keys())
+    all_families = [
+        family_key
+        for family_key in _INDICATOR_FAMILIES
+        if _family_is_compatible_with_timeframe(family_key, str(timeframe or ""))
+    ] or list(_INDICATOR_FAMILIES.keys())
     fresh_families = [f for f in all_families if f not in _RECENT_FAMILIES]
 
     # Si toutes les familles ont été utilisées récemment, réinitialiser
@@ -270,10 +530,6 @@ def _sanitize_objective_indicators_section(
         return text
     allowed_set = set(allowed)
 
-    preferred_fallback = [
-        name for name in ("ema", "rsi", "bollinger", "macd", "stochastic", "adx", "atr") if name in allowed_set
-    ]
-
     match = re.search(
         r"(Indicateurs?\s*:\s*)(.+?)(\.\s|\n|$)",
         text,
@@ -299,11 +555,14 @@ def _sanitize_objective_indicators_section(
                 selected.append(normalized)
 
     if not selected:
-        for candidate in preferred_fallback:
-            if candidate not in selected:
-                selected.append(candidate)
-            if len(selected) >= 3:
-                break
+        # Fallback: tirage aleatoire dans les indicateurs disponibles plutot
+        # que de retomber sur le noyau canonique (qui amplifiait le biais).
+        sample_pool = [name for name in allowed if name != "atr"]
+        if sample_pool:
+            random.shuffle(sample_pool)
+            selected = sample_pool[:2]
+        if "atr" in allowed_set and "atr" not in selected:
+            selected.append("atr")
 
     if not selected:
         return text
@@ -336,15 +595,13 @@ def _sanitize_objective_indicator_candidates(
             selected.append(normalized)
 
     if not selected:
-        preferred = [
-            name
-            for name in ("ema", "rsi", "bollinger", "macd", "stochastic", "adx", "atr")
-            if name in allowed_set and name not in selected
-        ]
-        for candidate in preferred:
-            selected.append(candidate)
-            if len(selected) >= 3:
-                break
+        # Fallback: echantillonnage aleatoire au lieu du noyau canonique.
+        sample_pool = [name for name in allowed if name != "atr"]
+        if sample_pool:
+            random.shuffle(sample_pool)
+            selected = sample_pool[:2]
+        if "atr" in allowed_set and "atr" not in selected:
+            selected.append("atr")
 
     return selected[:4]
 
@@ -419,10 +676,11 @@ def _structured_objective_to_text(
     ) and not payload.get("used_indicators"):
         return ""
 
-    objective = _normalize_llm_text(payload.get("objective"), max_len=900)
-    objective = sanitize_objective_text(objective)
-    if objective and not _looks_like_prompt_instruction_leakage(objective):
-        return objective
+    objective = sanitize_objective_text(
+        _normalize_llm_text(payload.get("objective"), max_len=320),
+    )
+    if objective and _looks_like_prompt_instruction_leakage(objective):
+        objective = ""
 
     symbol_value, timeframe_value = _resolve_structured_objective_market(
         payload,
@@ -440,6 +698,25 @@ def _structured_objective_to_text(
         available_indicators,
     )
 
+    if not any([style, entry_logic, exit_logic, risk_management, hypothesis, indicators]) and objective:
+        return objective
+
+    if not hypothesis and objective:
+        lowered_objective = objective.lower()
+        looks_like_full_structured_text = any(
+            marker in lowered_objective
+            for marker in (
+                "indicateurs :",
+                "entrées :",
+                "sorties :",
+                "risk management :",
+                "hypothèse :",
+                "hypothesis:",
+            )
+        )
+        if not looks_like_full_structured_text:
+            hypothesis = objective
+
     parts: list[str] = []
     market_label = f"{symbol_value} {timeframe_value}".strip()
     parts.append(f"[{style}] sur {market_label}.")
@@ -455,6 +732,39 @@ def _structured_objective_to_text(
         parts.append(f"Risk management : {risk_management}.")
 
     return " ".join(part.strip() for part in parts if part.strip()).strip()
+
+
+def align_objective_market_context(objective: str, *, symbol: str, timeframe: str) -> str:
+    """Aligne le texte d'objectif sur le marché effectivement retenu."""
+    text = sanitize_objective_text(objective)
+    target_symbol = str(symbol or "").strip().upper()
+    target_timeframe = str(timeframe or "").strip()
+    if not text or not target_symbol:
+        return text
+
+    text = text.replace("{symbol}", target_symbol).replace("{timeframe}", target_timeframe)
+
+    symbol_pattern = re.compile(r"\b[A-Z0-9]{2,24}(?:USDC|USDT|BUSD|FDUSD)\b")
+
+    def _replace_symbol(match: re.Match[str]) -> str:
+        found = str(match.group(0) or "").upper()
+        return target_symbol if found != target_symbol else match.group(0)
+
+    text = symbol_pattern.sub(_replace_symbol, text)
+    if target_timeframe:
+        text = re.sub(
+            rf"(\b{re.escape(target_symbol)}\s+)(\d{{1,2}}[mhdwM])\b",
+            rf"\g<1>{target_timeframe}",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            rf"(\b{re.escape(target_symbol)}\s+en\s+)(\d{{1,2}}[mhdwM])\b",
+            rf"\g<1>{target_timeframe}",
+            text,
+            flags=re.IGNORECASE,
+        )
+    return sanitize_objective_text(text)
 
 
 def generate_llm_objective(
@@ -477,7 +787,18 @@ def generate_llm_objective(
     if available_indicators is None:
         available_indicators = list_indicators()
 
-    indicators_list = ", ".join(sorted(available_indicators))
+    # Catalogue shuffle (uuid4) + descriptions compactes pour casser le biais
+    # alphabetique et exposer les indicateurs moins evidents au LLM.
+    catalog_seed = f"objective:{uuid.uuid4().hex}"
+    shuffled_indicators = shuffle_indicator_presentation_order(
+        available_indicators,
+        session_seed=catalog_seed,
+    )
+    indicator_catalog_lines = build_compact_indicator_catalog(shuffled_indicators)
+    indicator_catalog_text = "\n".join(indicator_catalog_lines)
+    model_demand_lines = build_model_demand_indicator_notes(shuffled_indicators)
+    model_demand_text = "\n".join(model_demand_lines)
+    indicator_names_inline = ", ".join(shuffled_indicators)
 
     # Normaliser en listes pour construire le prompt multi-marché.
     # IMPORTANT : si None est passé, ne pas fallback sur BTCUSDC/1h.
@@ -495,59 +816,59 @@ def generate_llm_objective(
         timeframes_list = []
     else:
         # Mode manuel ou multi-marché : comportement normal
-        symbols_list = symbol if isinstance(symbol, list) else [symbol]
-        timeframes_list = timeframe if isinstance(timeframe, list) else [timeframe]
-        symbols_list = [s for s in symbols_list if s] or ["BTCUSDC"]
-        timeframes_list = [t for t in timeframes_list if t] or ["1h"]
+        symbols_list = _unique_non_empty(
+            symbol if isinstance(symbol, list) else [symbol],
+            upper=True,
+        ) or ["BTCUSDC"]
+        timeframes_list = _unique_non_empty(
+            timeframe if isinstance(timeframe, list) else [timeframe],
+        ) or ["1h"]
 
         # Construire l'instruction marché selon l'univers disponible
         if len(symbols_list) > 1 or len(timeframes_list) > 1:
-            # Mélanger pour réduire le biais de position (BTC toujours 1er)
-            shuffled_symbols = symbols_list.copy()
-            random.shuffle(shuffled_symbols)
-            shuffled_timeframes = timeframes_list.copy()
-            random.shuffle(shuffled_timeframes)
-
             market_instruction = (
-                f"Symboles disponibles (SEULS autorisés) : {', '.join(shuffled_symbols)}\n"
-                f"Timeframes disponibles (SEULS autorisés) : {', '.join(shuffled_timeframes)}\n"
+                f"Symboles disponibles (SEULS autorisés) : {', '.join(symbols_list)}\n"
+                f"Timeframes disponibles (SEULS autorisés) : {', '.join(timeframes_list)}\n"
                 "CHOISIS le symbole et le timeframe les plus adaptés à ta stratégie. "
                 "Tu ne DOIS utiliser QUE des symboles et timeframes de ces listes. "
                 "N'invente AUCUN timeframe (pas de 3m, 5m, 2h, etc. s'ils ne sont pas listés). "
-                "Ne te limite pas à BTC — explore les altcoins si ta stratégie s'y prête mieux.\n\n"
+                "Ne te limite pas à BTC si un autre actif de cette liste convient clairement mieux.\n\n"
             )
             # Injecter l'historique récent pour forcer la diversité
             if recent_markets:
                 recent_str = ", ".join(f"{s} {tf}" for s, tf in recent_markets[-6:])
                 market_instruction += (
                     f"IMPORTANT — Les marchés suivants ont DÉJÀ été utilisés récemment : {recent_str}. "
-                    "Tu DOIS choisir un couple symbol/timeframe DIFFÉRENT de ceux-ci. "
-                    "Varie les tokens ET les timeframes.\n\n"
+                    "Privilégie un couple différent si cela reste cohérent avec la stratégie.\n\n"
                 )
         else:
             market_instruction = f"Marché : {symbols_list[0]} en {timeframes_list[0]}.\n\n"
 
-    novelty_axes = [
-        "asymetrie long/short (seuils differents)",
-        "adaptation de regime (trend vs range)",
-        "filtre anti-faux-signaux (confirmation inverse partielle)",
-        "filtre horaire de liquidite",
-        "gestion du risque non lineaire (SL/TP adaptes a la volatilite)",
-        "gating par volatilite implicite/realisee",
-        "combinaison de signaux contradictoires avec vote majoritaire",
-    ]
-    random.shuffle(novelty_axes)
-    selected_axes = novelty_axes[:4]
+    # Historique inter-sessions (best-effort) pour contraindre la diversite.
+    history_recent_inds: list[str] = []
+    history_recent_families: list[str] = []
+    history_banned: set[str] = set()
+    try:
+        from config.indicator_history import (  # noqa: PLC0415,I001
+            get_banned_indicators,
+            get_recent_families,
+            get_recent_indicators,
+        )
 
-    random_behaviors = [
-        "mode_offbeat: prioriser des paires d'indicateurs rarement combinees",
-        "mode_inverse: tester une logique inversee puis filtrer par regime",
-        "mode_microstructure: ajouter un filtre de session/horaire et liquidite",
-        "mode_risk_rotation: alterner profile risque serre/large selon volatilite",
-        "mode_counter_consensus: exiger une confirmation contrarienne partielle",
-    ]
-    random.shuffle(random_behaviors)
-    selected_behaviors = random_behaviors[:2]
+        history_recent_inds = get_recent_indicators(n_runs=5) or []
+        history_recent_families = get_recent_families() or []
+        history_banned = get_banned_indicators() or set()
+    except Exception:  # pragma: no cover - lecture historique non bloquante
+        pass
+
+    selected_axes, selected_behaviors = _build_objective_prompt_focus(
+        timeframes_list,
+        recent_families=history_recent_families,
+    )
+    style_hint_key, style_hint_label = _pick_objective_style_hint(
+        timeframes_list,
+        recent_families=history_recent_families,
+    )
     system_prompt = (
         "Tu es un quant designer specialise en strategies de trading crypto. "
         "Tu dois produire un handoff STRUCTURE et exploitable par un Builder. "
@@ -562,16 +883,57 @@ def generate_llm_objective(
             f"- symbol MUST be one of: {allowed_symbols}.\n- timeframe MUST be one of: {allowed_timeframes}.\n"
         )
 
+    diversity_lines: list[str] = [
+        f"- Style suggere pour CETTE session: {style_hint_label}. "
+        "Tu peux devier si l'univers s'y prete clairement mieux, mais ne reproduis pas "
+        "passivement un trend/breakout par defaut.",
+    ]
+    if history_recent_families:
+        diversity_lines.append(
+            "- Familles deja explorees dans les runs recents (varier si possible): "
+            f"{', '.join(history_recent_families[:8])}.",
+        )
+    if history_recent_inds:
+        diversity_lines.append(
+            "- Indicateurs sur-representes recemment (a eviter sauf pertinence forte): "
+            f"{', '.join(history_recent_inds[:10])}.",
+        )
+    if history_banned:
+        banned_sorted = sorted(history_banned)
+        diversity_lines.append(
+            "- Indicateurs bannis temporairement (NE PAS utiliser): "
+            f"{', '.join(banned_sorted)}.",
+        )
+    diversity_block = "\n".join(diversity_lines) + "\n"
+
     user_prompt = (
         "Genere un objectif de strategie de trading sous forme de JSON.\n\n"
         f"{market_instruction}"
-        f"Indicateurs disponibles : {indicators_list}\n\n"
-        "Contraintes de diversification:\n"
-        f"- Integre au moins un axe 'hors sentiers battus' parmi: {', '.join(selected_axes)}.\n"
-        f"- Comportements aleatoires imposes pour cette generation: {', '.join(selected_behaviors)}.\n"
+        "## CATALOGUE D'INDICATEURS DISPONIBLES\n"
+        "(ordre randomise pour CETTE session — explore au-dela des indicateurs habituels)\n"
+        f"{indicator_catalog_text}\n\n"
+        + (
+            "## INDICATEURS SOUVENT DEMANDES SOUS ALIAS PAR LES MODELES\n"
+            "Ces lignes ne creent aucun nouveau nom autorise: utilise toujours le nom canonique de la liste.\n"
+            f"{model_demand_text}\n\n"
+            if model_demand_text
+            else ""
+        )
+        + f"Liste canonique (rappel, meme ordre): {indicator_names_inline}\n\n"
+        "Contraintes de diversite:\n"
+        f"{diversity_block}"
+        "\n"
+        "Contraintes de stabilite:\n"
+        "- Priorite absolue: produire une strategie claire, implementable et testable avant toute originalite.\n"
+        "- Garde une logique principale + au plus un filtre de confirmation + un risk management ATR explicite.\n"
+        f"- Si une differenciation est utile, choisis-la parmi: {', '.join(selected_axes)}.\n"
+        f"- Garde ce cadrage de conception: {', '.join(selected_behaviors)}.\n"
         "- Evite les formulations generiques de type 'RSI<30/RSI>70' sans filtre additionnel.\n"
         "- Propose une hypothese testable et falsifiable.\n"
-        "- Explore des combinaisons inhabituelles, des filtres originaux, des approches multi-timeframe conceptuelles.\n"
+        "- Evite d'empiler des filtres exotiques, des pseudo-features ou des approches multi-timeframe floues.\n"
+        "- Coherence style/timeframe: n'utilise le style scalping que sur 1m, 3m ou 5m. "
+        "Hors scalping, tous les autres styles (trend, breakout, mean-reversion, momentum, "
+        "regime-adaptive, multi-factor, range) sont legitimes selon le contexte.\n"
         "- used_indicators doit contenir entre 1 et 5 indicateurs.\n"
         "- objective doit etre un texte court de 2 a 4 phrases maximum.\n"
         f"{market_contract}"
@@ -643,6 +1005,7 @@ def generate_llm_objective(
             objective,
             available_indicators,
         )
+        _record_recent_family(style_hint_key)
         return sanitize_objective_text(objective)
 
     # ── Post-validation : remplacer les TF/tokens hallucinés ──
@@ -684,7 +1047,20 @@ def generate_llm_objective(
         objective,
         available_indicators,
     )
+    _record_recent_family(style_hint_key)
     return objective
+
+
+def _record_recent_family(family_key: str) -> None:
+    """Memorise la famille suggeree pour la rotation inter-runs (cache process)."""
+    key = str(family_key or "").strip().lower()
+    if not key:
+        return
+    if key in _RECENT_FAMILIES:
+        _RECENT_FAMILIES.remove(key)
+    _RECENT_FAMILIES.append(key)
+    while len(_RECENT_FAMILIES) > _MAX_RECENT_FAMILIES:
+        _RECENT_FAMILIES.pop(0)
 
 
 def generate_llm_objective_from_seed(
@@ -731,16 +1107,12 @@ def generate_llm_objective_from_seed(
     else:
         symbols_list = symbol if isinstance(symbol, list) else [symbol]
         timeframes_list = timeframe if isinstance(timeframe, list) else [timeframe]
-        symbols_list = [s for s in symbols_list if s] or ["BTCUSDC"]
-        timeframes_list = [t for t in timeframes_list if t] or ["1h"]
+        symbols_list = _unique_non_empty(symbols_list, upper=True) or ["BTCUSDC"]
+        timeframes_list = _unique_non_empty(timeframes_list) or ["1h"]
         if len(symbols_list) > 1 or len(timeframes_list) > 1:
-            shuffled_symbols = symbols_list.copy()
-            random.shuffle(shuffled_symbols)
-            shuffled_timeframes = timeframes_list.copy()
-            random.shuffle(shuffled_timeframes)
             market_instruction = (
-                f"Symboles disponibles (SEULS autorisés) : {', '.join(shuffled_symbols)}\n"
-                f"Timeframes disponibles (SEULS autorisés) : {', '.join(shuffled_timeframes)}\n"
+                f"Symboles disponibles (SEULS autorisés) : {', '.join(symbols_list)}\n"
+                f"Timeframes disponibles (SEULS autorisés) : {', '.join(timeframes_list)}\n"
                 "Choisis le couple le plus pertinent pour étudier cette stratégie. "
                 "N'utilise QUE ces symboles/timeframes.\n\n"
             )
@@ -783,6 +1155,8 @@ def generate_llm_objective_from_seed(
         f"{chr(10).join(seed_context)}\n\n"
         f"Indicateurs disponibles : {indicators_list}\n\n"
         "Contraintes :\n"
+        "- Priorite a une strategie claire, stable et directement codable plutot qu'a une surenchere de filtres.\n"
+        "- Garde une logique principale + au plus un filtre de confirmation + un risk management explicite.\n"
         "- Pars de la piste catalogue, mais reformule-la pour en faire une hypothese testable et falsifiable.\n"
         "- Choisis les indicateurs les plus coherents avec cette strategie.\n"
         "- N'utilise QUE des indicateurs disponibles.\n"
@@ -941,6 +1315,11 @@ def _rank_and_select_market_candidates(
     _initial_fallback_timeframe: str,
 ) -> dict[str, Any]:
     """Phases 4-10 : détection type stratégie, ranking, hints, fallbacks, diversité."""
+    hinted_symbol, hinted_timeframe = _find_objective_market_hints(
+        clean_objective,
+        allowed_symbols=symbols,
+        allowed_timeframes=timeframes,
+    )
     detected_strategy_type = infer_strategy_type(objective=clean_objective)
     if detected_strategy_type == "unknown":
         detected_strategy_type = None
@@ -948,69 +1327,67 @@ def _rank_and_select_market_candidates(
     ranked_symbols: list[str] = []
     if detected_strategy_type:
         symbols_for_ranking = symbols.copy()
-        random.shuffle(symbols_for_ranking)
         ranked_symbols = rank_tokens_for_strategy(symbols_for_ranking, detected_strategy_type)
         shuffled_symbols = ranked_symbols.copy()
-        random.shuffle(shuffled_symbols)
         logger.info(
-            "Market selection: strategy_type=%s, ranked_tokens=%s, prompt_tokens_shuffled=YES",
+            "Market selection: strategy_type=%s, ranked_tokens=%s, prompt_tokens_shuffled=NO",
             detected_strategy_type,
             ", ".join(ranked_symbols[:5]),
         )
     else:
         shuffled_symbols = symbols.copy()
-        random.shuffle(shuffled_symbols)
-        logger.info("Market selection: strategy_type=UNKNOWN, tokens=shuffled")
+        logger.info("Market selection: strategy_type=UNKNOWN, tokens=ordered")
 
     shuffled_timeframes = timeframes.copy()
-    random.shuffle(shuffled_timeframes)
-
-    hinted_symbol: str | None = None
-    hinted_timeframe: str | None = None
 
     if not detected_strategy_type:
-        hinted_symbol, hinted_timeframe = _find_objective_market_hints(
-            clean_objective,
-            allowed_symbols=symbols,
-            allowed_timeframes=timeframes,
-        )
         logger.info(
             "Market selection: strategy_type=NONE → using hints, symbol=%s, timeframe=%s",
             hinted_symbol or "NONE",
             hinted_timeframe or "NONE",
         )
     else:
+        hint_status = "compatible" if hinted_timeframe and is_strategy_timeframe_compatible(detected_strategy_type, hinted_timeframe) else "absent_or_incompatible"
         logger.info(
-            "Market selection: strategy_type=%s → IGNORING hints from objective (prioritize intelligent ranking)",
+            "Market selection: strategy_type=%s → objective hints=%s, symbol=%s, timeframe=%s",
             detected_strategy_type,
+            hint_status,
+            hinted_symbol or "NONE",
+            hinted_timeframe or "NONE",
         )
 
     recent_symbol_set = {str(s or "").strip().upper() for s, _ in (recent_markets or []) if str(s or "").strip()}
 
-    if hinted_symbol and hinted_symbol in symbols:
+    hinted_market_is_strategy_compatible = (
+        not detected_strategy_type
+        or not hinted_timeframe
+        or is_strategy_timeframe_compatible(detected_strategy_type, hinted_timeframe)
+    )
+
+    if hinted_symbol and hinted_symbol in symbols and hinted_market_is_strategy_compatible:
         fallback_symbol = hinted_symbol
     elif detected_strategy_type and ranked_symbols:
         fallback_pool = ranked_symbols[: min(5, len(ranked_symbols))]
         non_recent_pool = [s for s in fallback_pool if s not in recent_symbol_set]
         if non_recent_pool:
             fallback_pool = non_recent_pool
-        fallback_symbol = random.choice(fallback_pool) if fallback_pool else ranked_symbols[0]
+        fallback_symbol = fallback_pool[0] if fallback_pool else ranked_symbols[0]
     else:
         fallback_symbol = shuffled_symbols[0] if shuffled_symbols else _initial_fallback_symbol
 
-    if detected_strategy_type:
+    if hinted_timeframe and hinted_timeframe in timeframes and hinted_market_is_strategy_compatible:
+        fallback_timeframe = hinted_timeframe
+    elif detected_strategy_type:
         try:
             reqs = get_strategy_requirements(detected_strategy_type)
             recommended_tfs = reqs.get("timeframes", ["1h"])
             recommended_available = [tf for tf in recommended_tfs if tf in timeframes]
             if recommended_available:
-                fallback_timeframe = random.choice(recommended_available)
+                fallback_timeframe = recommended_available[0]
             else:
                 fallback_timeframe = shuffled_timeframes[0] if shuffled_timeframes else _initial_fallback_timeframe
         except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
             fallback_timeframe = shuffled_timeframes[0] if shuffled_timeframes else _initial_fallback_timeframe
-    elif hinted_timeframe and hinted_timeframe in timeframes:
-        fallback_timeframe = hinted_timeframe
     else:
         fallback_timeframe = shuffled_timeframes[0] if shuffled_timeframes else _initial_fallback_timeframe
 

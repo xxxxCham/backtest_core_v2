@@ -41,6 +41,28 @@ from backtest.validation import WalkForwardValidator
 
 logger = logging.getLogger(__name__)
 
+
+def _bounded_01(value: float) -> float:
+    if not np.isfinite(value):
+        return 0.0
+    return float(min(max(value, 0.0), 1.0))
+
+
+def _metric_float(metrics: dict[str, Any] | None, *keys: str, default: float | None = None) -> float | None:
+    if not isinstance(metrics, dict):
+        return default
+    for key in keys:
+        if key not in metrics:
+            continue
+        try:
+            value = float(metrics.get(key))
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(value):
+            return value
+    return default
+
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -151,6 +173,9 @@ class WalkForwardSummary:
     # Agrégats
     avg_train_sharpe: float = 0.0
     avg_test_sharpe: float = 0.0
+    classic_overfitting_ratio: float = 0.0
+    robust_overfitting_score: float = 0.0
+    positive_test_folds_pct: float = 0.0
     avg_overfitting_ratio: float = 0.0
     degradation_pct: float = 0.0
     test_stability_std: float = 0.0
@@ -175,6 +200,9 @@ class WalkForwardSummary:
             "n_valid_folds": self.n_valid_folds,
             "avg_train_sharpe": round(self.avg_train_sharpe, 4),
             "avg_test_sharpe": round(self.avg_test_sharpe, 4),
+            "classic_overfitting_ratio": round(self.classic_overfitting_ratio, 3),
+            "robust_overfitting_score": round(self.robust_overfitting_score, 3),
+            "positive_test_folds_pct": round(self.positive_test_folds_pct, 1),
             "avg_overfitting_ratio": round(self.avg_overfitting_ratio, 3),
             "degradation_pct": round(self.degradation_pct, 2),
             "test_stability_std": round(self.test_stability_std, 4),
@@ -189,8 +217,11 @@ class WalkForwardSummary:
         return {
             "train_sharpe": float(self.avg_train_sharpe),
             "test_sharpe": float(self.avg_test_sharpe),
+            "classic_overfitting_ratio": float(self.classic_overfitting_ratio),
+            "robust_overfitting_score": float(self.robust_overfitting_score),
+            "positive_test_folds_pct": float(self.positive_test_folds_pct),
             "overfitting_ratio": float(self.avg_overfitting_ratio),
-            "classic_ratio": float(self.avg_overfitting_ratio),
+            "classic_ratio": float(self.classic_overfitting_ratio),
             "degradation_pct": float(self.degradation_pct),
             "test_stability_std": float(self.test_stability_std),
             "n_valid_folds": self.n_valid_folds,
@@ -284,6 +315,9 @@ def _aggregate(folds: list[FoldResult], cfg: WalkForwardConfig) -> WalkForwardSu
             config=cfg,
             folds=folds,
             n_valid_folds=0,
+            classic_overfitting_ratio=999.0,
+            robust_overfitting_score=999.0,
+            positive_test_folds_pct=0.0,
             avg_overfitting_ratio=999.0,
             degradation_pct=100.0,
         )
@@ -300,6 +334,22 @@ def _aggregate(folds: list[FoldResult], cfg: WalkForwardConfig) -> WalkForwardSu
     avg_train = float(np.mean(train_sharpes))
     avg_test = float(np.mean(test_sharpes))
     std_test = float(np.std(test_sharpes))
+    test_return_values = [
+        _metric_float(
+            f.test_metrics,
+            "test_return_pct",
+            "total_return_pct",
+            "return_pct",
+            "total_return",
+        )
+        for f in valid
+    ]
+    valid_test_returns = [value for value in test_return_values if value is not None]
+    positive_test_folds_pct = (
+        float(sum(1 for value in valid_test_returns if value > 0.0) / len(valid_test_returns) * 100.0)
+        if valid_test_returns
+        else 0.0
+    )
 
     # Ratio classique
     if abs(avg_test) > 1e-9:
@@ -313,33 +363,36 @@ def _aggregate(folds: list[FoldResult], cfg: WalkForwardConfig) -> WalkForwardSu
     else:
         degradation = 100.0
 
-    # Pénalité stabilité → ratio robuste
+    # Le score robuste est le ratio classique pénalisé par l'instabilité des folds.
     stability_penalty = std_test * 2.0
-    robust_ratio = classic_ratio + stability_penalty
+    robust_score = classic_ratio + stability_penalty
 
     # Score de confiance (0-1)
     conf_factors = []
     if avg_test > 0:
-        conf_factors.append(min(avg_test / 2.0, 1.0))
+        conf_factors.append(_bounded_01(avg_test / 2.0))
     else:
         conf_factors.append(0.0)
     if std_test > 0:
-        conf_factors.append(1.0 / (1.0 + std_test))
+        conf_factors.append(_bounded_01(1.0 / (1.0 + std_test)))
     if classic_ratio < 3.0:
-        conf_factors.append(max(0.0, 1.0 - (classic_ratio - 1.0) / 2.0))
+        conf_factors.append(_bounded_01(1.0 - (classic_ratio - 1.0) / 2.0))
     else:
         conf_factors.append(0.0)
 
-    confidence = float(np.mean(conf_factors)) if conf_factors else 0.0
+    confidence = _bounded_01(float(np.mean(conf_factors)) if conf_factors else 0.0)
 
-    is_robust = avg_test > 0.5 and robust_ratio < 2.0 and confidence > 0.5
+    is_robust = avg_test > 0.5 and robust_score < 2.0 and confidence > 0.5
 
     return WalkForwardSummary(
         config=cfg,
         folds=folds,
         avg_train_sharpe=avg_train,
         avg_test_sharpe=avg_test,
-        avg_overfitting_ratio=robust_ratio,
+        classic_overfitting_ratio=classic_ratio,
+        robust_overfitting_score=robust_score,
+        positive_test_folds_pct=positive_test_folds_pct,
+        avg_overfitting_ratio=robust_score,
         degradation_pct=degradation,
         test_stability_std=std_test,
         is_robust=is_robust,

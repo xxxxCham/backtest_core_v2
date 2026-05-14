@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+import catalog.graduation as graduation_module
 import catalog.strategy_catalog as strategy_catalog_module
 from backtest.walk_forward import FoldResult, WalkForwardSummary
 from catalog.graduation import (
@@ -17,8 +18,10 @@ from catalog.graduation import (
     _extract_numeric_params,
     _generate_neighborhood,
     import_positive_artifacts_to_catalog,
+    promote_to_strategies,
     run_full_graduation,
     run_multi_context_validation,
+    run_parameter_sensitivity,
     run_positive_import_graduation,
     run_wfa_validation,
     save_graduation_report,
@@ -70,6 +73,62 @@ def _sample_ohlcv() -> pd.DataFrame:
         },
         index=index,
     )
+
+
+def test_pipeline_runtime_report_uses_draft_until_final(tmp_path: Path) -> None:
+    output_dir = tmp_path / "reports"
+    output_dir.mkdir()
+    stable_report = output_dir / "graduation_full.json"
+    stable_report.write_text('{"sentinel": "stable"}', encoding="utf-8")
+
+    candidate = GraduationCandidate(
+        session_id="sandbox-1",
+        session_dir=tmp_path / "sandbox" / "sandbox-1",
+        strategy_name="ema_cross",
+        phase="P2",
+        decision="WATCHLIST",
+    )
+    ctx = graduation_module._PipelineCtx(
+        config=GraduationConfig(output_dir=output_dir, sandbox_dir=tmp_path / "sandbox"),
+        stats={"p1_candidates": 1, "p2_processed": 1},
+        all_candidates=[candidate],
+        report_label="FULL",
+        report_filename="graduation_full.json",
+        pipeline_label="full_graduation",
+        progress_filename="graduation_full_progress.json",
+        started_at="2026-05-13T00:00:00+00:00",
+        progress_path=output_dir / "graduation_full_progress.json",
+        sync_func=lambda candidates, config=None: [],
+        sync_conditional=True,
+        promoted=[],
+    )
+
+    draft_report = graduation_module._ctx_save_report(ctx)
+
+    assert draft_report == output_dir / "graduation_full.running.json"
+    assert json.loads(stable_report.read_text(encoding="utf-8")) == {"sentinel": "stable"}
+    assert draft_report.exists()
+
+    graduation_module._ctx_write_progress(
+        ctx,
+        status="running",
+        event="candidate_done",
+        phase="P3",
+        candidate=candidate,
+        index=1,
+        total=1,
+    )
+    progress_payload = json.loads((output_dir / "graduation_full_progress.json").read_text(encoding="utf-8"))
+    assert progress_payload["report_path"].endswith("graduation_full.running.json")
+    assert progress_payload["stable_report_path"].endswith("graduation_full.json")
+    assert progress_payload["draft_report_path"].endswith("graduation_full.running.json")
+
+    final_report = graduation_module._ctx_save_report(ctx, final=True)
+
+    assert final_report == stable_report
+    assert not draft_report.exists()
+    final_payload = json.loads(stable_report.read_text(encoding="utf-8"))
+    assert final_payload["stats"]["p1_candidates"] == 1
 
 
 def test_scan_sandbox_uses_or_based_repechage(tmp_path: Path) -> None:
@@ -368,7 +427,170 @@ def test_run_wfa_validation_requires_positive_average_test_return(
     assert [candidate.session_id for candidate in survivors] == ["pass"]
     assert candidates[0].wfa_stability == 0.72
     assert candidates[0].wfa_avg_test_return_pct == 6.0
+    assert candidates[0].wfa_positive_folds_pct == 100.0
     assert "avg_test_return" in candidates[1].rejection_reason
+
+
+def test_run_parameter_sensitivity_uses_source_market_when_available(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    session_dir = tmp_path / "source"
+    session_dir.mkdir()
+    (session_dir / "strategy_v1.py").write_text("# source\n", encoding="utf-8")
+
+    candidate = GraduationCandidate(
+        session_id="source",
+        session_dir=session_dir,
+        best_iteration=1,
+        source_symbol="ETHUSDC",
+        source_timeframe="1d",
+        strategy_file="strategy_v1.py",
+    )
+
+    load_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "catalog.graduation._load_strategy_from_file",
+        lambda path: SimpleNamespace(name="source_strategy"),
+    )
+    monkeypatch.setattr(
+        "data.loader.load_ohlcv",
+        lambda symbol, timeframe: load_calls.append((symbol, timeframe)) or _sample_ohlcv(),
+    )
+
+    survivors = run_parameter_sensitivity(
+        [candidate],
+        GraduationConfig(
+            validation_tokens=["BTCUSDC"],
+            validation_timeframes=["1h"],
+            source_min_history_bars_by_timeframe={"1d": 100},
+        ),
+    )
+
+    assert survivors == [candidate]
+    assert load_calls == [("ETHUSDC", "1d")]
+    assert candidate.p4_verdict == "PASSED"
+    assert candidate.sensitivity_scope == "source_market"
+    assert candidate.sensitivity_symbol == "ETHUSDC"
+    assert candidate.sensitivity_timeframe == "1d"
+    assert candidate.sensitivity_history_bars == 120
+    assert candidate.sensitivity_min_history_bars == 100
+
+
+def test_run_wfa_validation_uses_source_market_when_available(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    session_dir = tmp_path / "source_wfa"
+    session_dir.mkdir()
+    (session_dir / "strategy_v1.py").write_text("# source\n", encoding="utf-8")
+
+    candidate = GraduationCandidate(
+        session_id="source_wfa",
+        session_dir=session_dir,
+        best_iteration=1,
+        source_symbol="ETHUSDC",
+        source_timeframe="1d",
+        strategy_file="strategy_v1.py",
+    )
+
+    load_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "catalog.graduation._load_strategy_from_file",
+        lambda path: SimpleNamespace(name="source_strategy"),
+    )
+    monkeypatch.setattr(
+        "data.loader.load_ohlcv",
+        lambda symbol, timeframe: load_calls.append((symbol, timeframe)) or _sample_ohlcv(),
+    )
+
+    def _fake_wfa(df, strategy_name, params, config, **kwargs):
+        folds = [
+            FoldResult(
+                fold_id=0,
+                train_start=0,
+                train_end=40,
+                test_start=40,
+                test_end=60,
+                train_metrics={"sharpe_ratio": 1.2},
+                test_metrics={"sharpe_ratio": 0.8, "total_return_pct": 8.0},
+            ),
+            FoldResult(
+                fold_id=1,
+                train_start=0,
+                train_end=60,
+                test_start=60,
+                test_end=80,
+                train_metrics={"sharpe_ratio": 1.0},
+                test_metrics={"sharpe_ratio": 0.7, "total_return_pct": 6.0},
+            ),
+        ]
+        return WalkForwardSummary(
+            config=config,
+            folds=folds,
+            avg_test_sharpe=0.75,
+            avg_overfitting_ratio=1.1,
+            confidence_score=0.8,
+            n_valid_folds=2,
+            is_robust=True,
+        )
+
+    monkeypatch.setattr("backtest.walk_forward.run_walk_forward", _fake_wfa)
+
+    survivors = run_wfa_validation(
+        [candidate],
+        GraduationConfig(
+            validation_tokens=["BTCUSDC"],
+            validation_timeframes=["1h"],
+            source_min_history_bars_by_timeframe={"1d": 100},
+        ),
+    )
+
+    assert survivors == [candidate]
+    assert load_calls == [("ETHUSDC", "1d")]
+    assert candidate.p5_verdict == "PASSED"
+    assert candidate.wfa_scope == "source_market"
+    assert candidate.wfa_symbol == "ETHUSDC"
+    assert candidate.wfa_timeframe == "1d"
+    assert candidate.wfa_history_bars == 120
+    assert candidate.wfa_min_history_bars == 100
+    assert candidate.wfa_avg_test_return_pct == 7.0
+    assert candidate.wfa_valid_folds == 2
+    assert candidate.wfa_positive_folds_pct == 100.0
+
+
+def test_run_wfa_validation_rejects_source_market_without_enough_history(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    candidate = GraduationCandidate(
+        session_id="short_source",
+        session_dir=tmp_path,
+        best_iteration=1,
+        source_symbol="ETHUSDC",
+        source_timeframe="1d",
+    )
+
+    monkeypatch.setattr("data.loader.load_ohlcv", lambda symbol, timeframe: _sample_ohlcv().iloc[:50])
+    monkeypatch.setattr(
+        "backtest.walk_forward.run_walk_forward",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("WFA should not run")),
+    )
+
+    survivors = run_wfa_validation(
+        [candidate],
+        GraduationConfig(
+            validation_tokens=["BTCUSDC"],
+            validation_timeframes=["1h"],
+            source_min_history_bars_by_timeframe={"1d": 100},
+        ),
+    )
+
+    assert survivors == []
+    assert candidate.p5_verdict == "REJECTED"
+    assert candidate.wfa_scope == "source_market"
+    assert candidate.wfa_history_bars == 50
+    assert "source history insufficient" in candidate.rejection_reason
 
 
 def test_save_graduation_report_normalizes_json_payload(tmp_path: Path) -> None:
@@ -402,6 +624,28 @@ def test_save_graduation_report_normalizes_json_payload(tmp_path: Path) -> None:
     assert payload["stats"]["p1_candidates"] == 1
     assert payload["candidates"][0]["multi_ctx_results"]["contexts"]["BTCUSDC_1h"]["passed"] is True
     assert payload["candidates"][0]["multi_ctx_results"]["contexts"]["BTCUSDC_1h"]["profit_factor"] is None
+
+
+def test_save_graduation_report_persists_cli_contract_meta(tmp_path: Path) -> None:
+    candidate = GraduationCandidate(session_id="candidate", session_dir=tmp_path)
+
+    report_path = save_graduation_report(
+        [candidate],
+        tmp_path,
+        phase="FULL",
+        filename="graduation_full.json",
+        meta={
+            "cli_equivalent": "python -m catalog.graduation --full --sync-catalog",
+            "phase_contract": {"P1": {"name": "Inventaire", "purpose": "scan"}},
+            "config_snapshot": {"source_market_first": True},
+        },
+    )
+
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert payload["meta"]["cli_equivalent"] == "python -m catalog.graduation --full --sync-catalog"
+    assert payload["meta"]["phase_contract"]["P1"]["name"] == "Inventaire"
+    assert payload["meta"]["config_snapshot"]["source_market_first"] is True
 
 
 def test_candidate_to_dict_exposes_context_lists_counts_and_benchmark_summaries(tmp_path: Path) -> None:
@@ -539,6 +783,10 @@ def test_sync_graduation_to_catalog_maps_progression_levels(
         "p6_paper_candidate",
     ]
     assert all(candidate.catalog_entry_id for candidate in candidates)
+    by_session = {entry["meta"]["session_id"]: entry for entry in synced}
+    assert by_session["cand_p1"]["builder_state"] == "stopped"
+    assert by_session["cand_p3"]["builder_state"] == "completed"
+    assert by_session["cand_p5"]["builder_state"] == "completed"
 
 
 def test_sync_graduation_to_catalog_reuses_builder_iteration_entry(tmp_path: Path, monkeypatch) -> None:
@@ -1024,8 +1272,8 @@ def test_sync_graduation_to_catalog_batches_catalog_updates(tmp_path: Path, monk
         captured["batch_sizes"].append(len(entries))
         return [dict(entry) for entry in entries]
 
-    monkeypatch.setattr("catalog.strategy_catalog.list_entries", _fake_list_entries)
-    monkeypatch.setattr("catalog.strategy_catalog.upsert_entries", _fake_upsert_entries)
+    monkeypatch.setattr("catalog.graduation.list_entries", _fake_list_entries)
+    monkeypatch.setattr("catalog.graduation.upsert_entries", _fake_upsert_entries)
 
     synced = sync_graduation_to_catalog(candidates, config)
 

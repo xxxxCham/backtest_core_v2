@@ -269,10 +269,16 @@ def _normalize_required_indicator_names(required_indicators: Optional[List[str]]
     normalized: List[str] = []
     if not required_indicators:
         return normalized
+    try:
+        from indicators.schema import canonicalize_indicator_alias
+    except Exception:
+        canonicalize_indicator_alias = None  # type: ignore[assignment]
     for item in required_indicators:
         if not isinstance(item, str):
             continue
         indicator_name = item.strip().lower()
+        if canonicalize_indicator_alias is not None:
+            indicator_name = canonicalize_indicator_alias(indicator_name) or indicator_name
         if indicator_name and indicator_name not in normalized:
             normalized.append(indicator_name)
     return normalized

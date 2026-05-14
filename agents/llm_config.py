@@ -34,9 +34,7 @@ try:
     from agents.model_config import (
         KNOWN_MODELS,
         ModelCategory,
-        RoleModelConfig,
-        get_global_model_config,
-        set_global_model_config,
+        get_model_recommendations,
     )
 
     LLM_AVAILABLE = True
@@ -44,13 +42,14 @@ try:
 except ImportError as e:
     LLM_AVAILABLE = False
     LLM_IMPORT_ERROR = str(e)
-    LLMConfig = None
-    LLMProvider = None
+    LLMConfig: Any = None
+    LLMProvider: Any = None
     KNOWN_MODELS = {}
-    ModelCategory = None
-    RoleModelConfig = None
-    get_global_model_config = None
-    set_global_model_config = None
+    ModelCategory: Any = None
+    RoleModelConfig: Any = None
+    get_model_recommendations: Any = None
+    get_global_model_config: Any = None
+    set_global_model_config: Any = None
 
 
 # ============================================================================
@@ -59,15 +58,21 @@ except ImportError as e:
 
 DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
 
-RECOMMENDED_FOR_STRATEGY = [
-    "gemma4:26b",
-    "gemma4:31b",
-    "qwen3.6:35b",
-    "lfm2:24b",
-    "devstral-small-2:24b",
-    "qwen2.5:32b",
-    "qwen3-coder:30b",
-]
+RECOMMENDED_FOR_STRATEGY = (
+    list(get_model_recommendations("strategy"))
+    if callable(get_model_recommendations)
+    else [
+        "gemma4:26b",
+        "gemma4:31b",
+        "qwen3.6:35b",
+        "lfm2:24b",
+        "devstral-small-2:24b",
+        "ministral-3:14b",
+        "rnj-1:8b-instruct-fp16",
+        "qwen2.5:32b",
+        "qwen3-coder:30b",
+    ]
+)
 
 OPENAI_MODELS = [
     "gpt-4o-mini",
@@ -86,11 +91,87 @@ DEFAULT_LLM_INFERENCE_SETTINGS: dict[str, Any] = {
     "num_ctx": None,
 }
 BUILTIN_LLM_INFERENCE_PROFILES: dict[str, dict[str, Any]] = {
-    "deepseek-coder-33b-local:latest": {
-        "temperature": 0.15,
-        "max_tokens": 4096,
-        "num_ctx": 16384,
-    },
+    # ===== LIGHT (<10B) — num_ctx=32768, max_tokens=4096 =====
+    "phi4-mini:3.8b":         {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 32768},
+    "mistral:7b-instruct":    {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 32768},
+    "deepseek-r1:7b":         {"temperature": 0.60, "max_tokens": 4096, "num_ctx": 32768},
+    "deepseek-r1:8b":         {"temperature": 0.60, "max_tokens": 4096, "num_ctx": 32768},
+    "qwen3:8b":               {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 32768},
+    "cogito:8b":              {"temperature": 0.60, "max_tokens": 4096, "num_ctx": 32768},
+    "llama3.1:8b-local":      {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 32768},
+    "rnj-1:8b-instruct-fp16": {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 32768},
+    "qwen3.5:9b":             {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 32768},
+    "deepseek-moe-16b-local": {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 32768},
+
+    # ===== MEDIUM (10-30B) — num_ctx=16384, max_tokens=4096 (reasoning=6144) =====
+    "phi4:14b":                {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
+    "phi4-reasoning:14b":      {"temperature": 0.60, "max_tokens": 6144, "num_ctx": 16384},
+    "qwen3:14b":               {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
+    "deepseek-r1-distill:14b": {"temperature": 0.60, "max_tokens": 6144, "num_ctx": 16384},
+    "ministral-3:14b":         {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
+    "cogito:14b":              {"temperature": 0.60, "max_tokens": 6144, "num_ctx": 16384},
+    "gpt-oss:20b":             {"temperature": 0.60, "max_tokens": 6144, "num_ctx": 16384},
+    "mistral:22b":             {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
+    "devstral:24b":            {"temperature": 0.20, "max_tokens": 4096, "num_ctx": 16384},
+    "devstral-small-2:24b":    {"temperature": 0.20, "max_tokens": 4096, "num_ctx": 16384},
+    "mistral-small3.2:24b":    {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
+    "magistral:24b":           {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
+    "lfm2:24b":                {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
+    "gemma4:26b":              {"temperature": 0.20, "max_tokens": 4096, "num_ctx": 16384},
+    "glm-4.7-flash-23b-local": {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
+    "qwen3.5:27b":             {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
+    "qwen3-30b-a3b:q4_k_m":    {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
+
+    # ===== HEAVY local (30-50B) — num_ctx=10240, max_tokens=2048 (reasoning=4096) =====
+    "granite4.1:30b-q6_K":            {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 10240},
+    "nemotron-3-nano:30b-a3b-q4_K_M": {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 10240},
+    "qwen3-coder:30b":                {"temperature": 0.20, "max_tokens": 2048, "num_ctx": 10240},
+    "gemma4:31b":                     {"temperature": 0.20, "max_tokens": 2048, "num_ctx": 10240},
+    "deepseek-r1:32b":                {"temperature": 0.60, "max_tokens": 4096, "num_ctx": 10240},
+    "qwq:32b":                        {"temperature": 0.60, "max_tokens": 4096, "num_ctx": 10240},
+    "qwen2.5:32b":                    {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 10240},
+    "qwen3:32b":                      {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 10240},
+    "cogito:32b":                     {"temperature": 0.60, "max_tokens": 4096, "num_ctx": 10240},
+    "qwen3-vl:32b":                   {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 10240},
+    "deepseek-coder-33b-local":       {"temperature": 0.15, "max_tokens": 4096, "num_ctx": 16384},
+    "qwen3.5:35b":                    {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 10240},
+    "qwen3.6:35b":                    {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 10240},
+
+    # ===== VERY HEAVY local (>50B) — num_ctx=8192, max_tokens=2048 (reasoning=4096) =====
+    "llama3.3:70b-instruct-q4_K_M":      {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 8192},
+    "deepseek-r1:70b":                   {"temperature": 0.60, "max_tokens": 4096, "num_ctx": 8192},
+    "nemotron:70b":                      {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 8192},
+    "llama4:16x17b":                     {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 8192},
+    "nemotron-3-super:120b-a12b-q4_K_M": {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 8192},
+    "deepseek-v3:671b":                  {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 8192},
+    "deepseek-r1:671b":                  {"temperature": 0.60, "max_tokens": 4096, "num_ctx": 8192},
+
+    # ===== CLOUD (Ollama Cloud / API) — num_ctx=65536, max_tokens=4096 (reasoning=8192) =====
+    "glm-4.6":               {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "glm-4.7":               {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "glm-5":                 {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "glm-5.1":               {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "minimax-m2.1":          {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "minimax-m2.5":          {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "minimax-m2.7":          {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "qwen3-coder:480b":      {"temperature": 0.20, "max_tokens": 4096, "num_ctx": 65536},
+    "qwen3-coder-next":      {"temperature": 0.20, "max_tokens": 4096, "num_ctx": 65536},
+    "qwen3-next:80b":        {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "qwen3.5:122b":          {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "qwen3-vl:235b":         {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "deepseek-v3.1":         {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "deepseek-v3.2":         {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "deepseek-v4-flash":     {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "deepseek-v4-pro":       {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "gpt-oss:120b":          {"temperature": 0.60, "max_tokens": 8192, "num_ctx": 65536},
+    "cogito-2.1:671b":       {"temperature": 0.60, "max_tokens": 8192, "num_ctx": 65536},
+    "devstral-2:123b":       {"temperature": 0.20, "max_tokens": 4096, "num_ctx": 65536},
+    "mistral-large-3":       {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "kimi-k2":               {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "kimi-k2-thinking":      {"temperature": 0.60, "max_tokens": 8192, "num_ctx": 65536},
+    "kimi-k2.5":             {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "kimi-k2.6":             {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
+    "nemotron-3-super:120b": {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
 }
 
 
@@ -108,7 +189,7 @@ class LLMConfigOptions:
 
     providers: list[str] = field(default_factory=lambda: ["Ollama (Local)", "OpenAI"])
     ollama_models: list[str] = field(default_factory=list)
-    openai_models: list[str] = field(default_factory=lambda: OPENAI_MODELS.copy())
+    openai_models: list[str] = field(default_factory=OPENAI_MODELS.copy)
 
     ollama_connected: bool = False
     default_ollama_host: str = DEFAULT_OLLAMA_HOST
@@ -120,7 +201,7 @@ class ModelSizeFilter:
 
     limit_small: bool = False  # < 20B
     limit_large: bool = False  # >= 20B
-    excluded_models: set[str] = field(default_factory=lambda: EXCLUDED_HEAVY_MODELS.copy())
+    excluded_models: set[str] = field(default_factory=EXCLUDED_HEAVY_MODELS.copy)
 
 
 def _coerce_temperature(value: Any, default: float) -> float:
@@ -136,7 +217,7 @@ def _coerce_max_tokens(value: Any, default: int) -> int:
         resolved = int(value)
     except (TypeError, ValueError):
         return default
-    return max(1, resolved)
+    return max(64, resolved)
 
 
 def _coerce_num_ctx(value: Any) -> int | None:

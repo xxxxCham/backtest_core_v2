@@ -36,10 +36,12 @@ from agents.builder_proposal_helpers import (
 )
 from agents.builder_state import BuilderIteration, BuilderSession
 from agents.builder_text_utils import _safe_format_exception
-from agents.strategy_builder import (
-    _build_deterministic_fallback_code,
+from agents.builder_ast_utils import (
     _extract_generate_signals_logic_block,
     _extract_python_from_response,
+)
+from agents.strategy_builder import (
+    _build_deterministic_fallback_code,
     _postprocess_llm_logic_block,
     _validate_llm_logic_block,
 )
@@ -163,6 +165,12 @@ class BuilderCandidateExecutorV2:
                 {
                     "signal_count": int(signal_probe.get("total_signals", 0) or 0),
                     "bar_count": len(self.ctx.data.index),
+                    "long_signals": int(signal_probe.get("long_signals", 0) or 0),
+                    "short_signals": int(signal_probe.get("short_signals", 0) or 0),
+                    "signal_density": float(signal_probe.get("signal_density", 0.0) or 0.0),
+                    "transition_signals": int(signal_probe.get("transition_signals", 0) or 0),
+                    "transition_density": float(signal_probe.get("transition_density", 0.0) or 0.0),
+                    "repeated_same_ratio": float(signal_probe.get("repeated_same_ratio", 0.0) or 0.0),
                 },
             )
             self._checkpoint(
@@ -549,6 +557,7 @@ class BuilderCandidateExecutorV2:
     ) -> tuple[str, Any]:
         if not signal_probe.get("ok"):
             self.precheck_feedback["backtest_skipped"] = True
+            self.precheck_feedback["skip_reason"] = "signal_precheck_error"
             self._phase_done(
                 "precheck",
                 status="blocked",
@@ -561,25 +570,32 @@ class BuilderCandidateExecutorV2:
             )
             return code, self._empty_backtest_result()
 
-        if self.builder._is_pathological_signal_profile(signal_probe) and self.builder.ablation.is_enabled("precheck"):
+        precheck_block = (
+            self.builder._classify_signal_precheck_block(signal_probe)
+            if self.builder.ablation.is_enabled("precheck")
+            else None
+        )
+        if precheck_block:
+            flag = str(precheck_block.get("flag") or precheck_block.get("skip_reason") or "precheck_blocked")
+            skip_reason = str(precheck_block.get("skip_reason") or flag)
             self.precheck_feedback.update(
                 {
-                    "pathological_signal_density": True,
-                    "skip_reason": "pathological_signal_density",
+                    flag: True,
+                    "skip_reason": skip_reason,
                     "backtest_skipped": True,
                 },
             )
             self._phase_done(
                 "precheck",
                 status="blocked",
-                detail="précheck bloquant: densité de signaux pathologique",
+                detail=str(precheck_block.get("detail") or "précheck bloquant"),
             )
             self._checkpoint(
                 "precheck",
                 "blocked",
                 extra={"signal_probe": dict(signal_probe or {})},
             )
-            return code, self.builder._build_precheck_overtrading_result(signal_probe)
+            return code, precheck_block["result"]
 
         signal_count = int(signal_probe.get("total_signals", 0) or 0)
         self._phase_done(

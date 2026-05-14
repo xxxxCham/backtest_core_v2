@@ -1,4 +1,5 @@
-"""Module-ID: agents.indicator_context
+"""
+Module-ID: agents.indicator_context
 
 Purpose: Construire un contexte indicateurs (stratégie vs lecture seule) pour LLM.
 
@@ -17,20 +18,26 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Iterable
-from typing import Any
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 from indicators.registry import calculate_indicator
+from indicators.schema import (
+    BUILDER_ACCESS_EXAMPLES as SCHEMA_BUILDER_ACCESS_EXAMPLES,
+    MODEL_DEMAND_HINTS as SCHEMA_MODEL_DEMAND_HINTS,
+    STABLE_ALIAS_MAP as SCHEMA_STABLE_ALIAS_MAP,
+    get_builder_access_example as schema_builder_access_example,
+    get_stable_alias_map as schema_stable_alias_map,
+)
 from strategies.base import get_strategy
 from strategies.indicators_mapping import (
     get_internal_indicators,
     get_required_indicators,
 )
 
-INDICATOR_SELECTION_REFERENCE: dict[str, dict[str, str]] = {
+INDICATOR_SELECTION_REFERENCE: Dict[str, Dict[str, str]] = {
     "adx": {
         "label": "Average Directional Index",
         "summary": "Trend-strength gauge. Best used to filter breakouts or trend systems and avoid weak/noisy ranges.",
@@ -65,6 +72,11 @@ INDICATOR_SELECTION_REFERENCE: dict[str, dict[str, str]] = {
         "label": "Chaikin Oscillator",
         "summary": "Volume-flow momentum derived from accumulation/distribution. Useful for confirming buying or selling pressure.",
         "formula": "Chaikin = EMA(ADL, short) - EMA(ADL, long).",
+    },
+    "choppiness_index": {
+        "label": "Choppiness Index",
+        "summary": "Range-vs-trend regime filter. High values mark choppy conditions; low values favor directional systems.",
+        "formula": "CHOP = 100 * log10(sum(TR,n) / (HH(n)-LL(n))) / log10(n).",
     },
     "cmf": {
         "label": "Chaikin Money Flow",
@@ -261,6 +273,11 @@ INDICATOR_SELECTION_REFERENCE: dict[str, dict[str, str]] = {
         "summary": "Double-smoothed moving average for a calmer trend baseline.",
         "formula": "TMA = SMA(SMA(price, n), n).",
     },
+    "trix": {
+        "label": "TRIX",
+        "summary": "Triple-smoothed momentum oscillator. Useful for zero-cross trend shifts after noisy consolidation.",
+        "formula": "TRIX = percent ROC of triple EMA(price, n).",
+    },
     "tsi": {
         "label": "True Strength Index",
         "summary": "Double-smoothed momentum oscillator. Useful for cleaner trend-momentum confirmation than raw ROC.",
@@ -286,6 +303,11 @@ INDICATOR_SELECTION_REFERENCE: dict[str, dict[str, str]] = {
         "summary": "Fair-price anchor weighted by volume. Useful for mean reversion and intraday value location.",
         "formula": "VWAP = cumulative(price * volume) / cumulative(volume).",
     },
+    "vix": {
+        "label": "VIX-style Realized Volatility",
+        "summary": "OHLCV-only proxy for implied-volatility style filters. Useful as a market-volatility regime gate.",
+        "formula": "VIX proxy = annualized rolling standard deviation of log returns, expressed in percent.",
+    },
     "williams_r": {
         "label": "Williams %R",
         "summary": "Range-position oscillator similar to stochastic, focused on overbought/oversold extremes.",
@@ -299,7 +321,6 @@ INDICATOR_SELECTION_REFERENCE: dict[str, dict[str, str]] = {
 }
 
 _INDICATOR_SELECTION_STOPWORDS = {
-    # EN
     "about",
     "above",
     "after",
@@ -354,85 +375,29 @@ _INDICATOR_SELECTION_STOPWORDS = {
     "using",
     "when",
     "with",
-    # FR
-    "aussi",
-    "autre",
-    "avant",
-    "avec",
-    "bien",
-    "car",
-    "cette",
-    "ces",
-    "chaque",
-    "comme",
-    "dans",
-    "des",
-    "doit",
-    "donc",
-    "elle",
-    "encore",
-    "entre",
-    "est",
-    "faire",
-    "les",
-    "lors",
-    "mais",
-    "même",
-    "moins",
-    "notre",
-    "par",
-    "plus",
-    "pour",
-    "prix",
-    "quand",
-    "qui",
-    "sont",
-    "sur",
-    "tout",
-    "tous",
-    "une",
-    "vers",
 }
 
 _INDICATOR_OBJECTIVE_HINTS = {
-    # EN + FR keywords
-    "breakout": ("breakout", "trend", "volatility", "cassure", "percée"),
-    "cassure": ("breakout", "trend", "volatility", "cassure", "percée"),
-    "pullback": ("pullback", "mean", "reversion", "repli", "correction"),
-    "repli": ("pullback", "mean", "reversion", "repli", "correction"),
-    "reversion": ("mean", "reversion", "oversold", "overbought", "retour", "moyenne"),
-    "retour": ("mean", "reversion", "oversold", "overbought", "retour", "moyenne"),
-    "reversal": ("reversal", "oversold", "overbought", "retournement", "inversion"),
-    "retournement": ("reversal", "oversold", "overbought", "retournement", "inversion"),
-    "inversion": ("reversal", "oversold", "overbought", "retournement", "inversion"),
-    "momentum": ("momentum", "acceleration", "continuation", "élan", "impulsion"),
-    "élan": ("momentum", "acceleration", "continuation", "élan", "impulsion"),
-    "impulsion": ("momentum", "acceleration", "continuation", "élan", "impulsion"),
-    "trend": ("trend", "breakout", "continuation", "tendance"),
-    "tendance": ("trend", "breakout", "continuation", "tendance"),
-    "volume": ("volume", "flow", "pressure", "flux", "pression"),
-    "volatility": ("volatility", "squeeze", "expansion", "volatilité", "compression"),
-    "volatilité": ("volatility", "squeeze", "expansion", "volatilité", "compression"),
-    "regime": ("regime", "macro", "probability", "régime", "probabilité"),
-    "régime": ("regime", "macro", "probability", "régime", "probabilité"),
-    "structure": ("structure", "imbalance", "pivot", "déséquilibre"),
-    "support": ("support", "resistance", "levels", "résistance", "niveaux"),
-    "resistance": ("support", "resistance", "levels", "résistance", "niveaux"),
-    "résistance": ("support", "resistance", "levels", "résistance", "niveaux"),
-    "oversold": ("oversold", "mean", "reversion", "survendu"),
-    "survendu": ("oversold", "mean", "reversion", "survendu"),
-    "overbought": ("overbought", "mean", "reversion", "suracheté"),
-    "suracheté": ("overbought", "mean", "reversion", "suracheté"),
-    "range": ("range", "mean", "reversion", "canal", "latéral"),
-    "canal": ("range", "mean", "reversion", "canal", "latéral"),
-    "latéral": ("range", "mean", "reversion", "canal", "latéral"),
-    "squeeze": ("squeeze", "volatility", "breakout", "compression"),
-    "compression": ("squeeze", "volatility", "breakout", "compression"),
-    "imbalance": ("imbalance", "structure", "gap", "déséquilibre"),
-    "déséquilibre": ("imbalance", "structure", "gap", "déséquilibre"),
+    "breakout": ("breakout", "trend", "volatility"),
+    "pullback": ("pullback", "mean", "reversion"),
+    "reversion": ("mean", "reversion", "oversold", "overbought"),
+    "reversal": ("reversal", "oversold", "overbought"),
+    "momentum": ("momentum", "acceleration", "continuation"),
+    "trend": ("trend", "breakout", "continuation"),
+    "volume": ("volume", "flow", "pressure"),
+    "volatility": ("volatility", "squeeze", "expansion"),
+    "regime": ("regime", "macro", "probability"),
+    "structure": ("structure", "imbalance", "pivot"),
+    "support": ("support", "resistance", "levels"),
+    "resistance": ("support", "resistance", "levels"),
+    "oversold": ("oversold", "mean", "reversion"),
+    "overbought": ("overbought", "mean", "reversion"),
+    "range": ("range", "mean", "reversion"),
+    "squeeze": ("squeeze", "volatility", "breakout"),
+    "imbalance": ("imbalance", "structure", "gap"),
 }
 
-_DICT_INDICATOR_BUILDER_ACCESS: dict[str, str] = {
+_DICT_INDICATOR_BUILDER_ACCESS: Dict[str, str] = {
     "adx": 'adx_d = indicators["adx"]; adx = np.nan_to_num(adx_d["adx"]); adx_val = adx',
     "amplitude_hunter": 'amp = indicators["amplitude_hunter"]; range_pct = np.nan_to_num(amp["range_pct"]); score = np.nan_to_num(amp["score"])',
     "aroon": 'ar = indicators["aroon"]; up = np.nan_to_num(ar["aroon_up"]); down = np.nan_to_num(ar["aroon_down"])',
@@ -454,7 +419,7 @@ _DICT_INDICATOR_BUILDER_ACCESS: dict[str, str] = {
     "vortex": 'vx = indicators["vortex"]; vip = np.nan_to_num(vx["vi_plus"]); vin = np.nan_to_num(vx["vi_minus"])',
 }
 
-_DICT_INDICATOR_STABLE_ALIAS_MAP: dict[str, dict[str, str]] = {
+_DICT_INDICATOR_STABLE_ALIAS_MAP: Dict[str, Dict[str, str]] = {
     "adx": {"adx_d": "adx_data", "adx": "adx_value", "adx_val": "adx_value"},
     "amplitude_hunter": {
         "amp": "amplitude_hunter_data",
@@ -462,24 +427,14 @@ _DICT_INDICATOR_STABLE_ALIAS_MAP: dict[str, dict[str, str]] = {
         "score": "amplitude_hunter_score",
     },
     "aroon": {"ar": "aroon_data", "up": "aroon_up", "down": "aroon_down"},
-    "bollinger": {
-        "bb": "bollinger_data",
-        "upper": "bollinger_upper",
-        "middle": "bollinger_middle",
-        "lower": "bollinger_lower",
-    },
+    "bollinger": {"bb": "bollinger_data", "upper": "bollinger_upper", "middle": "bollinger_middle", "lower": "bollinger_lower"},
     "directional_bias": {
         "bias": "directional_bias_data",
         "bull_score": "directional_bias_bull_score",
         "bear_score": "directional_bias_bear_score",
         "net_bias": "directional_bias_net",
     },
-    "donchian": {
-        "dc": "donchian_data",
-        "upper": "donchian_upper",
-        "middle": "donchian_middle",
-        "lower": "donchian_lower",
-    },
+    "donchian": {"dc": "donchian_data", "upper": "donchian_upper", "middle": "donchian_middle", "lower": "donchian_lower"},
     "fvg": {"fvg": "fvg_data", "bull_gap": "fvg_bullish_gap"},
     "ichimoku": {"ich": "ichimoku_data", "tenkan": "ichimoku_tenkan", "kijun": "ichimoku_kijun"},
     "keltner": {"kelt": "keltner_data", "upper": "keltner_upper", "lower": "keltner_lower"},
@@ -490,13 +445,88 @@ _DICT_INDICATOR_STABLE_ALIAS_MAP: dict[str, dict[str, str]] = {
     "smart_legs": {"legs": "smart_legs_data", "bull_leg": "smart_legs_bull_leg"},
     "stochastic": {"stoch": "stochastic_data", "k": "stochastic_k", "d": "stochastic_d"},
     "stoch_rsi": {"srsi": "stoch_rsi_data", "k": "stoch_rsi_k", "d": "stoch_rsi_d"},
-    "supertrend": {
-        "st": "supertrend_data",
-        "st_direction": "supertrend_direction",
-        "direction": "supertrend_direction",
-    },
+    "supertrend": {"st": "supertrend_data", "st_direction": "supertrend_direction", "direction": "supertrend_direction"},
     "swing": {"sw": "swing_data", "swing_low": "swing_low_flag"},
     "vortex": {"vx": "vortex_data", "vip": "vortex_vi_plus", "vin": "vortex_vi_minus"},
+}
+
+_MODEL_DEMANDED_INDICATOR_HINTS: Dict[str, Dict[str, Any]] = {
+    "adx": {
+        "aliases": ("adx_plus", "adx_minus", "dmi", "+di", "-di"),
+        "cue": "use canonical adx and read adx/+DI/-DI values from the adx dict when trend-strength confirmation is needed.",
+    },
+    "amplitude_hunter": {
+        "aliases": ("amplitude_hunter_score", "range_expansion_score"),
+        "cue": "use canonical amplitude_hunter for range expansion, compression release, or amplitude breakout ideas.",
+    },
+    "atr": {
+        "aliases": ("average_true_range", "true_range_atr"),
+        "cue": "use canonical atr for volatility stops, filters, and normalized thresholds.",
+    },
+    "bollinger": {
+        "aliases": ("bb_upper", "bb_lower", "bb_middle", "bollinger_upper", "bollinger_lower"),
+        "cue": "use canonical bollinger and access upper/middle/lower from the dict instead of inventing separate indicators.",
+    },
+    "choppiness_index": {
+        "aliases": ("mci", "chop", "choppiness", "market_choppiness_index"),
+        "cue": "use canonical choppiness_index for range-vs-trend filtering; high values mean noisy range, low values mean directional trend.",
+    },
+    "coppock_curve": {
+        "aliases": ("coppock", "coppock_momentum"),
+        "cue": "use canonical coppock_curve for slower momentum or major upturn hypotheses.",
+    },
+    "donchian": {
+        "aliases": ("donchian_breakout", "donchian_channels", "donchian_upper", "donchian_lower"),
+        "cue": "use canonical donchian and access upper/middle/lower from the dict for channel breakout logic.",
+    },
+    "ema": {
+        "aliases": ("ema_fast", "ema_slow", "fast_ema", "slow_ema"),
+        "cue": "use canonical ema with parameterized periods rather than separate fast/slow indicator names.",
+    },
+    "fvg": {
+        "aliases": ("fvg_bullish", "fvg_bearish", "fair_value_gap"),
+        "cue": "use canonical fvg for imbalance, gap fill, continuation, or rejection setups.",
+    },
+    "markov_switching": {
+        "aliases": ("markov", "markov_regime", "markov_bull_probability", "regime_probability"),
+        "cue": "use canonical markov_switching for probabilistic regime gating, not as a standalone fast entry trigger.",
+    },
+    "psar": {
+        "aliases": ("sar", "parabolic_sar", "psar_sar"),
+        "cue": "use canonical psar for trailing stop, reversal, or trend flip logic.",
+    },
+    "stochastic": {
+        "aliases": ("stoch", "stoch_k", "stoch_d", "stochastic_k", "stochastic_d"),
+        "cue": "use canonical stochastic and access stoch_k/stoch_d from the dict for pullback or exhaustion timing.",
+    },
+    "supertrend": {
+        "aliases": ("super_trend", "supertrend_direction"),
+        "cue": "use canonical supertrend for ATR-based trend direction and trailing exits.",
+    },
+    "trix": {
+        "aliases": ("triple_ema_roc", "trix_zero_cross", "trix_momentum"),
+        "cue": "use canonical trix for triple-smoothed momentum and zero-cross trend-shift ideas.",
+    },
+    "vix": {
+        "aliases": ("market_volatility", "volatility", "vix_proxy", "implied_volatility_proxy"),
+        "cue": "use canonical vix as an OHLCV-only realized-volatility proxy when the model asks for VIX-style market volatility.",
+    },
+    "vortex": {
+        "aliases": ("vortex_plus", "vortex_minus", "vi_plus", "vi_minus"),
+        "cue": "use canonical vortex and access vi_plus/vi_minus for directional trend confirmation.",
+    },
+}
+
+# Active source of truth for Builder access/aliases. The literals above are
+# compatibility fallbacks; runtime consumers use the central indicator schema.
+_DICT_INDICATOR_BUILDER_ACCESS = dict(SCHEMA_BUILDER_ACCESS_EXAMPLES)
+_DICT_INDICATOR_STABLE_ALIAS_MAP = {
+    name: dict(aliases)
+    for name, aliases in SCHEMA_STABLE_ALIAS_MAP.items()
+}
+_MODEL_DEMANDED_INDICATOR_HINTS = {
+    name: dict(payload)
+    for name, payload in SCHEMA_MODEL_DEMAND_HINTS.items()
 }
 
 
@@ -530,18 +560,18 @@ _INDICATOR_PREVIOUS_STABILITY_BONUS = 0.03
 _INDICATOR_NOVELTY_BONUS = 0.40
 _INDICATOR_NOISE_WEIGHT = 0.12
 _INDICATOR_BASELINE_UTILITY_BONUS = 0.05
+_INDICATOR_MODEL_DEMAND_BONUS = 0.08
 
 # Mapping indicateur → famille (chargé paresseusement, partagé en mémoire)
-_INDICATOR_FAMILY_MAP_CACHE: dict[str, str] | None = None
+_INDICATOR_FAMILY_MAP_CACHE: Optional[Dict[str, str]] = None
 
 
-def _get_indicator_family_map() -> dict[str, str]:
+def _get_indicator_family_map() -> Dict[str, str]:
     """Retourne le mapping indicateur→famille (construit une seule fois par processus)."""
     global _INDICATOR_FAMILY_MAP_CACHE
     if _INDICATOR_FAMILY_MAP_CACHE is None:
         try:
             from config.indicator_history import build_indicator_to_family_map
-
             _INDICATOR_FAMILY_MAP_CACHE = build_indicator_to_family_map()
         except Exception:
             _INDICATOR_FAMILY_MAP_CACHE = {}
@@ -563,7 +593,7 @@ def _tokenize_indicator_selection_text(*texts: Any) -> set[str]:
 
 def _build_indicator_query_tokens(
     objective: str = "",
-    diagnostic: dict[str, Any] | None = None,
+    diagnostic: Optional[Dict[str, Any]] = None,
 ) -> set[str]:
     diagnostic = diagnostic or {}
     tokens = _tokenize_indicator_selection_text(
@@ -582,19 +612,47 @@ def _build_indicator_query_tokens(
 
 
 def _indicator_reference_tokens(indicator_name: str) -> set[str]:
-    meta = INDICATOR_SELECTION_REFERENCE.get(indicator_name.lower(), {})
+    key = indicator_name.lower()
+    meta = INDICATOR_SELECTION_REFERENCE.get(key, {})
+    demand_hint = _MODEL_DEMANDED_INDICATOR_HINTS.get(key, {})
     return _tokenize_indicator_selection_text(
         indicator_name,
         meta.get("label", ""),
         meta.get("summary", ""),
         meta.get("formula", ""),
+        " ".join(demand_hint.get("aliases", ())),
+        demand_hint.get("cue", ""),
     )
 
 
 def _stable_indicator_order_noise(session_seed: str, indicator_name: str) -> float:
     payload = f"{session_seed}|{indicator_name}".encode("utf-8", errors="ignore")
     digest = hashlib.sha256(payload).hexdigest()
-    return int(digest[:12], 16) / float(16**12)
+    return int(digest[:12], 16) / float(16 ** 12)
+
+
+def shuffle_indicator_presentation_order(
+    available_indicators: Iterable[str],
+    *,
+    session_seed: str = "",
+) -> List[str]:
+    """Retourne un ordre pseudo-aleatoire mais stable pour une session donnee."""
+    normalized = [
+        str(ind or "").strip()
+        for ind in (available_indicators or [])
+        if str(ind or "").strip()
+    ]
+    if not normalized:
+        return []
+
+    effective_seed = str(session_seed or "builder-indicators")
+    return sorted(
+        normalized,
+        key=lambda indicator_name: (
+            -_stable_indicator_order_noise(effective_seed, indicator_name.lower()),
+            indicator_name.lower(),
+        ),
+    )
 
 
 def get_indicator_builder_access_example(indicator_name: str) -> str:
@@ -602,6 +660,9 @@ def get_indicator_builder_access_example(indicator_name: str) -> str:
     key = str(indicator_name or "").strip().lower()
     if not key:
         return 'value = np.nan_to_num(indicators["indicator_name"])'
+    schema_access = schema_builder_access_example(key)
+    if schema_access:
+        return schema_access
     meta = INDICATOR_SELECTION_REFERENCE.get(key, {})
     builder_access = str(meta.get("builder_access", "") or "").strip()
     if builder_access:
@@ -611,10 +672,10 @@ def get_indicator_builder_access_example(indicator_name: str) -> str:
     return _default_indicator_builder_access(key)
 
 
-def get_indicator_builder_stable_alias_map(indicator_name: str) -> dict[str, str]:
+def get_indicator_builder_stable_alias_map(indicator_name: str) -> Dict[str, str]:
     """Retourne les alias stables preferes pour un indicateur Builder."""
     key = str(indicator_name or "").strip().lower()
-    alias_map = _DICT_INDICATOR_STABLE_ALIAS_MAP.get(key, {})
+    alias_map = schema_stable_alias_map(key) or _DICT_INDICATOR_STABLE_ALIAS_MAP.get(key, {})
     if not isinstance(alias_map, dict):
         return {}
     return {
@@ -624,33 +685,72 @@ def get_indicator_builder_stable_alias_map(indicator_name: str) -> dict[str, str
     }
 
 
+def get_model_demand_indicator_hint(indicator_name: str) -> str:
+    """Retourne un rappel alias->canonique issu des demandes observees des LLM."""
+    key = str(indicator_name or "").strip().lower()
+    hint = _MODEL_DEMANDED_INDICATOR_HINTS.get(key)
+    if not isinstance(hint, dict):
+        return ""
+    aliases = [
+        str(alias or "").strip()
+        for alias in hint.get("aliases", ())
+        if str(alias or "").strip()
+    ]
+    cue = str(hint.get("cue", "") or "").strip()
+    alias_text = ", ".join(aliases)
+    if alias_text and cue:
+        return f"observed aliases: {alias_text}; canonical name: {key}; {cue}"
+    if alias_text:
+        return f"observed aliases: {alias_text}; canonical name: {key}"
+    return cue
+
+
+def build_model_demand_indicator_notes(available_indicators: Iterable[str]) -> List[str]:
+    """Notes compactes sur les indicateurs souvent demandes sous alias par les LLM."""
+    notes: List[str] = []
+    seen: set[str] = set()
+    for indicator_name in available_indicators or []:
+        raw_name = str(indicator_name or "").strip()
+        if not raw_name:
+            continue
+        key = raw_name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        hint = get_model_demand_indicator_hint(key)
+        if hint:
+            notes.append(f"- {key}: {hint}")
+    return notes
+
+
 def rank_indicator_selection(
     available_indicators: Iterable[str],
     *,
     objective: str = "",
-    diagnostic: dict[str, Any] | None = None,
-    previous_indicators: Iterable[str] | None = None,
+    diagnostic: Optional[Dict[str, Any]] = None,
+    previous_indicators: Optional[Iterable[str]] = None,
     session_seed: str = "",
     prefer_diversity: bool = False,
-    # ── Nouvelles options de diversité inter-sessions ──────────────────────
-    banned_indicators: Iterable[str] | None = None,
-    previous_families: Iterable[str] | None = None,
+    banned_indicators: Optional[Iterable[str]] = None,
+    previous_families: Optional[Iterable[str]] = None,
     family_penalty: float = 0.0,
     family_bonus: float = 0.0,
     inter_session_penalty: float = 0.0,
     inter_session_novelty_bonus: float = 0.0,
-    inter_session_indicators: Iterable[str] | None = None,
-) -> list[str]:
+    inter_session_indicators: Optional[Iterable[str]] = None,
+) -> List[str]:
     """Classe les indicateurs pour le prompt Builder.
 
-    Le classement combine deux contraintes liées :
-    - ordre pseudo-aléatoire mais stable pour une session donnée ;
-    - biais de pertinence vis-à-vis de l'objectif et du diagnostic courant.
+    Le classement combine deux contraintes liees :
+    - ordre pseudo-aleatoire mais stable pour une session donnee ;
+    - biais de pertinence vis-a-vis de l'objectif et du diagnostic courant.
 
     Important : cette fonction ne retire jamais d'indicateur, ne maintient aucune
-    mémoire punitive entre sessions, et n'utilise pas les performances passées pour
+    memoire punitive entre sessions, et n'utilise pas les performances passees pour
     "condamner" un indicateur (sauf via les arguments optionnels ci-dessous).
-    Les ajustements de diversité restent conservateurs.
+    Les ajustements de diversite restent conservateurs, mais ils doivent etre
+    assez visibles pour encourager de vrais ajouts/retraits d'indicateurs quand
+    une session stagne.
 
     Args supplémentaires (diversité inter-sessions) :
         banned_indicators: Indicateurs à filtrer complètement de la liste.
@@ -660,26 +760,39 @@ def rank_indicator_selection(
             famille de ``previous_families``.
         family_bonus: Bonus pour les indicateurs dans une famille non récente.
         inter_session_penalty: Malus appliqué aux indicateurs présents dans
-            ``inter_session_indicators`` (historique inter-sessions).
+            ``inter_session_indicators``.
         inter_session_novelty_bonus: Bonus accordé aux indicateurs absents
             de l'historique inter-sessions.
-        inter_session_indicators: Indicateurs vus dans les runs précédents
-            (passé depuis ``config.indicator_history``).
+        inter_session_indicators: Indicateurs vus dans les runs précédents.
     """
     query_tokens = _build_indicator_query_tokens(objective, diagnostic)
-    previous = {str(ind or "").strip().lower() for ind in (previous_indicators or []) if str(ind or "").strip()}
-    banned = {str(ind or "").strip().lower() for ind in (banned_indicators or []) if str(ind or "").strip()}
-    recent_families = {str(fam or "").strip().lower() for fam in (previous_families or []) if str(fam or "").strip()}
+    previous = {
+        str(ind or "").strip().lower()
+        for ind in (previous_indicators or [])
+        if str(ind or "").strip()
+    }
+    banned = {
+        str(ind or "").strip().lower()
+        for ind in (banned_indicators or [])
+        if str(ind or "").strip()
+    }
+    recent_families = {
+        str(fam or "").strip().lower()
+        for fam in (previous_families or [])
+        if str(fam or "").strip()
+    }
     inter_session = {
-        str(ind or "").strip().lower() for ind in (inter_session_indicators or []) if str(ind or "").strip()
+        str(ind or "").strip().lower()
+        for ind in (inter_session_indicators or [])
+        if str(ind or "").strip()
     }
 
-    # Charger le mapping famille une seule fois si on a besoin des malus/bonus
-    family_map: dict[str, str] = (
-        _get_indicator_family_map() if (recent_families or family_penalty or family_bonus) else {}
+    family_map: Dict[str, str] = (
+        _get_indicator_family_map()
+        if (recent_families or family_penalty or family_bonus)
+        else {}
     )
 
-    # Filtrer les indicateurs bannis
     normalized = [
         str(ind or "").strip()
         for ind in (available_indicators or [])
@@ -689,7 +802,7 @@ def rank_indicator_selection(
         return []
 
     effective_seed = str(session_seed or objective or "builder-indicators")
-    ranking: list[tuple[float, str]] = []
+    ranking: List[tuple[float, str]] = []
 
     for indicator_name in normalized:
         key = indicator_name.lower()
@@ -703,23 +816,22 @@ def rank_indicator_selection(
         if key in summary_lower:
             relevance_score += _INDICATOR_DIAGNOSTIC_MATCH_BONUS
 
-        # ── Pénalité/bonus intra-session (previous_indicators) ────────────
         if previous:
             if key in previous:
                 relevance_score += (
-                    -_INDICATOR_PREVIOUS_DIVERSITY_PENALTY if prefer_diversity else _INDICATOR_PREVIOUS_STABILITY_BONUS
+                    -_INDICATOR_PREVIOUS_DIVERSITY_PENALTY
+                    if prefer_diversity
+                    else _INDICATOR_PREVIOUS_STABILITY_BONUS
                 )
             elif prefer_diversity:
                 relevance_score += _INDICATOR_NOVELTY_BONUS
 
-        # ── Pénalité/bonus inter-sessions ─────────────────────────────────
         if inter_session:
             if key in inter_session:
                 relevance_score -= inter_session_penalty
             elif inter_session_novelty_bonus:
                 relevance_score += inter_session_novelty_bonus
 
-        # ── Pénalité/bonus famille ─────────────────────────────────────────
         if family_map and (family_penalty or family_bonus):
             ind_family = family_map.get(key, "")
             if ind_family:
@@ -730,6 +842,8 @@ def rank_indicator_selection(
 
         if key == "atr":
             relevance_score += _INDICATOR_BASELINE_UTILITY_BONUS
+        if key in _MODEL_DEMANDED_INDICATOR_HINTS:
+            relevance_score += _INDICATOR_MODEL_DEMAND_BONUS
 
         noise = _stable_indicator_order_noise(effective_seed, key)
         composite_score = relevance_score + (_INDICATOR_NOISE_WEIGHT * noise)
@@ -740,16 +854,13 @@ def rank_indicator_selection(
 
 
 # Indicateurs contextuels (lecture seule). Modifiable côté code.
-DEFAULT_READ_ONLY_INDICATORS: list[tuple[str, dict[str, Any]]] = [
+DEFAULT_READ_ONLY_INDICATORS: List[Tuple[str, Dict[str, Any]]] = [
     ("adx", {"period": 14}),
     ("atr", {"period": 14}),
     ("rsi", {"period": 14}),
     ("macd", {"fast_period": 12, "slow_period": 26, "signal_period": 9}),
     ("stochastic", {"k_period": 14, "d_period": 3, "smooth_k": 3}),
-    (
-        "stoch_rsi",
-        {"rsi_period": 14, "stoch_period": 14, "k_smooth": 3, "d_smooth": 3, "oversold": 20, "overbought": 80},
-    ),
+    ("stoch_rsi", {"rsi_period": 14, "stoch_period": 14, "k_smooth": 3, "d_smooth": 3, "oversold": 20, "overbought": 80}),
     ("cci", {"period": 20}),
     ("williams_r", {"period": 14}),
     ("momentum", {"period": 14}),
@@ -772,12 +883,12 @@ DEFAULT_READ_ONLY_INDICATORS: list[tuple[str, dict[str, Any]]] = [
     ("fibonacci_levels", {"period": 50}),
 ]
 
-TUPLE_LABELS: dict[str, tuple[str, ...]] = {
+TUPLE_LABELS: Dict[str, Tuple[str, ...]] = {
     "bollinger": ("upper", "middle", "lower"),
     "stochastic": ("k", "d"),
 }
 
-DICT_KEY_ALIASES: dict[str, str] = {
+DICT_KEY_ALIASES: Dict[str, str] = {
     "histogram": "hist",
 }
 
@@ -785,17 +896,18 @@ DICT_KEY_ALIASES: dict[str, str] = {
 def build_indicator_context(
     df: pd.DataFrame,
     strategy_name: str,
-    params: dict[str, Any],
-    read_only_indicators: Iterable[tuple[str, dict[str, Any]]] | None = None,
-) -> dict[str, Any]:
-    """Construit un contexte indicateurs séparé en:
+    params: Dict[str, Any],
+    read_only_indicators: Optional[Iterable[Tuple[str, Dict[str, Any]]]] = None,
+) -> Dict[str, Any]:
+    """
+    Construit un contexte indicateurs séparé en:
     - strategy_indicators: indicateurs liés à la stratégie (modifiables via params)
     - read_only_indicators: indicateurs contexte (lecture seule)
     """
-    warnings: list[str] = []
+    warnings: List[str] = []
 
     # Strategy indicators
-    strategy_lines: list[str] = []
+    strategy_lines: List[str] = []
     try:
         strategy_cls = get_strategy(strategy_name)
         strategy = strategy_cls()
@@ -824,11 +936,11 @@ def build_indicator_context(
                 strategy=strategy,
                 warnings=warnings,
                 is_strategy=True,
-            ),
+            )
         )
 
     # Read-only indicators
-    read_only_lines: list[str] = []
+    read_only_lines: List[str] = []
     ro_specs = list(read_only_indicators) if read_only_indicators else list(DEFAULT_READ_ONLY_INDICATORS)
 
     for indicator_name, indicator_params in ro_specs:
@@ -843,7 +955,7 @@ def build_indicator_context(
                 strategy=None,
                 warnings=warnings,
                 is_strategy=False,
-            ),
+            )
         )
 
     return {
@@ -855,14 +967,14 @@ def build_indicator_context(
 
 def build_indicator_selection_guide(
     available_indicators: Iterable[str],
-) -> list[str]:
+) -> List[str]:
     """Retourne un guide compact pour aider le LLM a choisir les indicateurs.
 
     Chaque ligne expose l'abreviation, le nom complet, l'usage principal et un
     rappel de formule ou de mecanique, afin d'eviter un prompt limite a une
     simple liste de noms.
     """
-    guide_lines: list[str] = []
+    guide_lines: List[str] = []
     seen: set[str] = set()
 
     for indicator_name in available_indicators or []:
@@ -877,33 +989,68 @@ def build_indicator_selection_guide(
         if meta is None:
             pretty_name = raw_name.replace("_", " ").title()
             guide_lines.append(
-                f"- {raw_name}: {pretty_name}. Use only if its mechanics clearly fit the hypothesis; inspect name semantics before choosing. Builder access: {get_indicator_builder_access_example(raw_name)}",
+                f"- {raw_name}: {pretty_name}. Use only if its mechanics clearly fit the hypothesis; inspect name semantics before choosing. Builder access: {get_indicator_builder_access_example(raw_name)}"
             )
             continue
 
-        guide_lines.append(
-            f"- {raw_name} ({meta['label']}): {meta['summary']} Formula/mnemonic: {meta['formula']} Builder access: {get_indicator_builder_access_example(raw_name)} Preferred stable aliases: "
-            + ", ".join(
-                f"{short_name}->{stable_name}"
-                for short_name, stable_name in get_indicator_builder_stable_alias_map(raw_name).items()
-            ),
+        stable_aliases = ", ".join(
+            f"{short_name}->{stable_name}"
+            for short_name, stable_name in get_indicator_builder_stable_alias_map(raw_name).items()
         )
+        demand_hint = get_model_demand_indicator_hint(raw_name)
+        line = (
+            f"- {raw_name} ({meta['label']}): {meta['summary']} Formula/mnemonic: {meta['formula']} Builder access: {get_indicator_builder_access_example(raw_name)} Preferred stable aliases: "
+            + stable_aliases
+        )
+        if demand_hint:
+            line += f" Model-demand cue: {demand_hint}"
+        guide_lines.append(line)
 
     return guide_lines
+
+
+def build_compact_indicator_catalog(
+    available_indicators: Iterable[str],
+) -> List[str]:
+    """Catalogue compact pour la phase de generation d'objectif.
+
+    Format : ``- name (Label): summary``. Omet formula / builder_access /
+    aliases (utiles uniquement a la phase code) afin de garder un prompt
+    leger lors du choix d'hypothese de strategie.
+    """
+    catalog_lines: List[str] = []
+    seen: set[str] = set()
+    for indicator_name in available_indicators or []:
+        raw_name = str(indicator_name or "").strip()
+        if not raw_name:
+            continue
+        key = raw_name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        meta = INDICATOR_SELECTION_REFERENCE.get(key)
+        if meta is None:
+            pretty_name = raw_name.replace("_", " ").title()
+            catalog_lines.append(
+                f"- {raw_name} ({pretty_name}): inspect mechanics from the indicator name before choosing."
+            )
+            continue
+        catalog_lines.append(f"- {raw_name} ({meta['label']}): {meta['summary']}")
+    return catalog_lines
 
 
 def _summarize_indicator(
     df: pd.DataFrame,
     indicator_name: str,
-    params: dict[str, Any],
+    params: Dict[str, Any],
     strategy: Any,
-    warnings: list[str],
+    warnings: List[str],
     is_strategy: bool,
-) -> list[str]:
-    lines: list[str] = []
+) -> List[str]:
+    lines: List[str] = []
 
     # Parametrage base
-    indicator_params: dict[str, Any] = {}
+    indicator_params: Dict[str, Any] = {}
     if is_strategy and strategy is not None:
         try:
             indicator_params = strategy.get_indicator_params(indicator_name, params)
@@ -919,42 +1066,30 @@ def _summarize_indicator(
         if fast is not None:
             lines.extend(
                 _summarize_single_indicator(
-                    df,
-                    indicator_name,
-                    {"period": int(fast)},
-                    f"{indicator_name}_fast",
-                    warnings,
-                ),
+                    df, indicator_name, {"period": int(fast)}, f"{indicator_name}_fast", warnings
+                )
             )
         if slow is not None:
             lines.extend(
                 _summarize_single_indicator(
-                    df,
-                    indicator_name,
-                    {"period": int(slow)},
-                    f"{indicator_name}_slow",
-                    warnings,
-                ),
+                    df, indicator_name, {"period": int(slow)}, f"{indicator_name}_slow", warnings
+                )
             )
         if lines:
             return lines
 
     return _summarize_single_indicator(
-        df,
-        indicator_name,
-        indicator_params,
-        indicator_name,
-        warnings,
+        df, indicator_name, indicator_params, indicator_name, warnings
     )
 
 
 def _summarize_single_indicator(
     df: pd.DataFrame,
     indicator_name: str,
-    params: dict[str, Any],
+    params: Dict[str, Any],
     label_name: str,
-    warnings: list[str],
-) -> list[str]:
+    warnings: List[str],
+) -> List[str]:
     try:
         result = calculate_indicator(indicator_name, df, params)
     except Exception as exc:
@@ -994,14 +1129,14 @@ def _summarize_single_indicator(
 
     return [
         "- "
-        f"{label}: last={_fmt(stats['last'])}, "
-        f"mean={_fmt(stats['mean'])}, "
-        f"min={_fmt(stats['min'])}, "
-        f"max={_fmt(stats['max'])}",
+        + f"{label}: last={_fmt(stats['last'])}, "
+        + f"mean={_fmt(stats['mean'])}, "
+        + f"min={_fmt(stats['min'])}, "
+        + f"max={_fmt(stats['max'])}"
     ]
 
 
-def _series_stats(values: Any) -> dict[str, float] | None:
+def _series_stats(values: Any) -> Optional[Dict[str, float]]:
     arr = _to_array(values)
     if arr is None or arr.size == 0:
         return None
@@ -1021,7 +1156,7 @@ def _series_stats(values: Any) -> dict[str, float] | None:
     }
 
 
-def _last_valid_value(values: Any) -> float | None:
+def _last_valid_value(values: Any) -> Optional[float]:
     arr = _to_array(values)
     if arr is None or arr.size == 0:
         return None
@@ -1031,7 +1166,7 @@ def _last_valid_value(values: Any) -> float | None:
     return float(arr[mask][-1])
 
 
-def _to_array(values: Any) -> np.ndarray | None:
+def _to_array(values: Any) -> Optional[np.ndarray]:
     if values is None:
         return None
     if isinstance(values, pd.Series):
@@ -1043,7 +1178,7 @@ def _to_array(values: Any) -> np.ndarray | None:
     return arr.astype("float64", copy=False)
 
 
-def _format_indicator_label(name: str, params: dict[str, Any]) -> str:
+def _format_indicator_label(name: str, params: Dict[str, Any]) -> str:
     if not params:
         return name
     parts = []
@@ -1065,7 +1200,7 @@ def _fmt(value: Any) -> str:
     return f"{val:.4f}"
 
 
-def _first_param(params: dict[str, Any], keys: Iterable[str]) -> float | None:
+def _first_param(params: Dict[str, Any], keys: Iterable[str]) -> Optional[float]:
     for key in keys:
         if key in params:
             try:

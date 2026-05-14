@@ -1,25 +1,108 @@
 {
   "pipeline": "positive_imports",
   "status": "completed",
-  "event": "completed",
-  "pid": 29920,
-  "started_at": "2026-04-17T13:03:58.386659+00:00",
+  "event": "completed_no_p5_survivors",
+  "pid": 26804,
+  "started_at": "2026-05-14T13:55:18.927779+00:00",
   "current_phase": "P5",
-  "current_index": 0,
-  "current_total": 1052,
+  "current_index": 1,
+  "current_total": 1,
   "stats": {
-    "p1_candidates": 1052,
-    "import_candidates": 1052,
-    "p2_survivors": 0,
-    "p3_processed": 0,
-    "p3_survivors": 0,
-    "p4_processed": 0,
-    "p4_survivors": 0,
-    "p5_processed": 0,
+    "p1_candidates": 2046,
+    "import_candidates": 2046,
+    "p2_processed": 2046,
+    "p2_survivors": 1015,
+    "p3_processed": 1015,
+    "p3_survivors": 12,
+    "p4_processed": 12,
+    "p4_survivors": 1,
+    "p5_processed": 1,
     "p5_survivors": 0,
     "p6_promoted": 0,
-    "catalog_synced": 3
+    "catalog_synced": 2046
   },
   "report_path": "catalog\\graduation_results\\positive_imports_graduation.json",
-  "updated_at": "2026-04-17T13:04:49.438936+00:00"
+  "stable_report_path": "catalog\\graduation_results\\positive_imports_graduation.json",
+  "draft_report_path": "catalog\\graduation_results\\positive_imports_graduation.running.json",
+  "cli_equivalent": "python -m catalog.graduation --positive-import-full --sync-catalog",
+  "phase_contract": {
+    "P1": {
+      "name": "Inventaire",
+      "purpose": "Collecter les candidats Builder/imports et normaliser leur source."
+    },
+    "P2": {
+      "name": "Positif observé",
+      "purpose": "Garder les candidats avec performance minimale crédible sur leur observation initiale."
+    },
+    "P3": {
+      "name": "Benchmark consensus",
+      "purpose": "Mesurer la généralisation cross-token/cross-timeframe sur les packs de benchmarks."
+    },
+    "P4": {
+      "name": "Sensibilité paramétrique",
+      "purpose": "Tester la robustesse locale des paramètres, source-first si le marché source est connu."
+    },
+    "P5": {
+      "name": "Walk-forward",
+      "purpose": "Valider la stabilité temporelle out-of-sample, source-first si le marché source est connu."
+    },
+    "P6": {
+      "name": "Promotion",
+      "purpose": "Promouvoir les survivants en candidats paper/production et synchroniser le catalogue."
+    }
+  },
+  "config_snapshot": {
+    "sandbox_dir": "C:\\Users\\o3-Pro\\Documents\\backtest_results\\_builder_sessions",
+    "sync_catalog": true,
+    "source_market_first": true,
+    "source_min_history_bars_by_timeframe": {
+      "1m": 20000,
+      "3m": 15000,
+      "5m": 12000,
+      "15m": 8000,
+      "30m": 5000,
+      "1h": 2500,
+      "2h": 1800,
+      "4h": 1200,
+      "6h": 900,
+      "8h": 750,
+      "12h": 600,
+      "1d": 500,
+      "1w": 120
+    },
+    "source_min_history_bars_default": 1000,
+    "p2_min_return_pct": 1.0,
+    "p2_min_trades": 10,
+    "p2_min_profit_factor": 1.0,
+    "benchmark_names": [
+      "crypto_liquid_benchmark_v1_core",
+      "crypto_liquid_benchmark_v2_breadth",
+      "crypto_liquid_benchmark_v3_balanced"
+    ],
+    "required_benchmark_name": "crypto_liquid_benchmark_v1_core",
+    "min_benchmarks_pass": 2,
+    "validation_tokens": [
+      "BTCUSDC",
+      "SOLUSDC",
+      "AVAXUSDC"
+    ],
+    "validation_timeframes": [
+      "1h",
+      "4h"
+    ],
+    "min_context_coverage_pct": 70.0,
+    "sweep_neighborhood": 0.1,
+    "sweep_min_profitable_pct": 40.0,
+    "sweep_max_combinations": 81,
+    "sweep_max_drawdown_drift_pct": 15.0,
+    "wfa_folds": 5,
+    "wfa_train_ratio": 0.8,
+    "wfa_min_stability": 0.5,
+    "wfa_min_test_sharpe": 0.3,
+    "wfa_max_overfitting_ratio": 1.8
+  },
+  "extra": {
+    "stop_reason": "no_survivors_after_p5"
+  },
+  "updated_at": "2026-05-14T14:26:34.136163+00:00"
 }

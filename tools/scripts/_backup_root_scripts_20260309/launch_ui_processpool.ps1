@@ -18,7 +18,7 @@ $env:OMP_NUM_THREADS = "1"
 $env:MKL_NUM_THREADS = "1"
 $env:OPENBLAS_NUM_THREADS = "1"
 $env:NUMEXPR_MAX_THREADS = "32"  # NumExpr peut rester élevé
-$env:BACKTEST_WORKSPACE_VARIANT = "multillm_parallel"
+$env:BACKTEST_WORKSPACE_VARIANT = "mono_builder"
 if (-not $env:BACKTEST_STREAMLIT_PORT) {
     $env:BACKTEST_STREAMLIT_PORT = "8502"
 }

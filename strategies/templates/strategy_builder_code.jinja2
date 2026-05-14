@@ -34,6 +34,16 @@ Do NOT output explanations before/after code.
 - Costs: fees={{ fees_bps|default(10) }} bps, slippage={{ slippage_bps|default(5) }} bps (already applied by engine)
 - Capital: {{ initial_capital|default(10000) }}
 
+{% if mono_llm_profile_active %}
+## MONO-LLM MODEL GUARDRAILS
+- Current mono-LLM model: {{ mono_llm_model_name }}
+- These guardrails refine the universal Builder contract for this specific model failure pattern.
+- Rationale: {{ mono_llm_profile_rationale }}
+{% for line in mono_llm_profile_rules %}
+- {{ line }}
+{% endfor %}
+{% endif %}
+
 ## CHANGE CONTRACT
 Requested change_type = {{ proposal.change_type|default("logic") }}
 
@@ -57,7 +67,7 @@ BOTH MODE:
 {% endif %}
 
 ## AVAILABLE INDICATORS (ONLY THESE)
-- Order is session-stable and lightly re-ranked for relevance; all listed indicators remain allowed.
+- Order is pseudo-random for this prompt and lightly relevance-grouped; all listed indicators remain allowed.
 {% for ind in available_indicators %}
 - {{ ind }}
 {% endfor %}
@@ -84,7 +94,7 @@ BOTH MODE:
   Transition: +1.0 → -1.0 closes long then opens short in the same bar.
   Design signals as clean state transitions, NOT continuous confirmation.
 - Indicators are already computed and provided in `indicators` dict.
-- Every `indicators["name"]` used in code MUST exist in required_indicators.
+- Every `indicators["name"]` used in code MUST exist in required_indicators or in the host-computed named instance configs.
 - Arrays: wrap with `np.nan_to_num(...)` before comparisons.
 - Indicator values are `np.ndarray` (or dict of `np.ndarray`), not pandas Series.
 - Never use `.iloc` / `.loc` / `.shift` / `.rolling` on indicator arrays.
@@ -97,6 +107,8 @@ BOTH MODE:
 ### INDICATOR ACCESS CONTRACT (complete reference)
 **Plain array indicators** → `np.ndarray` of float64, length = len(df). Direct access, NO sub-keys:
 - EMA: `np.nan_to_num(indicators["ema"])` — price-level array
+- Parameterized EMA/ATR/SMA examples: `np.nan_to_num(indicators["ema_21"])`, `np.nan_to_num(indicators["ema_50"])`, `np.nan_to_num(indicators["atr_20"])`.
+  These are separate indicator keys. Never write `indicators["ema"]["ema_21"]`.
 - RSI: `np.nan_to_num(indicators["rsi"])` — oscillator 0-100
 - ATR: `np.nan_to_num(indicators["atr"])` — volatility/distance (NOT a price level)
 - CCI: `np.nan_to_num(indicators["cci"])` — oscillator (unbounded, typically -200..+200)
@@ -137,14 +149,17 @@ BOTH MODE:
   Example: `sw = indicators["swing"]; swing_low = np.nan_to_num(sw["swing_low"]).astype(bool)`
 - Smart Legs: keys `smart_leg_bullish`, `smart_leg_bearish` — boolean structure arrays
   Example: `legs = indicators["smart_legs"]; bull_leg = np.nan_to_num(legs["smart_leg_bullish"]).astype(bool)`
+- Amplitude Hunter: keys `range_pct`, `score` — volatility expansion arrays
+  Example: `amp = indicators["amplitude_hunter"]; amp_score = np.nan_to_num(amp["score"])`
 - Directional Bias: keys `bull_score`, `bear_score`, `net_bias` — score arrays
   Example: `bias = indicators["directional_bias"]; net_bias = np.nan_to_num(bias["net_bias"])`
 - Markov Switching: keys `regime`, `prob_regime_0`, `prob_regime_1`, `prob_regime_2`, `prob_regime_3` — numeric regime/probability arrays
-  Example: `mk = indicators["markov_switching"]; regime = np.nan_to_num(mk["regime"]); bull_prob = np.nan_to_num(mk["prob_regime_0"])`
+  Example: `mk = indicators["markov_switching"]; regime = np.nan_to_num(mk["regime"]); bull_prob = np.nan_to_num(mk["prob_regime_1"])`
   Use it as a regime filter, not as a fast trigger. Prefer higher timeframes (`1h`, `4h`, `1d`) and probability thresholds.
 
 - Never request/use fake indicator names like `bollinger_upper`, `keltner_lower`, `donchian_middle`.
 - Never do `np.nan_to_num(indicators["bollinger"])` directly on a dict indicator.
+- Never assign a dict indicator to a scalar alias: use `amp_score = np.nan_to_num(indicators["amplitude_hunter"]["score"])` and `net_bias = np.nan_to_num(indicators["directional_bias"]["net_bias"])`.
 - Never access indicators via `df["rsi"]`, `df["bollinger"]`, `df["ema"]`.
 - Do not recalculate indicators from raw OHLCV.
 - If proposal logic contains `cross_up(x, y)` / `cross_down(x, y)` / `cross_any(x, y)`,

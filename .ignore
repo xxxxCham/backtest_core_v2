@@ -4,6 +4,7 @@ output/
 sandbox_strategies/
 sweep_diagnostics/
 profiling_results/
+.llm_archive/
 docs/
 labs/
 examples/

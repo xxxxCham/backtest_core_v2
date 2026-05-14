@@ -75,12 +75,18 @@ def _run_streamlit_page_script_once(
 
 def test_app_css_uses_full_width_layout_and_keeps_sidebar_controls_interactive() -> None:
     content = (REPO_ROOT / "ui" / "app.py").read_text(encoding="utf-8")
+    sidebar_content = (REPO_ROOT / "ui" / "sidebar.py").read_text(encoding="utf-8")
 
     assert "max-width: 1520px;" not in content
     assert "max-width: none;" in content
     assert "transform: translateX(0) !important;" not in content
     assert "pointer-events: none !important;" not in content
+    assert '[data-testid="stToolbar"],' not in content
+    assert '[data-testid="stToolbar"] {' in content
     assert 'button[kind="header"]' in content
+    assert '[data-testid="stExpandSidebarButton"]' in content
+    assert '[data-testid="stSidebar"][aria-expanded="true"]' in sidebar_content
+    assert '[data-testid="stSidebar"] > div:first-child' not in sidebar_content
 
 
 @pytest.mark.parametrize(
@@ -96,7 +102,10 @@ def test_page_navigation_css_does_not_force_sidebar_open(relative_page_path: str
 
     assert "transform: translateX(0) !important;" not in content
     assert "pointer-events: none !important;" not in content
+    assert '[data-testid="stToolbar"],' not in content
+    assert '[data-testid="stToolbar"] {' in content
     assert 'button[kind="header"]' in content
+    assert '[data-testid="stExpandSidebarButton"]' in content
 
 
 def test_results_hub_is_only_exposed_via_dedicated_results_store_page() -> None:
@@ -120,6 +129,11 @@ def test_collect_builder_sessions_reads_summary_and_latest_strategy(tmp_path: Pa
     summary = {
         "session_id": "session_alpha",
         "status": "success",
+        "model_name": "qwen-builder",
+        "symbol": "BTCUSDC",
+        "timeframe": "1h",
+        "resume_parent_session_id": "",
+        "resume_mode": "",
         "best_sharpe": 1.42,
         "best_score": 33.0,
         "total_iterations": 4,
@@ -129,28 +143,7 @@ def test_collect_builder_sessions_reads_summary_and_latest_strategy(tmp_path: Pa
             {"iteration": 2, "return_pct": 8.5},
             {"iteration": 3, "return_pct": 12.25},
         ],
-        "orchestration_mode": "multi_llm",
-        "multi_llm_profile": "brain",
-        "multi_llm_router_decision": {
-            "action": "iterate",
-            "reason": "tighten exits",
-        },
-        "multi_llm_assignments": [
-            {
-                "role": "builder_llm",
-                "requested_model": "qwen3-coder:30b",
-                "resolved_model": "qwen3-coder:30b",
-                "available": True,
-            },
-        ],
-        "multi_llm_shared_memory": {
-            "continuity_context": {
-                "recent_sessions": [{"session_num": 8, "symbol": "BTCUSDT"}],
-                "best_recent_session": {"session_num": 8, "symbol": "BTCUSDT"},
-                "carry_over_focus": ["tighten exits"],
-                "recurring_risks": ["drawdown spike"],
-            },
-        },
+        "orchestration_mode": "single_llm",
     }
     (session_dir / "session_summary.json").write_text(json.dumps(summary), encoding="utf-8")
 
@@ -160,6 +153,10 @@ def test_collect_builder_sessions_reads_summary_and_latest_strategy(tmp_path: Pa
     row = rows[0]
     assert row["session_id"] == "session_alpha"
     assert row["status"] == "success"
+    assert row["model_name"] == "qwen-builder"
+    assert row["symbol"] == "BTCUSDC"
+    assert row["timeframe"] == "1h"
+    assert row["resume_parent_session_id"] == ""
     assert row["best_return_pct"] == 12.25
     assert row["best_return_iteration"] == 3
     assert row["positive_iterations"] == 2
@@ -167,15 +164,121 @@ def test_collect_builder_sessions_reads_summary_and_latest_strategy(tmp_path: Pa
     assert "i3 +12.25%" in row["positive_iteration_summary"]
     assert row["strategy_versions"] == 2
     assert Path(row["latest_strategy_path"]).name == "strategy.py"
-    assert row["multi_llm_profile"] == "brain"
-    assert row["multi_llm_router_decision"]["action"] == "iterate"
-    assert row["continuity_context"]["carry_over_focus"] == ["tighten exits"]
+
+
+def test_collect_builder_max_iteration_resume_candidates_excludes_children_and_already_resumed() -> None:
+    builder_df = pd.DataFrame(
+        [
+            {
+                "session_id": "parent_a",
+                "status": "max_iterations",
+                "resume_parent_session_id": "",
+                "last_modified": "2026-05-14 10:00:00",
+            },
+            {
+                "session_id": "parent_b",
+                "status": "max_iterations",
+                "resume_parent_session_id": "",
+                "last_modified": "2026-05-14 09:00:00",
+            },
+            {
+                "session_id": "child_b",
+                "status": "max_iterations",
+                "resume_parent_session_id": "parent_b",
+                "last_modified": "2026-05-14 11:00:00",
+            },
+            {
+                "session_id": "success_c",
+                "status": "success",
+                "resume_parent_session_id": "",
+                "last_modified": "2026-05-14 08:00:00",
+            },
+        ],
+    )
+
+    candidates = results_store_view_module._collect_builder_max_iteration_resume_candidates(builder_df)
+
+    assert candidates["session_id"].tolist() == ["parent_a"]
+
+
+def test_run_builder_max_iterations_resume_batch_uses_selected_model(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    summary_path = tmp_path / "session_summary.json"
+    summary_path.write_text(
+        json.dumps({"session_id": "parent_a", "objective": "test", "status": "max_iterations"}),
+        encoding="utf-8",
+    )
+    candidates = pd.DataFrame(
+        [
+            {
+                "session_id": "parent_a",
+                "summary_path": str(summary_path),
+                "symbol": "BTCUSDC",
+                "timeframe": "1h",
+            },
+        ],
+    )
+    captured: dict[str, object] = {}
+
+    class _FakeBuilder:
+        def __init__(self, *, llm_config, backtest_completed_callback=None):
+            captured["llm_config"] = llm_config
+            captured["callback_present"] = backtest_completed_callback is not None
+
+        def resume_from_summary(self, summary_path, data, **kwargs):
+            captured["summary_path"] = str(summary_path)
+            captured["data"] = data
+            captured["resume_kwargs"] = dict(kwargs)
+            return SimpleNamespace(
+                session_id="child_a",
+                resume_mode=kwargs["mode"],
+                iterations=[object(), object()],
+            )
+
+    import agents.strategy_builder as strategy_builder_module
+    import data.loader as data_loader_module
+    import ui.builder_runtime as builder_runtime_module
+
+    monkeypatch.setattr(results_store_view_module.st, "session_state", {
+        "builder_ollama_host": "http://127.0.0.1:11434",
+        "builder_keep_alive_minutes": 20,
+        "llm_inference_global_settings": {},
+        "llm_inference_model_profiles": {},
+    }, raising=False)
+    monkeypatch.setattr(strategy_builder_module, "StrategyBuilder", _FakeBuilder)
+    monkeypatch.setattr(data_loader_module, "load_ohlcv", lambda symbol, timeframe: pd.DataFrame({"close": [1.0]}))
+    monkeypatch.setattr(
+        builder_runtime_module,
+        "build_builder_base_llm_config",
+        lambda **kwargs: captured.setdefault("llm_kwargs", dict(kwargs)) or SimpleNamespace(model=kwargs["model"]),
+    )
+
+    result = results_store_view_module._run_builder_max_iterations_resume_batch(
+        candidates,
+        model="selected-ui-model",
+        mode="exact_continue",
+    )
+
+    assert result["resumed"] == 1
+    assert captured["llm_kwargs"]["model"] == "selected-ui-model"
+    assert captured["resume_kwargs"]["mode"] == "exact_continue"
+    assert captured["resume_kwargs"]["extra_iterations"] == 10
+    assert captured["resume_kwargs"]["restart_max_iterations"] == 20
+    assert captured["callback_present"] is True
 
 
 def test_display_int_and_coerce_int_tolerate_nan() -> None:
     assert results_store_view_module._coerce_int(float("nan")) is None
     assert results_store_view_module._display_int(float("nan")) == 0
     assert results_store_view_module._display_int("7") == 7
+
+
+def test_builder_status_label_renames_running_without_changing_terminal_statuses() -> None:
+    assert results_store_view_module._builder_status_label("running") == "À finir - stratégie non aboutie"
+    assert results_store_view_module._builder_status_label("success") == "success"
+    assert results_store_view_module._builder_status_label("") == "unknown"
 
 
 def test_render_builder_tab_tolerates_nan_builder_counts(

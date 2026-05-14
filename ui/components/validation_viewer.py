@@ -407,7 +407,7 @@ def render_validation_report(
     so that users can judge strategy robustness during backtests.
 
     Args:
-        report: ValidationReport produced by `validation_integration`.
+        report: ValidationReport built from walk-forward validation results.
         key: Widget key preventing Streamlit rerun collisions.
 
     """
@@ -611,46 +611,3 @@ def render_validation_summary_card(
         )
 
 
-def create_sample_report() -> ValidationReport:
-    """Crée un rapport exemple pour les tests."""
-    import random
-    from datetime import timedelta
-
-    windows = []
-    base_date = datetime(2024, 1, 1)
-
-    for i in range(5):
-        train_start = base_date + timedelta(days=i * 60)
-        train_end = train_start + timedelta(days=180)
-        test_start = train_end + timedelta(days=1)
-        test_end = test_start + timedelta(days=45)
-
-        train_sharpe = random.uniform(0.8, 2.5)
-        degradation = random.uniform(0.1, 0.6)
-
-        windows.append(
-            WindowResult(
-                window_id=i + 1,
-                train_start=train_start,
-                train_end=train_end,
-                test_start=test_start,
-                test_end=test_end,
-                train_sharpe=train_sharpe,
-                train_return=random.uniform(0.05, 0.25),
-                train_drawdown=random.uniform(0.05, 0.15),
-                train_trades=random.randint(50, 150),
-                test_sharpe=train_sharpe * (1 - degradation),
-                test_return=random.uniform(-0.02, 0.15),
-                test_drawdown=random.uniform(0.05, 0.20),
-                test_trades=random.randint(10, 40),
-                params={"fast_period": 10 + i, "slow_period": 20 + i * 2},
-            ),
-        )
-
-    return ValidationReport(
-        strategy_name="ema_cross",
-        created_at=datetime.now(),
-        windows=windows,
-        n_splits=5,
-        train_ratio=0.8,
-    )

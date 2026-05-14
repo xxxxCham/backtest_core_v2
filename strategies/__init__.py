@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 from importlib import import_module
-from typing import Dict
 
 from .base import StrategyBase, StrategyResult, get_strategy, list_strategies
 from .indicators_mapping import (

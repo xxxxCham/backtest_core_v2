@@ -18,8 +18,7 @@ def _history_sample():
             "timeframe": "1h",
             "source_mode": "llm",
             "orchestration_mode": "single_llm",
-            "multi_llm_profile": "",
-            "multi_llm_builder_model": "lfm2:24b",
+            "model_name": "lfm2:24b",
             "objective": "Builder A",
         },
         {
@@ -34,8 +33,7 @@ def _history_sample():
             "timeframe": "4h",
             "source_mode": "llm",
             "orchestration_mode": "single_llm",
-            "multi_llm_profile": "",
-            "multi_llm_builder_model": "lfm2:24b",
+            "model_name": "lfm2:24b",
             "objective": "Builder B",
         },
         {
@@ -49,9 +47,8 @@ def _history_sample():
             "symbol": "SOLUSDT",
             "timeframe": "30m",
             "source_mode": "fallback",
-            "orchestration_mode": "multi_llm",
-            "multi_llm_profile": "24GB_curated_2026",
-            "multi_llm_builder_model": "qwen3-coder:30b",
+            "orchestration_mode": "single_llm",
+            "model_name": "qwen3-coder:30b",
             "objective": "Builder C",
         },
     ]
@@ -116,7 +113,7 @@ def test_extract_builder_model_records_recovers_duration_from_timestamps():
             "best_return": 3.0,
             "started_at": "2026-04-25T10:00:00",
             "finished_at": "2026-04-25T10:02:00",
-            "multi_llm_builder_model": "fast-local",
+            "model_name": "fast-local",
         },
     ]
 
@@ -216,7 +213,7 @@ def test_compact_session_rows_recovers_runtime_error_from_session_summary(tmp_pa
                 "session_id": session_dir.name,
                 "status": "failed",
                 "objective": "Builder runtime error",
-                "multi_llm_builder_model": "lfm2:24b",
+                "model_name": "lfm2:24b",
             },
         ],
     )
@@ -234,7 +231,7 @@ def test_compact_session_rows_exposes_best_telemetry_score_alias():
                 "session_id": "session_alias",
                 "status": "success",
                 "best_score": 18.75,
-                "multi_llm_builder_model": "qwen3-coder:30b",
+                "model_name": "qwen3-coder:30b",
             },
         ],
     )

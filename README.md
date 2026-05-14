@@ -32,19 +32,30 @@ Le point important pour les assistants VS Code : toute la racine n'est pas du co
 - `examples/README.md` : point d'entree des exemples legers versionnes
 - `examples/end_to_end/README.md` : mini parcours de bout en bout
 
-## Sauvegarde GitHub des sessions Builder
+## Exports locaux des sessions Builder
 
-Les sources canoniques des sessions Builder restent les fichiers :
+Les sauvegardes locales des sessions Builder restent dans le dossier runtime prévu à cet effet, sous forme de fichiers :
 
-- `C:\Users\o3-Pro\Documents\backtest_results\_builder_sessions\*\session_summary.json`
+- `<builder_sessions_root>\<session_id>\session_summary.json`
 
-Il y a bien un `session_summary.json` par dossier de session. Pour les sauvegarder dans GitHub sans versionner tout le dossier runtime, utiliser :
+Il y a bien un `session_summary.json` par dossier de session. Le dépôt ne doit pas contenir de copie de ces sauvegardes. Pour produire un export analytique local sans dupliquer les sessions dans le workspace Git, utiliser :
 
 ```powershell
 python tools\export_builder_session_summary_backup.py
 ```
 
-La sortie versionnable est écrite dans `github_backups\builder_session_summaries\` avec un manifeste CSV et une archive NDJSON compressée contenant un enregistrement par session.
+La sortie par défaut est écrite hors dépôt dans :
+
+`%USERPROFILE%\Documents\backtest_results\_builder_session_summary_exports\`
+
+Elle contient un manifeste CSV à chemins relatifs, une archive NDJSON compressée contenant un enregistrement compact par session, et des vues analytiques plates. L'option `--include-full-payload` existe pour un export local complet, mais elle ne doit pas être utilisée pour créer un artefact versionné.
+
+- `runs_summary.csv` : une ligne par session avec compteurs par cohorte.
+- `run_iterations.csv` : une ligne par itération avec flags canonique/fallback, cause de fallback et robustesse.
+- `runtime_events.csv` : erreurs et événements runtime extraits des itérations.
+- `benchmark_cohorts.csv` : agrégats par statut, modèle, symbole, timeframe et diagnostic.
+- `benchmark_candidates.csv` : itérations canoniques robustes classées pour baseline v2/v3.
+- `builder_benchmark_report.md` : synthèse Markdown lisible des cohortes et meilleurs candidats.
 
 ## Hygiene de contexte pour les agents
 

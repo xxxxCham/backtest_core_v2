@@ -31,33 +31,19 @@ from config.market_selection import (
     normalize_universe_mode,
 )
 
-try:
-    from core.llm_multi import get_profile_role_pools
-    from core.llm_multi.roles import SIMPLE_MULTI_LLM_ACTIVE_ROLES
-except ImportError:
-    get_profile_role_pools = None
-
 BUILDER_PRELOAD_MODEL_DEFAULT = True
 BUILDER_KEEP_ALIVE_MINUTES_DEFAULT = 20
 BUILDER_UNLOAD_AFTER_RUN_DEFAULT = True
 BUILDER_AUTO_START_OLLAMA_DEFAULT = True
-BUILDER_MULTI_LLM_ACTIVE_ROLE_NAMES = (
-    "builder_llm",
-    "supervisor_llm",
-)
 BUILDER_EXECUTION_MODE_MONO = "mono_single_llm"
-BUILDER_EXECUTION_MODE_EXPERT = "expert_multi_role"
-BUILDER_EXECUTION_MODE_DUAL_LANE = "dual_lane_multi_gpu"
-BUILDER_EXECUTION_MODE_OPTIONS = (
-    BUILDER_EXECUTION_MODE_MONO,
-    BUILDER_EXECUTION_MODE_EXPERT,
-    BUILDER_EXECUTION_MODE_DUAL_LANE,
-)
+BUILDER_EXECUTION_MODE_OPTIONS = (BUILDER_EXECUTION_MODE_MONO,)
 BUILDER_OPTIMIZATION_MODE = "🏗️ Strategy Builder"
 BUILDER_UNIVERSE_MODE_CANONICAL = UNIVERSE_MODE_CANONICAL
 BUILDER_UNIVERSE_MODE_OPTIONS = UNIVERSE_MODE_OPTIONS
 _BUILDER_LAUNCH_STATE_KEYS = (
     "_builder_auto_bootstrap_symbol",
+    "_builder_force_ollama_start_once",
+    "_builder_reset_live_stream_on_launch",
     "_builder_auto_bootstrap_timeframe",
     "_builder_startup_symbol",
     "_builder_startup_timeframe",
@@ -66,12 +52,11 @@ _BUILDER_LAUNCH_STATE_KEYS = (
 )
 _BUILDER_RUNTIME_STATE_KEYS = (
     "builder_session",
+    "builder_model_effective",
     "builder_runtime_diagnostic",
     "builder_autonomous_history",
     "builder_autonomous_supervisor",
     "_builder_objective_input_sync",
-    "_builder_multi_llm_profile_sync",
-    "_builder_multi_llm_profile_saved_notice",
 ) + _BUILDER_LAUNCH_STATE_KEYS
 _UI_EXECUTION_STATE_DEFAULTS = {
     "is_running": False,
@@ -251,6 +236,9 @@ def arm_ui_run_request(session_state: Any, *, builder_mode: bool = False) -> Non
     if builder_mode:
         clear_builder_launch_state(session_state)
         _state_set(session_state, "builder_launch_pending", True)
+        _state_set(session_state, "_builder_force_ollama_start_once", True)
+        _state_set(session_state, "_builder_reset_live_stream_on_launch", True)
+        _state_pop(session_state, "builder_model_effective", None)
     _state_set(session_state, "stop_requested", False)
     _state_set(session_state, "run_backtest_requested", True)
     _state_set(session_state, "is_running", True)
@@ -311,40 +299,6 @@ def _coerce_non_negative_int(value: Any, default: int) -> int:
     return max(0, resolved)
 
 
-def _normalize_model_pool(value: Any) -> list[str]:
-    candidates: list[str] = []
-    if isinstance(value, str):
-        normalized = str(value or "").strip()
-        if normalized:
-            candidates.append(normalized)
-    elif isinstance(value, (list, tuple, set)):
-        for raw_candidate in value:
-            normalized = str(raw_candidate or "").strip()
-            if normalized:
-                candidates.append(normalized)
-    seen: set[str] = set()
-    unique: list[str] = []
-    for candidate in candidates:
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        unique.append(candidate)
-    return unique
-
-
-def normalize_builder_multi_llm_role_pool_overrides(
-    raw_value: Any,
-) -> dict[str, list[str]]:
-    if not isinstance(raw_value, dict):
-        return {}
-    normalized: dict[str, list[str]] = {}
-    for role in BUILDER_MULTI_LLM_ACTIVE_ROLE_NAMES:
-        pool = _normalize_model_pool(raw_value.get(role))
-        if pool:
-            normalized[role] = pool
-    return normalized
-
-
 def normalize_builder_execution_mode(raw_value: Any) -> str:
     value = str(raw_value or "").strip()
     if value in BUILDER_EXECUTION_MODE_OPTIONS:
@@ -355,95 +309,9 @@ def normalize_builder_execution_mode(raw_value: Any) -> str:
 def resolve_builder_execution_preferences(source: Any) -> dict[str, Any]:
     """Normalise le mode d'execution Builder depuis session_state ou SidebarState."""
 
-    def _read(name: str, default: Any) -> Any:
-        if isinstance(source, dict):
-            widget_key_overrides = {
-                "builder_execution_mode": "builder_execution_mode_select",
-                "builder_multi_llm_enabled": "builder_multi_llm_enabled_toggle",
-            }
-            widget_key = widget_key_overrides.get(name)
-            if widget_key and widget_key in source:
-                return source.get(widget_key, default)
-            return source.get(name, default)
-        return getattr(source, name, default)
-
-    mode = normalize_builder_execution_mode(_read("builder_execution_mode", ""))
-    if not mode:
-        multi_llm_enabled = _coerce_bool(_read("builder_multi_llm_enabled", False), False)
-        routing_mode = str(
-            _read("builder_llm_routing_mode", "single_endpoint") or "single_endpoint",
-        ).strip()
-        if multi_llm_enabled and routing_mode == "cooperative_multi_gpu":
-            mode = BUILDER_EXECUTION_MODE_DUAL_LANE
-        elif multi_llm_enabled:
-            mode = BUILDER_EXECUTION_MODE_EXPERT
-        else:
-            mode = BUILDER_EXECUTION_MODE_MONO
-
     return {
-        "builder_execution_mode": mode,
-        "builder_multi_llm_enabled": mode != BUILDER_EXECUTION_MODE_MONO,
-        "builder_llm_routing_mode": (
-            "cooperative_multi_gpu" if mode == BUILDER_EXECUTION_MODE_DUAL_LANE else "single_endpoint"
-        ),
-    }
-
-
-def resolve_builder_dual_lane_preferences(source: Any) -> dict[str, str]:
-    """Résout les deux modèles canonique du mode Dual Lane."""
-
-    def _read(name: str, default: Any) -> Any:
-        if isinstance(source, dict):
-            widget_key_overrides = {
-                "builder_dual_lane_primary_model": "builder_dual_lane_primary_model_select",
-                "builder_dual_lane_critic_model": "builder_dual_lane_critic_model_select",
-            }
-            widget_key = widget_key_overrides.get(name)
-            if widget_key and widget_key in source:
-                return source.get(widget_key, default)
-            return source.get(name, default)
-        return getattr(source, name, default)
-
-    raw_overrides = (
-        source.get("builder_multi_llm_role_overrides", {})
-        if isinstance(source, dict)
-        else getattr(source, "builder_multi_llm_role_overrides", {})
-    )
-    overrides = normalize_builder_multi_llm_role_pool_overrides(raw_overrides)
-    single_model_fallback = (
-        str(
-            _read("builder_model_single_llm", "deepseek-r1:32b") or "deepseek-r1:32b",
-        ).strip()
-        or "deepseek-r1:32b"
-    )
-    primary_fallback = (
-        str(
-            (overrides.get("builder_llm") or [""])[0]
-            or single_model_fallback,
-        ).strip()
-        or single_model_fallback
-    )
-    critic_fallback = (
-        str(
-            (overrides.get("supervisor_llm") or [""])[0] or primary_fallback,
-        ).strip()
-        or primary_fallback
-    )
-    primary_model = (
-        str(
-            _read("builder_dual_lane_primary_model", primary_fallback) or primary_fallback,
-        ).strip()
-        or primary_fallback
-    )
-    critic_model = (
-        str(
-            _read("builder_dual_lane_critic_model", critic_fallback) or critic_fallback,
-        ).strip()
-        or critic_fallback
-    )
-    return {
-        "builder_dual_lane_primary_model": primary_model,
-        "builder_dual_lane_critic_model": critic_model,
+        "builder_execution_mode": BUILDER_EXECUTION_MODE_MONO,
+        "builder_llm_routing_mode": "single_endpoint",
     }
 
 
@@ -536,102 +404,6 @@ def resolve_builder_flow_analysis_preferences(source: Any) -> dict[str, Any]:
     return {
         "builder_flow_analysis_enabled": enabled,
         "builder_flow_analysis_ablation": ablation,
-    }
-
-
-def resolve_builder_multi_llm_preferences(source: Any) -> dict[str, Any]:
-    """Normalise le pilotage multi-LLM Builder depuis session_state ou SidebarState."""
-    execution_preferences = resolve_builder_execution_preferences(source)
-    execution_mode = execution_preferences["builder_execution_mode"]
-
-    def _read(name: str, default: Any) -> Any:
-        if isinstance(source, dict):
-            widget_key_overrides = {
-                "builder_multi_llm_enabled": "builder_multi_llm_enabled_toggle",
-                "builder_multi_llm_profile": "builder_multi_llm_profile_select",
-            }
-            widget_key = widget_key_overrides.get(name)
-            if widget_key and widget_key in source:
-                return source.get(widget_key, default)
-            return source.get(name, default)
-        return getattr(source, name, default)
-
-    enabled = bool(execution_preferences["builder_multi_llm_enabled"])
-    profile_name = (
-        str(
-            _read("builder_multi_llm_profile", "24GB_balanced") or "24GB_balanced",
-        ).strip()
-        or "24GB_balanced"
-    )
-    applied_profile = ""
-    if isinstance(source, dict):
-        applied_profile = str(
-            source.get("_builder_multi_llm_applied_profile", "") or "",
-        ).strip()
-
-    overrides: dict[str, list[str]] = {}
-    if execution_mode == BUILDER_EXECUTION_MODE_EXPERT:
-        # Vérifier si le profil a changé
-        profile_changed = bool(applied_profile) and applied_profile != profile_name
-
-        if profile_changed:
-            # Changement de profil -> charger les pools du nouveau profil, ignorer les anciens overrides
-            if callable(get_profile_role_pools):
-                try:
-                    profile_pools = get_profile_role_pools(profile_name)
-                    overrides.update(normalize_builder_multi_llm_role_pool_overrides(profile_pools))
-                except Exception:
-                    pass
-        else:
-            # Même profil -> lire les sélections manuelles actuelles des widgets
-            manual_overrides: dict[str, list[str]] = {}
-            for role in SIMPLE_MULTI_LLM_ACTIVE_ROLES:
-                widget_key = f"builder_multi_llm_role_override_select_{role}"
-                if isinstance(source, dict) and widget_key in source:
-                    widget_value = source.get(widget_key, [])
-                    if widget_value and (isinstance(widget_value, list) and len(widget_value) > 0):
-                        manual_overrides[role] = widget_value
-
-            # Si sélections manuelles existent, les utiliser
-            if manual_overrides:
-                overrides.update(normalize_builder_multi_llm_role_pool_overrides(manual_overrides))
-            else:
-                # Sinon, utiliser builder_multi_llm_role_overrides (source de vérité par défaut)
-                raw_overrides = (
-                    source.get("builder_multi_llm_role_overrides", {})
-                    if isinstance(source, dict)
-                    else getattr(source, "builder_multi_llm_role_overrides", {})
-                )
-                overrides.update(normalize_builder_multi_llm_role_pool_overrides(raw_overrides))
-
-        # Si toujours vide, initialiser avec les pools du profil.
-        if not overrides and callable(get_profile_role_pools):
-            try:
-                overrides.update(
-                    normalize_builder_multi_llm_role_pool_overrides(
-                        get_profile_role_pools(profile_name),
-                    ),
-                )
-            except Exception:
-                pass
-    elif execution_mode == BUILDER_EXECUTION_MODE_DUAL_LANE:
-        dual_lane_preferences = resolve_builder_dual_lane_preferences(source)
-        primary_model = str(
-            dual_lane_preferences["builder_dual_lane_primary_model"] or "",
-        ).strip()
-        critic_model = str(
-            dual_lane_preferences["builder_dual_lane_critic_model"] or "",
-        ).strip()
-        if primary_model:
-            overrides["builder_llm"] = [primary_model]
-        if critic_model:
-            overrides["supervisor_llm"] = [critic_model]
-
-    return {
-        "builder_execution_mode": execution_mode,
-        "builder_multi_llm_enabled": enabled,
-        "builder_multi_llm_profile": profile_name,
-        "builder_multi_llm_role_overrides": overrides,
     }
 
 
@@ -737,11 +509,6 @@ class SidebarState:
     builder_auto_pause: int  # Pause en secondes entre runs (0-120)
     builder_auto_use_llm: bool  # Compat: conserve l'état LLM-first côté reprise UI
     builder_execution_mode: str
-    builder_dual_lane_primary_model: str
-    builder_dual_lane_critic_model: str
-    builder_multi_llm_enabled: bool
-    builder_multi_llm_profile: str
-    builder_multi_llm_role_overrides: dict[str, list[str]]
     builder_flow_analysis_enabled: bool
     builder_flow_analysis_ablation: dict[str, bool]
     builder_use_parametric_catalog: bool  # Compat legacy, forcé à False dans l'UI Builder

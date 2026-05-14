@@ -60,6 +60,10 @@ DEFAULT_MODEL_LIBRARY_ROOTS = (
     Path(r"C:\AI\models\library"),
 )
 
+DEFAULT_EXTRA_LOCAL_MODEL_SEARCH_ROOTS = (
+    Path(r"D:\Executables\Llama_ccp_win\models"),
+)
+
 DEFAULT_HUGGINGFACE_ARCHIVE_ROOTS = (
     CURRENT_HUGGINGFACE_ARCHIVE_ROOT,
     Path(r"C:\AI\models\library\huggingface"),
@@ -94,9 +98,9 @@ MODEL_NAME_ALIASES = {
     "qwen3-coder-40b-local": "qwen3-coder:30b",
     "qwen3-coder-next-40b-q3_k_xl": "qwen3-coder:30b",
     "qwen3-coder-next-40b-q3_k_xl:latest": "qwen3-coder:30b",
-    "qwen3-coder-next": "qwen3-coder:30b",
     "qwen3-coder-next:q4_k_m": "qwen3-coder:30b",
     "qwen3-coder-next-q4_k_m": "qwen3-coder:30b",
+    # qwen3-coder-next (sans suffixe) = vrai modèle Ollama Cloud Free, ne pas aliaser
     "qwen3-coder:30b-a3b-instruct": "qwen3-coder:30b",
     "qwen3-30b-a3b": "qwen3-30b-a3b:q4_k_m",
     "qwen3-30b-a3b-q4_k_m": "qwen3-30b-a3b:q4_k_m",
@@ -104,6 +108,14 @@ MODEL_NAME_ALIASES = {
     "qwen3-vl": "qwen3-vl:32b",
     "qwen3-vl-30b": "qwen3-vl:32b",
     "qwen3-vl:30b": "qwen3-vl:32b",
+    # HF.co mirrors that should map onto the canonical Ollama tag
+    "hf.co/mradermacher/gemma-4-26b-a4b-it-abliterated-gguf:q4_k_m": "gemma4:26b",
+    "hf.co/mradermacher/gemma-4-26b-a4b-it-abliterated-gguf": "gemma4:26b",
+    "hf.co/deltanym/gemma-3-27b-pt-q5_k_m-gguf": "gemma3:27b",
+    "hf.co/deltanym/gemma-3-27b-pt-q5_k_m-gguf:latest": "gemma3:27b",
+    # Cloud runtime suffix collapses onto the cloud-only canonical name
+    "deepseek-v3.1:671b-cloud": "deepseek-v3.1",
+    "gpt-oss:120b-cloud": "gpt-oss:120b",
 }
 
 # Cache en memoire
@@ -201,6 +213,21 @@ def _prefer_current_target(
     return list(_iter_unique_paths([current_target, *ordered]))
 
 
+def _path_has_usable_ancestor(path: Path) -> bool:
+    anchor = str(path.anchor or "").strip()
+    if anchor and not Path(anchor).exists():
+        return False
+
+    current = path
+    while True:
+        if current.exists():
+            return True
+        parent = current.parent
+        if parent == current:
+            return False
+        current = parent
+
+
 def normalize_model_name(name: str) -> str:
     """Normalise un nom de modele et resout les alias historiques."""
     value = str(name or "").strip()
@@ -208,6 +235,15 @@ def normalize_model_name(name: str) -> str:
         return ""
     value = value.removesuffix(":latest")
     return MODEL_NAME_ALIASES.get(value.lower(), value)
+
+
+def _strip_cloud_runtime_suffix(name: str) -> str:
+    value = str(name or "").strip()
+    lowered = value.lower()
+    for suffix in ("-cloud", ":cloud"):
+        if lowered.endswith(suffix):
+            return value[: -len(suffix)]
+    return value
 
 
 def _entry_identifiers(entry: dict) -> list[str]:
@@ -221,6 +257,11 @@ def _entry_identifiers(entry: dict) -> list[str]:
         for value in (raw, normalized):
             if value and value not in identifiers:
                 identifiers.append(value)
+        if bool(entry.get("cloud_only")):
+            base = _strip_cloud_runtime_suffix(normalized or raw)
+            for value in (f"{base}:cloud", f"{base}-cloud"):
+                if base and value not in identifiers:
+                    identifiers.append(value)
 
     add(entry.get("id"))
     add(entry.get("ollama_name"))
@@ -330,6 +371,13 @@ def get_model_library_roots() -> list[Path]:
     return list(_iter_unique_paths([*configured, *DEFAULT_MODEL_LIBRARY_ROOTS]))
 
 
+def get_additional_local_model_search_roots() -> list[Path]:
+    """Retourne les racines locales additionnelles à scanner pour les modèles."""
+    env_value = os.environ.get("EXTRA_LOCAL_MODEL_SEARCH_ROOTS", "").strip()
+    configured = _split_env_paths(env_value) if env_value else []
+    return list(_iter_unique_paths([*configured, *DEFAULT_EXTRA_LOCAL_MODEL_SEARCH_ROOTS]))
+
+
 def get_huggingface_archive_root() -> Path:
     """Retourne le repertoire d'archive des sources Hugging Face.
 
@@ -354,7 +402,29 @@ def get_huggingface_archive_root() -> Path:
     for candidate in ordered:
         if candidate.exists():
             return candidate
+    for candidate in ordered:
+        if _path_has_usable_ancestor(candidate):
+            return candidate
     return ordered[0]
+
+
+def get_preferred_local_model_search_roots(
+    extra_roots: Iterable[str | Path] | None = None,
+    *,
+    include_models_json_parent: bool = True,
+) -> list[Path]:
+    """Retourne la politique canonique des racines à scanner pour les modèles locaux."""
+    roots: list[Path] = [
+        get_ollama_models_root(),
+        get_huggingface_archive_root(),
+        *get_model_library_roots(),
+        *get_additional_local_model_search_roots(),
+    ]
+    if include_models_json_parent:
+        roots.append(get_models_json_path().parent)
+    if extra_roots:
+        roots.extend(Path(root) for root in extra_roots)
+    return list(_iter_unique_paths(roots))
 
 
 def load_models_json(force_reload: bool = False) -> dict:
@@ -411,6 +481,7 @@ def _count_total_models(data: dict) -> int:
     """Compte le nombre total de modeles."""
     count = 0
     count += len(data.get("ollama_models", []))
+    count += len(data.get("cloud_models", []))
     count += len(data.get("huggingface_models", []))
     count += len(data.get("diffusion_models", []))
     return count
@@ -441,11 +512,16 @@ def get_model_by_id(model_id: str) -> dict | None:
 
     data = load_models_json()
     normalized_model_id = normalize_model_name(model_id)
+    query_identifiers = {
+        normalized_model_id,
+        normalize_model_name(_strip_cloud_runtime_suffix(model_id)),
+    }
+    query_identifiers = {identifier for identifier in query_identifiers if identifier}
 
-    for section in ("ollama_models", "huggingface_models", "diffusion_models"):
+    for section in ("ollama_models", "cloud_models", "huggingface_models", "diffusion_models"):
         for model in data.get(section, []):
             identifiers = {normalize_model_name(identifier) for identifier in _entry_identifiers(model)}
-            if normalized_model_id in identifiers:
+            if identifiers & query_identifiers:
                 return model
 
     logger.debug("Modele %s introuvable dans models.json", model_id)
@@ -598,11 +674,13 @@ def get_model_info_for_ui(model_id: str) -> dict:
 
 
 __all__ = [
+    "DEFAULT_EXTRA_LOCAL_MODEL_SEARCH_ROOTS",
     "DEFAULT_HUGGINGFACE_ARCHIVE_ROOTS",
     "DEFAULT_MODELS_JSON_CANDIDATES",
     "DEFAULT_MODEL_LIBRARY_ROOTS",
     "DEFAULT_OLLAMA_MODELS_CANDIDATES",
     "MODEL_NAME_ALIASES",
+    "get_additional_local_model_search_roots",
     "get_all_diffusion_models",
     "get_all_huggingface_models",
     "get_all_ollama_models",
@@ -612,6 +690,7 @@ __all__ = [
     "get_model_full_path",
     "get_model_info_for_ui",
     "get_model_library_roots",
+    "get_preferred_local_model_search_roots",
     "get_models_by_category",
     "get_models_by_use_case",
     "get_models_json_path",

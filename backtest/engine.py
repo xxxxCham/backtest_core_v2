@@ -46,6 +46,12 @@ from backtest.simulator import (
     simulate_trades,
 )
 from indicators.registry import calculate_indicator
+from indicators.schema import (
+    calculate_derived_feature,
+    canonical_indicator_name,
+    parse_derived_feature,
+    parse_parameterized_indicator_instance,
+)
 from utils.config import Config
 from utils.observability import (
     PerfCounters,
@@ -525,34 +531,137 @@ class BacktestEngine:
         indicators = {}
         gpu_queues = None
 
-        for indicator_name in strategy.required_indicators:
+        for output_name, indicator_name, indicator_params, is_derived in self._iter_indicator_calculation_specs(
+            strategy,
+            params,
+        ):
             # Extraire les paramètres spécifiques à l'indicateur
-            indicator_params = strategy.get_indicator_params(indicator_name, params)
-            if not isinstance(indicator_params, dict):
-                indicator_params = self._extract_indicator_params(indicator_name, params)
-
-            self.logger.debug(f"  Calcul indicateur: {indicator_name}")
+            self.logger.debug(f"  Calcul indicateur: {output_name} -> {indicator_name}")
 
             try:
-                result = calculate_indicator(
-                    indicator_name,
-                    df,
-                    indicator_params,
-                    gpu_queues=gpu_queues,
-                )
-                indicators[indicator_name] = result
+                if is_derived:
+                    result = calculate_derived_feature(output_name, df, indicator_params)
+                else:
+                    result = calculate_indicator(
+                        indicator_name,
+                        df,
+                        indicator_params,
+                        gpu_queues=gpu_queues,
+                    )
+                indicators[output_name] = result
             except Exception as exc:
                 self.logger.error(
                     "indicator_calc_failed name=%s params=%s error=%s",
-                    indicator_name,
+                    output_name,
                     indicator_params,
                     exc,
                 )
                 raise RuntimeError(
-                    f"Échec calcul indicateur requis '{indicator_name}': {exc}",
+                    f"Échec calcul indicateur requis '{output_name}': {exc}",
                 ) from exc
 
         return indicators
+
+    def _iter_indicator_calculation_specs(
+        self,
+        strategy: StrategyBase,
+        params: dict[str, Any],
+    ) -> list[tuple[str, str, dict[str, Any], bool]]:
+        """Résout required_indicators et required_indicator_configs.
+
+        Retourne des tuples ``(clé_sortie, nom_canonique, paramètres, dérivé)``.
+        Le format historique ``required_indicators = ["rsi", "atr"]`` reste inchangé.
+        Le nouveau format optionnel permet plusieurs instances nommées:
+        ``required_indicator_configs = {"ema_21": {"name": "ema", "params": {"period": 21}}}``.
+        """
+        specs: list[tuple[str, str, dict[str, Any], bool]] = []
+        seen: set[str] = set()
+
+        raw_configs = getattr(strategy, "required_indicator_configs", {}) or {}
+        if isinstance(raw_configs, dict):
+            for raw_output_name, raw_config in raw_configs.items():
+                output_name = str(raw_output_name or "").strip().lower()
+                if not output_name or output_name in seen:
+                    continue
+                if not isinstance(raw_config, dict):
+                    raw_config = {"name": output_name, "params": {}}
+                requested_name = str(raw_config.get("name") or output_name).strip().lower()
+                static_params = raw_config.get("params", {})
+                if not isinstance(static_params, dict):
+                    static_params = {}
+                spec = self._resolve_indicator_spec(
+                    output_name=output_name,
+                    requested_name=requested_name,
+                    static_params=static_params,
+                    strategy=strategy,
+                    params=params,
+                )
+                specs.append(spec)
+                seen.add(output_name)
+
+        for raw_name in getattr(strategy, "required_indicators", []) or []:
+            output_name = str(raw_name or "").strip().lower()
+            if not output_name or output_name in seen:
+                continue
+            spec = self._resolve_indicator_spec(
+                output_name=output_name,
+                requested_name=output_name,
+                static_params={},
+                strategy=strategy,
+                params=params,
+            )
+            specs.append(spec)
+            seen.add(output_name)
+
+        return specs
+
+    def _resolve_indicator_spec(
+        self,
+        *,
+        output_name: str,
+        requested_name: str,
+        static_params: dict[str, Any],
+        strategy: StrategyBase,
+        params: dict[str, Any],
+    ) -> tuple[str, str, dict[str, Any], bool]:
+        derived = parse_derived_feature(output_name)
+        if derived is not None:
+            merged = dict(static_params)
+            merged.update(self._extract_indicator_params(output_name, params))
+            return output_name, derived.source, merged, True
+
+        instance = parse_parameterized_indicator_instance(output_name)
+        if instance is not None and requested_name == output_name:
+            merged = dict(instance.params)
+            merged.update(static_params)
+            merged.update(self._extract_indicator_params(output_name, params))
+            return output_name, instance.name, merged, False
+
+        canonical_name = canonical_indicator_name(requested_name) or requested_name
+        merged_params = {}
+        if instance is not None and canonical_name == instance.name:
+            merged_params.update(instance.params)
+        merged_params.update(static_params)
+
+        try:
+            alias_params = strategy.get_indicator_params(output_name, params)
+        except Exception:
+            alias_params = {}
+        if isinstance(alias_params, dict):
+            merged_params.update(alias_params)
+
+        try:
+            canonical_params = strategy.get_indicator_params(canonical_name, params)
+        except Exception:
+            canonical_params = {}
+        if isinstance(canonical_params, dict):
+            merged_params.update(canonical_params)
+
+        merged_params.update(self._extract_indicator_params(output_name, params))
+        if output_name != canonical_name:
+            merged_params.update(self._extract_indicator_params(canonical_name, params))
+
+        return output_name, canonical_name, merged_params, False
 
     def _extract_indicator_params(
         self,
@@ -560,6 +669,7 @@ class BacktestEngine:
         params: dict[str, Any],
     ) -> dict[str, Any]:
         """Extrait les paramètres spécifiques à un indicateur."""
+        canonical = canonical_indicator_name(indicator_name) or indicator_name
         # Mapping des préfixes de paramètres
         prefix_map = {
             "bollinger": ["bb_", "bollinger_"],
@@ -568,7 +678,10 @@ class BacktestEngine:
             "ema": ["ema_"],
         }
 
-        prefixes = prefix_map.get(indicator_name, [f"{indicator_name}_"])
+        prefixes = [f"{indicator_name}_"]
+        for prefix in prefix_map.get(canonical, [f"{canonical}_"]):
+            if prefix not in prefixes:
+                prefixes.append(prefix)
         indicator_params = {}
 
         # Extraire les paramètres avec le préfixe
@@ -588,11 +701,11 @@ class BacktestEngine:
             "ema": ["period"],
         }
 
-        for param in direct_params.get(indicator_name, []):
+        for param in direct_params.get(canonical, []):
             if param in params and param not in indicator_params:
                 indicator_params[param] = params[param]
 
-        if indicator_name == "bollinger" and "std" in indicator_params:
+        if canonical == "bollinger" and "std" in indicator_params:
             indicator_params.setdefault("std_dev", indicator_params.pop("std"))
 
         return indicator_params
@@ -816,20 +929,22 @@ class BacktestEngine:
         try:
             # 1. Calculer indicateurs (avec cache local ultra-rapide)
             indicators = {}
-            for ind_name in strategy.required_indicators:
-                ind_params = strategy.get_indicator_params(ind_name, final_params)
-                if not isinstance(ind_params, dict):
-                    ind_params = self._extract_indicator_params(ind_name, final_params)
-
+            for output_name, ind_name, ind_params, is_derived in self._iter_indicator_calculation_specs(
+                strategy,
+                final_params,
+            ):
                 # Cache local: clé = (nom, params triés en tuple)
-                cache_key = (ind_name, tuple(sorted(ind_params.items())))
+                cache_key = (output_name, ind_name, tuple(sorted(ind_params.items())), is_derived)
                 cached = self._indicator_cache.get(cache_key)
                 if cached is not None:
-                    indicators[ind_name] = cached
+                    indicators[output_name] = cached
                     self._indicator_cache_hits += 1
                 else:
-                    result = calculate_indicator(ind_name, df, ind_params)
-                    indicators[ind_name] = result
+                    if is_derived:
+                        result = calculate_derived_feature(output_name, df, ind_params)
+                    else:
+                        result = calculate_indicator(ind_name, df, ind_params)
+                    indicators[output_name] = result
                     self._indicator_cache[cache_key] = result
                     self._indicator_cache_misses += 1
 
