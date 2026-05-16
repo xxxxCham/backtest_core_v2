@@ -160,7 +160,23 @@ class LLMResponse:
         if self.parsed_json is not None:
             return self.parsed_json
 
-        content = self.content.strip()
+        # 2026-05-15 - Patch JSON001: strip plus agressif (BOM, whitespace Unicode, zero-width).
+        # Pattern observe (20-25% des erreurs): LLM ajoute des chars invisibles ou un BOM avant le JSON.
+        content = self.content
+        if content.startswith("﻿"):
+            content = content[1:]
+        content = content.strip().strip("​‌‍⁠﻿").strip()
+
+        import re
+
+        def _try_repair_and_load(text: str) -> Any:
+            """Tentative de reparation legere: trailing commas + smart quotes."""
+            # Trailing commas dans objets/listes: {"a": 1,} -> {"a": 1}
+            repaired = re.sub(r",(\s*[}\]])", r"\1", text)
+            # Smart quotes -> straight quotes
+            repaired = repaired.replace("“", '"').replace("”", '"')
+            repaired = repaired.replace("‘", "'").replace("’", "'")
+            return json.loads(repaired)
 
         # Essayer de parser directement
         try:
@@ -170,23 +186,34 @@ class LLMResponse:
             pass
 
         # Chercher un bloc JSON dans markdown
-        import re
         json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
         if json_match:
+            block = json_match.group(1)
             try:
-                self.parsed_json = json.loads(json_match.group(1))
+                self.parsed_json = json.loads(block)
                 return self.parsed_json
             except json.JSONDecodeError as e:
-                self.parse_error = f"JSON invalide dans bloc markdown: {e}"
+                # 2026-05-15 - Patch JSON001: tentative de reparation legere avant abandon
+                try:
+                    self.parsed_json = _try_repair_and_load(block)
+                    return self.parsed_json
+                except json.JSONDecodeError:
+                    self.parse_error = f"JSON invalide dans bloc markdown: {e}"
 
         # Chercher un objet JSON dans le texte
         json_match = re.search(r'\{[\s\S]*\}', content)
         if json_match:
+            block = json_match.group()
             try:
-                self.parsed_json = json.loads(json_match.group())
+                self.parsed_json = json.loads(block)
                 return self.parsed_json
             except json.JSONDecodeError as e:
-                self.parse_error = f"JSON invalide: {e}"
+                # 2026-05-15 - Patch JSON001: tentative de reparation legere avant abandon
+                try:
+                    self.parsed_json = _try_repair_and_load(block)
+                    return self.parsed_json
+                except json.JSONDecodeError:
+                    self.parse_error = f"JSON invalide: {e}"
 
         self.parse_error = "Aucun JSON trouvé dans la réponse"
         return None
