@@ -29,6 +29,10 @@ _MODEL_STATS_VERSION = "1.0"
 _MODEL_STATS_STATE_LOCK = threading.Lock()
 _BUILDER_MODEL_PRIORITY_COLUMNS: tuple[str, ...] = (
     "model",
+    "llm_pct",
+    "fallback_pct",
+    "llm_sessions",
+    "fallback_sessions",
     "success_rate_pct",
     "negative_rate_pct",
     "failed_rate_pct",
@@ -502,6 +506,9 @@ def aggregate_model_records(records: list[dict[str, Any]]) -> list[dict[str, Any
                 "trades": [],
                 "durations": [],
                 "single_llm": 0,
+                # 2026-05-15 - Patch metrique: distinguer sessions LLM canonique vs Fallback simple
+                "llm_sessions": 0,
+                "fallback_sessions": 0,
                 "source_modes": set(),
                 "symbols": set(),
                 "timeframes": set(),
@@ -554,7 +561,15 @@ def aggregate_model_records(records: list[dict[str, Any]]) -> list[dict[str, Any
         if orchestration_mode == "single_llm":
             bucket["single_llm"] += 1
 
+        # 2026-05-15 - Patch metrique: comptage llm vs fallback par modele.
+        # source_mode peut etre "llm" (canonique) ou contenir "fallback" (mode degrade).
+        source_mode_raw = _normalize_text_label(record.get("source_mode")).lower()
         bucket["source_modes"].add(_normalize_text_label(record.get("source_mode")))
+        if "fallback" in source_mode_raw:
+            bucket["fallback_sessions"] += 1
+        elif source_mode_raw and source_mode_raw not in ("-", "inconnu"):
+            bucket["llm_sessions"] += 1
+
         bucket["symbols"].add(_normalize_text_label(record.get("symbol")))
         bucket["timeframes"].add(_normalize_text_label(record.get("timeframe")))
 
@@ -626,6 +641,15 @@ def aggregate_model_records(records: list[dict[str, Any]]) -> list[dict[str, Any
                 "sessions_per_hour": sessions_per_hour,
                 "expected_return_per_hour_pct": expected_return_per_hour_pct,
                 "single_llm_sessions": int(bucket["single_llm"]),
+                # 2026-05-15 - Patch metrique: distinction LLM canonique vs Fallback simple par modele.
+                "llm_sessions": int(bucket["llm_sessions"]),
+                "fallback_sessions": int(bucket["fallback_sessions"]),
+                "llm_pct": _round_or_none(
+                    (bucket["llm_sessions"] / total) * 100.0, 1
+                ) if total else None,
+                "fallback_pct": _round_or_none(
+                    (bucket["fallback_sessions"] / total) * 100.0, 1
+                ) if total else None,
                 "source_modes": ", ".join(sorted(bucket["source_modes"])) or "-",
                 "symbols": ", ".join(sorted(bucket["symbols"])) or "-",
                 "timeframes": ", ".join(sorted(bucket["timeframes"])) or "-",
