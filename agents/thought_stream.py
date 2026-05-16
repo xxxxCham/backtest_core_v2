@@ -13,6 +13,7 @@ Skip-if: Vous n'utilisez pas le Strategy Builder.
 
 from __future__ import annotations
 
+import json
 import math
 import shutil
 import threading
@@ -26,6 +27,11 @@ from backtest.result_store import get_builder_sessions_dir
 
 STREAM_FILE = get_builder_sessions_dir() / "_live_thoughts.md"
 STREAM_ARCHIVE_DIR = get_builder_sessions_dir() / "_live_thoughts_archives"
+# 2026-05-15 - Patch flux complet: fichier compagnon append-only.
+# Contient TOUS les evenements + verbatim LLM (non filtre), 1 ligne JSON par evenement.
+# Lisible via: Get-Content _full_stream.jsonl -Wait -Tail 50 | ConvertFrom-Json
+# Ne remplace pas _live_thoughts.md (qui reste optimise pour Tail 80 lisible).
+FULL_STREAM_FILE = get_builder_sessions_dir() / "_full_stream.jsonl"
 _IDLE_STREAM_TITLE = "STRATEGY BUILDER - Aucun flux live actif"
 
 _LIVE_STREAM_LABELS = {
@@ -100,6 +106,8 @@ class ThoughtStream:
         self.model = str(model or "")
         self.path = path or STREAM_FILE
         self.archive_dir = archive_dir or STREAM_ARCHIVE_DIR
+        # 2026-05-15 - Patch flux complet: fichier compagnon JSONL append-only.
+        self.full_path = FULL_STREAM_FILE
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.archive_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
@@ -114,6 +122,10 @@ class ThoughtStream:
         event_name = str(payload.get("event", "") or "")
         if not event_name:
             return
+
+        # 2026-05-15 - Patch flux complet: dump l'evenement integral dans le JSONL compagnon
+        # AVANT le filtrage canonique, pour capturer 100% du flux.
+        self._append_full_jsonl(payload)
 
         # Flush le buffer stream avant tout événement structurel pour garantir
         # que les tokens LLM apparaissent dans le bon ordre chronologique.
@@ -211,6 +223,16 @@ class ThoughtStream:
             return
 
         phase_name = str(phase or "").strip().lower()
+
+        # 2026-05-15 - Patch flux complet: capturer le verbatim brut du chunk LLM
+        # avant le filtrage canonique (qui se contente de compter les caracteres).
+        self._append_full_jsonl({
+            "event": "stream_chunk",
+            "timestamp": _now_iso(),
+            "session_id": self.session_id,
+            "phase": phase_name,
+            "payload": {"chunk": text, "chunk_len": len(text)},
+        })
 
         with self._lock:
             if not self._session_started or self._archived or self._stream_closed:
@@ -476,6 +498,21 @@ class ThoughtStream:
         with self._lock, open(self.path, "a", encoding="utf-8") as handle:
             handle.write(text)
             handle.flush()
+
+    def _append_full_jsonl(self, payload: Mapping[str, Any]) -> None:
+        """2026-05-15 - Patch flux complet: append 1 evenement = 1 ligne JSON dans _full_stream.jsonl.
+
+        Best-effort: une erreur d'ecriture sur le fichier compagnon NE DOIT PAS bloquer
+        le flux canonique (lisible et critique). Toute exception est silencieusement
+        ignoree apres une seule tentative.
+        """
+        try:
+            line = json.dumps(dict(payload or {}), ensure_ascii=False, default=str)
+            with self._lock, open(self.full_path, "a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+                handle.flush()
+        except Exception:
+            pass
 
 
 def render_idle_live_stream(
