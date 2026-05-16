@@ -497,6 +497,17 @@ INVALID_DICT_SUBKEY_REWRITE_HINTS: dict[tuple[str, str], str] = {
     ("donchian", "supertrend"): "indicators['supertrend']['supertrend']",
     ("fvg", "fvg_bullish_gap"): "indicators['fvg']['fvg_bullish']",
     ("fvg", "fvg_bearish_gap"): "indicators['fvg']['fvg_bearish']",
+    # 2026-05-15 - Patch IND001: sous-cles inventees par le LLM, observees sur 49 sessions baseline.
+    # Supertrend n'a qu'une valeur unique (supertrend), pas de middle/upper/lower comme bollinger/keltner/donchian.
+    ("supertrend", "middle"): "indicators['supertrend']['supertrend']",
+    ("supertrend", "upper"): "indicators['supertrend']['supertrend']",
+    ("supertrend", "lower"): "indicators['supertrend']['supertrend']",
+    ("supertrend", "trend"): "indicators['supertrend']['supertrend']",
+    # RSI est un array, pas un dict. LLM tente parfois indicators['rsi']['rsi'].
+    ("rsi", "rsi"): "indicators['rsi']",
+    ("rsi", "rsi_value"): "indicators['rsi']",
+    ("rsi", "value"): "indicators['rsi']",
+    ("rsi", "values"): "indicators['rsi']",
 }
 
 

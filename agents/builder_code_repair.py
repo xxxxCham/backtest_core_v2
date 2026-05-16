@@ -1361,6 +1361,17 @@ def _repair_code(
             code,
         )
 
+        # 5b. .rolling(N) sur ndarray -> wrapper pd.Series pour permettre l'API pandas.
+        # 2026-05-15 - Patch IND001: pattern observe (3 occurrences sur 49 sessions baseline),
+        # ex: indicators['atr'].rolling(14).mean(). Le step 8 ci-dessous garantit `import pandas as pd`.
+        # Le resultat d'une chaine .rolling().fn() est une Series - compatible avec broadcasting,
+        # comparaisons, np.where, indexation.
+        code = re.sub(
+            r"(\bindicators\s*\[\s*['\"][^'\"\]]+['\"]\s*\](?:\s*\[\s*['\"][^'\"\]]+['\"]\s*\])?)\.rolling\(",
+            r"pd.Series(\1).rolling(",
+            code,
+        )
+
         # 6. indicators['ema']['ema_XX'] → indicators['ema']
         for arr_ind in ("ema", "rsi", "atr", "sma", "cci", "mfi", "williams_r", "momentum", "obv", "roc"):
             pattern = (
