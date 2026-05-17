@@ -404,6 +404,12 @@ BUILDER_ACCESS_EXAMPLES: dict[str, str] = {
     "supertrend": 'st = indicators["supertrend"]; supertrend_value = np.nan_to_num(st["supertrend"]); supertrend_direction = np.nan_to_num(st["direction"])',
     "swing": 'sw = indicators["swing"]; swing_high = np.nan_to_num(sw["swing_high"]).astype(bool); swing_low = np.nan_to_num(sw["swing_low"]).astype(bool)',
     "vortex": 'vx = indicators["vortex"]; vi_plus = np.nan_to_num(vx["vi_plus"]); vi_minus = np.nan_to_num(vx["vi_minus"])',
+    # 2026-05-15 - Famille Chaikin: exemples explicites pour eviter divagation LLM
+    # (sessions ou modeles creaient ch_osc=0.0 placeholder au lieu d'acceder a l'indicateur).
+    # Tous les 3 sont des arrays (output_type="array"), pas des dicts.
+    "chaikin_oscillator": 'ch_osc = np.nan_to_num(indicators["chaikin_oscillator"])',
+    "cmf": 'cmf_val = np.nan_to_num(indicators["cmf"])',
+    "ad_line": 'adl = np.nan_to_num(indicators["ad_line"])',
 }
 
 STABLE_ALIAS_MAP: dict[str, dict[str, str]] = {
