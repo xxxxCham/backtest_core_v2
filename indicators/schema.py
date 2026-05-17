@@ -77,6 +77,7 @@ def _norm(value: Any) -> str:
 
 
 INDICATOR_PARAM_DEFAULTS: dict[str, dict[str, Any]] = {
+    "ad_line": {},
     "adx": {"period": 14},
     "amplitude_hunter": {"period": 20},
     "aroon": {"period": 14},
@@ -211,6 +212,22 @@ INDICATOR_ALIASES: dict[str, str] = {
     "super_trend": "supertrend",
     "true_range_atr": "atr",
     "chaikin_osc": "chaikin_oscillator",
+    # 2026-05-15 - Patch Chaikin: alias additionnels pour eviter divagation LLM
+    # (sessions ou le LLM creait ch_osc=0.0 placeholder au lieu d'utiliser l'indicateur).
+    "chaikin": "chaikin_oscillator",
+    "ch_osc": "chaikin_oscillator",
+    "chaikin_o": "chaikin_oscillator",
+    "chaikin_money_flow": "cmf",
+    "chaikin_mf": "cmf",
+    # 2026-05-15 - A/D Line (Accumulation/Distribution Line, base de la famille Chaikin)
+    "ad": "ad_line",
+    "adl": "ad_line",
+    "ad_l": "ad_line",
+    "accumulation_distribution": "ad_line",
+    "accumulation_distribution_line": "ad_line",
+    "accum_dist": "ad_line",
+    "chaikin_ad": "ad_line",
+    "chaikin_accumulation": "ad_line",
     "volatility": "vix",
     "vol_osc": "volume_oscillator",
     "vol_oscillator": "volume_oscillator",

@@ -12,6 +12,7 @@ from .amplitude_hunter import (
 )
 from .aroon import AroonSettings, aroon
 from .atr import ATRSettings, atr
+from .ad_line import ADLineSettings, ad_line, calculate_ad_line
 from .bollinger import BollingerSettings, bollinger_bands
 from .cci import CCISettings, cci
 from .chaikin_oscillator import (
@@ -132,6 +133,9 @@ __all__ = [
     "BollingerSettings",
     "atr",
     "ATRSettings",
+    "ad_line",
+    "calculate_ad_line",
+    "ADLineSettings",
     "chaikin_oscillator",
     "calculate_chaikin_oscillator",
     "ChaikinOscillatorSettings",
