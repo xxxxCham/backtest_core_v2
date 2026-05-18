@@ -628,6 +628,95 @@ def _normalize_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# ---------------------------------------------------------------------------
+# Cache OHLCV resident en RAM
+#
+# Garde le DataFrame complet (post-trim/gap-detection/data-quality) en memoire
+# pour eviter de relire et renormaliser le fichier source a chaque session.
+# Capacite illimitee : conserve tous les datasets charges pendant la duree de
+# vie du process. Active par defaut, desactivable via BACKTEST_OHLCV_RESIDENT
+# = "0".
+#
+# Cle de cache : (symbol_upper, timeframe, trim_launch_pct_effectif).
+# Les filtres start/end sont appliques en aval (slicing rapide d'un index
+# DatetimeIndex deja trie).
+# ---------------------------------------------------------------------------
+_OHLCV_RESIDENT_ENABLED = os.environ.get("BACKTEST_OHLCV_RESIDENT", "1") not in ("0", "false", "False")
+_OHLCV_RESIDENT_CACHE: dict[tuple[str, str, float], pd.DataFrame] = {}
+_OHLCV_RESIDENT_HITS = 0
+_OHLCV_RESIDENT_MISSES = 0
+
+
+def _ohlcv_resident_trim_key(trim_launch_pct: float | None) -> float:
+    return float(trim_launch_pct) if trim_launch_pct is not None else float(TRIM_LAUNCH_PCT)
+
+
+def ohlcv_resident_cache_stats() -> dict[str, int]:
+    """Statistiques du cache OHLCV resident (debug/UI).
+
+    Returns:
+        Dict avec hits, misses, entries (datasets uniques caches),
+        total_bars (somme des barres en RAM), enabled (etat du flag).
+    """
+    return {
+        "hits": _OHLCV_RESIDENT_HITS,
+        "misses": _OHLCV_RESIDENT_MISSES,
+        "entries": len(_OHLCV_RESIDENT_CACHE),
+        "total_bars": sum(len(df) for df in _OHLCV_RESIDENT_CACHE.values()),
+        "enabled": _OHLCV_RESIDENT_ENABLED,
+    }
+
+
+def clear_ohlcv_resident_cache() -> None:
+    """Vide le cache OHLCV resident (utilitaire pour tests et reload force)."""
+    global _OHLCV_RESIDENT_HITS, _OHLCV_RESIDENT_MISSES
+    _OHLCV_RESIDENT_CACHE.clear()
+    _OHLCV_RESIDENT_HITS = 0
+    _OHLCV_RESIDENT_MISSES = 0
+
+
+def _build_ohlcv_resident_dataframe(
+    symbol: str,
+    timeframe: str,
+    trim_launch_pct: float | None,
+) -> pd.DataFrame:
+    """Construit le DataFrame complet pre-cache (lecture + normalisation + trim
+    + gaps + marquage qualite). Lourd : ~3-5 secondes sur dataset 5m."""
+    file_path = _find_data_file(symbol, timeframe)
+    if file_path is None:
+        data_dir = _get_data_dir()
+        raise FileNotFoundError(
+            f"Fichier OHLCV introuvable pour {symbol}/{timeframe} dans {data_dir}",
+        )
+
+    df = _read_file(file_path)
+    df = _normalize_ohlcv(df)
+    logger.info(f"  Periode: {df.index[0]} -> {df.index[-1]} ({len(df)} barres)")
+
+    df = _trim_launch_period(df, timeframe, trim_pct=trim_launch_pct)
+
+    gaps = detect_gaps(df, timeframe, max_gap_multiplier=2.0)
+    if gaps:
+        total_missing = sum(g[2] for g in gaps)
+        biggest_gap = max(gaps, key=lambda g: g[2])
+        logger.warning(
+            f"  {len(gaps)} gap(s) detecte(s) dans {symbol}/{timeframe} "
+            f"({total_missing} barres manquantes au total)",
+        )
+        logger.warning(
+            f"    Plus gros gap : {biggest_gap[0]} -> {biggest_gap[1]} ({biggest_gap[2]} barres)",
+        )
+        for gap_start, gap_end, nb_missing in gaps[:3]:
+            logger.debug(f"    Gap : {gap_start} -> {gap_end} ({nb_missing} barres)")
+        if len(gaps) > 3:
+            logger.debug(f"    ... et {len(gaps) - 3} autres gaps")
+    else:
+        logger.debug(f"OK Aucun gap detecte dans {symbol}/{timeframe}")
+
+    df = _mark_data_quality(df)
+    return df
+
+
 def load_ohlcv(
     symbol: str,
     timeframe: str,
@@ -658,61 +747,51 @@ def load_ohlcv(
         Dates end "pures" (sans heure) incluent toutes les barres du jour.
         Ex: end="2025-02-28" → inclut barres jusqu'à 23:59:59
 
+        Le DataFrame complet (post-trim/gaps/data-quality) est garde en cache
+        RAM resident pour la duree du process. Les filtres start/end sont
+        appliques en aval. Voir ohlcv_resident_cache_stats() pour le monitoring.
     """
+    global _OHLCV_RESIDENT_HITS, _OHLCV_RESIDENT_MISSES
+
     if not is_valid_timeframe(timeframe):
         raise ValueError(
             f"Timeframe invalide: '{timeframe}'. "
             "Format attendu: <nombre><unité> (ex: 1m, 3m, 5m, 15m, 30m, 1h, 4h, 1d, 1w, 1M).",
         )
 
-    logger.info(f"Chargement données: {symbol}/{timeframe}")
+    symbol_norm = symbol.upper() if isinstance(symbol, str) else str(symbol)
+    cache_key = (symbol_norm, timeframe, _ohlcv_resident_trim_key(trim_launch_pct))
 
-    # Chercher le fichier
-    file_path = _find_data_file(symbol, timeframe)
-    if file_path is None:
-        data_dir = _get_data_dir()
-        raise FileNotFoundError(
-            f"Fichier OHLCV introuvable pour {symbol}/{timeframe} dans {data_dir}",
-        )
+    df_full: pd.DataFrame | None = None
+    if _OHLCV_RESIDENT_ENABLED:
+        cached = _OHLCV_RESIDENT_CACHE.get(cache_key)
+        if cached is not None:
+            _OHLCV_RESIDENT_HITS += 1
+            df_full = cached
+            logger.debug(
+                f"OHLCV resident cache HIT: {symbol_norm}/{timeframe} "
+                f"({len(df_full)} barres) hits={_OHLCV_RESIDENT_HITS} "
+                f"entries={len(_OHLCV_RESIDENT_CACHE)}",
+            )
 
-    # Lire et normaliser
-    df = _read_file(file_path)
-    df = _normalize_ohlcv(df)
-
-    logger.info(f"  Période: {df.index[0]} → {df.index[-1]} ({len(df)} barres)")
-
-    # Trim post-listing (données erratiques des premiers jours d'un token)
-    df = _trim_launch_period(df, timeframe, trim_pct=trim_launch_pct)
-
-    # Détecter gaps AVANT filtrage par dates
-    gaps = detect_gaps(df, timeframe, max_gap_multiplier=2.0)
-
-    if gaps:
-        total_missing = sum(g[2] for g in gaps)
-        biggest_gap = max(gaps, key=lambda g: g[2])
-
-        # Logging sommaire (UNE FOIS, pas dans boucle)
-        logger.warning(
-            f"⚠️  {len(gaps)} gap(s) détecté(s) dans {symbol}/{timeframe} ({total_missing} barres manquantes au total)",
-        )
-        logger.warning(
-            f"    Plus gros gap : {biggest_gap[0]} → {biggest_gap[1]} ({biggest_gap[2]} barres)",
-        )
-
-        # Exemples (max 3)
-        for gap_start, gap_end, nb_missing in gaps[:3]:
-            logger.debug(f"    Gap : {gap_start} → {gap_end} ({nb_missing} barres)")
-
-        if len(gaps) > 3:
-            logger.debug(f"    ... et {len(gaps) - 3} autres gaps")
-    else:
-        logger.debug(f"✅ Aucun gap détecté dans {symbol}/{timeframe}")
+    if df_full is None:
+        _OHLCV_RESIDENT_MISSES += 1
+        logger.info(f"Chargement donnees: {symbol_norm}/{timeframe}")
+        df_full = _build_ohlcv_resident_dataframe(symbol_norm, timeframe, trim_launch_pct)
+        if _OHLCV_RESIDENT_ENABLED:
+            _OHLCV_RESIDENT_CACHE[cache_key] = df_full
+            logger.debug(
+                f"OHLCV resident cache MISS->STORE: {symbol_norm}/{timeframe} "
+                f"({len(df_full)} barres) misses={_OHLCV_RESIDENT_MISSES} "
+                f"entries={len(_OHLCV_RESIDENT_CACHE)}",
+            )
 
     # Stocker les bornes disponibles pour message d'erreur
-    data_start = df.index[0]
-    data_end = df.index[-1]
+    data_start = df_full.index[0]
+    data_end = df_full.index[-1]
 
-    # Filtrer par dates si spécifié
+    # Filtrer par dates si spécifié — slicing rapide sur DatetimeIndex trie
+    df = df_full
     if start is not None:
         start_ts = pd.Timestamp(start, tz="UTC")
         df = df[df.index >= start_ts]
@@ -721,18 +800,15 @@ def load_ohlcv(
         end_ts = pd.Timestamp(end, tz="UTC")
 
         # FIX DÉCALAGE: Si date pure (heure=00:00:00), inclure toute la journée
-        # Détecter si l'utilisateur a fourni une date sans heure
         if end_ts.hour == 0 and end_ts.minute == 0 and end_ts.second == 0:
-            # Créer end_exclusive = end_date + 1 jour
             end_exclusive = end_ts + pd.Timedelta(days=1)
-            df = df[df.index < end_exclusive]  # < au lieu de <=
+            df = df[df.index < end_exclusive]
             logger.debug(
-                f"Date end pure détectée : {end_ts.date()} → filtrage jusqu'à {end_exclusive} (exclusif)",
+                f"Date end pure detectee : {end_ts.date()} -> filtrage jusqu'a {end_exclusive} (exclusif)",
             )
         else:
-            # L'utilisateur a spécifié une heure précise, garder comportement strict
             df = df[df.index <= end_ts]
-            logger.debug(f"Date end avec heure : filtrage jusqu'à {end_ts} (inclusif)")
+            logger.debug(f"Date end avec heure : filtrage jusqu'a {end_ts} (inclusif)")
 
     if df.empty:
         raise ValueError(
@@ -741,11 +817,7 @@ def load_ohlcv(
             f"{data_end.strftime('%Y-%m-%d')}",
         )
 
-    logger.info(f"  Après filtrage: {len(df)} barres")
-
-    # Marquer barres non-tradables (volume=0)
-    df = _mark_data_quality(df)
-
+    logger.info(f"  Apres filtrage: {len(df)} barres")
     return df
 
 
@@ -794,9 +866,11 @@ def get_data_date_range(
 
 
 __all__ = [
+    "clear_ohlcv_resident_cache",
     "discover_available_data",
     "discover_data_inventory",
     "get_available_timeframes",
     "get_data_date_range",
     "load_ohlcv",
+    "ohlcv_resident_cache_stats",
 ]

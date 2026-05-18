@@ -119,7 +119,18 @@ _AUTONOMOUS_RUNTIME_STATE_FILE = SANDBOX_ROOT / "_autonomous_runtime_state.json"
 _BUILDER_SESSION_SUMMARY_PATCH_LOCK = threading.Lock()
 _AUTONOMOUS_SUPERVISOR_VERSION = "1.0"
 _AUTONOMOUS_RUNTIME_VERSION = "1.0"
-_AUTONOMOUS_MAX_PERSISTED_HISTORY = 1000
+_AUTONOMOUS_MAX_PERSISTED_HISTORY = 150
+# Cles redondantes avec session_summary.json — non persistees au niveau history.
+# universe_meta seul pesait ~80% du supervisor_state (36 KB/entry).
+_AUTONOMOUS_HISTORY_PURGED_KEYS: frozenset[str] = frozenset(
+    {
+        "universe_meta",
+        "instrumentation_summary",
+        "multi_llm_role_outputs",
+        "multi_llm_shared_memory",
+        "multi_llm_role_override_pools",
+    }
+)
 _AUTONOMOUS_STATE_SAVE_RETRIES = 3
 _AUTONOMOUS_STATE_SAVE_RETRY_DELAY_SEC = 0.05
 _AUTONOMOUS_SUPERVISOR_STATE_LOCK = threading.Lock()
@@ -966,15 +977,29 @@ def _recent_soft_reset_timestamps(
     return cleaned
 
 
+def _compact_history_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Retire les cles redondantes (universe_meta, etc.) d'une entry history.
+
+    Ces donnees sont disponibles dans le session_summary.json sur disque ;
+    les conserver dans l'historique en RAM/JSON fait gonfler le supervisor_state
+    sans valeur ajoutee pour le superviseur.
+    """
+    if not isinstance(entry, dict):
+        return entry
+    return {k: v for k, v in entry.items() if k not in _AUTONOMOUS_HISTORY_PURGED_KEYS}
+
+
 def _trim_autonomous_history(
     history: List[Dict[str, Any]],
     *,
     limit: int = _AUTONOMOUS_MAX_PERSISTED_HISTORY,
 ) -> List[Dict[str, Any]]:
     items = list(history or [])
-    if len(items) <= limit:
-        return items
-    return items[-limit:]
+    if len(items) > limit:
+        items = items[-limit:]
+    # Compaction : applique a chaque entry, y compris celles persistees avant
+    # l'ajout du filtre (migration automatique au prochain save).
+    return [_compact_history_entry(item) for item in items]
 
 
 def _sync_autonomous_state(
@@ -1542,11 +1567,11 @@ def _build_recovered_autonomous_history_entry(
     for key, default in scalar_defaults.items():
         recovered[key] = summary.get(key) or recovered.get(key) or default
 
-    recovered["universe_meta"] = _recover_dict_field(summary, recovered, "universe_meta")
+    # universe_meta & instrumentation_summary : volontairement non recuperees ici
+    # (cf. _AUTONOMOUS_HISTORY_PURGED_KEYS — restent disponibles dans session_summary.json).
     recovered["instrumentation_enabled"] = bool(
         summary.get("instrumentation_enabled", recovered.get("instrumentation_enabled", False))
     )
-    recovered["instrumentation_summary"] = _recover_dict_field(summary, recovered, "instrumentation_summary")
     recovered["pipeline_traces_path"] = str(recovered.get("pipeline_traces_path") or "")
     # Runtime feedback : recovered a priorité, sinon fallback sur extraction
     for fb_key in ("last_runtime_error", "last_runtime_error_iteration",
@@ -5578,6 +5603,9 @@ def _record_autonomous_session_result(
     builder_execution_mode = cfg["builder_execution_mode"]
     orchestration_mode = cfg["orchestration_mode"]
     builder_flow_analysis_enabled = cfg["builder_flow_analysis_enabled"]
+    # NB: universe_meta volontairement absent — disponible dans session_summary.json
+    # sur disque (cf. _AUTONOMOUS_HISTORY_PURGED_KEYS). Sa presence dans l'historique
+    # faisait grossir le supervisor_state de ~36 KB par entry.
     history_entry_base = {
         **_HISTORY_ENTRY_METRIC_DEFAULTS,
         "session_num": session_num,
@@ -5594,7 +5622,6 @@ def _record_autonomous_session_result(
         "universe_mode": autonomous_universe_mode,
         "universe_purpose": "builder_autonomous",
         "universe_strategy_type": autonomous_strategy_type,
-        "universe_meta": autonomous_universe_meta,
         "source_mode": effective_objective_mode,
         "source_reason": objective_mode_policy.get("reason", ""),
         "auto_market_pick_used": effective_auto_market_pick,
@@ -5638,11 +5665,7 @@ def _record_autonomous_session_result(
             "universe_strategy_type": str(
                 getattr(session, "universe_strategy_type", "") or autonomous_strategy_type
             ),
-            "universe_meta": (
-                dict(getattr(session, "universe_meta", {}) or {})
-                if isinstance(getattr(session, "universe_meta", {}), dict)
-                else dict(autonomous_universe_meta)
-            ),
+            # universe_meta volontairement omis (cf. _AUTONOMOUS_HISTORY_PURGED_KEYS)
             "builder_execution_mode": str(
                 getattr(session, "builder_execution_mode", builder_execution_mode)
                 or builder_execution_mode
