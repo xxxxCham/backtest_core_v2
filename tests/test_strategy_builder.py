@@ -3606,22 +3606,20 @@ class TestRefactorCheckpoints:
     """Tests de validation du refactor checkpoints souples."""
 
     def test_positive_progress_gate_checkpoints_updated(self):
-        """Vérifie que les checkpoints sont bien à {6: 1, 9: 2}."""
+        """Vérifie que les checkpoints sont calés sur DEFAULT_MAX_ITERATIONS=5."""
         from agents.strategy_builder import POSITIVE_PROGRESS_GATE_CHECKPOINTS
-        assert POSITIVE_PROGRESS_GATE_CHECKPOINTS == {6: 1, 9: 2}
+        assert POSITIVE_PROGRESS_GATE_CHECKPOINTS == {2: 1, 4: 2}
 
     def test_min_successful_iterations_updated(self):
         """Vérifie que MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP = 5."""
-        from agents.strategy_builder import MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP
+        from agents.builder_constants import MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP
         assert MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP == 5
 
     def test_count_positive_iterations_with_fallback_quota(self):
         """Vérifie que les fallbacks positifs comptent avec quota."""
-        from agents.strategy_builder import (
-            _count_positive_iterations,
-            BuilderIteration,
-            MAX_POSITIVE_FALLBACK_COUNT,
-        )
+        from agents.builder_diagnostics import _count_positive_iterations
+        from agents.builder_state import BuilderIteration
+        from agents.builder_constants import MAX_POSITIVE_FALLBACK_COUNT
         from types import SimpleNamespace
 
         # Scénario : 2 fallbacks positifs + 1 LLM positif

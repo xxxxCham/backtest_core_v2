@@ -100,6 +100,7 @@ MIN_CODE_LINES = 10
 MAX_PHASE_REALIGN_ATTEMPTS = 2
 # -- Constantes importées depuis builder_constants (source unique) --
 from agents.builder_constants import (  # noqa: E402
+    DEFAULT_MAX_ITERATIONS,
     GENERATED_CLASS_NAME,
     POSITIVE_PROGRESS_GATE_CHECKPOINTS,
     _AST_PARSE_RECOVERABLE_EXCEPTIONS,
@@ -4241,7 +4242,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         objective: str,
         data: pd.DataFrame,
         *,
-        max_iterations: int = 10,
+        max_iterations: int = DEFAULT_MAX_ITERATIONS,
         target_sharpe: float = 1.0,
         initial_capital: float = 10000.0,
         symbol: str = "UNKNOWN",

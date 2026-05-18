@@ -41,8 +41,15 @@ _AST_PARSE_RECOVERABLE_EXCEPTIONS = (
 )
 # Nombre mini d'itérations backtestées avant d'autoriser un arrêt LLM "stop"
 MIN_SUCCESSFUL_ITERATIONS_BEFORE_STOP = 5
-# Checkpoints de progression positive pour arrêter tôt les sessions peu prometteuses
-POSITIVE_PROGRESS_GATE_CHECKPOINTS: dict[int, int] = {6: 1, 9: 2}
+# Default max_iterations pour une session Builder. Ajustable via env.
+# Reduit de 10 a 5 : sur l'historique recent, la mediane de final_iteration
+# des sessions success est ~3-4 ; au-dela on perd du temps sans gagner en
+# qualite, mieux vaut multiplier les sessions differentes.
+DEFAULT_MAX_ITERATIONS = int(os.getenv("BACKTEST_BUILDER_MAX_ITERATIONS", "5"))
+
+# Checkpoints de progression positive pour arrêter tôt les sessions peu prometteuses.
+# Cale sur DEFAULT_MAX_ITERATIONS=5 : a iter 2 il faut deja 1 positif, a iter 4 il faut 2.
+POSITIVE_PROGRESS_GATE_CHECKPOINTS: dict[int, int] = {2: 1, 4: 2}
 MIN_TRADES_FOR_POSITIVE_PROGRESS = 1
 # Quota max de fallbacks positifs comptabilisés dans la progression
 MAX_POSITIVE_FALLBACK_COUNT = 1

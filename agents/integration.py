@@ -399,7 +399,7 @@ def create_optimizer_from_engine(
         ...     executor=executor,
         ...     initial_params={"fast_period": 10, "slow_period": 21},
         ...     param_bounds={"fast_period": (5, 20), "slow_period": (15, 50)},
-        ...     max_iterations=10,
+        ...     max_iterations=5,
         ... )
         >>>
         >>> print(f"Best Sharpe: {session.best_result.sharpe_ratio}")
@@ -634,7 +634,7 @@ def quick_optimize(
         ...     llm_config=config,
         ...     strategy_name="ema_cross",
         ...     data=df,
-        ...     max_iterations=15,
+        ...     max_iterations=5,
         ... )
         >>> print(session.best_result.sharpe_ratio)
 

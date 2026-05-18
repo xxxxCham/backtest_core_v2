@@ -1952,7 +1952,7 @@ def render_sidebar() -> SidebarState:
     optuna_metric = st.session_state.get("exec_grid_metric", "sharpe_ratio")
     optuna_early_stop = st.session_state.get("exec_grid_early_stop", 0)
     llm_config = None
-    llm_max_iterations = 10
+    llm_max_iterations = 5
     llm_use_walk_forward = True
     role_model_config = None
     llm_topology_config = None
@@ -1999,7 +1999,7 @@ def render_sidebar() -> SidebarState:
     # ── Strategy Builder defaults ──
     builder_objective = ""
     builder_model_single_llm = "deepseek-r1:32b"
-    builder_max_iterations = 10
+    builder_max_iterations = 5
     builder_target_sharpe = 1.0
     builder_capital = 10000.0
     builder_ollama_host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")

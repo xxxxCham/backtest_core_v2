@@ -35,7 +35,7 @@ Usage Mode Autonome (RECOMMANDÉ):
     ...     executor=executor,
     ...     initial_params={"fast": 10, "slow": 21},
     ...     param_bounds={"fast": (5, 20), "slow": (15, 50)},
-    ...     max_iterations=10,
+    ...     max_iterations=5,
     ... )
     >>> print(f"Best: {session.best_result.sharpe_ratio}")
 
@@ -46,7 +46,7 @@ Usage Mode Orchestre (analysis-only si aucun callback de backtest):
     ...     strategy_name="ema_cross",
     ...     data_path="data/BTCUSDT_1h.parquet",
     ...     on_backtest_needed=my_backtest_callback,
-    ...     max_iterations=10,
+    ...     max_iterations=5,
     ... )
     >>> orchestrator = Orchestrator(config)
     >>> result = orchestrator.run()
