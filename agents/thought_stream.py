@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import shutil
 import threading
 from collections.abc import Mapping
@@ -32,6 +33,17 @@ STREAM_ARCHIVE_DIR = get_builder_sessions_dir() / "_live_thoughts_archives"
 # Lisible via: Get-Content _full_stream.jsonl -Wait -Tail 50 | ConvertFrom-Json
 # Ne remplace pas _live_thoughts.md (qui reste optimise pour Tail 80 lisible).
 FULL_STREAM_FILE = get_builder_sessions_dir() / "_full_stream.jsonl"
+
+# Events volontairement exclus du _full_stream.jsonl pour eviter de saturer
+# le fichier debug avec le verbatim brut du LLM (96-99% du volume avant filtrage,
+# soit ~1 MB/s a 100 tokens/s). Le fichier debug garde uniquement les events
+# synthetiques utiles au diagnostic post-mortem (phases, iterations, decisions).
+# Override possible via env BACKTEST_BUILDER_FULL_STREAM_INCLUDE_CHUNKS=1.
+_FULL_STREAM_SKIP_EVENTS: frozenset[str] = (
+    frozenset()
+    if os.environ.get("BACKTEST_BUILDER_FULL_STREAM_INCLUDE_CHUNKS", "0") not in ("0", "false", "False")
+    else frozenset({"stream_chunk"})
+)
 _IDLE_STREAM_TITLE = "STRATEGY BUILDER - Aucun flux live actif"
 
 _LIVE_STREAM_LABELS = {
@@ -500,17 +512,24 @@ class ThoughtStream:
             handle.flush()
 
     def _append_full_jsonl(self, payload: Mapping[str, Any]) -> None:
-        """2026-05-15 - Patch flux complet: append 1 evenement = 1 ligne JSON dans _full_stream.jsonl.
+        """Append 1 event = 1 ligne JSON dans _full_stream.jsonl (best-effort).
 
-        Best-effort: une erreur d'ecriture sur le fichier compagnon NE DOIT PAS bloquer
-        le flux canonique (lisible et critique). Toute exception est silencieusement
-        ignoree apres une seule tentative.
+        Skip les events declares dans _FULL_STREAM_SKIP_EVENTS (par defaut :
+        stream_chunk, qui represente >95% du volume avec ~1 MB/s de verbatim LLM
+        et fait grossir le fichier au-dela du raisonnable pour un fichier debug).
+        Plus de flush() explicit : l'OS gere son buffer (le fichier reste
+        coherent meme en cas de crash grace au append-only mode).
+
+        Une erreur d'ecriture NE DOIT PAS bloquer le flux canonique (lisible
+        et critique). Toute exception est silencieusement ignoree.
         """
+        event_name = str(payload.get("event", "") or "")
+        if event_name in _FULL_STREAM_SKIP_EVENTS:
+            return
         try:
             line = json.dumps(dict(payload or {}), ensure_ascii=False, default=str)
             with self._lock, open(self.full_path, "a", encoding="utf-8") as handle:
                 handle.write(line + "\n")
-                handle.flush()
         except Exception:
             pass
 
