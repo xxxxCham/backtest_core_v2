@@ -965,6 +965,68 @@ def build_indicator_context(
     }
 
 
+# Contracts critiques rappeles en tete du guide LLM. Cibles : les patterns
+# de hallucination les plus frequents observes (cf. _analysis/alias_discovery
+# + sessions 2026-05). Format compact pour ne pas exploser le prompt.
+_CRITICAL_INDICATOR_CONTRACTS: dict[str, tuple[str, ...]] = {
+    "supertrend": (
+        "supertrend['direction'] est un INT (1=bullish, -1=bearish). "
+        "JAMAIS comparer a la string 'bullish'/'bearish'. "
+        "Bon usage: indicators['supertrend']['direction'] == 1 (long) ou == -1 (short).",
+    ),
+    "markov_switching": (
+        "markov_switching['regime'] est un INT (0/1, parfois 0/1/2). "
+        "JAMAIS comparer a une string ('bull', 'risk_on', etc.). "
+        "Bon usage: indicators['markov_switching']['regime'] == 1.",
+    ),
+    "tsi": (
+        "tsi est un array 1D : PAS de sous-cle 'signal' integree. "
+        "Pour un cross, calculer localement: "
+        "tsi_signal = pd.Series(tsi).ewm(span=13, adjust=False).mean().values. "
+        "Les noms tsi_crosses_above_signal / tsi_crosses_below_signal sont "
+        "auto-injectes par le repair, donc utilisables directement.",
+    ),
+    "macd": (
+        "macd retourne un dict {'macd', 'signal', 'histogram'} (tous arrays). "
+        "Pour un cross signal, comparer: indicators['macd']['macd'] vs indicators['macd']['signal'].",
+    ),
+    "rsi": (
+        "rsi est un array 1D (pas de dict). Acces direct: indicators['rsi']. "
+        "Les noms rsi_overbought=70, rsi_oversold=30 sont des PARAMETRES (params.get), pas des sous-cles.",
+    ),
+    "stochastic": (
+        "stochastic retourne un dict avec sous-cles 'stoch_k' et 'stoch_d' "
+        "(PAS 'k', 'd', 'signal'). Acces: indicators['stochastic']['stoch_k'].",
+    ),
+    "adx": (
+        "adx retourne un dict {'adx', 'plus_di', 'minus_di'}. "
+        "Pour la valeur principale: indicators['adx']['adx']. "
+        "Pour les composantes directionnelles: indicators['adx']['plus_di'] / ['minus_di'].",
+    ),
+}
+
+
+def build_indicator_contract_reminders(
+    available_indicators: Iterable[str],
+) -> List[str]:
+    """Retourne les contracts critiques pour les indicateurs concernes.
+
+    Pre-pendable au guide LLM pour reduire les hallucinations frequentes :
+    comparaisons string sur sorties int, sous-cles inventees, etc.
+    Filtré par la liste passée pour eviter le bruit en prompt.
+    """
+    available = {str(n or "").strip().lower() for n in (available_indicators or []) if str(n or "").strip()}
+    if not available:
+        return []
+    reminders: List[str] = []
+    for canonical_name, contract_lines in _CRITICAL_INDICATOR_CONTRACTS.items():
+        if canonical_name not in available:
+            continue
+        for line in contract_lines:
+            reminders.append(f"[{canonical_name}] {line}")
+    return reminders
+
+
 def build_indicator_selection_guide(
     available_indicators: Iterable[str],
 ) -> List[str]:
@@ -973,9 +1035,20 @@ def build_indicator_selection_guide(
     Chaque ligne expose l'abreviation, le nom complet, l'usage principal et un
     rappel de formule ou de mecanique, afin d'eviter un prompt limite a une
     simple liste de noms.
+
+    Inclut depuis 2026-05-18 un bloc 'Critical contracts' en tete pour les
+    indicateurs concernes par les hallucinations LLM frequentes
+    (supertrend.direction int, markov regime int, tsi sans signal line, etc.).
     """
     guide_lines: List[str] = []
     seen: set[str] = set()
+
+    contract_reminders = build_indicator_contract_reminders(available_indicators)
+    if contract_reminders:
+        guide_lines.append("CRITICAL CONTRACTS (read first - common LLM pitfalls):")
+        for reminder in contract_reminders:
+            guide_lines.append(f"  {reminder}")
+        guide_lines.append("")
 
     for indicator_name in available_indicators or []:
         raw_name = str(indicator_name or "").strip()

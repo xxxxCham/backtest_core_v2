@@ -509,6 +509,143 @@ SAFE_DICT_INDICATOR_ASSIGNMENT_ALIASES: dict[str, set[str]] = {
     "supertrend": {"supertrend_value", "supertrend_level"},
 }
 
+# ---------------------------------------------------------------------------
+# Reecriture des comparaisons string -> int sur sorties dict semantiques.
+#
+# Cas typique LLM : `indicators['supertrend'] == 'bullish'` ou
+# `supertrend == 'bullish'`. Or supertrend['direction'] est un int 1/-1.
+# Cette table fournit la reecriture canonique a appliquer dans _repair_code.
+#
+# Clé : (canonical_indicator_or_alias, normalized_string_literal)
+# Valeur : expression Python qui remplace la comparaison entiere.
+# ---------------------------------------------------------------------------
+SEMANTIC_STRING_COMPARISON_REWRITES: dict[tuple[str, str], str] = {
+    # Supertrend : direction int 1 (bullish) / -1 (bearish)
+    ("supertrend", "bullish"): "(np.nan_to_num(indicators['supertrend']['direction']) == 1)",
+    ("supertrend", "bearish"): "(np.nan_to_num(indicators['supertrend']['direction']) == -1)",
+    ("supertrend", "bull"): "(np.nan_to_num(indicators['supertrend']['direction']) == 1)",
+    ("supertrend", "bear"): "(np.nan_to_num(indicators['supertrend']['direction']) == -1)",
+    ("supertrend", "up"): "(np.nan_to_num(indicators['supertrend']['direction']) == 1)",
+    ("supertrend", "down"): "(np.nan_to_num(indicators['supertrend']['direction']) == -1)",
+    # Variantes : alias 'direction', 'supertrend_direction', 'st_direction', 'st_dir'
+    ("direction", "bullish"): "(np.nan_to_num(indicators['supertrend']['direction']) == 1)",
+    ("direction", "bearish"): "(np.nan_to_num(indicators['supertrend']['direction']) == -1)",
+    ("direction", "bull"): "(np.nan_to_num(indicators['supertrend']['direction']) == 1)",
+    ("direction", "bear"): "(np.nan_to_num(indicators['supertrend']['direction']) == -1)",
+    ("direction", "up"): "(np.nan_to_num(indicators['supertrend']['direction']) == 1)",
+    ("direction", "down"): "(np.nan_to_num(indicators['supertrend']['direction']) == -1)",
+    ("supertrend_direction", "bullish"): "(np.nan_to_num(indicators['supertrend']['direction']) == 1)",
+    ("supertrend_direction", "bearish"): "(np.nan_to_num(indicators['supertrend']['direction']) == -1)",
+    ("st_direction", "bullish"): "(np.nan_to_num(indicators['supertrend']['direction']) == 1)",
+    ("st_direction", "bearish"): "(np.nan_to_num(indicators['supertrend']['direction']) == -1)",
+    ("st_dir", "bullish"): "(np.nan_to_num(indicators['supertrend']['direction']) == 1)",
+    ("st_dir", "bearish"): "(np.nan_to_num(indicators['supertrend']['direction']) == -1)",
+    # Markov switching : regime int (typiquement 0/1, parfois 0/1/2 selon le modele)
+    ("markov_regime", "bull"): "(np.nan_to_num(indicators['markov_switching']['regime']) == 1)",
+    ("markov_regime", "bear"): "(np.nan_to_num(indicators['markov_switching']['regime']) == 0)",
+    ("markov_regime", "bullish"): "(np.nan_to_num(indicators['markov_switching']['regime']) == 1)",
+    ("markov_regime", "bearish"): "(np.nan_to_num(indicators['markov_switching']['regime']) == 0)",
+    ("regime", "bull"): "(np.nan_to_num(indicators['markov_switching']['regime']) == 1)",
+    ("regime", "bear"): "(np.nan_to_num(indicators['markov_switching']['regime']) == 0)",
+    ("regime", "bullish"): "(np.nan_to_num(indicators['markov_switching']['regime']) == 1)",
+    ("regime", "bearish"): "(np.nan_to_num(indicators['markov_switching']['regime']) == 0)",
+    ("regime", "risk_on"): "(np.nan_to_num(indicators['markov_switching']['regime']) == 1)",
+    ("regime", "risk_off"): "(np.nan_to_num(indicators['markov_switching']['regime']) == 0)",
+}
+
+
+# ---------------------------------------------------------------------------
+# Bindings de signaux derives auto-injectables.
+#
+# Quand le LLM utilise un nom comme `tsi_crosses_above_signal` (signal qui
+# n'existe pas comme sous-cle), _inject_generate_signals_indicator_bindings
+# peut auto-injecter le code de calcul correspondant au top de generate_signals.
+#
+# Cle : nom du signal derive utilise par le LLM (snake_case).
+# Valeur : liste de lignes Python a injecter (dans l'ordre).
+#
+# Les lignes utilisent les bindings de base (rsi, tsi, etc.) qui sont injectes
+# avant par _build_generate_signals_indicator_binding_groups. La detection se
+# fait par presence du nom dans les variables charges du code (load_names).
+# ---------------------------------------------------------------------------
+DERIVED_SIGNAL_BINDINGS: dict[str, dict[str, Any]] = {
+    # TSI : pas de signal line en sortie, calcul EMA(13) du TSI = convention classique.
+    "tsi_signal": {
+        "requires_indicators": ("tsi",),
+        "lines": (
+            "tsi_signal = pd.Series(np.nan_to_num(indicators['tsi'])).ewm(span=13, adjust=False).mean().values",
+        ),
+    },
+    "tsi_crosses_above_signal": {
+        "requires_indicators": ("tsi",),
+        "requires_derived": ("tsi_signal",),
+        "lines": (
+            "_tsi_arr = np.nan_to_num(indicators['tsi'])",
+            "tsi_crosses_above_signal = (np.roll(_tsi_arr, 1) <= np.roll(tsi_signal, 1)) & (_tsi_arr > tsi_signal)",
+            "tsi_crosses_above_signal[0] = False",
+        ),
+    },
+    "tsi_crosses_below_signal": {
+        "requires_indicators": ("tsi",),
+        "requires_derived": ("tsi_signal",),
+        "lines": (
+            "_tsi_arr = np.nan_to_num(indicators['tsi'])",
+            "tsi_crosses_below_signal = (np.roll(_tsi_arr, 1) >= np.roll(tsi_signal, 1)) & (_tsi_arr < tsi_signal)",
+            "tsi_crosses_below_signal[0] = False",
+        ),
+    },
+    # TSI zero-cross (alternative classique sans signal line)
+    "tsi_crosses_above_zero": {
+        "requires_indicators": ("tsi",),
+        "lines": (
+            "_tsi_arr = np.nan_to_num(indicators['tsi'])",
+            "tsi_crosses_above_zero = (np.roll(_tsi_arr, 1) <= 0) & (_tsi_arr > 0)",
+            "tsi_crosses_above_zero[0] = False",
+        ),
+    },
+    "tsi_crosses_below_zero": {
+        "requires_indicators": ("tsi",),
+        "lines": (
+            "_tsi_arr = np.nan_to_num(indicators['tsi'])",
+            "tsi_crosses_below_zero = (np.roll(_tsi_arr, 1) >= 0) & (_tsi_arr < 0)",
+            "tsi_crosses_below_zero[0] = False",
+        ),
+    },
+    # MACD signal cross (deja sous-clé 'signal' du dict macd, mais le pattern boolean est utile)
+    "macd_crosses_above_signal": {
+        "requires_indicators": ("macd",),
+        "lines": (
+            "_macd_line = np.nan_to_num(indicators['macd']['macd'])",
+            "_macd_sig = np.nan_to_num(indicators['macd']['signal'])",
+            "macd_crosses_above_signal = (np.roll(_macd_line, 1) <= np.roll(_macd_sig, 1)) & (_macd_line > _macd_sig)",
+            "macd_crosses_above_signal[0] = False",
+        ),
+    },
+    "macd_crosses_below_signal": {
+        "requires_indicators": ("macd",),
+        "lines": (
+            "_macd_line = np.nan_to_num(indicators['macd']['macd'])",
+            "_macd_sig = np.nan_to_num(indicators['macd']['signal'])",
+            "macd_crosses_below_signal = (np.roll(_macd_line, 1) >= np.roll(_macd_sig, 1)) & (_macd_line < _macd_sig)",
+            "macd_crosses_below_signal[0] = False",
+        ),
+    },
+    # Supertrend direction = boolean aliases (pratique quand le LLM ecrit `supertrend_bullish`)
+    "supertrend_bullish": {
+        "requires_indicators": ("supertrend",),
+        "lines": (
+            "supertrend_bullish = (np.nan_to_num(indicators['supertrend']['direction']) == 1)",
+        ),
+    },
+    "supertrend_bearish": {
+        "requires_indicators": ("supertrend",),
+        "lines": (
+            "supertrend_bearish = (np.nan_to_num(indicators['supertrend']['direction']) == -1)",
+        ),
+    },
+}
+
+
 INVALID_DICT_SUBKEY_REWRITE_HINTS: dict[tuple[str, str], str] = {
     ("bollinger", "close"): "np.nan_to_num(df['close'].values.astype(np.float64))",
     ("donchian", "close"): "np.nan_to_num(df['close'].values.astype(np.float64))",

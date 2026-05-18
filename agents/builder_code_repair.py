@@ -35,6 +35,7 @@ from agents.indicator_context import (
     get_indicator_builder_stable_alias_map,
 )
 from indicators.schema import (
+    DERIVED_SIGNAL_BINDINGS,
     INDICATOR_ACCESS_ALIASES,
     INVALID_DICT_SUBKEY_REWRITE_HINTS as SCHEMA_INVALID_DICT_SUBKEY_REWRITE_HINTS,
     OUTPUT_KEY_ALIASES,
@@ -42,6 +43,7 @@ from indicators.schema import (
     SAFE_DICT_INDICATOR_ASSIGNMENT_ALIASES,
     SAFE_DICT_INDICATOR_KEYS,
     SEMANTIC_INDICATOR_ALIASES,
+    SEMANTIC_STRING_COMPARISON_REWRITES,
     parse_parameterized_indicator_instance,
 )
 
@@ -238,6 +240,47 @@ _INVALID_DICT_SUBKEY_REWRITE_HINTS: dict[tuple[str, str], str] = {
     ("fvg", "fvg_bullish_gap"): "indicators['fvg']['fvg_bullish']",
     ("fvg", "fvg_bearish_gap"): "indicators['fvg']['fvg_bearish']",
 }
+
+
+# Pre-compilation : un regex par cle de SEMANTIC_STRING_COMPARISON_REWRITES.
+# Capture les deux sens (var == 'literal' et 'literal' == var) avec equality (==) ou
+# is (`is 'bullish'` arrive parfois en sortie LLM).
+def _build_semantic_string_comparison_patterns() -> list[tuple[re.Pattern[str], str]]:
+    patterns: list[tuple[re.Pattern[str], str]] = []
+    for (var_name, literal_value), replacement in SEMANTIC_STRING_COMPARISON_REWRITES.items():
+        v = re.escape(var_name)
+        lit = re.escape(literal_value)
+        # var == 'literal'  /  var == "literal"  /  var is 'literal'
+        patterns.append(
+            (re.compile(rf"\b{v}\s*(?:==|is)\s*['\"]{lit}['\"]"), replacement),
+        )
+        # 'literal' == var  /  "literal" == var
+        patterns.append(
+            (re.compile(rf"['\"]{lit}['\"]\s*(?:==|is)\s*\b{v}\b"), replacement),
+        )
+    return patterns
+
+
+_SEMANTIC_STRING_COMPARISON_PATTERNS = _build_semantic_string_comparison_patterns()
+
+
+def _rewrite_semantic_string_comparisons(code: str) -> str:
+    """Reecrit les comparaisons LLM `<var> == 'bullish'` vers les sorties int correctes.
+
+    Cible les patterns courants ou le LLM imagine que les sorties dict (supertrend,
+    markov_switching) sont des strings 'bullish'/'bearish' alors que ce sont des
+    int 1/-1 (supertrend.direction) ou 0/1 (markov.regime). Table source :
+    indicators.schema.SEMANTIC_STRING_COMPARISON_REWRITES.
+
+    Une comparaison directe sur l'array float retournerait False partout,
+    produisant 'signal_always_false' -> 0 trade -> precheck bloquant.
+    """
+    if not code or "==" not in code and " is " not in code:
+        return code
+    rewritten = code
+    for pattern, replacement in _SEMANTIC_STRING_COMPARISON_PATTERNS:
+        rewritten = pattern.sub(replacement, rewritten)
+    return rewritten
 
 
 _PARAM_ACCESS_REWRITE_HINTS = {
@@ -543,11 +586,78 @@ def _build_generate_signals_indicator_binding_groups(
     return groups
 
 
+def _resolve_derived_signal_lines(
+    code: str,
+    available_indicators: set[str],
+) -> list[str]:
+    """Detecte les references aux signaux derives (DERIVED_SIGNAL_BINDINGS) et
+    retourne les lignes de calcul a injecter (avec resolution des dependances).
+
+    Une reference est consideree comme presente si le nom de signal apparait
+    dans le code en tant qu'identifier autonome (mot complet, non-string).
+    Pas de double-injection : on dedoublonne les lignes deja presentes.
+    """
+    if not DERIVED_SIGNAL_BINDINGS:
+        return []
+
+    # Detection rapide : presence du nom comme word boundary (peut etre false positive sur string)
+    referenced: list[str] = []
+    for signal_name, spec in DERIVED_SIGNAL_BINDINGS.items():
+        if not re.search(rf"\b{re.escape(signal_name)}\b", code):
+            continue
+        # Skip si toutes les lignes deja presentes (re-injection a chaque iteration possible)
+        spec_lines = spec.get("lines", ())
+        if all(line in code for line in spec_lines):
+            continue
+        # Skip si l'indicateur source n'est pas disponible
+        required = set(spec.get("requires_indicators", ()))
+        if required and not required.issubset(available_indicators):
+            continue
+        referenced.append(signal_name)
+
+    if not referenced:
+        return []
+
+    # Resolution des dependances (requires_derived) en ordre topologique simple
+    resolved: list[str] = []
+    seen: set[str] = set()
+
+    def visit(signal: str) -> None:
+        if signal in seen:
+            return
+        seen.add(signal)
+        spec = DERIVED_SIGNAL_BINDINGS.get(signal, {})
+        for dep in spec.get("requires_derived", ()):
+            if dep in DERIVED_SIGNAL_BINDINGS and dep not in seen:
+                visit(dep)
+        resolved.append(signal)
+
+    for sig in referenced:
+        visit(sig)
+
+    # Aplatir les lignes (sans dedoublonnage strict pour preserver l'ordre des deps)
+    output_lines: list[str] = []
+    emitted: set[str] = set()
+    for signal in resolved:
+        for line in DERIVED_SIGNAL_BINDINGS[signal].get("lines", ()):
+            if line in emitted or line in code:
+                continue
+            output_lines.append(line)
+            emitted.add(line)
+    return output_lines
+
+
 def _inject_generate_signals_indicator_bindings(
     code: str,
     required_indicators: list[str] | None = None,
 ) -> str:
-    """Injecte un préambule de bindings indicateurs dans generate_signals."""
+    """Injecte un préambule de bindings indicateurs dans generate_signals.
+
+    Inclut depuis 2026-05-18 l'auto-injection des signaux derives connus
+    (DERIVED_SIGNAL_BINDINGS) referenced dans le code mais non calcules.
+    Permet au LLM d'utiliser des noms comme `tsi_crosses_above_signal`
+    sans hallucinations de sous-cles dans indicators[...].
+    """
     indicator_names = _infer_required_indicator_names_from_code(code, required_indicators)
     if not indicator_names:
         return code
@@ -562,7 +672,10 @@ def _inject_generate_signals_indicator_bindings(
         return code
 
     binding_groups = _build_generate_signals_indicator_binding_groups(indicator_names)
-    if not binding_groups:
+    available_indicators_set = {n.lower() for n in indicator_names}
+    derived_signal_lines = _resolve_derived_signal_lines(code, available_indicators_set)
+
+    if not binding_groups and not derived_signal_lines:
         return code
 
     lines = code.split("\n")
@@ -580,6 +693,10 @@ def _inject_generate_signals_indicator_bindings(
                 continue
             binding_lines.extend(line for line in base_lines if line not in fn_source)
             binding_lines.extend(line for line in alias_lines if line not in fn_source)
+
+        # Ajout des derived signals references mais non calcules (tsi_crosses_above_signal, etc.)
+        if derived_signal_lines:
+            binding_lines.extend(line for line in derived_signal_lines if line not in fn_source)
 
         if not binding_lines:
             continue
@@ -1293,6 +1410,11 @@ def _repair_code(
     code = _normalize_generate_signals_mask_aliases(code)
     code = _repair_invalid_warmup_zero_slices(code)
     code = _rewrite_invalid_dict_indicator_subkeys(code)
+
+    # 3a. Comparaisons string semantiques -> int (supertrend == 'bullish', etc.)
+    #     Sans cette reecriture, le LLM produit du code qui passe la validation
+    #     mais retourne 0 trade (signal_always_false -> precheck bloquant).
+    code = _rewrite_semantic_string_comparisons(code)
 
     # _structurally_sound: True pour du code LLM propre (parse OK, classe présente,
     # generate_signals présent, patterns LLM problématiques absents).
