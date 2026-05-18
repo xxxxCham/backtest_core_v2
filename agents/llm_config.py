@@ -625,41 +625,8 @@ def create_llm_config(
     )
 
 
-# ============================================================================
-# MULTI-MODEL ROLE CONFIGURATION
-# ============================================================================
-
-
-def get_optimal_models_for_role(
-    role: str,
-    available_models: list[str],
-) -> list[str]:
-    """Retourne les modèles optimaux pour un rôle d'agent.
-
-    Args:
-        role: "analyst", "strategist", "critic", ou "validator"
-        available_models: Modèles disponibles
-
-    Returns:
-        Liste de modèles recommandés (max 3)
-
-    """
-    # Configuration optimale basée sur benchmarks
-    optimal_config = {
-        "analyst": ["gemma4:26b", "qwen2.5:14b", "lfm2:24b"],
-        "strategist": ["gemma4:26b", "gemma4:31b", "lfm2:24b"],
-        "critic": ["gemma4:31b", "deepseek-r1:32b", "mistral:22b"],
-        "validator": ["gemma4:31b", "deepseek-r1:32b", "qwen2.5:32b"],
-    }
-
-    preferred = optimal_config.get(role, [])
-    result = [m for m in preferred if m in available_models]
-
-    # Fallback si aucun modèle optimal disponible
-    if not result and available_models:
-        result = available_models[:2]
-
-    return result[:3]
+# get_optimal_models_for_role() supprimée 2026-05-18 :
+# relique de l'infra multi-LLM (4 rôles agent) jamais appelée par le mono-LLM.
 
 
 def normalize_model_selection(
