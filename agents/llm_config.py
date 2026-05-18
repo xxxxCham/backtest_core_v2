@@ -120,6 +120,11 @@ BUILTIN_LLM_INFERENCE_PROFILES: dict[str, dict[str, Any]] = {
     "gemma4:26b":              {"temperature": 0.20, "max_tokens": 4096, "num_ctx": 16384},
     "glm-4.7-flash-23b-local": {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
     "qwen3.5:27b":             {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
+    # Qwen 3.6 27B Dense : agentic coding (SWE-bench 77.2%) + reasoning integre.
+    # temp 0.20 pour determinisme code, max_tokens 6144 pour absorber le thinking
+    # interne sans tronquer la generation finale (300-400 lignes strategy.py),
+    # num_ctx 16384 suffisant pour prompt + cross_session_memory + generation.
+    "qwen3.6:27b":             {"temperature": 0.20, "max_tokens": 6144, "num_ctx": 16384},
     "qwen3-30b-a3b:q4_k_m":    {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
 
     # ===== HEAVY local (30-50B) — num_ctx=10240, max_tokens=2048 (reasoning=4096) =====

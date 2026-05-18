@@ -89,6 +89,30 @@ _MONO_LLM_MODEL_PROFILES: dict[str, BuilderModelPromptProfile] = {
             "Use only registry indicators exposed by required_indicators; price comes from df columns, not from indicators['price'] or similar pseudo-indicators.",
         ),
     ),
+    "qwen3.6:27b": BuilderModelPromptProfile(
+        model_name="qwen3.6:27b",
+        rationale=(
+            "Dense 27B with top-tier agentic coding (SWE-bench Verified 77.2%) and integrated reasoning. "
+            "Primary observed risks: semantic comparisons on dict indicators ('supertrend == bullish'), "
+            "invented sub-keys on plain arrays (tsi 'signal' line), over-engineered conditional cascades "
+            "that dilute the trading edge. Repair pipeline auto-fixes string comparisons and injects "
+            "derived signals — emphasize trusting the contracts and keeping logic flat."
+        ),
+        proposal_rules=(
+            "Trust the indicator contracts in 'Critical Contracts': supertrend.direction is INT, markov_switching.regime is INT, tsi is a 1D array (no signal sub-key).",
+            "Express ONE strong hypothesis with 2-3 hard filters at most; avoid stacking 5+ optional conditions that erode the edge.",
+            "Use stable indicator names from the registry verbatim; do not invent helper indicators or pseudo-features.",
+            "Reasoning is integrated — be concise in the proposal JSON, the model already deliberates internally.",
+        ),
+        code_rules=(
+            "supertrend['direction'] is INT 1 (bullish) / -1 (bearish). NEVER write supertrend == 'bullish' or direction == 'bear'; use indicators['supertrend']['direction'] == 1 / == -1.",
+            "markov_switching['regime'] is INT (0/1). NEVER compare to strings ('bull', 'risk_on'); use indicators['markov_switching']['regime'] == 1.",
+            "tsi has NO 'signal' sub-key. If a TSI cross is needed, the names tsi_signal / tsi_crosses_above_signal / tsi_crosses_below_signal are AUTO-INJECTED by the repair pipeline — use them directly without re-implementing.",
+            "Prefer flat boolean masks (long_mask, short_mask) over nested if/elif/else cascades; the runtime consumes a 1D signals pd.Series.",
+            "Vectorize fully: no for-loops over df.iloc[i], no while loops, no per-bar Python state machines.",
+            "Define every local variable before first use; do not reference helper aliases that were not assigned by the preamble or by your own previous lines.",
+        ),
+    ),
 }
 
 
