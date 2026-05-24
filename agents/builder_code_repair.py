@@ -982,6 +982,61 @@ def _repair_invalid_warmup_zero_slices(code: str) -> str:
     return "\n".join(fixed_lines)
 
 
+_ATR_VALUE_EXPR_PATTERN = (
+    r"\b(?:atr|atr_arr|atr_data|atr_val|atr_value|average_true_range)\b(?:\s*\[[^\]\n]+\])?"
+    r"|indicators\s*\[\s*['\"]atr['\"]\s*\](?:\s*\[[^\]\n]+\])?"
+    r"|np\.nan_to_num\(\s*indicators\s*\[\s*['\"]atr['\"]\s*\]\s*\)(?:\s*\[[^\]\n]+\])?"
+)
+_ATR_NUMERIC_LITERAL_PATTERN = r"\b(?:[1-9]\d*(?:\.\d+)?|\d+\.\d+)\b"
+_ATR_THEN_LITERAL_RISK_PATTERN = re.compile(
+    rf"(?P<atr>{_ATR_VALUE_EXPR_PATTERN})\s*\*\s*{_ATR_NUMERIC_LITERAL_PATTERN}",
+)
+_LITERAL_THEN_ATR_RISK_PATTERN = re.compile(
+    rf"{_ATR_NUMERIC_LITERAL_PATTERN}\s*\*\s*(?P<atr>{_ATR_VALUE_EXPR_PATTERN})",
+)
+
+
+def _rewrite_hardcoded_atr_risk_multipliers(code: str) -> str:
+    """Remplace les multiplicateurs ATR fixes des colonnes SL/TP par les params Builder.
+
+    Des archives Builder contiennent des stratégies avec `stop_atr_mult` et
+    `tp_atr_mult` dans `default_params`, mais des stops effectifs codés en dur
+    (`atr_val * 2`, `atr_val * 4`) dans `bb_stop_*`/`bb_tp_*`. Ce repair garde
+    l'intention de risque paramétrable et laisse `_inject_generate_signals_core_param_aliases`
+    injecter ensuite les alias `stop_atr_mult`/`tp_atr_mult` depuis `params`.
+    """
+    rewritten_lines: list[str] = []
+    target_cols = {
+        "bb_stop_long": "stop_atr_mult",
+        "bb_stop_short": "stop_atr_mult",
+        "bb_tp_long": "tp_atr_mult",
+        "bb_tp_short": "tp_atr_mult",
+    }
+
+    for raw_line in str(code or "").splitlines():
+        line = raw_line
+        rhs_start = line.find("=")
+        if rhs_start < 0:
+            rewritten_lines.append(line)
+            continue
+
+        lhs = line[:rhs_start]
+        param_name = next((param for col, param in target_cols.items() if col in lhs), "")
+        if not param_name or "atr" not in line.lower():
+            rewritten_lines.append(line)
+            continue
+
+        def _replace(match: re.Match[str], param: str = param_name) -> str:
+            atr_expr = match.group("atr") or "atr"
+            return f"{param} * {atr_expr}"
+
+        line = _ATR_THEN_LITERAL_RISK_PATTERN.sub(_replace, line)
+        line = _LITERAL_THEN_ATR_RISK_PATTERN.sub(_replace, line)
+        rewritten_lines.append(line)
+
+    return "\n".join(rewritten_lines)
+
+
 def _rewrite_invalid_dict_indicator_subkeys(code: str) -> str:
     """Répare quelques sous-clés dict hallucinées quand la cible sûre est déterministe."""
     fixed = code
@@ -1410,6 +1465,7 @@ def _repair_code(
     code = _normalize_generate_signals_mask_aliases(code)
     code = _repair_invalid_warmup_zero_slices(code)
     code = _rewrite_invalid_dict_indicator_subkeys(code)
+    code = _rewrite_hardcoded_atr_risk_multipliers(code)
 
     # 3a. Comparaisons string semantiques -> int (supertrend == 'bullish', etc.)
     #     Sans cette reecriture, le LLM produit du code qui passe la validation

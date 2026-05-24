@@ -597,6 +597,7 @@ def render_model_selector(
     include_library_models: bool = False,
     fallback: Sequence[str] | None = None,
     current_value: str | None = None,
+    display_mode: str = "selectbox",
 ) -> str:
     """Selecteur de modele Streamlit avec affichage riche.
 
@@ -608,6 +609,8 @@ def render_model_selector(
         show_details: Afficher la fiche detaillee sous le selecteur
         show_filter: Afficher le filtre par categorie
         compact: Mode compact (sidebar) - reduit les infos
+        display_mode: "selectbox" pour un menu compact, "radio" pour afficher
+            toutes les options directement dans la page.
 
     Returns:
         str: Nom du modele selectionne (nom Ollama exact)
@@ -697,13 +700,24 @@ def render_model_selector(
     if desired_value and st.session_state.get(key) != desired_value:
         st.session_state[key] = desired_value
 
-    selected = st.selectbox(
-        label,
-        models,
-        key=key,
-        help=help_text,
-        format_func=lambda name: _format_model_option(name, details_map.get(name, {})),
-    )
+    option_formatter = lambda name: _format_model_option(name, details_map.get(name, {}))
+    if display_mode == "radio":
+        selected = st.radio(
+            label,
+            models,
+            key=key,
+            help=help_text,
+            format_func=option_formatter,
+            horizontal=False,
+        )
+    else:
+        selected = st.selectbox(
+            label,
+            models,
+            key=key,
+            help=help_text,
+            format_func=option_formatter,
+        )
 
     # Fiche detaillee
     if selected and show_details:

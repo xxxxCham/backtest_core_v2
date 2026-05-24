@@ -60,8 +60,14 @@ RUNS_DIR = get_saved_runs_dir()
 GRADUATION_RESULTS_DIR = Path("catalog/graduation_results")
 FULL_GRADUATION_PROGRESS_FILENAME = "graduation_full_progress.json"
 FULL_GRADUATION_LOG_FILENAME = "graduation_full_run.log"
+GRADUATION_P1_LOG_FILENAME = "graduation_p1_run.log"
+POSITIVE_ARTIFACTS_IMPORT_LOG_FILENAME = "positive_artifacts_import.log"
 POSITIVE_IMPORTS_PROGRESS_FILENAME = "positive_imports_progress.json"
 POSITIVE_IMPORTS_LOG_FILENAME = "positive_imports_run.log"
+GRADUATION_PROGRESS_FILENAMES = (
+    FULL_GRADUATION_PROGRESS_FILENAME,
+    POSITIVE_IMPORTS_PROGRESS_FILENAME,
+)
 
 CHART_MODE_COLUMNS = "Colonnes"
 CHART_MODE_POINTS = "Points"
@@ -403,6 +409,19 @@ def _payload_config_snapshot(*payloads: dict[str, Any] | None) -> dict[str, Any]
     return {}
 
 
+def _payload_threshold_sensitivity(*payloads: dict[str, Any] | None) -> dict[str, Any]:
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        value = payload.get("threshold_sensitivity")
+        if isinstance(value, dict) and value:
+            return value
+        meta_value = _payload_meta(payload).get("threshold_sensitivity")
+        if isinstance(meta_value, dict) and meta_value:
+            return meta_value
+    return {}
+
+
 def _load_progress_payload(filename: str) -> dict[str, Any]:
     path = GRADUATION_RESULTS_DIR / filename
     if not path.exists():
@@ -586,6 +605,26 @@ def _background_progress_is_active(payload: dict[str, Any]) -> bool:
         return True
     age_seconds = _progress_age_seconds(str(payload.get("updated_at") or ""))
     return bool(age_seconds is not None and age_seconds < 15 and not payload.get("pid"))
+
+
+def _active_graduation_progresses() -> list[dict[str, Any]]:
+    active: list[dict[str, Any]] = []
+    for filename in GRADUATION_PROGRESS_FILENAMES:
+        payload = _load_progress_payload(filename)
+        if payload and _background_progress_is_active(payload):
+            active.append({"filename": filename, "payload": payload})
+    return active
+
+
+def _progress_status_label(payload: dict[str, Any], age_seconds: float | None) -> str:
+    raw_status = str(payload.get("status") or "?").strip() or "?"
+    lowered = raw_status.lower()
+    if lowered in {"starting", "running"} and not _background_progress_is_active(payload):
+        if payload.get("pid"):
+            return "processus arrêté"
+        if age_seconds is not None and age_seconds > 180:
+            return "sans heartbeat"
+    return raw_status
 
 
 def _truncate_rejection_reason(value: Any, *, max_len: int = 140) -> str:
@@ -859,6 +898,53 @@ def _build_phase_focus_preview_df(df: pd.DataFrame, phase: str) -> pd.DataFrame:
     return filtered[visible_cols].head(GRADUATION_PREVIEW_LIMIT).reset_index(drop=True)
 
 
+def _render_threshold_sensitivity_section(*payloads: dict[str, Any] | None) -> None:
+    sensitivity = _payload_threshold_sensitivity(*payloads)
+    p5 = sensitivity.get("p5") if isinstance(sensitivity, dict) else {}
+    if not isinstance(p5, dict) or not p5.get("available"):
+        return
+
+    with st.expander("Sensibilité des seuils P5", expanded=False):
+        thresholds = p5.get("current_thresholds") if isinstance(p5.get("current_thresholds"), dict) else {}
+        metric_cols = st.columns(4)
+        metric_cols[0].metric("Candidats P5", int(p5.get("candidate_count") or 0))
+        metric_cols[1].metric("Pass actuels", int(p5.get("observed_pass_count") or 0))
+        metric_cols[2].metric("Folds + requis", f"{float(thresholds.get('min_positive_folds_pct') or 0):.0f}%")
+        metric_cols[3].metric("Score robuste max", f"{float(thresholds.get('watchlist_max_robust_score') or 0):.0f}")
+        st.caption(
+            "Simulation conservatrice : rendement test > 0, Sharpe test minimal et seuil dur de folds positifs restent actifs ; "
+            "seuls les seuils de folds positifs et de score robuste sont balayés.",
+        )
+
+        blocker_counts = p5.get("blocker_counts")
+        if isinstance(blocker_counts, dict) and blocker_counts:
+            st.dataframe(
+                pd.DataFrame([{"blocage": key, "count": value} for key, value in blocker_counts.items()]),
+                width="stretch",
+                hide_index=True,
+            )
+
+        sweep_cols = st.columns(2)
+        positive_sweep = p5.get("positive_folds_sweep")
+        if isinstance(positive_sweep, list) and positive_sweep:
+            sweep_cols[0].caption("Effet du seuil de folds positifs")
+            sweep_cols[0].dataframe(pd.DataFrame(positive_sweep), width="stretch", hide_index=True)
+        score_sweep = p5.get("robust_score_sweep")
+        if isinstance(score_sweep, list) and score_sweep:
+            sweep_cols[1].caption("Effet du plafond de score robuste")
+            sweep_cols[1].dataframe(pd.DataFrame(score_sweep), width="stretch", hide_index=True)
+
+        combined_grid = p5.get("combined_grid")
+        if isinstance(combined_grid, list) and combined_grid:
+            with st.expander("Grille combinée folds positifs × score robuste", expanded=False):
+                st.dataframe(pd.DataFrame(combined_grid), width="stretch", hide_index=True)
+
+        closest_misses = p5.get("closest_misses")
+        if isinstance(closest_misses, list) and closest_misses:
+            st.caption("Candidats proches des marges actuelles")
+            st.dataframe(pd.DataFrame(closest_misses), width="stretch", hide_index=True)
+
+
 def _build_candidate_preview_df(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
@@ -999,16 +1085,49 @@ def _render_progress_section(
     total_candidates = _safe_int(stats.get("p1_candidates"), _safe_int(stats.get("import_candidates")))
     processed_counts = _phase_processed_counts(stats, total_candidates, infer_missing=False)
     survivor_counts = _phase_survivor_counts(stats)
-    phase_distribution = _phase_distribution_counts(report_payload or {}, report_df)
+    live_phase_distribution = _phase_distribution_counts(payload)
+    report_phase_distribution = _phase_distribution_counts(report_payload or {}, report_df)
+    has_live_phase_distribution = any(live_phase_distribution.get(phase, 0) for phase in ("P2", "P3", "P4", "P5", "P6"))
+    phase_distribution = live_phase_distribution if has_live_phase_distribution else report_phase_distribution
     display_phase = _resolve_completed_phase(payload, processed_counts, phase_distribution)
     progress_index, progress_total = _resolve_progress_ratio(payload, display_phase, processed_counts)
     age_seconds = _progress_age_seconds(str(payload.get("updated_at") or ""))
+    status_label = _progress_status_label(payload, age_seconds)
     age_label = ""
     if age_seconds is not None:
         age_label = f"{int(age_seconds)}s"
 
+    st.markdown(_build_phase_timeline_html(current_phase=display_phase, status=str(payload.get("status") or "")), unsafe_allow_html=True)
+    status_state = "running"
+    status_title = "Calculs en cours"
+    if status_label == "processus arrêté":
+        status_state = "error"
+        status_title = "Processus arrêté"
+    elif status_label == "sans heartbeat":
+        status_title = "Progression sans heartbeat"
+    elif str(payload.get("status") or "").strip().lower() == "completed":
+        status_state = "complete"
+        status_title = "Run terminé"
+    elif str(payload.get("status") or "").strip().lower() == "failed":
+        status_state = "error"
+        status_title = "Run échoué"
+    with st.status(
+        f"{status_title} · {display_phase} · {progress_index}/{progress_total}",
+        state=status_state,
+        expanded=False,
+    ):
+        if progress_total > 0:
+            st.progress(
+                min(1.0, max(0.0, progress_index / progress_total)),
+                text=f"{display_phase} {progress_index}/{progress_total}",
+            )
+
+    heartbeat_cols = st.columns(2)
+    heartbeat_cols[0].metric("Heartbeat", age_label or "-")
+    heartbeat_cols[1].metric("PID", str(payload.get("pid") or "-"))
+
     cols = st.columns(8)
-    cols[0].metric("Statut", str(payload.get("status") or "?"))
+    cols[0].metric("Statut", status_label)
     cols[1].metric("Phase", display_phase)
     cols[2].metric("Avancement", f"{progress_index}/{progress_total}")
     cols[3].metric("Traités P2", processed_counts.get("P2", 0))
@@ -1036,7 +1155,12 @@ def _render_progress_section(
     if cli_command:
         st.caption(f"Commande CLI équivalente: `{cli_command}`")
     st.caption(_format_phase_counts("Survivants", survivor_counts))
-    st.caption(_format_phase_counts("Phase finale des candidats", phase_distribution))
+    if has_live_phase_distribution:
+        st.caption(_format_phase_counts("Phase actuelle des candidats", phase_distribution))
+    elif str(payload.get("status") or "").strip().lower() in {"starting", "running"}:
+        st.caption(_format_phase_counts("Dernier rapport stable - phase finale des candidats", phase_distribution))
+    else:
+        st.caption(_format_phase_counts("Phase finale des candidats", phase_distribution))
 
     phase_contract = _payload_phase_contract(payload, report_payload)
     config_snapshot = _payload_config_snapshot(payload, report_payload)
@@ -1055,7 +1179,14 @@ def _render_progress_section(
             if config_snapshot:
                 st.json(config_snapshot)
 
-    if payload.get("status") == "running" and age_seconds is not None and age_seconds > 180:
+    _render_threshold_sensitivity_section(payload, report_payload)
+
+    if status_label == "processus arrêté":
+        st.error(
+            "Le run est marqué `running`, mais son PID n'existe plus. "
+            "Le dernier brouillon peut être incomplet ; relancez la graduation complète.",
+        )
+    elif payload.get("status") == "running" and age_seconds is not None and age_seconds > 180:
         st.warning("Le run est marqué `running` mais la progression n'a pas bougé depuis plus de 3 minutes.")
     elif payload.get("status") == "failed":
         st.error(str(payload.get("error") or "Le run a échoué."))
@@ -1079,12 +1210,18 @@ def _start_background_graduation_job(
 ) -> tuple[bool, str]:
     output_dir = GRADUATION_RESULTS_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
-    if progress_filename:
-        existing_progress = _load_progress_payload(progress_filename)
-        if existing_progress and _background_progress_is_active(existing_progress):
-            existing_pid = existing_progress.get("pid")
-            pid_suffix = f" (PID {existing_pid})" if existing_pid else ""
-            return False, f"Un run est déjà actif{pid_suffix}. Rafraîchissez la page pour suivre sa progression."
+    active_progresses = _active_graduation_progresses()
+    if active_progresses:
+        active = active_progresses[0]
+        existing_progress = active.get("payload") or {}
+        existing_pid = existing_progress.get("pid")
+        active_pipeline = str(existing_progress.get("pipeline") or active.get("filename") or "graduation")
+        pid_suffix = f" (PID {existing_pid})" if existing_pid else ""
+        return (
+            False,
+            f"Un run de graduation est déjà actif: {active_pipeline}{pid_suffix}. "
+            "Rafraîchissez la page pour suivre sa progression avant d'en lancer un autre.",
+        )
     log_path = output_dir / log_filename
     command = [sys.executable, "-m", "catalog.graduation", *args]
     cli_command = _graduation_cli_command(args)
@@ -1109,6 +1246,32 @@ def _launch_full_graduation_from_ui(*, sync_catalog: bool) -> tuple[bool, str]:
         args=args,
         log_filename=FULL_GRADUATION_LOG_FILENAME,
         progress_filename=FULL_GRADUATION_PROGRESS_FILENAME,
+    )
+
+
+def _launch_p1_inventory_from_ui(*, sync_catalog: bool) -> tuple[bool, str]:
+    args: list[str] = []
+    if sync_catalog:
+        args.append("--sync-catalog")
+    return _start_background_graduation_job(
+        args=args,
+        log_filename=GRADUATION_P1_LOG_FILENAME,
+    )
+
+
+def _launch_positive_artifact_import_from_ui(
+    *,
+    sync_catalog: bool,
+    include_legacy_artifact_roots: bool,
+) -> tuple[bool, str]:
+    args = ["--import-positive-artifacts"]
+    if include_legacy_artifact_roots:
+        args.append("--include-legacy-artifact-roots")
+    if sync_catalog:
+        args.append("--sync-catalog")
+    return _start_background_graduation_job(
+        args=args,
+        log_filename=POSITIVE_ARTIFACTS_IMPORT_LOG_FILENAME,
     )
 
 
@@ -1165,6 +1328,13 @@ def _render_candidate_report_section(
                 st.dataframe(pd.DataFrame(contract_rows), width="stretch", hide_index=True)
             if config_snapshot:
                 st.json(config_snapshot)
+    else:
+        st.warning(
+            "Ce rapport ne contient pas encore le contrat P1→P6 ni le snapshot des paramètres. "
+            "Il a probablement été généré par une ancienne version du pipeline.",
+        )
+
+    _render_threshold_sensitivity_section(payload)
 
     if df.empty:
         st.write("ℹ️ Le rapport est présent mais ne contient aucun candidat.")
@@ -2477,7 +2647,7 @@ def _build_results_hub_table_df(
         rows,
         graduation_linked_df,
         origin="graduation_sandbox",
-        source_label="Graduation sandbox",
+        source_label="Graduation complète",
         type_label="graduation_candidate",
     )
     positive_linked_df = _decorate_graduation_strategy_links(positive_import_df)
@@ -2848,7 +3018,7 @@ def _render_graduation_controls_and_progress(
 ) -> None:
     st.markdown("### Filtrage intelligent des résultats")
 
-    main_col_a, main_col_b, main_col_c, main_col_d = st.columns([1.2, 1.8, 1.8, 1.6])
+    main_col_a, main_col_b, main_col_c = st.columns([1.2, 1.8, 1.8])
     if main_col_a.button(
         "🔄 Rafraîchir affichage",
         key="graduation_refresh",
@@ -2875,92 +3045,18 @@ def _render_graduation_controls_and_progress(
         st.session_state["graduation_status_msg"] = message
         st.session_state["graduation_status_error"] = not ok
         st.rerun()
-    include_legacy_artifact_roots = main_col_d.checkbox(
-        "Inclure roots legacy",
-        value=False,
-        key="graduation_include_legacy_roots",
-        help="N'ajoute les racines legacy codées en dur à l'import positif que si cette option est cochée.",
-    )
 
     with st.expander("⚙️ Actions avancées", expanded=False):
         st.caption(
-            "Ordre logique : (1) Inventaire ou (3) Ingestion en amont, "
-            "puis (2) Graduation sandbox ou (4) Graduation des artefacts ingérés.",
+            "Diagnostic uniquement : l'action principale relance désormais la graduation unique P1→P6.",
         )
-        adv_col_a, adv_col_b, adv_col_c = st.columns(3)
-        if adv_col_a.button(
-            "Inventaire sandbox",
+        if st.button(
+            "Inventaire P1 brut",
             key="graduation_run_p1",
             use_container_width=True,
-            help="Liste les candidats du sandbox sans backtest (diagnostic rapide).",
+            help="Lance la commande CLI `python -m catalog.graduation` pour l'inventaire P1 brut.",
         ):
-            from catalog.graduation import (
-                GraduationConfig,
-                save_graduation_report,
-                scan_sandbox,
-                sync_graduation_to_catalog,
-            )
-
-            with st.spinner("Inventaire sandbox en cours..."):
-                config = GraduationConfig(sync_catalog=sync_catalog)
-                candidates = scan_sandbox(config)
-                synced = sync_graduation_to_catalog(candidates, config) if sync_catalog else []
-                save_graduation_report(
-                    candidates,
-                    config.output_dir,
-                    phase="P1_repechage",
-                    filename="graduation_p1.json",
-                    stats={"catalog_synced": len(synced)},
-                )
-            st.session_state["graduation_status_msg"] = f"P1 terminé: {len(candidates)} candidat(s)" + (
-                f", {len(synced)} sync catalogue" if sync_catalog else ""
-            )
-            st.session_state["graduation_status_error"] = False
-            st.rerun()
-        if adv_col_b.button(
-            "Ingérer artefacts positifs",
-            key="graduation_import_positive_artifacts",
-            use_container_width=True,
-            help=(
-                "Importe dans le strategy catalog les runs/sweeps à return > 0 (legacy + courant) "
-                "avec le tag `positive_import`. Aucun filtrage ; pré-requis du bouton suivant."
-            ),
-        ):
-            from catalog.graduation import GraduationConfig, import_positive_artifacts_to_catalog
-
-            with st.spinner("Ingestion des artefacts positifs..."):
-                report = import_positive_artifacts_to_catalog(
-                    GraduationConfig(
-                        sync_catalog=sync_catalog,
-                        include_legacy_artifact_roots=include_legacy_artifact_roots,
-                    ),
-                )
-            stats = report.get("stats", {}) if isinstance(report, dict) else {}
-            st.session_state["graduation_status_msg"] = (
-                f"Import positifs terminé: {stats.get('catalog_entries_touched', 0)} entrée(s), "
-                f"{stats.get('catalog_new_entries', 0)} nouvelles."
-            )
-            st.session_state["graduation_status_error"] = False
-            st.rerun()
-        if adv_col_c.button(
-            "Grader artefacts ingérés (P2→P5)",
-            key="graduation_run_positive_imports",
-            use_container_width=True,
-            help=(
-                "Re-grade (P2→P5) les entrées catalog taggées `positive_import`. "
-                "Nécessite d'avoir cliqué « Ingérer artefacts positifs » au préalable."
-            ),
-        ):
-            args = ["--positive-import-full"]
-            if include_legacy_artifact_roots:
-                args.append("--include-legacy-artifact-roots")
-            if sync_catalog:
-                args.append("--sync-catalog")
-            ok, message = _start_background_graduation_job(
-                args=args,
-                log_filename=POSITIVE_IMPORTS_LOG_FILENAME,
-                progress_filename=POSITIVE_IMPORTS_PROGRESS_FILENAME,
-            )
+            ok, message = _launch_p1_inventory_from_ui(sync_catalog=sync_catalog)
             st.session_state["graduation_status_msg"] = message
             st.session_state["graduation_status_error"] = not ok
             st.rerun()
@@ -2973,18 +3069,11 @@ def _render_graduation_controls_and_progress(
             st.success(status_msg)
 
     _render_progress_section(
-        title="Progression sandbox P1→P6",
+        title="Progression unique P1→P6",
         payload=_load_progress_payload(FULL_GRADUATION_PROGRESS_FILENAME),
         log_filename=FULL_GRADUATION_LOG_FILENAME,
         report_payload=sandbox_payload,
         report_df=sandbox_df,
-    )
-    _render_progress_section(
-        title="Progression positifs P1→P6",
-        payload=_load_progress_payload(POSITIVE_IMPORTS_PROGRESS_FILENAME),
-        log_filename=POSITIVE_IMPORTS_LOG_FILENAME,
-        report_payload=positive_payload,
-        report_df=positive_df,
     )
 
 

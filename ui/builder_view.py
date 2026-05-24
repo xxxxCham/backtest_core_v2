@@ -107,8 +107,11 @@ ensure_ollama_running = ollama_manager_module.ensure_ollama_running
 probe_model_runtime_acceptance = ollama_manager_module.probe_model_runtime_acceptance
 
 from ui.state import (
+    BUILDER_AUTO_PAUSE_DEFAULT,
     BUILDER_EXECUTION_MODE_MONO,
-    BUILDER_UNIVERSE_MODE_CANONICAL,
+    BUILDER_FLOW_ANALYSIS_ENABLED_DEFAULT,
+    BUILDER_MODEL_SINGLE_LLM_DEFAULT,
+    BUILDER_UNIVERSE_MODE_DEFAULT,
     clear_execution_state,
     resolve_builder_flow_analysis_preferences,
     resolve_builder_runtime_preferences,
@@ -119,7 +122,7 @@ _AUTONOMOUS_RUNTIME_STATE_FILE = SANDBOX_ROOT / "_autonomous_runtime_state.json"
 _BUILDER_SESSION_SUMMARY_PATCH_LOCK = threading.Lock()
 _AUTONOMOUS_SUPERVISOR_VERSION = "1.0"
 _AUTONOMOUS_RUNTIME_VERSION = "1.0"
-_AUTONOMOUS_MAX_PERSISTED_HISTORY = 150
+_AUTONOMOUS_MAX_PERSISTED_HISTORY: Optional[int] = None
 # Cles redondantes avec session_summary.json — non persistees au niveau history.
 # universe_meta seul pesait ~80% du supervisor_state (36 KB/entry).
 _AUTONOMOUS_HISTORY_PURGED_KEYS: frozenset[str] = frozenset(
@@ -992,10 +995,10 @@ def _compact_history_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
 def _trim_autonomous_history(
     history: List[Dict[str, Any]],
     *,
-    limit: int = _AUTONOMOUS_MAX_PERSISTED_HISTORY,
+    limit: Optional[int] = _AUTONOMOUS_MAX_PERSISTED_HISTORY,
 ) -> List[Dict[str, Any]]:
     items = list(history or [])
-    if len(items) > limit:
+    if limit is not None and limit > 0 and len(items) > limit:
         items = items[-limit:]
     # Compaction : applique a chaque entry, y compris celles persistees avant
     # l'ajout du filtre (migration automatique au prochain save).
@@ -1146,17 +1149,17 @@ def _coerce_list(value: Any) -> list:
 # Schéma pour _build_builder_autonomous_resume_ui_state : (attr, type, default)
 _RESUME_UI_SCHEMA: tuple = (
     ("builder_execution_mode", str, "mono_single_llm"),
-    ("builder_model_single_llm", str, ""),
+    ("builder_model_single_llm", str, BUILDER_MODEL_SINGLE_LLM_DEFAULT),
     ("builder_ollama_host", str, ""),
-    ("builder_auto_pause", int, 10),
+    ("builder_auto_pause", int, BUILDER_AUTO_PAUSE_DEFAULT),
     ("builder_auto_use_llm", bool, True),
     ("builder_auto_market_pick", bool, False),
-    ("builder_universe_mode", str, BUILDER_UNIVERSE_MODE_CANONICAL),
+    ("builder_universe_mode", str, BUILDER_UNIVERSE_MODE_DEFAULT),
     ("builder_preload_model", bool, True),
     ("builder_keep_alive_minutes", int, 20),
     ("builder_unload_after_run", bool, True),
     ("builder_auto_start_ollama", bool, True),
-    ("builder_flow_analysis_enabled", bool, False),
+    ("builder_flow_analysis_enabled", bool, BUILDER_FLOW_ANALYSIS_ENABLED_DEFAULT),
 )
 
 
@@ -1547,6 +1550,7 @@ def _build_recovered_autonomous_history_entry(
     # Spread snapshot dicts au lieu de recopier champ par champ
     recovered.update(recovered_snapshot)
     recovered.update(final_snapshot)
+    recovered["iteration_history_rows"] = _build_iteration_history_rows_from_summary(summary)
     recovered["n_bars"] = (
         summary.get("n_bars")
         or recovered.get("n_bars")
@@ -1557,7 +1561,7 @@ def _build_recovered_autonomous_history_entry(
         "date_range_start": None,
         "date_range_end": None,
         "initial_capital": None,
-        "universe_mode": BUILDER_UNIVERSE_MODE_CANONICAL,
+        "universe_mode": BUILDER_UNIVERSE_MODE_DEFAULT,
         "universe_purpose": "builder_autonomous",
         "universe_strategy_type": "",
         "builder_execution_mode": BUILDER_EXECUTION_MODE_MONO,
@@ -1598,7 +1602,13 @@ def _recover_autonomous_history_entry_from_disk(
         entry.get(key) not in (None, "")
         for key in ("final_return", "final_iteration", "final_max_dd", "final_sharpe", "final_trades")
     )
-    if current_session_id and has_final_snapshot and (current_return is not None or current_iterations > 0):
+    has_iteration_rows = bool(entry.get("iteration_history_rows"))
+    if (
+        current_session_id
+        and has_final_snapshot
+        and has_iteration_rows
+        and (current_return is not None or current_iterations > 0)
+    ):
         return entry
 
     normalized_objective = _normalize_autonomous_objective_text(entry.get("objective"))
@@ -1878,16 +1888,16 @@ def restore_builder_autonomous_ui_state_from_runtime() -> tuple[bool, Dict[str, 
         st.session_state["builder_ollama_host"] = builder_ollama_host
 
     if "builder_auto_pause" in resume_ui_state:
-        pause_value = int(resume_ui_state.get("builder_auto_pause", 10) or 10)
+        pause_value = int(
+            resume_ui_state.get("builder_auto_pause", BUILDER_AUTO_PAUSE_DEFAULT)
+            or BUILDER_AUTO_PAUSE_DEFAULT
+        )
         st.session_state["builder_auto_pause"] = pause_value
         st.session_state["builder_auto_pause_slider"] = pause_value
 
     for name, widget_key in (
         ("builder_auto_use_llm", "builder_auto_use_llm_toggle"),
         ("builder_auto_market_pick", "builder_auto_market_pick_toggle"),
-        ("builder_preload_model", "builder_preload_model_toggle"),
-        ("builder_unload_after_run", "builder_unload_after_run_toggle"),
-        ("builder_auto_start_ollama", "builder_auto_start_ollama_toggle"),
         ("builder_flow_analysis_enabled", "builder_flow_analysis_enabled_toggle"),
     ):
         if name not in resume_ui_state:
@@ -1896,17 +1906,10 @@ def restore_builder_autonomous_ui_state_from_runtime() -> tuple[bool, Dict[str, 
         st.session_state[name] = toggle_value
         st.session_state[widget_key] = toggle_value
 
-    if "builder_keep_alive_minutes" in resume_ui_state:
-        keep_alive = int(
-            resume_ui_state.get("builder_keep_alive_minutes", 20) or 20
-        )
-        st.session_state["builder_keep_alive_minutes"] = keep_alive
-        st.session_state["builder_keep_alive_minutes_input"] = keep_alive
-
     builder_universe_mode = str(
-        resume_ui_state.get("builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL)
-        or BUILDER_UNIVERSE_MODE_CANONICAL
-    ).strip() or BUILDER_UNIVERSE_MODE_CANONICAL
+        resume_ui_state.get("builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT)
+        or BUILDER_UNIVERSE_MODE_DEFAULT
+    ).strip() or BUILDER_UNIVERSE_MODE_DEFAULT
     st.session_state["builder_universe_mode"] = builder_universe_mode
 
     ablation_config = resume_ui_state.get("builder_flow_analysis_ablation", {})
@@ -2077,7 +2080,7 @@ def _get_autonomous_recap_status_badge(entry: Dict[str, Any]) -> Dict[str, str]:
         return primary_badges[status]
 
     if any(value > 0.0 for value in known_returns):
-        return {"icon": "+", "label": "positif", "tone": "positive"}
+        return {"icon": "◇", "label": "prometteur", "tone": "candidate"}
 
     if any(value < 0.0 for value in known_returns):
         return {"icon": "−", "label": "negatif", "tone": "negative"}
@@ -2301,37 +2304,144 @@ def _apply_autonomous_supervisor_recovery(
     return plan
 
 
-def _render_iterations_compact_table(session: Any) -> None:
-    """Résumé compact des itérations en une seule table dans un expander fermé."""
-    iterations = getattr(session, "iterations", []) or []
-    if not iterations:
-        return
+def _extract_builder_strategy_name_from_code(code: Any) -> str:
+    text = str(code or "")
+    if not text.strip():
+        return ""
+    name_match = re.search(
+        r"super\(\)\.__init__\(\s*name\s*=\s*['\"]([^'\"]+)['\"]",
+        text,
+    )
+    if name_match:
+        return name_match.group(1).strip()
+    class_match = re.search(r"class\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", text)
+    if class_match:
+        return class_match.group(1).strip()
+    return ""
 
+
+def _format_builder_indicator_list(indicators: Any, *, max_items: int = 8) -> str:
+    if not isinstance(indicators, list):
+        return ""
+    cleaned = [str(item or "").strip() for item in indicators if str(item or "").strip()]
+    if not cleaned:
+        return ""
+    visible = cleaned[:max_items]
+    suffix = f" +{len(cleaned) - max_items}" if len(cleaned) > max_items else ""
+    return ", ".join(visible) + suffix
+
+
+def _build_iteration_history_rows_from_session(session: Any) -> List[Dict[str, Any]]:
+    iterations = getattr(session, "iterations", []) or []
+    rows: List[Dict[str, Any]] = []
     decision_icons = {"accept": "✅", "stop": "🛑"}
-    rows = []
     for it in iterations:
         it_num = getattr(it, "iteration", 0)
-        decision = getattr(it, "decision", "")
+        decision = str(getattr(it, "decision", "") or "")
         error = getattr(it, "error", None)
         bt = getattr(it, "backtest_result", None)
         metrics = getattr(bt, "metrics", None) if bt is not None else None
         icon = "❌" if error else decision_icons.get(decision, "🔄")
+        indicators = getattr(it, "used_indicators", []) or []
         row: Dict[str, Any] = {
             "#": it_num,
             "": icon,
-            "Sharpe": float(metrics.get("sharpe_ratio", 0) or 0) if isinstance(metrics, dict) else None,
+            "Stratégie": _extract_builder_strategy_name_from_code(getattr(it, "code", "")),
+            "Indicateurs": _format_builder_indicator_list(indicators),
             "Return %": float(metrics.get("total_return_pct", 0) or 0) if isinstance(metrics, dict) else None,
+            "Sharpe": float(metrics.get("sharpe_ratio", 0) or 0) if isinstance(metrics, dict) else None,
             "Max DD %": float(metrics.get("max_drawdown_pct", 0) or 0) if isinstance(metrics, dict) else None,
             "Trades": int(metrics.get("total_trades", 0) or 0) if isinstance(metrics, dict) else None,
             "PF": float(metrics.get("profit_factor", 0) or 0) if isinstance(metrics, dict) else None,
             "Type": str(getattr(it, "change_type", "") or ""),
         }
         rows.append(row)
+    return rows
 
+
+def _build_iteration_history_rows_from_summary(summary: Dict[str, Any]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for row in _coerce_list(summary.get("iterations", [])):
+        if not isinstance(row, dict):
+            continue
+        phase_feedback = row.get("phase_feedback")
+        proposal_feedback = (
+            phase_feedback.get("proposal", {}) if isinstance(phase_feedback, dict) else {}
+        )
+        indicators = row.get("used_indicators")
+        if not isinstance(indicators, list) and isinstance(proposal_feedback, dict):
+            indicators = proposal_feedback.get("used_indicators", [])
+        decision = str(row.get("decision", "") or "")
+        icon = "❌" if row.get("error") else {"accept": "✅", "stop": "🛑"}.get(decision, "🔄")
+        rows.append(
+            {
+                "#": row.get("iteration"),
+                "": icon,
+                "Stratégie": str(row.get("strategy_name", "") or ""),
+                "Indicateurs": _format_builder_indicator_list(indicators),
+                "Return %": _safe_optional_float(row.get("return_pct")),
+                "Sharpe": _safe_optional_float(row.get("sharpe")),
+                "Max DD %": _safe_optional_float(row.get("max_drawdown_pct")),
+                "Trades": row.get("trades"),
+                "PF": _safe_optional_float(row.get("profit_factor")),
+                "Type": str(row.get("change_type", "") or ""),
+            }
+        )
+    return rows
+
+
+def _render_iterations_compact_table(session: Any) -> None:
+    """Résumé compact des itérations en une seule table dans un expander fermé."""
+    rows = _build_iteration_history_rows_from_session(session)
+    if not rows:
+        return
     n = len(rows)
     with st.expander(f"📋 Historique des itérations ({n})", expanded=False):
         st.dataframe(rows, hide_index=True, use_container_width=True)
 
+
+def _render_autonomous_iteration_history(history: List[Dict[str, Any]]) -> None:
+    """Affiche un journal d'itérations accumulé, une table par session autonome."""
+    st.markdown("### 📋 Itérations par session")
+    if not history:
+        st.caption("Aucun historique d'itérations autonome pour le moment.")
+        return
+
+    any_rows = False
+    for fallback_idx, entry in enumerate(reversed(history), 1):
+        rows = entry.get("iteration_history_rows")
+        if not isinstance(rows, list) or not rows:
+            summary = _load_builder_summary_payload(entry)
+            rows = _build_iteration_history_rows_from_summary(summary) if summary else []
+        if not rows:
+            continue
+        any_rows = True
+        session_num = entry.get("session_num") or fallback_idx
+        symbol = str(entry.get("symbol", "") or "").strip()
+        timeframe = str(entry.get("timeframe", "") or "").strip()
+        best_return = entry.get("best_return", entry.get("final_return"))
+        strategy_names = [
+            str(row.get("Stratégie", "") or "").strip()
+            for row in rows
+            if isinstance(row, dict) and str(row.get("Stratégie", "") or "").strip()
+        ]
+        strategy_label = strategy_names[-1] if strategy_names else "stratégie générée"
+        title = (
+            f"Session #{session_num} · {strategy_label} · {symbol} {timeframe} · "
+            f"best return {_format_optional_float(best_return, '{:+.2f}%')}"
+        )
+        with st.expander(title, expanded=fallback_idx == 1):
+            indicator_sets = [
+                str(row.get("Indicateurs", "") or "").strip()
+                for row in rows
+                if isinstance(row, dict) and str(row.get("Indicateurs", "") or "").strip()
+            ]
+            if indicator_sets:
+                st.caption(f"Indicateurs: {indicator_sets[-1]}")
+            st.dataframe(rows, hide_index=True, use_container_width=True)
+
+    if not any_rows:
+        st.caption("Les anciennes sessions n'ont pas encore de détail d'itérations récupérable.")
 
 def render_iteration_card(
     iteration: Any,
@@ -2545,72 +2655,6 @@ def render_session_summary(session: Any) -> None:
         st.caption(f"📁 Fichiers de session: `{session_dir}`")
 
 
-def _resolve_builder_flow_analysis_payload(session: Any) -> Dict[str, Any]:
-    payload = {
-        "builder_execution_mode": str(
-            getattr(session, "builder_execution_mode", "") or ""
-        ),
-        "orchestration_mode": str(
-            getattr(session, "orchestration_mode", "") or ""
-        ),
-        "instrumentation_enabled": bool(
-            getattr(session, "instrumentation_enabled", False)
-        ),
-        "instrumentation_summary": (
-            dict(getattr(session, "instrumentation_summary", {}) or {})
-            if isinstance(getattr(session, "instrumentation_summary", {}), dict)
-            else {}
-        ),
-        "ablation_config": (
-            dict(getattr(session, "ablation_config", {}) or {})
-            if isinstance(getattr(session, "ablation_config", {}), dict)
-            else {}
-        ),
-        "pipeline_traces_path": str(
-            getattr(session, "pipeline_traces_path", "") or ""
-        ),
-    }
-    session_dir = getattr(session, "session_dir", None)
-    if not session_dir:
-        return payload
-    summary_path = Path(session_dir) / "session_summary.json"
-    if not summary_path.exists():
-        return payload
-    try:
-        persisted_summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    except Exception:
-        return payload
-    if not payload["builder_execution_mode"]:
-        payload["builder_execution_mode"] = str(
-            persisted_summary.get("builder_execution_mode", "") or ""
-        )
-    if not payload["orchestration_mode"]:
-        payload["orchestration_mode"] = str(
-            persisted_summary.get("orchestration_mode", "") or ""
-        )
-    if not payload["instrumentation_enabled"]:
-        payload["instrumentation_enabled"] = bool(
-            persisted_summary.get("instrumentation_enabled", False)
-        )
-    if not payload["instrumentation_summary"] and isinstance(
-        persisted_summary.get("instrumentation_summary"), dict
-    ):
-        payload["instrumentation_summary"] = dict(
-            persisted_summary.get("instrumentation_summary", {}) or {}
-        )
-    if not payload["ablation_config"] and isinstance(
-        persisted_summary.get("ablation_config"), dict
-    ):
-        payload["ablation_config"] = dict(
-            persisted_summary.get("ablation_config", {}) or {}
-        )
-    if not payload["pipeline_traces_path"]:
-        payload["pipeline_traces_path"] = str(
-            persisted_summary.get("pipeline_traces_path", "") or ""
-        )
-    return payload
-
-
 def _clone_json_compatible(payload: Any) -> Any:
     try:
         return json.loads(json.dumps(payload, ensure_ascii=False, default=str))
@@ -2683,119 +2727,6 @@ def _persist_builder_session_summary_patch(
                 session_dir,
                 exc,
             )
-
-
-def _render_builder_flow_analysis_panel(session: Any) -> None:
-    payload = _resolve_builder_flow_analysis_payload(session)
-    summary = payload.get("instrumentation_summary") or {}
-    execution_mode = str(payload.get("builder_execution_mode") or "")
-    instrumentation_enabled = bool(payload.get("instrumentation_enabled"))
-
-    st.markdown("#### Analyse du flux Builder")
-    st.caption(
-        "Lecture orientée produit du pipeline Builder: ce qui bloque, ce qui aide, "
-        "et où comparer deux sessions instrumentées."
-    )
-
-    if not instrumentation_enabled or not isinstance(summary, dict) or not summary:
-        st.info(
-            "Aucune trace disponible pour cette session. Active `Activer l'analyse de flux sur le prochain run` "
-            "dans l'onglet `Modèles & runtime`, puis relance un Builder."
-        )
-        return
-
-    if execution_mode and execution_mode != BUILDER_EXECUTION_MODE_MONO:
-        st.caption(
-            "La lecture détaillée dans l'interface est optimisée pour le Builder mono-LLM."
-        )
-
-    metric_cols = st.columns(6)
-    metric_cols[0].metric(
-        "Temps / itération",
-        f"{_safe_numeric_float(summary.get('avg_iteration_sec'), 0.0):.2f}s",
-    )
-    metric_cols[1].metric(
-        "Fallback",
-        f"{_safe_numeric_float(summary.get('fallback_rate'), 0.0) * 100:.1f}%",
-    )
-    metric_cols[2].metric(
-        "Réparation",
-        f"{_safe_numeric_float(summary.get('repair_rate'), 0.0) * 100:.1f}%",
-    )
-    metric_cols[3].metric(
-        "Runtime fix",
-        int(summary.get("runtime_fix_count", 0) or 0),
-    )
-    metric_cols[4].metric(
-        "Préchecks bloquants",
-        int(summary.get("precheck_skip_count", 0) or 0),
-    )
-    metric_cols[5].metric(
-        "Stagnation",
-        int(summary.get("stagnation_count", 0) or 0),
-    )
-
-    blockers = list(summary.get("blockers", []) or [])
-    helpers = list(summary.get("helpers", []) or [])
-    blocker_text = ", ".join(
-        f"{item.get('kind')} ({int(item.get('count', 0) or 0)})"
-        for item in blockers[:5]
-        if isinstance(item, dict)
-    )
-    helper_text = ", ".join(
-        f"{item.get('kind')} ({int(item.get('count', 0) or 0)})"
-        for item in helpers[:5]
-        if isinstance(item, dict)
-    )
-
-    st.markdown("**Qu’est-ce qui bloque ?**")
-    st.caption(
-        blocker_text or "Aucun frein récurrent n'a dominé cette session instrumentée."
-    )
-    st.markdown("**Qu’est-ce qui aide ?**")
-    st.caption(
-        helper_text or "Aucune aide récurrente n'a eu besoin de compenser fortement le flux."
-    )
-    st.markdown("**Où le flux diverge ?**")
-    st.caption(
-        "Utilise la comparaison de sessions dans l’explorateur des sessions Builder pour isoler la phase racine "
-        "entre deux runs instrumentés du même mode."
-    )
-
-    with st.expander("Chronologie de session", expanded=False):
-        phase_totals = dict(summary.get("phase_totals_sec", {}) or {})
-        phase_counts = dict(summary.get("phase_counts", {}) or {})
-        phase_errors = dict(summary.get("phase_errors", {}) or {})
-        phase_avg = dict(summary.get("phase_avg_sec", {}) or {})
-        phase_rows = [
-            {
-                "phase": phase,
-                "temps_total_s": _safe_numeric_float(phase_totals.get(phase), 0.0),
-                "temps_moyen_s": _safe_numeric_float(phase_avg.get(phase), 0.0),
-                "occurrences": int(phase_counts.get(phase, 0) or 0),
-                "erreurs": int(phase_errors.get(phase, 0) or 0),
-            }
-            for phase in sorted(set(phase_totals) | set(phase_counts) | set(phase_errors))
-        ]
-        if phase_rows:
-            st.dataframe(phase_rows, width="stretch", hide_index=True)
-        else:
-            st.caption("Aucune chronologie détaillée disponible pour cette session.")
-
-    with st.expander("Vue avancée", expanded=False):
-        disabled_steps = [
-            step
-            for step, enabled in dict(payload.get("ablation_config", {}) or {}).items()
-            if not enabled
-        ]
-        st.caption(
-            "Ablation active: "
-            + (", ".join(disabled_steps) if disabled_steps else "aucune, pipeline complet")
-        )
-        traces_path = str(payload.get("pipeline_traces_path", "") or "")
-        if traces_path:
-            st.caption(f"Trace détaillée: `{traces_path}`")
-        st.json(summary)
 
 
 # ---------------------------------------------------------------------------
@@ -3732,7 +3663,7 @@ def _builder_market_candidates(
     timeframes = timeframes[:12]
 
     normalized_mode = normalize_universe_mode(
-        getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+        getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
         purpose=purpose,
     )
     static_objective = sanitize_objective_text(
@@ -4254,7 +4185,7 @@ def _find_first_valid_builder_market(
         objective=objective,
     )
     universe_mode = normalize_universe_mode(
-        getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+        getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
         purpose=purpose,
     )
     universe_meta = _get_builder_market_universe_meta()
@@ -4392,7 +4323,7 @@ def _pick_market_for_objective(
     universe_mode = str(
         universe_meta.get("universe_mode")
         or normalize_universe_mode(
-            getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+            getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
             purpose=purpose,
         )
     )
@@ -4521,7 +4452,7 @@ def _select_autonomous_market_for_session(
     recent_markets: list[tuple[str, str]] | None = None,
 ) -> tuple[str, str, Any, Dict[str, Any]]:
     universe_mode = normalize_universe_mode(
-        getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+        getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
         purpose="builder_autonomous",
     )
     strategy_type = infer_strategy_type(
@@ -5024,14 +4955,13 @@ def _run_single_builder_session(
 
     progress_bar.progress(1.0, text="Terminé")
 
-    with iterations_container:
-        _render_iterations_compact_table(session)
+    if not autonomous_runtime_watchdog:
+        with iterations_container:
+            _render_iterations_compact_table(session)
 
     with summary_placeholder.container():
         st.markdown("---")
         render_session_summary(session)
-        with st.expander("🔬 Diagnostics avancés de session", expanded=False):
-            _render_builder_flow_analysis_panel(session)
 
     _release_runtime_model()
 
@@ -5082,19 +5012,7 @@ def _render_autonomous_recap(
         return html.escape(str(value))
 
     st.markdown("---")
-    _recap_title_col, _recap_reset_col = st.columns([7, 1])
-    with _recap_title_col:
-        st.markdown("## 📊 Récapitulatif des sessions autonomes")
-    with _recap_reset_col:
-        _render_seq_reset = _next_autonomous_recap_render_seq()
-        if st.button(
-            "🗑️ Réinitialiser",
-            key=f"builder_recap_reset_btn_{_render_seq_reset}",
-            help="Effacer tout l'historique des sessions autonomes et repartir à zéro.",
-            type="secondary",
-        ):
-            _sync_autonomous_state([], _default_autonomous_supervisor_state(), trim=False)
-            st.rerun()
+    st.markdown("## 📊 Récapitulatif des sessions autonomes")
 
     runtime_state = _load_autonomous_runtime_state()
     recovered_history, recovered_changed = _recover_autonomous_history_from_disk(
@@ -5109,21 +5027,6 @@ def _render_autonomous_recap(
         )
 
     latest_session_num = _history_latest_session_num(history)
-
-    if supervisor:
-        st.caption(
-            "Superviseur: "
-            f"errors={int(supervisor.get('consecutive_errors', 0) or 0)} | "
-            f"failed_sessions={int(supervisor.get('consecutive_failed_sessions', 0) or 0)} | "
-            f"soft_resets={int(supervisor.get('soft_reset_count', 0) or 0)} | "
-            f"source={str(supervisor.get('last_selected_source_mode', '-') or '-')} | "
-            f"policy={str(supervisor.get('last_selected_source_reason', '-') or '-')}"
-        )
-    if latest_session_num > len(history):
-        st.caption(
-            f"Fenêtre glissante: {len(history)} sessions affichées sur {latest_session_num} exécutées "
-            f"(limite persistée: {_AUTONOMOUS_MAX_PERSISTED_HISTORY})."
-        )
 
     table_rows: List[str] = []
     export_rows: List[Dict[str, Any]] = []
@@ -5412,6 +5315,11 @@ def _render_autonomous_recap(
     background: rgba(34, 197, 94, 0.22);
     border: 1px solid rgba(34, 197, 94, 0.55);
 }
+.builder-autonomous-recap-status--candidate {
+    color: #fef3c7;
+    background: rgba(14, 165, 233, 0.18);
+    border: 1px solid rgba(56, 189, 248, 0.50);
+}
 .builder-autonomous-recap-status--negative {
     color: #fef2f2;
     background: rgba(248, 113, 113, 0.20);
@@ -5453,6 +5361,17 @@ def _render_autonomous_recap(
         padding: 0.35rem 0.75rem 0.6rem;
         background: rgba(15, 23, 42, 0.18);
 }
+.builder-autonomous-recap-history {
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 0.75rem;
+        padding: 0.35rem 0.75rem 0.75rem;
+        background: rgba(15, 23, 42, 0.12);
+}
+.builder-autonomous-recap-history summary {
+        cursor: pointer;
+        font-weight: 700;
+        margin: 0.25rem 0 0.65rem;
+}
 .builder-autonomous-recap-details summary {
         cursor: pointer;
         font-weight: 700;
@@ -5464,6 +5383,8 @@ def _render_autonomous_recap(
         color: rgba(226, 232, 240, 0.92);
 }
 </style>
+<details class="builder-autonomous-recap-history" open>
+<summary>Historique complet (""" + str(len(history)) + """ sessions)</summary>
 <table class="builder-autonomous-recap-table">
   <thead>
     <tr>
@@ -5488,6 +5409,7 @@ def _render_autonomous_recap(
 """ + "\n".join(table_rows) + """
   </tbody>
 </table>
+</details>
 <details class="builder-autonomous-recap-details">
     <summary>📜 Voir les objectifs complets</summary>
     <table class="builder-autonomous-recap-table">
@@ -5553,6 +5475,16 @@ def _render_autonomous_recap(
 
     with history_tab:
         st.markdown(recap_table_html, unsafe_allow_html=True)
+        _render_autonomous_iteration_history(history)
+        render_seq_reset = _next_autonomous_recap_render_seq()
+        if st.button(
+            "🗑️ Réinitialiser l'historique",
+            key=f"builder_recap_reset_btn_{render_seq_reset}",
+            help="Effacer tout l'historique des sessions autonomes et repartir à zéro.",
+            type="secondary",
+        ):
+            _sync_autonomous_state([], _default_autonomous_supervisor_state(), trim=False)
+            st.rerun()
 
     with live_tab:
         _render_builder_live_thoughts_panel(
@@ -5653,6 +5585,7 @@ def _record_autonomous_session_result(
             **final_snapshot,
             **last_runtime_feedback,
             "n_iterations": len(session.iterations),
+            "iteration_history_rows": _build_iteration_history_rows_from_session(session),
             "session_id": session.session_id,
             "start_time": getattr(session, "start_time", session_started_at).isoformat(),
             "started_at": getattr(session, "start_time", session_started_at).isoformat(),
@@ -5714,6 +5647,7 @@ def _record_autonomous_session_result(
             "generation_stats": {"total": 0, "canonical": 0, "deterministic": 0, "canonical_rate": 0.0},
             "status": "error",
             "n_iterations": 0,
+            "iteration_history_rows": [],
             "session_id": "",
             "n_bars": len(session_df) if session_df is not None else 0,
             "date_range_start": "",
@@ -5832,7 +5766,7 @@ def _handle_autonomous_loop_crash(
         "symbol": "",
         "timeframe": "",
         "universe_mode": normalize_universe_mode(
-            getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+            getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
             purpose="builder_autonomous",
         ),
         "universe_purpose": "builder_autonomous",
@@ -5943,7 +5877,7 @@ def _init_autonomous_loop_runtime(
 
     # Mode AUTONOME 24/24
     # ══════════════════════════════════════════════════════════════════════
-    auto_pause = getattr(state, "builder_auto_pause", 10)
+    auto_pause = getattr(state, "builder_auto_pause", BUILDER_AUTO_PAUSE_DEFAULT)
     requested_objective_mode = "llm"
 
     persisted_supervisor_state = _load_autonomous_supervisor_state()
@@ -6410,7 +6344,7 @@ def _execute_builder_autonomous_loop(
                     )
             market_pick: Dict[str, Any] = {}
             autonomous_universe_mode = normalize_universe_mode(
-                getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+                getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
                 purpose="builder_autonomous",
             )
             autonomous_strategy_type = infer_strategy_type(
@@ -6450,12 +6384,13 @@ def _execute_builder_autonomous_loop(
                 )
 
                 if is_override:
-                    # UI warning pour override explicite
-                    st.warning(
-                        f"🔄 **Override LLM** : {default_session_symbol} {default_session_timeframe} → {session_symbol} {session_timeframe}\n\n"
-                        f"**Raison:** {reason}\n\n"
-                        f"*Source: {source} | Confidence: {confidence:.2f}*"
+                    st.caption(
+                        f"Marché session #{session_num}: {default_session_symbol} {default_session_timeframe} "
+                        f"→ {session_symbol} {session_timeframe} "
+                        f"(source={source}, conf={confidence:.2f})"
                     )
+                    if reason:
+                        st.caption(f"Raison: {reason}")
                     # Log structuré override
                     logger.info(
                         "Market selection: source=llm_override, original=%s %s, final=%s %s, reason=%s, confidence=%.2f",
@@ -6767,7 +6702,7 @@ def _execute_builder_manual_session(
     run_timeframe = timeframe
     run_df = df
     manual_universe_mode = normalize_universe_mode(
-        getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL),
+        getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
         purpose="builder_manual",
     )
     manual_strategy_type = infer_strategy_type(
@@ -7009,7 +6944,10 @@ def render_builder_view(
             logger.warning("builder_market_universe_warmup_failed", exc_info=True)
 
     if autonomous and not autonomous_running:
-        auto_pause = int(getattr(state, "builder_auto_pause", 10) or 10)
+        auto_pause = int(
+            getattr(state, "builder_auto_pause", BUILDER_AUTO_PAUSE_DEFAULT)
+            or BUILDER_AUTO_PAUSE_DEFAULT
+        )
         persisted_supervisor_state = _load_autonomous_supervisor_state()
         history = st.session_state.get("builder_autonomous_history")
         if not isinstance(history, list):

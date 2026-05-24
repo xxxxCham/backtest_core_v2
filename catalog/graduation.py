@@ -145,11 +145,12 @@ class GraduationConfig:
     no_silent_replacement: bool = True
     universe_mode: str = "canonical"
     include_legacy_artifact_roots: bool = False
+    include_positive_imports_in_full: bool = True
 
-    # Phase 2 — Positif observé (filtre de crédibilité)
-    p2_min_return_pct: float = 1.0  # return > 1% (pas juste > 0)
-    p2_min_trades: int = 10  # au moins 10 trades pour être crédible
-    p2_min_profit_factor: float = 1.0  # PF >= 1.0 (ne perd pas d'argent net)
+    # Phase 2 — Positif valide (champs legacy conservés pour compatibilité CLI/report)
+    p2_min_return_pct: float = 0.0
+    p2_min_trades: int = 1
+    p2_min_profit_factor: float = 0.0
 
     # Phase 3 — Benchmark suite
     validation_tokens: list[str] = field(
@@ -218,10 +219,17 @@ class GraduationCandidate:
     source_kind: str = "sandbox"
     source_mode: str = "sandbox"
     source_run_id: str = ""
+    source_status: str = ""
+    source_path: str = ""
     source_symbol: str = ""
     source_timeframe: str = ""
     source_universe_mode: str = ""
     source_universe_purpose: str = ""
+    iteration_error: str = ""
+    runtime_error: str = ""
+    runtime_traceback_tail: str = ""
+    metrics_missing: list[str] = field(default_factory=list)
+    is_fallback: bool = False
 
     # Meilleure itération (par score, puis par return)
     best_iteration: int = 0
@@ -311,10 +319,17 @@ class GraduationCandidate:
             "source_kind": self.source_kind,
             "source_mode": self.source_mode,
             "source_run_id": self.source_run_id,
+            "source_status": self.source_status,
+            "source_path": self.source_path,
             "source_symbol": self.source_symbol,
             "source_timeframe": self.source_timeframe,
             "source_universe_mode": self.source_universe_mode,
             "source_universe_purpose": self.source_universe_purpose,
+            "iteration_error": self.iteration_error,
+            "runtime_error": self.runtime_error,
+            "runtime_traceback_tail": self.runtime_traceback_tail,
+            "metrics_missing": list(self.metrics_missing or []),
+            "is_fallback": self.is_fallback,
             "objective": self.objective[:120],
             "origin_status": self.origin_status,
             "best_iteration": self.best_iteration,
@@ -405,6 +420,26 @@ def _safe_float_metric(value: Any, default: float | None = None) -> float | None
     return number if math.isfinite(number) else default
 
 
+def _safe_int_metric(value: Any, default: int = 0) -> int:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(number):
+        return default
+    return int(number)
+
+
+def _is_missing_metric(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return True
+    return not math.isfinite(number)
+
+
 def _json_safe(value: Any) -> Any:
     """Normalise les types pour une sérialisation JSON propre."""
     if isinstance(value, Path):
@@ -427,6 +462,246 @@ def _json_safe(value: Any) -> Any:
             return None
         return value
     return value
+
+
+def _threshold_sweep_values(*values: float | int | None, lower: float = 0.0, upper: float | None = None) -> list[float]:
+    cleaned: set[float] = set()
+    for value in values:
+        numeric = _safe_float_metric(value, None)
+        if numeric is None or numeric < lower:
+            continue
+        if upper is not None and numeric > upper:
+            continue
+        cleaned.add(round(float(numeric), 3))
+    return sorted(cleaned)
+
+
+def _candidate_label(candidate: GraduationCandidate) -> str:
+    return str(candidate.candidate_id or candidate.source_run_id or candidate.session_id or "").strip()
+
+
+def build_graduation_threshold_sensitivity(
+    candidates: list[GraduationCandidate],
+    config_snapshot: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Construit une analyse légère des marges de seuils du rapport de graduation."""
+    config_snapshot = dict(config_snapshot or {})
+    defaults = GraduationConfig()
+    min_test_sharpe = float(_safe_float_metric(config_snapshot.get("wfa_min_test_sharpe"), defaults.wfa_min_test_sharpe) or 0.0)
+    hard_min_positive = float(
+        _safe_float_metric(config_snapshot.get("wfa_hard_min_positive_folds_pct"), defaults.wfa_hard_min_positive_folds_pct)
+        or 0.0
+    )
+    current_min_positive = float(
+        _safe_float_metric(config_snapshot.get("wfa_min_positive_folds_pct"), defaults.wfa_min_positive_folds_pct)
+        or 0.0
+    )
+    strict_score_cap = float(
+        _safe_float_metric(config_snapshot.get("wfa_strict_max_robust_score"), defaults.wfa_strict_max_robust_score)
+        or 0.0
+    )
+    current_score_cap = float(
+        _safe_float_metric(config_snapshot.get("wfa_watchlist_max_robust_score"), defaults.wfa_watchlist_max_robust_score)
+        or 0.0
+    )
+
+    p5_candidates = [
+        candidate
+        for candidate in candidates
+        if str(candidate.p5_verdict or "").upper() != "PENDING"
+        or str(candidate.phase or "").upper() in {"P5", "P6"}
+        or candidate.wfa_valid_folds
+        or candidate.wfa_avg_test_return_pct is not None
+        or candidate.wfa_robust_overfitting_score is not None
+    ]
+    if not p5_candidates:
+        return {
+            "p5": {
+                "available": False,
+                "candidate_count": 0,
+                "message": "Aucun candidat P5/WFA disponible pour l'analyse de seuils.",
+            },
+        }
+
+    def _metrics(candidate: GraduationCandidate) -> dict[str, float | None]:
+        return {
+            "avg_return": _safe_float_metric(candidate.wfa_avg_test_return_pct, None),
+            "avg_sharpe": _safe_float_metric(candidate.wfa_avg_test_sharpe, None),
+            "positive_folds": _safe_float_metric(candidate.wfa_positive_folds_pct, None),
+            "robust_score": _safe_float_metric(candidate.wfa_robust_overfitting_score, None),
+        }
+
+    metric_rows = [(candidate, _metrics(candidate)) for candidate in p5_candidates]
+
+    def _hard_gate_ok(row: dict[str, float | None]) -> bool:
+        return bool(
+            row["avg_return"] is not None
+            and row["avg_return"] > 0
+            and row["avg_sharpe"] is not None
+            and row["avg_sharpe"] >= min_test_sharpe
+            and row["positive_folds"] is not None
+            and row["positive_folds"] >= hard_min_positive
+            and row["robust_score"] is not None
+        )
+
+    def _scenario_pass_count(min_positive: float, score_cap: float) -> int:
+        return sum(
+            1
+            for _, row in metric_rows
+            if _hard_gate_ok(row)
+            and float(row["positive_folds"] or 0.0) >= min_positive
+            and float(row["robust_score"] or 0.0) <= score_cap
+        )
+
+    observed_pass_count = sum(1 for candidate in p5_candidates if str(candidate.p5_verdict or "").upper() == "PASSED")
+    current_model_pass_count = _scenario_pass_count(current_min_positive, current_score_cap)
+
+    positive_thresholds = _threshold_sweep_values(
+        hard_min_positive,
+        65,
+        70,
+        75,
+        current_min_positive,
+        85,
+        90,
+        95,
+        100,
+        lower=0.0,
+        upper=100.0,
+    )
+    score_thresholds = _threshold_sweep_values(
+        strict_score_cap,
+        20,
+        current_score_cap,
+        35,
+        40,
+        50,
+        75,
+        100,
+        150,
+        lower=0.0,
+    )
+
+    positive_sweep = []
+    for threshold in positive_thresholds:
+        count = _scenario_pass_count(threshold, current_score_cap)
+        positive_sweep.append(
+            {
+                "min_positive_folds_pct": threshold,
+                "watchlist_max_robust_score": current_score_cap,
+                "pass_count": count,
+                "delta_vs_current": count - current_model_pass_count,
+            },
+        )
+
+    robust_score_sweep = []
+    for threshold in score_thresholds:
+        count = _scenario_pass_count(current_min_positive, threshold)
+        robust_score_sweep.append(
+            {
+                "min_positive_folds_pct": current_min_positive,
+                "watchlist_max_robust_score": threshold,
+                "pass_count": count,
+                "delta_vs_current": count - current_model_pass_count,
+            },
+        )
+
+    combined_grid = []
+    combined_positive_thresholds = [value for value in positive_thresholds if value in {hard_min_positive, 70.0, 75.0, current_min_positive}]
+    combined_score_thresholds = [value for value in score_thresholds if value in {strict_score_cap, current_score_cap, 40.0, 50.0, 75.0}]
+    for min_positive in combined_positive_thresholds:
+        for score_cap in combined_score_thresholds:
+            count = _scenario_pass_count(min_positive, score_cap)
+            combined_grid.append(
+                {
+                    "min_positive_folds_pct": min_positive,
+                    "watchlist_max_robust_score": score_cap,
+                    "pass_count": count,
+                    "delta_vs_current": count - current_model_pass_count,
+                },
+            )
+
+    blocker_counts = {
+        "hard_avg_return": 0,
+        "hard_avg_sharpe": 0,
+        "hard_positive_folds": 0,
+        "missing_robust_score": 0,
+        "only_positive_folds_margin": 0,
+        "only_robust_score_margin": 0,
+        "positive_folds_and_robust_score": 0,
+    }
+    closest_misses: list[dict[str, Any]] = []
+    for candidate, row in metric_rows:
+        avg_return = row["avg_return"]
+        avg_sharpe = row["avg_sharpe"]
+        positive_folds = row["positive_folds"]
+        robust_score = row["robust_score"]
+        if avg_return is None or avg_return <= 0:
+            blocker_counts["hard_avg_return"] += 1
+            continue
+        if avg_sharpe is None or avg_sharpe < min_test_sharpe:
+            blocker_counts["hard_avg_sharpe"] += 1
+            continue
+        if positive_folds is None or positive_folds < hard_min_positive:
+            blocker_counts["hard_positive_folds"] += 1
+            continue
+        if robust_score is None:
+            blocker_counts["missing_robust_score"] += 1
+            continue
+
+        positive_gap = max(0.0, current_min_positive - float(positive_folds))
+        score_gap = max(0.0, float(robust_score) - current_score_cap)
+        if positive_gap and score_gap:
+            blocker_counts["positive_folds_and_robust_score"] += 1
+        elif positive_gap:
+            blocker_counts["only_positive_folds_margin"] += 1
+        elif score_gap:
+            blocker_counts["only_robust_score_margin"] += 1
+
+        if str(candidate.p5_verdict or "").upper() != "PASSED" and (positive_gap <= 20.0 or score_gap <= 50.0):
+            closest_misses.append(
+                {
+                    "candidate_id": _candidate_label(candidate),
+                    "strategy_name": candidate.strategy_name,
+                    "source_symbol": candidate.wfa_symbol or candidate.source_symbol,
+                    "source_timeframe": candidate.wfa_timeframe or candidate.source_timeframe,
+                    "positive_folds_pct": _safe_round(positive_folds, 2),
+                    "robust_score": _safe_round(robust_score, 3),
+                    "positive_gap_pct": _safe_round(positive_gap, 2),
+                    "robust_score_gap": _safe_round(score_gap, 3),
+                    "rejection_reason": candidate.rejection_reason,
+                },
+            )
+
+    closest_misses = sorted(
+        closest_misses,
+        key=lambda item: (
+            float(item.get("positive_gap_pct") or 0.0) + float(item.get("robust_score_gap") or 0.0),
+            float(item.get("robust_score_gap") or 0.0),
+        ),
+    )[:20]
+
+    return {
+        "p5": {
+            "available": True,
+            "candidate_count": len(p5_candidates),
+            "observed_pass_count": observed_pass_count,
+            "model_pass_count_at_current_thresholds": current_model_pass_count,
+            "current_thresholds": {
+                "avg_test_return_pct_min_exclusive": 0.0,
+                "avg_test_sharpe_min": min_test_sharpe,
+                "hard_min_positive_folds_pct": hard_min_positive,
+                "min_positive_folds_pct": current_min_positive,
+                "strict_max_robust_score": strict_score_cap,
+                "watchlist_max_robust_score": current_score_cap,
+            },
+            "blocker_counts": blocker_counts,
+            "positive_folds_sweep": positive_sweep,
+            "robust_score_sweep": robust_score_sweep,
+            "combined_grid": combined_grid,
+            "closest_misses": closest_misses,
+        },
+    }
 
 
 def _utc_now_iso() -> str:
@@ -650,6 +925,15 @@ def _build_sandbox_iteration_candidate(
     iteration_num = int(iteration_payload.get("iteration", 0) or 0)
     params_used = iteration_payload.get("params_used")
     strategy_params = dict(params_used) if isinstance(params_used, dict) else {}
+    phase_feedback = iteration_payload.get("phase_feedback")
+    phase_feedback = phase_feedback if isinstance(phase_feedback, dict) else {}
+    backtest_feedback = phase_feedback.get("backtest")
+    backtest_feedback = backtest_feedback if isinstance(backtest_feedback, dict) else {}
+    metrics_missing = [
+        key
+        for key in ("return_pct", "trades")
+        if _is_missing_metric(iteration_payload.get(key))
+    ]
     candidate = GraduationCandidate(
         candidate_id=f"builder:{session_id}:{iteration_num}" if iteration_num > 0 else session_id,
         session_id=session_id,
@@ -657,18 +941,26 @@ def _build_sandbox_iteration_candidate(
         strategy_params=strategy_params,
         objective=_parse_objective(summary.get("objective", "")),
         origin_status=summary.get("status", ""),
+        source_kind="sandbox",
+        source_mode="sandbox",
+        source_path=str(session_dir),
         source_symbol=str(summary.get("symbol") or "").strip(),
         source_timeframe=str(summary.get("timeframe") or "").strip(),
         source_universe_mode=str(summary.get("universe_mode") or "").strip(),
         source_universe_purpose=str(summary.get("universe_purpose") or "").strip(),
         best_iteration=iteration_num,
-        best_return_pct=float(iteration_payload.get("return_pct") or 0),
-        best_profit_factor=float(iteration_payload.get("profit_factor") or 0),
-        best_score=float(iteration_payload.get("continuous_score") or 0),
-        best_sharpe=float(iteration_payload.get("sharpe") or 0),
-        best_trades=int(iteration_payload.get("trades") or 0),
-        best_max_drawdown_pct=float(iteration_payload.get("max_drawdown_pct") or 0),
-        best_win_rate_pct=float(iteration_payload.get("win_rate_pct") or 0),
+        best_return_pct=float(_safe_float_metric(iteration_payload.get("return_pct"), 0.0) or 0.0),
+        best_profit_factor=float(_safe_float_metric(iteration_payload.get("profit_factor"), 0.0) or 0.0),
+        best_score=float(_safe_float_metric(iteration_payload.get("continuous_score"), 0.0) or 0.0),
+        best_sharpe=float(_safe_float_metric(iteration_payload.get("sharpe"), 0.0) or 0.0),
+        best_trades=_safe_int_metric(iteration_payload.get("trades"), 0),
+        best_max_drawdown_pct=float(_safe_float_metric(iteration_payload.get("max_drawdown_pct"), 0.0) or 0.0),
+        best_win_rate_pct=float(_safe_float_metric(iteration_payload.get("win_rate_pct"), 0.0) or 0.0),
+        iteration_error=str(iteration_payload.get("error") or "").strip(),
+        runtime_error=str(backtest_feedback.get("runtime_error") or "").strip(),
+        runtime_traceback_tail=str(backtest_feedback.get("runtime_traceback_tail") or "").strip(),
+        metrics_missing=metrics_missing,
+        is_fallback=bool(iteration_payload.get("is_fallback", False)),
         inclusion_reasons=list(inclusion_reasons),
         strategy_file=_find_strategy_file(session_dir, iteration_num),
     )
@@ -880,6 +1172,76 @@ def scan_sandbox(
     return candidates
 
 
+def scan_builder_run_inventory(
+    config: GraduationConfig | None = None,
+) -> list[GraduationCandidate]:
+    """P1 brut — inventorie toutes les itérations Builder stabilisées.
+
+    Contrairement à :func:`scan_sandbox`, ce scanner ne repêche pas seulement les
+    itérations positives ou prometteuses. Il sert de source P1 exhaustive.
+    """
+    if config is None:
+        config = GraduationConfig()
+
+    sandbox = config.sandbox_dir
+    if not sandbox.exists():
+        logger.warning("Sandbox directory not found: %s", sandbox)
+        return []
+
+    candidates: list[GraduationCandidate] = []
+    scanned = 0
+    skipped_running = 0
+
+    for summary_path in sorted(sandbox.glob("*/session_summary.json")):
+        scanned += 1
+        try:
+            with open(summary_path, encoding="utf-8") as f:
+                summary = json.load(f)
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.debug("Skip %s: %s", summary_path, exc)
+            continue
+
+        if summary.get("status") == "running":
+            skipped_running += 1
+            continue
+
+        iterations = summary.get("iterations", [])
+        if not isinstance(iterations, list):
+            continue
+
+        session_dir = summary_path.parent
+        for iteration_payload in iterations:
+            if not isinstance(iteration_payload, dict):
+                continue
+            iteration_num = _safe_int_metric(iteration_payload.get("iteration"), 0)
+            candidate = _build_sandbox_iteration_candidate(
+                summary=summary,
+                session_dir=session_dir,
+                iteration_payload=iteration_payload,
+                inclusion_reasons=[
+                    "p1_inventory_builder_iteration",
+                    f"session_status={summary.get('status', 'unknown')}",
+                    f"iteration={iteration_num}",
+                ],
+            )
+            candidate.phase = "P1"
+            candidates.append(candidate)
+
+    candidates.sort(
+        key=lambda candidate: (
+            candidate.session_id,
+            int(candidate.best_iteration or 0),
+        ),
+    )
+    logger.info(
+        "P1 builder inventory: %d scanned, %d running (skipped), %d iteration candidates",
+        scanned,
+        skipped_running,
+        len(candidates),
+    )
+    return candidates
+
+
 # ---------------------------------------------------------------------------
 # Positive import candidates
 # ---------------------------------------------------------------------------
@@ -956,7 +1318,10 @@ def scan_positive_import_candidates(
             objective=objective[:200],
             origin_status=str(entry.get("source") or "positive_import"),
             source_kind=str(meta.get("import_source_kind") or entry.get("source") or "positive_import"),
+            source_mode="positive_import",
             source_run_id=str(meta.get("source_run_id") or "").strip(),
+            source_status=str(meta.get("source_status") or "").strip().lower(),
+            source_path=str(meta.get("source_path") or "").strip(),
             source_symbol=source_symbol,
             source_timeframe=source_timeframe,
             source_universe_mode=str(meta.get("universe_mode") or "").strip(),
@@ -969,6 +1334,16 @@ def scan_positive_import_candidates(
             best_trades=_metric_as_int(metrics, "total_trades", "trades", default=0),
             best_max_drawdown_pct=_metric_as_float(metrics, "max_drawdown_pct", "max_drawdown", default=0.0),
             best_win_rate_pct=_metric_as_float(metrics, "win_rate_pct", "win_rate", default=0.0),
+            metrics_missing=[
+                key
+                for key in ("return_pct", "trades")
+                if (
+                    key == "return_pct"
+                    and _is_missing_metric(return_pct)
+                    or key == "trades"
+                    and _is_missing_metric(metrics.get("total_trades", metrics.get("trades")))
+                )
+            ],
             inclusion_reasons=[
                 "positive_import",
                 f"return={return_pct:.1f}%>0",
@@ -992,17 +1367,140 @@ def scan_positive_import_candidates(
     return candidates
 
 
+def _candidate_merge_key(candidate: GraduationCandidate) -> str:
+    builder_session_id = str(candidate.session_id or "").strip()
+    if builder_session_id and int(candidate.best_iteration or 0) > 0:
+        return f"builder:{builder_session_id}:{int(candidate.best_iteration)}"
+    candidate_id = _build_candidate_id(candidate)
+    if candidate_id:
+        return candidate_id
+    return "|".join(
+        [
+            str(candidate.session_id or "").strip(),
+            str(candidate.strategy_name or "").strip(),
+            str(candidate.source_symbol or "").strip(),
+            str(candidate.source_timeframe or "").strip(),
+            str(candidate.best_iteration or 0),
+        ],
+    )
+
+
+def _merge_full_graduation_candidates(
+    sandbox_candidates: list[GraduationCandidate],
+    positive_candidates: list[GraduationCandidate],
+) -> list[GraduationCandidate]:
+    """Fusionne l'inventaire sandbox avec les imports positifs sans doubler la même itération."""
+    merged: dict[str, GraduationCandidate] = {}
+    for candidate in [*sandbox_candidates, *positive_candidates]:
+        key = _candidate_merge_key(candidate)
+        existing = merged.get(key)
+        if existing is None:
+            candidate.candidate_id = _build_candidate_id(candidate)
+            merged[key] = candidate
+            continue
+
+        # Si le sandbox et le catalog pointent vers la même itération, garder l'entrée
+        # la plus riche côté catalog sans perdre le fichier stratégie sandbox.
+        if not existing.catalog_entry_id and candidate.catalog_entry_id:
+            candidate.strategy_file = candidate.strategy_file or existing.strategy_file
+            candidate.session_dir = candidate.session_dir if candidate.session_dir.exists() else existing.session_dir
+            merged[key] = candidate
+        elif not existing.strategy_file and candidate.strategy_file:
+            existing.strategy_file = candidate.strategy_file
+
+    candidates = list(merged.values())
+    candidates.sort(
+        key=lambda candidate: (
+            candidate.best_return_pct,
+            candidate.best_sharpe,
+            candidate.best_profit_factor,
+        ),
+        reverse=True,
+    )
+    return candidates
+
+
+_INVALID_P2_SOURCE_STATUSES = {"failed", "error", "partial", "stopped", "interrupted"}
+
+
+def _candidate_replayability_error(candidate: GraduationCandidate) -> str:
+    if str(candidate.strategy_file or "").strip():
+        raw_strategy_path = Path(candidate.strategy_file)
+        explicit_candidates = []
+        if raw_strategy_path.is_absolute():
+            explicit_candidates.append(raw_strategy_path)
+        else:
+            explicit_candidates.extend([
+                candidate.session_dir / raw_strategy_path,
+                candidate.session_dir.parent / raw_strategy_path,
+            ])
+        existing_explicit_path = next((path for path in explicit_candidates if path.exists()), None)
+        if existing_explicit_path is None:
+            return "not_replayable"
+        try:
+            _load_strategy_from_file(existing_explicit_path)
+        except Exception as exc:
+            return f"not_replayable: {exc}"
+        return ""
+
+    strategy_path = _resolved_strategy_path(candidate)
+    if strategy_path.exists():
+        try:
+            _load_strategy_from_file(strategy_path)
+        except Exception as exc:
+            return f"not_replayable: {exc}"
+        return ""
+
+    if str(candidate.strategy_name or "").strip():
+        try:
+            _load_strategy_from_name(candidate.strategy_name)
+        except Exception as exc:
+            return f"not_replayable: {exc}"
+        return ""
+
+    return "not_replayable"
+
+
+def _validate_p2_positive_run(candidate: GraduationCandidate) -> tuple[bool, list[str]]:
+    rejection_reasons: list[str] = []
+
+    if candidate.metrics_missing:
+        rejection_reasons.append("missing_metrics")
+
+    if _safe_float_metric(candidate.best_return_pct) is None or candidate.best_return_pct <= 0:
+        rejection_reasons.append("non_positive_return")
+
+    if _safe_int_metric(candidate.best_trades, 0) <= 0:
+        if "missing_metrics" not in rejection_reasons:
+            rejection_reasons.append("missing_metrics")
+
+    source_status = str(candidate.source_status or "").strip().lower()
+    if source_status in _INVALID_P2_SOURCE_STATUSES:
+        rejection_reasons.append("invalid_run_status")
+
+    if str(candidate.iteration_error or "").strip():
+        rejection_reasons.append("iteration_error")
+
+    if str(candidate.runtime_error or "").strip() or str(candidate.runtime_traceback_tail or "").strip():
+        rejection_reasons.append("runtime_error")
+
+    replayability_error = _candidate_replayability_error(candidate)
+    if replayability_error:
+        rejection_reasons.append(replayability_error)
+
+    return not rejection_reasons, rejection_reasons
+
+
 def run_positive_observed_filter(
     candidates: list[GraduationCandidate],
     *,
     source_mode: str,
     config: GraduationConfig | None = None,
 ) -> list[GraduationCandidate]:
-    """P2 — Admission par positif observé.
+    """P2 — Admission par positif valide.
 
-    Un candidat est admis s'il a déjà démontré un return significatif,
-    un nombre de trades minimum et un profit factor >= 1.0 sur sa meilleure
-    itération sandbox ou un run importé.
+    P2 ne juge pas la robustesse. Il garde uniquement les runs positifs,
+    complets et rejouables, puis laisse P3→P6 trancher la robustesse.
     """
     if config is None:
         config = GraduationConfig()
@@ -1010,24 +1508,23 @@ def run_positive_observed_filter(
     survivors: list[GraduationCandidate] = []
     for candidate in candidates:
         candidate.candidate_id = _build_candidate_id(candidate)
-        candidate.source_mode = source_mode
+        if source_mode == "mixed":
+            candidate.source_mode = candidate.source_mode or candidate.source_kind or "sandbox"
+        else:
+            candidate.source_mode = source_mode
         candidate.phase = "P2"
 
         reasons = list(candidate.inclusion_reasons or [])
         if str(candidate.source_universe_mode or "").strip().lower() == "exploratory":
             reasons.append("exploratory_source_requires_canonical_validation")
 
-        # Critères P2 : return significatif + trades + PF
-        passes_return = candidate.best_return_pct >= config.p2_min_return_pct
-        passes_trades = candidate.best_trades >= config.p2_min_trades
-        passes_pf = candidate.best_profit_factor >= config.p2_min_profit_factor
+        passed, reject_parts = _validate_p2_positive_run(candidate)
 
-        if passes_return and passes_trades and passes_pf:
+        if passed:
             if not any(str(reason).startswith("positive_observed") for reason in reasons):
                 reasons.append(
-                    f"positive_observed return={candidate.best_return_pct:.1f}%>={config.p2_min_return_pct}% "
-                    f"trades={candidate.best_trades}>={config.p2_min_trades} "
-                    f"PF={candidate.best_profit_factor:.2f}>={config.p2_min_profit_factor}",
+                    f"positive_observed return={candidate.best_return_pct:.1f}%>0 "
+                    f"trades={candidate.best_trades}>0 valid_run",
                 )
             candidate.inclusion_reasons = reasons
             candidate.p2_verdict = "PASSED"
@@ -1036,14 +1533,7 @@ def run_positive_observed_filter(
         else:
             candidate.p2_verdict = "REJECTED"
             candidate.decision = "REJECTED"
-            reject_parts = []
-            if not passes_return:
-                reject_parts.append(f"return={candidate.best_return_pct:.1f}%<{config.p2_min_return_pct}%")
-            if not passes_trades:
-                reject_parts.append(f"trades={candidate.best_trades}<{config.p2_min_trades}")
-            if not passes_pf:
-                reject_parts.append(f"PF={candidate.best_profit_factor:.2f}<{config.p2_min_profit_factor}")
-            candidate.rejection_reason = candidate.rejection_reason or f"P2 {'; '.join(reject_parts)}"
+            candidate.rejection_reason = candidate.rejection_reason or f"P2 {'; '.join(dict.fromkeys(reject_parts))}"
 
     logger.info("Phase 2 positive_observed: %d/%d survived", len(survivors), len(candidates))
     return survivors
@@ -1068,6 +1558,12 @@ def save_graduation_report(
         output_dir = Path("catalog/graduation_results")
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    meta_payload = _json_safe(meta or {})
+    config_snapshot = meta_payload.get("config_snapshot") if isinstance(meta_payload, dict) else {}
+    threshold_sensitivity = build_graduation_threshold_sensitivity(
+        candidates,
+        config_snapshot if isinstance(config_snapshot, dict) else {},
+    )
 
     report = {
         "phase": phase,
@@ -1076,7 +1572,8 @@ def save_graduation_report(
         "by_phase": {},
         "by_decision": {},
         "stats": _json_safe(stats or {}),
-        "meta": _json_safe(meta or {}),
+        "meta": meta_payload,
+        "threshold_sensitivity": _json_safe(threshold_sensitivity),
         "candidates": [c.to_dict() for c in candidates],
     }
 
@@ -1151,15 +1648,15 @@ def _ctx_report_path(ctx: _PipelineCtx, *, final: bool = False) -> Path:
 def _graduation_phase_contract() -> dict[str, dict[str, str]]:
     return {
         "P1": {
-            "name": "Inventaire",
-            "purpose": "Collecter les candidats Builder/imports et normaliser leur source.",
+            "name": "Inventaire brut",
+            "purpose": "Collecter tous les runs stabilisés retrouvables et normaliser leur source sans filtrage de performance.",
         },
         "P2": {
-            "name": "Positif observé",
-            "purpose": "Garder les candidats avec performance minimale crédible sur leur observation initiale.",
+            "name": "Positif valide",
+            "purpose": "Garder uniquement les runs positifs, complets, sans erreur runtime et rejouables.",
         },
         "P3": {
-            "name": "Benchmark consensus",
+            "name": "Robustesse benchmark",
             "purpose": "Mesurer la généralisation cross-token/cross-timeframe sur les packs de benchmarks.",
         },
         "P4": {
@@ -1184,6 +1681,7 @@ def _graduation_config_snapshot(config: GraduationConfig) -> dict[str, Any]:
         "source_market_first": config.source_market_first,
         "source_min_history_bars_by_timeframe": dict(config.source_min_history_bars_by_timeframe or {}),
         "source_min_history_bars_default": config.source_min_history_bars_default,
+        "include_positive_imports_in_full": config.include_positive_imports_in_full,
         "p2_min_return_pct": config.p2_min_return_pct,
         "p2_min_trades": config.p2_min_trades,
         "p2_min_profit_factor": config.p2_min_profit_factor,
@@ -1230,6 +1728,15 @@ def _pipeline_contract_payload(ctx: _PipelineCtx) -> dict[str, Any]:
     }
 
 
+def _phase_counts_from_candidates(candidates: list[GraduationCandidate]) -> dict[str, int]:
+    counts = {phase: 0 for phase in ("P2", "P3", "P4", "P5", "P6")}
+    for candidate in candidates:
+        phase = str(getattr(candidate, "phase", "") or "").strip().upper()
+        if phase in counts:
+            counts[phase] += 1
+    return counts
+
+
 def _ctx_write_progress(
     ctx: _PipelineCtx,
     *,
@@ -1255,11 +1762,17 @@ def _ctx_write_progress(
         "current_index": index,
         "current_total": total,
         "stats": dict(ctx.stats),
+        "by_phase": _phase_counts_from_candidates(ctx.all_candidates),
         "report_path": str(report_path),
         "stable_report_path": str(stable_report_path),
         "draft_report_path": str(draft_report_path),
         **_pipeline_contract_payload(ctx),
     }
+    if str(phase or "").upper() in {"P5", "P6"} or int(ctx.stats.get("p5_processed") or 0) > 0:
+        payload["threshold_sensitivity"] = build_graduation_threshold_sensitivity(
+            ctx.all_candidates,
+            _graduation_config_snapshot(ctx.config),
+        )
     if candidate is not None:
         payload["current_candidate"] = _candidate_progress_payload(candidate)
     if extra:
@@ -1632,6 +2145,322 @@ def _looks_like_results_root(path: Path) -> bool:
     )
 
 
+def _collect_prefixed_artifact_mapping(payload: dict[str, Any], prefix: str) -> dict[str, Any]:
+    return {
+        str(key)[len(prefix):]: value
+        for key, value in (payload or {}).items()
+        if isinstance(key, str) and key.startswith(prefix) and value not in (None, "")
+    }
+
+
+def _first_artifact_value(payload: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = payload.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _artifact_extra_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+    extra = payload.get("extra_metadata")
+    if isinstance(extra, dict):
+        return dict(extra)
+    return _collect_prefixed_artifact_mapping(payload, "extra_")
+
+
+def _artifact_params(payload: dict[str, Any]) -> dict[str, Any]:
+    params = payload.get("params")
+    if isinstance(params, dict):
+        return dict(params)
+    return _collect_prefixed_artifact_mapping(payload, "params_")
+
+
+def _artifact_metric_value(payload: dict[str, Any], *keys: str) -> Any:
+    metrics = payload.get("metrics")
+    if isinstance(metrics, dict):
+        for key in keys:
+            value = metrics.get(key)
+            if value not in (None, ""):
+                return value
+    for key in keys:
+        value = payload.get(f"metrics_{key}")
+        if value not in (None, ""):
+            return value
+    for key in keys:
+        value = payload.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _artifact_strategy_file(
+    payload: dict[str, Any],
+    *,
+    source_root: Path,
+    session_dir: Path,
+    builder_session_id: str,
+    best_iteration: int,
+) -> str:
+    if builder_session_id and session_dir.exists():
+        strategy_file = _find_strategy_file(session_dir, best_iteration)
+        if strategy_file:
+            return strategy_file
+
+    extra = _artifact_extra_metadata(payload)
+    raw_strategy_file = str(
+        payload.get("strategy_file")
+        or extra.get("strategy_file")
+        or "",
+    ).strip()
+    if raw_strategy_file:
+        candidate = Path(raw_strategy_file)
+        if candidate.is_absolute() and candidate.exists():
+            return str(candidate)
+        relative_candidate = source_root / candidate
+        if relative_candidate.exists():
+            return str(relative_candidate)
+
+    raw_path = str(payload.get("path") or "").strip()
+    if raw_path:
+        artifact_dir = Path(raw_path)
+        if not artifact_dir.is_absolute():
+            artifact_dir = source_root / artifact_dir
+        if artifact_dir.is_file():
+            artifact_dir = artifact_dir.parent
+        if artifact_dir.exists():
+            for name in (f"strategy_v{best_iteration}.py", "strategy.py"):
+                strategy_path = artifact_dir / name
+                if strategy_path.exists():
+                    return str(strategy_path)
+    return ""
+
+
+def _build_artifact_candidate(
+    payload: dict[str, Any],
+    *,
+    source_root: Path,
+    source_kind: str,
+) -> GraduationCandidate:
+    extra = _artifact_extra_metadata(payload)
+    builder_session_id = str(
+        extra.get("builder_session_id")
+        or payload.get("builder_session_id")
+        or "",
+    ).strip()
+    source_run_id = str(
+        _first_artifact_value(payload, "source_run_id", "run_id", "id")
+        or "",
+    ).strip()
+    best_iteration = _safe_int_metric(
+        extra.get("builder_iteration") or payload.get("builder_iteration"),
+        0,
+    )
+    session_id = builder_session_id or source_run_id or _artifact_identity(payload, source_root)
+    session_dir = Path()
+    strategy_name = str(_first_artifact_value(payload, "strategy", "strategy_name") or "").strip()
+    source_symbol = str(_first_artifact_value(payload, "symbol") or "").strip()
+    source_timeframe = str(_first_artifact_value(payload, "timeframe") or "").strip()
+    status = str(_first_artifact_value(payload, "status") or "unknown").strip().lower()
+
+    metrics_missing = []
+    return_value = _extract_artifact_return_pct(payload)
+    return_raw = _artifact_metric_value(payload, "total_return_pct", "total_return")
+    trades_value = _artifact_metric_value(payload, "total_trades", "trades")
+    if _is_missing_metric(return_raw):
+        metrics_missing.append("return_pct")
+    if _is_missing_metric(trades_value):
+        metrics_missing.append("trades")
+
+    return GraduationCandidate(
+        session_id=session_id,
+        session_dir=session_dir,
+        candidate_id=source_run_id or "",
+        strategy_name=strategy_name,
+        strategy_params=_artifact_params(payload),
+        objective=str(extra.get("builder_objective") or payload.get("builder_objective") or "")[:200],
+        origin_status=status or "saved_run",
+        source_kind=source_kind,
+        source_mode="saved_run",
+        source_run_id=source_run_id,
+        source_status=status,
+        source_path=str(payload.get("path") or source_root),
+        source_symbol=source_symbol,
+        source_timeframe=source_timeframe,
+        source_universe_mode=str(extra.get("universe_mode") or payload.get("universe_mode") or "").strip(),
+        source_universe_purpose=str(extra.get("universe_purpose") or payload.get("universe_purpose") or "").strip(),
+        best_iteration=best_iteration,
+        best_return_pct=float(return_value or 0.0),
+        best_profit_factor=float(_safe_float_metric(_artifact_metric_value(payload, "profit_factor"), 0.0) or 0.0),
+        best_score=float(_safe_float_metric(_artifact_metric_value(payload, "quality_score", "score"), 0.0) or 0.0),
+        best_sharpe=float(_safe_float_metric(_artifact_metric_value(payload, "sharpe_ratio", "sharpe"), 0.0) or 0.0),
+        best_trades=_safe_int_metric(trades_value, 0),
+        best_max_drawdown_pct=float(
+            _safe_float_metric(_artifact_metric_value(payload, "max_drawdown_pct", "max_drawdown"), 0.0) or 0.0,
+        ),
+        best_win_rate_pct=float(_safe_float_metric(_artifact_metric_value(payload, "win_rate_pct", "win_rate"), 0.0) or 0.0),
+        metrics_missing=metrics_missing,
+        inclusion_reasons=["p1_inventory_saved_run", f"source_kind={source_kind}", f"status={status or 'unknown'}"],
+        phase="P1",
+    )
+
+
+def scan_saved_run_inventory(
+    config: GraduationConfig | None = None,
+    *,
+    source_roots: Iterable[Path] | None = None,
+) -> list[GraduationCandidate]:
+    """P1 brut — inventorie les artefacts sauvegardés sans filtrage positif."""
+    if config is None:
+        config = GraduationConfig()
+
+    roots = [Path(root) for root in (source_roots or _default_positive_artifact_roots(config))]
+    seen_artifacts: set[str] = set()
+    candidates: list[GraduationCandidate] = []
+    workspace_root = _workspace_root().resolve()
+
+    def _append_payload(payload: dict[str, Any], *, source_root: Path, source_kind: str) -> None:
+        identity = _artifact_identity(payload, source_root)
+        if identity in seen_artifacts:
+            return
+        seen_artifacts.add(identity)
+        candidate = _build_artifact_candidate(
+            payload,
+            source_root=source_root,
+            source_kind=source_kind,
+        )
+        builder_session_id = str(
+            _artifact_extra_metadata(payload).get("builder_session_id")
+            or payload.get("builder_session_id")
+            or "",
+        ).strip()
+        if builder_session_id:
+            session_dir = config.sandbox_dir / builder_session_id
+            candidate.session_dir = session_dir if session_dir.exists() else workspace_root
+        else:
+            candidate.session_dir = workspace_root
+        candidate.strategy_file = _artifact_strategy_file(
+            payload,
+            source_root=source_root,
+            session_dir=candidate.session_dir,
+            builder_session_id=builder_session_id,
+            best_iteration=candidate.best_iteration,
+        )
+        candidates.append(candidate)
+
+    for raw_root in roots:
+        root = raw_root.resolve()
+        if not root.exists():
+            continue
+
+        candidate_results_dirs: list[Path] = []
+        for candidate_dir in (get_results_root_dir(root), root / "backtest_results"):
+            if (
+                candidate_dir.exists()
+                and candidate_dir not in candidate_results_dirs
+                and (_looks_like_results_root(candidate_dir) or candidate_dir.name == "backtest_results")
+            ):
+                candidate_results_dirs.append(candidate_dir)
+
+        candidate_saved_runs_dirs: list[Path] = []
+        for candidate_dir in (get_saved_runs_dir(root), root / "runs"):
+            if candidate_dir.exists() and candidate_dir not in candidate_saved_runs_dirs:
+                candidate_saved_runs_dirs.append(candidate_dir)
+
+        for candidate_results_dir in candidate_results_dirs:
+            overview_path = candidate_results_dir / "_catalog" / "unified_overview.csv"
+            if not overview_path.exists():
+                continue
+            try:
+                with overview_path.open("r", encoding="utf-8", newline="") as handle:
+                    reader = csv.DictReader(handle)
+                    for row in reader:
+                        payload = _normalize_artifact_payload(dict(row))
+                        _append_payload(payload, source_root=root, source_kind="unified_overview")
+            except Exception as exc:
+                logger.debug("Cannot scan overview %s: %s", overview_path, exc)
+
+        for base_dir in [*candidate_results_dirs, *candidate_saved_runs_dirs]:
+            if not base_dir.exists():
+                continue
+            for metadata_path in base_dir.rglob("metadata.json"):
+                try:
+                    payload = _normalize_artifact_payload(json.loads(metadata_path.read_text(encoding="utf-8")))
+                except Exception as exc:
+                    logger.debug("Cannot scan metadata %s: %s", metadata_path, exc)
+                    continue
+                payload.setdefault("artifact_type", "saved_run")
+                payload.setdefault("schema", "metadata_json")
+                try:
+                    payload.setdefault("path", str(metadata_path.parent.relative_to(root)))
+                except ValueError:
+                    payload.setdefault("path", str(metadata_path.parent))
+                _append_payload(payload, source_root=root, source_kind="metadata_fallback")
+
+    candidates.sort(
+        key=lambda candidate: (
+            candidate.source_run_id or candidate.session_id,
+            candidate.source_kind,
+        ),
+    )
+    logger.info("P1 saved-run inventory: %d candidates found", len(candidates))
+    return candidates
+
+
+def _merge_unified_graduation_candidates(
+    *candidate_groups: Iterable[GraduationCandidate],
+) -> list[GraduationCandidate]:
+    merged: dict[str, GraduationCandidate] = {}
+    for group in candidate_groups:
+        for candidate in group:
+            key = _candidate_merge_key(candidate)
+            existing = merged.get(key)
+            if existing is None:
+                candidate.candidate_id = _build_candidate_id(candidate)
+                merged[key] = candidate
+                continue
+            if not existing.catalog_entry_id and candidate.catalog_entry_id:
+                candidate.strategy_file = candidate.strategy_file or existing.strategy_file
+                candidate.session_dir = candidate.session_dir if candidate.session_dir.exists() else existing.session_dir
+                merged[key] = candidate
+            elif not existing.strategy_file and candidate.strategy_file:
+                existing.strategy_file = candidate.strategy_file
+            if not existing.source_run_id and candidate.source_run_id:
+                existing.source_run_id = candidate.source_run_id
+            if not existing.source_path and candidate.source_path:
+                existing.source_path = candidate.source_path
+    candidates = list(merged.values())
+    candidates.sort(key=lambda candidate: _candidate_merge_key(candidate))
+    return candidates
+
+
+def _scan_unified_run_inventory_parts(config: GraduationConfig) -> tuple[list[GraduationCandidate], dict[str, int]]:
+    builder_candidates = scan_builder_run_inventory(config)
+    saved_run_candidates = scan_saved_run_inventory(config)
+    positive_candidates = scan_positive_import_candidates(config) if config.include_positive_imports_in_full else []
+    candidates = _merge_unified_graduation_candidates(
+        builder_candidates,
+        saved_run_candidates,
+        positive_candidates,
+    )
+    stats = {
+        "p1_builder_iteration_candidates": len(builder_candidates),
+        "p1_sandbox_candidates": len(builder_candidates),
+        "p1_saved_run_candidates": len(saved_run_candidates),
+        "p1_artifact_candidates": len(saved_run_candidates),
+        "p1_positive_import_candidates": len(positive_candidates),
+        "p1_duplicates_removed": len(builder_candidates) + len(saved_run_candidates) + len(positive_candidates) - len(candidates),
+    }
+    return candidates, stats
+
+
+def scan_unified_run_inventory(config: GraduationConfig | None = None) -> list[GraduationCandidate]:
+    """P1 canonique — inventaire brut unifié de tous les runs stabilisés."""
+    if config is None:
+        config = GraduationConfig()
+    candidates, _stats = _scan_unified_run_inventory_parts(config)
+    return candidates
+
+
 def import_positive_artifacts_to_catalog(
     config: GraduationConfig | None = None,
     *,
@@ -1899,6 +2728,87 @@ def import_positive_artifacts_to_catalog(
     return report
 
 
+def _candidate_from_report_payload(payload: dict[str, Any]) -> GraduationCandidate:
+    candidate = GraduationCandidate(
+        session_id=str(payload.get("session_id") or payload.get("candidate_id") or ""),
+        session_dir=Path(str(payload.get("session_dir") or ".")),
+    )
+    for field_name in (
+        "candidate_id",
+        "strategy_name",
+        "source_kind",
+        "source_mode",
+        "source_run_id",
+        "source_status",
+        "source_path",
+        "source_symbol",
+        "source_timeframe",
+        "source_universe_mode",
+        "source_universe_purpose",
+        "origin_status",
+        "phase",
+        "decision",
+        "p2_verdict",
+        "p3_verdict",
+        "p4_verdict",
+        "p5_verdict",
+        "p6_verdict",
+        "wfa_confidence_tier",
+        "wfa_scope",
+        "wfa_symbol",
+        "wfa_timeframe",
+        "rejection_reason",
+        "catalog_category",
+        "catalog_entry_id",
+        "strategy_file",
+    ):
+        if field_name in payload:
+            setattr(candidate, field_name, str(payload.get(field_name) or ""))
+    for field_name in (
+        "best_iteration",
+        "best_trades",
+        "wfa_valid_folds",
+        "wfa_history_bars",
+        "wfa_min_history_bars",
+    ):
+        if field_name in payload:
+            setattr(candidate, field_name, _safe_int_metric(payload.get(field_name), 0))
+    for field_name in (
+        "best_return_pct",
+        "best_profit_factor",
+        "best_score",
+        "best_sharpe",
+        "best_max_drawdown_pct",
+        "best_win_rate_pct",
+        "wfa_stability",
+        "wfa_avg_test_return_pct",
+        "wfa_avg_test_sharpe",
+        "wfa_overfitting_ratio",
+        "wfa_classic_overfitting_ratio",
+        "wfa_robust_overfitting_score",
+        "wfa_positive_folds_pct",
+    ):
+        if field_name in payload:
+            setattr(candidate, field_name, _safe_float_metric(payload.get(field_name), None))
+    return candidate
+
+
+def refresh_report_threshold_sensitivity(report_path: Path | str) -> dict[str, Any]:
+    """Ajoute ou remet à jour l'analyse de seuils d'un rapport existant."""
+    path = Path(report_path)
+    report = json.loads(path.read_text(encoding="utf-8"))
+    candidates = [
+        _candidate_from_report_payload(payload)
+        for payload in (report.get("candidates") or [])
+        if isinstance(payload, dict)
+    ]
+    meta = report.get("meta") if isinstance(report.get("meta"), dict) else {}
+    config_snapshot = meta.get("config_snapshot") if isinstance(meta.get("config_snapshot"), dict) else {}
+    report["threshold_sensitivity"] = build_graduation_threshold_sensitivity(candidates, config_snapshot)
+    path.write_text(json.dumps(_json_safe(report), indent=2, ensure_ascii=False), encoding="utf-8")
+    return report["threshold_sensitivity"]
+
+
 # ---------------------------------------------------------------------------
 # CLI rapide
 # ---------------------------------------------------------------------------
@@ -1971,6 +2881,16 @@ def main() -> None:
         action="store_true",
         help="Exécute le pipeline canonique P2→P5 sur les entrées `positive_import` déjà importées dans le strategy catalog",
     )
+    parser.add_argument(
+        "--refresh-report-analysis",
+        action="store_true",
+        help="Rafraîchit uniquement les analyses dérivées d'un rapport existant, sans relancer P1→P6.",
+    )
+    parser.add_argument(
+        "--report-path",
+        default="",
+        help="Rapport JSON à enrichir avec --refresh-report-analysis (défaut: graduation_full.json).",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -1987,6 +2907,19 @@ def main() -> None:
             min_score=args.min_score,
         ),
     )
+
+    if args.refresh_report_analysis:
+        report_path = Path(args.report_path) if args.report_path else config.output_dir / "graduation_full.json"
+        sensitivity = refresh_report_threshold_sensitivity(report_path)
+        p5 = sensitivity.get("p5") if isinstance(sensitivity, dict) else {}
+        print(f"\n{'=' * 70}")
+        print("  ANALYSE DE SEUILS RAFRAÎCHIE")
+        print(f"{'=' * 70}")
+        print(f"  Rapport:          {report_path}")
+        print(f"  Candidats P5:     {p5.get('candidate_count', 0) if isinstance(p5, dict) else 0}")
+        print(f"  Pass actuels:     {p5.get('observed_pass_count', 0) if isinstance(p5, dict) else 0}")
+        print(f"{'=' * 70}\n")
+        return
 
     if args.import_positive_artifacts:
         roots = [Path(path) for path in args.artifact_root] if args.artifact_root else None
@@ -2033,7 +2966,7 @@ def main() -> None:
         result = run_full_graduation(config)
         stats = result["stats"]
         print(f"\n{'=' * 70}")
-        print("  GRADUATION Pipeline Complet")
+        print("  GRADUATION UNIQUE P1→P6")
         print(f"{'=' * 70}")
         print(f"  P1 Inventaire:       {stats['p1_candidates']}")
         print(f"  P2 Positifs:         {stats['p2_survivors']}")
@@ -2046,7 +2979,7 @@ def main() -> None:
         print(f"  Rapport sauvegardé: {config.output_dir / 'graduation_full.json'}")
         return
 
-    candidates = scan_sandbox(config)
+    candidates = scan_unified_run_inventory(config)
     if args.sync_catalog:
         synced = sync_graduation_to_catalog(candidates, config)
         print(f"  Sync catalogue:    {len(synced)} entrée(s)")
@@ -3167,12 +4100,14 @@ def run_wfa_validation(
             ]
             avg_test_return_pct = sum(valid_test_returns) / len(valid_test_returns) if valid_test_returns else 0.0
             positive_folds = sum(1 for value in valid_test_returns if value > 0)
-            positive_folds_pct = _safe_float_metric(
-                getattr(summary, "positive_test_folds_pct", None),
-                None,
+            computed_positive_folds_pct = (
+                (positive_folds / len(valid_test_returns)) * 100 if valid_test_returns else None
             )
-            if positive_folds_pct is None:
-                positive_folds_pct = (positive_folds / len(valid_test_returns)) * 100 if valid_test_returns else 0.0
+            positive_folds_pct = (
+                computed_positive_folds_pct
+                if computed_positive_folds_pct is not None
+                else _safe_float_metric(getattr(summary, "positive_test_folds_pct", None), 0.0)
+            )
 
             stability = float(summary.confidence_score or 0.0)
             classic_overfitting_ratio = _safe_float_metric(
@@ -3456,6 +4391,18 @@ def _candidate_builder_state(candidate: GraduationCandidate) -> str:
     return "stopped"
 
 
+def _candidate_should_sync_to_catalog(candidate: GraduationCandidate) -> bool:
+    phase = str(candidate.phase or "").strip().upper()
+    if phase not in {"P2", "P3", "P4", "P5", "P6"}:
+        return False
+    if str(candidate.p2_verdict or "").strip().upper() == "PASSED":
+        return True
+    return any(
+        str(verdict or "").strip().upper() == "PASSED"
+        for verdict in (candidate.p3_verdict, candidate.p4_verdict, candidate.p5_verdict, candidate.p6_verdict)
+    ) or str(candidate.decision or "").strip().upper() == "PROMOTED"
+
+
 def sync_graduation_to_catalog(
     candidates: list[GraduationCandidate],
     config: GraduationConfig | None = None,
@@ -3480,6 +4427,9 @@ def sync_graduation_to_catalog(
     candidate_by_entry_id: dict[str, GraduationCandidate] = {}
 
     for candidate in candidates:
+        if not _candidate_should_sync_to_catalog(candidate):
+            continue
+
         target_category = _candidate_catalog_category(candidate, config)
         strategy_name = "graduation_candidate"
         strategy_defaults: dict[str, Any] = {}
@@ -3585,9 +4535,14 @@ def sync_graduation_to_catalog(
                     "source_mode": candidate.source_mode,
                     "source_kind": candidate.source_kind,
                     "source_run_id": candidate.source_run_id or None,
+                    "source_status": candidate.source_status or None,
+                    "source_path": candidate.source_path or None,
                     "source_symbol": symbol,
                     "source_timeframe": timeframe,
                     "source_params": strategy_params or strategy_defaults or None,
+                    "iteration_error": candidate.iteration_error or None,
+                    "runtime_error": candidate.runtime_error or None,
+                    "metrics_missing": list(candidate.metrics_missing or []),
                     "benchmark_results": candidate.benchmark_results,
                     "benchmark_names": config.benchmark_names,
                     "benchmark_consensus": candidate.benchmark_consensus,
@@ -3851,7 +4806,6 @@ def run_positive_import_graduation(
             ctx, status="running", event="scan_complete",
             phase="P1", candidate=None, index=0, total=len(candidates),
         )
-
         # P2
         survivors = run_positive_observed_filter(candidates, source_mode="positive_import", config=config)
         ctx.stats["p2_processed"] = len(candidates)
@@ -3945,19 +4899,22 @@ def run_full_graduation(
 
     try:
         # P1
-        candidates = scan_sandbox(config)
+        candidates, inventory_stats = _scan_unified_run_inventory_parts(config)
         ctx.stats["p1_candidates"] = len(candidates)
+        ctx.stats.update(inventory_stats)
         ctx.all_candidates = list(candidates)
         _ctx_save_report(ctx)
         _ctx_write_progress(
             ctx, status="running", event="scan_complete", phase="P1",
             candidate=None, index=0, total=len(candidates),
-            extra={"candidates": len(candidates)},
+            extra={
+                "candidates": len(candidates),
+                **inventory_stats,
+            },
         )
-
         # P2
         survivors = run_positive_observed_filter(
-            candidates, source_mode="sandbox", config=config,
+            candidates, source_mode="mixed", config=config,
         )
         ctx.stats["p2_processed"] = len(candidates)
         ctx.stats["p2_survivors"] = len(survivors)
@@ -3971,12 +4928,13 @@ def run_full_graduation(
         if not survivors:
             return _ctx_exit_no_survivors(ctx, "P2")
 
-        # P3 → P4 → P5 (pas de _safe_engine_mode pour le pipeline complet)
+        # P3 → P4 → P5
         progress_cb = _make_progress_callback(ctx)
-        result_or_survivors = _run_p3_to_p5(survivors, ctx, progress_cb)
-        if isinstance(result_or_survivors, dict):
-            return result_or_survivors
-        survivors = result_or_survivors
+        with _safe_engine_mode():
+            result_or_survivors = _run_p3_to_p5(survivors, ctx, progress_cb)
+            if isinstance(result_or_survivors, dict):
+                return result_or_survivors
+            survivors = result_or_survivors
 
         # P6
         ctx.current_phase = "P6"

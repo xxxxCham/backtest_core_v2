@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import tools.autonomous_builder_supervisor as supervisor_module
+import tools.supervisor_control_panel as supervisor_panel_module
 import tools.streamlit_watchdog as watchdog_module
 from tools.streamlit_watchdog import (
     decide_exit_restart,
@@ -107,6 +108,29 @@ def test_supervisor_status_reports_ollama_detection_sources(monkeypatch):
     assert status["ollama_model_loaded_in_ps"] is True
 
 
+def test_supervisor_panel_delegates_keep_awake_controls(monkeypatch):
+    calls: dict[str, object] = {}
+
+    def fake_start_background(**kwargs):
+        calls["start"] = kwargs
+        return {"running": True, "pid": 123}
+
+    def fake_stop_background(**kwargs):
+        calls["stop"] = kwargs
+        return {"running": False, "pid": 0}
+
+    monkeypatch.setattr(supervisor_panel_module.keep_awake, "start_background", fake_start_background)
+    monkeypatch.setattr(supervisor_panel_module.keep_awake, "stop_background", fake_stop_background)
+
+    started = supervisor_panel_module.start_panel_keep_awake()
+    stopped = supervisor_panel_module.stop_panel_keep_awake()
+
+    assert started == {"running": True, "pid": 123}
+    assert stopped == {"running": False, "pid": 0}
+    assert calls["start"] == {"interval_seconds": supervisor_panel_module.KEEP_AWAKE_INTERVAL_SECONDS}
+    assert calls["stop"] == {}
+
+
 def test_orphaned_runtime_claim_is_cleared_when_pid_is_missing(monkeypatch):
     stale = (datetime.now(timezone.utc) - timedelta(seconds=181)).isoformat()
     monkeypatch.setattr(watchdog_module, "_pid_exists", lambda pid: False)
@@ -132,6 +156,24 @@ def test_legacy_runtime_claim_is_cleared_when_stale():
 
     assert should_clear is True
     assert reason.startswith("legacy_stale_runtime(pid=424242")
+
+
+def test_external_supervisor_ownerless_runtime_claim_is_cleared_when_stale():
+    stale = (datetime.now(timezone.utc) - timedelta(seconds=181)).isoformat()
+
+    should_clear, reason = maybe_clear_orphaned_runtime_claim(
+        _runtime(
+            last_heartbeat_at=stale,
+            pid=0,
+            owner_pid=0,
+            claim_source="external_supervisor",
+        ),
+        now=datetime.now(timezone.utc),
+        stale_runtime_claim_timeout_sec=120,
+    )
+
+    assert should_clear is True
+    assert reason.startswith("external_supervisor_stale_runtime(ownerless")
 
 
 def test_exit_restart_when_runtime_still_active():
@@ -351,6 +393,74 @@ def test_watchdog_script_runs_directly_from_tools_path():
 
     assert result.returncode == 0
     assert "Watchdog Streamlit autonome" in result.stdout
+
+
+def test_launch_streamlit_forces_headless_and_disables_browser_stats(monkeypatch, tmp_path):
+    calls = []
+
+    class _DummyProcess:
+        def poll(self):
+            return None
+
+    def _fake_popen(*args, **kwargs):
+        calls.append((args, kwargs))
+        return _DummyProcess()
+
+    monkeypatch.setattr(watchdog_module.subprocess, "Popen", _fake_popen)
+
+    watchdog_module._launch_streamlit(tmp_path, 8502)
+
+    assert calls
+    command = list(calls[0][0][0])
+    assert "--server.headless" in command
+    assert command[command.index("--server.headless") + 1] == "true"
+    assert "--browser.gatherUsageStats" in command
+    assert command[command.index("--browser.gatherUsageStats") + 1] == "false"
+
+
+def test_open_browser_once_when_streamlit_is_ready_opens_localhost_url(monkeypatch):
+    calls = []
+
+    class _DummyProcess:
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(
+        watchdog_module,
+        "_http_probe_streamlit",
+        lambda port, timeout_sec=0.5: (True, "http_200:/_stcore/health"),
+    )
+    monkeypatch.setattr(
+        watchdog_module,
+        "_open_streamlit_browser",
+        lambda port: calls.append(port) or True,
+    )
+
+    opened = watchdog_module._open_browser_once_when_streamlit_is_ready(_DummyProcess(), 8502)
+
+    assert opened is True
+    assert calls == [8502]
+
+
+def test_open_browser_once_when_streamlit_is_ready_skips_when_process_exits(monkeypatch):
+    class _ExitedProcess:
+        def poll(self):
+            return 1
+
+    monkeypatch.setattr(
+        watchdog_module,
+        "_http_probe_streamlit",
+        lambda port, timeout_sec=0.5: (False, "TimeoutError:/_stcore/health"),
+    )
+
+    opened = watchdog_module._open_browser_once_when_streamlit_is_ready(
+        _ExitedProcess(),
+        8502,
+        startup_timeout_sec=1.0,
+        poll_interval_sec=0.1,
+    )
+
+    assert opened is False
 
 
 def test_main_does_not_launch_supervisor_loop_by_default(monkeypatch, tmp_path, capsys):

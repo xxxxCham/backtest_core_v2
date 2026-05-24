@@ -61,68 +61,20 @@ from ui.context import (
     list_strategies,
 )
 from ui.state import (
+    BUILDER_AUTO_MARKET_PICK_DEFAULT,
+    BUILDER_AUTO_PAUSE_DEFAULT,
+    BUILDER_AUTONOMOUS_DEFAULT,
+    BUILDER_CAPITAL_DEFAULT,
     BUILDER_EXECUTION_MODE_MONO,
+    BUILDER_FLOW_ANALYSIS_ENABLED_DEFAULT,
+    BUILDER_MAX_ITERATIONS_DEFAULT,
+    BUILDER_MODEL_SINGLE_LLM_DEFAULT,
+    BUILDER_TARGET_SHARPE_DEFAULT,
     BUILDER_UNIVERSE_MODE_CANONICAL,
+    BUILDER_UNIVERSE_MODE_DEFAULT,
     SidebarState,
-    resolve_builder_flow_analysis_preferences,
     resolve_builder_runtime_preferences,
 )
-
-_BUILDER_FLOW_ANALYSIS_STEP_LABELS = {
-    "code_repair": "Réparation canonique",
-    "precheck": "Précheck des signaux",
-    "postprocess_logic": "Nettoyage logique",
-    "auto_fix_indicators": "Auto-fix indicateurs",
-    "runtime_fix": "Correction runtime",
-    "deterministic_fallback": "Fallback déterministe",
-    "stagnation_branching": "Branching de stagnation",
-    "positive_progress_gate": "Garde de progression positive",
-    "stop_override": "Override stop",
-    "accept_override": "Override accept",
-    "params_contract_check": "Contrat de paramètres",
-    "indicator_binding": "Bindings d'indicateurs",
-    "proposal_sanitize": "Sanitize proposition",
-    "prompt_leakage_filter": "Filtre de fuite de prompt",
-    "indicator_ranking": "Classement des indicateurs",
-    "iteration_history": "Historique d'itérations",
-    "diagnostic_context": "Contexte diagnostique",
-    "pre_reflection": "Pré-réflexion LLM",
-    "llm_analysis": "Analyse LLM",
-}
-
-_BUILDER_FLOW_ANALYSIS_PRESETS: dict[str, tuple[str, list[str]]] = {
-    "full": (
-        "🔒 Pipeline complet",
-        [],
-    ),
-    "fast": (
-        "⚡ Analyse rapide",
-        ["llm_analysis", "indicator_ranking", "iteration_history", "diagnostic_context"],
-    ),
-    "debug": (
-        "🧪 Debug pipeline",
-        [
-            "llm_analysis",
-            "runtime_fix",
-            "code_repair",
-            "indicator_binding",
-            "indicator_ranking",
-            "iteration_history",
-            "diagnostic_context",
-        ],
-    ),
-    "local_stable": (
-        "🪶 Local stable",
-        [
-            "llm_analysis",
-            "indicator_ranking",
-            "iteration_history",
-            "diagnostic_context",
-            "stagnation_branching",
-            "pre_reflection",
-        ],
-    ),
-}
 
 
 def _ollama_is_available(ollama_host: str | None = None) -> bool:
@@ -175,6 +127,59 @@ def _prime_multiselect_state(
 
     if valid_current != current:
         st.session_state[key] = valid_current
+
+
+def _set_builder_default_if_pristine(key: str, value: Any) -> None:
+    if key not in st.session_state:
+        st.session_state[key] = value
+        return
+    current = st.session_state.get(key, None)
+    legacy_values = _BUILDER_LEGACY_DEFAULTS.get(key, set())
+    try:
+        is_legacy = current in legacy_values
+    except TypeError:
+        is_legacy = False
+    if is_legacy:
+        st.session_state[key] = value
+
+
+def _ensure_builder_autonomous_defaults() -> None:
+    """Applique une seule fois le preset par défaut de la page Builder."""
+    if bool(st.session_state.get(_BUILDER_TAB_DEFAULTS_MARKER, False)):
+        return
+
+    _set_builder_default_if_pristine("builder_autonomous", BUILDER_AUTONOMOUS_DEFAULT)
+    _set_builder_default_if_pristine("builder_autonomous_toggle", BUILDER_AUTONOMOUS_DEFAULT)
+    _set_builder_default_if_pristine("builder_auto_pause", BUILDER_AUTO_PAUSE_DEFAULT)
+    _set_builder_default_if_pristine("builder_auto_pause_slider", BUILDER_AUTO_PAUSE_DEFAULT)
+    _set_builder_default_if_pristine("builder_auto_market_pick", BUILDER_AUTO_MARKET_PICK_DEFAULT)
+    _set_builder_default_if_pristine("builder_auto_market_pick_toggle", BUILDER_AUTO_MARKET_PICK_DEFAULT)
+    _set_builder_default_if_pristine("builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT)
+    _set_builder_default_if_pristine("builder_model_single_llm", BUILDER_MODEL_SINGLE_LLM_DEFAULT)
+    _set_builder_default_if_pristine("builder_model_select", BUILDER_MODEL_SINGLE_LLM_DEFAULT)
+    _set_builder_default_if_pristine("builder_max_iterations", BUILDER_MAX_ITERATIONS_DEFAULT)
+    _set_builder_default_if_pristine("builder_max_iters_slider", BUILDER_MAX_ITERATIONS_DEFAULT)
+    _set_builder_default_if_pristine("builder_target_sharpe", BUILDER_TARGET_SHARPE_DEFAULT)
+    _set_builder_default_if_pristine("builder_target_sharpe_input", BUILDER_TARGET_SHARPE_DEFAULT)
+    _set_builder_default_if_pristine("builder_capital", BUILDER_CAPITAL_DEFAULT)
+    _set_builder_default_if_pristine("builder_capital_input", BUILDER_CAPITAL_DEFAULT)
+    _set_builder_default_if_pristine(
+        "builder_flow_analysis_enabled",
+        BUILDER_FLOW_ANALYSIS_ENABLED_DEFAULT,
+    )
+    _set_builder_default_if_pristine(
+        "builder_flow_analysis_enabled_toggle",
+        BUILDER_FLOW_ANALYSIS_ENABLED_DEFAULT,
+    )
+    _set_builder_default_if_pristine("llm_inference_mode", "per_model")
+    if "llm_inference_global_settings" not in st.session_state:
+        st.session_state["llm_inference_global_settings"] = {
+            "temperature": 0.70,
+            "num_ctx": None,
+            "max_tokens": 2000,
+        }
+
+    st.session_state[_BUILDER_TAB_DEFAULTS_MARKER] = True
 
 
 def _collect_inference_model_candidates(*groups: Any) -> list[str]:
@@ -607,6 +612,17 @@ LLM_ROUTING_MODE_HELP = {
         "Separe les endpoints productifs et de controle, avec cibles GPU distinctes. "
         "Ce reglage concerne uniquement le routage des hosts."
     ),
+}
+_BUILDER_TAB_DEFAULTS_MARKER = "_builder_autonomous_defaults_initialized"
+
+# Migration des anciens defaults vers les nouveaux: on n'inclut que des valeurs
+# qui ne peuvent venir que d'un default precedent, jamais d'un choix utilisateur
+# explicite (False/10 sont des valeurs legitimes saisies a la main).
+_BUILDER_LEGACY_DEFAULTS: dict[str, set[Any]] = {
+    "builder_model_single_llm": {"", "deepseek-r1:32b"},
+    "builder_model_select": {"", "deepseek-r1:32b"},
+    "builder_universe_mode": {"", BUILDER_UNIVERSE_MODE_CANONICAL},
+    "llm_inference_mode": {"", "global"},
 }
 
 
@@ -1147,22 +1163,6 @@ BUILDER_EXECUTION_MODE_HELP = {
 
 BUILDER_CONFIG_CSS = """
 <style>
-.bc-builder-config-strip {
-    margin: 0.15rem 0 0.9rem 0;
-    padding: 0.55rem 0 0.75rem 0;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-}
-.bc-builder-config-strip-title {
-    font-size: 1rem;
-    font-weight: 700;
-    color: #e8eef7;
-    margin-bottom: 0.25rem;
-}
-.bc-builder-config-strip-subtitle {
-    color: #9fb2c8;
-    font-size: 0.93rem;
-    line-height: 1.45;
-}
 .bc-inline-field-label {
     display: inline-flex;
     align-items: center;
@@ -1222,18 +1222,6 @@ BUILDER_CONFIG_CSS = """
 
 def _inject_builder_config_styles() -> None:
     st.markdown(BUILDER_CONFIG_CSS, unsafe_allow_html=True)
-
-
-def _render_builder_config_hero() -> None:
-    st.markdown(
-        """
-<div class="bc-builder-config-strip">
-    <div class="bc-builder-config-strip-title">Builder Workspace</div>
-    <div class="bc-builder-config-strip-subtitle">Architecture, mission, modèles, puis paramètres. Les diagnostics avancés restent disponibles mais ne structurent plus l'écran.</div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
 
 
 def _render_inline_help_label(label: str, help_text: str) -> None:
@@ -1385,6 +1373,7 @@ def _render_builder_tab(state: SidebarState) -> None:
     Reprise stricte du bloc Builder historiquement en sidebar.
     """
     _inject_builder_config_styles()
+    _ensure_builder_autonomous_defaults()
 
     pending_autonomous_toggle_sync = st.session_state.pop(
         "_builder_autonomous_toggle_sync",
@@ -1396,11 +1385,14 @@ def _render_builder_tab(state: SidebarState) -> None:
         st.session_state["builder_autonomous_toggle"] = synchronized_value
     elif "builder_autonomous_toggle" not in st.session_state:
         st.session_state["builder_autonomous_toggle"] = bool(
-            st.session_state.get("builder_autonomous", False),
+            st.session_state.get("builder_autonomous", BUILDER_AUTONOMOUS_DEFAULT),
         )
+    st.session_state["builder_flow_analysis_enabled"] = False
+    st.session_state["builder_flow_analysis_enabled_toggle"] = False
+    st.session_state["builder_flow_analysis_ablation"] = {}
+    st.session_state.pop("builder_flow_analysis_disabled_steps_multiselect", None)
 
     st.markdown("#### 🏗️ Strategy Builder")
-    _render_builder_config_hero()
 
     builder_execution_mode = BUILDER_EXECUTION_MODE_MONO
     st.session_state["builder_execution_mode"] = builder_execution_mode
@@ -1425,7 +1417,7 @@ def _render_builder_tab(state: SidebarState) -> None:
         )
     st.session_state["builder_autonomous"] = builder_autonomous
 
-    builder_auto_pause = 10
+    builder_auto_pause = BUILDER_AUTO_PAUSE_DEFAULT
     builder_auto_use_llm = True
     builder_use_parametric_catalog = False
     legacy_builder_model = str(st.session_state.pop("builder_model", "") or "").strip()
@@ -1440,9 +1432,9 @@ def _render_builder_tab(state: SidebarState) -> None:
         str(
             st.session_state.get("builder_model_select")
             or st.session_state.get("builder_model_single_llm")
-            or "deepseek-r1:32b",
+            or BUILDER_MODEL_SINGLE_LLM_DEFAULT,
         ).strip()
-        or "deepseek-r1:32b"
+        or BUILDER_MODEL_SINGLE_LLM_DEFAULT
     )
     st.session_state["builder_model_single_llm"] = builder_model_single_llm
     # ── Section 1 : Mission ─────────────────────────────────────────────
@@ -1453,7 +1445,7 @@ def _render_builder_tab(state: SidebarState) -> None:
             "⏱️ Pause entre runs (s)",
             min_value=0,
             max_value=120,
-            value=st.session_state.get("builder_auto_pause", 10),
+            value=st.session_state.get("builder_auto_pause", BUILDER_AUTO_PAUSE_DEFAULT),
             key="builder_auto_pause_slider",
             help="Délai en secondes entre chaque session autonome.",
         )
@@ -1488,7 +1480,10 @@ def _render_builder_tab(state: SidebarState) -> None:
 
     _mission_col1, _mission_col2 = st.columns(2)
     with _mission_col1:
-        _market_pick_default = st.session_state.get("builder_auto_market_pick", True)
+        _market_pick_default = st.session_state.get(
+            "builder_auto_market_pick",
+            BUILDER_AUTO_MARKET_PICK_DEFAULT,
+        )
         builder_auto_market_pick = st.toggle(
             "🧭 LLM choisit token/TF",
             value=_market_pick_default,
@@ -1503,13 +1498,13 @@ def _render_builder_tab(state: SidebarState) -> None:
         universe_mode_options = [UNIVERSE_MODE_CANONICAL, UNIVERSE_MODE_EXPLORATORY]
         current_universe_mode = (
             str(
-                st.session_state.get("builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL)
-                or BUILDER_UNIVERSE_MODE_CANONICAL,
+                st.session_state.get("builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT)
+                or BUILDER_UNIVERSE_MODE_DEFAULT,
             ).strip()
-            or BUILDER_UNIVERSE_MODE_CANONICAL
+            or BUILDER_UNIVERSE_MODE_DEFAULT
         )
         if current_universe_mode not in universe_mode_options:
-            current_universe_mode = BUILDER_UNIVERSE_MODE_CANONICAL
+            current_universe_mode = BUILDER_UNIVERSE_MODE_DEFAULT
         builder_universe_mode = st.radio(
             "🌐 Univers",
             options=universe_mode_options,
@@ -1606,60 +1601,21 @@ def _render_builder_tab(state: SidebarState) -> None:
                 else:
                     st.error(msg)
 
-    with st.expander("Réglages runtime avancés", expanded=False):
-        builder_auto_start_state = st.toggle(
-            "Auto-demarrer Ollama local si necessaire",
-            value=builder_auto_start_state,
-            key="builder_auto_start_ollama_toggle",
-            help="Tente de demarrer l'endpoint local si le Builder ne le trouve pas.",
-        )
-        builder_preload_model = st.toggle(
-            "Precharger le modele avant la session",
-            value=builder_preload_model,
-            key="builder_preload_model_toggle",
-            help="Fait un warmup explicite avant le premier appel Builder.",
-        )
-        builder_keep_alive_minutes = int(
-            st.number_input(
-                "Keep-alive Ollama (minutes)",
-                min_value=0,
-                max_value=240,
-                value=builder_keep_alive_minutes,
-                step=5,
-                key="builder_keep_alive_minutes_input",
-                help="Temps de retention du modele entre deux appels runtime.",
-            ),
-        )
-        builder_unload_after_run = st.toggle(
-            "Decharger les modeles en fin de session",
-            value=builder_unload_after_run,
-            key="builder_unload_after_run_toggle",
-            help="Libere la RAM/VRAM du Builder a la fin du run ou du cleanup runtime.",
-        )
-
     st.session_state["builder_auto_start_ollama"] = builder_auto_start_state
     st.session_state["builder_preload_model"] = builder_preload_model
     st.session_state["builder_keep_alive_minutes"] = builder_keep_alive_minutes
     st.session_state["builder_unload_after_run"] = builder_unload_after_run
-    flow_analysis_preferences = resolve_builder_flow_analysis_preferences(
-        st.session_state,
-    )
-    builder_flow_analysis_enabled = bool(
-        flow_analysis_preferences["builder_flow_analysis_enabled"],
-    )
-    builder_flow_analysis_ablation = dict(
-        flow_analysis_preferences["builder_flow_analysis_ablation"],
-    )
 
     builder_model_single_llm = render_model_selector(
         label="Modele LLM",
         key="builder_model_select",
         help_text="Modèles installés sur Ollama en priorité, puis catalogue local connu si l'inventaire serveur est incomplet.",
-        show_details=True,
+        show_details=False,
         compact=True,
         ollama_host=builder_ollama_host,
         include_library_models=True,
         current_value=builder_model_single_llm,
+        display_mode="radio",
     )
     st.session_state["builder_model_single_llm"] = builder_model_single_llm
 
@@ -1672,75 +1628,6 @@ def _render_builder_tab(state: SidebarState) -> None:
     ]
     _render_builder_cloud_runtime_hints(cloud_runtime_targets)
 
-    active_builder_models = _collect_inference_model_candidates(
-        [builder_model_single_llm],
-    )
-    _render_llm_inference_settings_editor(
-        active_models=active_builder_models,
-        section_label="Inférence Ollama du Builder",
-    )
-    st.markdown("##### Analyse du flux Builder")
-    st.caption(
-        "Répond à trois questions: ce qui bloque le flux, ce qui aide réellement le Builder, "
-        "et où une session instrumentée diverge. Cette analyse mesure le pipeline Builder; "
-        "elle ne garantit pas la qualité de marché de la stratégie.",
-    )
-    builder_flow_analysis_enabled = st.toggle(
-        "Activer l'analyse de flux sur le prochain run",
-        value=builder_flow_analysis_enabled,
-        key="builder_flow_analysis_enabled_toggle",
-        help=(
-            "Enregistre un résumé lisible et un fichier `pipeline_traces.json` pour la session Builder suivante."
-        ),
-    )
-    st.session_state["builder_flow_analysis_enabled"] = builder_flow_analysis_enabled
-
-    default_disabled_steps = [step for step, enabled in builder_flow_analysis_ablation.items() if not enabled]
-    st.caption("Presets d'ablation — benchmark mesuré localement (ms/iter) :")
-    _preset_cols = st.columns(len(_BUILDER_FLOW_ANALYSIS_PRESETS))
-    for _col, (_pk, (_plabel, _pdisabled)) in zip(
-        _preset_cols,
-        _BUILDER_FLOW_ANALYSIS_PRESETS.items(),
-    ):
-        with _col:
-            if st.button(
-                _plabel,
-                key=f"ablation_preset_{_pk}",
-                use_container_width=True,
-                help={
-                    "full": f"Toutes les {len(builder_flow_analysis_ablation)} étapes actives — pipeline de production.",
-                    "fast": "Désactive l'appel LLM analyse + classement NLP → "
-                    "économie ~1 LLM call/iter, fallback rule-based multi-critères.",
-                    "debug": "Désactive steps LLM + code_repair (~22 ms) + "
-                    "indicator_binding (~2.4 ms) → pipeline léger sans Ollama.",
-                    "local_stable": "Coupe les prompts secondaires les plus verbeux "
-                    "(analyse, historique, contexte, ranking, pré-réflexion, branching) "
-                    "pour stabiliser les modèles locaux type Gemma.",
-                }[_pk],
-            ):
-                _valid_disabled = [s for s in _pdisabled if s in builder_flow_analysis_ablation]
-                st.session_state["builder_flow_analysis_disabled_steps_multiselect"] = _valid_disabled
-                default_disabled_steps = _valid_disabled
-
-    disabled_steps = st.multiselect(
-        "Étapes à désactiver pour diagnostic avancé",
-        options=list(builder_flow_analysis_ablation.keys()),
-        default=default_disabled_steps,
-        key="builder_flow_analysis_disabled_steps_multiselect",
-        format_func=lambda step: _BUILDER_FLOW_ANALYSIS_STEP_LABELS.get(step, step),
-        help=(
-            "Laisser vide pour un pipeline complet. Désactiver une étape sert "
-            "uniquement à mesurer son impact sur le flux du Builder mono."
-        ),
-    )
-    normalized_ablation = {step: step not in disabled_steps for step in builder_flow_analysis_ablation}
-    st.session_state["builder_flow_analysis_ablation"] = normalized_ablation
-    with st.expander("Ce que mesure cette analyse", expanded=False):
-        st.caption(
-            "Niveau 1: synthèse lisible. Niveau 2: chronologie de session. "
-            "Niveau 3: ablation, comparaison entre sessions et JSON brut.",
-        )
-
     # ── Section 3 : Pipeline & paramètres ─────────────────────────────
     st.markdown("---")
     st.markdown("##### ⚙️ Pipeline & paramètres")
@@ -1748,7 +1635,7 @@ def _render_builder_tab(state: SidebarState) -> None:
         "Itérations max",
         min_value=1,
         max_value=30,
-        value=st.session_state.get("builder_max_iterations", 10),
+        value=st.session_state.get("builder_max_iterations", BUILDER_MAX_ITERATIONS_DEFAULT),
         key="builder_max_iters_slider",
         help="Nombre maximum de tentatives pour améliorer la stratégie.",
     )
@@ -1758,7 +1645,7 @@ def _render_builder_tab(state: SidebarState) -> None:
             "Sharpe cible",
             min_value=0.0,
             max_value=5.0,
-            value=st.session_state.get("builder_target_sharpe", 1.0),
+            value=st.session_state.get("builder_target_sharpe", BUILDER_TARGET_SHARPE_DEFAULT),
             step=0.1,
             key="builder_target_sharpe_input",
             help="Sharpe ratio minimum pour accepter automatiquement la stratégie.",
@@ -1768,7 +1655,7 @@ def _render_builder_tab(state: SidebarState) -> None:
             "Capital initial ($)",
             min_value=100.0,
             max_value=1_000_000.0,
-            value=st.session_state.get("builder_capital", 10000.0),
+            value=st.session_state.get("builder_capital", BUILDER_CAPITAL_DEFAULT),
             step=1000.0,
             key="builder_capital_input",
             format="%.0f",
@@ -2351,13 +2238,6 @@ def render_exec_tabs(state: SidebarState) -> None:
         active_mode = mode_names[0]
         st.session_state["optimization_mode"] = active_mode
     st.markdown("---")
-    description = next(
-        (desc for mode_name, _icon, desc in MODE_OPTIONS if mode_name == active_mode),
-        "",
-    )
-    if description:
-        st.caption(f"✅ Mode actif — {description}")
-
     if active_mode == "Backtest Simple":
         _render_backtest_tab(state)
     elif active_mode == "Grille de Paramètres":

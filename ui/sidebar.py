@@ -77,11 +77,19 @@ from ui.helpers import (
 )
 from ui.keeper_mode import render_keeper_mode_control
 from ui.state import (
+    BUILDER_AUTO_MARKET_PICK_DEFAULT,
+    BUILDER_AUTO_PAUSE_DEFAULT,
     BUILDER_AUTO_START_OLLAMA_DEFAULT,
+    BUILDER_AUTONOMOUS_DEFAULT,
+    BUILDER_CAPITAL_DEFAULT,
     BUILDER_EXECUTION_MODE_MONO,
+    BUILDER_FLOW_ANALYSIS_ENABLED_DEFAULT,
     BUILDER_KEEP_ALIVE_MINUTES_DEFAULT,
+    BUILDER_MAX_ITERATIONS_DEFAULT,
+    BUILDER_MODEL_SINGLE_LLM_DEFAULT,
     BUILDER_PRELOAD_MODEL_DEFAULT,
-    BUILDER_UNIVERSE_MODE_CANONICAL,
+    BUILDER_TARGET_SHARPE_DEFAULT,
+    BUILDER_UNIVERSE_MODE_DEFAULT,
     BUILDER_UNLOAD_AFTER_RUN_DEFAULT,
     SidebarState,
     arm_ui_run_request,
@@ -705,19 +713,6 @@ def _render_sidebar_mode_selector(current_mode: str) -> str:
                     if request_execution_mode_change(mode_name):
                         st.rerun()
 
-    description = next(
-        (desc for mode_name, _icon, desc in MODE_OPTIONS if mode_name == selected_mode),
-        "",
-    )
-    st.sidebar.markdown(
-        (
-            "<div class='bc-sidebar-card'>"
-            f"<strong>Mode actif</strong><br/>{selected_mode}"
-            + (f"<br/><span>{description}</span>" if description else "")
-            + "</div>"
-        ),
-        unsafe_allow_html=True,
-    )
     return selected_mode
 
 
@@ -1704,8 +1699,14 @@ def render_sidebar() -> SidebarState:
 
     # Détection mode Builder
     _is_builder = st.session_state.get("optimization_mode") == "🏗️ Strategy Builder"
-    _builder_autonomous = st.session_state.get("builder_autonomous", False)
-    _builder_auto_market = st.session_state.get("builder_auto_market_pick", False)
+    _builder_autonomous = st.session_state.get(
+        "builder_autonomous",
+        BUILDER_AUTONOMOUS_DEFAULT,
+    )
+    _builder_auto_market = st.session_state.get(
+        "builder_auto_market_pick",
+        BUILDER_AUTO_MARKET_PICK_DEFAULT,
+    )
     # Les sélecteurs marché restent visibles/clickables dans tous les modes.
     symbol_options_ui = _stable_shuffled_options(
         "_symbols_options_order_v1",
@@ -1998,10 +1999,10 @@ def render_sidebar() -> SidebarState:
 
     # ── Strategy Builder defaults ──
     builder_objective = ""
-    builder_model_single_llm = "deepseek-r1:32b"
-    builder_max_iterations = 5
-    builder_target_sharpe = 1.0
-    builder_capital = 10000.0
+    builder_model_single_llm = BUILDER_MODEL_SINGLE_LLM_DEFAULT
+    builder_max_iterations = BUILDER_MAX_ITERATIONS_DEFAULT
+    builder_target_sharpe = BUILDER_TARGET_SHARPE_DEFAULT
+    builder_capital = BUILDER_CAPITAL_DEFAULT
     builder_ollama_host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
     exec_ollama_host = str(
         st.session_state.get(
@@ -2014,13 +2015,13 @@ def render_sidebar() -> SidebarState:
     builder_keep_alive_minutes = BUILDER_KEEP_ALIVE_MINUTES_DEFAULT
     builder_unload_after_run = BUILDER_UNLOAD_AFTER_RUN_DEFAULT
     builder_auto_start_ollama = BUILDER_AUTO_START_OLLAMA_DEFAULT
-    builder_auto_market_pick = False
-    builder_universe_mode = BUILDER_UNIVERSE_MODE_CANONICAL
-    builder_autonomous = False
-    builder_auto_pause = 10
+    builder_auto_market_pick = BUILDER_AUTO_MARKET_PICK_DEFAULT
+    builder_universe_mode = BUILDER_UNIVERSE_MODE_DEFAULT
+    builder_autonomous = BUILDER_AUTONOMOUS_DEFAULT
+    builder_auto_pause = BUILDER_AUTO_PAUSE_DEFAULT
     builder_auto_use_llm = True
     builder_execution_mode = BUILDER_EXECUTION_MODE_MONO
-    builder_flow_analysis_enabled = False
+    builder_flow_analysis_enabled = BUILDER_FLOW_ANALYSIS_ENABLED_DEFAULT
     builder_flow_analysis_ablation: dict[str, bool] = {}
     builder_use_parametric_catalog = False
     topology_state_key = (
@@ -2046,25 +2047,31 @@ def render_sidebar() -> SidebarState:
         llm_routing_mode = str(
             st.session_state.get("builder_llm_routing_mode", builder_llm_routing_mode) or builder_llm_routing_mode,
         )
-        builder_autonomous = bool(st.session_state.get("builder_autonomous", False))
-        builder_auto_pause = int(st.session_state.get("builder_auto_pause", 10))
+        builder_autonomous = bool(
+            st.session_state.get("builder_autonomous", BUILDER_AUTONOMOUS_DEFAULT)
+        )
+        builder_auto_pause = int(
+            st.session_state.get("builder_auto_pause", BUILDER_AUTO_PAUSE_DEFAULT)
+        )
         builder_auto_use_llm = bool(st.session_state.get("builder_auto_use_llm", True))
         builder_use_parametric_catalog = bool(st.session_state.get("builder_use_parametric_catalog", False))
         builder_objective = str(st.session_state.get("builder_objective", ""))
         builder_auto_market_pick = bool(st.session_state.get("builder_auto_market_pick", True))
         builder_universe_mode = (
             str(
-                st.session_state.get("builder_universe_mode", BUILDER_UNIVERSE_MODE_CANONICAL)
-                or BUILDER_UNIVERSE_MODE_CANONICAL,
+                st.session_state.get("builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT)
+                or BUILDER_UNIVERSE_MODE_DEFAULT,
             ).strip()
-            or BUILDER_UNIVERSE_MODE_CANONICAL
+            or BUILDER_UNIVERSE_MODE_DEFAULT
         )
         st.session_state["builder_universe_mode"] = builder_universe_mode
         legacy_builder_model = str(
             st.session_state.pop("builder_model", "") or "",
         ).strip()
         builder_model_single_llm = str(
-            st.session_state.get("builder_model_single_llm") or legacy_builder_model or "deepseek-r1:32b",
+            st.session_state.get("builder_model_single_llm")
+            or legacy_builder_model
+            or BUILDER_MODEL_SINGLE_LLM_DEFAULT,
         )
         st.session_state["builder_model_single_llm"] = builder_model_single_llm
         builder_execution_preferences = resolve_builder_execution_preferences(
@@ -2108,9 +2115,15 @@ def render_sidebar() -> SidebarState:
         builder_unload_after_run = bool(
             runtime_preferences["builder_unload_after_run"],
         )
-        builder_max_iterations = int(st.session_state.get("builder_max_iters_slider", 10))
-        builder_target_sharpe = float(st.session_state.get("builder_target_sharpe_input", 1.0))
-        builder_capital = float(st.session_state.get("builder_capital_input", 10000.0))
+        builder_max_iterations = int(
+            st.session_state.get("builder_max_iters_slider", BUILDER_MAX_ITERATIONS_DEFAULT)
+        )
+        builder_target_sharpe = float(
+            st.session_state.get("builder_target_sharpe_input", BUILDER_TARGET_SHARPE_DEFAULT)
+        )
+        builder_capital = float(
+            st.session_state.get("builder_capital_input", BUILDER_CAPITAL_DEFAULT)
+        )
         llm_topology_config = _resolve_live_llm_topology_config(
             optimization_mode=optimization_mode,
             builder_ollama_host=builder_ollama_host,

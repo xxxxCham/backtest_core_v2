@@ -822,20 +822,26 @@ def render_primary_action_bar(state: SidebarState) -> None:
     else:
         st.caption("Configuration prête pour chargement, lancement ou arrêt propre.")
 
-    col_load, col_run, col_stop = st.columns([1.05, 1.15, 0.9])
-    with col_load:
-        st.button(
-            "⬇️ Charger marché & aperçu",
-            key="main_load_ohlcv_action",
-            type="secondary",
-            disabled=is_running,
-            use_container_width=True,
-            on_click=_queue_main_load_action,
-            help=(
-                "Charge le marché sélectionné et met à jour l'aperçu OHLCV + indicateurs. "
-                "En mode Builder autonome, la présélection reste facultative."
-            ),
-        )
+    optimization_mode = str(st.session_state.get("optimization_mode", state.optimization_mode))
+    is_builder_autonomous = (
+        optimization_mode == BUILDER_OPTIMIZATION_MODE
+        and bool(getattr(state, "builder_autonomous", False) or st.session_state.get("builder_autonomous", False))
+    )
+
+    if is_builder_autonomous:
+        col_run, col_stop = st.columns([1.15, 0.9])
+    else:
+        col_load, col_run, col_stop = st.columns([1.05, 1.15, 0.9])
+        with col_load:
+            st.button(
+                "⬇️ Charger marché & aperçu",
+                key="main_load_ohlcv_action",
+                type="secondary",
+                disabled=is_running,
+                use_container_width=True,
+                on_click=_queue_main_load_action,
+                help="Charge le marché sélectionné et met à jour l'aperçu OHLCV + indicateurs.",
+            )
 
     with col_run:
         st.button(

@@ -738,7 +738,29 @@ def run_builder_loop_v2(
                     )
                 iteration.analysis = positive_gate_policy.analysis
                 iteration.decision = positive_gate_policy.decision
-                session.status = positive_gate_policy.session_status
+                session.status, completion_reason = resolve_builder_completion_status(
+                    session,
+                    fallback_status=positive_gate_policy.session_status,
+                )
+                iteration.phase_feedback.setdefault("decision", {})[
+                    "completion_status_resolution"
+                ] = {
+                    "status": session.status,
+                    "reason": completion_reason,
+                    "source": "positive_progress_gate",
+                }
+                if session.status == "success":
+                    iteration.analysis = (
+                        f"{iteration.analysis}\n"
+                        "[Policy] positive progression gate stopped the loop, "
+                        "but the session best run is an accept candidate."
+                    )
+                    logger.info(
+                        "builder_iter_%d_positive_gate_reclassified_success reason=%s best_sharpe=%.3f",
+                        i,
+                        completion_reason,
+                        session.best_sharpe,
+                    )
                 if builder.instrumentation.enabled:
                     _record_policy_restrictions(
                         builder,

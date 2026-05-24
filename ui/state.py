@@ -27,18 +27,30 @@ from typing import TYPE_CHECKING, Any
 
 from config.market_selection import (
     UNIVERSE_MODE_CANONICAL,
+    UNIVERSE_MODE_EXPLORATORY,
     UNIVERSE_MODE_OPTIONS,
     normalize_universe_mode,
 )
 
 BUILDER_PRELOAD_MODEL_DEFAULT = True
-BUILDER_KEEP_ALIVE_MINUTES_DEFAULT = 20
-BUILDER_UNLOAD_AFTER_RUN_DEFAULT = True
+# 1440 minutes = 24h: garde le modele resident pendant une journee de travail
+# sans avoir a passer par un keep_alive "-1" qui demanderait un patch d'Ollama.
+BUILDER_KEEP_ALIVE_MINUTES_DEFAULT = 1440
+BUILDER_UNLOAD_AFTER_RUN_DEFAULT = False
 BUILDER_AUTO_START_OLLAMA_DEFAULT = True
+BUILDER_MODEL_SINGLE_LLM_DEFAULT = "gemma4:26b"
+BUILDER_MAX_ITERATIONS_DEFAULT = 5
+BUILDER_TARGET_SHARPE_DEFAULT = 1.0
+BUILDER_CAPITAL_DEFAULT = 10000.0
+BUILDER_AUTO_MARKET_PICK_DEFAULT = True
+BUILDER_AUTONOMOUS_DEFAULT = True
+BUILDER_AUTO_PAUSE_DEFAULT = 2
+BUILDER_FLOW_ANALYSIS_ENABLED_DEFAULT = False
 BUILDER_EXECUTION_MODE_MONO = "mono_single_llm"
 BUILDER_EXECUTION_MODE_OPTIONS = (BUILDER_EXECUTION_MODE_MONO,)
 BUILDER_OPTIMIZATION_MODE = "🏗️ Strategy Builder"
 BUILDER_UNIVERSE_MODE_CANONICAL = UNIVERSE_MODE_CANONICAL
+BUILDER_UNIVERSE_MODE_DEFAULT = UNIVERSE_MODE_EXPLORATORY
 BUILDER_UNIVERSE_MODE_OPTIONS = UNIVERSE_MODE_OPTIONS
 _BUILDER_LAUNCH_STATE_KEYS = (
     "_builder_auto_bootstrap_symbol",
@@ -316,39 +328,17 @@ def resolve_builder_execution_preferences(source: Any) -> dict[str, Any]:
 
 
 def resolve_builder_runtime_preferences(source: Any) -> dict[str, Any]:
-    """Normalise les préférences runtime Builder depuis session_state ou SidebarState."""
+    """Retourne le profil runtime Builder stable.
 
-    def _read(name: str, default: Any) -> Any:
-        if isinstance(source, dict):
-            widget_key_overrides = {
-                "builder_auto_start_ollama": "builder_auto_start_ollama_toggle",
-                "builder_preload_model": "builder_preload_model_toggle",
-                "builder_keep_alive_minutes": "builder_keep_alive_minutes_input",
-                "builder_unload_after_run": "builder_unload_after_run_toggle",
-            }
-            widget_key = widget_key_overrides.get(name)
-            if widget_key and widget_key in source:
-                return source.get(widget_key, default)
-            return source.get(name, default)
-        return getattr(source, name, default)
-
+    Les anciens réglages avancés Streamlit ont été retirés de l'interface: ils
+    ne doivent plus être réactivés par des clés de widgets persistées.
+    """
+    _ = source
     return {
-        "builder_auto_start_ollama": _coerce_bool(
-            _read("builder_auto_start_ollama", BUILDER_AUTO_START_OLLAMA_DEFAULT),
-            BUILDER_AUTO_START_OLLAMA_DEFAULT,
-        ),
-        "builder_preload_model": _coerce_bool(
-            _read("builder_preload_model", BUILDER_PRELOAD_MODEL_DEFAULT),
-            BUILDER_PRELOAD_MODEL_DEFAULT,
-        ),
-        "builder_keep_alive_minutes": _coerce_non_negative_int(
-            _read("builder_keep_alive_minutes", BUILDER_KEEP_ALIVE_MINUTES_DEFAULT),
-            BUILDER_KEEP_ALIVE_MINUTES_DEFAULT,
-        ),
-        "builder_unload_after_run": _coerce_bool(
-            _read("builder_unload_after_run", BUILDER_UNLOAD_AFTER_RUN_DEFAULT),
-            BUILDER_UNLOAD_AFTER_RUN_DEFAULT,
-        ),
+        "builder_auto_start_ollama": False,
+        "builder_preload_model": False,
+        "builder_keep_alive_minutes": BUILDER_KEEP_ALIVE_MINUTES_DEFAULT,
+        "builder_unload_after_run": False,
     }
 
 
@@ -387,7 +377,10 @@ def resolve_builder_flow_analysis_preferences(source: Any) -> dict[str, Any]:
             return source.get(name, default)
         return getattr(source, name, default)
 
-    enabled = _coerce_bool(_read("builder_flow_analysis_enabled", False), False)
+    enabled = _coerce_bool(
+        _read("builder_flow_analysis_enabled", BUILDER_FLOW_ANALYSIS_ENABLED_DEFAULT),
+        BUILDER_FLOW_ANALYSIS_ENABLED_DEFAULT,
+    )
     ablation = _normalize_builder_flow_analysis_ablation(
         _read("builder_flow_analysis_ablation", {}),
     )

@@ -2125,6 +2125,48 @@ class TestCodeRepair:
 
         assert "atr_period = params.get('atr_period', 14)" in repaired
 
+    def test_repair_rewrites_hardcoded_atr_risk_multipliers_to_params(self):
+        raw = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["atr"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{"leverage": 1, "stop_atr_mult": 2.2, "tp_atr_mult": 3.8, "warmup": 50}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index)
+                    atr_val = indicators['atr']
+                    close = np.nan_to_num(df['close'].values.astype(np.float64))
+                    long_mask = close > np.roll(close, 1)
+                    short_mask = close < np.roll(close, 1)
+                    signals[long_mask] = 1.0
+                    signals[short_mask] = -1.0
+                    df['bb_stop_long'] = df['close'] - (atr_val * 2)
+                    df['bb_tp_long'] = df['close'] + (atr_val * 4)
+                    df['bb_stop_short'] = df['close'] + (2 * atr_val)
+                    df['bb_tp_short'] = df['close'] - (4 * atr_val)
+                    return signals
+        """)
+
+        repaired = _repair_code(raw, ["atr"])
+
+        assert "stop_atr_mult = params.get('stop_atr_mult', 1.5)" in repaired
+        assert "tp_atr_mult = params.get('tp_atr_mult', 3.0)" in repaired
+        assert "atr_val * 2" not in repaired
+        assert "atr_val * 4" not in repaired
+        assert "2 * atr_val" not in repaired
+        assert "4 * atr_val" not in repaired
+        assert "stop_atr_mult * atr_val" in repaired
+        assert "tp_atr_mult * atr_val" in repaired
+
     def test_repair_salvages_complex_ast_noise_and_unmatched_parenthesis(self):
         raw = textwrap.dedent(f"""\
             Here is the corrected code:
@@ -3651,3 +3693,69 @@ class TestRefactorCheckpoints:
         # 1 fallback (quota max 1) + 1 LLM = 2 positifs
         assert count == 2
         assert MAX_POSITIVE_FALLBACK_COUNT == 1
+
+    def test_completion_status_uses_best_run_when_checkpoint_fallback_is_failed(self, tmp_path):
+        """Un arrêt checkpoint doit encore promouvoir un meilleur run validable."""
+        from agents.builder_diagnostics import resolve_builder_completion_status
+
+        session = BuilderSession(
+            session_id="checkpoint_best_success",
+            objective="test",
+            session_dir=tmp_path / "checkpoint_best_success",
+            target_sharpe=1.0,
+        )
+        best = BuilderIteration(
+            iteration=1,
+            backtest_result=SimpleNamespace(
+                metrics={
+                    "sharpe_ratio": 1.12,
+                    "total_return_pct": 18.0,
+                    "max_drawdown_pct": -14.0,
+                    "total_trades": 24,
+                    "profit_factor": 1.24,
+                },
+            ),
+        )
+        session.iterations = [best]
+        session.best_iteration = best
+
+        status, reason = resolve_builder_completion_status(
+            session,
+            fallback_status="failed",
+        )
+
+        assert status == "success"
+        assert reason == "best_iteration_accept_candidate"
+
+    def test_completion_status_rejects_promising_best_run_with_too_few_trades(self, tmp_path):
+        """Un meilleur run rentable mais trop rare reste non validé."""
+        from agents.builder_diagnostics import resolve_builder_completion_status
+
+        session = BuilderSession(
+            session_id="checkpoint_best_too_sparse",
+            objective="test",
+            session_dir=tmp_path / "checkpoint_best_too_sparse",
+            target_sharpe=1.0,
+        )
+        best = BuilderIteration(
+            iteration=2,
+            backtest_result=SimpleNamespace(
+                metrics={
+                    "sharpe_ratio": 0.98,
+                    "total_return_pct": 43.36,
+                    "max_drawdown_pct": -13.87,
+                    "total_trades": 2,
+                    "profit_factor": 19.77,
+                },
+            ),
+        )
+        session.iterations = [best]
+        session.best_iteration = best
+
+        status, reason = resolve_builder_completion_status(
+            session,
+            fallback_status="failed",
+        )
+
+        assert status == "failed"
+        assert reason == "insufficient_trades"

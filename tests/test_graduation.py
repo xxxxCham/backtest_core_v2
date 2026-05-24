@@ -17,8 +17,10 @@ from catalog.graduation import (
     _default_positive_artifact_roots,
     _extract_numeric_params,
     _generate_neighborhood,
+    build_graduation_threshold_sensitivity,
     import_positive_artifacts_to_catalog,
     promote_to_strategies,
+    refresh_report_threshold_sensitivity,
     run_full_graduation,
     run_multi_context_validation,
     run_parameter_sensitivity,
@@ -27,6 +29,7 @@ from catalog.graduation import (
     save_graduation_report,
     scan_positive_import_candidates,
     scan_sandbox,
+    scan_unified_run_inventory,
     sync_graduation_to_catalog,
 )
 from catalog.strategy_catalog import read_catalog, upsert_entry, upsert_from_builder_session
@@ -56,6 +59,23 @@ def _write_session(
     }
     (session_dir / "session_summary.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _write_loadable_strategy(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "\n".join(
+            [
+                "class GeneratedStrategy:",
+                "    name = 'generated_strategy'",
+                "    default_params = {}",
+                "    def generate_signals(self, df, params=None):",
+                "        return []",
+                "",
+            ],
+        ),
         encoding="utf-8",
     )
 
@@ -122,6 +142,7 @@ def test_pipeline_runtime_report_uses_draft_until_final(tmp_path: Path) -> None:
     assert progress_payload["report_path"].endswith("graduation_full.running.json")
     assert progress_payload["stable_report_path"].endswith("graduation_full.json")
     assert progress_payload["draft_report_path"].endswith("graduation_full.running.json")
+    assert progress_payload["by_phase"]["P2"] == 1
 
     final_report = graduation_module._ctx_save_report(ctx, final=True)
 
@@ -267,6 +288,166 @@ def test_scan_sandbox_keeps_all_positive_iterations_from_same_session(tmp_path: 
     assert [candidate.strategy_params for candidate in candidates] == [{"fast_period": 12}, {"fast_period": 15}]
     assert all(candidate.best_return_pct > 0 for candidate in candidates)
     assert candidates[0].candidate_id == "builder:multi_positive:2"
+
+
+def test_scan_unified_run_inventory_keeps_raw_builder_iterations(tmp_path: Path, monkeypatch) -> None:
+    sandbox = tmp_path / "sandbox"
+    _write_session(
+        sandbox,
+        "raw_inventory",
+        status="failed",
+        iterations=[
+            {"iteration": 1, "return_pct": 4.0, "trades": 3, "profit_factor": 1.2},
+            {"iteration": 2, "return_pct": -8.0, "trades": 6, "profit_factor": 0.7},
+            {"iteration": 3, "return_pct": 12.0, "trades": 1, "error": "RuntimeError: boom"},
+        ],
+    )
+    monkeypatch.setattr("catalog.graduation.scan_saved_run_inventory", lambda _config: [])
+    monkeypatch.setattr("catalog.graduation.scan_positive_import_candidates", lambda _config: [])
+
+    candidates = scan_unified_run_inventory(
+        GraduationConfig(sandbox_dir=sandbox, include_positive_imports_in_full=False),
+    )
+
+    assert [candidate.best_iteration for candidate in candidates] == [1, 2, 3]
+    assert [candidate.best_return_pct for candidate in candidates] == [4.0, -8.0, 12.0]
+    assert candidates[2].iteration_error == "RuntimeError: boom"
+
+
+def test_scan_saved_run_inventory_keeps_invalid_artifacts_in_p1(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    run_dir = source_root / "backtest_results" / "run_failed"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run_failed",
+                "status": "failed",
+                "strategy": "ema_cross",
+                "symbol": "BTCUSDC",
+                "timeframe": "1h",
+                "metrics": {"total_return_pct": 6.0, "total_trades": 12},
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    candidates = graduation_module.scan_saved_run_inventory(
+        GraduationConfig(output_dir=tmp_path / "reports"),
+        source_roots=[source_root],
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].source_status == "failed"
+    assert candidates[0].best_return_pct == 6.0
+    assert candidates[0].phase == "P1"
+
+
+def test_p2_keeps_only_positive_valid_replayable_runs(tmp_path: Path, monkeypatch) -> None:
+    session_dir = tmp_path / "sandbox" / "sess"
+    _write_loadable_strategy(session_dir / "strategy_v1.py")
+    _write_loadable_strategy(session_dir / "strategy_v2.py")
+    _write_loadable_strategy(session_dir / "strategy_v3.py")
+    _write_loadable_strategy(session_dir / "strategy_v4.py")
+
+    candidates = [
+        GraduationCandidate(
+            session_id="failed_session_positive_clean",
+            session_dir=session_dir,
+            origin_status="failed",
+            best_iteration=1,
+            best_return_pct=3.0,
+            best_trades=2,
+            strategy_file=str(session_dir / "strategy_v1.py"),
+        ),
+        GraduationCandidate(
+            session_id="negative",
+            session_dir=session_dir,
+            best_iteration=2,
+            best_return_pct=-1.0,
+            best_trades=4,
+            strategy_file=str(session_dir / "strategy_v2.py"),
+        ),
+        GraduationCandidate(
+            session_id="positive_error",
+            session_dir=session_dir,
+            best_iteration=3,
+            best_return_pct=8.0,
+            best_trades=5,
+            iteration_error="NameError: broken",
+            strategy_file=str(session_dir / "strategy_v3.py"),
+        ),
+        GraduationCandidate(
+            session_id="fallback_positive",
+            session_dir=session_dir,
+            best_iteration=4,
+            best_return_pct=2.5,
+            best_trades=1,
+            is_fallback=True,
+            strategy_file=str(session_dir / "strategy_v4.py"),
+        ),
+        GraduationCandidate(
+            session_id="invalid_artifact",
+            session_dir=session_dir,
+            best_iteration=1,
+            best_return_pct=9.0,
+            best_trades=10,
+            source_status="failed",
+            strategy_file=str(session_dir / "strategy_v1.py"),
+        ),
+    ]
+
+    survivors = graduation_module.run_positive_observed_filter(candidates, source_mode="mixed")
+
+    assert [candidate.session_id for candidate in survivors] == [
+        "failed_session_positive_clean",
+        "fallback_positive",
+    ]
+    rejected = {candidate.session_id: candidate.rejection_reason for candidate in candidates if candidate not in survivors}
+    assert "non_positive_return" in rejected["negative"]
+    assert "iteration_error" in rejected["positive_error"]
+    assert "invalid_run_status" in rejected["invalid_artifact"]
+
+
+def test_p2_rejects_runtime_errors_missing_metrics_and_unreplayable(tmp_path: Path) -> None:
+    session_dir = tmp_path / "sandbox" / "sess"
+    _write_loadable_strategy(session_dir / "strategy_v1.py")
+    candidates = [
+        GraduationCandidate(
+            session_id="runtime",
+            session_dir=session_dir,
+            best_iteration=1,
+            best_return_pct=5.0,
+            best_trades=2,
+            runtime_error="ValueError: boom",
+            strategy_file=str(session_dir / "strategy_v1.py"),
+        ),
+        GraduationCandidate(
+            session_id="missing",
+            session_dir=session_dir,
+            best_iteration=1,
+            best_return_pct=5.0,
+            best_trades=0,
+            metrics_missing=["trades"],
+            strategy_file=str(session_dir / "strategy_v1.py"),
+        ),
+        GraduationCandidate(
+            session_id="unreplayable",
+            session_dir=session_dir,
+            best_iteration=1,
+            best_return_pct=5.0,
+            best_trades=2,
+            strategy_file=str(session_dir / "missing.py"),
+        ),
+    ]
+
+    survivors = graduation_module.run_positive_observed_filter(candidates, source_mode="mixed")
+
+    assert survivors == []
+    reasons = {candidate.session_id: candidate.rejection_reason for candidate in candidates}
+    assert "runtime_error" in reasons["runtime"]
+    assert "missing_metrics" in reasons["missing"]
+    assert "not_replayable" in reasons["unreplayable"]
 
 
 def test_extract_numeric_params_reads_specs_and_defaults() -> None:
@@ -648,6 +829,124 @@ def test_save_graduation_report_persists_cli_contract_meta(tmp_path: Path) -> No
     assert payload["meta"]["config_snapshot"]["source_market_first"] is True
 
 
+def test_build_graduation_threshold_sensitivity_shows_p5_margin_effects(tmp_path: Path) -> None:
+    strict_pass = GraduationCandidate(
+        session_id="strict",
+        session_dir=tmp_path,
+        phase="P5",
+        p5_verdict="PASSED",
+        wfa_avg_test_return_pct=4.0,
+        wfa_avg_test_sharpe=0.8,
+        wfa_positive_folds_pct=100.0,
+        wfa_robust_overfitting_score=8.0,
+        wfa_valid_folds=5,
+    )
+    folds_margin = GraduationCandidate(
+        session_id="folds_margin",
+        session_dir=tmp_path,
+        phase="P5",
+        p5_verdict="REJECTED",
+        wfa_avg_test_return_pct=3.0,
+        wfa_avg_test_sharpe=0.7,
+        wfa_positive_folds_pct=75.0,
+        wfa_robust_overfitting_score=20.0,
+        wfa_valid_folds=5,
+        rejection_reason="WFA positive_folds_pct=75.0<80.0",
+    )
+    score_margin = GraduationCandidate(
+        session_id="score_margin",
+        session_dir=tmp_path,
+        phase="P5",
+        p5_verdict="REJECTED",
+        wfa_avg_test_return_pct=2.0,
+        wfa_avg_test_sharpe=0.6,
+        wfa_positive_folds_pct=80.0,
+        wfa_robust_overfitting_score=34.0,
+        wfa_valid_folds=5,
+        rejection_reason="WFA robust_overfitting_score=34.00>30.0",
+    )
+
+    sensitivity = build_graduation_threshold_sensitivity(
+        [strict_pass, folds_margin, score_margin],
+        {
+            "wfa_min_test_sharpe": 0.3,
+            "wfa_hard_min_positive_folds_pct": 60.0,
+            "wfa_min_positive_folds_pct": 80.0,
+            "wfa_strict_max_robust_score": 10.0,
+            "wfa_watchlist_max_robust_score": 30.0,
+        },
+    )
+
+    p5 = sensitivity["p5"]
+    assert p5["available"] is True
+    assert p5["observed_pass_count"] == 1
+    assert p5["model_pass_count_at_current_thresholds"] == 1
+    sweep_75 = next(row for row in p5["positive_folds_sweep"] if row["min_positive_folds_pct"] == 75.0)
+    assert sweep_75["pass_count"] == 2
+    score_40 = next(row for row in p5["robust_score_sweep"] if row["watchlist_max_robust_score"] == 40.0)
+    assert score_40["pass_count"] == 2
+    assert p5["blocker_counts"]["only_positive_folds_margin"] == 1
+    assert p5["blocker_counts"]["only_robust_score_margin"] == 1
+    assert {row["candidate_id"] for row in p5["closest_misses"]} >= {"folds_margin", "score_margin"}
+
+
+def test_save_graduation_report_includes_threshold_sensitivity(tmp_path: Path) -> None:
+    candidate = GraduationCandidate(
+        session_id="near",
+        session_dir=tmp_path,
+        phase="P5",
+        p5_verdict="REJECTED",
+        wfa_avg_test_return_pct=5.0,
+        wfa_avg_test_sharpe=0.9,
+        wfa_positive_folds_pct=75.0,
+        wfa_robust_overfitting_score=18.0,
+        wfa_valid_folds=5,
+    )
+
+    report_path = save_graduation_report(
+        [candidate],
+        tmp_path,
+        phase="FULL",
+        filename="graduation_full.json",
+        meta={"config_snapshot": {"wfa_min_positive_folds_pct": 80.0}},
+    )
+
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert payload["threshold_sensitivity"]["p5"]["candidate_count"] == 1
+    assert payload["threshold_sensitivity"]["p5"]["positive_folds_sweep"]
+
+
+def test_refresh_report_threshold_sensitivity_updates_existing_report(tmp_path: Path) -> None:
+    report_path = tmp_path / "graduation_full.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "meta": {"config_snapshot": {"wfa_min_positive_folds_pct": 80.0}},
+                "candidates": [
+                    {
+                        "session_id": "near",
+                        "phase": "P5",
+                        "p5_verdict": "REJECTED",
+                        "wfa_avg_test_return_pct": 4.0,
+                        "wfa_avg_test_sharpe": 0.7,
+                        "wfa_positive_folds_pct": 75.0,
+                        "wfa_robust_overfitting_score": 18.0,
+                        "wfa_valid_folds": 5,
+                    },
+                ],
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    sensitivity = refresh_report_threshold_sensitivity(report_path)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert sensitivity["p5"]["candidate_count"] == 1
+    assert payload["threshold_sensitivity"]["p5"]["candidate_count"] == 1
+
+
 def test_candidate_to_dict_exposes_context_lists_counts_and_benchmark_summaries(tmp_path: Path) -> None:
     candidate = GraduationCandidate(
         session_id="candidate",
@@ -775,16 +1074,16 @@ def test_sync_graduation_to_catalog_maps_progression_levels(
     synced = sync_graduation_to_catalog(candidates, config)
     catalog = read_catalog(config.catalog_path)
 
-    assert len(synced) == 3
-    assert len(catalog["entries"]) == 3
+    assert len(synced) == 2
+    assert len(catalog["entries"]) == 2
     assert [candidate.catalog_category for candidate in candidates] == [
-        "p1_builder_inbox",
+        None,
         "p4_param_robust",
         "p6_paper_candidate",
     ]
-    assert all(candidate.catalog_entry_id for candidate in candidates)
+    assert candidates[0].catalog_entry_id is None
+    assert all(candidate.catalog_entry_id for candidate in candidates[1:])
     by_session = {entry["meta"]["session_id"]: entry for entry in synced}
-    assert by_session["cand_p1"]["builder_state"] == "stopped"
     assert by_session["cand_p3"]["builder_state"] == "completed"
     assert by_session["cand_p5"]["builder_state"] == "completed"
 
@@ -1277,10 +1576,11 @@ def test_sync_graduation_to_catalog_batches_catalog_updates(tmp_path: Path, monk
 
     synced = sync_graduation_to_catalog(candidates, config)
 
-    assert len(synced) == 2
+    assert len(synced) == 1
     assert captured["list_calls"] == 1
-    assert captured["batch_sizes"] == [2]
-    assert [candidate.catalog_entry_id for candidate in candidates] == [entry["id"] for entry in synced]
+    assert captured["batch_sizes"] == [1]
+    assert candidates[0].catalog_entry_id is None
+    assert candidates[1].catalog_entry_id == synced[0]["id"]
 
 
 def test_scan_positive_import_candidates_reads_catalog_entry_and_builder_file(tmp_path: Path) -> None:
@@ -1560,9 +1860,15 @@ def test_run_full_graduation_writes_progress_state(tmp_path: Path, monkeypatch) 
     )
 
     def _fake_scan(_config):
-        return [candidate]
+        return [candidate], {
+            "p1_sandbox_candidates": 1,
+            "p1_builder_iteration_candidates": 1,
+            "p1_saved_run_candidates": 0,
+            "p1_positive_import_candidates": 0,
+            "p1_duplicates_removed": 0,
+        }
 
-    monkeypatch.setattr("catalog.graduation.scan_sandbox", _fake_scan)
+    monkeypatch.setattr("catalog.graduation._scan_unified_run_inventory_parts", _fake_scan)
 
     def _fake_positive_observed(candidates, source_mode, config=None):
         current = candidates[0]
@@ -1719,3 +2025,107 @@ def test_run_full_graduation_writes_progress_state(tmp_path: Path, monkeypatch) 
     assert progress_payload["current_phase"] == "P6"
     assert progress_payload["stats"]["p6_promoted"] == 1
     assert progress_payload["stats"]["catalog_synced"] == 1
+
+
+def test_run_full_graduation_uses_unified_inventory(tmp_path: Path, monkeypatch) -> None:
+    sandbox_candidate = GraduationCandidate(
+        session_id="sandbox-1",
+        session_dir=tmp_path / "sandbox" / "sandbox-1",
+        strategy_name="ema_cross",
+        best_iteration=1,
+        best_return_pct=12.0,
+    )
+    positive_candidate = GraduationCandidate(
+        session_id="positive-1",
+        session_dir=tmp_path / "sandbox" / "positive-1",
+        strategy_name="rsi_reversal",
+        source_mode="positive_import",
+        source_kind="saved_run",
+        best_iteration=2,
+        best_return_pct=9.0,
+    )
+    seen: dict[str, list[GraduationCandidate] | list[str]] = {}
+
+    monkeypatch.setattr(
+        "catalog.graduation._scan_unified_run_inventory_parts",
+        lambda _config: (
+            [sandbox_candidate, positive_candidate],
+            {
+                "p1_sandbox_candidates": 1,
+                "p1_builder_iteration_candidates": 1,
+                "p1_saved_run_candidates": 0,
+                "p1_positive_import_candidates": 1,
+                "p1_duplicates_removed": 0,
+            },
+        ),
+    )
+
+    def _fake_positive_observed(candidates, source_mode, config=None):
+        seen["candidates"] = list(candidates)
+        seen["source_modes"] = [candidate.source_mode for candidate in candidates]
+        assert source_mode == "mixed"
+        return []
+
+    monkeypatch.setattr("catalog.graduation.run_positive_observed_filter", _fake_positive_observed)
+    monkeypatch.setattr("catalog.graduation.sync_graduation_to_catalog", lambda candidates, config=None: [])
+
+    config = GraduationConfig(
+        output_dir=tmp_path / "reports",
+        sandbox_dir=tmp_path / "sandbox",
+        sync_catalog=True,
+    )
+
+    result = run_full_graduation(config)
+
+    assert result["stats"]["p1_candidates"] == 2
+    assert result["stats"]["p1_sandbox_candidates"] == 1
+    assert result["stats"]["p1_positive_import_candidates"] == 1
+    assert [candidate.session_id for candidate in seen["candidates"]] == ["sandbox-1", "positive-1"]
+    assert seen["source_modes"] == ["sandbox", "positive_import"]
+
+
+def test_run_full_graduation_uses_safe_engine_mode_for_p3_to_p5(tmp_path: Path, monkeypatch) -> None:
+    candidate = GraduationCandidate(
+        session_id="sandbox-safe",
+        session_dir=tmp_path / "sandbox" / "sandbox-safe",
+        strategy_name="ema_cross",
+        best_return_pct=12.0,
+    )
+
+    monkeypatch.setattr(
+        "catalog.graduation._scan_unified_run_inventory_parts",
+        lambda _config: (
+            [candidate],
+            {
+                "p1_sandbox_candidates": 1,
+                "p1_builder_iteration_candidates": 1,
+                "p1_saved_run_candidates": 0,
+                "p1_positive_import_candidates": 0,
+                "p1_duplicates_removed": 0,
+            },
+        ),
+    )
+    monkeypatch.setattr("catalog.graduation.run_positive_observed_filter", lambda candidates, source_mode, config=None: candidates)
+
+    import backtest.engine as backtest_engine_module
+
+    monkeypatch.setattr(backtest_engine_module, "USE_FAST_SIMULATOR", True, raising=False)
+    observed: dict[str, bool] = {}
+
+    def _fake_p3_to_p5(survivors, ctx, progress_callback):
+        observed["safe_mode"] = backtest_engine_module.USE_FAST_SIMULATOR is False
+        ctx.stats["p3_survivors"] = len(survivors)
+        ctx.stats["p4_survivors"] = len(survivors)
+        ctx.stats["p5_survivors"] = len(survivors)
+        return survivors
+
+    monkeypatch.setattr("catalog.graduation._run_p3_to_p5", _fake_p3_to_p5)
+    monkeypatch.setattr("catalog.graduation.promote_to_strategies", lambda candidates, _output_dir: [])
+    monkeypatch.setattr("catalog.graduation.sync_graduation_to_catalog", lambda candidates, config=None: [])
+
+    config = GraduationConfig(output_dir=tmp_path / "reports", sandbox_dir=tmp_path / "sandbox")
+
+    run_full_graduation(config)
+
+    assert observed["safe_mode"] is True
+    assert backtest_engine_module.USE_FAST_SIMULATOR is True

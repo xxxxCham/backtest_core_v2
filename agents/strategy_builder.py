@@ -3236,7 +3236,9 @@ class StrategyBuilder:
             "- ema/rsi/atr are plain arrays. For multiple EMA/ATR periods, use named keys supplied by the host "
             "such as indicators['ema_21'] and indicators['ema_50']; NEVER use indicators['ema']['ema_21'] style.\n\n"
             "- ALWAYS include leverage=1 in default_params\n"
-            "- If using ATR-based SL/TP: write df['bb_stop_long/bb_tp_long/bb_stop_short/bb_tp_short'] on entry bars\n\n"
+            "- If using ATR-based SL/TP: write df['bb_stop_long/bb_tp_long/bb_stop_short/bb_tp_short'] on entry bars\n"
+            "- Never hard-code ATR risk multipliers like 2*atr or 4*atr; use params.get('stop_atr_mult', 1.5) "
+            "and params.get('tp_atr_mult', 3.0)\n\n"
             "- write only statements compatible with this pre-existing context:\n"
             "  signals = pd.Series(0.0, index=df.index, dtype=np.float64)\n"
             "- assign signals[...] only with 1.0, -1.0 or 0.0\n"
@@ -3682,6 +3684,7 @@ CRITICAL RULES:
     - df.loc[:, "bb_tp_long"]   = entry_price + tp_atr_mult * atr    (NaN where no entry)
     - df.loc[:, "bb_stop_short"] / df.loc[:, "bb_tp_short"] for short positions.
     The simulator reads these columns automatically. Only write values on entry signal bars (NaN elsewhere).
+    Never hard-code ATR multipliers such as 2*atr, atr*3, or 4*atr when stop_atr_mult/tp_atr_mult exist.
 36. If proposal logic contains cross_up(x, y), cross_down(x, y), or cross_any(x, y),
     implement them with vectorized numpy masks only (no shift/iloc/loops):
     prev_x = np.roll(x, 1); prev_y = np.roll(y, 1)

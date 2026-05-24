@@ -19,6 +19,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 import tools.autonomous_builder_supervisor as supervisor
+from tools import keep_awake
 
 APP_TITLE = "Backtest Core - Superviseur Builder"
 BG = "#08111f"
@@ -32,6 +33,19 @@ RED = "#ef4444"
 AMBER = "#f59e0b"
 BLUE = "#60a5fa"
 PANEL_LOCK_PORT = 38504
+KEEP_AWAKE_INTERVAL_SECONDS = 600
+
+
+def start_panel_keep_awake() -> dict[str, Any]:
+    return keep_awake.start_background(interval_seconds=KEEP_AWAKE_INTERVAL_SECONDS)
+
+
+def stop_panel_keep_awake() -> dict[str, Any]:
+    return keep_awake.stop_background()
+
+
+def get_panel_keep_awake_status() -> dict[str, Any]:
+    return keep_awake.get_keep_awake_status()
 
 
 def _now() -> datetime:
@@ -92,22 +106,34 @@ class SupervisorPanel:
         self.root = root
         self.config = supervisor.load_config()
         self.disable_file = self._resolve_disable_file()
+        # H24 overrides obligatoires – le config de base peut avoir des valeurs conservatrices
+        self.config["disable_file"] = str(self.disable_file)
+        self.config["runtime_disabled"] = False
+        self.config["auto_arm_when_inactive"] = True
+        self.config["launch_streamlit_if_down"] = True
+        self.config["start_ollama_if_down"] = True
+        self.config["restart_stale_streamlit"] = True
         self.interval_sec = max(60, int(float(self.config.get("check_interval_minutes") or 30) * 60))
         self.queue: queue.Queue[tuple[str, Any]] = queue.Queue()
         self.worker_running = False
         self.enabled = not self.disable_file.exists()
         self.next_check_at: float | None = time.time() + self.interval_sec if self.enabled else None
         self.status: dict[str, Any] = {}
+        self.keep_awake_status: dict[str, Any] = {}
         self.smoke_test = smoke_test
 
         self.root.title(APP_TITLE)
-        self.root.geometry("980x700")
-        self.root.minsize(900, 620)
+        self.root.geometry("1120x740")
+        self.root.minsize(1020, 660)
         self.root.configure(bg=BG)
 
         self._build_styles()
         self._build_ui()
         self._set_message("Interface prete. Play active la supervision sans arreter ni forcer un run existant.")
+        if smoke_test:
+            self._refresh_keep_awake_status()
+        else:
+            self._start_keep_awake_on_launch()
         self._refresh_status_async()
         self.root.after(250, self._poll_worker_queue)
         self.root.after(1000, self._tick)
@@ -165,6 +191,20 @@ class SupervisorPanel:
         self.check_button.pack(side=LEFT, padx=(0, 10))
         self.recover_button = ttk.Button(actions, text="Relance si panne", style="Ghost.TButton", command=self.recover_if_needed)
         self.recover_button.pack(side=LEFT, padx=(0, 10))
+        self.awake_start_button = ttk.Button(
+            actions,
+            text="Anti-veille ON",
+            style="Ghost.TButton",
+            command=self.start_keep_awake,
+        )
+        self.awake_start_button.pack(side=LEFT, padx=(0, 10))
+        self.awake_stop_button = ttk.Button(
+            actions,
+            text="Anti-veille OFF",
+            style="Ghost.TButton",
+            command=self.stop_keep_awake,
+        )
+        self.awake_stop_button.pack(side=LEFT, padx=(0, 10))
         ttk.Button(actions, text="Ouvrir UI", style="Ghost.TButton", command=self.open_streamlit).pack(side=RIGHT)
 
         self.message = ttk.Label(root_frame, text="", style="Subtitle.TLabel")
@@ -173,7 +213,7 @@ class SupervisorPanel:
         cards = ttk.Frame(root_frame, style="Root.TFrame")
         cards.pack(fill=X)
         self.card_vars: dict[str, tuple[ttk.Label, ttk.Label]] = {}
-        for idx, key in enumerate(("supervision", "streamlit", "ollama", "builder")):
+        for idx, key in enumerate(("supervision", "streamlit", "ollama", "builder", "veille")):
             card = ttk.Frame(cards, style="Card.TFrame", padding=14)
             card.grid(row=0, column=idx, sticky="nsew", padx=(0 if idx == 0 else 10, 0))
             cards.columnconfigure(idx, weight=1)
@@ -243,9 +283,33 @@ class SupervisorPanel:
         except Exception:
             pass
 
+    def _refresh_keep_awake_status(self) -> None:
+        try:
+            self.keep_awake_status = get_panel_keep_awake_status()
+        except Exception as exc:
+            self.keep_awake_status = {"running": False, "pid": 0, "error": str(exc)}
+
+    def _start_keep_awake_on_launch(self) -> None:
+        try:
+            self.keep_awake_status = start_panel_keep_awake()
+            if self.keep_awake_status.get("running"):
+                self._set_message("Anti-veille actif: le panel garde le poste reveille.")
+            else:
+                self._set_message("Anti-veille demande, statut non confirme.")
+        except Exception as exc:
+            self.keep_awake_status = {"running": False, "pid": 0, "error": str(exc)}
+            self._set_message(f"Anti-veille non demarre: {exc}")
+
     def _set_buttons_state(self) -> None:
         state = DISABLED if self.worker_running else NORMAL
-        for button in (self.play_button, self.stop_button, self.check_button, self.recover_button):
+        for button in (
+            self.play_button,
+            self.stop_button,
+            self.check_button,
+            self.recover_button,
+            self.awake_start_button,
+            self.awake_stop_button,
+        ):
             button.configure(state=state)
 
     def _run_background(self, name: str, fn: Callable[[], Any]) -> None:
@@ -277,26 +341,36 @@ class SupervisorPanel:
                 elif name == "status":
                     self.status = dict(payload or {})
                     self._render_status()
+                elif name in {"keep_awake_start", "keep_awake_stop"}:
+                    self.keep_awake_status = dict(payload or {})
+                    if name == "keep_awake_start" and self.keep_awake_status.get("running"):
+                        self._set_message("Anti-veille actif.")
+                    elif name == "keep_awake_stop":
+                        self._set_message("Anti-veille arrete.")
+                    else:
+                        self._set_message("Anti-veille demande, statut non confirme.")
+                    self._render_status()
                 else:
                     self._set_message(str(payload or f"Operation {name} terminee."))
-                    self.status = supervisor.inspect_status(self.config)
-                    self._render_status()
-                    self.refresh_log()
+                    self._refresh_status_async()
         except queue.Empty:
             pass
         self.root.after(250, self._poll_worker_queue)
 
     def _render_status(self) -> None:
+        self._refresh_keep_awake_status()
         self.enabled = not self.disable_file.exists()
         streamlit_ok = bool(self.status.get("streamlit_healthy"))
         ollama_ok = bool(self.status.get("ollama_healthy"))
         runtime_ok = bool(self.status.get("runtime_active")) and not bool(self.status.get("runtime_manual_stop"))
+        awake_ok = bool(self.keep_awake_status.get("running"))
 
         card_values = {
             "supervision": ("ACTIVE" if self.enabled else "SUSPENDUE", GREEN if self.enabled else AMBER),
             "streamlit": ("OK" if streamlit_ok else "HORS LIGNE", GREEN if streamlit_ok else RED),
             "ollama": ("OK" if ollama_ok else "HORS LIGNE", GREEN if ollama_ok else RED),
             "builder": ("RUN ACTIF" if runtime_ok else "INACTIF", GREEN if runtime_ok else AMBER),
+            "veille": ("ACTIVE" if awake_ok else "INACTIVE", GREEN if awake_ok else AMBER),
         }
         for key, (text, color) in card_values.items():
             _label, value = self.card_vars[key]
@@ -379,6 +453,14 @@ class SupervisorPanel:
         self._set_message("Diagnostic immediat lance: lecture des statuts sans relance forcee.")
         self._refresh_status_async()
 
+    def start_keep_awake(self) -> None:
+        self._set_message("Activation anti-veille lancee.")
+        self._run_background("keep_awake_start", start_panel_keep_awake)
+
+    def stop_keep_awake(self) -> None:
+        self._set_message("Arret anti-veille lance.")
+        self._run_background("keep_awake_stop", stop_panel_keep_awake)
+
     def recover_if_needed(self) -> None:
         self._run_background("recover", self._recover_if_needed)
 
@@ -402,11 +484,11 @@ class SupervisorPanel:
     def refresh_log(self) -> None:
         path = supervisor.supervisor_log_path(self.config)
         content = _read_tail(path)
-        if not content:
-            content = "Aucun journal superviseur disponible pour l'instant."
-        self.log_text.delete("1.0", END)
-        self.log_text.insert(END, content + "\n")
-        self.log_text.see(END)
+        if content:
+            self.log_text.delete("1.0", END)
+            self.log_text.insert(END, content + "\n")
+            self.log_text.see(END)
+        # Sans contenu fichier : les messages locaux existants sont conservés
 
 
 def main(argv: list[str] | None = None) -> int:

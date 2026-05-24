@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 import time
+import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -107,6 +108,8 @@ def _save_runtime_state(path: Path, runtime: dict[str, Any]) -> None:
 
     if last_exc is not None:
         raise last_exc
+
+
 def _runtime_requests_restart(runtime: dict[str, Any]) -> bool:
     return bool(runtime.get("active")) and not bool(runtime.get("manual_stop"))
 
@@ -114,6 +117,13 @@ def _runtime_requests_restart(runtime: dict[str, Any]) -> bool:
 def _runtime_pid(runtime: dict[str, Any]) -> int:
     try:
         return int(runtime.get("pid", 0) or 0)
+    except Exception:
+        return 0
+
+
+def _runtime_owner_pid(runtime: dict[str, Any]) -> int:
+    try:
+        return int(runtime.get("owner_pid") or runtime.get("pid") or 0)
     except Exception:
         return 0
 
@@ -172,9 +182,18 @@ def maybe_clear_orphaned_runtime_claim(
     if heartbeat_age <= float(stale_runtime_claim_timeout_sec):
         return False, ""
 
+    claim_source = str(runtime.get("claim_source") or "").strip()
+    owner_pid = _runtime_owner_pid(runtime)
+    if owner_pid <= 0:
+        if claim_source == "external_supervisor":
+            return True, f"external_supervisor_stale_runtime(ownerless,age={heartbeat_age:.0f}s)"
+        if not str(runtime.get("run_id") or "").strip():
+            return True, f"legacy_ownerless_stale_runtime(age={heartbeat_age:.0f}s)"
+        return True, f"ownerless_stale_runtime(age={heartbeat_age:.0f}s)"
+
     runtime_pid = _runtime_pid(runtime)
     if runtime_pid <= 0:
-        return False, ""
+        runtime_pid = owner_pid
 
     if not str(runtime.get("run_id") or "").strip():
         return True, f"legacy_stale_runtime(pid={runtime_pid},age={heartbeat_age:.0f}s)"
@@ -465,6 +484,10 @@ def _launch_streamlit(root: Path, port: int) -> subprocess.Popen[Any]:
         str(port),
         "--server.maxUploadSize",
         "500",
+        "--server.headless",
+        "true",
+        "--browser.gatherUsageStats",
+        "false",
     ]
     env = dict(os.environ)
     env.setdefault("PYTHONUNBUFFERED", "1")
@@ -477,6 +500,44 @@ def _launch_streamlit(root: Path, port: int) -> subprocess.Popen[Any]:
         cwd=str(root),
         env=env,
     )
+
+
+def _open_streamlit_browser(port: int) -> bool:
+    url = f"http://localhost:{int(port)}"
+    try:
+        if os.name == "nt" and hasattr(os, "startfile"):
+            os.startfile(url)
+        else:
+            opened = webbrowser.open_new_tab(url)
+            if opened is False:
+                return False
+    except Exception as exc:
+        print(f"[watchdog] browser open skipped: {exc}", flush=True)
+        return False
+    print(f"[watchdog] browser opened: {url}", flush=True)
+    return True
+
+
+def _open_browser_once_when_streamlit_is_ready(
+    proc: subprocess.Popen[Any],
+    port: int,
+    *,
+    startup_timeout_sec: float = 30.0,
+    poll_interval_sec: float = 0.5,
+) -> bool:
+    deadline = time.monotonic() + max(float(startup_timeout_sec), 1.0)
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            return False
+        healthy, _reason = _http_probe_streamlit(port, timeout_sec=0.5)
+        if healthy:
+            return _open_streamlit_browser(port)
+        time.sleep(max(float(poll_interval_sec), 0.1))
+    print(
+        f"[watchdog] browser open skipped: startup timeout on http://localhost:{int(port)}",
+        flush=True,
+    )
+    return False
 
 
 def _launch_supervisor_loop(root: Path) -> bool:
@@ -561,6 +622,8 @@ def main(argv: list[str] | None = None) -> int:
             flush=True,
         )
 
+    browser_opened = False
+
     while True:
         runtime = _load_runtime_state(runtime_state_path)
         cleared, clear_reason = maybe_clear_orphaned_runtime_claim(
@@ -629,6 +692,8 @@ def main(argv: list[str] | None = None) -> int:
                 )
 
         proc = _launch_streamlit(root, effective_port)
+        if not browser_opened:
+            browser_opened = _open_browser_once_when_streamlit_is_ready(proc, effective_port)
         restart_reason = ""
 
         while True:

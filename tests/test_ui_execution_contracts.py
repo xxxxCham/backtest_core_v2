@@ -32,6 +32,7 @@ import ui.components.validation_viewer as validation_viewer_module
 import ui.emergency_stop as emergency_stop_module
 import ui.exec_tabs as exec_tabs_module
 import ui.helpers as helpers_module
+import ui.keeper_mode as keeper_mode_module
 import ui.main as main_module
 import ui.results_hub as results_hub_module
 import ui.results_store_view as results_store_view_module
@@ -221,7 +222,7 @@ def _sample_sidebar_state(**overrides) -> SidebarState:
         "llm_compare_max_runs": 0,
         "llm_compare_use_preset": False,
         "llm_compare_generate_report": False,
-        "llm_inference_mode": "global",
+        "llm_inference_mode": "per_model",
         "llm_inference_global_settings": {
             "temperature": 0.7,
             "max_tokens": 2000,
@@ -237,19 +238,19 @@ def _sample_sidebar_state(**overrides) -> SidebarState:
         "wfa_train_ratio": 0.7,
         "wfa_expanding": False,
         "builder_objective": "",
-        "builder_model_single_llm": "deepseek-r1:32b",
-        "builder_max_iterations": 10,
+        "builder_model_single_llm": "gemma4:26b",
+        "builder_max_iterations": 5,
         "builder_target_sharpe": 1.0,
         "builder_capital": 10_000.0,
         "builder_ollama_host": "http://127.0.0.1:11434",
         "builder_preload_model": True,
-        "builder_keep_alive_minutes": 20,
+        "builder_keep_alive_minutes": 1440,
         "builder_unload_after_run": False,
         "builder_auto_start_ollama": True,
         "builder_auto_market_pick": True,
-        "builder_universe_mode": "canonical",
-        "builder_autonomous": False,
-        "builder_auto_pause": 10,
+        "builder_universe_mode": "exploratory",
+        "builder_autonomous": True,
+        "builder_auto_pause": 2,
         "builder_auto_use_llm": True,
         "builder_execution_mode": BUILDER_EXECUTION_MODE_MONO,
         "builder_flow_analysis_enabled": False,
@@ -627,7 +628,7 @@ def test_results_hub_unified_table_merges_previous_table_sources():
         "Builder sessions",
         "Builder iterations",
         "Strategy catalog",
-        "Graduation sandbox",
+        "Graduation complète",
         "Graduation positifs",
     }
     unified_row = table_df[table_df["_row_origin"] == "unified_overview"].iloc[0]
@@ -780,6 +781,33 @@ def test_start_background_graduation_job_blocks_duplicate_active_progress(tmp_pa
     assert "déjà actif" in message.lower()
 
 
+def test_start_background_graduation_job_blocks_parallel_pipeline(tmp_path: Path, monkeypatch):
+    progress_dir = tmp_path / "catalog" / "graduation_results"
+    progress_dir.mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+    (progress_dir / results_hub_module.POSITIVE_IMPORTS_PROGRESS_FILENAME).write_text(
+        json.dumps(
+            {
+                "pipeline": "positive_imports",
+                "status": "running",
+                "pid": os.getpid(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    ok, message = results_hub_module._start_background_graduation_job(
+        args=["--full"],
+        log_filename=results_hub_module.FULL_GRADUATION_LOG_FILENAME,
+        progress_filename=results_hub_module.FULL_GRADUATION_PROGRESS_FILENAME,
+    )
+
+    assert ok is False
+    assert "positive_imports" in message
+    assert "déjà actif" in message.lower()
+
+
 class _GraduationControlColumn:
     def __init__(
         self,
@@ -812,6 +840,7 @@ def _stub_graduation_tab_shell(monkeypatch, *, pressed_key: str | None, checkbox
     monkeypatch.setattr(results_hub_module.st, "success", lambda *args, **kwargs: None)
     monkeypatch.setattr(results_hub_module.st, "write", lambda *args, **kwargs: None)
     monkeypatch.setattr(results_hub_module.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_hub_module.st, "button", lambda _label, key=None, **_kwargs: key == pressed_key)
     monkeypatch.setattr(results_hub_module.st, "rerun", lambda: None)
     monkeypatch.setattr(results_hub_module.st, "spinner", lambda *args, **kwargs: nullcontext())
     monkeypatch.setattr(results_hub_module.st, "status", lambda *args, **kwargs: nullcontext())
@@ -889,47 +918,27 @@ def test_render_graduation_controls_passes_sandbox_report_to_progress_section(mo
         positive_df=pd.DataFrame(),
     )
 
-    sandbox_call = next(call for call in progress_calls if call["title"] == "Progression sandbox P1→P6")
+    sandbox_call = next(call for call in progress_calls if call["title"] == "Progression unique P1→P6")
     assert sandbox_call["report_payload"] is sandbox_payload
     assert sandbox_call["report_df"] is sandbox_df
 
 
-def test_render_graduation_controls_and_progress_runs_scan_p1_with_canonical_save_args(monkeypatch):
-    import catalog.graduation as graduation_module
-
+def test_render_graduation_controls_and_progress_runs_p1_inventory_with_cli(monkeypatch):
     st.session_state.clear()
     st.session_state["graduation_status_error"] = True
     _stub_graduation_tab_shell(monkeypatch, pressed_key="graduation_run_p1")
 
-    scan_calls = []
-    sync_calls = []
-    saved_reports = []
+    background_calls = []
 
-    monkeypatch.setattr(results_hub_module.st, "success", lambda *args, **kwargs: None)
-    monkeypatch.setattr(results_hub_module, "_render_progress_section", lambda **kwargs: None)
+    def _fake_start_background_graduation_job(**kwargs):
+        background_calls.append(kwargs)
+        return True, "Inventaire P1 lancé"
 
-    def _fake_scan(config):
-        scan_calls.append(config)
-        return [{"candidate_id": "cand-1"}]
-
-    def _fake_sync(candidates, config):
-        sync_calls.append((candidates, config))
-        return [{"entry_id": "cat-1"}]
-
-    def _fake_save(candidates, output_dir, *, phase="P1_repechage", filename=None, stats=None):
-        saved_reports.append(
-            {
-                "candidates": candidates,
-                "output_dir": output_dir,
-                "phase": phase,
-                "filename": filename,
-                "stats": stats,
-            },
-        )
-
-    monkeypatch.setattr(graduation_module, "scan_sandbox", _fake_scan)
-    monkeypatch.setattr(graduation_module, "sync_graduation_to_catalog", _fake_sync)
-    monkeypatch.setattr(graduation_module, "save_graduation_report", _fake_save)
+    monkeypatch.setattr(
+        results_hub_module,
+        "_start_background_graduation_job",
+        _fake_start_background_graduation_job,
+    )
 
     results_hub_module._render_graduation_controls_and_progress(
         sandbox_payload={},
@@ -938,87 +947,32 @@ def test_render_graduation_controls_and_progress_runs_scan_p1_with_canonical_sav
         positive_df=pd.DataFrame(),
     )
 
-    assert len(scan_calls) == 1
-    assert scan_calls[0].sync_catalog is True
-    assert sync_calls == [([{"candidate_id": "cand-1"}], scan_calls[0])]
-    assert saved_reports == [
+    assert background_calls == [
         {
-            "candidates": [{"candidate_id": "cand-1"}],
-            "output_dir": scan_calls[0].output_dir,
-            "phase": "P1_repechage",
-            "filename": "graduation_p1.json",
-            "stats": {"catalog_synced": 1},
+            "args": ["--sync-catalog"],
+            "log_filename": results_hub_module.GRADUATION_P1_LOG_FILENAME,
         },
     ]
-    assert st.session_state["graduation_status_msg"] == "P1 terminé: 1 candidat(s), 1 sync catalogue"
+    assert st.session_state["graduation_status_msg"] == "Inventaire P1 lancé"
     assert st.session_state["graduation_status_error"] is False
 
 
-def test_render_graduation_controls_imports_positive_artifacts_with_selected_flags(monkeypatch):
-    import catalog.graduation as graduation_module
-
-    st.session_state.clear()
-    st.session_state["graduation_status_error"] = True
-    _stub_graduation_tab_shell(
-        monkeypatch,
-        pressed_key="graduation_import_positive_artifacts",
-        checkbox_values={
-            "graduation_sync_catalog": False,
-            "graduation_include_legacy_roots": True,
-        },
-    )
-
-    import_calls = []
-
-    def _fake_import(config):
-        import_calls.append(config)
-        return {
-            "stats": {
-                "catalog_entries_touched": 7,
-                "catalog_new_entries": 4,
-            },
-        }
-
-    monkeypatch.setattr(graduation_module, "import_positive_artifacts_to_catalog", _fake_import)
-
-    results_hub_module._render_graduation_controls_and_progress(**_empty_graduation_kwargs())
-
-    assert len(import_calls) == 1
-    assert import_calls[0].sync_catalog is False
-    assert import_calls[0].include_legacy_artifact_roots is True
-    assert st.session_state["graduation_status_msg"] == (
-        "Import positifs terminé: 7 entrée(s), 4 nouvelles."
-    )
-    assert st.session_state["graduation_status_error"] is False
-
-
-def test_render_graduation_controls_launches_positive_pipeline_in_background(monkeypatch):
+def test_render_graduation_controls_no_longer_exposes_positive_import_actions(monkeypatch):
     st.session_state.clear()
     _stub_graduation_tab_shell(monkeypatch, pressed_key="graduation_run_positive_imports")
 
     background_calls = []
 
-    def _fake_start_background_graduation_job(**kwargs):
-        background_calls.append(kwargs)
-        return True, "Traitement positifs lancé"
-
     monkeypatch.setattr(
         results_hub_module,
         "_start_background_graduation_job",
-        _fake_start_background_graduation_job,
+        lambda **kwargs: background_calls.append(kwargs) or (True, "unexpected"),
     )
 
     results_hub_module._render_graduation_controls_and_progress(**_empty_graduation_kwargs())
 
-    assert background_calls == [
-        {
-            "args": ["--positive-import-full", "--sync-catalog"],
-            "log_filename": results_hub_module.POSITIVE_IMPORTS_LOG_FILENAME,
-            "progress_filename": results_hub_module.POSITIVE_IMPORTS_PROGRESS_FILENAME,
-        },
-    ]
-    assert st.session_state["graduation_status_msg"] == "Traitement positifs lancé"
-    assert st.session_state["graduation_status_error"] is False
+    assert background_calls == []
+    assert "graduation_status_msg" not in st.session_state
 
 
 def test_render_progress_section_shows_live_progress_for_active_job(monkeypatch):
@@ -1208,6 +1162,57 @@ def test_render_progress_section_labels_stale_running_payload_without_heartbeat(
     assert ("Statut", "sans heartbeat") in metric_calls
 
 
+def test_render_progress_section_flags_dead_running_pid(monkeypatch):
+    metric_calls: list[tuple[str, str]] = []
+    error_calls: list[str] = []
+
+    class _MetricStub:
+        def metric(self, label, value, *args, **kwargs):
+            metric_calls.append((str(label), str(value)))
+            return None
+
+    monkeypatch.setattr(results_hub_module.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_hub_module.st, "write", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_hub_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_hub_module.st, "warning", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_hub_module.st, "info", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_hub_module.st, "error", lambda message, *args, **kwargs: error_calls.append(str(message)))
+    monkeypatch.setattr(results_hub_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_hub_module.st, "json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_hub_module.st, "code", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        results_hub_module.st,
+        "columns",
+        lambda spec: [_MetricStub() for _ in range(spec if isinstance(spec, int) else len(spec))],
+    )
+    monkeypatch.setattr(results_hub_module.st, "expander", lambda *args, **kwargs: nullcontext())
+    monkeypatch.setattr(results_hub_module.st, "status", lambda *args, **kwargs: nullcontext())
+    monkeypatch.setattr(results_hub_module.st, "progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(results_hub_module, "_load_log_tail", lambda *args, **kwargs: "")
+    monkeypatch.setattr(results_hub_module, "_is_pid_running", lambda _pid: False)
+
+    payload = {
+        "status": "running",
+        "pid": 987654,
+        "current_phase": "P3",
+        "current_index": 12,
+        "current_total": 30,
+        "updated_at": results_hub_module.datetime.now(results_hub_module.timezone.utc).isoformat(),
+        "stats": {"p3_processed": 12, "p2_survivors": 30},
+    }
+
+    results_hub_module._render_progress_section(
+        title="État du pipeline complet P1→P6",
+        payload=payload,
+        log_filename=results_hub_module.FULL_GRADUATION_LOG_FILENAME,
+        report_payload={},
+        report_df=pd.DataFrame(),
+    )
+
+    assert ("Statut", "processus arrêté") in metric_calls
+    assert any("PID n'existe plus" in message for message in error_calls)
+
+
 def test_build_phase_timeline_html_marks_active_and_completed_steps():
     html = _build_phase_timeline_html(current_phase="P4", status="running")
 
@@ -1375,6 +1380,7 @@ def test_graduation_payload_contract_helpers_read_progress_and_report_meta():
             "cli_equivalent": "python -m catalog.graduation --full --sync-catalog",
             "phase_contract": {"P1": {"name": "Inventaire", "purpose": "scan"}},
             "config_snapshot": {"source_market_first": True},
+            "threshold_sensitivity": {"p5": {"available": True, "candidate_count": 2}},
         },
     }
 
@@ -1384,6 +1390,7 @@ def test_graduation_payload_contract_helpers_read_progress_and_report_meta():
     assert _payload_cli_equivalent({}, report_payload) == "python -m catalog.graduation --full --sync-catalog"
     assert _payload_phase_contract(report_payload)["P1"]["name"] == "Inventaire"
     assert _payload_config_snapshot(report_payload)["source_market_first"] is True
+    assert results_hub_module._payload_threshold_sensitivity(report_payload)["p5"]["candidate_count"] == 2
 
 
 def test_phase_processed_counts_do_not_infer_future_phases_for_live_progress():
@@ -3898,6 +3905,58 @@ def test_render_model_selector_maps_current_value_to_available_option(monkeypatc
     assert selected == "alia-40b-local"
 
 
+def test_render_model_selector_can_render_visible_radio_list(monkeypatch):
+    st.session_state.clear()
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        model_selector_module,
+        "get_available_models_for_ui",
+        lambda **kwargs: ["gemma4:26b", "qwen3:30b"],
+    )
+    monkeypatch.setattr(
+        model_selector_module,
+        "get_model_details",
+        lambda model_name, ollama_host=None: {
+            "name": model_name,
+            "display_name": model_name,
+            "size_gb": 1.0,
+            "vram_gb": 1.0,
+            "parameters": "26B",
+            "quantization": "Q4",
+            "family": "test",
+            "description": "",
+            "backup_path": "",
+            "context_length": 0,
+            "fits_gpu": True,
+        },
+    )
+
+    def _fake_radio(label, options, key=None, format_func=None, **kwargs):
+        captured["label"] = label
+        captured["options"] = list(options)
+        captured["labels"] = [format_func(option) for option in options]
+        return st.session_state[key]
+
+    monkeypatch.setattr(st, "radio", _fake_radio)
+    monkeypatch.setattr(
+        st,
+        "selectbox",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("selectbox should not render")),
+    )
+
+    selected = model_selector_module.render_model_selector(
+        key="builder_model_select",
+        current_value="qwen3:30b",
+        show_details=False,
+        display_mode="radio",
+    )
+
+    assert selected == "qwen3:30b"
+    assert captured["label"] == "Modele LLM"
+    assert captured["options"] == ["gemma4:26b", "qwen3:30b"]
+    assert any("qwen3:30b" in label for label in captured["labels"])
+
+
 def test_get_model_details_does_not_guess_remote_gpu_fit(monkeypatch):
     monkeypatch.setattr(
         model_selector_module,
@@ -4191,7 +4250,7 @@ def test_classify_autonomous_failure_origin_detects_exact_name_runtime_mismatch(
     assert origin == "llm_runtime_model_name_mismatch"
 
 
-def test_get_autonomous_recap_status_badge_marks_failed_positive_return_as_positive():
+def test_get_autonomous_recap_status_badge_marks_failed_positive_return_as_promising():
     badge = _get_autonomous_recap_status_badge(
         {
             "status": "failed",
@@ -4202,10 +4261,10 @@ def test_get_autonomous_recap_status_badge_marks_failed_positive_return_as_posit
         },
     )
 
-    assert badge == {"icon": "+", "label": "positif", "tone": "positive"}
+    assert badge == {"icon": "◇", "label": "prometteur", "tone": "candidate"}
 
 
-def test_get_autonomous_recap_status_badge_marks_any_failed_positive_return_as_positive():
+def test_get_autonomous_recap_status_badge_marks_any_failed_positive_return_as_promising():
     badge = _get_autonomous_recap_status_badge(
         {
             "status": "failed",
@@ -4218,10 +4277,10 @@ def test_get_autonomous_recap_status_badge_marks_any_failed_positive_return_as_p
         },
     )
 
-    assert badge == {"icon": "+", "label": "positif", "tone": "positive"}
+    assert badge == {"icon": "◇", "label": "prometteur", "tone": "candidate"}
 
 
-def test_get_autonomous_recap_status_badge_marks_fallback_best_positive_snapshot_as_positive():
+def test_get_autonomous_recap_status_badge_marks_fallback_best_positive_snapshot_as_promising():
     badge = _get_autonomous_recap_status_badge(
         {
             "source_label": "Fallback simple",
@@ -4235,7 +4294,7 @@ def test_get_autonomous_recap_status_badge_marks_fallback_best_positive_snapshot
         },
     )
 
-    assert badge == {"icon": "+", "label": "positif", "tone": "positive"}
+    assert badge == {"icon": "◇", "label": "prometteur", "tone": "candidate"}
 
 
 def test_get_autonomous_recap_status_badge_keeps_actual_success_as_success():
@@ -4254,7 +4313,7 @@ def test_get_autonomous_recap_status_badge_keeps_actual_success_as_success():
     assert badge == {"icon": "✚", "label": "succes", "tone": "positive"}
 
 
-def test_get_autonomous_recap_status_badge_marks_positive_best_despite_negative_final():
+def test_get_autonomous_recap_status_badge_marks_promising_best_despite_negative_final():
     badge = _get_autonomous_recap_status_badge(
         {
             "status": "failed",
@@ -4265,7 +4324,7 @@ def test_get_autonomous_recap_status_badge_marks_positive_best_despite_negative_
         },
     )
 
-    assert badge == {"icon": "+", "label": "positif", "tone": "positive"}
+    assert badge == {"icon": "◇", "label": "prometteur", "tone": "candidate"}
 
 
 def test_get_autonomous_recap_status_badge_keeps_max_iterations_status_even_with_positive_best_return():
@@ -5400,7 +5459,7 @@ def test_render_autonomous_recap_uses_best_metrics_and_negative_status_without_p
     assert "− negatif" in joined_html
 
 
-def test_render_autonomous_recap_marks_positive_best_run_even_when_final_regresses(monkeypatch):
+def test_render_autonomous_recap_marks_promising_best_run_even_when_final_regresses(monkeypatch):
     st.session_state.clear()
     rendered_html = []
 
@@ -5449,7 +5508,7 @@ def test_render_autonomous_recap_marks_positive_best_run_even_when_final_regress
     builder_view_module._render_autonomous_recap(history, {})
 
     joined_html = "\n".join(rendered_html)
-    assert "+ positif" in joined_html
+    assert "◇ prometteur" in joined_html
     assert "+143.69%" in joined_html
     assert "↓ -190%" in joined_html
     assert "− negatif" not in joined_html
@@ -5519,9 +5578,20 @@ def test_render_autonomous_recap_displays_gain_total_days_and_gain_per_day_for_p
     assert "+1 273.42" in joined_html
 
 
-def test_trim_autonomous_history_keeps_last_1000_runs():
+def test_trim_autonomous_history_keeps_all_runs_by_default():
     trimmed = builder_view_module._trim_autonomous_history(
         [{"session_num": session_num} for session_num in range(1, 1002)],
+    )
+
+    assert len(trimmed) == 1001
+    assert trimmed[0]["session_num"] == 1
+    assert trimmed[-1]["session_num"] == 1001
+
+
+def test_trim_autonomous_history_honors_explicit_limit():
+    trimmed = builder_view_module._trim_autonomous_history(
+        [{"session_num": session_num} for session_num in range(1, 1002)],
+        limit=1000,
     )
 
     assert len(trimmed) == 1000
@@ -7213,6 +7283,29 @@ def test_app_sidebar_hides_keeper_mode_controls():
     assert "Start Keeper Mode" not in button_labels
 
 
+def test_keeper_mode_button_launches_supervisor_panel(monkeypatch):
+    popen_calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def fake_popen(args, **kwargs):
+        popen_calls.append((list(args), dict(kwargs)))
+        return SimpleNamespace(pid=4321)
+
+    monkeypatch.setattr(keeper_mode_module, "_panel_python_executable", lambda: "python-test")
+    monkeypatch.setattr(keeper_mode_module, "_creationflags_kwargs", lambda: {})
+    monkeypatch.setattr(keeper_mode_module.subprocess, "Popen", fake_popen)
+
+    pid = keeper_mode_module.launch_supervisor_panel()
+
+    assert pid == 4321
+    assert popen_calls
+    args, kwargs = popen_calls[0]
+    assert args == ["python-test", str(keeper_mode_module.SUPERVISOR_PANEL_SCRIPT)]
+    assert kwargs["cwd"] == keeper_mode_module.PROJECT_ROOT
+    assert kwargs["stdin"] == keeper_mode_module.subprocess.DEVNULL
+    assert kwargs["stdout"] == keeper_mode_module.subprocess.DEVNULL
+    assert kwargs["stderr"] == keeper_mode_module.subprocess.DEVNULL
+
+
 def test_app_builder_mode_is_directly_rendered_from_mode_selection():
     at = AppTest.from_file("ui/app.py")
     at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
@@ -7223,6 +7316,7 @@ def test_app_builder_mode_is_directly_rendered_from_mode_selection():
     assert all(not label.startswith("→ Activer") for label in button_labels)
     assert any(text_area.label == "🎯 Objectif de la stratégie" for text_area in at.text_area)
     assert all(radio.label != "Mode d'exécution" for radio in at.radio)
+    assert "⬇️ Charger marché & aperçu" not in button_labels
     assert at.session_state["optimization_mode"] == "🏗️ Strategy Builder"
 
 
@@ -7422,12 +7516,45 @@ def test_app_builder_mono_mode_shows_only_single_model_selector():
     at.run(timeout=60)
 
     assert at.exception == []
-    assert any(selectbox.label == "Modele LLM" for selectbox in at.selectbox)
+    assert all(selectbox.label != "Modele LLM" for selectbox in at.selectbox)
+    assert any(radio.label == "Modele LLM" for radio in at.radio)
     assert all(expander.label != "🧩 Configuration Expert Multi-Role" for expander in at.expander)
     assert all(selectbox.label != "Modele lane principale" for selectbox in at.selectbox)
 
 
-def test_render_builder_tab_places_model_selector_between_host_and_runtime(monkeypatch, tmp_path):
+def test_builder_tab_defaults_match_autonomous_screen_preset():
+    st.session_state.clear()
+    # Anciens defaults persistes -> migration vers nouveaux defaults
+    st.session_state["builder_model_single_llm"] = "deepseek-r1:32b"
+    st.session_state["builder_universe_mode"] = "canonical"
+    st.session_state["llm_inference_mode"] = "global"
+    # Choix utilisateurs explicites -> doivent etre respectes
+    st.session_state["builder_autonomous"] = False
+    st.session_state["builder_auto_pause"] = 10
+    st.session_state["builder_max_iterations"] = 10
+
+    exec_tabs_module._ensure_builder_autonomous_defaults()
+
+    # Migration string defaults
+    assert st.session_state["builder_universe_mode"] == "exploratory"
+    assert st.session_state["builder_model_single_llm"] == "gemma4:26b"
+    assert st.session_state["builder_model_select"] == "gemma4:26b"
+    assert st.session_state["llm_inference_mode"] == "per_model"
+
+    # Choix utilisateurs preserves
+    assert st.session_state["builder_autonomous"] is False
+    assert st.session_state["builder_auto_pause"] == 10
+    assert st.session_state["builder_max_iterations"] == 10
+
+    # Keys absentes -> initialisees avec nouveaux defaults
+    assert st.session_state["builder_auto_market_pick"] is True
+
+    st.session_state["builder_auto_pause"] = 7
+    exec_tabs_module._ensure_builder_autonomous_defaults()
+    assert st.session_state["builder_auto_pause"] == 7
+
+
+def test_render_builder_tab_places_runtime_action_before_model_selector(monkeypatch, tmp_path):
     st.session_state.clear()
     render_order: list[str] = []
     state = _sample_sidebar_state(
@@ -7436,7 +7563,6 @@ def test_render_builder_tab_places_model_selector_between_host_and_runtime(monke
     )
 
     monkeypatch.setattr(exec_tabs_module, "_inject_builder_config_styles", lambda: None)
-    monkeypatch.setattr(exec_tabs_module, "_render_builder_config_hero", lambda: None)
     monkeypatch.setattr(exec_tabs_module, "_render_inline_help_label", lambda *args, **kwargs: None)
     monkeypatch.setattr(exec_tabs_module, "_render_llm_inference_settings_editor", lambda **kwargs: None)
     monkeypatch.setattr(exec_tabs_module, "_ollama_is_available", lambda *args, **kwargs: False)
@@ -7514,7 +7640,7 @@ def test_render_builder_tab_places_model_selector_between_host_and_runtime(monke
     exec_tabs_module._render_builder_tab(state)
 
     assert render_order.index("ollama_url") < render_order.index("model_selector")
-    assert render_order.index("model_selector") < render_order.index("runtime_action")
+    assert render_order.index("runtime_action") < render_order.index("model_selector")
 
 
 def test_summarize_topology_runtime_status_collapses_shared_endpoint():
@@ -7981,7 +8107,7 @@ def test_terminate_owned_ollama_process_terminates_child_tree(monkeypatch):
     assert child_b.kill_calls == 0
 
 
-def test_resolve_builder_runtime_preferences_reads_sidebar_state_without_reset():
+def test_resolve_builder_runtime_preferences_uses_fixed_runtime_profile():
     state = _sample_sidebar_state(
         builder_preload_model=False,
         builder_keep_alive_minutes=45,
@@ -7994,12 +8120,12 @@ def test_resolve_builder_runtime_preferences_reads_sidebar_state_without_reset()
     assert resolved == {
         "builder_auto_start_ollama": False,
         "builder_preload_model": False,
-        "builder_keep_alive_minutes": 45,
-        "builder_unload_after_run": True,
+        "builder_keep_alive_minutes": 1440,
+        "builder_unload_after_run": False,
     }
 
 
-def test_resolve_builder_runtime_preferences_prefers_live_widget_values():
+def test_resolve_builder_runtime_preferences_ignores_removed_live_widget_values():
     resolved = resolve_builder_runtime_preferences(
         {
             "builder_auto_start_ollama": True,
@@ -8016,9 +8142,50 @@ def test_resolve_builder_runtime_preferences_prefers_live_widget_values():
     assert resolved == {
         "builder_auto_start_ollama": False,
         "builder_preload_model": False,
-        "builder_keep_alive_minutes": 60,
-        "builder_unload_after_run": True,
+        "builder_keep_alive_minutes": 1440,
+        "builder_unload_after_run": False,
     }
+
+
+def test_builder_iteration_history_rows_keep_strategy_indicators_and_return():
+    session = SimpleNamespace(
+        iterations=[
+            SimpleNamespace(
+                iteration=1,
+                decision="continue",
+                error=None,
+                code="class DonchianBreakout(BaseStrategy):\n    def __init__(self):\n        super().__init__(name='donchian_breakout')",
+                used_indicators=["donchian", "adx", "obv"],
+                change_type="logic",
+                backtest_result=SimpleNamespace(
+                    metrics={
+                        "total_return_pct": 12.5,
+                        "sharpe_ratio": 0.8,
+                        "max_drawdown_pct": -18.0,
+                        "total_trades": 42,
+                        "profit_factor": 1.2,
+                    },
+                ),
+            ),
+        ],
+    )
+
+    rows = builder_view_module._build_iteration_history_rows_from_session(session)
+
+    assert rows == [
+        {
+            "#": 1,
+            "": "🔄",
+            "Stratégie": "donchian_breakout",
+            "Indicateurs": "donchian, adx, obv",
+            "Return %": 12.5,
+            "Sharpe": 0.8,
+            "Max DD %": -18.0,
+            "Trades": 42,
+            "PF": 1.2,
+            "Type": "logic",
+        },
+    ]
 
 
 def test_resolve_requested_model_passes_through_cloud_only_without_local_alias_fallback():
@@ -8333,31 +8500,58 @@ def test_resolve_builder_flow_analysis_preferences_prefers_widget_and_disabled_s
     assert resolved["builder_flow_analysis_ablation"]["runtime_fix"] is False
 
 
-def test_builder_flow_analysis_presets_include_local_stable():
-    label, disabled_steps = exec_tabs_module._BUILDER_FLOW_ANALYSIS_PRESETS["local_stable"]
+def test_builder_tab_flow_analysis_controls_are_not_rendered(monkeypatch, tmp_path):
+    st.session_state.clear()
+    rendered_labels: list[str] = []
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_execution_mode=BUILDER_EXECUTION_MODE_MONO,
+    )
 
-    assert label == "🪶 Local stable"
-    assert "llm_analysis" in disabled_steps
-    assert "pre_reflection" in disabled_steps
-    assert "stagnation_branching" in disabled_steps
-    assert "code_repair" not in disabled_steps
+    monkeypatch.setattr(exec_tabs_module, "_inject_builder_config_styles", lambda: None)
+    monkeypatch.setattr(exec_tabs_module, "_render_inline_help_label", lambda *args, **kwargs: None)
+    monkeypatch.setattr(exec_tabs_module, "_ollama_is_available", lambda *args, **kwargs: False)
+    monkeypatch.setattr(exec_tabs_module, "get_builder_sessions_dir", lambda: tmp_path / "_builder_sessions")
+    monkeypatch.setattr(exec_tabs_module, "_render_builder_cloud_runtime_hints", lambda *args, **kwargs: None)
+    monkeypatch.setattr(exec_tabs_module.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(exec_tabs_module.st, "caption", lambda *args, **kwargs: None)
+    monkeypatch.setattr(exec_tabs_module.st, "write", lambda *args, **kwargs: None)
+    monkeypatch.setattr(exec_tabs_module.st, "warning", lambda *args, **kwargs: None)
+    monkeypatch.setattr(exec_tabs_module.st, "info", lambda *args, **kwargs: None)
+    monkeypatch.setattr(exec_tabs_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(exec_tabs_module.st, "error", lambda *args, **kwargs: None)
+    monkeypatch.setattr(exec_tabs_module.st, "dataframe", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        exec_tabs_module.st,
+        "columns",
+        lambda spec: [nullcontext() for _ in range(spec if isinstance(spec, int) else len(spec))],
+    )
+    monkeypatch.setattr(exec_tabs_module.st, "expander", lambda *args, **kwargs: nullcontext())
+    monkeypatch.setattr(exec_tabs_module.st, "radio", lambda label, options, index=0, key=None, **kwargs: options[index])
+    monkeypatch.setattr(exec_tabs_module.st, "slider", lambda label, min_value=None, max_value=None, value=None, key=None, **kwargs: value)
+    monkeypatch.setattr(exec_tabs_module.st, "number_input", lambda label, min_value=None, max_value=None, value=None, key=None, **kwargs: value)
+    monkeypatch.setattr(exec_tabs_module.st, "text_area", lambda label, value="", key=None, **kwargs: value)
+    monkeypatch.setattr(exec_tabs_module.st, "text_input", lambda label, value="", key=None, **kwargs: value)
+    monkeypatch.setattr(exec_tabs_module.st, "button", lambda *args, **kwargs: False)
 
+    def _stub_toggle(label, value=False, key=None, **kwargs):
+        rendered_labels.append(str(label))
+        if key is not None:
+            st.session_state[key] = value
+        return value
 
-def test_builder_flow_analysis_presets_keep_fast_and_debug_runtime_targets():
-    fast_label, fast_disabled = exec_tabs_module._BUILDER_FLOW_ANALYSIS_PRESETS["fast"]
-    debug_label, debug_disabled = exec_tabs_module._BUILDER_FLOW_ANALYSIS_PRESETS["debug"]
+    monkeypatch.setattr(exec_tabs_module.st, "toggle", _stub_toggle)
+    monkeypatch.setattr(exec_tabs_module.st, "multiselect", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        exec_tabs_module,
+        "render_model_selector",
+        lambda **kwargs: str(kwargs.get("current_value") or "gemma4:26b"),
+    )
 
-    assert fast_label == "⚡ Analyse rapide"
-    assert fast_disabled == [
-        "llm_analysis",
-        "indicator_ranking",
-        "iteration_history",
-        "diagnostic_context",
-    ]
-    assert debug_label == "🧪 Debug pipeline"
-    assert "runtime_fix" in debug_disabled
-    assert "code_repair" in debug_disabled
-    assert "indicator_binding" in debug_disabled
+    exec_tabs_module._render_builder_tab(state)
+
+    assert not any("analyse de flux" in label.lower() for label in rendered_labels)
+    assert st.session_state["builder_flow_analysis_enabled"] is False
 
 
 def test_pick_builder_session_role_overrides_freezes_ordered_queue_per_role(monkeypatch):
