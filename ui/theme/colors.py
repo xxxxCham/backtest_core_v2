@@ -46,7 +46,8 @@ class ColorPalette(Enum):
     SUNSET = "sunset"
     MONOCHROME = "monochrome"
     CYBERPUNK = "cyberpunk"
-    TRADING = "trading"  # Nouvelle palette optimisée trading
+    TRADING = "trading"  # Ancienne palette trading bleu/vert
+    TRADING_DESK = "trading_desk"  # Palette dominante or - "trading desk sombre, accent or"
 
 
 # ============================================================================
@@ -527,6 +528,103 @@ PALETTES: dict[ColorPalette, dict[str, str]] = {
         "agent_critic": "#ffab00",
         "agent_validator": "#e040fb",
     },
+    ColorPalette.TRADING_DESK: {
+        # ===== "Trading desk sombre, accent or" =====
+        # Brief design : info > déco, l'oeil va vers les valeurs critiques en or
+        # et vers les indicateurs sémantiques colorés.
+
+        # --- Couleurs sémantiques (rôles UI) ---
+        "primary": "#d4a72c",       # Or de base — action principale + focus
+        "secondary": "#f0c95a",     # Or vif — valeurs importantes
+        "success": "#3fb950",       # Vert positif / OK
+        "warning": "#f0883e",       # Orange warning / état dégradé
+        "error": "#f0606b",         # Rouge négatif / alerte critique
+        "info": "#58a6ff",          # Bleu info / état transitoire
+
+        # --- Fonds (du plus profond au plus relevé) ---
+        "background": "#0d1117",        # Fond principal de l'application
+        "surface": "#161b22",            # Surface des cartes / panneaux
+        "surface_variant": "#1f2630",    # Surface relevée (boutons repos, interactifs neutres)
+        "console": "#0a0d12",            # Saisie / consoles / logs (plus sombre)
+
+        # --- Lignes ---
+        "border": "#2a313c",     # Bordures visibles (cartes, séparateurs)
+        "border_subtle": "#1d232c",  # Bordures discrètes (boutons fantômes)
+        "divider": "rgba(42, 49, 60, 0.6)",
+        "grid_color": "rgba(42, 49, 60, 0.4)",
+
+        # --- Texte ---
+        "text": "#e6edf3",           # Texte primaire
+        "text_primary": "#e6edf3",
+        "text_secondary": "#8b96a4",     # Labels / texte secondaire
+        "text_muted": "#5a6371",      # Tertiaire / placeholders / captions
+
+        # --- Accent or (3 nuances) ---
+        "gold": "#d4a72c",            # Or de base
+        "gold_bright": "#f0c95a",     # Or vif (valeurs importantes, prix)
+        "gold_pale": "#e8c25b",       # Or pâle (titres de sections)
+
+        # --- Sémantiques étendues (accent rare) ---
+        "purple": "#a371f7",          # Violet réservé
+
+        # --- Charts trading ---
+        "chart_up": "#3fb950",
+        "chart_down": "#f0606b",
+        "candle_up": "#3fb950",
+        "candle_down": "#f0606b",
+        "equity_line": "#3fb950",
+        "equity_fill": "rgba(63, 185, 80, 0.12)",
+        "drawdown_line": "#f0606b",
+        "drawdown_fill": "rgba(240, 96, 107, 0.20)",
+        "capital_line": "rgba(230, 237, 243, 0.40)",
+
+        # --- Charts trade markers ---
+        "entry_long": "#58a6ff",
+        "entry_short": "#a371f7",
+        "exit_profit": "#3fb950",
+        "exit_loss": "#f0606b",
+        "stop_loss": "#f0606b",
+        "take_profit": "#3fb950",
+
+        # --- Charts indicators ---
+        "bb_mid": "#d4a72c",
+        "bb_bands": "#58a6ff",
+        "bb_bands_rgba": "rgba(88, 166, 255, 0.12)",
+        "bb_entry_z": "rgba(212, 167, 44, 0.85)",
+        "ema_fast": "#58a6ff",
+        "ema_slow": "#d4a72c",
+        "ema_center": "#58a6ff",
+        "macd_line": "#3fb950",
+        "macd_signal": "#f0606b",
+        "rsi_line": "#58a6ff",
+        "rsi_oversold": "#3fb950",
+        "rsi_overbought": "#f0606b",
+        "atr_line": "#a371f7",
+        "atr_threshold": "#d4a72c",
+        "atr_channel_upper": "#f0606b",
+        "atr_channel_lower": "#3fb950",
+        "stoch_k": "#58a6ff",
+        "stoch_d": "#d4a72c",
+
+        # --- Charts diagrammes stratégies ---
+        "price_line": "#e6edf3",
+        "bollinger_low": "rgba(88, 166, 255, 0.55)",
+        "bollinger_high": "rgba(88, 166, 255, 0.55)",
+        "bollinger_fill": "rgba(88, 166, 255, 0.10)",
+        "bollinger_mid": "rgba(212, 167, 44, 0.85)",
+        "stop_long": "rgba(240, 96, 107, 0.70)",
+        "stop_short": "rgba(240, 96, 107, 0.70)",
+        "entry_level_long": "rgba(63, 185, 80, 0.85)",
+        "entry_level_short": "rgba(163, 113, 247, 0.85)",
+        "annotation_stop": "#f0606b",
+        "annotation_tp": "#3fb950",
+
+        # --- Agents LLM ---
+        "agent_analyst": "#58a6ff",
+        "agent_strategist": "#3fb950",
+        "agent_critic": "#f0883e",
+        "agent_validator": "#a371f7",
+    },
 }
 
 
@@ -534,9 +632,59 @@ PALETTES: dict[ColorPalette, dict[str, str]] = {
 # ÉTAT GLOBAL ET GETTERS
 # ============================================================================
 
-# Palette active par défaut
-_active_palette: ColorPalette = ColorPalette.TRADING
+# Palette active par défaut — thème "Trading desk sombre, accent or"
+_active_palette: ColorPalette = ColorPalette.TRADING_DESK
 _theme_mode: ThemeMode = ThemeMode.DARK
+
+
+# ============================================================================
+# DESIGN TOKENS — typographie / espacements / radii
+# ============================================================================
+
+# Famille principale humaniste sans-serif + mono pour zones techniques
+FONT_FAMILY_SANS = (
+    "Inter, 'Segoe UI', 'SF Pro Text', -apple-system, BlinkMacSystemFont, "
+    "Roboto, 'Helvetica Neue', Arial, sans-serif"
+)
+FONT_FAMILY_MONO = (
+    "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, "
+    "'SF Mono', Menlo, Monaco, 'Courier New', monospace"
+)
+
+# Tailles typographiques — voir brief "Trading desk"
+FONT_SIZES = {
+    "title_app": "16px",      # Titre principal application
+    "title_card": "10px",     # Titre carte (en or pâle)
+    "caption": "8px",         # Étiquette au-dessus des valeurs
+    "text": "10px",           # Texte courant
+    "value": "11px",          # Métrique
+    "value_hero": "22px",     # Métrique hero (KPI dominant en or vif)
+    "subtitle": "9px",        # Texte sous titre
+    "mono": "9px",            # Logs / code / brut
+}
+
+# Graisses
+FONT_WEIGHTS = {
+    "regular": "400",
+    "semibold": "600",
+    "bold": "700",
+}
+
+# Espacements (échelle modulaire en multiples de 4)
+SPACING = {
+    "xs": "4px",
+    "sm": "8px",
+    "md": "12px",
+    "lg": "14px",
+    "xl": "18px",
+}
+
+# Radius (sobre, flat — pas de gros radii)
+RADIUS = {
+    "sm": "4px",
+    "md": "6px",
+    "lg": "8px",
+}
 
 
 def set_palette(palette: ColorPalette) -> None:
@@ -699,6 +847,13 @@ __all__ = [
     "ColorPalette",
     # Data
     "PALETTES",
+    # Tokens
+    "FONT_FAMILY_SANS",
+    "FONT_FAMILY_MONO",
+    "FONT_SIZES",
+    "FONT_WEIGHTS",
+    "SPACING",
+    "RADIUS",
     # Setters/Getters
     "set_palette",
     "get_palette",

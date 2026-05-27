@@ -14,6 +14,8 @@ from backtest.walk_forward import FoldResult, WalkForwardSummary
 from catalog.graduation import (
     GraduationCandidate,
     GraduationConfig,
+    _candidate_catalog_category,
+    _candidate_should_sync_to_catalog,
     _default_positive_artifact_roots,
     _extract_numeric_params,
     _generate_neighborhood,
@@ -1314,49 +1316,39 @@ def test_import_positive_artifacts_uses_metadata_fallback_and_skips_duplicates(
     ]
 
 
-def test_run_multi_context_validation_uses_unique_context_coverage_and_keeps_benchmark_gaps(
-    tmp_path: Path,
+def _install_fake_p3_dependencies(
     monkeypatch,
-) -> None:
-    sandbox_dir = tmp_path / "sandbox"
-    session_dir = sandbox_dir / "sess-1"
-    session_dir.mkdir(parents=True, exist_ok=True)
-    (session_dir / "strategy_v1.py").write_text("# strategy\n", encoding="utf-8")
+    *,
+    metrics_by_symbol: dict[str, dict[str, Any]] | None = None,
+    default_metrics: dict[str, Any] | None = None,
+) -> list[tuple[str, str]]:
+    """Helper: monkeypatch les dépendances de P3 (load_ohlcv, engine, strategy).
 
-    candidate = GraduationCandidate(
-        session_id="sess-1",
-        session_dir=session_dir,
-        best_iteration=1,
-        strategy_file="sess-1/strategy_v1.py",
+    Returns:
+        load_calls : liste mutable où sont enregistrés les (symbol, tf) chargés.
+    """
+    load_calls: list[tuple[str, str]] = []
+    metrics_by_symbol = dict(metrics_by_symbol or {})
+    default_metrics = dict(
+        default_metrics
+        or {
+            "total_return_pct": 6.0,
+            "max_drawdown_pct": 12.0,
+            "profit_factor": 1.25,
+            "total_trades": 45,
+            "sharpe_ratio": 0.8,
+        },
     )
 
-    load_calls: list[tuple[str, str]] = []
-
-    def _fake_load_ohlcv(symbol: str, timeframe: str) -> pd.DataFrame:
+    def _fake_load_ohlcv(symbol: str, timeframe: str):
         load_calls.append((symbol, timeframe))
         return _sample_ohlcv()
 
     monkeypatch.setattr("catalog.graduation._load_strategy_from_file", lambda path: SimpleNamespace(name=path.stem))
     monkeypatch.setattr("data.loader.load_ohlcv", _fake_load_ohlcv)
     monkeypatch.setattr(
-        "config.market_selection.get_postfilter_benchmark_config",
-        lambda: {
-            "benchmarks": {
-                "bench_a": {"label": "Bench A", "tokens": ["BTCUSDC", "ETHUSDC"]},
-                "bench_b": {"label": "Bench B", "tokens": ["BTCUSDC"]},
-            },
-        },
-    )
-    monkeypatch.setattr(
         "config.market_selection.evaluate_market_dataset",
-        lambda _df, symbol, timeframe, universe_mode, purpose: {
-            "accepted": symbol != "ETHUSDC",
-            "exclusion_reasons": ["unit_test_excluded"] if symbol == "ETHUSDC" else [],
-        },
-    )
-    monkeypatch.setattr(
-        "config.market_selection.infer_strategy_type",
-        lambda objective, strategy_key: "trend",
+        lambda _df, symbol, timeframe, universe_mode, purpose: {"accepted": True},
     )
 
     class _FakeEngine:
@@ -1364,42 +1356,185 @@ def test_run_multi_context_validation_uses_unique_context_coverage_and_keeps_ben
             pass
 
         def run(self, df, strategy, params, fast_metrics, silent_mode):
-            return SimpleNamespace(
-                metrics={
-                    "total_return_pct": 6.0,
-                    "max_drawdown_pct": 12.0,
-                    "profit_factor": 1.2,
-                    "total_trades": 45,
-                    "sharpe_ratio": 0.8,
-                },
-            )
+            symbol_hint = None
+            for sym in metrics_by_symbol:
+                if sym in str(getattr(df, "_label", "")) or sym in load_calls[-1] if load_calls else False:
+                    symbol_hint = sym
+                    break
+            # Fallback : utilise le dernier symbol chargé
+            if load_calls:
+                last_symbol = load_calls[-1][0]
+                if last_symbol in metrics_by_symbol:
+                    return SimpleNamespace(metrics=dict(metrics_by_symbol[last_symbol]))
+            return SimpleNamespace(metrics=dict(default_metrics))
 
     monkeypatch.setattr("backtest.engine.BacktestEngine", _FakeEngine)
+    return load_calls
 
-    config = GraduationConfig(
-        benchmark_names=["bench_a", "bench_b"],
-        token_count=2,
-        validation_timeframes=["1h"],
-        required_benchmark_name="bench_a",
-        min_benchmarks_pass=1,
-        min_contexts_pass=1,
-        min_context_coverage_pct=40.0,
+
+def test_run_multi_context_validation_passes_when_natural_universe_pass_rate_high(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Source AAVE (DEFI:L2_mid). Tous les autres tokens DEFI:L2_mid passent → P3 PASSED."""
+    sandbox_dir = tmp_path / "sandbox"
+    session_dir = sandbox_dir / "sess-aave"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "strategy_v1.py").write_text("# strategy\n", encoding="utf-8")
+
+    candidate = GraduationCandidate(
+        session_id="sess-aave",
+        session_dir=session_dir,
+        best_iteration=1,
+        strategy_file="sess-aave/strategy_v1.py",
+        source_symbol="AAVEUSDC",
+        source_timeframe="1h",
     )
 
-    survivors = run_multi_context_validation([candidate], config)
+    load_calls = _install_fake_p3_dependencies(monkeypatch)
 
-    assert [item.session_id for item in survivors] == ["sess-1"]
-    assert candidate.coverage_pct == 100.0
-    assert candidate.multi_ctx_results["benchmark_slot_coverage_pct"] == 66.7
-    assert candidate.multi_ctx_results["passed_count"] == 1
-    assert candidate.multi_ctx_results["total_contexts"] == 1
-    assert candidate.multi_ctx_results["configured_context_count"] == 2
-    assert candidate.benchmark_results["bench_a"]["missing_context_count"] == 1
-    assert candidate.benchmark_results["bench_a"]["coverage_pct"] == 100.0
-    assert candidate.benchmark_results["bench_a"]["configured_coverage_pct"] == 50.0
-    assert "excluded_by_universe" in candidate.benchmark_results["bench_a"]["contexts"]["ETHUSDC_1h"]["error"]
-    assert load_calls.count(("BTCUSDC", "1h")) == 1
-    assert load_calls.count(("ETHUSDC", "1h")) == 1
+    survivors = run_multi_context_validation([candidate], GraduationConfig())
+
+    assert [item.session_id for item in survivors] == ["sess-aave"]
+    assert candidate.p3_verdict == "PASSED"
+    assert candidate.decision == "WATCHLIST"
+    assert candidate.primary_universe == "DEFI_DEX_LENDING_PERPS_YIELD"
+    assert candidate.liquidity_bucket == "L2_mid"
+    assert candidate.natural_universe_id == "DEFI_DEX_LENDING_PERPS_YIELD:L2_mid"
+    assert candidate.tested_timeframes == ["1h"]
+    assert candidate.required_pass_rate_pct == 100.0
+    # Tous les chargements de la pool required sont au TF source uniquement
+    required_loads = [(s, tf) for s, tf in load_calls if s in candidate.required_universe_tokens]
+    assert all(tf == "1h" for _, tf in required_loads)
+    # La source AAVEUSDC n'est PAS dans le pool required
+    assert "AAVEUSDC" not in candidate.required_universe_tokens
+    # Les MEME tokens (DOGE, SHIB) ne sont PAS dans le pool required
+    assert "DOGEUSDC" not in candidate.required_universe_tokens
+    assert "SHIBUSDC" not in candidate.required_universe_tokens
+
+
+def test_run_multi_context_validation_rejects_when_pass_rate_below_threshold(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Source SOLUSDC (MAJORS:L1_high). Tokens du pool échouent → P3 REJECTED."""
+    sandbox_dir = tmp_path / "sandbox"
+    session_dir = sandbox_dir / "sess-sol"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "strategy_v1.py").write_text("# strategy\n", encoding="utf-8")
+
+    candidate = GraduationCandidate(
+        session_id="sess-sol",
+        session_dir=session_dir,
+        best_iteration=1,
+        strategy_file="sess-sol/strategy_v1.py",
+        source_symbol="SOLUSDC",
+        source_timeframe="4h",
+    )
+
+    # Metrics qui échouent les seuils par-contexte (return négatif)
+    bad_metrics = {
+        "total_return_pct": -2.0,
+        "max_drawdown_pct": 18.0,
+        "profit_factor": 0.85,
+        "total_trades": 40,
+        "sharpe_ratio": -0.1,
+    }
+    _install_fake_p3_dependencies(monkeypatch, default_metrics=bad_metrics)
+
+    survivors = run_multi_context_validation([candidate], GraduationConfig())
+
+    assert survivors == []
+    assert candidate.p3_verdict == "REJECTED"
+    assert candidate.decision == "REJECTED"
+    assert "natural_universe_pass_rate" in candidate.rejection_reason
+    assert candidate.required_pass_rate_pct == 0.0
+
+
+def test_run_multi_context_validation_unknown_source_lands_in_manual_review(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Source inconnue de la taxonomie → decision=MANUAL_REVIEW (pas perdu)."""
+    sandbox_dir = tmp_path / "sandbox"
+    session_dir = sandbox_dir / "sess-fake"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "strategy_v1.py").write_text("# strategy\n", encoding="utf-8")
+
+    candidate = GraduationCandidate(
+        session_id="sess-fake",
+        session_dir=session_dir,
+        best_iteration=1,
+        strategy_file="sess-fake/strategy_v1.py",
+        source_symbol="FAKETOKENUSDC",  # absent de la taxonomie
+        source_timeframe="1h",
+    )
+
+    _install_fake_p3_dependencies(monkeypatch)
+
+    survivors = run_multi_context_validation([candidate], GraduationConfig())
+
+    assert survivors == []
+    assert candidate.p3_verdict == "REJECTED"
+    assert candidate.decision == "MANUAL_REVIEW"
+    assert "unknown_natural_universe" in candidate.rejection_reason
+
+
+def test_run_multi_context_validation_missing_source_symbol_rejected(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Source vide (run multi-token historique) → REJECTED standard."""
+    sandbox_dir = tmp_path / "sandbox"
+    session_dir = sandbox_dir / "sess-multi"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "strategy_v1.py").write_text("# strategy\n", encoding="utf-8")
+
+    candidate = GraduationCandidate(
+        session_id="sess-multi",
+        session_dir=session_dir,
+        best_iteration=1,
+        strategy_file="sess-multi/strategy_v1.py",
+        source_symbol="",
+        source_timeframe="1h",
+    )
+
+    _install_fake_p3_dependencies(monkeypatch)
+
+    survivors = run_multi_context_validation([candidate], GraduationConfig())
+
+    assert survivors == []
+    assert candidate.p3_verdict == "REJECTED"
+    assert candidate.decision == "REJECTED"
+    assert "missing_source_symbol" in candidate.rejection_reason
+
+
+def test_run_multi_context_validation_missing_source_timeframe_rejected(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """source_timeframe vide → REJECTED (pas de fallback cross-TF)."""
+    sandbox_dir = tmp_path / "sandbox"
+    session_dir = sandbox_dir / "sess-notf"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "strategy_v1.py").write_text("# strategy\n", encoding="utf-8")
+
+    candidate = GraduationCandidate(
+        session_id="sess-notf",
+        session_dir=session_dir,
+        best_iteration=1,
+        strategy_file="sess-notf/strategy_v1.py",
+        source_symbol="AAVEUSDC",
+        source_timeframe="",
+    )
+
+    _install_fake_p3_dependencies(monkeypatch)
+
+    survivors = run_multi_context_validation([candidate], GraduationConfig())
+
+    assert survivors == []
+    assert candidate.p3_verdict == "REJECTED"
+    assert "missing_source_timeframe" in candidate.rejection_reason
 
 
 def test_import_positive_artifacts_to_catalog_batches_catalog_write(tmp_path: Path, monkeypatch) -> None:
@@ -1435,10 +1570,12 @@ def test_import_positive_artifacts_to_catalog_batches_catalog_write(tmp_path: Pa
     assert len(read_catalog(config.catalog_path)["entries"]) == 2
 
 
-def test_run_multi_context_validation_uses_eligible_contexts_for_benchmark_coverage(
+def test_run_multi_context_validation_skips_excluded_market_tokens(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    """Si evaluate_market_dataset exclut un token du pool, il ne contribue pas
+    au pass-rate (pas comptabilisé dans total_with_data)."""
     sandbox_dir = tmp_path / "sandbox"
     session_dir = sandbox_dir / "sess-eligible"
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -1449,26 +1586,20 @@ def test_run_multi_context_validation_uses_eligible_contexts_for_benchmark_cover
         session_dir=session_dir,
         best_iteration=1,
         strategy_file="sess-eligible/strategy_v1.py",
+        source_symbol="AAVEUSDC",
+        source_timeframe="1h",
     )
 
     monkeypatch.setattr("catalog.graduation._load_strategy_from_file", lambda path: SimpleNamespace(name=path.stem))
     monkeypatch.setattr("data.loader.load_ohlcv", lambda symbol, timeframe: _sample_ohlcv())
-    monkeypatch.setattr(
-        "config.market_selection.get_postfilter_benchmark_config",
-        lambda: {
-            "benchmarks": {
-                "bench_core": {"label": "Core", "tokens": ["BTCUSDC", "ETHUSDC"]},
-            },
-        },
-    )
+    # Seul JTOUSDC accepté — les autres tokens du pool DEFI:L2_mid sont exclus
     monkeypatch.setattr(
         "config.market_selection.evaluate_market_dataset",
         lambda _df, symbol, timeframe, universe_mode, purpose: {
-            "accepted": symbol == "BTCUSDC",
-            "exclusion_reasons": ["unit_test_excluded"] if symbol != "BTCUSDC" else [],
+            "accepted": symbol == "JTOUSDC",
+            "exclusion_reasons": ["unit_test_excluded"] if symbol != "JTOUSDC" else [],
         },
     )
-    monkeypatch.setattr("config.market_selection.infer_strategy_type", lambda objective, strategy_key: "trend")
 
     class _FakeEngine:
         def __init__(self, *args, **kwargs) -> None:
@@ -1487,27 +1618,128 @@ def test_run_multi_context_validation_uses_eligible_contexts_for_benchmark_cover
 
     monkeypatch.setattr("backtest.engine.BacktestEngine", _FakeEngine)
 
-    survivors = run_multi_context_validation(
-        [candidate],
-        GraduationConfig(
-            benchmark_names=["bench_core"],
-            token_count=2,
-            validation_timeframes=["1h"],
-            required_benchmark_name="bench_core",
-            min_benchmarks_pass=1,
-            min_contexts_pass=1,
-            min_context_coverage_pct=80.0,
-        ),
+    # Avec un seul token chargé qui passe (JTO) et tous les autres exclus, total_with_data=1.
+    # Si p3_universe_min_tokens=2 (défaut), le pool est trop petit → MANUAL_REVIEW.
+    survivors = run_multi_context_validation([candidate], GraduationConfig())
+
+    assert survivors == []
+    assert candidate.decision == "MANUAL_REVIEW"
+    assert "universe_pool_too_small" in candidate.rejection_reason
+    assert candidate.required_total_count == 1
+    assert candidate.required_passed_count == 1
+
+
+def test_candidate_catalog_category_maps_manual_review(tmp_path: Path) -> None:
+    """Un candidat MANUAL_REVIEW doit être catégorisé p3_manual_review (pas p1/p2)."""
+    candidate = GraduationCandidate(
+        session_id="sess-manual",
+        session_dir=tmp_path,
+        source_symbol="FAKETOKENUSDC",  # absent de la taxonomie
+        source_timeframe="1h",
+        best_iteration=1,
+        best_return_pct=12.5,  # positif → tomberait en p2_positive_observed sans le fix
+        best_trades=42,
+        phase="P3",
+        p2_verdict="PASSED",
+        p3_verdict="REJECTED",
+        decision="MANUAL_REVIEW",
+        rejection_reason="P3 unknown_natural_universe(FAKETOKENUSDC)",
     )
 
-    assert [item.session_id for item in survivors] == ["sess-eligible"]
-    assert candidate.coverage_pct == 100.0
-    assert candidate.multi_ctx_results["eligible_context_count"] == 1
-    assert candidate.multi_ctx_results["configured_context_count"] == 2
-    assert candidate.benchmark_results["bench_core"]["coverage_pct"] == 100.0
-    assert candidate.benchmark_results["bench_core"]["configured_coverage_pct"] == 50.0
-    assert candidate.benchmark_results["bench_core"]["eligible_context_count"] == 1
-    assert candidate.benchmark_results["bench_core"]["excluded_context_count"] == 1
+    category = _candidate_catalog_category(candidate, GraduationConfig())
+
+    assert category == "p3_manual_review"
+
+
+def test_candidate_catalog_category_promoted_p3_still_maps_to_benchmark_consensus(tmp_path: Path) -> None:
+    """Régression : la suppression de benchmark_consensus ne casse pas le mapping P3 PASSED."""
+    candidate = GraduationCandidate(
+        session_id="sess-passed",
+        session_dir=tmp_path,
+        source_symbol="AAVEUSDC",
+        source_timeframe="1h",
+        best_iteration=1,
+        phase="P3",
+        p2_verdict="PASSED",
+        p3_verdict="PASSED",
+        decision="WATCHLIST",
+    )
+
+    category = _candidate_catalog_category(candidate, GraduationConfig())
+
+    assert category == "p3_benchmark_consensus"
+
+
+def test_candidate_should_sync_to_catalog_includes_manual_review(tmp_path: Path) -> None:
+    """MANUAL_REVIEW doit être synchronisé pour être visible dans le catalog UI."""
+    candidate = GraduationCandidate(
+        session_id="sess-manual-sync",
+        session_dir=tmp_path,
+        source_symbol="FAKETOKENUSDC",
+        source_timeframe="1h",
+        phase="P3",
+        p2_verdict="PASSED",
+        p3_verdict="REJECTED",
+        decision="MANUAL_REVIEW",
+    )
+
+    assert _candidate_should_sync_to_catalog(candidate) is True
+
+
+def test_candidate_should_sync_to_catalog_skips_pure_rejected(tmp_path: Path) -> None:
+    """REJECTED standard (pass-rate insuffisant) reste hors-catalog (sauf P2 PASSED)."""
+    candidate = GraduationCandidate(
+        session_id="sess-rejected",
+        session_dir=tmp_path,
+        source_symbol="AAVEUSDC",
+        source_timeframe="1h",
+        phase="P3",
+        p2_verdict="REJECTED",  # P2 raté → pas synchronisé
+        p3_verdict="REJECTED",
+        decision="REJECTED",
+    )
+
+    assert _candidate_should_sync_to_catalog(candidate) is False
+
+
+def test_sync_graduation_to_catalog_persists_manual_review_entries(tmp_path: Path) -> None:
+    """End-to-end : sync d'un MANUAL_REVIEW crée une entrée catalog dans p3_manual_review."""
+    sandbox_dir = tmp_path / "sandbox"
+    session_dir = sandbox_dir / "sess-manual-e2e"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "strategy_v1.py").write_text("# strategy\n", encoding="utf-8")
+
+    candidate = GraduationCandidate(
+        session_id="sess-manual-e2e",
+        session_dir=session_dir,
+        candidate_id="builder:sess-manual-e2e:1",
+        strategy_name="ema_cross",
+        strategy_params={"fast_period": 12},
+        source_symbol="FAKETOKENUSDC",
+        source_timeframe="1h",
+        best_iteration=1,
+        best_return_pct=8.0,
+        best_trades=35,
+        phase="P3",
+        p2_verdict="PASSED",
+        p3_verdict="REJECTED",
+        decision="MANUAL_REVIEW",
+        rejection_reason="P3 unknown_natural_universe(FAKETOKENUSDC)",
+        strategy_file="sess-manual-e2e/strategy_v1.py",
+    )
+
+    config = GraduationConfig(
+        catalog_path=tmp_path / "strategy_catalog.json",
+        sandbox_dir=sandbox_dir,
+    )
+
+    synced = sync_graduation_to_catalog([candidate], config)
+
+    assert len(synced) == 1
+    assert synced[0]["category"] == "p3_manual_review"
+    catalog = read_catalog(config.catalog_path)
+    assert len(catalog["entries"]) == 1
+    assert catalog["entries"][0]["category"] == "p3_manual_review"
 
 
 def test_sync_graduation_to_catalog_batches_catalog_updates(tmp_path: Path, monkeypatch) -> None:
@@ -2129,3 +2361,29 @@ def test_run_full_graduation_uses_safe_engine_mode_for_p3_to_p5(tmp_path: Path, 
 
     assert observed["safe_mode"] is True
     assert backtest_engine_module.USE_FAST_SIMULATOR is True
+
+
+def test_graduation_config_paths_resilient_to_cwd_change():
+    """Régression : les paths par défaut de GraduationConfig doivent pointer
+    vers le projet, indépendamment du cwd au moment de l'instanciation.
+
+    Bug historique : `Path("config/...")` produit `OSError Errno 22` sur Windows
+    quand Streamlit / un sous-processus change le cwd.
+    """
+    import os
+    import tempfile
+
+    original_cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        try:
+            os.chdir(tmp_dir)
+            cfg = GraduationConfig()
+            assert cfg.catalog_path.is_absolute()
+            assert cfg.output_dir.is_absolute()
+            assert cfg.catalog_path.name == "strategy_catalog.json"
+            assert cfg.output_dir.name == "graduation_results"
+            # Doit pointer dans la racine du projet, pas dans tmp_dir
+            assert "backtest_core_v2" in str(cfg.catalog_path)
+            assert "backtest_core_v2" in str(cfg.output_dir)
+        finally:
+            os.chdir(original_cwd)

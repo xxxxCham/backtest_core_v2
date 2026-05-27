@@ -59,8 +59,10 @@ from agents.ollama_runtime import (
 from config.market_selection import (
     evaluate_market_dataset,
     filter_market_universe,
+    get_strategy_requirements,
     infer_strategy_type,
     normalize_universe_mode,
+    rank_tokens_for_strategy,
 )
 
 try:
@@ -90,6 +92,7 @@ from agents.strategy_builder import (
     MIN_BUILDER_BARS,
     SANDBOX_ROOT,
     StrategyBuilder,
+    classify_builder_candidate_tier,
     generate_llm_objective,
     generate_random_objective,
     recommend_market_context,
@@ -189,36 +192,40 @@ _STREAM_CODE_LINE_PREFIXES = (
 BUILDER_VIEW_CSS = """
 <style>
 .bc-builder-summary-line {
-    margin: 0.1rem 0 0.85rem 0;
-    padding-bottom: 0.55rem;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-    color: #b8cbe2;
-    font-size: 0.93rem;
+    margin: var(--bc-sp-xs) 0 var(--bc-sp-md) 0;
+    padding-bottom: var(--bc-sp-sm);
+    border-bottom: 1px solid var(--bc-divider);
+    color: var(--bc-text-2);
+    font-size: var(--bc-fs-text);
     line-height: 1.45;
 }
 .bc-builder-badge-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.45rem;
-    margin: 0.15rem 0 0.7rem 0;
+    gap: var(--bc-sp-xs);
+    margin: var(--bc-sp-xs) 0 var(--bc-sp-sm) 0;
 }
 .bc-builder-badge {
     display: inline-flex;
     align-items: center;
-    padding: 0.36rem 0.58rem;
-    border-radius: 999px;
-    border: 1px solid rgba(148, 163, 184, 0.18);
-    background: rgba(15, 23, 42, 0.88);
-    color: #dbeafe;
-    font-size: 0.8rem;
+    padding: 4px 8px;
+    border-radius: var(--bc-r-sm);
+    border: 1px solid var(--bc-border);
+    background: var(--bc-surface-2);
+    color: var(--bc-text);
+    font-size: var(--bc-fs-caption);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: var(--bc-fw-sb);
 }
 .bc-builder-runtime-note {
-    margin: 0.15rem 0 0.8rem 0;
-    padding: 0.72rem 0.85rem;
-    border-radius: 16px;
-    border: 1px solid rgba(148, 163, 184, 0.16);
-    background: rgba(10, 20, 35, 0.68);
-    color: #c4d4e7;
+    margin: var(--bc-sp-xs) 0 var(--bc-sp-sm) 0;
+    padding: var(--bc-sp-sm) var(--bc-sp-md);
+    border-radius: var(--bc-r-md);
+    border: 1px solid var(--bc-border);
+    background: var(--bc-surface);
+    color: var(--bc-text-2);
+    font-size: var(--bc-fs-text);
 }
 </style>
 """
@@ -1355,7 +1362,7 @@ def _compute_autonomous_test_days(
 
 def _resolve_autonomous_gain_metrics(entry: Dict[str, Any]) -> Dict[str, Optional[float]]:
     status = str(entry.get("status", "") or "").strip().lower()
-    if status not in {"success", "max_iterations"}:
+    if status not in {"success", "positive", "max_iterations"}:
         return {
             "total_pnl": None,
             "test_days": None,
@@ -1880,6 +1887,7 @@ def restore_builder_autonomous_ui_state_from_runtime() -> tuple[bool, Dict[str, 
     ).strip()
     if builder_model_single_llm:
         st.session_state["builder_model_single_llm"] = builder_model_single_llm
+        st.session_state["builder_model_select"] = builder_model_single_llm
 
     builder_ollama_host = str(
         resume_ui_state.get("builder_ollama_host", "") or ""
@@ -2071,8 +2079,14 @@ def _get_autonomous_recap_status_badge(entry: Dict[str, Any]) -> Dict[str, str]:
         if value is not None
     ]
 
+    candidate_tier = str(entry.get("best_candidate_tier") or entry.get("candidate_tier") or "").strip().lower()
     primary_badges = {
         "success": {"icon": "✚", "label": "succes", "tone": "positive"},
+        "positive": (
+            {"icon": "◇", "label": "prometteur", "tone": "candidate"}
+            if candidate_tier == "promising"
+            else {"icon": "+", "label": "positif", "tone": "positive"}
+        ),
         "max_iterations": {"icon": "⏱️", "label": "max_iterations", "tone": "neutral"},
         "running": {"icon": "…", "label": "en cours", "tone": "neutral"},
     }
@@ -2553,6 +2567,23 @@ def render_session_summary(session: Any) -> None:
     status = getattr(session, "status", "unknown")
     best_sharpe_raw = getattr(session, "best_sharpe", None)
     n_iters = len(getattr(session, "iterations", []))
+    best = getattr(session, "best_iteration", None)
+    best_metrics_for_tier = (
+        best.backtest_result.metrics
+        if best is not None
+        and getattr(best, "backtest_result", None) is not None
+        and isinstance(getattr(best.backtest_result, "metrics", None), dict)
+        else {}
+    )
+    best_candidate_tier = str(getattr(session, "best_candidate_tier", "") or "").strip().lower()
+    if not best_candidate_tier and best_metrics_for_tier:
+        best_candidate_tier = str(
+            classify_builder_candidate_tier(
+                best_metrics_for_tier,
+                target_sharpe=float(getattr(session, "target_sharpe", 1.0) or 1.0),
+            ).get("tier")
+            or ""
+        ).strip().lower()
 
     # Statut global
     status_map = {
@@ -2561,7 +2592,14 @@ def render_session_summary(session: Any) -> None:
         "failed": ("❌", "Échec - aucune stratégie viable"),
         "running": ("🔄", "En cours..."),
     }
-    icon, label = status_map.get(status, ("❓", status))
+    if status == "positive":
+        icon, label = (
+            ("🟡", "Positive prometteuse - à poursuivre")
+            if best_candidate_tier == "promising"
+            else ("➕", "Positive observée - à filtrer")
+        )
+    else:
+        icon, label = status_map.get(status, ("❓", status))
 
     st.markdown(f"### {icon} {label}")
     sharpe_txt = _format_optional_float(best_sharpe_raw, "{:.3f}")
@@ -2574,6 +2612,12 @@ def render_session_summary(session: Any) -> None:
         f"**Itérations:** {n_iters} | **Meilleur Sharpe:** {sharpe_txt}"
         f"{model_info} | **LLM canonique:** {canonical_pct_txt}"
     )
+    best_raw_sharpe = _safe_optional_float(getattr(session, "best_raw_sharpe", None))
+    selected_sharpe = _safe_optional_float(best_sharpe_raw)
+    if best_raw_sharpe is not None and (
+        selected_sharpe is None or abs(best_raw_sharpe - selected_sharpe) > 1e-9
+    ):
+        st.caption(f"Meilleur Sharpe brut observé: {best_raw_sharpe:.3f}")
 
     auto_resets = int(getattr(session, "auto_reset_count", 0) or 0)
     if auto_resets:
@@ -2600,7 +2644,6 @@ def render_session_summary(session: Any) -> None:
         )
 
     # Détails du meilleur résultat
-    best = getattr(session, "best_iteration", None)
     if best and hasattr(best, "backtest_result") and best.backtest_result:
         metrics = best.backtest_result.metrics
         best_phase_feedback = getattr(best, "phase_feedback", {}) or {}
@@ -3544,10 +3587,115 @@ def _stable_random_pick(session_key: str, candidates: List[str], fallback: str) 
     return picked
 
 
+def _resolve_builder_strategy_type(
+    *,
+    strategy_type: str = "",
+    objective: str = "",
+    state: Any = None,
+) -> str:
+    """Normalise le type de stratégie utilisé pour prioriser les marchés Builder."""
+    normalized = infer_strategy_type(
+        strategy_type=strategy_type,
+        strategy_key=str(getattr(state, "strategy_key", "") or "") if state is not None else "",
+        objective=objective,
+    )
+    return "" if normalized == "unknown" else normalized
+
+
+def _rank_builder_symbols_for_strategy(symbols: List[str], strategy_type: str) -> List[str]:
+    """Classe les tokens par adéquation au type de stratégie, sans en retirer."""
+    clean_symbols = _dedupe_keep_order(symbols, upper=True)
+    resolved_type = _resolve_builder_strategy_type(strategy_type=strategy_type)
+    if not clean_symbols or not resolved_type:
+        return clean_symbols
+    try:
+        ranked = rank_tokens_for_strategy(clean_symbols, resolved_type)
+    except Exception:  # noqa: BLE001
+        logger.warning("builder_strategy_symbol_ranking_failed strategy_type=%s", resolved_type, exc_info=True)
+        return clean_symbols
+    ranked = _dedupe_keep_order(ranked, upper=True)
+    if not ranked:
+        return clean_symbols
+    missing = [symbol for symbol in clean_symbols if symbol not in ranked]
+    return [*ranked, *missing]
+
+
+def _rank_builder_timeframes_for_strategy(timeframes: List[str], strategy_type: str) -> List[str]:
+    """Place les timeframes recommandés pour la stratégie en tête du pool."""
+    raw_timeframes = [str(tf or "").strip() for tf in timeframes if str(tf or "").strip()]
+    if not raw_timeframes:
+        return []
+    clean_timeframes = _sanitize_builder_timeframes(raw_timeframes, fallback="1h")
+    resolved_type = _resolve_builder_strategy_type(strategy_type=strategy_type)
+    if not clean_timeframes or not resolved_type:
+        return clean_timeframes
+    try:
+        requirements = get_strategy_requirements(resolved_type)
+    except Exception:  # noqa: BLE001
+        logger.warning("builder_strategy_timeframe_ranking_failed strategy_type=%s", resolved_type, exc_info=True)
+        return clean_timeframes
+    recommended = [
+        str(tf or "").strip()
+        for tf in (requirements.get("timeframes", []) or [])
+        if str(tf or "").strip() in clean_timeframes
+    ]
+    if recommended:
+        remaining = [tf for tf in clean_timeframes if tf not in recommended]
+        return [*recommended, *remaining]
+
+    reference_days = [
+        float(days)
+        for days in (_timeframe_to_days(str(tf or "").strip()) for tf in (requirements.get("timeframes", []) or []))
+        if days is not None and days > 0
+    ]
+    if not reference_days:
+        return clean_timeframes
+
+    def _distance_to_recommended(tf: str) -> Tuple[float, float, str]:
+        tf_days = _timeframe_to_days(tf)
+        if tf_days is None or tf_days <= 0:
+            return (float("inf"), float("inf"), tf)
+        distance = min(abs(math.log(max(tf_days, 1e-9) / max(ref_days, 1e-9))) for ref_days in reference_days)
+        return (distance, tf_days, tf)
+
+    return sorted(clean_timeframes, key=_distance_to_recommended)
+
+
+def _preferred_timeframe_alternative_for_strategy(
+    *,
+    selected_timeframe: str,
+    available_timeframes: List[str],
+    strategy_type: str,
+) -> str:
+    """Retourne une TF plus cohérente si la sélection est hors profil stratégie."""
+    selected = str(selected_timeframe or "").strip()
+    resolved_type = _resolve_builder_strategy_type(strategy_type=strategy_type)
+    if not selected or not resolved_type:
+        return ""
+    ranked_timeframes = _rank_builder_timeframes_for_strategy(available_timeframes, resolved_type)
+    if not ranked_timeframes or selected == ranked_timeframes[0]:
+        return ""
+    try:
+        requirements = get_strategy_requirements(resolved_type)
+        exact_recommended = {
+            str(tf or "").strip()
+            for tf in (requirements.get("timeframes", []) or [])
+            if str(tf or "").strip()
+        }
+    except Exception:  # noqa: BLE001
+        exact_recommended = set()
+    if selected in exact_recommended:
+        return ""
+    return ranked_timeframes[0]
+
+
 def _pick_non_recent_market(
     symbols: List[str],
     timeframes: List[str],
     recent_markets: List[Tuple[str, str]],
+    *,
+    strategy_type: str = "",
+    objective: str = "",
 ) -> Tuple[str, str]:
     """Choisit un couple marché de fallback en évitant d'abord les plus récents."""
     clean_symbols = [str(s or "").strip().upper() for s in symbols if str(s or "").strip()]
@@ -3556,6 +3704,13 @@ def _pick_non_recent_market(
         clean_symbols = ["BTCUSDC"]
     if not clean_tfs:
         clean_tfs = ["1h"]
+    resolved_type = _resolve_builder_strategy_type(
+        strategy_type=strategy_type,
+        objective=objective,
+    )
+    if resolved_type:
+        clean_symbols = _rank_builder_symbols_for_strategy(clean_symbols, resolved_type)
+        clean_tfs = _rank_builder_timeframes_for_strategy(clean_tfs, resolved_type)
 
     all_pairs = [(s, tf) for s in clean_symbols for tf in clean_tfs]
     if len(all_pairs) == 1:
@@ -3578,10 +3733,24 @@ def _pick_non_recent_market(
         tf for tf in clean_tfs
         if tf_usage.get(tf, 0) == min_tf_usage and any(pair_tf == tf for _, pair_tf in pool)
     ]
-    chosen_tf = random.choice(tf_pool) if tf_pool else random.choice(clean_tfs)
+    chosen_tf = (
+        next((tf for tf in clean_tfs if tf in tf_pool), "")
+        if resolved_type
+        else (random.choice(tf_pool) if tf_pool else random.choice(clean_tfs))
+    )
+    if not chosen_tf:
+        chosen_tf = clean_tfs[0] if resolved_type else random.choice(clean_tfs)
 
     tf_pairs = [pair for pair in pool if pair[1] == chosen_tf]
-    chosen_pair = random.choice(tf_pairs) if tf_pairs else random.choice(pool)
+    if resolved_type:
+        symbol_rank = {symbol: rank for rank, symbol in enumerate(clean_symbols)}
+        ranked_pairs = sorted(
+            tf_pairs or pool,
+            key=lambda pair: (symbol_rank.get(pair[0], len(symbol_rank)), pair[0], pair[1]),
+        )
+        chosen_pair = ranked_pairs[0]
+    else:
+        chosen_pair = random.choice(tf_pairs) if tf_pairs else random.choice(pool)
     tf_usage[chosen_pair[1]] = int(tf_usage.get(chosen_pair[1], 0)) + 1
     return chosen_pair
 
@@ -3690,8 +3859,22 @@ def _builder_market_candidates(
     )
     st.session_state["_builder_market_last_universe_meta"] = universe_payload
 
-    return list(universe_payload.get("symbols", []) or []), list(
-        universe_payload.get("timeframes", []) or []
+    ranked_symbols = _rank_builder_symbols_for_strategy(
+        list(universe_payload.get("symbols", []) or []),
+        normalized_strategy_type,
+    )
+    ranked_timeframes = _rank_builder_timeframes_for_strategy(
+        list(universe_payload.get("timeframes", []) or []),
+        normalized_strategy_type,
+    )
+    if normalized_strategy_type != "unknown":
+        universe_payload["symbols"] = list(ranked_symbols)
+        universe_payload["timeframes"] = list(ranked_timeframes)
+        universe_payload["strategy_rank_source"] = "config.market_selection.rank_tokens_for_strategy"
+        st.session_state["_builder_market_last_universe_meta"] = universe_payload
+
+    return list(ranked_symbols), list(
+        ranked_timeframes
     )
 
 
@@ -4116,6 +4299,7 @@ def _build_builder_market_probe_pairs(
     preferred_pairs: List[Tuple[str, str]] | None = None,
     recent_markets: List[Tuple[str, str]] | None = None,
     max_pairs: int = 24,
+    strategy_type: str = "",
 ) -> List[Tuple[str, str]]:
     clean_symbols = [str(s or "").strip().upper() for s in symbols if str(s or "").strip()]
     clean_tfs = [str(tf or "").strip() for tf in timeframes if str(tf or "").strip()]
@@ -4123,6 +4307,10 @@ def _build_builder_market_probe_pairs(
         clean_symbols = ["BTCUSDC"]
     if not clean_tfs:
         clean_tfs = ["1h"]
+    resolved_type = _resolve_builder_strategy_type(strategy_type=strategy_type)
+    if resolved_type:
+        clean_symbols = _rank_builder_symbols_for_strategy(clean_symbols, resolved_type)
+        clean_tfs = _rank_builder_timeframes_for_strategy(clean_tfs, resolved_type)
 
     ordered_pairs: List[Tuple[str, str]] = []
     seen: set[Tuple[str, str]] = set()
@@ -4148,7 +4336,18 @@ def _build_builder_market_probe_pairs(
     recent_pairs = [pair for pair in all_pairs if pair in recent_set]
 
     for pool in (non_recent_pairs, recent_pairs):
-        if len(pool) > 1:
+        if resolved_type:
+            symbol_rank = {symbol: rank for rank, symbol in enumerate(clean_symbols)}
+            timeframe_rank = {tf: rank for rank, tf in enumerate(clean_tfs)}
+            pool.sort(
+                key=lambda pair: (
+                    symbol_rank.get(pair[0], len(symbol_rank)),
+                    timeframe_rank.get(pair[1], len(timeframe_rank)),
+                    pair[0],
+                    pair[1],
+                ),
+            )
+        elif len(pool) > 1:
             random.shuffle(pool)
         for pair_symbol, pair_timeframe in pool:
             _append_pair(pair_symbol, pair_timeframe)
@@ -4172,18 +4371,19 @@ def _find_first_valid_builder_market(
     objective: str = "",
     purpose: str = "builder",
 ) -> tuple[str, str, Any, Dict[str, Any]]:
+    strategy_type = infer_strategy_type(
+        strategy_key=str(getattr(state, "strategy_key", "") or ""),
+        objective=objective,
+    )
     probe_pairs = _build_builder_market_probe_pairs(
         symbols,
         timeframes,
         preferred_pairs=preferred_pairs,
         recent_markets=recent_markets,
         max_pairs=max_pairs,
+        strategy_type=strategy_type,
     )
     failures: List[Dict[str, str]] = []
-    strategy_type = infer_strategy_type(
-        strategy_key=str(getattr(state, "strategy_key", "") or ""),
-        objective=objective,
-    )
     universe_mode = normalize_universe_mode(
         getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
         purpose=purpose,
@@ -4364,6 +4564,7 @@ def _pick_market_for_objective(
 
     run_symbol = str(pick.get("symbol", default_symbol) or default_symbol).upper()
     run_timeframe = str(pick.get("timeframe", default_timeframe) or default_timeframe)
+    strategy_preferred_pairs: List[Tuple[str, str]] = []
     run_df, load_error, data_source = _load_builder_market_data(
         state=state,
         symbol=run_symbol,
@@ -4383,6 +4584,19 @@ def _pick_market_for_objective(
         if not dataset_ok:
             load_error = dataset_error
             data_source = "invalid_dataset"
+        else:
+            preferred_timeframe = _preferred_timeframe_alternative_for_strategy(
+                selected_timeframe=run_timeframe,
+                available_timeframes=timeframes,
+                strategy_type=strategy_type,
+            )
+            if preferred_timeframe and preferred_timeframe != run_timeframe:
+                strategy_preferred_pairs.append((run_symbol, preferred_timeframe))
+                load_error = (
+                    f"strategy/timeframe deprioritized "
+                    f"({strategy_type}: selected={run_timeframe}, preferred={preferred_timeframe})"
+                )
+                data_source = "invalid_strategy_timeframe"
 
     if load_error:
         fallback_symbol, fallback_timeframe, fallback_candidate_df, fallback_meta = _find_first_valid_builder_market(
@@ -4392,7 +4606,7 @@ def _pick_market_for_objective(
             default_symbol=default_symbol,
             default_timeframe=default_timeframe,
             fallback_df=fallback_df,
-            preferred_pairs=[(default_symbol, default_timeframe)],
+            preferred_pairs=[*strategy_preferred_pairs, (default_symbol, default_timeframe)],
             recent_markets=recent_markets,
             objective=objective,
             purpose=purpose,
@@ -5201,22 +5415,21 @@ def _render_autonomous_recap(
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    font-size: 0.92rem;
+    font-size: var(--bc-fs-text);
     table-layout: auto;
 }
 .builder-autonomous-recap-table thead th {
     position: sticky;
     top: 0;
     z-index: 25;
-    background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-    color: #f1f5f9;
-    font-weight: 700;
-    letter-spacing: 0.02em;
+    background: var(--bc-surface-2);
+    color: var(--bc-text-2);
+    font-weight: var(--bc-fw-sb);
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    font-size: 0.78rem;
-    padding: 0.55rem 0.6rem;
-    border-bottom: 2px solid rgba(96, 165, 250, 0.45);
-    box-shadow: 0 6px 14px -8px rgba(2, 8, 23, 0.55);
+    font-size: var(--bc-fs-caption);
+    padding: var(--bc-sp-xs) var(--bc-sp-sm);
+    border-bottom: 1px solid var(--bc-border);
     text-align: left;
     vertical-align: middle;
     white-space: nowrap;
@@ -5225,17 +5438,18 @@ def _render_autonomous_recap(
     text-align: right;
 }
 .builder-autonomous-recap-table tbody tr:nth-child(even) {
-    background: rgba(30, 41, 59, 0.18);
+    background: var(--bc-surface);
 }
 .builder-autonomous-recap-table tbody tr:hover {
-    background: rgba(96, 165, 250, 0.10);
+    background: var(--bc-surface-2);
     transition: background 120ms ease-out;
 }
 .builder-autonomous-recap-table td {
-    padding: 0.42rem 0.6rem;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    padding: var(--bc-sp-xs) var(--bc-sp-sm);
+    border-bottom: 1px solid var(--bc-divider);
     text-align: left;
     vertical-align: top;
+    color: var(--bc-text);
 }
 .builder-autonomous-recap-objective-cell {
     position: relative;
@@ -5245,7 +5459,7 @@ def _render_autonomous_recap(
     padding-right: 1.8rem;
 }
 .builder-autonomous-recap-objective-preview {
-    color: #e6eefc;
+    color: var(--bc-text);
 }
 .builder-autonomous-recap-objective-trigger {
     position: absolute;
@@ -5256,12 +5470,11 @@ def _render_autonomous_recap(
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 999px;
-    background: linear-gradient(135deg, rgba(37, 99, 235, 0.98), rgba(96, 165, 250, 0.96));
-    color: #ffffff;
-    font-size: 0.8rem;
-    font-weight: 700;
-    box-shadow: 0 8px 18px rgba(30, 64, 175, 0.28);
+    border-radius: var(--bc-r-sm);
+    background: var(--bc-gold);
+    color: var(--bc-bg);
+    font-size: var(--bc-fs-caption);
+    font-weight: var(--bc-fw-bold);
     opacity: 0;
     transform: translateY(-2px);
     transition: opacity 140ms ease, transform 140ms ease;
@@ -5276,14 +5489,11 @@ def _render_autonomous_recap(
     width: min(56rem, 78vw);
     max-height: 15rem;
     overflow: auto;
-    padding: 0.85rem 0.95rem;
-    border-radius: 14px;
-    border: 1px solid rgba(96, 165, 250, 0.35);
-    background:
-        radial-gradient(circle at top left, rgba(59, 130, 246, 0.14), transparent 38%),
-        linear-gradient(180deg, rgba(9, 17, 31, 0.99), rgba(14, 26, 45, 0.98));
-    color: #f8fbff;
-    box-shadow: 0 18px 38px rgba(2, 8, 23, 0.34);
+    padding: var(--bc-sp-md);
+    border-radius: var(--bc-r-md);
+    border: 1px solid var(--bc-border);
+    background: var(--bc-surface);
+    color: var(--bc-text);
 }
 .builder-autonomous-recap-objective-cell:hover .builder-autonomous-recap-objective-trigger,
 .builder-autonomous-recap-objective-cell:focus-within .builder-autonomous-recap-objective-trigger {
@@ -5303,84 +5513,86 @@ def _render_autonomous_recap(
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    padding: 0.18rem 0.55rem;
-    border-radius: 999px;
-    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: var(--bc-r-sm);
+    font-weight: var(--bc-fw-sb);
     white-space: nowrap;
-    font-size: 0.82rem;
-    letter-spacing: 0.02em;
+    font-size: var(--bc-fs-caption);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
 }
 .builder-autonomous-recap-status--positive {
-    color: #052e16;
-    background: rgba(34, 197, 94, 0.22);
-    border: 1px solid rgba(34, 197, 94, 0.55);
+    color: var(--bc-success);
+    background: rgba(63, 185, 80, 0.12);
+    border: 1px solid rgba(63, 185, 80, 0.35);
 }
 .builder-autonomous-recap-status--candidate {
-    color: #fef3c7;
-    background: rgba(14, 165, 233, 0.18);
-    border: 1px solid rgba(56, 189, 248, 0.50);
+    color: var(--bc-info);
+    background: rgba(88, 166, 255, 0.10);
+    border: 1px solid rgba(88, 166, 255, 0.35);
 }
 .builder-autonomous-recap-status--negative {
-    color: #fef2f2;
-    background: rgba(248, 113, 113, 0.20);
-    border: 1px solid rgba(239, 68, 68, 0.55);
+    color: var(--bc-error);
+    background: rgba(240, 96, 107, 0.10);
+    border: 1px solid rgba(240, 96, 107, 0.35);
 }
 .builder-autonomous-recap-status--crash {
-    color: #fef2f2;
-    background: rgba(220, 38, 38, 0.32);
-    border: 1px solid rgba(220, 38, 38, 0.65);
+    color: var(--bc-error);
+    background: rgba(240, 96, 107, 0.18);
+    border: 1px solid rgba(240, 96, 107, 0.55);
 }
 .builder-autonomous-recap-status--neutral {
-    color: #fef3c7;
-    background: rgba(217, 119, 6, 0.20);
-    border: 1px solid rgba(217, 119, 6, 0.55);
+    color: var(--bc-warning);
+    background: rgba(240, 136, 62, 0.10);
+    border: 1px solid rgba(240, 136, 62, 0.35);
 }
 .builder-autonomous-recap-best {
-    font-weight: 700;
+    font-weight: var(--bc-fw-bold);
+    color: var(--bc-gold-bright);
 }
 .builder-autonomous-recap-regress {
     display: block;
     margin-top: 0.15rem;
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: #fca5a5;
+    font-size: var(--bc-fs-caption);
+    font-weight: var(--bc-fw-sb);
+    color: var(--bc-error);
     opacity: 0.85;
     cursor: help;
     letter-spacing: 0.01em;
 }
 .builder-autonomous-recap-empty {
     text-align: center !important;
-    padding: 0.95rem 0.75rem !important;
-    color: rgba(226, 232, 240, 0.72);
+    padding: var(--bc-sp-md) !important;
+    color: var(--bc-text-3);
     font-style: italic;
 }
 .builder-autonomous-recap-details {
-        margin-top: 0.85rem;
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        border-radius: 0.75rem;
-        padding: 0.35rem 0.75rem 0.6rem;
-        background: rgba(15, 23, 42, 0.18);
+        margin-top: var(--bc-sp-sm);
+        border: 1px solid var(--bc-border);
+        border-radius: var(--bc-r-md);
+        padding: var(--bc-sp-xs) var(--bc-sp-md) var(--bc-sp-sm);
+        background: var(--bc-surface);
 }
 .builder-autonomous-recap-history {
-        border: 1px solid rgba(148, 163, 184, 0.22);
-        border-radius: 0.75rem;
-        padding: 0.35rem 0.75rem 0.75rem;
-        background: rgba(15, 23, 42, 0.12);
+        border: 1px solid var(--bc-border);
+        border-radius: var(--bc-r-md);
+        padding: var(--bc-sp-xs) var(--bc-sp-md) var(--bc-sp-sm);
+        background: var(--bc-surface);
 }
-.builder-autonomous-recap-history summary {
-        cursor: pointer;
-        font-weight: 700;
-        margin: 0.25rem 0 0.65rem;
-}
+.builder-autonomous-recap-history summary,
 .builder-autonomous-recap-details summary {
         cursor: pointer;
-        font-weight: 700;
-        margin: 0.25rem 0;
+        font-weight: var(--bc-fw-sb);
+        color: var(--bc-gold-pale);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: var(--bc-fs-card);
+        margin: 0.25rem 0 0.55rem;
 }
 .builder-autonomous-recap-legend {
-        margin-top: 0.75rem;
-        font-size: 0.88rem;
-        color: rgba(226, 232, 240, 0.92);
+        margin-top: var(--bc-sp-sm);
+        font-size: var(--bc-fs-text);
+        color: var(--bc-text-2);
 }
 </style>
 <details class="builder-autonomous-recap-history" open>
@@ -5432,7 +5644,7 @@ def _render_autonomous_recap(
     <strong>Modele :</strong> nom du modele LLM utilise pour la session.
     <strong>LLM % :</strong> pourcentage d'iterations generees par le LLM (canoniques) vs fallback deterministe.<br>
     <strong>Lecture des metriques :</strong> <strong>Sharpe/Return/Max DD/Trades</strong> = metriques du <em>best run</em> (meilleure itération de la session).
-    Si l'itération finale a régressé par rapport au best, une annotation <span style="color:#fca5a5;font-weight:700">↓</span> en dessous indique la valeur de la dernière itération.<br>
+    Si l'itération finale a régressé par rapport au best, une annotation <span style="color:var(--bc-error);font-weight:var(--bc-fw-bold)">↓</span> en dessous indique la valeur de la dernière itération.<br>
     <strong>Gain total $ / $ par jour</strong> = derive du PnL final si disponible, sinon du return final applique au capital initial ;
     <strong>Jours testes</strong> = plage de donnees reelle si disponible, sinon estimation via le nombre de barres et le timeframe.
 </div>
@@ -5572,6 +5784,22 @@ def _record_autonomous_session_result(
             best_score = None
 
         gen_stats = compute_session_generation_stats(session)
+        best_iteration = getattr(session, "best_iteration", None)
+        best_metrics = (
+            best_iteration.backtest_result.metrics
+            if best_iteration is not None
+            and getattr(best_iteration, "backtest_result", None) is not None
+            and isinstance(getattr(best_iteration.backtest_result, "metrics", None), dict)
+            else {}
+        )
+        best_candidate_classification = (
+            classify_builder_candidate_tier(
+                best_metrics,
+                target_sharpe=float(getattr(session, "target_sharpe", 1.0) or 1.0),
+            )
+            if best_metrics
+            else {}
+        )
 
         history_entry = {
             **history_entry_base,
@@ -5579,6 +5807,9 @@ def _record_autonomous_session_result(
             "generation_stats": gen_stats,
             "status": session.status,
             "best_sharpe": session.best_sharpe,
+            "best_raw_sharpe": getattr(session, "best_raw_sharpe", None),
+            "best_candidate_tier": best_candidate_classification.get("tier"),
+            "best_candidate_reason": best_candidate_classification.get("reason"),
             "best_telemetry_score": best_score,
             "best_score": best_score,
             **best_return_snapshot,
@@ -6318,11 +6549,21 @@ def _execute_builder_autonomous_loop(
 
             session_symbol = symbol
             session_timeframe = timeframe
+            autonomous_universe_mode = normalize_universe_mode(
+                getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
+                purpose="builder_autonomous",
+            )
+            autonomous_strategy_type = infer_strategy_type(
+                strategy_key=str(getattr(state, "strategy_key", "") or ""),
+                objective=objective,
+            )
             if effective_auto_market_pick:
                 session_symbol, session_timeframe = _pick_non_recent_market(
                     all_symbols,
                     all_timeframes,
                     _recent_markets,
+                    strategy_type=autonomous_strategy_type,
+                    objective=objective,
                 )
             default_session_symbol = session_symbol
             default_session_timeframe = session_timeframe
@@ -6343,14 +6584,6 @@ def _execute_builder_autonomous_loop(
                         pre_data_source,
                     )
             market_pick: Dict[str, Any] = {}
-            autonomous_universe_mode = normalize_universe_mode(
-                getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
-                purpose="builder_autonomous",
-            )
-            autonomous_strategy_type = infer_strategy_type(
-                strategy_key=str(getattr(state, "strategy_key", "") or ""),
-                objective=objective,
-            )
             if effective_auto_market_pick:
                 spinner_label = (
                     "🧭 Sélection automatique du marché (token/TF)…"

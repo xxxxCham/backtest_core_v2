@@ -1,151 +1,141 @@
 {
   "recent_runs": [
     [
-      "supertrend",
-      "fvg",
-      "atr",
-      "donchian",
-      "adx",
-      "momentum"
-    ],
-    [
-      "standard_deviation",
-      "keltner",
-      "atr",
-      "ema",
-      "rsi",
-      "bollinger"
-    ],
-    [
-      "fvg",
-      "eom",
+      "amplitude_hunter",
       "vortex",
+      "cmf",
+      "bollinger",
+      "momentum",
+      "atr"
+    ],
+    [
+      "stochastic",
+      "cmf",
+      "bollinger",
+      "adx",
+      "momentum",
       "atr",
-      "pivot_points",
+      "chaikin_oscillator"
+    ],
+    [
+      "fisher_transform",
+      "vortex",
+      "amplitude_hunter",
+      "psar",
       "swing",
+      "momentum",
+      "atr"
+    ],
+    [
+      "stochastic",
+      "adx",
+      "atr",
+      "momentum",
+      "supertrend",
+      "markov_switching"
+    ],
+    [
+      "kst",
+      "tsi",
+      "roc",
+      "atr",
+      "momentum",
       "supertrend"
     ],
     [
-      "ichimoku",
-      "momentum",
-      "aroon",
-      "volume_oscillator",
-      "cmo",
-      "kvo",
-      "atr",
-      "swing"
-    ],
-    [
-      "momentum",
-      "markov_switching",
-      "cmf",
-      "keltner",
-      "hma",
-      "swing",
-      "bollinger",
-      "roc",
-      "atr"
-    ],
-    [
-      "markov_switching",
-      "chaikin_oscillator",
-      "atr",
-      "momentum",
-      "coppock_curve",
-      "obv",
-      "adx"
-    ],
-    [
-      "momentum",
-      "vix",
-      "fibonacci_levels",
-      "kst",
-      "psar",
-      "volume_oscillator",
-      "swing",
-      "atr"
-    ],
-    [
-      "momentum",
-      "amplitude_hunter",
-      "markov_switching",
-      "cmf",
-      "vwap",
-      "swing"
-    ],
-    [
-      "amplitude_hunter",
-      "volume_oscillator",
-      "supertrend",
-      "keltner",
+      "ema",
+      "macd",
+      "directional_bias",
       "atr",
       "momentum"
     ],
     [
-      "cci",
-      "bollinger",
+      "pivot_points",
+      "rsi",
+      "stoch_rsi",
       "atr",
-      "momentum",
-      "choppiness_index"
+      "stochastic",
+      "cci",
+      "directional_bias"
+    ],
+    [
+      "cmf",
+      "volume_oscillator",
+      "vwap",
+      "vortex",
+      "directional_bias",
+      "atr"
+    ],
+    [
+      "amplitude_hunter",
+      "cci",
+      "vwap",
+      "swing",
+      "atr",
+      "adx",
+      "directional_bias"
+    ],
+    [
+      "mfi",
+      "choppiness_index",
+      "obv",
+      "atr",
+      "momentum"
     ]
   ],
   "recent_families": [
     [
+      "breakout",
       "trend-following",
+      "multi-factor",
       "mean-reversion",
+      "momentum"
+    ],
+    [
+      "mean-reversion",
+      "multi-factor",
+      "trend-following",
+      "momentum",
+      "breakout"
+    ],
+    [
+      "trend-following",
+      "breakout",
+      "mean-reversion",
+      "momentum"
+    ],
+    [
+      "mean-reversion",
+      "trend-following",
       "breakout",
       "momentum"
     ],
     [
-      "regime-adaptive",
+      "momentum",
+      "breakout",
+      "trend-following"
+    ],
+    [
+      "trend-following",
+      "breakout",
+      "momentum"
+    ],
+    [
       "mean-reversion",
       "breakout",
       "trend-following"
     ],
     [
-      "mean-reversion",
-      "trend-following",
-      "breakout"
-    ],
-    [
-      "trend-following",
-      "momentum",
-      "breakout",
-      "mean-reversion"
-    ],
-    [
-      "momentum",
-      "trend-following",
       "multi-factor",
-      "mean-reversion",
-      "breakout"
-    ],
-    [
-      "trend-following",
       "breakout",
-      "momentum",
-      "mean-reversion"
-    ],
-    [
-      "momentum",
-      "multi-factor",
-      "trend-following",
-      "breakout",
-      "mean-reversion"
-    ],
-    [
-      "momentum",
-      "breakout",
-      "trend-following",
-      "multi-factor",
       "scalping",
-      "mean-reversion"
+      "trend-following"
     ],
     [
       "breakout",
-      "trend-following",
       "mean-reversion",
-      "momentum"
+      "scalping",
+      "trend-following"
     ],
     [
       "mean-reversion",
@@ -154,9 +144,11 @@
     ]
   ],
   "banned_indicators": {
-    "momentum": 1,
     "bollinger": 1,
-    "swing": 2,
-    "atr": 2
+    "atr": 1,
+    "vortex": 1,
+    "adx": 2,
+    "momentum": 2,
+    "directional_bias": 2
   }
 }

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -738,6 +738,8 @@ def rank_indicator_selection(
     inter_session_penalty: float = 0.0,
     inter_session_novelty_bonus: float = 0.0,
     inter_session_indicators: Optional[Iterable[str]] = None,
+    performance_priors: Optional[Mapping[str, float]] = None,
+    performance_prior_weight: float = 1.0,
 ) -> List[str]:
     """Classe les indicateurs pour le prompt Builder.
 
@@ -764,6 +766,9 @@ def rank_indicator_selection(
         inter_session_novelty_bonus: Bonus accordé aux indicateurs absents
             de l'historique inter-sessions.
         inter_session_indicators: Indicateurs vus dans les runs précédents.
+        performance_priors: Score historique normalisé par indicateur
+            (positif = favorisé, négatif = refroidi).
+        performance_prior_weight: Multiplicateur conservateur du prior.
     """
     query_tokens = _build_indicator_query_tokens(objective, diagnostic)
     previous = {
@@ -784,6 +789,11 @@ def rank_indicator_selection(
     inter_session = {
         str(ind or "").strip().lower()
         for ind in (inter_session_indicators or [])
+        if str(ind or "").strip()
+    }
+    priors = {
+        str(ind or "").strip().lower(): float(score)
+        for ind, score in dict(performance_priors or {}).items()
         if str(ind or "").strip()
     }
 
@@ -839,6 +849,9 @@ def rank_indicator_selection(
                     relevance_score -= family_penalty
                 elif ind_family not in recent_families and family_bonus:
                     relevance_score += family_bonus
+
+        if priors:
+            relevance_score += float(performance_prior_weight or 0.0) * priors.get(key, 0.0)
 
         if key == "atr":
             relevance_score += _INDICATOR_BASELINE_UTILITY_BONUS

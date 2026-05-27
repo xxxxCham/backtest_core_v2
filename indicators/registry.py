@@ -64,6 +64,8 @@ from .williams_r import WilliamsRSettings, williams_r
 
 _GPU_CALC = None
 _GPU_QUEUES = None  # Conservé pour compatibilité (CPU-only)
+_INDICATOR_DATA_HASH_ATTR = "_indicator_data_hash"
+_INDICATOR_DATA_HASH_SIGNATURE_ATTR = "_indicator_data_hash_signature"
 
 
 def set_gpu_queues(request_queue, response_queue):
@@ -96,6 +98,61 @@ def _get_gpu_calc():
 
 def _should_use_gpu(_calc, _n_samples: int) -> bool:
     return False
+
+
+def _indicator_cache_enabled() -> bool:
+    """Retourne le flag cache en respectant un éventuel override runtime."""
+    raw = os.getenv("INDICATOR_CACHE_ENABLED")
+    if raw is None:
+        return _CACHE_ENABLED
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _indicator_data_signature(df: pd.DataFrame) -> tuple[Any, ...]:
+    """Signature légère du DataFrame associée au hash stocké dans ``attrs``.
+
+    Les slices pandas héritent des ``attrs`` du parent. Sans signature, un
+    split walk-forward peut réutiliser le hash du DataFrame complet et donc
+    récupérer un indicateur caché avec une longueur incompatible.
+    """
+    try:
+        first_idx = str(df.index[0]) if len(df) > 0 else ""
+        last_idx = str(df.index[-1]) if len(df) > 0 else ""
+    except Exception:
+        first_idx = ""
+        last_idx = ""
+    try:
+        close_checksum = float(pd.to_numeric(df["close"], errors="coerce").sum()) if "close" in df.columns else 0.0
+    except Exception:
+        close_checksum = 0.0
+    return (
+        tuple(df.shape),
+        tuple(str(col) for col in df.columns),
+        first_idx,
+        last_idx,
+        close_checksum,
+    )
+
+
+def _get_or_compute_data_hash(df: pd.DataFrame, bank: Any) -> str:
+    """Réutilise un hash ``attrs`` seulement si sa signature correspond."""
+    signature = _indicator_data_signature(df)
+    data_hash = None
+    try:
+        cached_hash = df.attrs.get(_INDICATOR_DATA_HASH_ATTR)
+        cached_signature = df.attrs.get(_INDICATOR_DATA_HASH_SIGNATURE_ATTR)
+        if cached_hash and cached_signature == signature:
+            data_hash = str(cached_hash)
+    except Exception:
+        data_hash = None
+    if not data_hash:
+        data_hash = bank.get_data_hash(df)
+        try:
+            df.attrs[_INDICATOR_DATA_HASH_ATTR] = data_hash
+            df.attrs[_INDICATOR_DATA_HASH_SIGNATURE_ATTR] = signature
+        except Exception:
+            pass
+    return data_hash
 
 
 @dataclass
@@ -181,7 +238,7 @@ def calculate_indicator(
     # ═══════════════════════════════════════════════════════════════════════════
     # Vérifier si cache activé (résultat caché au niveau module pour éviter
     # os.getenv() à chaque appel — coûteux sur Windows: ~10µs/appel)
-    cache_enabled = _CACHE_ENABLED
+    cache_enabled = _indicator_cache_enabled()
 
     backend = "cpu"
 
@@ -190,17 +247,9 @@ def calculate_indicator(
         try:
             bank = get_indicator_bank()
 
-            # Réutiliser un hash de données stable (évite recalcul O(n) à chaque indicateur)
-            try:
-                data_hash = df.attrs.get("_indicator_data_hash")
-            except Exception:
-                data_hash = None
-            if not data_hash:
-                data_hash = bank.get_data_hash(df)
-                try:
-                    df.attrs["_indicator_data_hash"] = data_hash
-                except Exception:
-                    pass
+            # Réutiliser un hash de données stable seulement si la signature
+            # locale correspond; les slices héritent des attrs du parent.
+            data_hash = _get_or_compute_data_hash(df, bank)
 
             # Déterminer le backend (CPU) pour clé de cache correcte
             # Vérifier cache
@@ -387,16 +436,7 @@ def calculate_indicator(
         try:
             bank = get_indicator_bank()
             if not data_hash:
-                try:
-                    data_hash = df.attrs.get("_indicator_data_hash")
-                except Exception:
-                    data_hash = None
-            if not data_hash:
-                data_hash = bank.get_data_hash(df)
-                try:
-                    df.attrs["_indicator_data_hash"] = data_hash
-                except Exception:
-                    pass
+                data_hash = _get_or_compute_data_hash(df, bank)
             bank.put(name, params, df, result, data_hash=data_hash, backend=backend)
         except Exception:
             # Erreur cache non bloquante (degraded mode)

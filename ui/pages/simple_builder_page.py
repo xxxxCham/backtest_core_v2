@@ -84,12 +84,13 @@ def _load_parquet_or_csv(path: Path) -> pd.DataFrame:
 
 
 def _format_metric(name: str, value: float, ok: bool) -> str:
-    color = "#16a34a" if ok else "#dc2626"
+    cls = "bc-success" if ok else "bc-error"
     icon = "OK" if ok else "FAIL"
     return (
-        f"<div style='padding:6px 10px;border-radius:6px;background:{color}1a;"
-        f"display:inline-block;margin:2px;font-size:13px'>"
-        f"<b>{icon}</b> {name} = <code>{value:.3f}</code></div>"
+        f"<div class='bc-card' style='display:inline-block;margin:2px;padding:4px 8px'>"
+        f"<b class='{cls}'>{icon}</b> "
+        f"<span class='bc-caption'>{name}</span> = "
+        f"<code>{value:.3f}</code></div>"
     )
 
 
@@ -99,7 +100,10 @@ def _format_metric(name: str, value: float, ok: bool) -> str:
 
 
 def render_page() -> None:
+    from ui.theme import apply_theme
+
     st.set_page_config(page_title="Simple Builder", layout="wide")
+    apply_theme(force=True)
     st.title("Simple Builder — mono-LLM canonique")
     st.caption(
         "Pipeline 9 etapes explicites. Aucune relance automatique. "

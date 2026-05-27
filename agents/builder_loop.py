@@ -620,8 +620,8 @@ def run_builder_loop_v2(
                     "penalties": score_payload.get("penalties"),
                 },
             )
-            if math.isfinite(sharpe) and sharpe > session.best_sharpe:
-                session.best_sharpe = sharpe
+            if math.isfinite(sharpe) and sharpe > getattr(session, "best_raw_sharpe", float("-inf")):
+                session.best_raw_sharpe = sharpe
 
             candidate_selection_key = _builder_iteration_selection_key(
                 metrics_cur,
@@ -648,6 +648,7 @@ def run_builder_loop_v2(
                     score_payload.get("score", float("-inf")) or float("-inf"),
                 )
                 session.best_iteration = iteration
+                session.best_sharpe = sharpe
 
             # ── Phase 6b : Détection de stagnation ──
             cur_fp = _metrics_fingerprint(metrics_cur)
@@ -995,21 +996,16 @@ def run_builder_loop_v2(
                     )
                 break
             if decision == "stop":
-                best_metrics = (
-                    session.best_iteration.backtest_result.metrics
-                    if session.best_iteration and session.best_iteration.backtest_result
-                    else {}
+                session.status, completion_reason = resolve_builder_completion_status(
+                    session,
+                    fallback_status="failed",
                 )
-                best_ok, best_reason = _is_accept_candidate(
-                    best_metrics,
-                    target_sharpe=session.target_sharpe,
-                )
-                session.status = "success" if best_ok else "failed"
-                if not best_ok:
+                if session.status != "success":
                     logger.info(
-                        "builder_iter_%d_stop_rejected_success reason=%s best_sharpe=%.3f",
+                        "builder_iter_%d_stop_rejected_success status=%s reason=%s best_sharpe=%.3f",
                         i,
-                        best_reason,
+                        session.status,
+                        completion_reason,
                         session.best_sharpe,
                     )
                 break

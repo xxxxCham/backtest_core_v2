@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import catalog.strategy_catalog as strategy_catalog_module
@@ -24,6 +25,47 @@ def test_catalog_roundtrip(tmp_path):
     payload = {"schema_version": 1, "entries": []}
     write_catalog(payload, path=path)
     loaded = read_catalog(path=path)
+    assert loaded["schema_version"] == 1
+    assert loaded["entries"] == []
+
+
+def test_write_catalog_avoids_direct_target_write(tmp_path, monkeypatch):
+    path = tmp_path / "strategy_catalog.json"
+    payload = {"schema_version": 1, "entries": []}
+    original_write_text = Path.write_text
+
+    def _guarded_write_text(self, *args, **kwargs):
+        if self == path:
+            raise OSError(22, "Invalid argument")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", _guarded_write_text)
+
+    write_catalog(payload, path=path)
+
+    loaded = read_catalog(path=path)
+    assert loaded["schema_version"] == 1
+    assert loaded["entries"] == []
+
+
+def test_write_catalog_retries_transient_replace_error(tmp_path, monkeypatch):
+    path = tmp_path / "strategy_catalog.json"
+    payload = {"schema_version": 1, "entries": []}
+    original_replace = strategy_catalog_module.os.replace
+    attempts = {"count": 0}
+
+    def _flaky_replace(src, dst):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise PermissionError(13, "Permission denied")
+        return original_replace(src, dst)
+
+    monkeypatch.setattr(strategy_catalog_module.os, "replace", _flaky_replace)
+
+    write_catalog(payload, path=path)
+
+    loaded = read_catalog(path=path)
+    assert attempts["count"] == 2
     assert loaded["schema_version"] == 1
     assert loaded["entries"] == []
 
@@ -297,6 +339,8 @@ def test_upsert_from_builder_session_falls_back_to_session_hash(tmp_path):
     assert entry["meta"]["universe_mode"] == "exploratory"
     assert entry["meta"]["universe_strategy_type"] == "momentum"
     assert "universe_exploratory" in entry["tags"]
+    assert "positive_candidate" in entry["tags"]
+    assert entry["meta"]["candidate_tier"] == "success"
 
 
 def test_upsert_from_builder_session_keeps_all_positive_iterations(tmp_path):
@@ -361,6 +405,49 @@ def test_upsert_from_builder_session_keeps_all_positive_iterations(tmp_path):
     assert by_iteration[2]["last_metrics_snapshot"]["total_return_pct"] == 4.2
     assert by_iteration[3]["last_metrics_snapshot"]["total_return_pct"] == 11.5
     assert all("positive_return" in entry["tags"] for entry in entries)
+    assert "promising_candidate" in by_iteration[2]["tags"]
+    assert by_iteration[2]["meta"]["candidate_tier"] == "promising"
+
+
+def test_upsert_from_builder_session_does_not_mark_runtime_error_positive(tmp_path):
+    path = tmp_path / "strategy_catalog.json"
+    runtime_error_positive = SimpleNamespace(
+        iteration=1,
+        backtest_result=SimpleNamespace(
+            metrics={
+                "total_return_pct": 8.0,
+                "sharpe_ratio": 0.7,
+                "profit_factor": 1.12,
+                "total_trades": 12,
+            },
+            meta={"params": {"fast_period": 9}},
+        ),
+        phase_feedback={
+            "backtest": {
+                "runtime_error": "RuntimeError: synthetic failure",
+            }
+        },
+    )
+    session = SimpleNamespace(
+        session_id="session-runtime-positive",
+        symbol="SOLUSDC",
+        timeframe="1h",
+        status="failed",
+        best_iteration=runtime_error_positive,
+        target_sharpe=1.0,
+        objective="Ne pas promouvoir un positif cassé",
+        best_sharpe=0.7,
+        iterations=[runtime_error_positive],
+        universe_mode="canonical",
+        universe_purpose="builder_manual",
+        universe_strategy_type="momentum",
+    )
+
+    entry = upsert_from_builder_session(session, path=path)
+
+    assert entry["category"] == "p1_builder_inbox"
+    assert "positive_candidate" not in entry["tags"]
+    assert entry["meta"]["candidate_tier"] == "failed"
 
 
 def test_upsert_from_builder_session_batches_single_catalog_write(tmp_path, monkeypatch):

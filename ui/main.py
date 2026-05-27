@@ -106,37 +106,14 @@ from utils.run_tracker import RunSignature, get_global_tracker
 
 logger = logging.getLogger(__name__)
 
+# Bloc principal (cartes/boutons) défini dans ui.theme.streamlit_css ; on garde
+# ici un overlay minimal pour épaissir les boutons de l'action bar.
 MAIN_ACTION_BAR_CSS = """
 <style>
-div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) {
-    border: 1px solid rgba(59, 130, 246, 0.24);
-    border-radius: 16px;
-    padding: 1.05rem 1.05rem 0.45rem 1.05rem;
-    background:
-        radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 42%),
-        linear-gradient(180deg, rgba(9, 17, 31, 0.98), rgba(14, 26, 45, 0.97));
-    margin: 0.75rem 0 1.2rem 0;
-    box-shadow: 0 18px 36px rgba(2, 8, 23, 0.22);
-}
 div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) [data-testid="stButton"] > button {
-    min-height: 3.35rem;
-    border-radius: 14px;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-}
-div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) [data-testid="stButton"] > button[kind="primary"] {
-    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #3b82f6 100%);
-    border: 1px solid #3b82f6;
-    color: #ffffff !important;
-    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25), 0 10px 24px rgba(30, 64, 175, 0.35);
-}
-div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) [data-testid="stButton"] > button[kind="secondary"] {
-    background: linear-gradient(180deg, rgba(16, 31, 57, 0.96), rgba(22, 43, 79, 0.94));
-    border: 1px solid rgba(96, 165, 250, 0.32);
-    color: #dce9fb !important;
-}
-div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) h3 {
-    margin-bottom: 0.35rem;
+    min-height: 44px;
+    font-weight: var(--bc-fw-bold);
+    letter-spacing: 0.02em;
 }
 </style>
 """

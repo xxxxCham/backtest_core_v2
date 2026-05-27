@@ -127,119 +127,44 @@ POTENTIAL_TOKENS = [
     "TRXUSDC",  # TRON - Stablecoins hub
 ]
 
+# Thème global (couleurs, fonts, boutons, inputs, expanders, alerts) défini
+# dans ui.theme.streamlit_css. On garde ici uniquement les ajustements
+# spécifiques à la sidebar (largeur fixe + classes utilitaires custom).
 SIDEBAR_STYLE_CSS = """
 <style>
-[data-testid="stSidebar"] {
-    color-scheme: dark;
-    --bc-border: #33465f;
-    --bc-soft: #172437;
-}
 [data-testid="stSidebar"][aria-expanded="true"] {
     min-width: 22rem;
     max-width: 22rem;
 }
 [data-testid="stSidebar"][aria-expanded="true"] > div:first-child {
-    background: linear-gradient(180deg, #0a1221 0%, #0d1b31 45%, #13233f 100%);
     width: 22rem;
 }
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] li,
-[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p,
-[data-testid="stSidebar"] [data-testid="stWidgetLabel"] span,
-[data-testid="stSidebar"] .stCaption,
-[data-testid="stSidebar"] label {
-    color: var(--bc-text) !important;
-}
-[data-testid="stSidebar"] [data-testid="stAlertContainer"] p {
-    color: #e8f1ff !important;
-}
 [data-testid="stSidebar"] .bc-sidebar-title {
-    font-size: 1.15rem;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-    margin-bottom: 0.2rem;
+    font-size: var(--bc-fs-title);
+    font-weight: var(--bc-fw-sb);
+    letter-spacing: -0.01em;
+    margin-bottom: var(--bc-sp-xs);
     color: var(--bc-text);
 }
 [data-testid="stSidebar"] .bc-sidebar-section {
-    margin-top: 0.7rem;
-    margin-bottom: 0.15rem;
-    font-size: 0.92rem;
-    font-weight: 700;
-    letter-spacing: 0.03em;
+    margin-top: var(--bc-sp-md);
+    margin-bottom: var(--bc-sp-xs);
+    font-size: var(--bc-fs-caption);
+    font-weight: var(--bc-fw-sb);
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: #b8cae4;
+    color: var(--bc-gold-pale);
 }
 [data-testid="stSidebar"] .bc-sidebar-card {
-    border: 1px solid #395373;
-    border-radius: 14px;
-    padding: 0.6rem 0.7rem;
-    background: rgba(16, 31, 51, 0.86);
+    border: 1px solid var(--bc-border);
+    border-radius: var(--bc-r-md);
+    padding: var(--bc-sp-sm) var(--bc-sp-md);
+    background: var(--bc-surface);
     color: var(--bc-text);
+    margin-bottom: var(--bc-sp-sm);
 }
 [data-testid="stSidebar"] .bc-sidebar-card strong {
-    color: #f0f7ff;
-}
-[data-testid="stSidebar"] .stButton > button {
-    border-radius: 14px;
-    border: 1px solid rgba(96, 165, 250, 0.34) !important;
-    font-weight: 600;
-    color: #eff6ff !important;
-    background: linear-gradient(180deg, rgba(18, 36, 68, 0.96), rgba(24, 48, 90, 0.94)) !important;
-    box-shadow: 0 10px 22px rgba(2, 8, 23, 0.22);
-}
-[data-testid="stSidebar"] .stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #60a5fa 100%) !important;
-    border: 1px solid rgba(147, 197, 253, 0.84) !important;
-    color: #ffffff !important;
-    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25), 0 12px 28px rgba(30, 64, 175, 0.35) !important;
-}
-[data-testid="stSidebar"] .stButton > button[kind="secondary"] {
-    background: linear-gradient(180deg, rgba(16, 31, 57, 0.96), rgba(22, 43, 79, 0.94)) !important;
-    border: 1px solid rgba(96, 165, 250, 0.30) !important;
-    color: #dce9fb !important;
-}
-[data-testid="stSidebar"] .stSelectbox > div > div,
-[data-testid="stSidebar"] .stTextInput > div > div > input,
-[data-testid="stSidebar"] .stNumberInput > div > div > input {
-    border-radius: 8px;
-    color: var(--bc-text) !important;
-}
-[data-testid="stSidebar"] div[data-baseweb="select"] > div,
-[data-testid="stSidebar"] div[data-baseweb="input"] > div,
-[data-testid="stSidebar"] div[data-baseweb="textarea"] > div {
-    background: var(--bc-surface);
-    border-color: var(--bc-border);
-}
-[data-testid="stSidebar"] div[data-baseweb="tag"] {
-    background: #17346d !important;
-    color: #e9f3ff !important;
-    border: 1px solid #3b82f6 !important;
-}
-[data-testid="stSidebar"] div[data-baseweb="tag"] span {
-    color: #e9f3ff !important;
-}
-[data-testid="stSidebar"] [data-testid="stMultiSelect"] svg,
-[data-testid="stSidebar"] [data-testid="stSelectbox"] svg {
-    color: #b3c7e5 !important;
-}
-[data-testid="stSidebar"] .streamlit-expanderHeader {
-    font-weight: 600;
-    color: var(--bc-text) !important;
-}
-[data-testid="stSidebar"] .stExpander {
-    border: 1px solid #2e4461;
-    border-radius: 16px;
-    background: rgba(13, 24, 40, 0.9);
-}
-[data-testid="stSidebar"] [data-testid="stSlider"] p {
-    color: var(--bc-text-muted) !important;
-}
-[data-testid="stSidebar"] [data-testid="stCheckbox"] label p,
-[data-testid="stSidebar"] [data-testid="stToggle"] label p {
-    color: var(--bc-text) !important;
-}
-[data-testid="stSidebar"] hr {
-    border-color: #2a3f5b;
+    color: var(--bc-gold-bright);
 }
 </style>
 """

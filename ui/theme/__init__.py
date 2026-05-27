@@ -72,6 +72,7 @@ from .plotly_config import (
     get_layout_config,
     get_volume_colors,
 )
+from .streamlit_css import apply_theme, build_theme_css
 
 __all__ = [
     # === colors.py ===
@@ -115,4 +116,7 @@ __all__ = [
     "get_exit_marker_config",
     # Indicators
     "get_indicator_line_config",
+    # === streamlit_css.py ===
+    "apply_theme",
+    "build_theme_css",
 ]

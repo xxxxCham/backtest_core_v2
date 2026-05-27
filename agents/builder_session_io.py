@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import os
 import re
 import subprocess
@@ -24,6 +25,7 @@ from typing import Any
 from agents.builder_ast_utils import _extract_required_indicators_signature
 from agents.builder_diagnostics import (
     _builder_iteration_selection_key,
+    classify_builder_candidate_tier,
     compute_builder_telemetry_score,
 )
 from agents.builder_objective_parser import sanitize_objective_text
@@ -864,6 +866,19 @@ def save_session_summary(session: BuilderSession) -> None:
             if metrics
             else {}
         )
+        has_blocking_error = bool(
+            str(getattr(it, "error", "") or "").strip()
+            or str(backtest_feedback.get("runtime_error") or "").strip()
+            or str(backtest_feedback.get("runtime_traceback_tail") or "").strip()
+        )
+        candidate_classification = (
+            classify_builder_candidate_tier(
+                metrics,
+                target_sharpe=session.target_sharpe,
+            )
+            if metrics and not has_blocking_error
+            else {"tier": "failed", "reason": "missing_or_error"}
+        )
         row = {
             "iteration": it.iteration,
             "timestamp": _datetime_isoformat(it.timestamp),
@@ -888,6 +903,8 @@ def save_session_summary(session: BuilderSession) -> None:
             "trades": metrics.get("total_trades") if metrics else None,
             "telemetry_score": score_payload.get("score") if score_payload else None,
             "continuous_score": score_payload.get("score") if score_payload else None,
+            "candidate_tier": candidate_classification.get("tier"),
+            "candidate_reason": candidate_classification.get("reason"),
             "telemetry_breakdown": {
                 "components": score_payload.get("components", {}) if score_payload else {},
                 "penalties": score_payload.get("penalties", {}) if score_payload else {},
@@ -938,13 +955,44 @@ def save_session_summary(session: BuilderSession) -> None:
     for rank, row in enumerate(leaderboard, start=1):
         row["rank"] = rank
 
+    best_iteration = getattr(session, "best_iteration", None)
+    best_metrics = (
+        best_iteration.backtest_result.metrics
+        if best_iteration is not None
+        and getattr(best_iteration, "backtest_result", None) is not None
+        and isinstance(getattr(best_iteration.backtest_result, "metrics", None), dict)
+        else {}
+    )
+    best_candidate = (
+        classify_builder_candidate_tier(
+            best_metrics,
+            target_sharpe=session.target_sharpe,
+        )
+        if best_metrics
+        else {"tier": "", "reason": "no_best_candidate"}
+    )
+    best_raw_sharpe = getattr(session, "best_raw_sharpe", float("-inf"))
+    try:
+        best_raw_sharpe = float(best_raw_sharpe)
+    except (TypeError, ValueError):
+        best_raw_sharpe = float("-inf")
+    if not math.isfinite(best_raw_sharpe):
+        raw_candidates = []
+        for row in iteration_rows:
+            try:
+                raw_candidates.append(float(row.get("sharpe")))
+            except (TypeError, ValueError):
+                continue
+        if raw_candidates:
+            best_raw_sharpe = max(raw_candidates)
+
     generation_stats = compute_session_generation_stats(session)
     end_time = datetime.now(session.start_time.tzinfo) if getattr(session.start_time, "tzinfo", None) else datetime.now()
     session_duration_seconds = max((end_time - session.start_time).total_seconds(), 0.0)
     code_provenance = _collect_code_provenance()
 
     summary = {
-        "summary_schema_version": 2,
+        "summary_schema_version": 3,
         "session_id": session.session_id,
         "objective": session.objective,
         "model_name": session.model_name,
@@ -963,8 +1011,17 @@ def save_session_summary(session: BuilderSession) -> None:
         "status": session.status,
         "generation_stats": generation_stats,
         "best_sharpe": session.best_sharpe,
+        "best_raw_sharpe": best_raw_sharpe if math.isfinite(best_raw_sharpe) else None,
         "best_telemetry_score": session.best_score,
         "best_score": session.best_score,
+        "best_candidate_tier": best_candidate.get("tier") or None,
+        "best_candidate_reason": best_candidate.get("reason") or None,
+        "best_iteration": getattr(best_iteration, "iteration", None) if best_iteration is not None else None,
+        "best_return_pct": best_metrics.get("total_return_pct") if best_metrics else None,
+        "best_profit_factor": best_metrics.get("profit_factor") if best_metrics else None,
+        "best_trades": best_metrics.get("total_trades") if best_metrics else None,
+        "best_max_drawdown_pct": best_metrics.get("max_drawdown_pct") if best_metrics else None,
+        "best_win_rate_pct": best_metrics.get("win_rate_pct") if best_metrics else None,
         "target_sharpe": session.target_sharpe,
         "symbol": session.symbol,
         "timeframe": session.timeframe,
@@ -996,6 +1053,7 @@ def save_session_summary(session: BuilderSession) -> None:
         "last_runtime_error_iteration": last_runtime_feedback.get("last_runtime_error_iteration"),
         "last_runtime_traceback_tail": last_runtime_feedback.get("last_runtime_traceback_tail"),
         "cross_session_memory": list(session.cross_session_memory or []),
+        "indicator_stats_snapshot": getattr(session, "indicator_stats_snapshot", "") or "",
         "iterations": iteration_rows,
         "leaderboard": leaderboard,
     }
@@ -1022,6 +1080,8 @@ def save_session_summary(session: BuilderSession) -> None:
             "profit_factor",
             "win_rate_pct",
             "trades",
+            "candidate_tier",
+            "candidate_reason",
             "change_type",
             "diagnostic_category",
             "is_fallback",
@@ -1040,6 +1100,8 @@ def save_session_summary(session: BuilderSession) -> None:
             f"Objective: {session.objective}",
             f"Status: {session.status}",
             f"Best Sharpe: {session.best_sharpe:.3f}",
+            f"Best Raw Sharpe: {best_raw_sharpe:.3f}" if math.isfinite(best_raw_sharpe) else "Best Raw Sharpe: n/a",
+            f"Best Candidate Tier: {best_candidate.get('tier') or 'n/a'}",
             "",
             "| Rank | Iter | Sharpe | Return % | Max DD % | PF | Trades | Decision | Category |",
             "|---|---|---|---|---|---|---|---|---|",

@@ -129,6 +129,7 @@ from agents.builder_diagnostics import (  # noqa: E402
     _count_positive_iterations,
     _is_accept_candidate,
     _ranking_sharpe,
+    classify_builder_candidate_tier,
     compute_builder_telemetry_score,
     compute_continuous_builder_score,
 )
@@ -229,6 +230,12 @@ MAX_REPEATED_SAME_SIGNAL_RATIO_PRECHECK = float(
         "0.65",
     )
 )
+# Limite la fenêtre du précheck (dry-run signal density) aux N dernières bougies.
+# Sans troncature, calculate_indicators + generate_signals tournent sur tout le
+# dataset, ce qui rend l'optimisation 0-trade peu rentable sur 5m/15m. 5000 = ~17j
+# de 5m, ~52j de 15m, ~104j de 30m, ~208j de 1h, ~833j de 4h : suffisant pour
+# observer si la logique de signaux se déclenche du tout. 0 = pas de troncature.
+PRECHECK_MAX_BARS = int(os.getenv("BACKTEST_BUILDER_PRECHECK_MAX_BARS", "5000"))
 
 # Per-phase LLM call timeouts (seconds).
 # Prevents single outlier calls (e.g. 8-minute code generation) from
@@ -416,8 +423,8 @@ def _resume_seed_session_state(session: BuilderSession, seed_iterations: list[Bu
         if not metrics:
             continue
         sharpe = _resume_safe_float(metrics.get("sharpe_ratio"), float("-inf"))
-        if np.isfinite(sharpe) and sharpe > session.best_sharpe:
-            session.best_sharpe = sharpe
+        if np.isfinite(sharpe) and sharpe > getattr(session, "best_raw_sharpe", float("-inf")):
+            session.best_raw_sharpe = sharpe
         candidate_key = _builder_iteration_selection_key(
             metrics,
             is_fallback=bool(iteration.is_fallback),
@@ -446,6 +453,7 @@ def _resume_seed_session_state(session: BuilderSession, seed_iterations: list[Bu
                 target_sharpe=session.target_sharpe,
             )
             session.best_score = float(score_payload.get("score", float("-inf")) or float("-inf"))
+            session.best_sharpe = sharpe
 
 
 def _is_interpreter_shutdown_runtime_error(exc: BaseException) -> bool:
@@ -566,6 +574,7 @@ def _new_streamlit_aware_thread_pool(max_workers: int = 1) -> concurrent.futures
 
 
 SAFE_PATH_MODE_ENV = "BACKTEST_BUILDER_SAFE_PATH"
+_INDICATOR_PERFORMANCE_PRIORS_CACHE: Dict[str, float] | None = None
 
 ERR_CLASS = "CLASS001"
 ERR_AST = "AST001"
@@ -769,9 +778,12 @@ _SEMANTIC_INDICATOR_ALIAS_HINTS = dict(SEMANTIC_INDICATOR_ALIASES)
 _INDICATOR_ACCESS_REWRITE_HINTS = dict(INDICATOR_ACCESS_ALIASES)
 _PARAM_ACCESS_REWRITE_HINTS = dict(PARAMETER_ALIAS_ACCESS)
 
-def _safe_path_mode() -> str:
+def _safe_path_mode(universe_purpose: str = "") -> str:
     """Retourne le mode safe-path normalisé: off|prefer|strict."""
-    raw = os.getenv(SAFE_PATH_MODE_ENV, "off").strip().lower()
+    raw_env = os.getenv(SAFE_PATH_MODE_ENV)
+    if raw_env is None:
+        return "prefer" if str(universe_purpose or "").strip().lower() == "builder_autonomous" else "off"
+    raw = raw_env.strip().lower()
     if raw in {"prefer", "strict", "off"}:
         return raw
     if raw in {"1", "true", "yes", "on"}:
@@ -2209,9 +2221,11 @@ class StrategyBuilder:
         chunk (scan déclenché seulement tous les ``_CHECK_EVERY`` chars).
         """
 
-        _WINDOW: int = 600  # chars inspectés à chaque scan
+        # Invariant: _WINDOW >= _MAX_UNIT * _THRESHOLD, sinon max_u est plafonné
+        # par n // _THRESHOLD et les longues répétitions échappent à la détection.
+        _WINDOW: int = 1200  # chars inspectés à chaque scan
         _MIN_UNIT: int = 3  # longueur min de l'unité répétée
-        _MAX_UNIT: int = 50  # longueur max
+        _MAX_UNIT: int = 200  # longueur max (couvre répétitions de 2-3 lignes)
         _THRESHOLD: int = 5  # répétitions consécutives pour déclencher
         _CHECK_EVERY: int = 40  # déclencher le scan tous les N chars reçus
 
@@ -2608,6 +2622,7 @@ class StrategyBuilder:
         banned = get_banned_indicators(hist, pol) if enabled else set()
         recent = get_recent_indicators(hist, pol) if enabled else []
         families = get_recent_families(hist, pol) if enabled else []
+        performance_priors = self._get_indicator_performance_priors()
         return rank_indicator_selection(
             self.available_indicators,
             objective=objective,
@@ -2622,7 +2637,42 @@ class StrategyBuilder:
             previous_families=families,
             family_penalty=float(pol.get("family_penalty", 0.0)),
             family_bonus=float(pol.get("family_bonus", 0.0)),
+            performance_priors=performance_priors,
+            performance_prior_weight=float(os.getenv("BACKTEST_BUILDER_INDICATOR_PRIOR_WEIGHT", "0.75")),
         )
+
+    def _get_indicator_performance_priors(self) -> Dict[str, float]:
+        """Charge un prior conservateur indicateur->score depuis l'historique Builder."""
+        global _INDICATOR_PERFORMANCE_PRIORS_CACHE
+        raw_enabled = os.getenv("BACKTEST_BUILDER_INDICATOR_PRIORS", "1").strip().lower()
+        if raw_enabled in {"0", "false", "no", "off"}:
+            return {}
+        if _INDICATOR_PERFORMANCE_PRIORS_CACHE is not None:
+            return dict(_INDICATOR_PERFORMANCE_PRIORS_CACHE)
+        priors: Dict[str, float] = {}
+        try:
+            from analytics.indicator_stats import Filters, load_iterations, per_indicator_stats
+
+            max_sessions = int(float(os.getenv("BACKTEST_BUILDER_INDICATOR_PRIOR_SESSIONS", "400")))
+            min_n = int(float(os.getenv("BACKTEST_BUILDER_INDICATOR_PRIOR_MIN_N", "20")))
+            rows = load_iterations(max_sessions=max_sessions)
+            stats = per_indicator_stats(
+                rows,
+                filters=Filters(min_trades=1, exclude_no_trades=True),
+                mode="session_best",
+                min_n=max(1, min_n),
+            )
+            for row in stats:
+                indicator = str(row.get("indicator") or "").strip().lower()
+                if not indicator:
+                    continue
+                lift = float(row.get("lift") or 0.0)
+                priors[indicator] = max(-1.5, min(1.5, lift / 25.0))
+        except Exception:  # noqa: BLE001
+            logger.debug("builder_indicator_performance_priors_unavailable", exc_info=True)
+            priors = {}
+        _INDICATOR_PERFORMANCE_PRIORS_CACHE = dict(priors)
+        return dict(priors)
 
     # ------------------------------------------------------------------
     # LLM interactions
@@ -2642,6 +2692,64 @@ class StrategyBuilder:
             "initial_capital": session.initial_capital,
             "cross_session_memory_count": len(session.cross_session_memory or []),
         }
+
+    def _build_indicator_stats_block(self, session: "BuilderSession") -> str:
+        """Construit le bloc indicateur x perf cross-sessions a injecter dans le prompt.
+
+        Pilote par `config/indicator_policy.json` :
+        - `inject_stats_into_prompt` (defaut False) : kill-switch
+        - `inject_stats_min_n_known` : seuil n des indicateurs eprouves
+        - `inject_stats_top_n` : taille max par tableau
+        - `inject_stats_filter_by_context` : filtrage par symbol/timeframe courants
+
+        Retourne "" si desactive ou si pas de donnees exploitables.
+        Le bloc est aussi snapshotte dans `session.indicator_stats_snapshot`
+        pour audit retroactif (cf. correlation perf <-> nudge).
+        """
+        policy = getattr(self, "_indicator_policy", None) or {}
+        if not bool(policy.get("inject_stats_into_prompt", False)):
+            return ""
+        try:
+            from analytics.indicator_stats import (
+                Filters,
+                format_indicator_tables_for_prompt,
+                load_iterations,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("indicator_stats_block_import_failed err=%s", exc)
+            return ""
+
+        try:
+            rows = load_iterations()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("indicator_stats_block_load_failed err=%s", exc)
+            return ""
+        if not rows:
+            return ""
+
+        symbols: frozenset[str] = frozenset()
+        timeframes: frozenset[str] = frozenset()
+        if bool(policy.get("inject_stats_filter_by_context", False)):
+            if session.symbol:
+                symbols = frozenset({str(session.symbol)})
+            if session.timeframe:
+                timeframes = frozenset({str(session.timeframe)})
+
+        filters = Filters(symbols=symbols, timeframes=timeframes)
+        top_n = int(policy.get("inject_stats_top_n", 10) or 10)
+        min_n_known = int(policy.get("inject_stats_min_n_known", 50) or 50)
+        try:
+            return format_indicator_tables_for_prompt(
+                rows,
+                filters=filters,
+                mode="session_best",
+                top_n=top_n,
+                flop_n=top_n,
+                min_n_known=min_n_known,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("indicator_stats_block_format_failed err=%s", exc)
+            return ""
 
     def _ask_proposal(
         self,
@@ -2778,6 +2886,11 @@ class StrategyBuilder:
                 "trades": bm.get("total_trades", 0),
                 "profit_factor": bm.get("profit_factor", 0),
             }
+
+        stats_block = self._build_indicator_stats_block(session)
+        if stats_block:
+            context["indicator_stats_block"] = stats_block
+            session.indicator_stats_snapshot = stats_block
 
         prompt = render_prompt("strategy_builder_proposal.jinja2", context)
         base_messages = [
@@ -3036,7 +3149,7 @@ class StrategyBuilder:
         }
 
         prompt = render_prompt("strategy_builder_code.jinja2", context)
-        safe_mode = _safe_path_mode()
+        safe_mode = _safe_path_mode(getattr(session, "universe_purpose", ""))
 
         # Safe path JSON+DSL -> template (strict)
         if safe_mode == "strict":
@@ -3812,11 +3925,17 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         fees_bps: float = 10.0,
         slippage_bps: float = 5.0,
         direction_constraint: str = "long_short",
+        *,
+        max_bars: int | None = None,
     ) -> Dict[str, Any]:
         """Estime le nombre de signaux avant simulation complète.
 
         Objectif: détecter très tôt les itérations "no trades" et éviter
         d'exécuter un backtest complet inutile.
+
+        `max_bars` (ou env PRECHECK_MAX_BARS) tronque le dataset aux N dernières
+        bougies — accélère le précheck sur petits timeframes (5m/15m) tout en
+        gardant la capacité à détecter 0-trade.
         """
         try:
             engine = BacktestEngine(initial_capital=initial_capital, run_id=generate_run_id())
@@ -3828,7 +3947,13 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             merged_params.setdefault("fees_bps", fees_bps)
             merged_params.setdefault("slippage_bps", slippage_bps)
 
-            probe_df = data.copy(deep=True)
+            effective_max_bars = int(max_bars) if max_bars is not None else PRECHECK_MAX_BARS
+            truncated = False
+            if effective_max_bars > 0 and len(data) > effective_max_bars:
+                probe_df = data.iloc[-effective_max_bars:].copy(deep=True)
+                truncated = True
+            else:
+                probe_df = data.copy(deep=True)
             indicators = engine.calculate_indicators(probe_df, strategy_instance, merged_params)
             raw_signals = strategy_instance.generate_signals(probe_df, indicators, merged_params)
             signals = _coerce_and_validate_signals_runtime(raw_signals, probe_df)
@@ -3867,6 +3992,9 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 "transition_density": transition_density,
                 "repeated_same_signals": repeated_same_count,
                 "repeated_same_ratio": repeated_same_ratio,
+                "precheck_truncated": truncated,
+                "precheck_max_bars": effective_max_bars if truncated else 0,
+                "full_dataset_bars": int(len(data)),
             }
         except (
             ValueError,
@@ -3956,15 +4084,15 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         repeated_same_ratio = float(signal_probe.get("repeated_same_ratio", 0.0))
 
         metrics = {
-            "total_return_pct": 0.0,
-            "sharpe_ratio": 0.0,
-            "sortino_ratio": 0.0,
-            "calmar_ratio": 0.0,
+            "total_return_pct": -5.0 if skip_reason == "no_trade_signal_profile" else 0.0,
+            "sharpe_ratio": -2.0 if skip_reason == "no_trade_signal_profile" else 0.0,
+            "sortino_ratio": -2.0 if skip_reason == "no_trade_signal_profile" else 0.0,
+            "calmar_ratio": -1.0 if skip_reason == "no_trade_signal_profile" else 0.0,
             "max_drawdown_pct": 0.0,
             "total_trades": 0,
             "win_rate_pct": 0.0,
-            "profit_factor": 1.0,
-            "expectancy": 0.0,
+            "profit_factor": 0.0 if skip_reason == "no_trade_signal_profile" else 1.0,
+            "expectancy": -0.05 if skip_reason == "no_trade_signal_profile" else 0.0,
             "avg_win": 0.0,
             "avg_loss": 0.0,
             "volatility_annual": 0.0,
@@ -3972,6 +4100,9 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             "precheck_signal_density": signal_density,
             "precheck_transition_density": transition_density,
             "precheck_repeated_same_ratio": repeated_same_ratio,
+            "precheck_truncated": bool(signal_probe.get("precheck_truncated", False)),
+            "precheck_max_bars": int(signal_probe.get("precheck_max_bars", 0) or 0),
+            "precheck_full_dataset_bars": int(signal_probe.get("full_dataset_bars", 0) or 0),
         }
         if skip_reason == "pathological_signal_density":
             metrics.update(
@@ -4070,6 +4201,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                     fees_bps=fees_bps,
                     slippage_bps=slippage_bps,
                     direction_constraint=direction_constraint,
+                    fast_metrics=True,
                 )
                 metrics = dict(getattr(bt_result, "metrics", {}) or {})
                 score_payload = compute_builder_telemetry_score(
@@ -4116,6 +4248,19 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
                 raise first_error
             raise RuntimeError("Aucune combinaison sweep exploitable")
 
+        best_result = self._run_backtest(
+            strategy_cls,
+            data,
+            dict(best_params),
+            initial_capital,
+            symbol=symbol,
+            timeframe=timeframe,
+            fees_bps=fees_bps,
+            slippage_bps=slippage_bps,
+            direction_constraint=direction_constraint,
+            fast_metrics=False,
+        )
+
         duration_ms = (datetime.now() - start).total_seconds() * 1000.0
         successful_rows.sort(
             key=lambda row: float(row.get("telemetry_score", float("-inf")) or float("-inf")),
@@ -4130,6 +4275,8 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             raw_result.meta["builder_sweep_failed"] = int(fail_count)
             raw_result.meta["builder_sweep_best_params"] = dict(best_params)
             raw_result.meta["builder_sweep_parameter_values"] = dict(sweep_plan.get("parameter_values", {}))
+            raw_result.meta["builder_sweep_fast_metrics"] = True
+            raw_result.meta["builder_sweep_full_rerun"] = True
             raw_result.meta["params"] = dict(best_params)
 
         return best_result, {
@@ -4139,6 +4286,8 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             "sweep_success": int(success_count),
             "sweep_failed": int(fail_count),
             "sweep_duration_ms": round(duration_ms, 3),
+            "sweep_fast_metrics": True,
+            "sweep_full_rerun": True,
             "sweep_param_names": list(sweep_plan.get("param_names", [])),
             "sweep_candidate_values": dict(sweep_plan.get("parameter_values", {})),
             "sweep_best_params": dict(best_params),
@@ -4157,6 +4306,7 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
         fees_bps: float = 10.0,
         slippage_bps: float = 5.0,
         direction_constraint: str = "long_short",
+        fast_metrics: bool = False,
     ) -> Any:
         """Lance un backtest sur la stratégie générée.
 
@@ -4217,9 +4367,9 @@ The logic block must be ready to execute inside generate_signals with ZERO modif
             symbol=symbol,
             timeframe=timeframe,
             silent_mode=True,
-            # Builder privilégie la fiabilité des métriques (ruine, Sharpe, DD)
-            # plutôt que la vitesse brute.
-            fast_metrics=False,
+            # Les sweeps Builder utilisent fast_metrics=True, puis relancent le
+            # meilleur candidat en métriques complètes avant décision finale.
+            fast_metrics=bool(fast_metrics),
         )
 
         # Convertir en résultat léger avec .metrics dict

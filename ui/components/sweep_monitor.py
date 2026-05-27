@@ -526,32 +526,28 @@ def render_sweep_progress(
     # ═══════════════════════════════════════════════════════════════════════════
     rate = stats.rate
     if rate > 0:
-        # Couleur selon performance (vert > 100/s, jaune 10-100, rouge < 10)
+        # Sémantique : vert si >100/s, orange 10-100, rouge sinon
         if rate >= 100:
-            rate_color = "#00ff88"  # Vert néon
+            rate_cls = "bc-success"
             rate_icon = "🚀"
             rate_label = "TURBO"
         elif rate >= 10:
-            rate_color = "#ffcc00"  # Jaune
+            rate_cls = "bc-warn"
             rate_icon = "⚡"
             rate_label = "FAST"
         else:
-            rate_color = "#ff6b6b"  # Rouge
+            rate_cls = "bc-error"
             rate_icon = "🐢"
             rate_label = "SLOW"
 
         st.markdown(
-            f"""<div style='background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            padding: 15px 25px; border-radius: 12px; text-align: center; margin-bottom: 15px;
-            border: 2px solid {rate_color}; box-shadow: 0 0 20px {rate_color}40;'>
-            <span style='color: #888; font-size: 0.9em; text-transform: uppercase; letter-spacing: 2px;'>
-            {rate_label} MODE</span>
-            <h2 style='color: {rate_color}; margin: 5px 0; font-size: 2.5em; font-weight: bold;
-            text-shadow: 0 0 10px {rate_color};'>
+            f"""<div class='bc-card' style='text-align:center'>
+            <span class='bc-caption'>{rate_label} MODE</span>
+            <div class='{rate_cls}' style='font-size:var(--bc-fs-hero);font-weight:var(--bc-fw-bold);margin:4px 0'>
             {rate_icon} {rate:,.1f} bt/s {rate_icon}
-            </h2>
-            <span style='color: #aaa; font-size: 0.85em;'>
-            {stats.evaluated:,} / {stats.total_combinations:,} ({stats.progress_percent:.1f}%) • ETA: {stats.eta_str}
+            </div>
+            <span class='bc-caption'>
+            {stats.evaluated:,} / {stats.total_combinations:,} ({stats.progress_percent:.1f}%) · ETA: {stats.eta_str}
             </span>
             </div>""",
             unsafe_allow_html=True,
@@ -570,24 +566,27 @@ def render_sweep_progress(
             if monitor.initial_capital is not None:
                 equity = float(monitor.initial_capital) + best_pnl
 
-            pnl_color = "#28a745" if best_pnl > 0 else "#dc3545"
+            pnl_cls = "bc-success" if best_pnl > 0 else "bc-error"
             pnl_icon = "📈" if best_pnl > 0 else "📉"
             best_sign = "+" if best_pnl > 0 else ("-" if best_pnl < 0 else "")
 
             equity_line = ""
             if equity is not None:
                 equity_sign = "+" if equity - float(monitor.initial_capital or 0) > 0 else ""
-                equity_line = f"<div style='color: #f8f9fa; font-size: 1.05em; margin-top: 8px;'>💹 Equity: <b>{equity_sign}${equity:,.2f}</b></div>"
+                equity_line = (
+                    f"<div class='bc-caption' style='margin-top:6px'>"
+                    f"Equity: <b class='bc-hero' style='font-size:var(--bc-fs-value)'>"
+                    f"{equity_sign}${equity:,.2f}</b></div>"
+                )
 
             st.markdown(
-                f"""<div style='background: linear-gradient(135deg, {pnl_color} 0%, {pnl_color}dd 100%);
-                padding: 18px; border-radius: 10px; text-align: center; margin-bottom: 12px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
-                <h2 style='color: white; margin: 0; font-size: 1.7em;'>
-                {pnl_icon} Meilleure Config: <b>{best_sign}${abs(best_pnl):,.2f}</b> {pnl_icon}
-                </h2>
-                <div style='color: #f8f9fa; font-size: 1.05em; margin-top: 8px;'>
-                🔁 Trades: <b>{best_trades:,}</b> • 📉 Max DD: <b>{abs(best_dd):.2f}%</b>
+                f"""<div class='bc-card' style='text-align:center'>
+                <div class='bc-caption'>Meilleure Config</div>
+                <div class='{pnl_cls}' style='font-size:var(--bc-fs-hero);font-weight:var(--bc-fw-bold);margin:4px 0'>
+                {pnl_icon} {best_sign}${abs(best_pnl):,.2f} {pnl_icon}
+                </div>
+                <div class='bc-caption'>
+                Trades: <b>{best_trades:,}</b> · Max DD: <b>{abs(best_dd):.2f}%</b>
                 </div>
                 {equity_line}
                 </div>""",
@@ -632,17 +631,22 @@ def render_sweep_progress(
             delta_color="inverse",
         )
 
-    # Barre de progression avec couleur
-    progress_color = (
-        "#28a745" if stats.progress_percent > 50 else "#ffc107" if stats.progress_percent > 25 else "#dc3545"
-    )
+    # Barre de progression — sémantique simple (vert / orange / rouge)
+    if stats.progress_percent > 50:
+        progress_var = "var(--bc-success)"
+    elif stats.progress_percent > 25:
+        progress_var = "var(--bc-warning)"
+    else:
+        progress_var = "var(--bc-error)"
     st.markdown(
         f"""
-        <div style='margin: 10px 0;'>
-            <div style='background-color: #e9ecef; border-radius: 10px; overflow: hidden; height: 30px;'>
-                <div style='background: linear-gradient(90deg, {progress_color} 0%, {progress_color}aa 100%);
+        <div style='margin: 8px 0;'>
+            <div style='background: var(--bc-surface-2); border: 1px solid var(--bc-border);
+                       border-radius: var(--bc-r-sm); overflow: hidden; height: 18px;'>
+                <div style='background: {progress_var};
                 width: {stats.progress_percent}%; height: 100%; display: flex; align-items: center;
-                justify-content: center; color: white; font-weight: bold; transition: width 0.3s;'>
+                justify-content: center; color: var(--bc-bg); font-weight: var(--bc-fw-bold);
+                font-size: var(--bc-fs-caption); transition: width 0.3s;'>
                 {stats.progress_percent:.1f}%
                 </div>
             </div>

@@ -76,6 +76,10 @@ class LLMConfig:
     max_tokens: int = 2000
     num_ctx: Optional[int] = None
     top_p: float = 0.9
+    # Anti-boucle dégénérative côté sampling Ollama (cf. _StreamRepetitionGuard
+    # côté détection). Désactiver via repeat_penalty=1.0.
+    repeat_penalty: float = 1.15
+    repeat_last_n: int = 256
 
     # Ollama keep_alive (ex: "20m", "0m" pour décharger immédiatement)
     keep_alive: Optional[str] = None
@@ -110,6 +114,8 @@ class LLMConfig:
                 if os.environ.get("BACKTEST_LLM_NUM_CTX")
                 else None
             ),
+            repeat_penalty=float(os.environ.get("BACKTEST_LLM_REPEAT_PENALTY", "1.15")),
+            repeat_last_n=int(os.environ.get("BACKTEST_LLM_REPEAT_LAST_N", "256")),
         )
 
 
@@ -601,6 +607,8 @@ class OllamaClient(LLMClient):
             "temperature": self.config.temperature if temperature is None else temperature,
             "num_predict": self.config.max_tokens if max_tokens is None else max_tokens,
             "top_p": self.config.top_p,
+            "repeat_penalty": self.config.repeat_penalty,
+            "repeat_last_n": self.config.repeat_last_n,
         }
         if self.config.num_ctx is not None:
             options["num_ctx"] = self.config.num_ctx

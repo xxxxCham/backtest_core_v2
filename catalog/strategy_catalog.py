@@ -19,18 +19,33 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agents.builder_diagnostics import _builder_iteration_selection_key, classify_builder_candidate_tier
+
 CATALOG_SCHEMA_VERSION = 1
-DEFAULT_CATALOG_PATH = Path("config/strategy_catalog.json")
+# Path absolu basé sur l'emplacement du module : évite la dépendance au cwd
+# (Streamlit / sous-processus changent parfois cwd, ce qui produisait
+# `OSError: [Errno 22] Invalid argument` sur Windows lors du write_text).
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_CATALOG_PATH = _PROJECT_ROOT / "config" / "strategy_catalog.json"
+_CATALOG_WRITE_LOCK = threading.Lock()
+_CATALOG_WRITE_RETRIES = int(os.getenv("STRATEGY_CATALOG_WRITE_RETRIES", "3"))
+_CATALOG_WRITE_RETRY_DELAY_SEC = float(os.getenv("STRATEGY_CATALOG_WRITE_RETRY_DELAY_SEC", "0.1"))
 
 CATEGORY_ORDER = [
     "p1_builder_inbox",
     "p2_positive_observed",
+    # p3_manual_review : stratégies P3 dont l'univers naturel est inconnu (token absent
+    # de config/token_taxonomy.json) ou dont le pool d'univers est trop petit. Elles ne
+    # sont pas perdues — elles attendent une classification manuelle puis un re-run.
+    "p3_manual_review",
     "p3_benchmark_consensus",
     "p4_param_robust",
     "p5_wfa_candidate",
@@ -238,12 +253,66 @@ def read_catalog(path: Path | None = None) -> dict[str, Any]:
     return _ensure_catalog_shape(raw)
 
 
+def _is_transient_catalog_write_error(exc: BaseException) -> bool:
+    if isinstance(exc, PermissionError):
+        return True
+    winerror = getattr(exc, "winerror", None)
+    errno = getattr(exc, "errno", None)
+    return winerror == 32 or errno in {13, 32}
+
+
+def _cleanup_catalog_tmp_file(tmp_path: Path) -> None:
+    try:
+        if tmp_path.exists():
+            tmp_path.unlink()
+    except Exception:
+        pass
+
+
+def _build_catalog_tmp_path(target_path: Path) -> Path:
+    suffix = f".{os.getpid()}.{threading.get_ident()}.{time.time_ns()}.tmp"
+    return target_path.with_name(f"{target_path.name}{suffix}")
+
+
+def _write_catalog_text_atomically(
+    target_path: Path,
+    content: str,
+    *,
+    encoding: str = "utf-8",
+) -> None:
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    last_exc: BaseException | None = None
+
+    with _CATALOG_WRITE_LOCK:
+        for attempt in range(_CATALOG_WRITE_RETRIES):
+            tmp_path = _build_catalog_tmp_path(target_path)
+            try:
+                tmp_path.write_text(content, encoding=encoding)
+                os.replace(tmp_path, target_path)
+                return
+            except Exception as exc:
+                last_exc = exc
+                _cleanup_catalog_tmp_file(tmp_path)
+                should_retry = (
+                    attempt < (_CATALOG_WRITE_RETRIES - 1)
+                    and _is_transient_catalog_write_error(exc)
+                )
+                if should_retry:
+                    time.sleep(_CATALOG_WRITE_RETRY_DELAY_SEC * (attempt + 1))
+                    continue
+                break
+
+    if last_exc is not None:
+        raise last_exc
+
+
 def write_catalog(payload: dict[str, Any], path: Path | None = None) -> None:
     catalog_path = Path(path or DEFAULT_CATALOG_PATH)
     catalog_path.parent.mkdir(parents=True, exist_ok=True)
     safe_payload = _ensure_catalog_shape(payload)
     safe_payload["updated_at"] = _now_iso()
-    catalog_path.write_text(
+    _write_catalog_text_atomically(
+        catalog_path,
         json.dumps(safe_payload, indent=2, default=str),
         encoding="utf-8",
     )
@@ -544,6 +613,15 @@ def _builder_iteration_backtest_feedback(iteration: Any) -> dict[str, Any]:
     return dict(feedback or {}) if isinstance(feedback, dict) else {}
 
 
+def _builder_iteration_has_blocking_error(iteration: Any) -> bool:
+    feedback = _builder_iteration_backtest_feedback(iteration)
+    return bool(
+        str(getattr(iteration, "error", "") or "").strip()
+        or str(feedback.get("runtime_error") or "").strip()
+        or str(feedback.get("runtime_traceback_tail") or "").strip()
+    )
+
+
 def _builder_iteration_metrics(iteration: Any) -> dict[str, Any]:
     result = getattr(iteration, "backtest_result", None)
     if result is None:
@@ -590,13 +668,18 @@ def _builder_iteration_return_pct(iteration: Any) -> float:
     )
 
 
-def _builder_iteration_sort_key(iteration: Any) -> tuple[float, ...]:
+def _builder_iteration_sort_key(iteration: Any, *, target_sharpe: float | None = None) -> tuple[Any, ...]:
     metrics = _builder_iteration_metrics(iteration)
     return_pct = _builder_iteration_return_pct(iteration)
     sharpe = _float(metrics.get("sharpe_ratio", metrics.get("sharpe")), float("-inf"))
     profit_factor = _float(metrics.get("profit_factor"), float("-inf"))
     trades = _float(metrics.get("total_trades", metrics.get("trades")), -1.0)
     return (
+        *_builder_iteration_selection_key(
+            metrics,
+            is_fallback=bool(getattr(iteration, "is_fallback", False)),
+            target_sharpe=float(target_sharpe if target_sharpe is not None else 1.0),
+        ),
         1.0 if return_pct > 0.0 else 0.0,
         return_pct,
         sharpe,
@@ -608,14 +691,30 @@ def _builder_iteration_sort_key(iteration: Any) -> tuple[float, ...]:
 
 def _select_builder_catalog_iterations(session: Any) -> tuple[list[Any], str]:
     iterations = [iteration for iteration in list(getattr(session, "iterations", []) or []) if iteration is not None]
-    positive_iterations = [iteration for iteration in iterations if _builder_iteration_return_pct(iteration) > 0.0]
+    positive_iterations = [
+        iteration
+        for iteration in iterations
+        if _builder_iteration_return_pct(iteration) > 0.0 and not _builder_iteration_has_blocking_error(iteration)
+    ]
     if positive_iterations:
-        positive_iterations.sort(key=_builder_iteration_sort_key, reverse=True)
+        positive_iterations.sort(
+            key=lambda iteration: _builder_iteration_sort_key(
+                iteration,
+                target_sharpe=getattr(session, "target_sharpe", None),
+            ),
+            reverse=True,
+        )
         return positive_iterations, "positive"
 
     best_iteration = getattr(session, "best_iteration", None)
     if best_iteration is None and iterations:
-        best_iteration = max(iterations, key=_builder_iteration_sort_key)
+        best_iteration = max(
+            iterations,
+            key=lambda iteration: _builder_iteration_sort_key(
+                iteration,
+                target_sharpe=getattr(session, "target_sharpe", None),
+            ),
+        )
     return ([best_iteration] if best_iteration is not None else []), "fallback"
 
 
@@ -652,11 +751,27 @@ def _build_builder_iteration_catalog_entry(
         params_hash=params_hash,
     )
     return_pct = _builder_iteration_return_pct(iteration)
-    category = "p2_positive_observed" if return_pct > 0.0 else "p1_builder_inbox"
+    has_blocking_error = _builder_iteration_has_blocking_error(iteration)
+    category = "p2_positive_observed" if return_pct > 0.0 and not has_blocking_error else "p1_builder_inbox"
+    candidate_classification = (
+        classify_builder_candidate_tier(
+            metrics,
+            target_sharpe=float(getattr(session, "target_sharpe", 1.0) or 1.0),
+        )
+        if metrics and not has_blocking_error
+        else {"tier": "failed", "reason": "runtime_error" if has_blocking_error else "missing_metrics"}
+    )
+    candidate_tier = str(candidate_classification.get("tier") or "")
+    candidate_reason = str(candidate_classification.get("reason") or "")
 
     tags = ["builder_out", "builder_iteration"]
-    if return_pct > 0.0:
+    if return_pct > 0.0 and not has_blocking_error:
         tags.append("positive_return")
+        tags.append("positive_candidate")
+    if candidate_tier == "promising":
+        tags.append("promising_candidate")
+    elif candidate_tier == "success":
+        tags.append("success_candidate")
     if _auto_shortlist_ok(metrics, getattr(session, "target_sharpe", None)):
         tags.append("auto_shortlist_pass")
     if selection_scope == "fallback":
@@ -706,6 +821,9 @@ def _build_builder_iteration_catalog_entry(
             "builder_objective": objective or None,
             "session_status": status or None,
             "best_sharpe": getattr(session, "best_sharpe", None),
+            "best_raw_sharpe": getattr(session, "best_raw_sharpe", None),
+            "candidate_tier": candidate_tier or None,
+            "candidate_reason": candidate_reason or None,
             "total_iterations": len(getattr(session, "iterations", []) or []),
             "session_positive_iteration_count": len(positive_iteration_nums),
             "session_positive_iterations": positive_iteration_nums,
@@ -973,6 +1091,11 @@ def upsert_from_builder_session(session: Any, *, path: Path | None = None) -> di
 
     saved_active_entries.sort(
         key=lambda entry: (
+            *_builder_iteration_selection_key(
+                dict(entry.get("last_metrics_snapshot") or {}),
+                is_fallback=bool((entry.get("last_metrics_snapshot") or {}).get("is_fallback", False)),
+                target_sharpe=1.0,
+            ),
             1.0 if _float((entry.get("last_metrics_snapshot") or {}).get("total_return_pct"), float("-inf")) > 0.0 else 0.0,
             _float((entry.get("last_metrics_snapshot") or {}).get("total_return_pct"), float("-inf")),
             _float((entry.get("last_metrics_snapshot") or {}).get("sharpe_ratio"), float("-inf")),

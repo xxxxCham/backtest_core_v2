@@ -104,6 +104,49 @@ def load_policy(force_reload: bool = False) -> dict[str, Any]:
     return dict(merged)
 
 
+def update_policy_field(key: str, value: Any) -> dict[str, Any]:
+    """Met a jour une cle de la policy dans `config/indicator_policy.json`.
+
+    Ecriture atomique (write -> rename). Le cache module-level est invalide
+    via le mtime ; le prochain `load_policy()` relira le disque.
+    Retourne la policy mergee apres ecriture.
+    """
+    global _policy_cache, _policy_mtime
+
+    path = _policy_file()
+    with _HISTORY_LOCK:
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                raw = {}
+        except (OSError, json.JSONDecodeError):
+            raw = {}
+        raw[key] = value
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            fd, tmp_path = tempfile.mkstemp(
+                dir=path.parent,
+                suffix=".tmp",
+                prefix=".indicator_policy_",
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    json.dump(raw, fh, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, path)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+        except OSError:
+            return load_policy()
+        # Invalide le cache : le prochain load relira le disque
+        _policy_cache = None
+        _policy_mtime = 0.0
+    return load_policy(force_reload=True)
+
+
 def _history_path(policy: dict[str, Any] | None = None) -> Path:
     pol = policy or load_policy()
     rel = str(pol.get("history_file", "config/indicator_history.json") or "config/indicator_history.json")

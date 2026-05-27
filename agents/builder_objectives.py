@@ -1305,6 +1305,58 @@ def _find_objective_market_hints(
     return hinted_symbol, hinted_timeframe
 
 
+def _timeframe_to_minutes(timeframe: str) -> float | None:
+    match = re.fullmatch(r"\s*(\d+)\s*([mhdwM])\s*", str(timeframe or ""))
+    if not match:
+        return None
+    value = float(match.group(1))
+    unit = match.group(2).lower()
+    if unit == "m":
+        return value
+    if unit == "h":
+        return value * 60.0
+    if unit == "d":
+        return value * 1440.0
+    if unit == "w":
+        return value * 10080.0
+    return None
+
+
+def _rank_timeframes_for_strategy(timeframes: list[str], strategy_type: str) -> list[str]:
+    clean_timeframes = _unique_non_empty(timeframes)
+    detected_type = infer_strategy_type(strategy_type=strategy_type)
+    if not clean_timeframes or detected_type == "unknown":
+        return clean_timeframes
+    try:
+        requirements = get_strategy_requirements(detected_type)
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
+        return clean_timeframes
+    recommended_exact = [
+        str(tf or "").strip()
+        for tf in (requirements.get("timeframes", []) or [])
+        if str(tf or "").strip() in clean_timeframes
+    ]
+    if recommended_exact:
+        return [*recommended_exact, *[tf for tf in clean_timeframes if tf not in recommended_exact]]
+
+    reference_minutes = [
+        minutes
+        for minutes in (_timeframe_to_minutes(str(tf or "").strip()) for tf in (requirements.get("timeframes", []) or []))
+        if minutes is not None and minutes > 0
+    ]
+    if not reference_minutes:
+        return clean_timeframes
+
+    def _distance_to_recommended(tf: str) -> tuple[float, float, str]:
+        minutes = _timeframe_to_minutes(tf)
+        if minutes is None or minutes <= 0:
+            return (float("inf"), float("inf"), tf)
+        distance = min(abs((minutes / ref) - 1.0) for ref in reference_minutes)
+        return (distance, minutes, tf)
+
+    return sorted(clean_timeframes, key=_distance_to_recommended)
+
+
 def _rank_and_select_market_candidates(
     *,
     clean_objective: str,
@@ -1338,7 +1390,7 @@ def _rank_and_select_market_candidates(
         shuffled_symbols = symbols.copy()
         logger.info("Market selection: strategy_type=UNKNOWN, tokens=ordered")
 
-    shuffled_timeframes = timeframes.copy()
+    shuffled_timeframes = _rank_timeframes_for_strategy(timeframes, detected_strategy_type or "")
 
     if not detected_strategy_type:
         logger.info(

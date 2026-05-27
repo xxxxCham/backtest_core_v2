@@ -156,7 +156,17 @@ def _ensure_builder_autonomous_defaults() -> None:
     _set_builder_default_if_pristine("builder_auto_market_pick_toggle", BUILDER_AUTO_MARKET_PICK_DEFAULT)
     _set_builder_default_if_pristine("builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT)
     _set_builder_default_if_pristine("builder_model_single_llm", BUILDER_MODEL_SINGLE_LLM_DEFAULT)
-    _set_builder_default_if_pristine("builder_model_select", BUILDER_MODEL_SINGLE_LLM_DEFAULT)
+    builder_model_default = (
+        str(
+            st.session_state.get(
+                "builder_model_single_llm",
+                BUILDER_MODEL_SINGLE_LLM_DEFAULT,
+            )
+            or BUILDER_MODEL_SINGLE_LLM_DEFAULT,
+        ).strip()
+        or BUILDER_MODEL_SINGLE_LLM_DEFAULT
+    )
+    _set_builder_default_if_pristine("builder_model_select", builder_model_default)
     _set_builder_default_if_pristine("builder_max_iterations", BUILDER_MAX_ITERATIONS_DEFAULT)
     _set_builder_default_if_pristine("builder_max_iters_slider", BUILDER_MAX_ITERATIONS_DEFAULT)
     _set_builder_default_if_pristine("builder_target_sharpe", BUILDER_TARGET_SHARPE_DEFAULT)
@@ -177,6 +187,7 @@ def _ensure_builder_autonomous_defaults() -> None:
             "temperature": 0.70,
             "num_ctx": None,
             "max_tokens": 2000,
+            "repeat_penalty": 1.15,
         }
 
     st.session_state[_BUILDER_TAB_DEFAULTS_MARKER] = True
@@ -209,7 +220,11 @@ def _collect_inference_model_candidates(*groups: Any) -> list[str]:
 def _format_inference_settings_caption(settings: dict[str, Any]) -> str:
     num_ctx = settings.get("num_ctx")
     ctx_label = str(num_ctx) if num_ctx is not None else "auto"
-    return f"temp={settings['temperature']:.2f} | ctx={ctx_label} | max_tokens={int(settings['max_tokens'])}"
+    rp = settings.get("repeat_penalty", 1.15)
+    return (
+        f"temp={settings['temperature']:.2f} | ctx={ctx_label} | "
+        f"max_tokens={int(settings['max_tokens'])} | rp={float(rp):.2f}"
+    )
 
 
 def _render_llm_inference_settings_editor(
@@ -247,7 +262,7 @@ def _render_llm_inference_settings_editor(
     current_global = normalize_llm_inference_settings(
         st.session_state.get("llm_inference_global_settings"),
     )
-    global_col1, global_col2, global_col3 = st.columns(3)
+    global_col1, global_col2, global_col3, global_col4 = st.columns(4)
     with global_col1:
         global_temperature = st.slider(
             "Température globale",
@@ -279,12 +294,25 @@ def _render_llm_inference_settings_editor(
                 help="Cap par défaut des tokens générés si aucun appel ne le surcharge explicitement.",
             ),
         )
+    with global_col4:
+        global_repeat_penalty = st.slider(
+            "Repeat penalty",
+            min_value=1.0,
+            max_value=2.0,
+            value=float(current_global.get("repeat_penalty", 1.15)),
+            step=0.05,
+            help=(
+                "Pénalité de répétition côté sampling Ollama. 1.0 = désactivé, "
+                "1.1 = doux (défaut Ollama), 1.15 = recommandé pour code, 1.2+ = strict."
+            ),
+        )
 
     global_settings = normalize_llm_inference_settings(
         {
             "temperature": global_temperature,
             "num_ctx": global_num_ctx,
             "max_tokens": global_max_tokens,
+            "repeat_penalty": global_repeat_penalty,
         },
     )
     st.session_state["llm_inference_global_settings"] = dict(global_settings)
@@ -318,7 +346,7 @@ def _render_llm_inference_settings_editor(
             )
             has_override = selected_profile_model in model_profiles
             with st.form("llm_inference_model_profile_form"):
-                profile_col1, profile_col2, profile_col3 = st.columns(3)
+                profile_col1, profile_col2, profile_col3, profile_col4 = st.columns(4)
                 with profile_col1:
                     profile_temperature = st.slider(
                         "Température modèle",
@@ -347,6 +375,14 @@ def _render_llm_inference_settings_editor(
                             step=128,
                         ),
                     )
+                with profile_col4:
+                    profile_repeat_penalty = st.slider(
+                        "Repeat penalty",
+                        min_value=1.0,
+                        max_value=2.0,
+                        value=float(profile_defaults.get("repeat_penalty", 1.15)),
+                        step=0.05,
+                    )
                 save_col, reset_col = st.columns(2)
                 with save_col:
                     save_override = st.form_submit_button(
@@ -367,6 +403,7 @@ def _render_llm_inference_settings_editor(
                         "temperature": profile_temperature,
                         "num_ctx": profile_num_ctx,
                         "max_tokens": profile_max_tokens,
+                        "repeat_penalty": profile_repeat_penalty,
                     },
                     defaults=global_settings,
                 )
@@ -1166,11 +1203,13 @@ BUILDER_CONFIG_CSS = """
 .bc-inline-field-label {
     display: inline-flex;
     align-items: center;
-    gap: 0.38rem;
-    margin: 0 0 0.4rem 0;
-    color: #dbe7f6;
-    font-size: 0.94rem;
-    font-weight: 600;
+    gap: var(--bc-sp-xs);
+    margin: 0 0 var(--bc-sp-xs) 0;
+    color: var(--bc-text-2);
+    font-size: var(--bc-fs-caption);
+    font-weight: var(--bc-fw-sb);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     line-height: 1.2;
 }
 .bc-inline-help-trigger {
@@ -1178,14 +1217,14 @@ BUILDER_CONFIG_CSS = """
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1rem;
-    height: 1rem;
-    border-radius: 999px;
-    border: 1px solid rgba(148, 163, 184, 0.45);
-    background: rgba(15, 23, 42, 0.92);
-    color: #cfe0f8;
-    font-size: 0.68rem;
-    font-weight: 700;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid var(--bc-border);
+    background: var(--bc-surface-2);
+    color: var(--bc-text-2);
+    font-size: var(--bc-fs-caption);
+    font-weight: var(--bc-fw-bold);
     cursor: help;
     user-select: none;
 }
@@ -1195,16 +1234,16 @@ BUILDER_CONFIG_CSS = """
     left: 50%;
     transform: translateX(-50%);
     width: min(18rem, 38vw);
-    padding: 0.34rem 0.5rem;
-    border-radius: 8px;
-    background: rgba(8, 15, 29, 0.97);
-    border: 1px solid rgba(96, 165, 250, 0.24);
-    box-shadow: 0 10px 24px rgba(2, 8, 23, 0.28);
-    color: #c7d6eb;
-    font-size: 0.68rem;
-    font-weight: 500;
-    line-height: 1.35;
-    letter-spacing: 0.01em;
+    padding: 6px 8px;
+    border-radius: var(--bc-r-sm);
+    background: var(--bc-surface);
+    border: 1px solid var(--bc-border);
+    color: var(--bc-text);
+    font-size: var(--bc-fs-caption);
+    font-weight: var(--bc-fw-reg);
+    text-transform: none;
+    letter-spacing: normal;
+    line-height: 1.4;
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
@@ -1618,6 +1657,23 @@ def _render_builder_tab(state: SidebarState) -> None:
         display_mode="radio",
     )
     st.session_state["builder_model_single_llm"] = builder_model_single_llm
+
+    builder_inference_global_settings = normalize_llm_inference_settings(
+        st.session_state.get("llm_inference_global_settings"),
+    )
+    builder_inference_model_profiles = normalize_llm_model_inference_profiles(
+        st.session_state.get("llm_inference_model_profiles"),
+    )
+    st.session_state["llm_inference_model_profiles"] = dict(builder_inference_model_profiles)
+    builder_effective_inference = resolve_llm_inference_settings(
+        builder_model_single_llm,
+        global_settings=builder_inference_global_settings,
+        model_profiles=builder_inference_model_profiles,
+    )
+    st.caption(
+        "Réglages d'inférence effectifs du modèle sélectionné : "
+        f"{_format_inference_settings_caption(builder_effective_inference)}",
+    )
 
     cloud_runtime_targets = [
         {

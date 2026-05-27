@@ -76,15 +76,19 @@ def _run_streamlit_page_script_once(
 def test_app_css_uses_full_width_layout_and_keeps_sidebar_controls_interactive() -> None:
     content = (REPO_ROOT / "ui" / "app.py").read_text(encoding="utf-8")
     sidebar_content = (REPO_ROOT / "ui" / "sidebar.py").read_text(encoding="utf-8")
+    theme_content = (REPO_ROOT / "ui" / "theme" / "streamlit_css.py").read_text(
+        encoding="utf-8",
+    )
 
-    assert "max-width: 1520px;" not in content
-    assert "max-width: none;" in content
-    assert "transform: translateX(0) !important;" not in content
-    assert "pointer-events: none !important;" not in content
-    assert '[data-testid="stToolbar"],' not in content
-    assert '[data-testid="stToolbar"] {' in content
-    assert 'button[kind="header"]' in content
-    assert '[data-testid="stExpandSidebarButton"]' in content
+    assert "apply_theme(force=True)" in content
+    assert "max-width: 1520px;" not in theme_content
+    assert "max-width: none;" in theme_content
+    assert "transform: translateX(0) !important;" not in theme_content
+    assert "pointer-events: none !important;" not in theme_content
+    assert '[data-testid="stToolbar"],' not in theme_content
+    assert '[data-testid="stToolbar"] {' in theme_content
+    assert 'button[kind="header"]' in theme_content
+    assert '[data-testid="stExpandSidebarButton"]' in theme_content
     assert '[data-testid="stSidebar"][aria-expanded="true"]' in sidebar_content
     assert '[data-testid="stSidebar"] > div:first-child' not in sidebar_content
 
@@ -95,17 +99,22 @@ def test_app_css_uses_full_width_layout_and_keeps_sidebar_controls_interactive()
         "ui/pages/results_store_page.py",
         "ui/pages/model_stats_page.py",
         "ui/pages/range_editor_page.py",
+        "ui/pages/indicator_stats_page.py",
     ],
 )
 def test_page_navigation_css_does_not_force_sidebar_open(relative_page_path: str) -> None:
     content = (REPO_ROOT / relative_page_path).read_text(encoding="utf-8")
+    theme_content = (REPO_ROOT / "ui" / "theme" / "streamlit_css.py").read_text(
+        encoding="utf-8",
+    )
 
-    assert "transform: translateX(0) !important;" not in content
-    assert "pointer-events: none !important;" not in content
-    assert '[data-testid="stToolbar"],' not in content
-    assert '[data-testid="stToolbar"] {' in content
-    assert 'button[kind="header"]' in content
-    assert '[data-testid="stExpandSidebarButton"]' in content
+    assert "apply_theme(force=True)" in content
+    assert "transform: translateX(0) !important;" not in theme_content
+    assert "pointer-events: none !important;" not in theme_content
+    assert '[data-testid="stToolbar"],' not in theme_content
+    assert '[data-testid="stToolbar"] {' in theme_content
+    assert 'button[kind="header"]' in theme_content
+    assert '[data-testid="stExpandSidebarButton"]' in theme_content
 
 
 def test_results_hub_is_only_exposed_via_dedicated_results_store_page() -> None:
@@ -549,6 +558,7 @@ def test_collect_builder_linked_runs_filters_catalog_by_session_id(tmp_path: Pat
         ("ui/pages/results_store_page.py", "ui.results_store_view", "render_results_store_page"),
         ("ui/pages/model_stats_page.py", "ui.model_stats_view", "render_model_stats_page"),
         ("ui/pages/range_editor_page.py", "ui.range_editor", "render_range_editor"),
+        ("ui/pages/indicator_stats_page.py", "ui.indicator_stats_view", "render_indicator_stats_page"),
     ],
 )
 def test_streamlit_page_scripts_render_once_when_executed_as_main(

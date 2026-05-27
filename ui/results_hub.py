@@ -27,6 +27,7 @@ import os
 import subprocess
 import sys
 from datetime import datetime, timezone
+from html import escape
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -55,12 +56,15 @@ from ui.helpers import (
 )
 from utils.run_tracker import RunTracker
 
+# Racine du projet pour résoudre les paths config indépendamment du cwd
+# (Streamlit / sous-processus changent parfois cwd → OSError Errno 22 sur Windows).
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 RESULTS_DIR = get_results_root_dir()
 RUNS_DIR = get_saved_runs_dir()
-GRADUATION_RESULTS_DIR = Path("catalog/graduation_results")
+GRADUATION_RESULTS_DIR = _PROJECT_ROOT / "catalog" / "graduation_results"
 FULL_GRADUATION_PROGRESS_FILENAME = "graduation_full_progress.json"
 FULL_GRADUATION_LOG_FILENAME = "graduation_full_run.log"
-GRADUATION_P1_LOG_FILENAME = "graduation_p1_run.log"
 POSITIVE_ARTIFACTS_IMPORT_LOG_FILENAME = "positive_artifacts_import.log"
 POSITIVE_IMPORTS_PROGRESS_FILENAME = "positive_imports_progress.json"
 POSITIVE_IMPORTS_LOG_FILENAME = "positive_imports_run.log"
@@ -73,6 +77,12 @@ CHART_MODE_COLUMNS = "Colonnes"
 CHART_MODE_POINTS = "Points"
 GRADUATION_PREVIEW_LIMIT = 12
 GRADUATION_PHASE_FOCUS_AUTO = "Auto"
+GRADUATION_PHASE_ORDER = ("P1", "P2", "P3", "P4", "P5", "P6")
+P6_TYPE_STRICT = "P6 stricte"
+P6_TYPE_LOW_CONFIDENCE = "P6 prudente"
+P6_TYPE_LEGACY = "P6 promue"
+P6_TYPE_REJECTED = "P6 rejetée"
+P6_TYPE_ORDER = (P6_TYPE_STRICT, P6_TYPE_LOW_CONFIDENCE, P6_TYPE_LEGACY, P6_TYPE_REJECTED)
 
 
 _CATALOG_CSV_DTYPE: dict[str, str] = {
@@ -107,6 +117,81 @@ def _clean_text_token(value: Any) -> str:
     except TypeError:
         pass
     return str(value).strip()
+
+
+def _ordered_phase_options(values: list[str] | tuple[str, ...] | set[str]) -> list[str]:
+    cleaned = {
+        _clean_text_token(value).upper()
+        for value in values
+        if _clean_text_token(value)
+    }
+    ordered = [phase for phase in GRADUATION_PHASE_ORDER if phase in cleaned]
+    ordered.extend(sorted(value for value in cleaned if value not in GRADUATION_PHASE_ORDER))
+    return ordered
+
+
+def _p6_type_from_values(
+    *,
+    phase: Any = "",
+    decision: Any = "",
+    p6_verdict: Any = "",
+    wfa_confidence_tier: Any = "",
+    catalog_category: Any = "",
+) -> str:
+    phase_text = _clean_text_token(phase).upper()
+    decision_text = _clean_text_token(decision).upper()
+    verdict_text = _clean_text_token(p6_verdict).upper()
+    confidence_text = _clean_text_token(wfa_confidence_tier).lower()
+    category_text = _clean_text_token(catalog_category).lower()
+    is_p6 = (
+        phase_text == "P6"
+        or decision_text == "PROMOTED"
+        or verdict_text.startswith("PROMOTED")
+        or category_text.startswith("p6_")
+    )
+    if not is_p6:
+        return ""
+    if verdict_text == "PROMOTED_LOW_CONFIDENCE" or confidence_text == "low_confidence" or "low_confidence" in category_text:
+        return P6_TYPE_LOW_CONFIDENCE
+    if verdict_text == "PROMOTED_STRICT" or confidence_text == "strict" or category_text.endswith("_strict"):
+        return P6_TYPE_STRICT
+    if verdict_text == "PROMOTED" or decision_text == "PROMOTED" or "p6_paper_candidate" in category_text:
+        return P6_TYPE_LEGACY
+    if verdict_text == "REJECTED" or decision_text == "REJECTED":
+        return P6_TYPE_REJECTED
+    return P6_TYPE_LEGACY if is_p6 else ""
+
+
+def _p6_type_sort_key(value: Any) -> tuple[int, str]:
+    label = _clean_text_token(value)
+    try:
+        return (P6_TYPE_ORDER.index(label), label)
+    except ValueError:
+        return (len(P6_TYPE_ORDER), label)
+
+
+def _add_p6_type_column(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    result = df.copy()
+    computed = [
+        _p6_type_from_values(
+            phase=row.get("phase"),
+            decision=row.get("decision"),
+            p6_verdict=row.get("p6_verdict"),
+            wfa_confidence_tier=row.get("wfa_confidence_tier"),
+            catalog_category=row.get("catalog_category", row.get("category")),
+        )
+        for row in result.to_dict(orient="records")
+    ]
+    if "p6_type" not in result.columns:
+        result["p6_type"] = computed
+        return result
+    current = result["p6_type"].fillna("").astype(str).str.strip()
+    missing_mask = current == ""
+    if missing_mask.any():
+        result.loc[missing_mask, "p6_type"] = [value for value, missing in zip(computed, missing_mask) if missing]
+    return result
 
 
 def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -280,6 +365,91 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
                 axis=1,
             )
 
+    # ----------------------------------------------------------------------
+    # P3 univers naturel (refonte 2026-05-26).
+    # Quand `natural_universe_id` est présent, on peuple les colonnes
+    # historiques (tested_tokens, benchmark_pass_summary, contradiction_state…)
+    # à partir des nouveaux champs pour conserver l'affichage existant.
+    # La branche reste conditionnelle pour ne pas écraser les valeurs d'un
+    # rapport legacy chargé en parallèle.
+    # ----------------------------------------------------------------------
+    # Badge visuel pour distinguer MANUAL_REVIEW de REJECTED/WATCHLIST
+    if "decision" in df.columns and "decision_badge" not in df.columns:
+        def _decision_badge(value: Any) -> str:
+            decision = str(value or "").strip().upper()
+            if decision == "MANUAL_REVIEW":
+                return "⚠️ Revoir"
+            if decision == "PROMOTED":
+                return "🟢 Promu"
+            if decision == "WATCHLIST":
+                return "🔵 Watch"
+            if decision == "REJECTED":
+                return "🔴 Rejeté"
+            if decision == "PENDING":
+                return "⏳ Pending"
+            return decision
+
+        df["decision_badge"] = df["decision"].apply(_decision_badge)
+
+    if "natural_universe_id" in df.columns:
+        def _natural_id(value: Any) -> str:
+            text = str(value or "").strip()
+            return text
+
+        natural_ids = df["natural_universe_id"].apply(_natural_id)
+
+        def _join_tokens(row) -> str:
+            required = as_listish(row.get("required_universe_tokens"))
+            diagnostic = as_listish(row.get("diagnostic_universe_tokens"))
+            combined = sorted({str(token).strip() for token in (*required, *diagnostic) if str(token).strip()})
+            return ",".join(combined)
+
+        # On ne remplace les colonnes legacy QUE si elles sont vides/absentes
+        if "tested_tokens" not in df.columns or df["tested_tokens"].fillna("").eq("").all():
+            df["tested_tokens"] = df.apply(_join_tokens, axis=1)
+        if "tested_benchmark_names" not in df.columns or df["tested_benchmark_names"].fillna("").eq("").all():
+            df["tested_benchmark_names"] = natural_ids.apply(
+                lambda nid: f"natural_universe:{nid}" if nid else "",
+            )
+        if "required_benchmark_name" not in df.columns or df["required_benchmark_name"].fillna("").eq("").all():
+            df["required_benchmark_name"] = natural_ids
+        if "required_benchmark_passed" not in df.columns:
+            if "p3_verdict" in df.columns:
+                df["required_benchmark_passed"] = df["p3_verdict"].apply(
+                    lambda value: str(value or "").strip().upper() == "PASSED",
+                )
+            else:
+                df["required_benchmark_passed"] = False
+        if "benchmark_pass_summary" not in df.columns or df["benchmark_pass_summary"].fillna("").eq("").all():
+            def _summary(row) -> str:
+                passed = pd.to_numeric(row.get("required_passed_count"), errors="coerce")
+                total = pd.to_numeric(row.get("required_total_count"), errors="coerce")
+                if pd.notna(total) and float(total) > 0:
+                    return f"{int(passed or 0)}/{int(total)}"
+                return ""
+
+            df["benchmark_pass_summary"] = df.apply(_summary, axis=1)
+        if "contradiction_state" not in df.columns or df["contradiction_state"].fillna("").eq("").all():
+            def _state(row) -> str:
+                verdict = str(row.get("p3_verdict") or "").strip().upper()
+                decision = str(row.get("decision") or "").strip().upper()
+                if verdict == "PASSED":
+                    return "passed"
+                if decision == "MANUAL_REVIEW":
+                    return "manual_review"
+                return "failed"
+
+            df["contradiction_state"] = df.apply(_state, axis=1)
+        if "benchmark_slot_coverage_pct" not in df.columns or df["benchmark_slot_coverage_pct"].isna().all():
+            def _coverage(row) -> float | None:
+                passed = pd.to_numeric(row.get("required_passed_count"), errors="coerce")
+                total = pd.to_numeric(row.get("required_total_count"), errors="coerce")
+                if pd.notna(total) and float(total) > 0:
+                    return round(float(passed or 0) / float(total) * 100.0, 1)
+                return None
+
+            df["benchmark_slot_coverage_pct"] = df.apply(_coverage, axis=1)
+
     numeric_cols = [
         "best_return_pct",
         "best_profit_factor",
@@ -313,9 +483,16 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
         "wfa_positive_folds_pct",
         "wfa_history_bars",
         "wfa_min_history_bars",
+        # P3 univers naturel
+        "required_pass_rate_pct",
+        "required_passed_count",
+        "required_total_count",
+        "diagnostic_pass_rate_pct",
+        "diagnostic_passed_count",
+        "diagnostic_total_count",
     ]
     df = _coerce_numeric(df, numeric_cols)
-    return df
+    return _add_p6_type_column(df)
 
 
 def _load_candidate_report(*filenames: str) -> tuple[dict[str, Any], pd.DataFrame]:
@@ -523,6 +700,210 @@ def _format_phase_counts(prefix: str, counts: dict[str, int]) -> str:
     return f"{prefix}: " + " • ".join(parts)
 
 
+def _format_large_count(value: Any) -> str:
+    return f"{_safe_int(value):,}".replace(",", " ")
+
+
+def _format_metric_float(value: Any, *, digits: int = 2) -> str:
+    number = coerce_metric_float(value, default=None)
+    if number is None:
+        return "-"
+    return f"{float(number):.{digits}f}"
+
+
+def _format_metric_pct(value: Any, *, digits: int = 2) -> str:
+    number = coerce_metric_float(value, default=None)
+    if number is None:
+        return "-"
+    return f"{float(number):.{digits}f}%"
+
+
+def _phase_title(phase: str) -> str:
+    return {
+        "P1": "Inventaire brut",
+        "P2": "Sandbox",
+        "P3": "Consensus",
+        "P4": "Sensibilité",
+        "P5": "Walk-forward",
+        "P6": "Promotion",
+    }.get(str(phase).upper(), str(phase).upper())
+
+
+def _count_distinct_p1_sources(report_df: pd.DataFrame | None) -> int:
+    if report_df is None or report_df.empty:
+        return 0
+    for column in ("source_kind", "source", "hub_source"):
+        if column not in report_df.columns:
+            continue
+        values = report_df[column].dropna().astype(str).str.strip()
+        values = values[values != ""]
+        if not values.empty:
+            return int(values.nunique())
+    return 0
+
+
+def _resolve_p1_total_candidates(
+    payload: dict[str, Any],
+    report_payload: dict[str, Any] | None,
+    report_df: pd.DataFrame | None,
+) -> int:
+    candidates: list[int] = []
+    for source_payload in (payload, report_payload or {}):
+        stats = source_payload.get("stats") if isinstance(source_payload, dict) else {}
+        if isinstance(stats, dict):
+            candidates.extend(
+                [
+                    _safe_int(stats.get("p1_candidates")),
+                    _safe_int(stats.get("import_candidates")),
+                    _safe_int(stats.get("p2_processed")),
+                    _safe_int(stats.get("p2_survivors")),
+                ],
+            )
+        if isinstance(source_payload, dict):
+            candidates.append(_safe_int(source_payload.get("total_candidates")))
+    if report_df is not None and not report_df.empty:
+        candidates.append(int(len(report_df)))
+    return max(candidates or [0])
+
+
+def _build_phase_cards_html(
+    *,
+    total_candidates: int,
+    processed_counts: dict[str, int],
+    survivor_counts: dict[str, int],
+    phase_distribution: dict[str, int],
+    display_phase: str,
+    distribution_label: str,
+    p1_source_count: int = 0,
+) -> str:
+    display_phase = _clean_text_token(display_phase).upper()
+    blocks = [
+        "<section class='bc-grad-phase-section'>",
+        "<div class='bc-grad-section-head'>",
+        "<div>",
+        "<div class='bc-grad-eyebrow'>Paliers traités</div>",
+        "<div class='bc-grad-section-title'>Progression P1→P6</div>",
+        "</div>",
+        "</div>",
+        "<div class='bc-grad-phase-grid'>",
+    ]
+    for phase in ("P1", "P2", "P3", "P4", "P5", "P6"):
+        is_active = phase == display_phase
+        classes = "bc-grad-phase-card" + (" is-active" if is_active else "")
+        if phase == "P1":
+            value = total_candidates
+            main_label = "runs inventoriés"
+            secondary_label = "sources"
+            secondary_value = _format_large_count(p1_source_count) if p1_source_count > 0 else "multiples"
+            pool_label = "entrée P1"
+            pool_value = total_candidates
+        else:
+            processed = processed_counts.get(phase, 0)
+            survivor = survivor_counts.get(phase, 0)
+            current_pool = phase_distribution.get(phase, 0)
+            value = survivor
+            main_label = "promues" if phase == "P6" else "survivants"
+            secondary_label = "traités"
+            secondary_value = processed
+            pool_label = distribution_label
+            pool_value = current_pool
+        secondary_value_text = (
+            secondary_value if isinstance(secondary_value, str) else _format_large_count(secondary_value)
+        )
+        blocks.append(
+            "<article class='{classes}'>"
+            "<div class='bc-grad-phase-top'>"
+            "<span class='bc-grad-phase-code'>{phase}</span>"
+            "<span class='bc-grad-phase-name'>{name}</span>"
+            "</div>"
+            "<div class='bc-grad-phase-value'>{value}</div>"
+            "<div class='bc-grad-phase-main-label'>{main_label}</div>"
+            "<div class='bc-grad-phase-detail'>{secondary_label}&nbsp;<strong>{secondary_value}</strong></div>"
+            "<div class='bc-grad-phase-detail'>{distribution_label}&nbsp;<strong>{current_pool}</strong></div>"
+            "</article>".format(
+                classes=classes,
+                phase=escape(phase),
+                name=escape(_phase_title(phase)),
+                value=escape(_format_large_count(value)),
+                main_label=escape(main_label),
+                secondary_label=escape(secondary_label),
+                secondary_value=escape(str(secondary_value_text)),
+                distribution_label=escape(pool_label),
+                current_pool=escape(_format_large_count(pool_value)),
+            ),
+        )
+    blocks.extend(["</div>", "</section>"])
+    return "".join(blocks)
+
+
+def _build_run_detail_rows(
+    *,
+    candidate: dict[str, Any],
+    source_parts: list[str],
+    updated_at: str,
+    age_label: str,
+    cli_command: str,
+    survivor_counts: dict[str, int],
+    phase_distribution: dict[str, int],
+    phase_distribution_label: str,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    strategy_label = str(candidate.get("strategy_name") or candidate.get("session_id") or "").strip()
+    if strategy_label:
+        rows.append({"information": "Stratégie en cours", "valeur": strategy_label})
+    if source_parts:
+        rows.append({"information": "Source", "valeur": " | ".join(source_parts)})
+    if updated_at:
+        updated_value = f"{updated_at} UTC" + (f" ({age_label})" if age_label else "")
+        rows.append({"information": "Dernière mise à jour", "valeur": updated_value})
+    if cli_command:
+        rows.append({"information": "Commande CLI équivalente", "valeur": cli_command})
+    rows.append({"information": "Survivants", "valeur": _format_phase_counts("", survivor_counts).lstrip(": ")})
+    rows.append(
+        {
+            "information": phase_distribution_label,
+            "valeur": _format_phase_counts("", phase_distribution).lstrip(": "),
+        },
+    )
+    return rows
+
+
+def _build_run_details_html(rows: list[dict[str, str]]) -> str:
+    if not rows:
+        return "<div class='bc-grad-detail-list'><div class='bc-grad-detail-empty'>Aucun détail disponible.</div></div>"
+    blocks = ["<div class='bc-grad-detail-list'>"]
+    for row in rows:
+        blocks.append(
+            "<div class='bc-grad-detail-row'>"
+            f"<span>{escape(str(row.get('information') or ''))}</span>"
+            f"<strong>{escape(str(row.get('valeur') or ''))}</strong>"
+            "</div>",
+        )
+    blocks.append("</div>")
+    return "".join(blocks)
+
+
+def _build_run_progress_html(*, display_phase: str, progress_index: int, progress_total: int) -> str:
+    if progress_total <= 0:
+        return ""
+    ratio = min(1.0, max(0.0, progress_index / progress_total))
+    percent = ratio * 100
+    label = f"{display_phase} {progress_index}/{progress_total}"
+    return (
+        "<div class='bc-grad-run-progress' role='progressbar' "
+        f"aria-valuemin='0' aria-valuemax='{escape(str(progress_total))}' "
+        f"aria-valuenow='{escape(str(progress_index))}'>"
+        "<div class='bc-grad-run-progress-head'>"
+        f"<span>{escape(label)}</span>"
+        f"<strong>{percent:.1f}%</strong>"
+        "</div>"
+        "<div class='bc-grad-run-progress-track'>"
+        f"<div class='bc-grad-run-progress-fill' style='width: {percent:.2f}%'></div>"
+        "</div>"
+        "</div>"
+    )
+
+
 def _resolve_completed_phase(
     payload: dict[str, Any],
     processed_counts: dict[str, int],
@@ -607,6 +988,23 @@ def _background_progress_is_active(payload: dict[str, Any]) -> bool:
     return bool(age_seconds is not None and age_seconds < 15 and not payload.get("pid"))
 
 
+def _progress_payload_should_live_refresh(payload: dict[str, Any]) -> bool:
+    status = str(payload.get("status") or "").strip().lower()
+    return status in {"starting", "running"} and _progress_status_label(
+        payload,
+        _progress_age_seconds(str(payload.get("updated_at") or "")),
+    ) != "processus arrêté"
+
+
+def _has_streamlit_script_context() -> bool:
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        return get_script_run_ctx() is not None
+    except Exception:
+        return False
+
+
 def _active_graduation_progresses() -> list[dict[str, Any]]:
     active: list[dict[str, Any]] = []
     for filename in GRADUATION_PROGRESS_FILENAMES:
@@ -627,6 +1025,28 @@ def _progress_status_label(payload: dict[str, Any], age_seconds: float | None) -
     return raw_status
 
 
+def _graduation_progress_notice(payload: dict[str, Any]) -> tuple[str, str] | None:
+    if not payload:
+        return None
+    age_seconds = _progress_age_seconds(str(payload.get("updated_at") or ""))
+    status_label = _progress_status_label(payload, age_seconds)
+    raw_status = str(payload.get("status") or "").strip().lower()
+    if status_label == "processus arrêté":
+        return (
+            "error",
+            "Run actif orphelin : le progress est encore marqué `running`, mais le PID n'existe plus. "
+            "Relancez l'analyse complète P1→P6 pour repartir d'un état fiable.",
+        )
+    if raw_status == "running" and age_seconds is not None and age_seconds > 180:
+        return (
+            "warning",
+            "Run actif sans heartbeat récent : la progression n'a pas bougé depuis plus de 3 minutes.",
+        )
+    if raw_status == "failed":
+        return ("error", str(payload.get("error") or "Le run actif a échoué."))
+    return None
+
+
 def _truncate_rejection_reason(value: Any, *, max_len: int = 140) -> str:
     text = _clean_text_token(value)
     if len(text) <= max_len:
@@ -636,13 +1056,14 @@ def _truncate_rejection_reason(value: Any, *, max_len: int = 140) -> str:
 
 def _build_phase_timeline_html(*, current_phase: str, status: str) -> str:
     phase_labels = {
+        "P1": "Inventaire brut",
         "P2": "Sandbox",
         "P3": "Consensus benchmarks",
         "P4": "Test de sensibilité",
         "P5": "Walk-forward",
         "P6": "Promotion",
     }
-    ordered = ("P2", "P3", "P4", "P5", "P6")
+    ordered = ("P1", "P2", "P3", "P4", "P5", "P6")
     current = _clean_text_token(current_phase).upper()
     current_index = ordered.index(current) if current in ordered else -1
     completed = _clean_text_token(status).lower() == "completed"
@@ -879,7 +1300,7 @@ def _build_phase_focus_preview_df(df: pd.DataFrame, phase: str) -> pd.DataFrame:
         filtered = filtered.sort_values(sort_col, ascending=False, na_position="last")
     if "rejection_reason" in filtered.columns:
         filtered["rejection_reason"] = filtered["rejection_reason"].apply(_truncate_rejection_reason)
-    common_cols = ["strategy_name", "session_id", "source_symbol", "source_timeframe", "phase", "decision"]
+    common_cols = ["strategy_name", "session_id", "source_symbol", "source_timeframe", "phase", "p6_type", "decision"]
     phase_specific_cols = {
         "P4": ["sweep_robustness_pct", "best_max_drawdown_pct", "best_return_pct", "rejection_reason"],
         "P5": [
@@ -904,7 +1325,8 @@ def _render_threshold_sensitivity_section(*payloads: dict[str, Any] | None) -> N
     if not isinstance(p5, dict) or not p5.get("available"):
         return
 
-    with st.expander("Sensibilité des seuils P5", expanded=False):
+    with st.expander("Diagnostic P5 - sensibilité des seuils (lecture seule)", expanded=False):
+        st.caption("Lecture seule : ces seuils décrivent le rapport courant et ne modifient pas le prochain lancement.")
         thresholds = p5.get("current_thresholds") if isinstance(p5.get("current_thresholds"), dict) else {}
         metric_cols = st.columns(4)
         metric_cols[0].metric("Candidats P5", int(p5.get("candidate_count") or 0))
@@ -959,6 +1381,7 @@ def _build_candidate_preview_df(df: pd.DataFrame) -> pd.DataFrame:
         "source_symbol",
         "source_timeframe",
         "phase",
+        "p6_type",
         "decision",
         "best_return_pct",
         "best_sharpe",
@@ -972,18 +1395,52 @@ def _build_candidate_preview_df(df: pd.DataFrame) -> pd.DataFrame:
     return filtered[visible_cols].head(GRADUATION_PREVIEW_LIMIT).reset_index(drop=True)
 
 
-def _resolve_graduation_strategy_folder(row: dict[str, Any]) -> Path | None:
+def _resolve_graduation_strategy_file(row: Mapping[str, Any]) -> Path | None:
+    row_dict = dict(row)
     builder_root = get_builder_sessions_dir()
-    strategy_file = _clean_text_token(row.get("strategy_file"))
-    session_id = _clean_text_token(row.get("session_id"))
+    strategy_file = _clean_text_token(first_present_non_empty(row_dict, "promoted_strategy_path", "strategy_file"))
+    session_id = _clean_text_token(row_dict.get("session_id"))
     if strategy_file:
-        candidate_path = Path(strategy_file)
-        if not candidate_path.is_absolute():
-            candidate_path = builder_root / candidate_path
-        if candidate_path.exists():
-            return candidate_path.parent
+        raw_path = Path(strategy_file)
+        candidate_paths = [raw_path] if raw_path.is_absolute() else []
+        if not raw_path.is_absolute():
+            candidate_paths.extend(
+                [
+                    builder_root / raw_path,
+                    _PROJECT_ROOT / raw_path,
+                    Path.cwd() / raw_path,
+                ],
+            )
+            if session_id:
+                candidate_paths.append(builder_root / session_id / raw_path.name)
+        for candidate_path in candidate_paths:
+            if candidate_path.exists() and candidate_path.is_file():
+                return candidate_path
     if session_id:
         session_dir = builder_root / session_id
+        if session_dir.exists():
+            best_iteration = _safe_int(row_dict.get("best_iteration") or row_dict.get("builder_iteration"))
+            if best_iteration > 0:
+                versioned = session_dir / f"strategy_v{best_iteration}.py"
+                if versioned.exists() and versioned.is_file():
+                    return versioned
+            direct = session_dir / "strategy.py"
+            if direct.exists() and direct.is_file():
+                return direct
+            strategy_versions = sorted(session_dir.glob("strategy_v*.py"))
+            if strategy_versions:
+                return strategy_versions[-1]
+    return None
+
+
+def _resolve_graduation_strategy_folder(row: dict[str, Any]) -> Path | None:
+    strategy_file = _resolve_graduation_strategy_file(row)
+    if strategy_file is not None:
+        return strategy_file.parent
+
+    session_id = _clean_text_token(row.get("session_id"))
+    if session_id:
+        session_dir = get_builder_sessions_dir() / session_id
         if session_dir.exists():
             return session_dir
     return None
@@ -1051,6 +1508,194 @@ def _decorate_graduation_strategy_links(df: pd.DataFrame) -> pd.DataFrame:
     return decorated
 
 
+def _is_promoted_p6_row(row: Mapping[str, Any]) -> bool:
+    p6_type = _clean_text_token(row.get("p6_type"))
+    if p6_type in {P6_TYPE_STRICT, P6_TYPE_LOW_CONFIDENCE, P6_TYPE_LEGACY}:
+        return True
+    return _p6_type_from_values(
+        phase=row.get("phase"),
+        decision=row.get("decision"),
+        p6_verdict=row.get("p6_verdict"),
+        wfa_confidence_tier=row.get("wfa_confidence_tier"),
+        catalog_category=row.get("catalog_category", row.get("category")),
+    ) in {P6_TYPE_STRICT, P6_TYPE_LOW_CONFIDENCE, P6_TYPE_LEGACY}
+
+
+def _build_promoted_strategy_df(
+    sandbox_df: pd.DataFrame,
+    positive_df: pd.DataFrame,
+) -> pd.DataFrame:
+    frames: list[pd.DataFrame] = []
+    for source_label, source_df in (
+        ("graduation_complete", sandbox_df),
+        ("graduation_positifs", positive_df),
+    ):
+        if source_df.empty:
+            continue
+        frame = _add_p6_type_column(source_df)
+        if "p6_type" not in frame.columns:
+            continue
+        promoted_mask = frame.apply(lambda row: _is_promoted_p6_row(row.to_dict()), axis=1)
+        frame = frame[promoted_mask].copy()
+        if frame.empty:
+            continue
+        frame["origin_report"] = source_label
+        frames.append(frame)
+
+    if not frames:
+        return pd.DataFrame()
+
+    combined = pd.concat(frames, ignore_index=True, sort=False)
+
+    def _stable_key(row: pd.Series) -> str:
+        row_dict = row.to_dict()
+        return str(
+            first_present_non_empty(
+                row_dict,
+                "strategy_file",
+                "catalog_entry_id",
+                "candidate_id",
+                "source_run_id",
+                "session_id",
+            )
+            or "",
+        )
+
+    combined["_promoted_stable_key"] = combined.apply(_stable_key, axis=1)
+    if "_promoted_stable_key" in combined.columns:
+        combined = combined.drop_duplicates("_promoted_stable_key", keep="first")
+
+    def _resolved_file_text(row: pd.Series) -> str:
+        path = _resolve_graduation_strategy_file(row.to_dict())
+        return str(path) if path is not None else _clean_text_token(row.get("strategy_file"))
+
+    def _resolved_file_link(row: pd.Series) -> str:
+        path = _resolve_graduation_strategy_file(row.to_dict())
+        return path.resolve().as_uri() if path is not None else ""
+
+    combined["strategy_file_path"] = combined.apply(_resolved_file_text, axis=1)
+    combined["strategy_file_link"] = combined.apply(_resolved_file_link, axis=1)
+    combined["_p6_type_rank"] = combined["p6_type"].apply(lambda value: _p6_type_sort_key(value)[0])
+    sort_cols = [col for col in ["_p6_type_rank", "best_return_pct", "best_sharpe"] if col in combined.columns]
+    if sort_cols:
+        ascending = [True] + [False] * (len(sort_cols) - 1)
+        combined = combined.sort_values(sort_cols, ascending=ascending, na_position="last")
+    return combined.reset_index(drop=True)
+
+
+def _read_strategy_code_preview(row: Mapping[str, Any], *, max_chars: int = 120_000) -> tuple[Path | None, str, bool]:
+    strategy_path = _resolve_graduation_strategy_file(row)
+    if strategy_path is None:
+        return None, "", False
+    try:
+        code = strategy_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return strategy_path, "", False
+    truncated = len(code) > max_chars
+    if truncated:
+        code = code[:max_chars]
+    return strategy_path, code, truncated
+
+
+def _render_promoted_strategies_panel(
+    *,
+    sandbox_df: pd.DataFrame,
+    positive_df: pd.DataFrame,
+) -> None:
+    promoted_df = _build_promoted_strategy_df(sandbox_df, positive_df)
+    st.markdown("### Stratégies promues P6")
+    if promoted_df.empty:
+        st.caption("Aucune stratégie promue P6 dans le dernier rapport stable.")
+        return
+
+    type_counts = promoted_df["p6_type"].fillna("").astype(str).value_counts().to_dict()
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Promues P6", len(promoted_df))
+    metric_cols[1].metric(P6_TYPE_STRICT, int(type_counts.get(P6_TYPE_STRICT, 0)))
+    metric_cols[2].metric(P6_TYPE_LOW_CONFIDENCE, int(type_counts.get(P6_TYPE_LOW_CONFIDENCE, 0)))
+    metric_cols[3].metric(P6_TYPE_LEGACY, int(type_counts.get(P6_TYPE_LEGACY, 0)))
+
+    visible_cols = [
+        "strategy_name",
+        "session_id",
+        "source_symbol",
+        "source_timeframe",
+        "p6_type",
+        "best_return_pct",
+        "best_sharpe",
+        "best_profit_factor",
+        "best_trades",
+        "best_max_drawdown_pct",
+        "wfa_stability",
+        "wfa_positive_folds_pct",
+        "wfa_robust_overfitting_score",
+        "strategy_file_link",
+        "catalog_entry_id",
+    ]
+    table_df = promoted_df[[col for col in visible_cols if col in promoted_df.columns]].copy()
+    if "strategy_file_link" in table_df.columns:
+        table_df["strategy_file_link"] = table_df["strategy_file_link"].fillna("")
+    st.dataframe(
+        table_df,
+        width="stretch",
+        hide_index=True,
+        column_config=_get_numeric_column_config(),
+    )
+
+    detail_labels: list[str] = []
+    detail_map: dict[str, dict[str, Any]] = {}
+    for idx, row in promoted_df.iterrows():
+        strategy_name = _clean_text_token(row.get("strategy_name")) or _clean_text_token(row.get("session_id")) or "P6"
+        symbol = _clean_text_token(row.get("source_symbol")) or _clean_text_token(row.get("symbol"))
+        timeframe = _clean_text_token(row.get("source_timeframe")) or _clean_text_token(row.get("timeframe"))
+        p6_type = _clean_text_token(row.get("p6_type"))
+        market = f"{symbol} {timeframe}".strip()
+        label = " | ".join(part for part in (strategy_name, market, p6_type) if part)
+        if label in detail_map:
+            label = f"{label} | {idx}"
+        detail_labels.append(label)
+        detail_map[label] = row.to_dict()
+
+    selected_label = st.selectbox(
+        "Inspecter une stratégie promue",
+        options=detail_labels,
+        key="graduation_promoted_detail_select",
+    )
+    selected_row = detail_map[selected_label]
+
+    detail_cols = st.columns(6)
+    detail_cols[0].metric("Type P6", _clean_text_token(selected_row.get("p6_type")) or "-")
+    detail_cols[1].metric("Return", _format_metric_pct(selected_row.get("best_return_pct")))
+    detail_cols[2].metric("Sharpe", _format_metric_float(selected_row.get("best_sharpe")))
+    detail_cols[3].metric("PF", _format_metric_float(selected_row.get("best_profit_factor")))
+    detail_cols[4].metric("DD", _format_metric_pct(selected_row.get("best_max_drawdown_pct")))
+    detail_cols[5].metric("Trades", _format_large_count(selected_row.get("best_trades")))
+
+    validation_rows = [
+        {"bloc": "P2 positif", "valeur": selected_row.get("p2_verdict", "")},
+        {"bloc": "P3 univers", "valeur": selected_row.get("p3_verdict", "")},
+        {"bloc": "P4 sensibilité", "valeur": selected_row.get("p4_verdict", "")},
+        {"bloc": "P5 WFA", "valeur": selected_row.get("p5_verdict", "")},
+        {"bloc": "P6 verdict", "valeur": selected_row.get("p6_verdict", "")},
+        {"bloc": "WFA confiance", "valeur": selected_row.get("wfa_confidence_tier", "")},
+    ]
+    st.dataframe(pd.DataFrame(validation_rows), width="stretch", hide_index=True)
+
+    strategy_path, code, truncated = _read_strategy_code_preview(selected_row)
+    with st.expander("Code de la stratégie promue", expanded=True):
+        if strategy_path is not None:
+            st.caption(str(strategy_path))
+        if code:
+            st.code(code, language="python")
+            if truncated:
+                st.caption("Aperçu tronqué pour garder l'interface réactive.")
+        else:
+            st.warning("Code introuvable pour cette stratégie promue.")
+
+    with st.expander("Statistiques et métadonnées complètes", expanded=False):
+        st.json(selected_row)
+
+
 def _render_phase_diagnostic_panel(*, phase: str, summary: dict[str, Any], df: pd.DataFrame) -> None:
     preview_df = _build_phase_focus_preview_df(df, phase)
     preview_df = _decorate_graduation_strategy_links(preview_df)
@@ -1082,7 +1727,7 @@ def _render_progress_section(
 
     stats = payload.get("stats") or {}
     candidate = payload.get("current_candidate") or {}
-    total_candidates = _safe_int(stats.get("p1_candidates"), _safe_int(stats.get("import_candidates")))
+    total_candidates = _resolve_p1_total_candidates(payload, report_payload, report_df)
     processed_counts = _phase_processed_counts(stats, total_candidates, infer_missing=False)
     survivor_counts = _phase_survivor_counts(stats)
     live_phase_distribution = _phase_distribution_counts(payload)
@@ -1091,13 +1736,40 @@ def _render_progress_section(
     phase_distribution = live_phase_distribution if has_live_phase_distribution else report_phase_distribution
     display_phase = _resolve_completed_phase(payload, processed_counts, phase_distribution)
     progress_index, progress_total = _resolve_progress_ratio(payload, display_phase, processed_counts)
+    p1_source_count = _count_distinct_p1_sources(report_df)
     age_seconds = _progress_age_seconds(str(payload.get("updated_at") or ""))
     status_label = _progress_status_label(payload, age_seconds)
     age_label = ""
     if age_seconds is not None:
         age_label = f"{int(age_seconds)}s"
 
-    st.markdown(_build_phase_timeline_html(current_phase=display_phase, status=str(payload.get("status") or "")), unsafe_allow_html=True)
+    if has_live_phase_distribution:
+        phase_distribution_label = "Candidats actuels"
+        phase_card_distribution_label = "actuels"
+    elif str(payload.get("status") or "").strip().lower() in {"starting", "running"}:
+        phase_distribution_label = "Dernier rapport stable"
+        phase_card_distribution_label = "stables"
+    else:
+        phase_distribution_label = "Phase finale des candidats"
+        phase_card_distribution_label = "finaux"
+
+    st.markdown(
+        _build_phase_cards_html(
+            total_candidates=total_candidates,
+            processed_counts=processed_counts,
+            survivor_counts=survivor_counts,
+            phase_distribution=phase_distribution,
+            display_phase=display_phase,
+            distribution_label=phase_card_distribution_label,
+            p1_source_count=p1_source_count,
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        _build_phase_timeline_html(current_phase=display_phase, status=str(payload.get("status") or "")),
+        unsafe_allow_html=True,
+    )
+
     status_state = "running"
     status_title = "Calculs en cours"
     if status_label == "processus arrêté":
@@ -1111,61 +1783,57 @@ def _render_progress_section(
     elif str(payload.get("status") or "").strip().lower() == "failed":
         status_state = "error"
         status_title = "Run échoué"
+
+    st.markdown("#### Run actif de la mise à jour")
     with st.status(
-        f"{status_title} · {display_phase} · {progress_index}/{progress_total}",
+        f"Run actif · {status_title} · {display_phase} · {progress_index}/{progress_total}",
         state=status_state,
-        expanded=False,
+        expanded=True,
     ):
         if progress_total > 0:
-            st.progress(
-                min(1.0, max(0.0, progress_index / progress_total)),
-                text=f"{display_phase} {progress_index}/{progress_total}",
+            st.markdown(
+                _build_run_progress_html(
+                    display_phase=display_phase,
+                    progress_index=progress_index,
+                    progress_total=progress_total,
+                ),
+                unsafe_allow_html=True,
             )
 
-    heartbeat_cols = st.columns(2)
-    heartbeat_cols[0].metric("Heartbeat", age_label or "-")
-    heartbeat_cols[1].metric("PID", str(payload.get("pid") or "-"))
+    run_cols = st.columns([1.2, 0.7, 1.0, 0.8, 0.8])
+    run_cols[0].metric("Statut", status_label)
+    run_cols[1].metric("Phase", display_phase)
+    run_cols[2].metric("Avancement", f"{progress_index}/{progress_total}")
+    run_cols[3].metric("Heartbeat", age_label or "-")
+    run_cols[4].metric("PID", str(payload.get("pid") or "-"))
 
-    cols = st.columns(8)
-    cols[0].metric("Statut", status_label)
-    cols[1].metric("Phase", display_phase)
-    cols[2].metric("Avancement", f"{progress_index}/{progress_total}")
-    cols[3].metric("Traités P2", processed_counts.get("P2", 0))
-    cols[4].metric("Traités P3", processed_counts.get("P3", 0))
-    cols[5].metric("Traités P4", processed_counts.get("P4", 0))
-    cols[6].metric("Traités P5", processed_counts.get("P5", 0))
-    cols[7].metric("P6 promues", survivor_counts.get("P6", 0))
-
-    strategy_label = str(candidate.get("strategy_name") or candidate.get("session_id") or "").strip()
-    if strategy_label:
-        st.write(f"**Stratégie en cours** : `{strategy_label}`")
     source_parts = [
         str(candidate.get("source_symbol") or "").strip(),
         str(candidate.get("source_timeframe") or "").strip(),
         str(candidate.get("source_run_id") or "").strip(),
     ]
     source_parts = [part for part in source_parts if part]
-    if source_parts:
-        st.caption(" | ".join(source_parts))
 
     updated_at = str(payload.get("updated_at") or "").strip()
-    if updated_at:
-        st.caption(f"Dernière mise à jour: {updated_at} UTC" + (f" ({age_label})" if age_label else ""))
     cli_command = _payload_cli_equivalent(payload, report_payload)
-    if cli_command:
-        st.caption(f"Commande CLI équivalente: `{cli_command}`")
-    st.caption(_format_phase_counts("Survivants", survivor_counts))
-    if has_live_phase_distribution:
-        st.caption(_format_phase_counts("Phase actuelle des candidats", phase_distribution))
-    elif str(payload.get("status") or "").strip().lower() in {"starting", "running"}:
-        st.caption(_format_phase_counts("Dernier rapport stable - phase finale des candidats", phase_distribution))
-    else:
-        st.caption(_format_phase_counts("Phase finale des candidats", phase_distribution))
+    detail_rows = _build_run_detail_rows(
+        candidate=candidate,
+        source_parts=source_parts,
+        updated_at=updated_at,
+        age_label=age_label,
+        cli_command=cli_command,
+        survivor_counts=survivor_counts,
+        phase_distribution=phase_distribution,
+        phase_distribution_label=phase_distribution_label,
+    )
+    with st.expander("Détails du run actif et des paliers", expanded=False):
+        st.markdown(_build_run_details_html(detail_rows), unsafe_allow_html=True)
 
     phase_contract = _payload_phase_contract(payload, report_payload)
     config_snapshot = _payload_config_snapshot(payload, report_payload)
     if phase_contract or config_snapshot:
-        with st.expander("Contrat P1→P6 et paramètres CLI", expanded=False):
+        with st.expander("Référence P1→P6 et paramètres utilisés (lecture seule)", expanded=False):
+            st.caption("Lecture seule : ce volet documente le contrat et les paramètres appliqués au rapport courant.")
             if phase_contract:
                 contract_rows = [
                     {
@@ -1180,18 +1848,6 @@ def _render_progress_section(
                 st.json(config_snapshot)
 
     _render_threshold_sensitivity_section(payload, report_payload)
-
-    if status_label == "processus arrêté":
-        st.error(
-            "Le run est marqué `running`, mais son PID n'existe plus. "
-            "Le dernier brouillon peut être incomplet ; relancez la graduation complète.",
-        )
-    elif payload.get("status") == "running" and age_seconds is not None and age_seconds > 180:
-        st.warning("Le run est marqué `running` mais la progression n'a pas bougé depuis plus de 3 minutes.")
-    elif payload.get("status") == "failed":
-        st.error(str(payload.get("error") or "Le run a échoué."))
-    elif payload.get("status") == "completed":
-        st.success("Le run est terminé.")
 
     log_tail = _load_log_tail(log_filename)
     if log_tail:
@@ -1249,16 +1905,6 @@ def _launch_full_graduation_from_ui(*, sync_catalog: bool) -> tuple[bool, str]:
     )
 
 
-def _launch_p1_inventory_from_ui(*, sync_catalog: bool) -> tuple[bool, str]:
-    args: list[str] = []
-    if sync_catalog:
-        args.append("--sync-catalog")
-    return _start_background_graduation_job(
-        args=args,
-        log_filename=GRADUATION_P1_LOG_FILENAME,
-    )
-
-
 def _launch_positive_artifact_import_from_ui(
     *,
     sync_catalog: bool,
@@ -1273,6 +1919,42 @@ def _launch_positive_artifact_import_from_ui(
         args=args,
         log_filename=POSITIVE_ARTIFACTS_IMPORT_LOG_FILENAME,
     )
+
+
+def _render_live_graduation_progress_section(
+    *,
+    report_payload: dict[str, Any],
+    report_df: pd.DataFrame,
+    initial_payload: dict[str, Any] | None = None,
+) -> None:
+    def _render_current_progress(payload: dict[str, Any] | None = None) -> None:
+        current_payload = payload if payload is not None else _load_progress_payload(FULL_GRADUATION_PROGRESS_FILENAME)
+        _render_progress_section(
+            title="Progression unique P1→P6",
+            payload=current_payload,
+            log_filename=FULL_GRADUATION_LOG_FILENAME,
+            report_payload=report_payload,
+            report_df=report_df,
+        )
+
+    if initial_payload is None:
+        initial_payload = _load_progress_payload(FULL_GRADUATION_PROGRESS_FILENAME)
+    if (
+        initial_payload
+        and _progress_payload_should_live_refresh(initial_payload)
+        and _has_streamlit_script_context()
+        and callable(getattr(st, "fragment", None))
+    ):
+        st.caption("Actualisation automatique toutes les 5 secondes pendant le run actif.")
+
+        @st.fragment(run_every="5s")
+        def _live_progress_fragment() -> None:
+            _render_current_progress()
+
+        _live_progress_fragment()
+        return
+
+    _render_current_progress(initial_payload)
 
 
 def _render_candidate_report_section(
@@ -1315,7 +1997,8 @@ def _render_candidate_report_section(
     phase_contract = _payload_phase_contract(payload)
     config_snapshot = _payload_config_snapshot(payload)
     if phase_contract or config_snapshot:
-        with st.expander("Contrat P1→P6 et paramètres CLI", expanded=False):
+        with st.expander("Référence P1→P6 et paramètres utilisés (lecture seule)", expanded=False):
+            st.caption("Lecture seule : ce volet documente le contrat et les paramètres appliqués au rapport courant.")
             if phase_contract:
                 contract_rows = [
                     {
@@ -1341,11 +2024,22 @@ def _render_candidate_report_section(
         return
 
     phase_options = (
-        ["Toutes"] + sorted(df["phase"].dropna().astype(str).unique().tolist()) if "phase" in df.columns else ["Toutes"]
+        ["Toutes"] + _ordered_phase_options(df["phase"].dropna().astype(str).unique().tolist())
+        if "phase" in df.columns
+        else ["Toutes"]
     )
     decision_options = (
         ["Toutes"] + sorted(df["decision"].dropna().astype(str).unique().tolist())
         if "decision" in df.columns
+        else ["Toutes"]
+    )
+    p6_type_options = (
+        ["Toutes"]
+        + sorted(
+            [value for value in df["p6_type"].dropna().astype(str).unique().tolist() if value],
+            key=_p6_type_sort_key,
+        )
+        if "p6_type" in df.columns
         else ["Toutes"]
     )
     source_options = (
@@ -1354,16 +2048,19 @@ def _render_candidate_report_section(
         else ["Toutes"]
     )
 
-    filter_cols = st.columns(3)
+    filter_cols = st.columns(4)
     phase_filter = filter_cols[0].selectbox("Phase", phase_options, key=f"{key_prefix}_phase_filter")
     decision_filter = filter_cols[1].selectbox("Décision", decision_options, key=f"{key_prefix}_decision_filter")
-    source_filter = filter_cols[2].selectbox("Source", source_options, key=f"{key_prefix}_source_filter")
+    p6_type_filter = filter_cols[2].selectbox("Type P6", p6_type_options, key=f"{key_prefix}_p6_type_filter")
+    source_filter = filter_cols[3].selectbox("Source", source_options, key=f"{key_prefix}_source_filter")
 
     filtered = df.copy()
     if phase_filter != "Toutes" and "phase" in filtered.columns:
         filtered = filtered[filtered["phase"] == phase_filter]
     if decision_filter != "Toutes" and "decision" in filtered.columns:
         filtered = filtered[filtered["decision"] == decision_filter]
+    if p6_type_filter != "Toutes" and "p6_type" in filtered.columns:
+        filtered = filtered[filtered["p6_type"] == p6_type_filter]
     if source_filter != "Toutes" and "source_kind" in filtered.columns:
         filtered = filtered[filtered["source_kind"] == source_filter]
 
@@ -1379,6 +2076,7 @@ def _render_candidate_report_section(
         "source_timeframe",
         "source_kind",
         "phase",
+        "p6_type",
         "decision",
         "best_return_pct",
         "best_profit_factor",
@@ -1805,14 +2503,29 @@ def _extract_catalog_postfilter_fields(entry: dict[str, Any]) -> dict[str, Any]:
         else ""
     )
 
+    phase = str(first_present_non_empty(meta, "phase", "positive_pipeline_phase") or "").strip()
+    decision = str(first_present_non_empty(meta, "decision", "positive_pipeline_decision") or "").strip()
+    p6_verdict = str(first_present_non_empty(meta, "p6_verdict", "positive_pipeline_p6_verdict") or "").strip()
+    wfa_confidence_tier = str(
+        first_present_non_empty(meta, "wfa_confidence_tier", "positive_pipeline_wfa_confidence_tier") or "",
+    ).strip()
+    catalog_category = str(entry.get("category") or "").strip()
+
     return {
-        "phase": str(first_present_non_empty(meta, "phase", "positive_pipeline_phase") or "").strip(),
-        "decision": str(first_present_non_empty(meta, "decision", "positive_pipeline_decision") or "").strip(),
+        "phase": phase,
+        "decision": decision,
         "p2_verdict": str(first_present_non_empty(meta, "p2_verdict", "positive_pipeline_p2_verdict") or "").strip(),
         "p3_verdict": str(first_present_non_empty(meta, "p3_verdict", "positive_pipeline_p3_verdict") or "").strip(),
         "p4_verdict": str(first_present_non_empty(meta, "p4_verdict", "positive_pipeline_p4_verdict") or "").strip(),
         "p5_verdict": str(first_present_non_empty(meta, "p5_verdict", "positive_pipeline_p5_verdict") or "").strip(),
-        "p6_verdict": str(first_present_non_empty(meta, "p6_verdict", "positive_pipeline_p6_verdict") or "").strip(),
+        "p6_verdict": p6_verdict,
+        "p6_type": _p6_type_from_values(
+            phase=phase,
+            decision=decision,
+            p6_verdict=p6_verdict,
+            wfa_confidence_tier=wfa_confidence_tier,
+            catalog_category=catalog_category,
+        ),
         "coverage_pct": coerce_metric_float(
             first_present_non_empty(meta, "coverage_pct", "positive_pipeline_coverage_pct"),
             default=None,
@@ -1854,6 +2567,7 @@ def _load_strategy_catalog_df() -> pd.DataFrame:
                 "source_path": meta.get("source_path"),
                 "session_dir": meta.get("session_dir"),
                 "strategy_file": meta.get("strategy_file"),
+                "promoted_strategy_path": meta.get("promoted_strategy_path"),
                 "source_params": meta.get("source_params") if isinstance(meta.get("source_params"), dict) else None,
                 "sharpe": _metric_from_snapshot(metrics, "sharpe_ratio", "sharpe"),
                 "return_pct": _metric_from_snapshot(metrics, "total_return_pct", "total_return"),
@@ -1879,6 +2593,7 @@ def _load_strategy_catalog_df() -> pd.DataFrame:
             "missing_context_count",
         ],
     )
+    df = _add_p6_type_column(df)
     df["source_ref"] = df.apply(lambda row: _catalog_entry_source_ref(row.to_dict()), axis=1)
     return _decorate_strategy_catalog_links(df)
 
@@ -2365,13 +3080,18 @@ _RESULTS_HUB_TEXT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("period_start", "Début", "medium"), ("period_end", "Fin", "medium"),
     ("artifact_type", "Artefact", "small"), ("category", "Catégorie", "small"),
     ("catalog_category", "Catégorie cat.", "small"), ("catalog_status", "Statut cat.", "small"),
-    ("phase", "Phase", "small"), ("decision", "Décision", "small"),
+    ("phase", "Phase", "small"), ("p6_type", "Type P6", "small"), ("decision", "Décision", "small"),
     ("sensitivity_scope", "Scope P4", "small"), ("sensitivity_symbol", "Symbole P4", "small"),
     ("sensitivity_timeframe", "TF P4", "small"),
     ("wfa_scope", "Scope WFA", "small"), ("wfa_symbol", "Symbole WFA", "small"),
     ("wfa_timeframe", "TF WFA", "small"),
     ("benchmark_pass_summary", "Benchmarks", "small"), ("context_pass_summary", "Contextes", "small"),
     ("required_benchmark_name", "Benchmark requis", "medium"), ("contradiction_state", "Consensus", "small"),
+    # P3 univers naturel (refonte 2026-05-26)
+    ("natural_universe_id", "Univers naturel", "medium"),
+    ("primary_universe", "Famille", "medium"),
+    ("liquidity_bucket", "Liquidité", "small"),
+    ("decision_badge", "État", "small"),
     ("rejection_reason", "Rejet / diagnostic", "large"), ("params_used_preview", "Params", "large"),
 )
 
@@ -2395,6 +3115,9 @@ _RESULTS_HUB_NUMBER_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("metrics_max_drawdown_pct", "Max DD (%)"), ("best_max_drawdown_pct", "Best DD (%)"),
         ("sweep_robustness_pct", "Robustesse sweep (%)"), ("coverage_pct", "Couverture ctx uniques (%)"),
         ("benchmark_slot_coverage_pct", "Couverture packs (%)"),
+        # P3 univers naturel
+        ("required_pass_rate_pct", "Pass-rate univers (%)"),
+        ("diagnostic_pass_rate_pct", "Pass-rate diagnostic (%)"),
     ),
     "%.2f": (
         ("sharpe_ratio", "Sharpe"), ("profit_factor", "PF"), ("metrics_sharpe_ratio", "Sharpe"),
@@ -2418,6 +3141,9 @@ _RESULTS_HUB_NUMBER_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("sensitivity_history_bars", "Barres P4"), ("sensitivity_min_history_bars", "Min P4"),
         ("wfa_valid_folds", "Folds WFA"), ("wfa_history_bars", "Barres WFA"),
         ("wfa_min_history_bars", "Min WFA"),
+        # P3 univers naturel
+        ("required_passed_count", "Tokens passés"), ("required_total_count", "Tokens testés"),
+        ("diagnostic_passed_count", "Diag passés"), ("diagnostic_total_count", "Diag testés"),
     ),
     "%.4f": (("best_value", "Meilleure val."),),
     "%.1f": (("total_time_sec", "Durée (s)"),),
@@ -2435,6 +3161,7 @@ def _get_numeric_column_config() -> dict[str, Any]:
         ),
         "replayable": st.column_config.CheckboxColumn("Replay", width="small"),
         "open_folder": st.column_config.LinkColumn("Dossier", display_text="📂 Ouvrir"),
+        "strategy_file_link": st.column_config.LinkColumn("Code", display_text="code.py"),
         "_row_key": None,
         "_row_origin": None,
         "_origin_index": None,
@@ -2463,7 +3190,16 @@ _RESULTS_HUB_TABLE_COLUMNS = [
     "catalog_category",
     "catalog_status",
     "phase",
+    "p6_type",
+    "decision_badge",
     "decision",
+    "natural_universe_id",
+    "primary_universe",
+    "liquidity_bucket",
+    "required_pass_rate_pct",
+    "required_passed_count",
+    "required_total_count",
+    "diagnostic_pass_rate_pct",
     "total_pnl",
     "pnl_per_day",
     "pnl_per_day_covered",
@@ -2577,6 +3313,14 @@ def _append_hub_rows(
         row["replayable"] = bool(row.get("replayable")) or action_scope in {"catalog_replay", "run_replay"}
         row["promotable"] = action_scope == "run_replay"
         _canonicalize_result_metrics(row)
+        if _clean_text_token(row.get("p6_type")) == "":
+            row["p6_type"] = _p6_type_from_values(
+                phase=row.get("phase"),
+                decision=row.get("decision"),
+                p6_verdict=row.get("p6_verdict"),
+                wfa_confidence_tier=row.get("wfa_confidence_tier"),
+                catalog_category=row.get("catalog_category", row.get("category")),
+            )
         stable_id = _first_non_empty(row, "run_id", "session_id", "entry_id", "candidate_id", "id") or idx
         row["_row_key"] = f"{origin}:{stable_id}:{idx}"
         rows.append(row)
@@ -2711,8 +3455,28 @@ def _render_results_hub_unified_filters(table_df: pd.DataFrame) -> pd.DataFrame:
     strategy_options = sorted([value for value in table_df["strategy"].dropna().astype(str).unique().tolist() if value])
     symbol_options = sorted([value for value in table_df["symbol"].dropna().astype(str).unique().tolist() if value])
     timeframe_options = sorted([value for value in table_df["timeframe"].dropna().astype(str).unique().tolist() if value])
-    catalog_options = sorted(
-        [value for value in table_df["catalog_category"].dropna().astype(str).unique().tolist() if value],
+    phase_options = (
+        _ordered_phase_options(table_df["phase"].dropna().astype(str).unique().tolist())
+        if "phase" in table_df.columns
+        else []
+    )
+    decision_options = (
+        sorted([value for value in table_df["decision"].dropna().astype(str).unique().tolist() if value])
+        if "decision" in table_df.columns
+        else []
+    )
+    p6_type_options = (
+        sorted(
+            [value for value in table_df["p6_type"].dropna().astype(str).unique().tolist() if value],
+            key=_p6_type_sort_key,
+        )
+        if "p6_type" in table_df.columns
+        else []
+    )
+    catalog_options = (
+        sorted([value for value in table_df["catalog_category"].dropna().astype(str).unique().tolist() if value])
+        if "catalog_category" in table_df.columns
+        else []
     )
 
     filter_cols = st.columns(4)
@@ -2748,18 +3512,38 @@ def _render_results_hub_unified_filters(table_df: pd.DataFrame) -> pd.DataFrame:
         default=[],
         key="results_hub_unified_timeframes",
     )
-    selected_categories = filter_cols_2[1].multiselect(
+    selected_phases = filter_cols_2[1].multiselect(
+        "Phases",
+        options=phase_options,
+        default=[],
+        key="results_hub_unified_phases",
+    )
+    selected_decisions = filter_cols_2[2].multiselect(
+        "Décisions",
+        options=decision_options,
+        default=[],
+        key="results_hub_unified_decisions",
+    )
+    selected_p6_types = filter_cols_2[3].multiselect(
+        "Types P6",
+        options=p6_type_options,
+        default=[],
+        key="results_hub_unified_p6_types",
+    )
+
+    filter_cols_3 = st.columns(3)
+    selected_categories = filter_cols_3[0].multiselect(
         "Catégories catalogue",
         options=catalog_options,
         default=[],
         key="results_hub_unified_catalog_categories",
     )
-    action_only = filter_cols_2[2].checkbox(
+    action_only = filter_cols_3[1].checkbox(
         "Actionnables uniquement",
         value=False,
         key="results_hub_unified_action_only",
     )
-    search_term = filter_cols_2[3].text_input(
+    search_term = filter_cols_3[2].text_input(
         "Recherche",
         placeholder="run, session, stratégie, diagnostic...",
         key="results_hub_unified_search",
@@ -2776,6 +3560,12 @@ def _render_results_hub_unified_filters(table_df: pd.DataFrame) -> pd.DataFrame:
         filtered = filtered[filtered["symbol"].astype(str).isin(selected_symbols)]
     if selected_timeframes:
         filtered = filtered[filtered["timeframe"].astype(str).isin(selected_timeframes)]
+    if selected_phases and "phase" in filtered.columns:
+        filtered = filtered[filtered["phase"].astype(str).str.upper().isin(selected_phases)]
+    if selected_decisions and "decision" in filtered.columns:
+        filtered = filtered[filtered["decision"].astype(str).isin(selected_decisions)]
+    if selected_p6_types and "p6_type" in filtered.columns:
+        filtered = filtered[filtered["p6_type"].astype(str).isin(selected_p6_types)]
     if selected_categories:
         filtered = filtered[filtered["catalog_category"].astype(str).isin(selected_categories)]
     if action_only:
@@ -3018,23 +3808,17 @@ def _render_graduation_controls_and_progress(
 ) -> None:
     st.markdown("### Filtrage intelligent des résultats")
 
-    main_col_a, main_col_b, main_col_c = st.columns([1.2, 1.8, 1.8])
-    if main_col_a.button(
-        "🔄 Rafraîchir affichage",
-        key="graduation_refresh",
-        type="primary",
-        use_container_width=True,
-        help="Recharge l'état affiché (rapports, progress, logs). Ne relance aucun pipeline.",
-    ):
-        st.rerun()
+    st.markdown("<span class='bc-grad-actions-anchor'></span>", unsafe_allow_html=True)
+    main_col_a, main_col_b, main_col_c = st.columns([2.4, 1.4, 1.0])
     sync_catalog = main_col_b.checkbox(
-        "Synchroniser le strategy catalog",
+        "Synchroniser le catalogue après analyse",
         value=True,
         key="graduation_sync_catalog",
     )
-    if main_col_c.button(
-        "▶️ Relancer P1→P6",
+    if main_col_a.button(
+        "▶️ Analyser les résultats P1→P6",
         key="graduation_run_full",
+        type="primary",
         use_container_width=True,
         help=(
             "Relance réellement la graduation complète via `python -m catalog.graduation --full`. "
@@ -3045,21 +3829,13 @@ def _render_graduation_controls_and_progress(
         st.session_state["graduation_status_msg"] = message
         st.session_state["graduation_status_error"] = not ok
         st.rerun()
-
-    with st.expander("⚙️ Actions avancées", expanded=False):
-        st.caption(
-            "Diagnostic uniquement : l'action principale relance désormais la graduation unique P1→P6.",
-        )
-        if st.button(
-            "Inventaire P1 brut",
-            key="graduation_run_p1",
-            use_container_width=True,
-            help="Lance la commande CLI `python -m catalog.graduation` pour l'inventaire P1 brut.",
-        ):
-            ok, message = _launch_p1_inventory_from_ui(sync_catalog=sync_catalog)
-            st.session_state["graduation_status_msg"] = message
-            st.session_state["graduation_status_error"] = not ok
-            st.rerun()
+    if main_col_c.button(
+        "🔄 Actualiser",
+        key="graduation_refresh",
+        use_container_width=True,
+        help="Recharge l'état affiché (rapports, progression, logs). Ne relance aucun pipeline.",
+    ):
+        st.rerun()
 
     status_msg = st.session_state.get("graduation_status_msg")
     if status_msg:
@@ -3068,12 +3844,25 @@ def _render_graduation_controls_and_progress(
         else:
             st.success(status_msg)
 
-    _render_progress_section(
-        title="Progression unique P1→P6",
-        payload=_load_progress_payload(FULL_GRADUATION_PROGRESS_FILENAME),
-        log_filename=FULL_GRADUATION_LOG_FILENAME,
+    initial_payload = _load_progress_payload(FULL_GRADUATION_PROGRESS_FILENAME)
+    progress_notice = _graduation_progress_notice(initial_payload)
+    if progress_notice:
+        level, message = progress_notice
+        if level == "error":
+            st.error(message)
+        elif level == "warning":
+            st.warning(message)
+        else:
+            st.info(message)
+
+    _render_live_graduation_progress_section(
         report_payload=sandbox_payload,
         report_df=sandbox_df,
+        initial_payload=initial_payload,
+    )
+    _render_promoted_strategies_panel(
+        sandbox_df=sandbox_df,
+        positive_df=positive_df,
     )
 
 
@@ -3082,6 +3871,17 @@ def render_results_hub(*, embedded: bool = False) -> None:
         st.subheader("📚 Résultats, sauvegardes et catalogue")
     else:
         st.header("📚 Résultats & Catalogues")
+
+    sandbox_payload, sandbox_df = _load_graduation_report()
+    positive_payload, positive_df = _load_positive_import_report()
+    _render_graduation_controls_and_progress(
+        sandbox_payload=sandbox_payload,
+        sandbox_df=sandbox_df,
+        positive_payload=positive_payload,
+        positive_df=positive_df,
+    )
+
+    st.markdown("---")
 
     col_left, col_right = st.columns([1, 2])
     with col_left:
@@ -3100,9 +3900,6 @@ def render_results_hub(*, embedded: bool = False) -> None:
     backtest_overview = _add_pnl_per_day(backtest_overview)
     strategy_catalog_df = _load_strategy_catalog_df()
     unified_overview = _decorate_unified_with_catalog(unified_overview, strategy_catalog_df)
-    sandbox_payload, sandbox_df = _load_graduation_report()
-    positive_payload, positive_df = _load_positive_import_report()
-
     _render_latest_run(backtest_overview, runs_overview, builder_sessions_df)
 
     st.markdown("---")
@@ -3141,9 +3938,3 @@ def render_results_hub(*, embedded: bool = False) -> None:
     )
 
     _render_charts(filtered_df)
-    _render_graduation_controls_and_progress(
-        sandbox_payload=sandbox_payload,
-        sandbox_df=sandbox_df,
-        positive_payload=positive_payload,
-        positive_df=positive_df,
-    )
