@@ -6,6 +6,7 @@ public wrappers compatible in the original module.
 
 from __future__ import annotations
 
+import os
 import random
 import re
 import uuid
@@ -37,6 +38,26 @@ from indicators.registry import list_indicators
 from utils.observability import get_obs_logger
 
 logger = get_obs_logger(__name__)
+
+
+def _resolve_objective_llm_timeout_sec() -> float:
+    """Budget HTTP (s) pour les appels LLM courts de début de session.
+
+    Borne la génération d'objectif et la sélection de marché : si le GPU cale
+    le flux (stream stoppé mais process vivant), la socket se ferme au lieu de
+    pendre sur le timeout adaptatif (600-900s) juste après « Session terminée ».
+    Surchargeable via ``BUILDER_OBJECTIVE_LLM_TIMEOUT_SEC``.
+    """
+    raw = os.environ.get("BUILDER_OBJECTIVE_LLM_TIMEOUT_SEC", "").strip()
+    if raw:
+        try:
+            value = float(raw)
+        except ValueError:
+            value = 0.0
+        if value > 0:
+            return value
+    return 180.0
+
 
 # ---------------------------------------------------------------------------
 # Générateurs d'objectifs pour le mode autonome
@@ -619,15 +640,31 @@ def _request_structured_objective_payload(
         LLMMessage(role="system", content=system_prompt),
         LLMMessage(role="user", content=user_prompt),
     ]
+    http_timeout = _resolve_objective_llm_timeout_sec()
     if stream_callback and hasattr(llm_client, "chat_stream"):
-        raw = llm_client.chat_stream(
-            messages,
-            on_chunk=lambda c: stream_callback("objective_gen", c),
-            max_tokens=max_tokens,
-            json_mode=True,
-        )
+        try:
+            raw = llm_client.chat_stream(
+                messages,
+                on_chunk=lambda c: stream_callback("objective_gen", c),
+                max_tokens=max_tokens,
+                json_mode=True,
+                http_timeout=http_timeout,
+            )
+        except TypeError:
+            # Client sans support http_timeout (signature ancienne).
+            raw = llm_client.chat_stream(
+                messages,
+                on_chunk=lambda c: stream_callback("objective_gen", c),
+                max_tokens=max_tokens,
+                json_mode=True,
+            )
     else:
-        raw = llm_client.chat(messages, max_tokens=max_tokens, json_mode=True)
+        try:
+            raw = llm_client.chat(
+                messages, max_tokens=max_tokens, json_mode=True, http_timeout=http_timeout
+            )
+        except TypeError:
+            raw = llm_client.chat(messages, max_tokens=max_tokens, json_mode=True)
 
     raw_text = str(getattr(raw, "content", raw) or "").strip()
     return _extract_json_from_response(raw_text), raw_text
@@ -1769,15 +1806,31 @@ def recommend_market_context(
     )
 
     # --- Phase 12 : appel LLM --- #
+    http_timeout = _resolve_objective_llm_timeout_sec()
     try:
         if stream_callback and hasattr(llm_client, "chat_stream"):
-            raw = llm_client.chat_stream(
-                [system_msg, user_msg],
-                on_chunk=lambda c: stream_callback("market_pick", c),
-                max_tokens=180,
-            )
+            try:
+                raw = llm_client.chat_stream(
+                    [system_msg, user_msg],
+                    on_chunk=lambda c: stream_callback("market_pick", c),
+                    max_tokens=180,
+                    json_mode=True,
+                    http_timeout=http_timeout,
+                )
+            except TypeError:
+                raw = llm_client.chat_stream(
+                    [system_msg, user_msg],
+                    on_chunk=lambda c: stream_callback("market_pick", c),
+                    max_tokens=180,
+                    json_mode=True,
+                )
         else:
-            raw = llm_client.chat([system_msg, user_msg], max_tokens=180)
+            try:
+                raw = llm_client.chat(
+                    [system_msg, user_msg], max_tokens=180, json_mode=True, http_timeout=http_timeout
+                )
+            except TypeError:
+                raw = llm_client.chat([system_msg, user_msg], max_tokens=180, json_mode=True)
         raw_text = str(getattr(raw, "content", raw) or "").strip()
     except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as exc:
         logger.warning("recommend_market_context: fallback exception=%s", exc)

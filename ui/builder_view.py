@@ -142,6 +142,10 @@ _AUTONOMOUS_STATE_SAVE_RETRY_DELAY_SEC = 0.05
 _AUTONOMOUS_SUPERVISOR_STATE_LOCK = threading.Lock()
 _AUTONOMOUS_RUNTIME_STATE_LOCK = threading.Lock()
 _AUTONOMOUS_SESSION_FAILURE_RESET_THRESHOLD = 4
+# Après N rejets dataset consécutifs (auto-market-pick qui propose des marchés
+# que l'univers rejette en boucle), on désactive l'auto-pick une session pour
+# retomber sur le marché par défaut connu-valide et casser le gaspillage.
+_AUTONOMOUS_MAX_CONSECUTIVE_DATASET_REJECTIONS = 3
 _AUTONOMOUS_MAX_SOFT_RESETS = 3
 _AUTONOMOUS_SOFT_RESET_WINDOW_SECONDS = 2 * 60 * 60
 _AUTONOMOUS_HARDENED_COOLDOWN_MULTIPLIER = 8
@@ -752,6 +756,7 @@ def _default_autonomous_supervisor_state() -> Dict[str, Any]:
         "last_selected_source_reason": "",
         "forced_source_mode": "",
         "disable_auto_market_pick_once": False,
+        "consecutive_dataset_rejections": 0,
         "last_resume_at": "",
         "next_pause_multiplier": 1,
     }
@@ -1182,6 +1187,11 @@ _BUILDER_RUNTIME_CFG_GETTER = itemgetter(
 _BUILDER_MARKET_UNIVERSE_CACHE_KEY = "_builder_market_universe_cache"
 _BUILDER_MARKET_UNIVERSE_CACHE_VERSION = 1
 _BUILDER_MARKET_UNIVERSE_CACHE_MAX_ENTRIES = 12
+_BUILDER_MARKET_SAMPLE_CACHE_KEY = "_builder_market_sample_cache"
+_BUILDER_MARKET_SAMPLE_CACHE_VERSION = 1
+_BUILDER_MARKET_SAMPLE_CACHE_MAX_ENTRIES = 24
+_BUILDER_MARKET_SYMBOL_SAMPLE_LIMIT = 24
+_BUILDER_MARKET_TIMEFRAME_SAMPLE_LIMIT = 12
 _BUILDER_AUTONOMOUS_RUN_ID_STATE_KEY = "_builder_autonomous_run_id"
 
 
@@ -1369,14 +1379,16 @@ def _resolve_autonomous_gain_metrics(entry: Dict[str, Any]) -> Dict[str, Optiona
             "pnl_per_day": None,
         }
 
-    final_return = _safe_optional_float(entry.get("final_return"))
+    # Aligné sur le run au meilleur PnL (best run), pas la dernière itération:
+    # le gain affiché doit correspondre au run réellement retenu et affiché.
+    best_return = _safe_optional_float(entry.get("best_return"))
     initial_capital = _safe_optional_float(entry.get("initial_capital"))
-    total_pnl = _safe_optional_float(entry.get("final_total_pnl"))
+    total_pnl = _safe_optional_float(entry.get("best_total_pnl"))
 
-    if total_pnl is None and final_return is not None and initial_capital is not None:
-        total_pnl = initial_capital * (final_return / 100.0)
-    if total_pnl is None and final_return is not None:
-        total_pnl = 10000.0 * (final_return / 100.0)
+    if total_pnl is None and best_return is not None and initial_capital is not None:
+        total_pnl = initial_capital * (best_return / 100.0)
+    if total_pnl is None and best_return is not None:
+        total_pnl = 10000.0 * (best_return / 100.0)
 
     test_days = _compute_autonomous_test_days(
         timeframe=entry.get("timeframe"),
@@ -2411,7 +2423,7 @@ def _render_iterations_compact_table(session: Any) -> None:
         return
     n = len(rows)
     with st.expander(f"📋 Historique des itérations ({n})", expanded=False):
-        st.dataframe(rows, hide_index=True, use_container_width=True)
+        st.dataframe(rows, hide_index=True, width="stretch")
 
 
 def _render_autonomous_iteration_history(history: List[Dict[str, Any]]) -> None:
@@ -2452,7 +2464,7 @@ def _render_autonomous_iteration_history(history: List[Dict[str, Any]]) -> None:
             ]
             if indicator_sets:
                 st.caption(f"Indicateurs: {indicator_sets[-1]}")
-            st.dataframe(rows, hide_index=True, use_container_width=True)
+            st.dataframe(rows, hide_index=True, width="stretch")
 
     if not any_rows:
         st.caption("Les anciennes sessions n'ont pas encore de détail d'itérations récupérable.")
@@ -2883,6 +2895,41 @@ def _store_builder_runtime_acceptance_probe(payload: Dict[str, Any]) -> Dict[str
     probe_payload = dict(payload or {})
     st.session_state["builder_runtime_acceptance_probe"] = probe_payload
     return probe_payload
+
+
+def _accept_deferred_local_runtime_timeout_probe(
+    acceptance_probe: Dict[str, Any],
+    *,
+    runtime_host: str,
+    resolved_model: str,
+) -> bool:
+    """Autorise le lazy-load si un modele local visible ne repond pas au mini-probe."""
+    if str(acceptance_probe.get("status") or "") != "runtime_timeout":
+        return False
+    if not _is_local_ollama_host(runtime_host):
+        return False
+    if _is_cloud_only_model(resolved_model):
+        return False
+    if not bool(acceptance_probe.get("present_in_tags")):
+        return False
+
+    previous_message = str(acceptance_probe.get("message") or "").strip()
+    deferred_message = (
+        f"Le modèle local `{resolved_model}` est visible sur {runtime_host}, "
+        "mais le mini-probe runtime a expiré; démarrage maintenu en lazy-load."
+    )
+    acceptance_probe.update(
+        {
+            "accepted": True,
+            "status": "local_model_runtime_timeout_deferred",
+            "message": (
+                f"{previous_message} {deferred_message}"
+                if previous_message
+                else deferred_message
+            ),
+        }
+    )
+    return True
 
 
 def _resolve_cloud_runtime_model_alias(
@@ -3342,13 +3389,19 @@ def _prepare_builder_llm(
                 acceptance_probe["message"] = (
                     f"{resolve_note} {str(acceptance_probe.get('message') or '').strip()}"
                 ).strip()
-            _store_builder_runtime_acceptance_probe(acceptance_probe)
             if not acceptance_probe.get("accepted"):
-                return (
-                    False,
-                    str(acceptance_probe.get("message") or resolve_note or ""),
-                    resolved_model,
-                )
+                if not _accept_deferred_local_runtime_timeout_probe(
+                    acceptance_probe,
+                    runtime_host=runtime_host,
+                    resolved_model=resolved_model,
+                ):
+                    _store_builder_runtime_acceptance_probe(acceptance_probe)
+                    return (
+                        False,
+                        str(acceptance_probe.get("message") or resolve_note or ""),
+                        resolved_model,
+                    )
+            _store_builder_runtime_acceptance_probe(acceptance_probe)
             probe_payload = acceptance_probe
         else:
             _store_builder_runtime_acceptance_probe(probe_payload)
@@ -3359,6 +3412,8 @@ def _prepare_builder_llm(
             msg = f"{resolve_note} {msg}"
         if route_note:
             msg = f"{route_note} {msg}".strip()
+        if str(probe_payload.get("status") or "") == "local_model_runtime_timeout_deferred":
+            msg = f"{msg} {str(probe_payload.get('message') or '').strip()}".strip()
         probe_payload["message"] = f"{probe_payload.get('message', '').strip()} Warmup désactivé.".strip()
         _store_builder_runtime_acceptance_probe(probe_payload)
         return True, msg, resolved_model
@@ -3587,6 +3642,56 @@ def _stable_random_pick(session_key: str, candidates: List[str], fallback: str) 
     return picked
 
 
+def _stable_builder_market_subset(
+    *,
+    kind: str,
+    candidates: List[str],
+    anchors: List[str],
+    limit: int,
+    upper: bool = False,
+) -> List[str]:
+    """Retourne un sous-ensemble aleatoire mais stable pour eviter les rescans UI."""
+    clean_candidates = _dedupe_keep_order(candidates, upper=upper)
+    clean_anchors = _dedupe_keep_order(anchors, upper=upper)
+    ordered = _dedupe_keep_order([*clean_anchors, *clean_candidates], upper=upper)
+    if limit <= 0 or len(ordered) <= limit:
+        return ordered
+
+    anchor_prefix = [value for value in clean_anchors if value in ordered][:limit]
+    pool = [value for value in ordered if value not in anchor_prefix]
+    cache_key = (
+        _BUILDER_MARKET_SAMPLE_CACHE_VERSION,
+        str(kind or "").strip(),
+        int(limit),
+        bool(upper),
+        tuple(sorted(ordered)),
+        tuple(anchor_prefix),
+    )
+    cache = st.session_state.setdefault(_BUILDER_MARKET_SAMPLE_CACHE_KEY, {})
+    if not isinstance(cache, dict):
+        cache = {}
+        st.session_state[_BUILDER_MARKET_SAMPLE_CACHE_KEY] = cache
+
+    cached = cache.get(cache_key)
+    if isinstance(cached, list):
+        cached_values = _dedupe_keep_order(cached, upper=upper)
+        if (
+            len(cached_values) == limit
+            and all(value in ordered for value in cached_values)
+            and all(anchor in cached_values for anchor in anchor_prefix)
+        ):
+            return cached_values
+
+    shuffled_pool = list(pool)
+    random.shuffle(shuffled_pool)
+    selected = [*anchor_prefix, *shuffled_pool][:limit]
+    cache[cache_key] = list(selected)
+    while len(cache) > _BUILDER_MARKET_SAMPLE_CACHE_MAX_ENTRIES:
+        first_key = next(iter(cache))
+        cache.pop(first_key, None)
+    return selected
+
+
 def _resolve_builder_strategy_type(
     *,
     strategy_type: str = "",
@@ -3812,9 +3917,13 @@ def _builder_market_candidates(
         upper=True,
     )
     symbol_anchors = [s for s in symbol_anchors if s in symbols][:6]
-    symbol_pool = [s for s in symbols if s not in symbol_anchors]
-    random.shuffle(symbol_pool)
-    symbols = [*symbol_anchors, *symbol_pool]
+    symbols = _stable_builder_market_subset(
+        kind="symbols",
+        candidates=symbols,
+        anchors=symbol_anchors,
+        limit=_BUILDER_MARKET_SYMBOL_SAMPLE_LIMIT,
+        upper=True,
+    )
 
     timeframe_anchors = _dedupe_keep_order(
         [current_timeframe, *selected_timeframes],
@@ -3824,12 +3933,13 @@ def _builder_market_candidates(
         tf for tf in timeframe_anchors
         if tf in timeframes and _is_builder_supported_timeframe(tf)
     ][:4]
-    timeframe_pool = [tf for tf in timeframes if tf not in timeframe_anchors]
-    random.shuffle(timeframe_pool)
-    timeframes = [*timeframe_anchors, *timeframe_pool]
-
-    symbols = symbols[:24]
-    timeframes = timeframes[:12]
+    timeframes = _stable_builder_market_subset(
+        kind="timeframes",
+        candidates=timeframes,
+        anchors=timeframe_anchors,
+        limit=_BUILDER_MARKET_TIMEFRAME_SAMPLE_LIMIT,
+        upper=False,
+    )
 
     normalized_mode = normalize_universe_mode(
         getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
@@ -5261,11 +5371,17 @@ def _render_autonomous_recap(
         h_canonical_rate = h_gen_stats.get("canonical_rate")
         h_llm_pct = f"{h_canonical_rate * 100:.0f}%" if h_canonical_rate is not None else "n/a"
         status = h.get("status", "?")
-        # Toujours afficher le BEST run (achievement de la session) plutôt
+        # Toujours afficher le BEST run (meilleur PnL de la session) plutôt
         # que la dernière itération (qui peut être une régression du LLM).
+        # Toutes les colonnes affichées sont alignées sur CE run unique.
         sharpe = h.get("best_sharpe")
         if sharpe is None:
             sharpe = h.get("final_sharpe")
+        # Sharpe AFFICHÉ = celui du run au meilleur PnL (best_return_sharpe),
+        # pas le best_sharpe sélectionné par score télémétrie (autre itération).
+        display_sharpe = h.get("best_return_sharpe")
+        if display_sharpe is None:
+            display_sharpe = sharpe
         ret = h.get("best_return")
         if ret is None:
             ret = h.get("final_return")
@@ -5281,7 +5397,7 @@ def _render_autonomous_recap(
         # Régression detection: si l'itération finale a clairement régressé par
         # rapport au best, on annote la cellule pour l'expliquer.
         _final_sharpe = _safe_optional_float(h.get("final_sharpe"))
-        _best_sharpe_num = _safe_optional_float(h.get("best_sharpe"))
+        _best_sharpe_num = _safe_optional_float(display_sharpe)
         _final_return = _safe_optional_float(h.get("final_return"))
         _best_return_num = _safe_optional_float(h.get("best_return"))
         regression_sharpe = (
@@ -5296,21 +5412,22 @@ def _render_autonomous_recap(
             and _best_return_num > 0.0
             and _final_return < max(0.0, _best_return_num * 0.5)
         )
+        # Marqueur discret: le run affiché = meilleur PnL. S'il diffère de la
+        # dernière itération (le LLM a régressé ensuite), on signale juste le
+        # fait via une icône ↻. La valeur finale reste consultable au survol.
         sharpe_regression_html = ""
         if regression_sharpe:
             sharpe_regression_html = (
                 f"<span class='builder-autonomous-recap-regress' "
-                f"title='Régression LLM en fin de session: "
-                f"dernière itération sharpe={_final_sharpe:.3f}'>"
-                f"↓ {_final_sharpe:.2f}</span>"
+                f"title='Run affiché = meilleur PnL. Le LLM a régressé ensuite "
+                f"(dernière itération sharpe={_final_sharpe:.3f}).'>↻</span>"
             )
         return_regression_html = ""
         if regression_return:
             return_regression_html = (
                 f"<span class='builder-autonomous-recap-regress' "
-                f"title='Régression LLM en fin de session: "
-                f"dernière itération return={_final_return:+.2f}%'>"
-                f"↓ {_final_return:+.0f}%</span>"
+                f"title='Run affiché = meilleur PnL. Le LLM a régressé ensuite "
+                f"(dernière itération return={_final_return:+.2f}%).'>↻</span>"
             )
 
         badge = _get_autonomous_recap_status_badge(h)
@@ -5338,7 +5455,7 @@ def _render_autonomous_recap(
             f"<td>{objective_html}</td>"
             f"<td>{status_html}</td>"
             f"<td class='builder-autonomous-recap-num'>"
-            f"<span class='builder-autonomous-recap-best'>{_escape_autonomous_recap_cell(_fmt_float(sharpe, '{:.3f}'))}</span>"
+            f"<span class='builder-autonomous-recap-best'>{_escape_autonomous_recap_cell(_fmt_float(display_sharpe, '{:.3f}'))}</span>"
             f"{sharpe_regression_html}"
             f"</td>"
             f"<td class='builder-autonomous-recap-num'>"
@@ -6294,7 +6411,14 @@ def _init_autonomous_loop_runtime(
 
 
 def _finalize_autonomous_loop(*, ctx: Dict[str, Any]) -> None:
-    """Render recap, unload model, sync state after autonomous loop ends."""
+    """Render recap, unload model, sync state after autonomous loop ends.
+
+    Robuste : le recap et le déchargement modèle sont best-effort, mais la synchro
+    d'état, le nettoyage de session et le marquage runtime « stopped » s'exécutent
+    TOUJOURS. Un ``st.rerun()`` final ramène proprement la page à l'écran d'accueil
+    autonome (qui ré-affiche le recap) au lieu de figer sur le dernier
+    « Session terminée » — c'est le symptôme « ça ne renvoie pas le roulement ».
+    """
     history = ctx["history"]
     supervisor = ctx["supervisor"]
     recap_placeholder = ctx["recap_placeholder"]
@@ -6305,32 +6429,53 @@ def _finalize_autonomous_loop(*, ctx: Dict[str, Any]) -> None:
     terminal_reason = ctx["terminal_reason"]
     terminal_error = ctx["terminal_error"]
 
-    # ── Fin de la boucle autonome ──
-    with recap_placeholder.container():
-        _render_autonomous_recap(history, supervisor)
+    # ── Fin de la boucle autonome (rendu best-effort) ──
+    try:
+        with recap_placeholder.container():
+            _render_autonomous_recap(history, supervisor)
 
-    with status_container:
-        n = len(history)
-        best_ever = _history_best_sharpe(history)
-        show_status(
-            "success" if best_ever > 0 else "info",
-            f"Mode autonome terminé : {n} sessions | Meilleur Sharpe: {best_ever:.3f}",
+        with status_container:
+            n = len(history)
+            best_ever = _history_best_sharpe(history)
+            show_status(
+                "success" if best_ever > 0 else "info",
+                f"Mode autonome terminé : {n} sessions | Meilleur Sharpe: {best_ever:.3f}",
+            )
+
+        if unload_after_run and terminal_reason != "manual_stop":
+            with st.spinner(f"💾 Déchargement du modèle `{model}`…"):
+                if _unload_ollama_model(model=model, ollama_host=ollama_host):
+                    st.caption(f"✅ Modèle `{model}` déchargé")
+                else:
+                    st.warning(f"⚠️ Impossible de décharger `{model}`")
+    except Exception:
+        logger.warning("autonomous_finalize_render_failed", exc_info=True)
+
+    # ── Nettoyage critique : TOUJOURS exécuté (chaque étape isolée) ──
+    try:
+        _sync_autonomous_state(history, supervisor)
+    except Exception:
+        logger.warning("autonomous_finalize_sync_failed", exc_info=True)
+    try:
+        clear_execution_state(st.session_state)
+    except Exception:
+        logger.warning("autonomous_finalize_clear_failed", exc_info=True)
+    try:
+        mark_builder_autonomous_runtime_stopped(
+            reason=terminal_reason,
+            manual_stop=(terminal_reason == "manual_stop"),
+            error=terminal_error,
         )
+    except Exception:
+        logger.warning("autonomous_finalize_mark_stopped_failed", exc_info=True)
 
-    if unload_after_run and terminal_reason != "manual_stop":
-        with st.spinner(f"💾 Déchargement du modèle `{model}`…"):
-            if _unload_ollama_model(model=model, ollama_host=ollama_host):
-                st.caption(f"✅ Modèle `{model}` déchargé")
-            else:
-                st.warning(f"⚠️ Impossible de décharger `{model}`")
-
-    _sync_autonomous_state(history, supervisor)
-    clear_execution_state(st.session_state)
-    mark_builder_autonomous_runtime_stopped(
-        reason=terminal_reason,
-        manual_stop=(terminal_reason == "manual_stop"),
-        error=terminal_error,
-    )
+    # ── Transition UI propre : revenir à l'écran d'accueil autonome ──
+    # is_running=False + runtime « stopped » ⇒ render_builder_view route vers le hero
+    # idle (qui ré-affiche le recap) ; le rerun ne se déclenche donc qu'UNE seule fois
+    # et ne peut pas boucler. RerunException hérite de BaseException : elle n'est PAS
+    # avalée par les `except Exception` en amont (_render_builder_view_safe) et remonte
+    # proprement jusqu'au script runner Streamlit.
+    st.rerun()
 
 
 def _execute_builder_autonomous_loop(
@@ -6400,7 +6545,11 @@ def _execute_builder_autonomous_loop(
         session_num += 1
         # Rafraîchir le flux de pensée live dès le début de chaque nouvelle session
         # (ThoughtStream vient de réinitialiser _live_thoughts.md)
-        _refresh_live_thoughts_code_slot(tail_lines=180)
+        # Best-effort : un échec de rafraîchissement UI ne doit JAMAIS tuer la boucle 24/24.
+        try:
+            _refresh_live_thoughts_code_slot(tail_lines=180)
+        except Exception:
+            logger.debug("refresh_live_thoughts_code_slot_failed", exc_info=True)
         _loop_body_start = time.perf_counter()
         session_started_at = datetime.now()
         effective_objective_mode = requested_objective_mode
@@ -6483,8 +6632,8 @@ def _execute_builder_autonomous_loop(
                 break
 
             reuse_prepared_runtime = (
-                session_num == 1
-                and single_llm_runtime_prepared
+                single_llm_runtime_prepared
+                and not unload_after_run
                 and str(model or "").strip() == single_llm_prepared_model
                 and _normalize_ollama_host(session_llm_host) == single_llm_prepared_host
             )
@@ -6716,6 +6865,31 @@ def _execute_builder_autonomous_loop(
                     f"Session #{session_num}: marché rejeté par l'univers `{autonomous_universe_mode}` "
                     f"({session_symbol} {session_timeframe}) - {session_dataset_msg}"
                 )
+                # Anti-thrash: l'auto-market-pick propose en boucle des marchés
+                # que l'univers rejette (volume/TF/données). Après N rejets
+                # consécutifs, on force la prochaine session sur le marché par
+                # défaut (auto-pick off une fois) pour casser le gaspillage.
+                if effective_auto_market_pick:
+                    _dataset_rejections = int(
+                        supervisor.get("consecutive_dataset_rejections", 0) or 0
+                    ) + 1
+                    supervisor["consecutive_dataset_rejections"] = _dataset_rejections
+                    if _dataset_rejections >= _AUTONOMOUS_MAX_CONSECUTIVE_DATASET_REJECTIONS:
+                        supervisor["disable_auto_market_pick_once"] = True
+                        supervisor["consecutive_dataset_rejections"] = 0
+                        st.info(
+                            f"🛟 {_dataset_rejections} rejets marché consécutifs — "
+                            "auto-marché désactivé pour la prochaine session "
+                            "(retour au marché par défaut)."
+                        )
+                        logger.warning(
+                            "builder_autonomous_dataset_rejection_guard session=%d "
+                            "rejections=%d → disable_auto_market_pick_once",
+                            session_num,
+                            _dataset_rejections,
+                        )
+            else:
+                supervisor["consecutive_dataset_rejections"] = 0
             with session_placeholder.container():
                 if session_dataset_ok:
                     t0 = time.perf_counter()
@@ -6839,15 +7013,20 @@ def _execute_builder_autonomous_loop(
             for remaining in range(effective_pause, 0, -1):
                 if not st.session_state.get("is_running", False):
                     break
-                _heartbeat_builder_autonomous_runtime(
-                    last_event="countdown",
-                    last_progress_event="countdown",
-                    last_progress_phase="pause",
-                    last_progress_iteration=0,
-                )
-                countdown_placeholder.info(
-                    f"⏱️ Prochaine session dans **{remaining}s**..."
-                )
+                # Best-effort : un hoquet I/O (heartbeat) ou UI (placeholder périmé)
+                # ne doit pas interrompre le countdown ni tuer la boucle 24/24.
+                try:
+                    _heartbeat_builder_autonomous_runtime(
+                        last_event="countdown",
+                        last_progress_event="countdown",
+                        last_progress_phase="pause",
+                        last_progress_iteration=0,
+                    )
+                    countdown_placeholder.info(
+                        f"⏱️ Prochaine session dans **{remaining}s**..."
+                    )
+                except Exception:
+                    logger.debug("autonomous_countdown_tick_failed", exc_info=True)
                 time.sleep(1)
             try:
                 countdown_placeholder.empty()
@@ -7161,7 +7340,7 @@ def render_builder_view(
             logger.debug("builder_autonomous_state_sync_failed", exc_info=True)
     autonomous_running = autonomous and bool(st.session_state.get("is_running", False))
 
-    if auto_market_pick:
+    if auto_market_pick and (not autonomous or autonomous_running):
         try:
             _call_builder_market_candidates(
                 state,
@@ -7234,7 +7413,7 @@ def render_builder_view(
             expanded=False,
         )
         st.info(
-            "Mode autonome prêt. L'univers marché filtré est préparé; Cliquez sur "
+            "Mode autonome prêt. L'univers marché filtré sera préparé au lancement; Cliquez sur "
             "Lancer pour préparer le runtime LLM et enchaîner les sessions."
         )
         st.markdown("---")
