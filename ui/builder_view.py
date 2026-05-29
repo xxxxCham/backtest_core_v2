@@ -4981,6 +4981,7 @@ def _run_single_builder_session(
     preload_model: bool,
     keep_alive_minutes: int,
     unload_after_run: bool,
+    defer_unload_to_caller: bool = False,
     auto_start_ollama: bool,
     max_iterations: int,
     target_sharpe: float,
@@ -5036,6 +5037,11 @@ def _run_single_builder_session(
 
     def _release_runtime_model() -> None:
         nonlocal runtime_model_released
+        # Mode boucle autonome : NE PAS décharger entre les sessions. Le modèle
+        # reste résident (évite le cycle décharge/recharge GPU à chaque session) ;
+        # _finalize_autonomous_loop fait l'unique déchargement en fin de boucle.
+        if defer_unload_to_caller:
+            return
         if runtime_model_released or not unload_after_run:
             return
         runtime_model_released = True
@@ -6989,6 +6995,7 @@ def _execute_builder_autonomous_loop(
                         preload_model=preload_model,
                         keep_alive_minutes=keep_alive_minutes,
                         unload_after_run=unload_after_run,
+                        defer_unload_to_caller=True,
                         auto_start_ollama=auto_start_ollama,
                         max_iterations=max_iterations,
                         target_sharpe=target_sharpe,
