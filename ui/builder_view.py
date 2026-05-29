@@ -4158,6 +4158,82 @@ def _clone_builder_market_universe_payload(payload: Dict[str, Any]) -> Dict[str,
         return dict(payload)
 
 
+def _prewarm_builder_universe_ohlcv(
+    *,
+    state: Any,
+    symbols: List[str],
+    timeframes: List[str],
+    normalized_mode: str,
+) -> None:
+    """Pré-chauffe en PARALLÈLE le cache OHLCV résident pour les paires que
+    ``filter_market_universe`` va charger.
+
+    Why: au tout premier build d'univers (cache-miss), le scan charge ~100+
+    paires SÉQUENTIELLEMENT (chacune avec gap-detection/quality/trim complets),
+    ce qui bloque longuement avant la première proposition d'objectif. Le cache
+    résident de ``load_ohlcv`` mémorise le DataFrame traité par (symbole,
+    timeframe) pour la durée du process : on le remplit en parallèle ici, puis
+    ``filter_market_universe`` ne fait plus que des cache-hits.
+
+    Best-effort, borné, et **sans effet ni double-chargement** si le cache
+    résident est désactivé. N'est appelé qu'au cache-miss d'univers.
+    """
+    try:
+        from data.loader import load_ohlcv, ohlcv_resident_cache_stats
+    except Exception:
+        return
+    try:
+        if not bool(ohlcv_resident_cache_stats().get("enabled", False)):
+            return  # pas de cache résident -> pré-chauffage = double travail
+    except Exception:
+        return
+
+    eligible_symbols = [
+        str(s or "").strip().upper() for s in symbols if str(s or "").strip()
+    ]
+    # Reproduire le filtre canonical de filter_market_universe : ne pré-charger
+    # QUE les paires réellement chargées par le scan (zéro gaspillage).
+    if str(normalized_mode or "").strip().lower() == "canonical":
+        try:
+            from config.market_selection import get_canonical_tokens
+
+            canonical = set(get_canonical_tokens())
+            if canonical:
+                eligible_symbols = [s for s in eligible_symbols if s in canonical]
+        except Exception:
+            pass
+
+    clean_tfs = [str(tf or "").strip() for tf in timeframes if str(tf or "").strip()]
+    pairs = [(s, tf) for s in eligible_symbols for tf in clean_tfs]
+    if len(pairs) <= 4:
+        return  # trop peu pour justifier un pool de threads
+
+    start, end = _builder_market_date_bounds(state)
+    max_workers = max(2, min(8, (os.cpu_count() or 4), len(pairs)))
+
+    def _warm(pair: Tuple[str, str]) -> None:
+        sym, tf = pair
+        try:
+            load_ohlcv(sym, tf, start=start, end=end)
+        except Exception:
+            pass  # paire absente/invalide -> filter_market_universe la gérera
+
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+
+        t0 = time.perf_counter()
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            list(executor.map(_warm, pairs))
+        logger.info(
+            "🔥 [PERF] Pré-chauffage univers: %d paires / %d workers en %.1fs",
+            len(pairs),
+            max_workers,
+            time.perf_counter() - t0,
+        )
+    except Exception:
+        logger.debug("builder_universe_prewarm_failed", exc_info=True)
+
+
 def _get_or_build_builder_market_universe(
     *,
     state: Any,
@@ -4203,6 +4279,15 @@ def _get_or_build_builder_market_universe(
         if load_error is not None or not _has_builder_market_df(loaded_df):
             return None
         return loaded_df
+
+    # Pré-chauffage parallèle du cache OHLCV résident : transforme le scan
+    # séquentiel (~100+ paires) en cache-hits pour filter_market_universe.
+    _prewarm_builder_universe_ohlcv(
+        state=state,
+        symbols=symbols,
+        timeframes=timeframes,
+        normalized_mode=normalized_mode,
+    )
 
     universe_payload = filter_market_universe(
         symbols=symbols,
