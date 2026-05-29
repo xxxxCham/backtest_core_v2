@@ -541,7 +541,7 @@ def test_chat_llm_extends_timeout_for_vision_models(monkeypatch):
         def __init__(self):
             self.config = LLMConfig(
                 provider=LLMProvider.OLLAMA,
-                model="qwen3-vl:32b",
+                model="llava:34b",
                 ollama_host="http://127.0.0.1:11434",
             )
 

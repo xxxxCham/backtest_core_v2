@@ -105,9 +105,6 @@ MODEL_NAME_ALIASES = {
     "qwen3-30b-a3b": "qwen3-30b-a3b:q4_k_m",
     "qwen3-30b-a3b-q4_k_m": "qwen3-30b-a3b:q4_k_m",
     "qwen3-48b-savant:latest": "qwen3-48b-savant",
-    "qwen3-vl": "qwen3-vl:32b",
-    "qwen3-vl-30b": "qwen3-vl:32b",
-    "qwen3-vl:30b": "qwen3-vl:32b",
     # HF.co mirrors that should map onto the canonical Ollama tag
     "hf.co/mradermacher/gemma-4-26b-a4b-it-abliterated-gguf:q4_k_m": "gemma4:26b",
     "hf.co/mradermacher/gemma-4-26b-a4b-it-abliterated-gguf": "gemma4:26b",

@@ -84,7 +84,7 @@ BUILTIN_PRESETS: dict[str, dict[str, Any]] = {
         "name": "Puissant",
         "description": "Heavy models locaux 30-120B pour analyses complexes",
         "models": {
-            "analyst": ["qwen3-vl:32b"],
+            "analyst": ["gemma4:31b"],
             "strategist": ["qwen3-coder:30b"],
             "critic": ["qwen3.6:35b"],
             "validator": ["nemotron-3-super:120b-a12b-q4_K_M"],
@@ -95,7 +95,7 @@ BUILTIN_PRESETS: dict[str, dict[str, Any]] = {
         "name": "Cloud Power",
         "description": "Modeles Cloud Ollama plan Free - top frontier 2026 (probe ollama.com 2026-05-09)",
         "models": {
-            "analyst": ["qwen3-vl:235b"],
+            "analyst": ["glm-4.7"],
             "strategist": ["qwen3-coder:480b"],
             "critic": ["cogito-2.1:671b"],
             "validator": ["gpt-oss:120b"],

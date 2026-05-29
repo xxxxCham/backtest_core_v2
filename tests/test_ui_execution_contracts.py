@@ -2640,7 +2640,7 @@ def test_builder_ollama_start_button_passes_selected_model_context(monkeypatch):
     }
 
 
-def test_prepare_builder_llm_rejects_local_model_when_runtime_probe_times_out_without_preload(monkeypatch):
+def test_prepare_builder_llm_accepts_visible_local_model_when_runtime_probe_times_out_without_preload(monkeypatch):
     st.session_state.clear()
 
     monkeypatch.setattr(
@@ -2683,10 +2683,13 @@ def test_prepare_builder_llm_rejects_local_model_when_runtime_probe_times_out_wi
         auto_start_ollama=True,
     )
 
-    assert ok is False
+    assert ok is True
     assert resolved_model == "qwen3.5:35b"
-    assert "probe runtime" in msg
-    assert st.session_state["builder_runtime_acceptance_probe"]["status"] == "runtime_timeout"
+    assert "lazy-load" in msg
+    assert (
+        st.session_state["builder_runtime_acceptance_probe"]["status"]
+        == "local_model_runtime_timeout_deferred"
+    )
 
 
 def test_resolve_single_llm_runtime_route_uses_topology_gpu_target():
@@ -2746,12 +2749,12 @@ def test_probe_model_runtime_acceptance_flags_cloud_runtime_unavailable_without_
         "post",
         lambda *args, **kwargs: SimpleNamespace(
             status_code=404,
-            text='{"error":"model \'qwen3-vl:235b\' not found"}',
+            text='{"error":"model \'qwen3.5:122b\' not found"}',
         ),
     )
 
     probe = ollama_manager_module.probe_model_runtime_acceptance(
-        "qwen3-vl:235b",
+        "qwen3.5:122b",
         ollama_host="http://127.0.0.1:11434",
     )
 
@@ -2955,29 +2958,29 @@ def test_prepare_builder_llm_surfaces_cloud_runtime_unavailable_without_alias_or
         builder_view_module,
         "probe_model_runtime_acceptance",
         lambda *args, **kwargs: {
-            "requested_model": "qwen3-vl:235b",
-            "resolved_model": "qwen3-vl:235b",
+            "requested_model": "qwen3.5:122b",
+            "resolved_model": "qwen3.5:122b",
             "ollama_host": "http://127.0.0.1:11434",
             "host_reachable": True,
             "present_in_tags": False,
             "accepted": False,
             "status": "cloud_model_not_exposed_by_current_host",
             "message": (
-                "Le modèle cloud-only `qwen3-vl:235b` n'est pas exposé par l'hôte local "
+                "Le modèle cloud-only `qwen3.5:122b` n'est pas exposé par l'hôte local "
                 "http://127.0.0.1:11434: aucun alias runtime correspondant n'apparaît dans "
                 "`/api/tags`, et le routage direct Ollama Cloud est inactif car "
                 "`OLLAMA_API_KEY` est absent du process courant."
             ),
             "tags_status_code": 200,
             "runtime_status_code": 404,
-            "runtime_error_body": '{"error":"model \'qwen3-vl:235b\' not found"}',
+            "runtime_error_body": '{"error":"model \'qwen3.5:122b\' not found"}',
             "api_key_present": False,
             "direct_cloud": False,
         },
     )
 
     ok, msg, resolved_model = builder_view_module._prepare_builder_llm(
-        model="qwen3-vl:235b",
+        model="qwen3.5:122b",
         ollama_host="127.0.0.1:11434",
         preload_model=False,
         keep_alive_minutes=20,
@@ -2985,7 +2988,7 @@ def test_prepare_builder_llm_surfaces_cloud_runtime_unavailable_without_alias_or
     )
 
     assert ok is False
-    assert resolved_model == "qwen3-vl:235b"
+    assert resolved_model == "qwen3.5:122b"
     assert "n'est pas exposé par l'hôte local" in msg
     assert "OLLAMA_API_KEY" in msg
     assert (
@@ -3698,6 +3701,71 @@ def test_builder_market_candidates_reuses_cached_filtered_universe_for_autonomou
     assert meta["exclusion_summary"]["tradable ratio below canonical threshold"] == 1
 
 
+def test_builder_market_candidates_stabilizes_sample_pool_across_reruns(
+    monkeypatch,
+):
+    st.session_state.clear()
+    tokens = [f"TOKEN{i:02d}USDC" for i in range(40)]
+    state = _sample_sidebar_state(
+        optimization_mode="🏗️ Strategy Builder",
+        builder_auto_market_pick=True,
+        builder_universe_mode="exploratory",
+        available_tokens=tokens,
+        available_timeframes=["1h", "4h"],
+        builder_objective="",
+    )
+    filter_calls: list[dict[str, object]] = []
+    shuffle_calls = {"count": 0}
+
+    def _reverse_shuffle(seq):
+        shuffle_calls["count"] += 1
+        seq.reverse()
+
+    def _fake_filter_market_universe(**kwargs):
+        filter_calls.append(dict(kwargs))
+        return {
+            "universe_mode": kwargs.get("universe_mode"),
+            "purpose": kwargs.get("purpose"),
+            "strategy_type": kwargs.get("strategy_type"),
+            "symbols": list(kwargs.get("symbols", [])),
+            "timeframes": list(kwargs.get("timeframes", [])),
+            "eligible_pairs": [],
+            "excluded_pairs": [],
+            "criteria": {},
+            "canonical_tokens": [],
+            "exclusion_summary": {},
+        }
+
+    monkeypatch.setattr(builder_view_module.random, "shuffle", _reverse_shuffle)
+    monkeypatch.setattr(
+        builder_view_module,
+        "filter_market_universe",
+        _fake_filter_market_universe,
+    )
+
+    first_symbols, first_timeframes = builder_view_module._builder_market_candidates(
+        state,
+        current_symbol="",
+        current_timeframe="1h",
+        objective="",
+        purpose="builder_autonomous",
+    )
+    second_symbols, second_timeframes = builder_view_module._builder_market_candidates(
+        state,
+        current_symbol="",
+        current_timeframe="1h",
+        objective="",
+        purpose="builder_autonomous",
+    )
+
+    assert first_symbols == second_symbols
+    assert first_timeframes == second_timeframes == ["1h", "4h"]
+    assert len(first_symbols) == builder_view_module._BUILDER_MARKET_SYMBOL_SAMPLE_LIMIT
+    assert len(filter_calls) == 1
+    assert shuffle_calls["count"] == 1
+    assert builder_view_module._get_builder_market_universe_meta()["cache_status"] == "hit"
+
+
 def test_render_builder_view_autonomous_idle_skips_probe_and_runtime_prepare(
     monkeypatch,
 ):
@@ -3750,6 +3818,13 @@ def test_render_builder_view_autonomous_idle_skips_probe_and_runtime_prepare(
         "_mark_builder_autonomous_runtime_started",
         lambda **kwargs: (_ for _ in ()).throw(
             AssertionError("Le runtime autonome ne doit pas démarrer en mode idle"),
+        ),
+    )
+    monkeypatch.setattr(
+        builder_view_module,
+        "_call_builder_market_candidates",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("Le filtrage univers ne doit pas tourner en mode idle"),
         ),
     )
     monkeypatch.setattr(
@@ -3955,7 +4030,7 @@ def test_render_builder_view_autonomous_running_renders_recap_before_first_sessi
     assert any(snapshot for snapshot in recap_snapshots[1:])
 
 
-def test_render_builder_view_autonomous_repreloads_after_unloaded_session(
+def test_render_builder_view_autonomous_reuses_prepared_runtime_between_sessions(
     monkeypatch,
 ):
     st.session_state.clear()
@@ -3965,7 +4040,7 @@ def test_render_builder_view_autonomous_repreloads_after_unloaded_session(
         optimization_mode="🏗️ Strategy Builder",
         builder_autonomous=True,
         builder_auto_market_pick=False,
-        builder_unload_after_run=True,
+        builder_unload_after_run=False,
         builder_auto_pause=0,
         symbol="BTCUSDT",
         timeframe="1h",
@@ -4009,8 +4084,7 @@ def test_render_builder_view_autonomous_repreloads_after_unloaded_session(
     )
 
     assert session_counter["count"] == 2
-    assert len(prepare_calls) == 1
-    assert prepare_calls[0]["preload_model"] is True
+    assert prepare_calls == []
 
 
 def test_render_builder_view_uses_session_autonomous_flag_when_state_is_stale(
@@ -5916,7 +5990,11 @@ def test_render_autonomous_recap_marks_promising_best_run_even_when_final_regres
     joined_html = "\n".join(rendered_html)
     assert "◇ prometteur" in joined_html
     assert "+143.69%" in joined_html
-    assert "↓ -190%" in joined_html
+    # Le marqueur de régression est désormais une icône discrète ↻ ; la valeur
+    # finale (-190%) reste consultable dans l'infobulle (title), plus en gros rouge.
+    assert "↻" in joined_html
+    assert "return=-190.00%" in joined_html
+    assert "↓ -190%" not in joined_html
     assert "− negatif" not in joined_html
 
 
@@ -8748,7 +8826,7 @@ def test_ollama_request_helpers_are_canonicalized_across_layers(monkeypatch):
     monkeypatch.setenv("OLLAMA_API_KEY", "ollama-test-key")
 
     host = "127.0.0.1:11434/api"
-    model = "qwen3-vl:235b"
+    model = "qwen3.5:122b"
     manager_ctx = ollama_manager_module.resolve_ollama_request_context(host, model_name=model)
 
     assert llm_client_module.resolve_ollama_request_context is ollama_manager_module.resolve_ollama_request_context
@@ -8897,10 +8975,10 @@ def test_collect_builder_cloud_runtime_rows_detects_live_alias(monkeypatch):
             live_ollama_reachable=True,
             discovered_models=[
                 SimpleNamespace(
-                    name="qwen3-vl:235b-cloud",
+                    name="qwen3.5:122b-cloud",
                     backend="ollama",
                     live=True,
-                    metadata={"remote_model": "qwen3-vl:235b"},
+                    metadata={"remote_model": "qwen3.5:122b"},
                 ),
             ],
         ),
@@ -8911,7 +8989,7 @@ def test_collect_builder_cloud_runtime_rows_detects_live_alias(monkeypatch):
             {
                 "label": "builder_llm",
                 "host": "http://127.0.0.1:11434",
-                "model": "qwen3-vl:235b",
+                "model": "qwen3.5:122b",
             },
         ],
     )
@@ -8919,7 +8997,7 @@ def test_collect_builder_cloud_runtime_rows_detects_live_alias(monkeypatch):
     assert rows == [
         {
             "cible": "builder_llm",
-            "modèle": "qwen3-vl:235b",
+            "modèle": "qwen3.5:122b",
             "host": "http://127.0.0.1:11434",
             "status": "alias_visible",
             "détail": "Alias runtime cloud visible dans /api/tags.",
@@ -8958,7 +9036,7 @@ def test_collect_builder_cloud_runtime_rows_flags_missing_alias_and_api_key(monk
             {
                 "label": "builder_llm",
                 "host": "http://127.0.0.1:11434",
-                "model": "qwen3-vl:235b",
+                "model": "qwen3.5:122b",
             },
         ],
     )

@@ -469,7 +469,6 @@ def _is_vision_model(model_name: str) -> bool:
     return any(
         pattern in model_lower
         for pattern in (
-            "qwen3-vl",
             "qwen2-vl",
             "-vl",
             "vision",
