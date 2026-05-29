@@ -7360,18 +7360,26 @@ def render_builder_view(
             getattr(state, "builder_auto_pause", BUILDER_AUTO_PAUSE_DEFAULT)
             or BUILDER_AUTO_PAUSE_DEFAULT
         )
-        persisted_supervisor_state = _load_autonomous_supervisor_state()
+        # Perf sidebar : ne PAS reparser le JSON superviseur (~3 Mo) à chaque rendu
+        # idle. session_state est la copie canonique (maintenue par _sync_autonomous_state) ;
+        # on ne lit le disque qu'au tout premier rendu (cold), quand elle manque.
         history = st.session_state.get("builder_autonomous_history")
-        if not isinstance(history, list):
-            history = list(persisted_supervisor_state.get("history", []))
         supervisor = st.session_state.get("builder_autonomous_supervisor")
-        if not isinstance(supervisor, dict):
-            supervisor = dict(
-                persisted_supervisor_state.get(
-                    "supervisor",
-                    _default_autonomous_supervisor_state(),
+        if not isinstance(history, list) or not isinstance(supervisor, dict):
+            persisted_supervisor_state = _load_autonomous_supervisor_state()
+            if not isinstance(history, list):
+                history = list(persisted_supervisor_state.get("history", []))
+            if not isinstance(supervisor, dict):
+                supervisor = dict(
+                    persisted_supervisor_state.get(
+                        "supervisor",
+                        _default_autonomous_supervisor_state(),
+                    )
                 )
-            )
+            # Mémoriser en session pour que les visites suivantes (navigation
+            # onglets) n'aient plus à reparser le JSON disque.
+            st.session_state["builder_autonomous_history"] = history
+            st.session_state["builder_autonomous_supervisor"] = supervisor
 
         if auto_market_pick:
             if available_tokens and available_tfs:
