@@ -22,10 +22,16 @@ from agents.builder_constants import (
     ELITE_MIN_TRADES,
     ELITE_SHARPE_BONUS_RATIO,
     MAX_DRAWDOWN_PCT_FOR_ACCEPT,
+    MAX_DRAWDOWN_PCT_FOR_PROMISING,
+    MAX_TRADES_FOR_RANK_PREFERENCE,
     MAX_POSITIVE_FALLBACK_COUNT,
     MIN_PROFIT_FACTOR_FOR_ACCEPT,
+    MIN_PROFIT_FACTOR_FOR_PROMISING,
     MIN_RETURN_PCT_FOR_ACCEPT,
+    MIN_SHARPE_FOR_PROMISING,
+    MIN_TELEMETRY_SCORE_FOR_PROMISING,
     MIN_TRADES_FOR_ACCEPT,
+    MIN_TRADES_FOR_PROMISING,
     MIN_TRADES_FOR_POSITIVE_PROGRESS,
     POSITIVE_PROGRESS_GATE_CHECKPOINTS,
     SHARPE_TOLERANCE_RATIO,
@@ -181,7 +187,7 @@ def _ranking_sharpe(
     return _telemetry_score_from_metrics(
         metrics,
         target_sharpe=target_sharpe,
-    ).get("score", -100.0)
+    )
 
 
 def _builder_iteration_selection_key(
@@ -203,8 +209,9 @@ def _builder_iteration_selection_key(
     8. rendement plus élevé
     9. profit factor plus élevé
     10. drawdown plus faible
-    11. plus de trades
-    12. meilleur win rate
+    11. nombre de trades non pathologique
+    12. plus de trades dans la zone saine
+    13. meilleur win rate
     """
     sharpe = _metric_float(metrics, "sharpe_ratio", float("-inf"))
     ret = _metric_float(metrics, "total_return_pct", float("-inf"))
@@ -213,6 +220,9 @@ def _builder_iteration_selection_key(
     trades = int(metrics.get("total_trades", 0) or 0)
     win_rate = _metric_float(metrics, "win_rate_pct", 0.0)
     ruined = _is_ruined_metrics(metrics)
+    max_rank_trades = max(int(MAX_TRADES_FOR_RANK_PREFERENCE), MIN_TRADES_FOR_ACCEPT)
+    excessive_trades = trades > max_rank_trades
+    trade_preference = trades if not excessive_trades else max_rank_trades - (trades - max_rank_trades)
 
     return (
         0 if is_fallback else 1,
@@ -225,7 +235,8 @@ def _builder_iteration_selection_key(
         ret,
         profit_factor,
         -max_dd,
-        trades,
+        0 if excessive_trades else 1,
+        trade_preference,
         win_rate,
     )
 
@@ -285,6 +296,93 @@ def _is_accept_candidate(
     return True, "ok"
 
 
+def _builder_iteration_has_blocking_error(iteration: Any) -> bool:
+    """Retourne True si une itération ne doit pas porter un statut positif."""
+    if str(getattr(iteration, "error", "") or "").strip():
+        return True
+
+    phase_feedback = getattr(iteration, "phase_feedback", {}) or {}
+    if hasattr(phase_feedback, "to_dict"):
+        try:
+            phase_feedback = phase_feedback.to_dict()
+        except Exception:
+            phase_feedback = {}
+    if not isinstance(phase_feedback, dict):
+        return False
+
+    backtest_feedback = phase_feedback.get("backtest", {}) or {}
+    if not isinstance(backtest_feedback, dict):
+        return False
+    return bool(
+        str(backtest_feedback.get("runtime_error") or "").strip()
+        or str(backtest_feedback.get("runtime_traceback_tail") or "").strip()
+    )
+
+
+def classify_builder_candidate_tier(
+    metrics: dict[str, Any],
+    *,
+    target_sharpe: float = 1.0,
+) -> dict[str, Any]:
+    """Classe un candidat Builder sous success en positive/promising."""
+    accepted, accept_reason = _is_accept_candidate(metrics, target_sharpe=target_sharpe)
+    if accepted:
+        return {
+            "tier": "success",
+            "reason": "accept_candidate",
+            "accept_reason": accept_reason,
+        }
+
+    ret = _metric_float(metrics, "total_return_pct", 0.0)
+    trades = int(metrics.get("total_trades", 0) or 0)
+    if ret <= 0.0:
+        return {"tier": "failed", "reason": "non_positive_return", "accept_reason": accept_reason}
+    if trades < MIN_TRADES_FOR_POSITIVE_PROGRESS:
+        return {"tier": "failed", "reason": "insufficient_trades", "accept_reason": accept_reason}
+
+    sharpe = _metric_float(metrics, "sharpe_ratio", 0.0)
+    max_dd = abs(_metric_float(metrics, "max_drawdown_pct", 0.0))
+    profit_factor = _metric_float(metrics, "profit_factor", 0.0)
+    score_raw = compute_builder_telemetry_score(
+        metrics,
+        target_sharpe=target_sharpe,
+    ).get("score", float("-inf"))
+    try:
+        score = float(score_raw)
+    except (TypeError, ValueError):
+        score = float("-inf")
+    sharpe_or_score_ok = sharpe >= MIN_SHARPE_FOR_PROMISING or score >= MIN_TELEMETRY_SCORE_FOR_PROMISING
+
+    if (
+        trades >= MIN_TRADES_FOR_PROMISING
+        and profit_factor >= MIN_PROFIT_FACTOR_FOR_PROMISING
+        and max_dd <= MAX_DRAWDOWN_PCT_FOR_PROMISING
+        and sharpe_or_score_ok
+    ):
+        return {
+            "tier": "promising",
+            "reason": "promising_thresholds_met",
+            "accept_reason": accept_reason,
+            "telemetry_score": score,
+        }
+
+    missing: list[str] = []
+    if trades < MIN_TRADES_FOR_PROMISING:
+        missing.append("promising_trades")
+    if profit_factor < MIN_PROFIT_FACTOR_FOR_PROMISING:
+        missing.append("promising_profit_factor")
+    if max_dd > MAX_DRAWDOWN_PCT_FOR_PROMISING:
+        missing.append("promising_drawdown")
+    if not sharpe_or_score_ok:
+        missing.append("promising_sharpe_or_score")
+    return {
+        "tier": "positive",
+        "reason": "positive_only:" + ",".join(missing or ["below_promising_thresholds"]),
+        "accept_reason": accept_reason,
+        "telemetry_score": score,
+    }
+
+
 def resolve_builder_completion_status(
     session: Any,
     *,
@@ -309,6 +407,8 @@ def resolve_builder_completion_status(
     best_metrics: dict[str, Any] = {}
     best_key: tuple[Any, ...] | None = None
     for iteration in iterations:
+        if _builder_iteration_has_blocking_error(iteration):
+            continue
         backtest_result = getattr(iteration, "backtest_result", None)
         metrics = getattr(backtest_result, "metrics", None)
         if not isinstance(metrics, dict) or not metrics:
@@ -325,12 +425,16 @@ def resolve_builder_completion_status(
     if not best_metrics:
         return fallback_status, "no_backtest_metrics"
 
-    accepted, reason = _is_accept_candidate(
+    classification = classify_builder_candidate_tier(
         best_metrics,
         target_sharpe=target_sharpe,
     )
-    if accepted:
+    tier = str(classification.get("tier") or "")
+    reason = str(classification.get("reason") or "")
+    if tier == "success":
         return "success", "best_iteration_accept_candidate"
+    if tier in {"positive", "promising"}:
+        return "positive", f"best_iteration_{tier}:{reason}"
     return fallback_status, reason
 
 

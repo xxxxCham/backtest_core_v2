@@ -25,7 +25,7 @@ from typing import Any
 
 import plotly.graph_objects as go
 
-from .colors import ColorPalette, get_color, get_colors
+from .colors import FONT_FAMILY_SANS, ColorPalette, get_color, get_colors
 
 # ============================================================================
 # CONFIGURATION GLOBALE PLOTLY
@@ -71,12 +71,12 @@ def get_layout_config(
     config = {
         "height": height,
         "template": "plotly_dark",
-        "plot_bgcolor": "rgba(0,0,0,0)",
-        "paper_bgcolor": "rgba(0,0,0,0)",
+        "plot_bgcolor": colors.get("surface", "rgba(0,0,0,0)"),
+        "paper_bgcolor": colors.get("background", "rgba(0,0,0,0)"),
         "font": {
-            "color": colors.get("text_primary", "#a8b2d1"),
+            "color": colors.get("text_primary", "#e6edf3"),
             "size": 11,
-            "family": "Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+            "family": FONT_FAMILY_SANS,
         },
         "hovermode": "x unified",
         "margin": {"l": 50, "r": 50, "t": 50, "b": 50},
@@ -86,9 +86,10 @@ def get_layout_config(
             "y": 1.02,
             "xanchor": "right",
             "x": 1,
-            "bgcolor": "rgba(0,0,0,0.3)",
-            "bordercolor": colors.get("border", "rgba(128,128,128,0.3)"),
+            "bgcolor": "rgba(0,0,0,0)",
+            "bordercolor": colors.get("border", "#2a313c"),
             "borderwidth": 1,
+            "font": {"color": colors.get("text_secondary", "#8b96a4"), "size": 10},
         },
         "showlegend": show_legend,
     }
@@ -96,7 +97,11 @@ def get_layout_config(
     if title:
         config["title"] = {
             "text": title,
-            "font": {"size": 14, "color": colors.get("text", "#fafafa")},
+            "font": {
+                "size": 13,
+                "color": colors.get("gold_pale", colors.get("text", "#e6edf3")),
+                "family": FONT_FAMILY_SANS,
+            },
             "x": 0.5,
             "xanchor": "center",
         }

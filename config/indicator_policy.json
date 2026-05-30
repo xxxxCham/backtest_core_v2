@@ -12,18 +12,26 @@
     "category_sampling_enabled": "Active le mode de sélection par quota de familles.",
     "category_min_families": "Nombre minimum de familles distinctes à représenter quand category_sampling est actif.",
     "history_file": "Chemin relatif (depuis la racine du projet) vers le fichier JSON d'historique.",
-    "enabled": "Désactivez pour revenir au comportement d'origine (pas de persistance inter-sessions)."
+    "enabled": "Désactivez pour revenir au comportement d'origine (pas de persistance inter-sessions).",
+    "inject_stats_into_prompt": "Si true, injecte 3 tableaux (top/flop/under-explored) issus de l'historique cross-sessions dans le prompt PROPOSAL. Le LLM voit les chiffres bruts et juge lui-même. Kill-switch instantané : repasser à false.",
+    "inject_stats_min_n_known": "Seuil de n minimum pour considérer un indicateur 'éprouvé' (sinon classé en under-explored).",
+    "inject_stats_top_n": "Nombre de lignes max par tableau top/flop/under-explored.",
+    "inject_stats_filter_by_context": "Si true, filtre les stats par symbol/timeframe de la session courante (plus pertinent mais moins de volume)."
   },
   "enabled": true,
   "history_length": 10,
   "ban_threshold": 4,
   "ban_duration": 3,
   "family_penalty_runs": 3,
-  "previous_penalty": 0.50,
-  "novelty_bonus": 0.60,
+  "previous_penalty": 0.5,
+  "novelty_bonus": 0.6,
   "family_penalty": 0.25,
   "family_bonus": 0.15,
   "category_sampling_enabled": false,
   "category_min_families": 2,
-  "history_file": "config/indicator_history.json"
+  "history_file": "config/indicator_history.json",
+  "inject_stats_into_prompt": true,
+  "inject_stats_min_n_known": 50,
+  "inject_stats_top_n": 10,
+  "inject_stats_filter_by_context": false
 }

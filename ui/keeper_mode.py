@@ -65,7 +65,7 @@ def render_keeper_mode_control() -> dict[str, Any]:
         "Ouvrir Keeper Panel",
         key="keeper_mode_open_panel",
         type="primary",
-        use_container_width=True,
+        width="stretch",
     ):
         try:
             pid = launch_supervisor_panel()

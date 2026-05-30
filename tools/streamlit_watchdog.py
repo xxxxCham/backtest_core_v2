@@ -502,8 +502,39 @@ def _launch_streamlit(root: Path, port: int) -> subprocess.Popen[Any]:
     )
 
 
+def _current_windows_session_id() -> int | None:
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+
+        session_id = ctypes.c_ulong()
+        ok = ctypes.windll.kernel32.ProcessIdToSessionId(os.getpid(), ctypes.byref(session_id))
+        if not ok:
+            return None
+        return int(session_id.value)
+    except Exception:
+        return None
+
+
+def _is_interactive_desktop_session() -> bool:
+    if os.name != "nt":
+        return True
+    session_id = _current_windows_session_id()
+    if session_id is None:
+        return True
+    return session_id > 0
+
+
 def _open_streamlit_browser(port: int) -> bool:
     url = f"http://localhost:{int(port)}"
+    if os.name == "nt" and not _is_interactive_desktop_session():
+        print(
+            "[watchdog] browser open skipped: non-interactive Windows session "
+            f"(session_id={_current_windows_session_id()})",
+            flush=True,
+        )
+        return False
     try:
         if os.name == "nt" and hasattr(os, "startfile"):
             os.startfile(url)

@@ -48,7 +48,6 @@ _OLLAMA_CLOUD_LOCAL_RUNTIME_ALIAS_OVERRIDES: dict[str, list[str]] = {
     "qwen3-coder:480b": ["qwen3-coder:480b-cloud"],
     "qwen3-coder-next": ["qwen3-coder-next:cloud"],
     "qwen3-next:80b": ["qwen3-next:80b-cloud"],
-    "qwen3-vl:235b": ["qwen3-vl:235b-cloud"],
     "qwen3.5:122b": ["qwen3.5:122b-cloud"],
 }
 

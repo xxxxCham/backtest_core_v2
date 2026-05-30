@@ -267,6 +267,44 @@ def _err(code: str, message: str) -> str:
     return f"[{code}] {message}"
 
 
+_ATR_VALUE_NAMES = {
+    "atr",
+    "atr_arr",
+    "atr_data",
+    "atr_val",
+    "atr_value",
+    "average_true_range",
+}
+
+
+def _is_indicators_atr_access(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Subscript):
+        return False
+    if not isinstance(node.value, ast.Name) or node.value.id != "indicators":
+        return False
+    return _const_value(node.slice) == "atr"
+
+
+def _contains_atr_reference(node: ast.AST) -> bool:
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Name) and sub.id in _ATR_VALUE_NAMES:
+            return True
+        if _is_indicators_atr_access(sub):
+            return True
+    return False
+
+
+def _contains_hardcoded_atr_multiplier(node: ast.AST) -> bool:
+    for sub in ast.walk(node):
+        if not isinstance(sub, ast.BinOp) or not isinstance(sub.op, ast.Mult):
+            continue
+        if _is_numeric_nonbool_constant(sub.left) and _contains_atr_reference(sub.right):
+            return True
+        if _is_numeric_nonbool_constant(sub.right) and _contains_atr_reference(sub.left):
+            return True
+    return False
+
+
 def _is_allowed_import(module_name: str) -> bool:
     """Allowlist stricte des imports dans le code généré."""
     root = (module_name or "").split(".")[0]
@@ -1183,6 +1221,15 @@ def validate_generated_code(code: str) -> tuple[bool, str]:
                     f"{', '.join(sorted(_BUILDER_ALLOWED_WRITE_DF_COLUMNS))}."
                     f"{hint}",
                 )
+            if col in {"bb_stop_long", "bb_stop_short", "bb_tp_long", "bb_tp_short"}:
+                value_node = getattr(node, "value", None)
+                if value_node is not None and _contains_hardcoded_atr_multiplier(value_node):
+                    expected_param = "stop_atr_mult" if col in {"bb_stop_long", "bb_stop_short"} else "tp_atr_mult"
+                    return False, _err(
+                        ERR_PARAM,
+                        f"Multiplicateur ATR codé en dur dans df['{col}']. "
+                        f"Utiliser params.get('{expected_param}', ...) via `{expected_param} * atr`.",
+                    )
 
     # 3e. Interdictions structurées signaux/warmup
     flow_ok, flow_err = _validate_signal_loop_and_warmup(tree)

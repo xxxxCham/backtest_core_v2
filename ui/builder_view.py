@@ -50,6 +50,7 @@ import agents.ollama_manager as ollama_manager_module
 from agents.llm_config import (
     normalize_llm_inference_settings,
     normalize_llm_model_inference_profiles,
+    resolve_llm_inference_settings,
 )
 from agents.ollama_runtime import (
     is_ollama_cloud_model,
@@ -59,8 +60,10 @@ from agents.ollama_runtime import (
 from config.market_selection import (
     evaluate_market_dataset,
     filter_market_universe,
+    get_strategy_requirements,
     infer_strategy_type,
     normalize_universe_mode,
+    rank_tokens_for_strategy,
 )
 
 try:
@@ -90,6 +93,7 @@ from agents.strategy_builder import (
     MIN_BUILDER_BARS,
     SANDBOX_ROOT,
     StrategyBuilder,
+    classify_builder_candidate_tier,
     generate_llm_objective,
     generate_random_objective,
     recommend_market_context,
@@ -139,6 +143,10 @@ _AUTONOMOUS_STATE_SAVE_RETRY_DELAY_SEC = 0.05
 _AUTONOMOUS_SUPERVISOR_STATE_LOCK = threading.Lock()
 _AUTONOMOUS_RUNTIME_STATE_LOCK = threading.Lock()
 _AUTONOMOUS_SESSION_FAILURE_RESET_THRESHOLD = 4
+# Après N rejets dataset consécutifs (auto-market-pick qui propose des marchés
+# que l'univers rejette en boucle), on désactive l'auto-pick une session pour
+# retomber sur le marché par défaut connu-valide et casser le gaspillage.
+_AUTONOMOUS_MAX_CONSECUTIVE_DATASET_REJECTIONS = 3
 _AUTONOMOUS_MAX_SOFT_RESETS = 3
 _AUTONOMOUS_SOFT_RESET_WINDOW_SECONDS = 2 * 60 * 60
 _AUTONOMOUS_HARDENED_COOLDOWN_MULTIPLIER = 8
@@ -189,36 +197,45 @@ _STREAM_CODE_LINE_PREFIXES = (
 BUILDER_VIEW_CSS = """
 <style>
 .bc-builder-summary-line {
-    margin: 0.1rem 0 0.85rem 0;
-    padding-bottom: 0.55rem;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-    color: #b8cbe2;
-    font-size: 0.93rem;
+    margin: var(--bc-sp-xs) 0 var(--bc-sp-md) 0;
+    padding-bottom: var(--bc-sp-sm);
+    border-bottom: 1px solid var(--bc-divider);
+    color: var(--bc-text-2);
+    font-size: var(--bc-fs-text);
     line-height: 1.45;
 }
 .bc-builder-badge-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.45rem;
-    margin: 0.15rem 0 0.7rem 0;
+    gap: var(--bc-sp-xs);
+    margin: var(--bc-sp-xs) 0 var(--bc-sp-sm) 0;
 }
 .bc-builder-badge {
     display: inline-flex;
     align-items: center;
-    padding: 0.36rem 0.58rem;
-    border-radius: 999px;
-    border: 1px solid rgba(148, 163, 184, 0.18);
-    background: rgba(15, 23, 42, 0.88);
-    color: #dbeafe;
-    font-size: 0.8rem;
+    padding: 4px 8px;
+    border-radius: var(--bc-r-sm);
+    border: 1px solid var(--bc-border);
+    background: var(--bc-surface-2);
+    color: var(--bc-text);
+    font-size: var(--bc-fs-caption);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: var(--bc-fw-sb);
+}
+.bc-builder-attribution-highlight {
+    border-color: rgba(88, 166, 255, 0.42);
+    background: rgba(88, 166, 255, 0.10);
+    color: var(--bc-info);
 }
 .bc-builder-runtime-note {
-    margin: 0.15rem 0 0.8rem 0;
-    padding: 0.72rem 0.85rem;
-    border-radius: 16px;
-    border: 1px solid rgba(148, 163, 184, 0.16);
-    background: rgba(10, 20, 35, 0.68);
-    color: #c4d4e7;
+    margin: var(--bc-sp-xs) 0 var(--bc-sp-sm) 0;
+    padding: var(--bc-sp-sm) var(--bc-sp-md);
+    border-radius: var(--bc-r-md);
+    border: 1px solid var(--bc-border);
+    background: var(--bc-surface);
+    color: var(--bc-text-2);
+    font-size: var(--bc-fs-text);
 }
 </style>
 """
@@ -404,10 +421,63 @@ def _render_builder_badge_row(labels: List[str]) -> None:
     visible = [label for label in labels if str(label or "").strip()]
     if not visible:
         return
-    badges = "".join(
-        f"<span class='bc-builder-badge'>{html.escape(label)}</span>" for label in visible
-    )
+    badges = ""
+    for label in visible:
+        label_text = str(label or "").strip()
+        extra_class = (
+            " bc-builder-attribution-highlight"
+            if label_text.lower().startswith("attribution")
+            or " attribution:" in label_text.lower()
+            else ""
+        )
+        badges += (
+            f"<span class='bc-builder-badge{extra_class}'>"
+            f"{html.escape(label_text)}</span>"
+        )
     st.markdown(f"<div class='bc-builder-badge-row'>{badges}</div>", unsafe_allow_html=True)
+
+
+def _format_builder_attribution_label(badge: Dict[str, str]) -> str:
+    raw_label = str((badge or {}).get("label") or "").strip()
+    normalized = raw_label.lower()
+    label_map = {
+        "succes": "Succès",
+        "success": "Succès",
+        "prometteur": "Prometteur",
+        "promising": "Prometteur",
+        "positif": "Positif",
+        "positive": "Positif",
+        "negatif": "Négatif",
+        "negative": "Négatif",
+        "echec": "Échec",
+        "failed": "Échec",
+        "erreur": "Erreur",
+        "error": "Erreur",
+        "crash": "Crash",
+        "max_iterations": "Max iterations",
+        "en cours": "En cours",
+        "running": "En cours",
+        "inconnu": "Inconnu",
+        "unknown": "Inconnu",
+    }
+    if normalized in label_map:
+        return label_map[normalized]
+    if not raw_label:
+        return "Inconnu"
+    return raw_label.replace("_", " ").capitalize()
+
+
+def _format_builder_attribution_badge_text(
+    badge: Dict[str, str],
+    *,
+    prefix: str = "Attribution",
+) -> str:
+    icon = str((badge or {}).get("icon") or "").strip()
+    label = _format_builder_attribution_label(badge)
+    core = f"{icon} {label}".strip()
+    if not prefix:
+        return core
+    return f"{prefix}: {core}"
 
 
 def _format_optional_float(value: Any, pattern: str, default: str = "n/a") -> str:
@@ -417,6 +487,54 @@ def _format_optional_float(value: Any, pattern: str, default: str = "n/a") -> st
         return pattern.format(float(value))
     except Exception:
         return default
+
+
+def _format_builder_token_budget(value: Any, *, auto_label: str = "auto") -> str:
+    if value in (None, "", 0, "0"):
+        return auto_label
+    try:
+        resolved = int(value)
+    except (TypeError, ValueError):
+        return auto_label
+    if resolved <= 0:
+        return auto_label
+    return f"{resolved:,}".replace(",", " ")
+
+
+def _build_builder_inference_budget_chip(
+    model: str,
+    *,
+    global_settings: Optional[Dict[str, Any]] = None,
+    model_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> str:
+    settings = resolve_llm_inference_settings(
+        model,
+        global_settings=global_settings,
+        model_profiles=model_profiles,
+    )
+    context_label = _format_builder_token_budget(settings.get("num_ctx"))
+    response_label = _format_builder_token_budget(settings.get("max_tokens"))
+    context_unit = "" if context_label == "auto" else " tok."
+    response_unit = "" if response_label == "auto" else " tok."
+    return f"Contexte: {context_label}{context_unit} | Réponse: {response_label}{response_unit}"
+
+
+def _build_builder_max_iteration_chips(
+    max_iterations: int,
+    *,
+    model: str,
+    global_settings: Optional[Dict[str, Any]] = None,
+    model_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
+    max_label: str = "Max itérations",
+) -> List[str]:
+    return [
+        f"{max_label}: {max_iterations}",
+        _build_builder_inference_budget_chip(
+            model,
+            global_settings=global_settings,
+            model_profiles=model_profiles,
+        ),
+    ]
 
 
 def _normalize_builder_code_source(source: Any) -> str:
@@ -691,7 +809,19 @@ def _format_builder_live_event_line(event_payload: Dict[str, Any]) -> str:
         sharpe = _safe_optional_float(payload.get("sharpe"))
         ret_pct = _safe_optional_float(payload.get("total_return_pct"))
         if sharpe is not None and ret_pct is not None:
-            return f"{prefix}Backtest: Sharpe {sharpe:.3f} | Return {ret_pct:+.2f}%"
+            line = f"{prefix}Backtest: Sharpe {sharpe:.3f} | Return {ret_pct:+.2f}%"
+            try:
+                trades_raw = payload.get("total_trades")
+                if trades_raw is not None:
+                    line += f" | Trades {int(trades_raw)}"
+            except Exception:
+                pass
+            return line
+    if event == "session_done":
+        badge = _get_autonomous_recap_status_badge(
+            {"status": event_payload.get("status", "") or payload.get("status", "")}
+        )
+        return f"{prefix}Session terminée: {_format_builder_attribution_badge_text(badge)}"
     if message:
         return prefix + message
     if event == "iteration_done":
@@ -745,6 +875,7 @@ def _default_autonomous_supervisor_state() -> Dict[str, Any]:
         "last_selected_source_reason": "",
         "forced_source_mode": "",
         "disable_auto_market_pick_once": False,
+        "consecutive_dataset_rejections": 0,
         "last_resume_at": "",
         "next_pause_multiplier": 1,
     }
@@ -1175,6 +1306,11 @@ _BUILDER_RUNTIME_CFG_GETTER = itemgetter(
 _BUILDER_MARKET_UNIVERSE_CACHE_KEY = "_builder_market_universe_cache"
 _BUILDER_MARKET_UNIVERSE_CACHE_VERSION = 1
 _BUILDER_MARKET_UNIVERSE_CACHE_MAX_ENTRIES = 12
+_BUILDER_MARKET_SAMPLE_CACHE_KEY = "_builder_market_sample_cache"
+_BUILDER_MARKET_SAMPLE_CACHE_VERSION = 1
+_BUILDER_MARKET_SAMPLE_CACHE_MAX_ENTRIES = 24
+_BUILDER_MARKET_SYMBOL_SAMPLE_LIMIT = 24
+_BUILDER_MARKET_TIMEFRAME_SAMPLE_LIMIT = 12
 _BUILDER_AUTONOMOUS_RUN_ID_STATE_KEY = "_builder_autonomous_run_id"
 
 
@@ -1355,21 +1491,23 @@ def _compute_autonomous_test_days(
 
 def _resolve_autonomous_gain_metrics(entry: Dict[str, Any]) -> Dict[str, Optional[float]]:
     status = str(entry.get("status", "") or "").strip().lower()
-    if status not in {"success", "max_iterations"}:
+    if status not in {"success", "positive", "max_iterations"}:
         return {
             "total_pnl": None,
             "test_days": None,
             "pnl_per_day": None,
         }
 
-    final_return = _safe_optional_float(entry.get("final_return"))
+    # Aligné sur le run au meilleur PnL (best run), pas la dernière itération:
+    # le gain affiché doit correspondre au run réellement retenu et affiché.
+    best_return = _safe_optional_float(entry.get("best_return"))
     initial_capital = _safe_optional_float(entry.get("initial_capital"))
-    total_pnl = _safe_optional_float(entry.get("final_total_pnl"))
+    total_pnl = _safe_optional_float(entry.get("best_total_pnl"))
 
-    if total_pnl is None and final_return is not None and initial_capital is not None:
-        total_pnl = initial_capital * (final_return / 100.0)
-    if total_pnl is None and final_return is not None:
-        total_pnl = 10000.0 * (final_return / 100.0)
+    if total_pnl is None and best_return is not None and initial_capital is not None:
+        total_pnl = initial_capital * (best_return / 100.0)
+    if total_pnl is None and best_return is not None:
+        total_pnl = 10000.0 * (best_return / 100.0)
 
     test_days = _compute_autonomous_test_days(
         timeframe=entry.get("timeframe"),
@@ -1880,6 +2018,7 @@ def restore_builder_autonomous_ui_state_from_runtime() -> tuple[bool, Dict[str, 
     ).strip()
     if builder_model_single_llm:
         st.session_state["builder_model_single_llm"] = builder_model_single_llm
+        st.session_state["builder_model_select"] = builder_model_single_llm
 
     builder_ollama_host = str(
         resume_ui_state.get("builder_ollama_host", "") or ""
@@ -2071,8 +2210,14 @@ def _get_autonomous_recap_status_badge(entry: Dict[str, Any]) -> Dict[str, str]:
         if value is not None
     ]
 
+    candidate_tier = str(entry.get("best_candidate_tier") or entry.get("candidate_tier") or "").strip().lower()
     primary_badges = {
         "success": {"icon": "✚", "label": "succes", "tone": "positive"},
+        "positive": (
+            {"icon": "◇", "label": "prometteur", "tone": "candidate"}
+            if candidate_tier == "promising"
+            else {"icon": "+", "label": "positif", "tone": "positive"}
+        ),
         "max_iterations": {"icon": "⏱️", "label": "max_iterations", "tone": "neutral"},
         "running": {"icon": "…", "label": "en cours", "tone": "neutral"},
     }
@@ -2092,6 +2237,88 @@ def _get_autonomous_recap_status_badge(entry: Dict[str, Any]) -> Dict[str, str]:
     }
     return fallback_badges.get(
         status, {"icon": "?", "label": status or "inconnu", "tone": "neutral"}
+    )
+
+
+def _get_builder_run_attribution_badge(
+    *,
+    status: Any = "",
+    metrics: Optional[Dict[str, Any]] = None,
+    candidate_tier: Any = "",
+    target_sharpe: Any = 1.0,
+) -> Dict[str, str]:
+    """Construit le même badge d'attribution que le grand récap autonome."""
+    resolved_status = str(status or "").strip().lower()
+    entry: Dict[str, Any] = {"status": resolved_status}
+    if isinstance(metrics, dict) and metrics:
+        tier = str(candidate_tier or "").strip().lower()
+        if not tier:
+            try:
+                tier = str(
+                    classify_builder_candidate_tier(
+                        metrics,
+                        target_sharpe=float(target_sharpe or 1.0),
+                    ).get("tier")
+                    or ""
+                ).strip().lower()
+            except Exception:
+                tier = ""
+        if tier:
+            entry["best_candidate_tier"] = tier
+            entry["candidate_tier"] = tier
+        return_pct = metrics.get("total_return_pct")
+        entry.update(
+            {
+                "best_return": return_pct,
+                "final_return": return_pct,
+                "best_return_sharpe": metrics.get("sharpe_ratio"),
+                "best_max_dd": metrics.get("max_drawdown_pct"),
+                "best_pf": metrics.get("profit_factor"),
+                "best_trades": metrics.get("total_trades"),
+            }
+        )
+        if not resolved_status:
+            if tier == "success":
+                entry["status"] = "success"
+            elif tier in {"positive", "promising"}:
+                entry["status"] = "positive"
+            else:
+                entry["status"] = "failed"
+    return _get_autonomous_recap_status_badge(entry)
+
+
+def _get_builder_iteration_attribution_badge(iteration: Any) -> Dict[str, str]:
+    backtest_result = getattr(iteration, "backtest_result", None)
+    metrics = getattr(backtest_result, "metrics", None)
+    decision = str(getattr(iteration, "decision", "") or "").strip().lower()
+    has_error = bool(str(getattr(iteration, "error", "") or "").strip())
+    if decision == "accept":
+        status = "success"
+    elif has_error and not isinstance(metrics, dict):
+        status = "error"
+    elif isinstance(metrics, dict) and metrics:
+        status = ""
+    elif decision == "stop":
+        status = "max_iterations"
+    else:
+        status = "running"
+    return _get_builder_run_attribution_badge(status=status, metrics=metrics)
+
+
+def _get_builder_session_attribution_badge(session: Any) -> Dict[str, str]:
+    best = getattr(session, "best_iteration", None)
+    best_metrics = (
+        best.backtest_result.metrics
+        if best is not None
+        and getattr(best, "backtest_result", None) is not None
+        and isinstance(getattr(best.backtest_result, "metrics", None), dict)
+        else None
+    )
+    return _get_builder_run_attribution_badge(
+        status=getattr(session, "status", ""),
+        metrics=best_metrics,
+        candidate_tier=getattr(session, "best_candidate_tier", ""),
+        target_sharpe=getattr(session, "target_sharpe", 1.0),
     )
 
 
@@ -2397,7 +2624,7 @@ def _render_iterations_compact_table(session: Any) -> None:
         return
     n = len(rows)
     with st.expander(f"📋 Historique des itérations ({n})", expanded=False):
-        st.dataframe(rows, hide_index=True, use_container_width=True)
+        st.dataframe(rows, hide_index=True, width="stretch")
 
 
 def _render_autonomous_iteration_history(history: List[Dict[str, Any]]) -> None:
@@ -2426,11 +2653,19 @@ def _render_autonomous_iteration_history(history: List[Dict[str, Any]]) -> None:
             if isinstance(row, dict) and str(row.get("Stratégie", "") or "").strip()
         ]
         strategy_label = strategy_names[-1] if strategy_names else "stratégie générée"
+        attribution = _get_autonomous_recap_status_badge(entry)
+        attribution_text = _format_builder_attribution_badge_text(
+            attribution,
+            prefix="",
+        )
         title = (
-            f"Session #{session_num} · {strategy_label} · {symbol} {timeframe} · "
+            f"Session #{session_num} · {attribution_text} · {strategy_label} · {symbol} {timeframe} · "
             f"best return {_format_optional_float(best_return, '{:+.2f}%')}"
         )
         with st.expander(title, expanded=fallback_idx == 1):
+            _render_builder_badge_row(
+                [_format_builder_attribution_badge_text(attribution)]
+            )
             indicator_sets = [
                 str(row.get("Indicateurs", "") or "").strip()
                 for row in rows
@@ -2438,7 +2673,7 @@ def _render_autonomous_iteration_history(history: List[Dict[str, Any]]) -> None:
             ]
             if indicator_sets:
                 st.caption(f"Indicateurs: {indicator_sets[-1]}")
-            st.dataframe(rows, hide_index=True, use_container_width=True)
+            st.dataframe(rows, hide_index=True, width="stretch")
 
     if not any_rows:
         st.caption("Les anciennes sessions n'ont pas encore de détail d'itérations récupérable.")
@@ -2455,6 +2690,9 @@ def render_iteration_card(
     diag = getattr(iteration, "diagnostic_detail", {}) or {}
     phase_feedback = getattr(iteration, "phase_feedback", {}) or {}
     provenance = _get_builder_code_provenance_badge(phase_feedback)
+    bt = getattr(iteration, "backtest_result", None)
+    metrics = getattr(bt, "metrics", None) if bt is not None else None
+    attribution = _get_builder_iteration_attribution_badge(iteration)
 
     # Icône selon résultat
     if error:
@@ -2491,7 +2729,9 @@ def render_iteration_card(
 
     st.markdown(f"**{icon} {label}**")
 
-    badge_labels: List[str] = []
+    badge_labels: List[str] = [
+        _format_builder_attribution_badge_text(attribution),
+    ]
     if cat_lbl:
         badge_labels.append(f"{sev_icon} {cat_lbl}")
     if type_lbl:
@@ -2513,8 +2753,6 @@ def render_iteration_card(
     if error:
         st.error(f"Erreur: {error}")
 
-    bt = getattr(iteration, "backtest_result", None)
-    metrics = getattr(bt, "metrics", None) if bt is not None else None
     backtest_feedback = phase_feedback.get("backtest", {}) or {}
     if isinstance(metrics, dict):
         summary_parts = [
@@ -2553,6 +2791,25 @@ def render_session_summary(session: Any) -> None:
     status = getattr(session, "status", "unknown")
     best_sharpe_raw = getattr(session, "best_sharpe", None)
     n_iters = len(getattr(session, "iterations", []))
+    best = getattr(session, "best_iteration", None)
+    best_metrics_for_tier = (
+        best.backtest_result.metrics
+        if best is not None
+        and getattr(best, "backtest_result", None) is not None
+        and isinstance(getattr(best.backtest_result, "metrics", None), dict)
+        else {}
+    )
+    best_candidate_tier = str(getattr(session, "best_candidate_tier", "") or "").strip().lower()
+    if not best_candidate_tier and best_metrics_for_tier:
+        best_candidate_tier = str(
+            classify_builder_candidate_tier(
+                best_metrics_for_tier,
+                target_sharpe=float(getattr(session, "target_sharpe", 1.0) or 1.0),
+            ).get("tier")
+            or ""
+        ).strip().lower()
+
+    session_attribution = _get_builder_session_attribution_badge(session)
 
     # Statut global
     status_map = {
@@ -2561,9 +2818,16 @@ def render_session_summary(session: Any) -> None:
         "failed": ("❌", "Échec - aucune stratégie viable"),
         "running": ("🔄", "En cours..."),
     }
-    icon, label = status_map.get(status, ("❓", status))
+    if status == "positive":
+        icon, label = (
+            ("🟡", "Positive prometteuse - à poursuivre")
+            if best_candidate_tier == "promising"
+            else ("➕", "Positive observée - à filtrer")
+        )
+    else:
+        icon, label = status_map.get(status, ("❓", status))
 
-    st.markdown(f"### {icon} {label}")
+    st.markdown(f"### {_format_builder_attribution_badge_text(session_attribution)}")
     sharpe_txt = _format_optional_float(best_sharpe_raw, "{:.3f}")
     model_name_display = str(getattr(session, "model_name", "") or "")
     gen_stats = compute_session_generation_stats(session) if hasattr(session, "iterations") else {}
@@ -2571,9 +2835,16 @@ def render_session_summary(session: Any) -> None:
     canonical_pct_txt = f"{canonical_rate * 100:.0f}%" if canonical_rate is not None else "n/a"
     model_info = f" | **Modèle:** {model_name_display}" if model_name_display else ""
     st.markdown(
-        f"**Itérations:** {n_iters} | **Meilleur Sharpe:** {sharpe_txt}"
+        f"**Statut technique:** {icon} {label} | **Itérations:** {n_iters} | "
+        f"**Meilleur Sharpe:** {sharpe_txt}"
         f"{model_info} | **LLM canonique:** {canonical_pct_txt}"
     )
+    best_raw_sharpe = _safe_optional_float(getattr(session, "best_raw_sharpe", None))
+    selected_sharpe = _safe_optional_float(best_sharpe_raw)
+    if best_raw_sharpe is not None and (
+        selected_sharpe is None or abs(best_raw_sharpe - selected_sharpe) > 1e-9
+    ):
+        st.caption(f"Meilleur Sharpe brut observé: {best_raw_sharpe:.3f}")
 
     auto_resets = int(getattr(session, "auto_reset_count", 0) or 0)
     if auto_resets:
@@ -2600,14 +2871,26 @@ def render_session_summary(session: Any) -> None:
         )
 
     # Détails du meilleur résultat
-    best = getattr(session, "best_iteration", None)
     if best and hasattr(best, "backtest_result") and best.backtest_result:
         metrics = best.backtest_result.metrics
         best_phase_feedback = getattr(best, "phase_feedback", {}) or {}
         provenance = _get_builder_code_provenance_badge(best_phase_feedback)
+        best_attribution = _get_builder_run_attribution_badge(
+            status=status,
+            metrics=metrics if isinstance(metrics, dict) else None,
+            candidate_tier=best_candidate_tier,
+            target_sharpe=getattr(session, "target_sharpe", 1.0),
+        )
         st.markdown("#### 🥇 Meilleur résultat")
+        best_badges = [
+            _format_builder_attribution_badge_text(
+                best_attribution,
+                prefix="Attribution du meilleur run",
+            )
+        ]
         if provenance.get("badge"):
-            _render_builder_badge_row([provenance["badge"]])
+            best_badges.append(provenance["badge"])
+        _render_builder_badge_row(best_badges)
         provenance_detail = str(provenance.get("detail", "") or "").strip()
         if provenance_detail:
             st.caption(f"Origine du meilleur résultat: {provenance_detail}")
@@ -2840,6 +3123,41 @@ def _store_builder_runtime_acceptance_probe(payload: Dict[str, Any]) -> Dict[str
     probe_payload = dict(payload or {})
     st.session_state["builder_runtime_acceptance_probe"] = probe_payload
     return probe_payload
+
+
+def _accept_deferred_local_runtime_timeout_probe(
+    acceptance_probe: Dict[str, Any],
+    *,
+    runtime_host: str,
+    resolved_model: str,
+) -> bool:
+    """Autorise le lazy-load si un modele local visible ne repond pas au mini-probe."""
+    if str(acceptance_probe.get("status") or "") != "runtime_timeout":
+        return False
+    if not _is_local_ollama_host(runtime_host):
+        return False
+    if _is_cloud_only_model(resolved_model):
+        return False
+    if not bool(acceptance_probe.get("present_in_tags")):
+        return False
+
+    previous_message = str(acceptance_probe.get("message") or "").strip()
+    deferred_message = (
+        f"Le modèle local `{resolved_model}` est visible sur {runtime_host}, "
+        "mais le mini-probe runtime a expiré; démarrage maintenu en lazy-load."
+    )
+    acceptance_probe.update(
+        {
+            "accepted": True,
+            "status": "local_model_runtime_timeout_deferred",
+            "message": (
+                f"{previous_message} {deferred_message}"
+                if previous_message
+                else deferred_message
+            ),
+        }
+    )
+    return True
 
 
 def _resolve_cloud_runtime_model_alias(
@@ -3299,13 +3617,19 @@ def _prepare_builder_llm(
                 acceptance_probe["message"] = (
                     f"{resolve_note} {str(acceptance_probe.get('message') or '').strip()}"
                 ).strip()
-            _store_builder_runtime_acceptance_probe(acceptance_probe)
             if not acceptance_probe.get("accepted"):
-                return (
-                    False,
-                    str(acceptance_probe.get("message") or resolve_note or ""),
-                    resolved_model,
-                )
+                if not _accept_deferred_local_runtime_timeout_probe(
+                    acceptance_probe,
+                    runtime_host=runtime_host,
+                    resolved_model=resolved_model,
+                ):
+                    _store_builder_runtime_acceptance_probe(acceptance_probe)
+                    return (
+                        False,
+                        str(acceptance_probe.get("message") or resolve_note or ""),
+                        resolved_model,
+                    )
+            _store_builder_runtime_acceptance_probe(acceptance_probe)
             probe_payload = acceptance_probe
         else:
             _store_builder_runtime_acceptance_probe(probe_payload)
@@ -3316,6 +3640,8 @@ def _prepare_builder_llm(
             msg = f"{resolve_note} {msg}"
         if route_note:
             msg = f"{route_note} {msg}".strip()
+        if str(probe_payload.get("status") or "") == "local_model_runtime_timeout_deferred":
+            msg = f"{msg} {str(probe_payload.get('message') or '').strip()}".strip()
         probe_payload["message"] = f"{probe_payload.get('message', '').strip()} Warmup désactivé.".strip()
         _store_builder_runtime_acceptance_probe(probe_payload)
         return True, msg, resolved_model
@@ -3544,10 +3870,165 @@ def _stable_random_pick(session_key: str, candidates: List[str], fallback: str) 
     return picked
 
 
+def _stable_builder_market_subset(
+    *,
+    kind: str,
+    candidates: List[str],
+    anchors: List[str],
+    limit: int,
+    upper: bool = False,
+) -> List[str]:
+    """Retourne un sous-ensemble aleatoire mais stable pour eviter les rescans UI."""
+    clean_candidates = _dedupe_keep_order(candidates, upper=upper)
+    clean_anchors = _dedupe_keep_order(anchors, upper=upper)
+    ordered = _dedupe_keep_order([*clean_anchors, *clean_candidates], upper=upper)
+    if limit <= 0 or len(ordered) <= limit:
+        return ordered
+
+    anchor_prefix = [value for value in clean_anchors if value in ordered][:limit]
+    pool = [value for value in ordered if value not in anchor_prefix]
+    cache_key = (
+        _BUILDER_MARKET_SAMPLE_CACHE_VERSION,
+        str(kind or "").strip(),
+        int(limit),
+        bool(upper),
+        tuple(sorted(ordered)),
+        tuple(anchor_prefix),
+    )
+    cache = st.session_state.setdefault(_BUILDER_MARKET_SAMPLE_CACHE_KEY, {})
+    if not isinstance(cache, dict):
+        cache = {}
+        st.session_state[_BUILDER_MARKET_SAMPLE_CACHE_KEY] = cache
+
+    cached = cache.get(cache_key)
+    if isinstance(cached, list):
+        cached_values = _dedupe_keep_order(cached, upper=upper)
+        if (
+            len(cached_values) == limit
+            and all(value in ordered for value in cached_values)
+            and all(anchor in cached_values for anchor in anchor_prefix)
+        ):
+            return cached_values
+
+    shuffled_pool = list(pool)
+    random.shuffle(shuffled_pool)
+    selected = [*anchor_prefix, *shuffled_pool][:limit]
+    cache[cache_key] = list(selected)
+    while len(cache) > _BUILDER_MARKET_SAMPLE_CACHE_MAX_ENTRIES:
+        first_key = next(iter(cache))
+        cache.pop(first_key, None)
+    return selected
+
+
+def _resolve_builder_strategy_type(
+    *,
+    strategy_type: str = "",
+    objective: str = "",
+    state: Any = None,
+) -> str:
+    """Normalise le type de stratégie utilisé pour prioriser les marchés Builder."""
+    normalized = infer_strategy_type(
+        strategy_type=strategy_type,
+        strategy_key=str(getattr(state, "strategy_key", "") or "") if state is not None else "",
+        objective=objective,
+    )
+    return "" if normalized == "unknown" else normalized
+
+
+def _rank_builder_symbols_for_strategy(symbols: List[str], strategy_type: str) -> List[str]:
+    """Classe les tokens par adéquation au type de stratégie, sans en retirer."""
+    clean_symbols = _dedupe_keep_order(symbols, upper=True)
+    resolved_type = _resolve_builder_strategy_type(strategy_type=strategy_type)
+    if not clean_symbols or not resolved_type:
+        return clean_symbols
+    try:
+        ranked = rank_tokens_for_strategy(clean_symbols, resolved_type)
+    except Exception:  # noqa: BLE001
+        logger.warning("builder_strategy_symbol_ranking_failed strategy_type=%s", resolved_type, exc_info=True)
+        return clean_symbols
+    ranked = _dedupe_keep_order(ranked, upper=True)
+    if not ranked:
+        return clean_symbols
+    missing = [symbol for symbol in clean_symbols if symbol not in ranked]
+    return [*ranked, *missing]
+
+
+def _rank_builder_timeframes_for_strategy(timeframes: List[str], strategy_type: str) -> List[str]:
+    """Place les timeframes recommandés pour la stratégie en tête du pool."""
+    raw_timeframes = [str(tf or "").strip() for tf in timeframes if str(tf or "").strip()]
+    if not raw_timeframes:
+        return []
+    clean_timeframes = _sanitize_builder_timeframes(raw_timeframes, fallback="1h")
+    resolved_type = _resolve_builder_strategy_type(strategy_type=strategy_type)
+    if not clean_timeframes or not resolved_type:
+        return clean_timeframes
+    try:
+        requirements = get_strategy_requirements(resolved_type)
+    except Exception:  # noqa: BLE001
+        logger.warning("builder_strategy_timeframe_ranking_failed strategy_type=%s", resolved_type, exc_info=True)
+        return clean_timeframes
+    recommended = [
+        str(tf or "").strip()
+        for tf in (requirements.get("timeframes", []) or [])
+        if str(tf or "").strip() in clean_timeframes
+    ]
+    if recommended:
+        remaining = [tf for tf in clean_timeframes if tf not in recommended]
+        return [*recommended, *remaining]
+
+    reference_days = [
+        float(days)
+        for days in (_timeframe_to_days(str(tf or "").strip()) for tf in (requirements.get("timeframes", []) or []))
+        if days is not None and days > 0
+    ]
+    if not reference_days:
+        return clean_timeframes
+
+    def _distance_to_recommended(tf: str) -> Tuple[float, float, str]:
+        tf_days = _timeframe_to_days(tf)
+        if tf_days is None or tf_days <= 0:
+            return (float("inf"), float("inf"), tf)
+        distance = min(abs(math.log(max(tf_days, 1e-9) / max(ref_days, 1e-9))) for ref_days in reference_days)
+        return (distance, tf_days, tf)
+
+    return sorted(clean_timeframes, key=_distance_to_recommended)
+
+
+def _preferred_timeframe_alternative_for_strategy(
+    *,
+    selected_timeframe: str,
+    available_timeframes: List[str],
+    strategy_type: str,
+) -> str:
+    """Retourne une TF plus cohérente si la sélection est hors profil stratégie."""
+    selected = str(selected_timeframe or "").strip()
+    resolved_type = _resolve_builder_strategy_type(strategy_type=strategy_type)
+    if not selected or not resolved_type:
+        return ""
+    ranked_timeframes = _rank_builder_timeframes_for_strategy(available_timeframes, resolved_type)
+    if not ranked_timeframes or selected == ranked_timeframes[0]:
+        return ""
+    try:
+        requirements = get_strategy_requirements(resolved_type)
+        exact_recommended = {
+            str(tf or "").strip()
+            for tf in (requirements.get("timeframes", []) or [])
+            if str(tf or "").strip()
+        }
+    except Exception:  # noqa: BLE001
+        exact_recommended = set()
+    if selected in exact_recommended:
+        return ""
+    return ranked_timeframes[0]
+
+
 def _pick_non_recent_market(
     symbols: List[str],
     timeframes: List[str],
     recent_markets: List[Tuple[str, str]],
+    *,
+    strategy_type: str = "",
+    objective: str = "",
 ) -> Tuple[str, str]:
     """Choisit un couple marché de fallback en évitant d'abord les plus récents."""
     clean_symbols = [str(s or "").strip().upper() for s in symbols if str(s or "").strip()]
@@ -3556,6 +4037,13 @@ def _pick_non_recent_market(
         clean_symbols = ["BTCUSDC"]
     if not clean_tfs:
         clean_tfs = ["1h"]
+    resolved_type = _resolve_builder_strategy_type(
+        strategy_type=strategy_type,
+        objective=objective,
+    )
+    if resolved_type:
+        clean_symbols = _rank_builder_symbols_for_strategy(clean_symbols, resolved_type)
+        clean_tfs = _rank_builder_timeframes_for_strategy(clean_tfs, resolved_type)
 
     all_pairs = [(s, tf) for s in clean_symbols for tf in clean_tfs]
     if len(all_pairs) == 1:
@@ -3578,10 +4066,24 @@ def _pick_non_recent_market(
         tf for tf in clean_tfs
         if tf_usage.get(tf, 0) == min_tf_usage and any(pair_tf == tf for _, pair_tf in pool)
     ]
-    chosen_tf = random.choice(tf_pool) if tf_pool else random.choice(clean_tfs)
+    chosen_tf = (
+        next((tf for tf in clean_tfs if tf in tf_pool), "")
+        if resolved_type
+        else (random.choice(tf_pool) if tf_pool else random.choice(clean_tfs))
+    )
+    if not chosen_tf:
+        chosen_tf = clean_tfs[0] if resolved_type else random.choice(clean_tfs)
 
     tf_pairs = [pair for pair in pool if pair[1] == chosen_tf]
-    chosen_pair = random.choice(tf_pairs) if tf_pairs else random.choice(pool)
+    if resolved_type:
+        symbol_rank = {symbol: rank for rank, symbol in enumerate(clean_symbols)}
+        ranked_pairs = sorted(
+            tf_pairs or pool,
+            key=lambda pair: (symbol_rank.get(pair[0], len(symbol_rank)), pair[0], pair[1]),
+        )
+        chosen_pair = ranked_pairs[0]
+    else:
+        chosen_pair = random.choice(tf_pairs) if tf_pairs else random.choice(pool)
     tf_usage[chosen_pair[1]] = int(tf_usage.get(chosen_pair[1], 0)) + 1
     return chosen_pair
 
@@ -3643,9 +4145,13 @@ def _builder_market_candidates(
         upper=True,
     )
     symbol_anchors = [s for s in symbol_anchors if s in symbols][:6]
-    symbol_pool = [s for s in symbols if s not in symbol_anchors]
-    random.shuffle(symbol_pool)
-    symbols = [*symbol_anchors, *symbol_pool]
+    symbols = _stable_builder_market_subset(
+        kind="symbols",
+        candidates=symbols,
+        anchors=symbol_anchors,
+        limit=_BUILDER_MARKET_SYMBOL_SAMPLE_LIMIT,
+        upper=True,
+    )
 
     timeframe_anchors = _dedupe_keep_order(
         [current_timeframe, *selected_timeframes],
@@ -3655,12 +4161,13 @@ def _builder_market_candidates(
         tf for tf in timeframe_anchors
         if tf in timeframes and _is_builder_supported_timeframe(tf)
     ][:4]
-    timeframe_pool = [tf for tf in timeframes if tf not in timeframe_anchors]
-    random.shuffle(timeframe_pool)
-    timeframes = [*timeframe_anchors, *timeframe_pool]
-
-    symbols = symbols[:24]
-    timeframes = timeframes[:12]
+    timeframes = _stable_builder_market_subset(
+        kind="timeframes",
+        candidates=timeframes,
+        anchors=timeframe_anchors,
+        limit=_BUILDER_MARKET_TIMEFRAME_SAMPLE_LIMIT,
+        upper=False,
+    )
 
     normalized_mode = normalize_universe_mode(
         getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
@@ -3690,8 +4197,22 @@ def _builder_market_candidates(
     )
     st.session_state["_builder_market_last_universe_meta"] = universe_payload
 
-    return list(universe_payload.get("symbols", []) or []), list(
-        universe_payload.get("timeframes", []) or []
+    ranked_symbols = _rank_builder_symbols_for_strategy(
+        list(universe_payload.get("symbols", []) or []),
+        normalized_strategy_type,
+    )
+    ranked_timeframes = _rank_builder_timeframes_for_strategy(
+        list(universe_payload.get("timeframes", []) or []),
+        normalized_strategy_type,
+    )
+    if normalized_strategy_type != "unknown":
+        universe_payload["symbols"] = list(ranked_symbols)
+        universe_payload["timeframes"] = list(ranked_timeframes)
+        universe_payload["strategy_rank_source"] = "config.market_selection.rank_tokens_for_strategy"
+        st.session_state["_builder_market_last_universe_meta"] = universe_payload
+
+    return list(ranked_symbols), list(
+        ranked_timeframes
     )
 
 
@@ -3865,6 +4386,82 @@ def _clone_builder_market_universe_payload(payload: Dict[str, Any]) -> Dict[str,
         return dict(payload)
 
 
+def _prewarm_builder_universe_ohlcv(
+    *,
+    state: Any,
+    symbols: List[str],
+    timeframes: List[str],
+    normalized_mode: str,
+) -> None:
+    """Pré-chauffe en PARALLÈLE le cache OHLCV résident pour les paires que
+    ``filter_market_universe`` va charger.
+
+    Why: au tout premier build d'univers (cache-miss), le scan charge ~100+
+    paires SÉQUENTIELLEMENT (chacune avec gap-detection/quality/trim complets),
+    ce qui bloque longuement avant la première proposition d'objectif. Le cache
+    résident de ``load_ohlcv`` mémorise le DataFrame traité par (symbole,
+    timeframe) pour la durée du process : on le remplit en parallèle ici, puis
+    ``filter_market_universe`` ne fait plus que des cache-hits.
+
+    Best-effort, borné, et **sans effet ni double-chargement** si le cache
+    résident est désactivé. N'est appelé qu'au cache-miss d'univers.
+    """
+    try:
+        from data.loader import load_ohlcv, ohlcv_resident_cache_stats
+    except Exception:
+        return
+    try:
+        if not bool(ohlcv_resident_cache_stats().get("enabled", False)):
+            return  # pas de cache résident -> pré-chauffage = double travail
+    except Exception:
+        return
+
+    eligible_symbols = [
+        str(s or "").strip().upper() for s in symbols if str(s or "").strip()
+    ]
+    # Reproduire le filtre canonical de filter_market_universe : ne pré-charger
+    # QUE les paires réellement chargées par le scan (zéro gaspillage).
+    if str(normalized_mode or "").strip().lower() == "canonical":
+        try:
+            from config.market_selection import get_canonical_tokens
+
+            canonical = set(get_canonical_tokens())
+            if canonical:
+                eligible_symbols = [s for s in eligible_symbols if s in canonical]
+        except Exception:
+            pass
+
+    clean_tfs = [str(tf or "").strip() for tf in timeframes if str(tf or "").strip()]
+    pairs = [(s, tf) for s in eligible_symbols for tf in clean_tfs]
+    if len(pairs) <= 4:
+        return  # trop peu pour justifier un pool de threads
+
+    start, end = _builder_market_date_bounds(state)
+    max_workers = max(2, min(8, (os.cpu_count() or 4), len(pairs)))
+
+    def _warm(pair: Tuple[str, str]) -> None:
+        sym, tf = pair
+        try:
+            load_ohlcv(sym, tf, start=start, end=end)
+        except Exception:
+            pass  # paire absente/invalide -> filter_market_universe la gérera
+
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+
+        t0 = time.perf_counter()
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            list(executor.map(_warm, pairs))
+        logger.info(
+            "🔥 [PERF] Pré-chauffage univers: %d paires / %d workers en %.1fs",
+            len(pairs),
+            max_workers,
+            time.perf_counter() - t0,
+        )
+    except Exception:
+        logger.debug("builder_universe_prewarm_failed", exc_info=True)
+
+
 def _get_or_build_builder_market_universe(
     *,
     state: Any,
@@ -3910,6 +4507,15 @@ def _get_or_build_builder_market_universe(
         if load_error is not None or not _has_builder_market_df(loaded_df):
             return None
         return loaded_df
+
+    # Pré-chauffage parallèle du cache OHLCV résident : transforme le scan
+    # séquentiel (~100+ paires) en cache-hits pour filter_market_universe.
+    _prewarm_builder_universe_ohlcv(
+        state=state,
+        symbols=symbols,
+        timeframes=timeframes,
+        normalized_mode=normalized_mode,
+    )
 
     universe_payload = filter_market_universe(
         symbols=symbols,
@@ -4116,6 +4722,7 @@ def _build_builder_market_probe_pairs(
     preferred_pairs: List[Tuple[str, str]] | None = None,
     recent_markets: List[Tuple[str, str]] | None = None,
     max_pairs: int = 24,
+    strategy_type: str = "",
 ) -> List[Tuple[str, str]]:
     clean_symbols = [str(s or "").strip().upper() for s in symbols if str(s or "").strip()]
     clean_tfs = [str(tf or "").strip() for tf in timeframes if str(tf or "").strip()]
@@ -4123,6 +4730,10 @@ def _build_builder_market_probe_pairs(
         clean_symbols = ["BTCUSDC"]
     if not clean_tfs:
         clean_tfs = ["1h"]
+    resolved_type = _resolve_builder_strategy_type(strategy_type=strategy_type)
+    if resolved_type:
+        clean_symbols = _rank_builder_symbols_for_strategy(clean_symbols, resolved_type)
+        clean_tfs = _rank_builder_timeframes_for_strategy(clean_tfs, resolved_type)
 
     ordered_pairs: List[Tuple[str, str]] = []
     seen: set[Tuple[str, str]] = set()
@@ -4148,7 +4759,18 @@ def _build_builder_market_probe_pairs(
     recent_pairs = [pair for pair in all_pairs if pair in recent_set]
 
     for pool in (non_recent_pairs, recent_pairs):
-        if len(pool) > 1:
+        if resolved_type:
+            symbol_rank = {symbol: rank for rank, symbol in enumerate(clean_symbols)}
+            timeframe_rank = {tf: rank for rank, tf in enumerate(clean_tfs)}
+            pool.sort(
+                key=lambda pair: (
+                    symbol_rank.get(pair[0], len(symbol_rank)),
+                    timeframe_rank.get(pair[1], len(timeframe_rank)),
+                    pair[0],
+                    pair[1],
+                ),
+            )
+        elif len(pool) > 1:
             random.shuffle(pool)
         for pair_symbol, pair_timeframe in pool:
             _append_pair(pair_symbol, pair_timeframe)
@@ -4172,18 +4794,19 @@ def _find_first_valid_builder_market(
     objective: str = "",
     purpose: str = "builder",
 ) -> tuple[str, str, Any, Dict[str, Any]]:
+    strategy_type = infer_strategy_type(
+        strategy_key=str(getattr(state, "strategy_key", "") or ""),
+        objective=objective,
+    )
     probe_pairs = _build_builder_market_probe_pairs(
         symbols,
         timeframes,
         preferred_pairs=preferred_pairs,
         recent_markets=recent_markets,
         max_pairs=max_pairs,
+        strategy_type=strategy_type,
     )
     failures: List[Dict[str, str]] = []
-    strategy_type = infer_strategy_type(
-        strategy_key=str(getattr(state, "strategy_key", "") or ""),
-        objective=objective,
-    )
     universe_mode = normalize_universe_mode(
         getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
         purpose=purpose,
@@ -4364,6 +4987,7 @@ def _pick_market_for_objective(
 
     run_symbol = str(pick.get("symbol", default_symbol) or default_symbol).upper()
     run_timeframe = str(pick.get("timeframe", default_timeframe) or default_timeframe)
+    strategy_preferred_pairs: List[Tuple[str, str]] = []
     run_df, load_error, data_source = _load_builder_market_data(
         state=state,
         symbol=run_symbol,
@@ -4383,6 +5007,19 @@ def _pick_market_for_objective(
         if not dataset_ok:
             load_error = dataset_error
             data_source = "invalid_dataset"
+        else:
+            preferred_timeframe = _preferred_timeframe_alternative_for_strategy(
+                selected_timeframe=run_timeframe,
+                available_timeframes=timeframes,
+                strategy_type=strategy_type,
+            )
+            if preferred_timeframe and preferred_timeframe != run_timeframe:
+                strategy_preferred_pairs.append((run_symbol, preferred_timeframe))
+                load_error = (
+                    f"strategy/timeframe deprioritized "
+                    f"({strategy_type}: selected={run_timeframe}, preferred={preferred_timeframe})"
+                )
+                data_source = "invalid_strategy_timeframe"
 
     if load_error:
         fallback_symbol, fallback_timeframe, fallback_candidate_df, fallback_meta = _find_first_valid_builder_market(
@@ -4392,7 +5029,7 @@ def _pick_market_for_objective(
             default_symbol=default_symbol,
             default_timeframe=default_timeframe,
             fallback_df=fallback_df,
-            preferred_pairs=[(default_symbol, default_timeframe)],
+            preferred_pairs=[*strategy_preferred_pairs, (default_symbol, default_timeframe)],
             recent_markets=recent_markets,
             objective=objective,
             purpose=purpose,
@@ -4572,6 +5209,7 @@ def _run_single_builder_session(
     preload_model: bool,
     keep_alive_minutes: int,
     unload_after_run: bool,
+    defer_unload_to_caller: bool = False,
     auto_start_ollama: bool,
     max_iterations: int,
     target_sharpe: float,
@@ -4612,8 +5250,14 @@ def _run_single_builder_session(
         st.markdown(f"### {session_label}")
     st.markdown(f"**Objectif:** {objective}")
     if show_config_caption:
+        inference_budget = _build_builder_inference_budget_chip(
+            model,
+            global_settings=llm_inference_global_settings,
+            model_profiles=llm_inference_model_profiles,
+        )
         st.caption(
             f"Modèle: `{model}` | Max itérations: {max_iterations} | "
+            f"{inference_budget} | "
             f"Sharpe cible: {target_sharpe} | Capital: ${capital:,.0f} | "
             f"Marché: {symbol} {timeframe} | "
             f"Univers: `{universe_mode}` | "
@@ -4627,6 +5271,11 @@ def _run_single_builder_session(
 
     def _release_runtime_model() -> None:
         nonlocal runtime_model_released
+        # Mode boucle autonome : NE PAS décharger entre les sessions. Le modèle
+        # reste résident (évite le cycle décharge/recharge GPU à chaque session) ;
+        # _finalize_autonomous_loop fait l'unique déchargement en fin de boucle.
+        if defer_unload_to_caller:
+            return
         if runtime_model_released or not unload_after_run:
             return
         runtime_model_released = True
@@ -4792,9 +5441,13 @@ def _run_single_builder_session(
                 decision = str(raw_payload.get("decision", "") or "continue")
                 progress_text = f"Itération {iteration}/{max_iters} — décision {decision}"
             elif event == "session_done":
+                done_badge = _get_autonomous_recap_status_badge(
+                    {"status": event_payload.get("status", "")}
+                )
                 progress_text = (
-                    f"Session terminée — {event_payload.get('status', 'n/a')} "
-                    f"({raw_payload.get('total_iterations', 0)} itérations)"
+                    f"Session terminée — {_format_builder_attribution_badge_text(done_badge)} "
+                    f"(statut {event_payload.get('status', 'n/a')}, "
+                    f"{raw_payload.get('total_iterations', 0)} itérations)"
                 )
             else:
                 progress_text = f"Itération {iteration}/{max_iters} — activité en cours"
@@ -5047,11 +5700,17 @@ def _render_autonomous_recap(
         h_canonical_rate = h_gen_stats.get("canonical_rate")
         h_llm_pct = f"{h_canonical_rate * 100:.0f}%" if h_canonical_rate is not None else "n/a"
         status = h.get("status", "?")
-        # Toujours afficher le BEST run (achievement de la session) plutôt
+        # Toujours afficher le BEST run (meilleur PnL de la session) plutôt
         # que la dernière itération (qui peut être une régression du LLM).
+        # Toutes les colonnes affichées sont alignées sur CE run unique.
         sharpe = h.get("best_sharpe")
         if sharpe is None:
             sharpe = h.get("final_sharpe")
+        # Sharpe AFFICHÉ = celui du run au meilleur PnL (best_return_sharpe),
+        # pas le best_sharpe sélectionné par score télémétrie (autre itération).
+        display_sharpe = h.get("best_return_sharpe")
+        if display_sharpe is None:
+            display_sharpe = sharpe
         ret = h.get("best_return")
         if ret is None:
             ret = h.get("final_return")
@@ -5067,7 +5726,7 @@ def _render_autonomous_recap(
         # Régression detection: si l'itération finale a clairement régressé par
         # rapport au best, on annote la cellule pour l'expliquer.
         _final_sharpe = _safe_optional_float(h.get("final_sharpe"))
-        _best_sharpe_num = _safe_optional_float(h.get("best_sharpe"))
+        _best_sharpe_num = _safe_optional_float(display_sharpe)
         _final_return = _safe_optional_float(h.get("final_return"))
         _best_return_num = _safe_optional_float(h.get("best_return"))
         regression_sharpe = (
@@ -5082,21 +5741,22 @@ def _render_autonomous_recap(
             and _best_return_num > 0.0
             and _final_return < max(0.0, _best_return_num * 0.5)
         )
+        # Marqueur discret: le run affiché = meilleur PnL. S'il diffère de la
+        # dernière itération (le LLM a régressé ensuite), on signale juste le
+        # fait via une icône ↻. La valeur finale reste consultable au survol.
         sharpe_regression_html = ""
         if regression_sharpe:
             sharpe_regression_html = (
                 f"<span class='builder-autonomous-recap-regress' "
-                f"title='Régression LLM en fin de session: "
-                f"dernière itération sharpe={_final_sharpe:.3f}'>"
-                f"↓ {_final_sharpe:.2f}</span>"
+                f"title='Run affiché = meilleur PnL. Le LLM a régressé ensuite "
+                f"(dernière itération sharpe={_final_sharpe:.3f}).'>↻</span>"
             )
         return_regression_html = ""
         if regression_return:
             return_regression_html = (
                 f"<span class='builder-autonomous-recap-regress' "
-                f"title='Régression LLM en fin de session: "
-                f"dernière itération return={_final_return:+.2f}%'>"
-                f"↓ {_final_return:+.0f}%</span>"
+                f"title='Run affiché = meilleur PnL. Le LLM a régressé ensuite "
+                f"(dernière itération return={_final_return:+.2f}%).'>↻</span>"
             )
 
         badge = _get_autonomous_recap_status_badge(h)
@@ -5104,7 +5764,7 @@ def _render_autonomous_recap(
             f"<span class='builder-autonomous-recap-status "
             f"builder-autonomous-recap-status--{badge['tone']}'>"
             f"{_escape_autonomous_recap_cell(badge['icon'])} "
-            f"{_escape_autonomous_recap_cell(badge['label'])}</span>"
+            f"{_escape_autonomous_recap_cell(_format_builder_attribution_label(badge))}</span>"
         )
         objective_html = (
             "<div class='builder-autonomous-recap-objective-cell' "
@@ -5124,7 +5784,7 @@ def _render_autonomous_recap(
             f"<td>{objective_html}</td>"
             f"<td>{status_html}</td>"
             f"<td class='builder-autonomous-recap-num'>"
-            f"<span class='builder-autonomous-recap-best'>{_escape_autonomous_recap_cell(_fmt_float(sharpe, '{:.3f}'))}</span>"
+            f"<span class='builder-autonomous-recap-best'>{_escape_autonomous_recap_cell(_fmt_float(display_sharpe, '{:.3f}'))}</span>"
             f"{sharpe_regression_html}"
             f"</td>"
             f"<td class='builder-autonomous-recap-num'>"
@@ -5155,7 +5815,11 @@ def _render_autonomous_recap(
                 "model_name": h_model,
                 "llm_canonical_pct": h_llm_pct,
                 "status": status,
-                "status_display": f"{badge['icon']} {badge['label']}",
+                "status_display": _format_builder_attribution_badge_text(
+                    badge,
+                    prefix="",
+                ),
+                "attribution": _format_builder_attribution_label(badge),
                 "best_sharpe": h.get("best_sharpe"),
                 "final_sharpe": sharpe,
                 "final_return_pct": ret,
@@ -5201,22 +5865,21 @@ def _render_autonomous_recap(
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    font-size: 0.92rem;
+    font-size: var(--bc-fs-text);
     table-layout: auto;
 }
 .builder-autonomous-recap-table thead th {
     position: sticky;
     top: 0;
     z-index: 25;
-    background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-    color: #f1f5f9;
-    font-weight: 700;
-    letter-spacing: 0.02em;
+    background: var(--bc-surface-2);
+    color: var(--bc-text-2);
+    font-weight: var(--bc-fw-sb);
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    font-size: 0.78rem;
-    padding: 0.55rem 0.6rem;
-    border-bottom: 2px solid rgba(96, 165, 250, 0.45);
-    box-shadow: 0 6px 14px -8px rgba(2, 8, 23, 0.55);
+    font-size: var(--bc-fs-caption);
+    padding: var(--bc-sp-xs) var(--bc-sp-sm);
+    border-bottom: 1px solid var(--bc-border);
     text-align: left;
     vertical-align: middle;
     white-space: nowrap;
@@ -5225,17 +5888,18 @@ def _render_autonomous_recap(
     text-align: right;
 }
 .builder-autonomous-recap-table tbody tr:nth-child(even) {
-    background: rgba(30, 41, 59, 0.18);
+    background: var(--bc-surface);
 }
 .builder-autonomous-recap-table tbody tr:hover {
-    background: rgba(96, 165, 250, 0.10);
+    background: var(--bc-surface-2);
     transition: background 120ms ease-out;
 }
 .builder-autonomous-recap-table td {
-    padding: 0.42rem 0.6rem;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    padding: var(--bc-sp-xs) var(--bc-sp-sm);
+    border-bottom: 1px solid var(--bc-divider);
     text-align: left;
     vertical-align: top;
+    color: var(--bc-text);
 }
 .builder-autonomous-recap-objective-cell {
     position: relative;
@@ -5245,7 +5909,7 @@ def _render_autonomous_recap(
     padding-right: 1.8rem;
 }
 .builder-autonomous-recap-objective-preview {
-    color: #e6eefc;
+    color: var(--bc-text);
 }
 .builder-autonomous-recap-objective-trigger {
     position: absolute;
@@ -5256,12 +5920,11 @@ def _render_autonomous_recap(
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 999px;
-    background: linear-gradient(135deg, rgba(37, 99, 235, 0.98), rgba(96, 165, 250, 0.96));
-    color: #ffffff;
-    font-size: 0.8rem;
-    font-weight: 700;
-    box-shadow: 0 8px 18px rgba(30, 64, 175, 0.28);
+    border-radius: var(--bc-r-sm);
+    background: var(--bc-gold);
+    color: var(--bc-bg);
+    font-size: var(--bc-fs-caption);
+    font-weight: var(--bc-fw-bold);
     opacity: 0;
     transform: translateY(-2px);
     transition: opacity 140ms ease, transform 140ms ease;
@@ -5276,14 +5939,11 @@ def _render_autonomous_recap(
     width: min(56rem, 78vw);
     max-height: 15rem;
     overflow: auto;
-    padding: 0.85rem 0.95rem;
-    border-radius: 14px;
-    border: 1px solid rgba(96, 165, 250, 0.35);
-    background:
-        radial-gradient(circle at top left, rgba(59, 130, 246, 0.14), transparent 38%),
-        linear-gradient(180deg, rgba(9, 17, 31, 0.99), rgba(14, 26, 45, 0.98));
-    color: #f8fbff;
-    box-shadow: 0 18px 38px rgba(2, 8, 23, 0.34);
+    padding: var(--bc-sp-md);
+    border-radius: var(--bc-r-md);
+    border: 1px solid var(--bc-border);
+    background: var(--bc-surface);
+    color: var(--bc-text);
 }
 .builder-autonomous-recap-objective-cell:hover .builder-autonomous-recap-objective-trigger,
 .builder-autonomous-recap-objective-cell:focus-within .builder-autonomous-recap-objective-trigger {
@@ -5303,84 +5963,86 @@ def _render_autonomous_recap(
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    padding: 0.18rem 0.55rem;
-    border-radius: 999px;
-    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: var(--bc-r-sm);
+    font-weight: var(--bc-fw-sb);
     white-space: nowrap;
-    font-size: 0.82rem;
-    letter-spacing: 0.02em;
+    font-size: var(--bc-fs-caption);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
 }
 .builder-autonomous-recap-status--positive {
-    color: #052e16;
-    background: rgba(34, 197, 94, 0.22);
-    border: 1px solid rgba(34, 197, 94, 0.55);
+    color: var(--bc-success);
+    background: rgba(63, 185, 80, 0.12);
+    border: 1px solid rgba(63, 185, 80, 0.35);
 }
 .builder-autonomous-recap-status--candidate {
-    color: #fef3c7;
-    background: rgba(14, 165, 233, 0.18);
-    border: 1px solid rgba(56, 189, 248, 0.50);
+    color: var(--bc-info);
+    background: rgba(88, 166, 255, 0.10);
+    border: 1px solid rgba(88, 166, 255, 0.35);
 }
 .builder-autonomous-recap-status--negative {
-    color: #fef2f2;
-    background: rgba(248, 113, 113, 0.20);
-    border: 1px solid rgba(239, 68, 68, 0.55);
+    color: var(--bc-error);
+    background: rgba(240, 96, 107, 0.10);
+    border: 1px solid rgba(240, 96, 107, 0.35);
 }
 .builder-autonomous-recap-status--crash {
-    color: #fef2f2;
-    background: rgba(220, 38, 38, 0.32);
-    border: 1px solid rgba(220, 38, 38, 0.65);
+    color: var(--bc-error);
+    background: rgba(240, 96, 107, 0.18);
+    border: 1px solid rgba(240, 96, 107, 0.55);
 }
 .builder-autonomous-recap-status--neutral {
-    color: #fef3c7;
-    background: rgba(217, 119, 6, 0.20);
-    border: 1px solid rgba(217, 119, 6, 0.55);
+    color: var(--bc-warning);
+    background: rgba(240, 136, 62, 0.10);
+    border: 1px solid rgba(240, 136, 62, 0.35);
 }
 .builder-autonomous-recap-best {
-    font-weight: 700;
+    font-weight: var(--bc-fw-bold);
+    color: var(--bc-gold-bright);
 }
 .builder-autonomous-recap-regress {
     display: block;
     margin-top: 0.15rem;
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: #fca5a5;
+    font-size: var(--bc-fs-caption);
+    font-weight: var(--bc-fw-sb);
+    color: var(--bc-error);
     opacity: 0.85;
     cursor: help;
     letter-spacing: 0.01em;
 }
 .builder-autonomous-recap-empty {
     text-align: center !important;
-    padding: 0.95rem 0.75rem !important;
-    color: rgba(226, 232, 240, 0.72);
+    padding: var(--bc-sp-md) !important;
+    color: var(--bc-text-3);
     font-style: italic;
 }
 .builder-autonomous-recap-details {
-        margin-top: 0.85rem;
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        border-radius: 0.75rem;
-        padding: 0.35rem 0.75rem 0.6rem;
-        background: rgba(15, 23, 42, 0.18);
+        margin-top: var(--bc-sp-sm);
+        border: 1px solid var(--bc-border);
+        border-radius: var(--bc-r-md);
+        padding: var(--bc-sp-xs) var(--bc-sp-md) var(--bc-sp-sm);
+        background: var(--bc-surface);
 }
 .builder-autonomous-recap-history {
-        border: 1px solid rgba(148, 163, 184, 0.22);
-        border-radius: 0.75rem;
-        padding: 0.35rem 0.75rem 0.75rem;
-        background: rgba(15, 23, 42, 0.12);
+        border: 1px solid var(--bc-border);
+        border-radius: var(--bc-r-md);
+        padding: var(--bc-sp-xs) var(--bc-sp-md) var(--bc-sp-sm);
+        background: var(--bc-surface);
 }
-.builder-autonomous-recap-history summary {
-        cursor: pointer;
-        font-weight: 700;
-        margin: 0.25rem 0 0.65rem;
-}
+.builder-autonomous-recap-history summary,
 .builder-autonomous-recap-details summary {
         cursor: pointer;
-        font-weight: 700;
-        margin: 0.25rem 0;
+        font-weight: var(--bc-fw-sb);
+        color: var(--bc-gold-pale);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: var(--bc-fs-card);
+        margin: 0.25rem 0 0.55rem;
 }
 .builder-autonomous-recap-legend {
-        margin-top: 0.75rem;
-        font-size: 0.88rem;
-        color: rgba(226, 232, 240, 0.92);
+        margin-top: var(--bc-sp-sm);
+        font-size: var(--bc-fs-text);
+        color: var(--bc-text-2);
 }
 </style>
 <details class="builder-autonomous-recap-history" open>
@@ -5394,7 +6056,7 @@ def _render_autonomous_recap(
       <th>Modele</th>
       <th class="builder-autonomous-recap-num">LLM %</th>
       <th>Objectif</th>
-      <th>Statut</th>
+      <th>Attribution</th>
       <th class="builder-autonomous-recap-num" title="Meilleur Sharpe atteint pendant la session (best run)">Sharpe</th>
       <th class="builder-autonomous-recap-num" title="Meilleur return atteint pendant la session (best run)">Return</th>
       <th class="builder-autonomous-recap-num">Gain total $</th>
@@ -5431,8 +6093,9 @@ def _render_autonomous_recap(
     <strong>Fallback simple</strong> = objectif de secours produit par le runtime quand il doit repartir sans dependre du flux LLM principal.<br>
     <strong>Modele :</strong> nom du modele LLM utilise pour la session.
     <strong>LLM % :</strong> pourcentage d'iterations generees par le LLM (canoniques) vs fallback deterministe.<br>
+    <strong>Attribution :</strong> libelle commun du run, identique a celui affiche dans les resumes et cartes de resultat.<br>
     <strong>Lecture des metriques :</strong> <strong>Sharpe/Return/Max DD/Trades</strong> = metriques du <em>best run</em> (meilleure itération de la session).
-    Si l'itération finale a régressé par rapport au best, une annotation <span style="color:#fca5a5;font-weight:700">↓</span> en dessous indique la valeur de la dernière itération.<br>
+    Si l'itération finale a régressé par rapport au best, une annotation <span style="color:var(--bc-error);font-weight:var(--bc-fw-bold)">↓</span> en dessous indique la valeur de la dernière itération.<br>
     <strong>Gain total $ / $ par jour</strong> = derive du PnL final si disponible, sinon du return final applique au capital initial ;
     <strong>Jours testes</strong> = plage de donnees reelle si disponible, sinon estimation via le nombre de barres et le timeframe.
 </div>
@@ -5448,8 +6111,10 @@ def _render_autonomous_recap(
     with overview_tab:
         if history:
             best = max(history, key=_autonomous_history_strategy_sort_key)
+            best_badge = _get_autonomous_recap_status_badge(best)
             st.success(
-                f"**Meilleure session :** Return {_fmt_float(best.get('final_return', best.get('best_return')), '{:+.2f}%')} "
+                f"**Meilleure session :** {_format_builder_attribution_badge_text(best_badge)} — "
+                f"Return {_fmt_float(best.get('final_return', best.get('best_return')), '{:+.2f}%')} "
                 f"(Sharpe {_fmt_float(best.get('final_sharpe', best.get('best_sharpe')), '{:.3f}')}) — "
                 f"{best.get('objective', '')[:80]}"
             )
@@ -5572,6 +6237,22 @@ def _record_autonomous_session_result(
             best_score = None
 
         gen_stats = compute_session_generation_stats(session)
+        best_iteration = getattr(session, "best_iteration", None)
+        best_metrics = (
+            best_iteration.backtest_result.metrics
+            if best_iteration is not None
+            and getattr(best_iteration, "backtest_result", None) is not None
+            and isinstance(getattr(best_iteration.backtest_result, "metrics", None), dict)
+            else {}
+        )
+        best_candidate_classification = (
+            classify_builder_candidate_tier(
+                best_metrics,
+                target_sharpe=float(getattr(session, "target_sharpe", 1.0) or 1.0),
+            )
+            if best_metrics
+            else {}
+        )
 
         history_entry = {
             **history_entry_base,
@@ -5579,6 +6260,9 @@ def _record_autonomous_session_result(
             "generation_stats": gen_stats,
             "status": session.status,
             "best_sharpe": session.best_sharpe,
+            "best_raw_sharpe": getattr(session, "best_raw_sharpe", None),
+            "best_candidate_tier": best_candidate_classification.get("tier"),
+            "best_candidate_reason": best_candidate_classification.get("reason"),
             "best_telemetry_score": best_score,
             "best_score": best_score,
             **best_return_snapshot,
@@ -5898,8 +6582,14 @@ def _init_autonomous_loop_runtime(
         extra_chips=[
             f"Pause: {auto_pause}s",
             "Objectifs: llm-first",
-            f"Max itérations/session: {max_iterations}",
-        ],
+        ]
+        + _build_builder_max_iteration_chips(
+            max_iterations,
+            model=model,
+            global_settings=llm_inference_global_settings,
+            model_profiles=llm_inference_model_profiles,
+            max_label="Max itérations/session",
+        ),
         subtitle="Boucle continue pensée pour garder le contexte, le rythme et le meilleur résultat visibles sans noyer l'écran sous le runtime.",
     )
     autonomous_runtime_lines: List[str] = [
@@ -6063,7 +6753,14 @@ def _init_autonomous_loop_runtime(
 
 
 def _finalize_autonomous_loop(*, ctx: Dict[str, Any]) -> None:
-    """Render recap, unload model, sync state after autonomous loop ends."""
+    """Render recap, unload model, sync state after autonomous loop ends.
+
+    Robuste : le recap et le déchargement modèle sont best-effort, mais la synchro
+    d'état, le nettoyage de session et le marquage runtime « stopped » s'exécutent
+    TOUJOURS. Un ``st.rerun()`` final ramène proprement la page à l'écran d'accueil
+    autonome (qui ré-affiche le recap) au lieu de figer sur le dernier
+    « Session terminée » — c'est le symptôme « ça ne renvoie pas le roulement ».
+    """
     history = ctx["history"]
     supervisor = ctx["supervisor"]
     recap_placeholder = ctx["recap_placeholder"]
@@ -6074,32 +6771,57 @@ def _finalize_autonomous_loop(*, ctx: Dict[str, Any]) -> None:
     terminal_reason = ctx["terminal_reason"]
     terminal_error = ctx["terminal_error"]
 
-    # ── Fin de la boucle autonome ──
-    with recap_placeholder.container():
-        _render_autonomous_recap(history, supervisor)
+    # ── Fin de la boucle autonome (rendu best-effort) ──
+    try:
+        with recap_placeholder.container():
+            _render_autonomous_recap(history, supervisor)
 
-    with status_container:
-        n = len(history)
-        best_ever = _history_best_sharpe(history)
-        show_status(
-            "success" if best_ever > 0 else "info",
-            f"Mode autonome terminé : {n} sessions | Meilleur Sharpe: {best_ever:.3f}",
+        with status_container:
+            n = len(history)
+            best_ever = _history_best_sharpe(history)
+            best_entry = max(history, key=_autonomous_history_strategy_sort_key) if history else {}
+            best_attribution = _format_builder_attribution_badge_text(
+                _get_autonomous_recap_status_badge(best_entry),
+            ) if best_entry else "Attribution: n/a"
+            show_status(
+                "success" if best_ever > 0 else "info",
+                f"Mode autonome terminé : {n} sessions | {best_attribution} | Meilleur Sharpe: {best_ever:.3f}",
+            )
+
+        if unload_after_run and terminal_reason != "manual_stop":
+            with st.spinner(f"💾 Déchargement du modèle `{model}`…"):
+                if _unload_ollama_model(model=model, ollama_host=ollama_host):
+                    st.caption(f"✅ Modèle `{model}` déchargé")
+                else:
+                    st.warning(f"⚠️ Impossible de décharger `{model}`")
+    except Exception:
+        logger.warning("autonomous_finalize_render_failed", exc_info=True)
+
+    # ── Nettoyage critique : TOUJOURS exécuté (chaque étape isolée) ──
+    try:
+        _sync_autonomous_state(history, supervisor)
+    except Exception:
+        logger.warning("autonomous_finalize_sync_failed", exc_info=True)
+    try:
+        clear_execution_state(st.session_state)
+    except Exception:
+        logger.warning("autonomous_finalize_clear_failed", exc_info=True)
+    try:
+        mark_builder_autonomous_runtime_stopped(
+            reason=terminal_reason,
+            manual_stop=(terminal_reason == "manual_stop"),
+            error=terminal_error,
         )
+    except Exception:
+        logger.warning("autonomous_finalize_mark_stopped_failed", exc_info=True)
 
-    if unload_after_run and terminal_reason != "manual_stop":
-        with st.spinner(f"💾 Déchargement du modèle `{model}`…"):
-            if _unload_ollama_model(model=model, ollama_host=ollama_host):
-                st.caption(f"✅ Modèle `{model}` déchargé")
-            else:
-                st.warning(f"⚠️ Impossible de décharger `{model}`")
-
-    _sync_autonomous_state(history, supervisor)
-    clear_execution_state(st.session_state)
-    mark_builder_autonomous_runtime_stopped(
-        reason=terminal_reason,
-        manual_stop=(terminal_reason == "manual_stop"),
-        error=terminal_error,
-    )
+    # ── Transition UI propre : revenir à l'écran d'accueil autonome ──
+    # is_running=False + runtime « stopped » ⇒ render_builder_view route vers le hero
+    # idle (qui ré-affiche le recap) ; le rerun ne se déclenche donc qu'UNE seule fois
+    # et ne peut pas boucler. RerunException hérite de BaseException : elle n'est PAS
+    # avalée par les `except Exception` en amont (_render_builder_view_safe) et remonte
+    # proprement jusqu'au script runner Streamlit.
+    st.rerun()
 
 
 def _execute_builder_autonomous_loop(
@@ -6169,7 +6891,11 @@ def _execute_builder_autonomous_loop(
         session_num += 1
         # Rafraîchir le flux de pensée live dès le début de chaque nouvelle session
         # (ThoughtStream vient de réinitialiser _live_thoughts.md)
-        _refresh_live_thoughts_code_slot(tail_lines=180)
+        # Best-effort : un échec de rafraîchissement UI ne doit JAMAIS tuer la boucle 24/24.
+        try:
+            _refresh_live_thoughts_code_slot(tail_lines=180)
+        except Exception:
+            logger.debug("refresh_live_thoughts_code_slot_failed", exc_info=True)
         _loop_body_start = time.perf_counter()
         session_started_at = datetime.now()
         effective_objective_mode = requested_objective_mode
@@ -6252,8 +6978,8 @@ def _execute_builder_autonomous_loop(
                 break
 
             reuse_prepared_runtime = (
-                session_num == 1
-                and single_llm_runtime_prepared
+                single_llm_runtime_prepared
+                and not unload_after_run
                 and str(model or "").strip() == single_llm_prepared_model
                 and _normalize_ollama_host(session_llm_host) == single_llm_prepared_host
             )
@@ -6318,11 +7044,21 @@ def _execute_builder_autonomous_loop(
 
             session_symbol = symbol
             session_timeframe = timeframe
+            autonomous_universe_mode = normalize_universe_mode(
+                getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
+                purpose="builder_autonomous",
+            )
+            autonomous_strategy_type = infer_strategy_type(
+                strategy_key=str(getattr(state, "strategy_key", "") or ""),
+                objective=objective,
+            )
             if effective_auto_market_pick:
                 session_symbol, session_timeframe = _pick_non_recent_market(
                     all_symbols,
                     all_timeframes,
                     _recent_markets,
+                    strategy_type=autonomous_strategy_type,
+                    objective=objective,
                 )
             default_session_symbol = session_symbol
             default_session_timeframe = session_timeframe
@@ -6343,14 +7079,6 @@ def _execute_builder_autonomous_loop(
                         pre_data_source,
                     )
             market_pick: Dict[str, Any] = {}
-            autonomous_universe_mode = normalize_universe_mode(
-                getattr(state, "builder_universe_mode", BUILDER_UNIVERSE_MODE_DEFAULT),
-                purpose="builder_autonomous",
-            )
-            autonomous_strategy_type = infer_strategy_type(
-                strategy_key=str(getattr(state, "strategy_key", "") or ""),
-                objective=objective,
-            )
             if effective_auto_market_pick:
                 spinner_label = (
                     "🧭 Sélection automatique du marché (token/TF)…"
@@ -6483,6 +7211,31 @@ def _execute_builder_autonomous_loop(
                     f"Session #{session_num}: marché rejeté par l'univers `{autonomous_universe_mode}` "
                     f"({session_symbol} {session_timeframe}) - {session_dataset_msg}"
                 )
+                # Anti-thrash: l'auto-market-pick propose en boucle des marchés
+                # que l'univers rejette (volume/TF/données). Après N rejets
+                # consécutifs, on force la prochaine session sur le marché par
+                # défaut (auto-pick off une fois) pour casser le gaspillage.
+                if effective_auto_market_pick:
+                    _dataset_rejections = int(
+                        supervisor.get("consecutive_dataset_rejections", 0) or 0
+                    ) + 1
+                    supervisor["consecutive_dataset_rejections"] = _dataset_rejections
+                    if _dataset_rejections >= _AUTONOMOUS_MAX_CONSECUTIVE_DATASET_REJECTIONS:
+                        supervisor["disable_auto_market_pick_once"] = True
+                        supervisor["consecutive_dataset_rejections"] = 0
+                        st.info(
+                            f"🛟 {_dataset_rejections} rejets marché consécutifs — "
+                            "auto-marché désactivé pour la prochaine session "
+                            "(retour au marché par défaut)."
+                        )
+                        logger.warning(
+                            "builder_autonomous_dataset_rejection_guard session=%d "
+                            "rejections=%d → disable_auto_market_pick_once",
+                            session_num,
+                            _dataset_rejections,
+                        )
+            else:
+                supervisor["consecutive_dataset_rejections"] = 0
             with session_placeholder.container():
                 if session_dataset_ok:
                     t0 = time.perf_counter()
@@ -6497,6 +7250,7 @@ def _execute_builder_autonomous_loop(
                         preload_model=preload_model,
                         keep_alive_minutes=keep_alive_minutes,
                         unload_after_run=unload_after_run,
+                        defer_unload_to_caller=True,
                         auto_start_ollama=auto_start_ollama,
                         max_iterations=max_iterations,
                         target_sharpe=target_sharpe,
@@ -6606,15 +7360,20 @@ def _execute_builder_autonomous_loop(
             for remaining in range(effective_pause, 0, -1):
                 if not st.session_state.get("is_running", False):
                     break
-                _heartbeat_builder_autonomous_runtime(
-                    last_event="countdown",
-                    last_progress_event="countdown",
-                    last_progress_phase="pause",
-                    last_progress_iteration=0,
-                )
-                countdown_placeholder.info(
-                    f"⏱️ Prochaine session dans **{remaining}s**..."
-                )
+                # Best-effort : un hoquet I/O (heartbeat) ou UI (placeholder périmé)
+                # ne doit pas interrompre le countdown ni tuer la boucle 24/24.
+                try:
+                    _heartbeat_builder_autonomous_runtime(
+                        last_event="countdown",
+                        last_progress_event="countdown",
+                        last_progress_phase="pause",
+                        last_progress_iteration=0,
+                    )
+                    countdown_placeholder.info(
+                        f"⏱️ Prochaine session dans **{remaining}s**..."
+                    )
+                except Exception:
+                    logger.debug("autonomous_countdown_tick_failed", exc_info=True)
                 time.sleep(1)
             try:
                 countdown_placeholder.empty()
@@ -6676,7 +7435,12 @@ def _execute_builder_manual_session(
         target_sharpe=target_sharpe,
         capital=capital,
         auto_market_pick=auto_market_pick,
-        extra_chips=[f"Max itérations: {max_iterations}"],
+        extra_chips=_build_builder_max_iteration_chips(
+            max_iterations,
+            model=model,
+            global_settings=llm_inference_global_settings,
+            model_profiles=llm_inference_model_profiles,
+        ),
         subtitle="Session unique orientée création et lecture rapide des itérations.",
     )
     live_thoughts_panel_placeholder = st.empty()
@@ -6808,11 +7572,13 @@ def _execute_builder_manual_session(
     if session is not None:
         st.session_state["builder_session"] = session
         st.session_state["builder_last_objective"] = objective
+        attribution = _get_builder_session_attribution_badge(session)
         with status_container:
             show_status(
                 "success" if session.status == "success" else "info",
                 "Builder terminé: "
-                f"{session.status} (Sharpe {_format_optional_float(getattr(session, 'best_sharpe', None), '{:.3f}')})",
+                f"{_format_builder_attribution_badge_text(attribution, prefix='Attribution')} "
+                f"(statut {session.status}, Sharpe {_format_optional_float(getattr(session, 'best_sharpe', None), '{:.3f}')})",
             )
     clear_execution_state(st.session_state)
     return
@@ -6928,7 +7694,7 @@ def render_builder_view(
             logger.debug("builder_autonomous_state_sync_failed", exc_info=True)
     autonomous_running = autonomous and bool(st.session_state.get("is_running", False))
 
-    if auto_market_pick:
+    if auto_market_pick and (not autonomous or autonomous_running):
         try:
             _call_builder_market_candidates(
                 state,
@@ -6948,18 +7714,26 @@ def render_builder_view(
             getattr(state, "builder_auto_pause", BUILDER_AUTO_PAUSE_DEFAULT)
             or BUILDER_AUTO_PAUSE_DEFAULT
         )
-        persisted_supervisor_state = _load_autonomous_supervisor_state()
+        # Perf sidebar : ne PAS reparser le JSON superviseur (~3 Mo) à chaque rendu
+        # idle. session_state est la copie canonique (maintenue par _sync_autonomous_state) ;
+        # on ne lit le disque qu'au tout premier rendu (cold), quand elle manque.
         history = st.session_state.get("builder_autonomous_history")
-        if not isinstance(history, list):
-            history = list(persisted_supervisor_state.get("history", []))
         supervisor = st.session_state.get("builder_autonomous_supervisor")
-        if not isinstance(supervisor, dict):
-            supervisor = dict(
-                persisted_supervisor_state.get(
-                    "supervisor",
-                    _default_autonomous_supervisor_state(),
+        if not isinstance(history, list) or not isinstance(supervisor, dict):
+            persisted_supervisor_state = _load_autonomous_supervisor_state()
+            if not isinstance(history, list):
+                history = list(persisted_supervisor_state.get("history", []))
+            if not isinstance(supervisor, dict):
+                supervisor = dict(
+                    persisted_supervisor_state.get(
+                        "supervisor",
+                        _default_autonomous_supervisor_state(),
+                    )
                 )
-            )
+            # Mémoriser en session pour que les visites suivantes (navigation
+            # onglets) n'aient plus à reparser le JSON disque.
+            st.session_state["builder_autonomous_history"] = history
+            st.session_state["builder_autonomous_supervisor"] = supervisor
 
         if auto_market_pick:
             if available_tokens and available_tfs:
@@ -6986,8 +7760,14 @@ def render_builder_view(
             extra_chips=[
                 f"Pause: {auto_pause}s",
                 "Objectifs: llm-first",
-                f"Max itérations/session: {max_iterations}",
-            ],
+            ]
+            + _build_builder_max_iteration_chips(
+                max_iterations,
+                model=model,
+                global_settings=llm_inference_global_settings,
+                model_profiles=llm_inference_model_profiles,
+                max_label="Max itérations/session",
+            ),
             subtitle="Mode armé mais inactif: le bootstrap marché et le runtime ne démarrent qu'au lancement.",
         )
 
@@ -7001,7 +7781,7 @@ def render_builder_view(
             expanded=False,
         )
         st.info(
-            "Mode autonome prêt. L'univers marché filtré est préparé; Cliquez sur "
+            "Mode autonome prêt. L'univers marché filtré sera préparé au lancement; Cliquez sur "
             "Lancer pour préparer le runtime LLM et enchaîner les sessions."
         )
         st.markdown("---")

@@ -179,8 +179,9 @@ class BuilderSession:
     iterations: list[BuilderIteration] = field(default_factory=list)
     best_iteration: BuilderIteration | None = None
     best_sharpe: float = float("-inf")
+    best_raw_sharpe: float = float("-inf")
     best_score: float = float("-inf")  # Telemetry only, no longer drives loop decisions.
-    status: str = "running"  # "running", "success", "failed", "max_iterations"
+    status: str = "running"  # "running", "success", "positive", "failed", "max_iterations"
     auto_reset_count: int = 0
     recovery_events: list[dict[str, Any]] = field(default_factory=list)
 
@@ -214,6 +215,7 @@ class BuilderSession:
     restriction_events: dict[str, int] = field(default_factory=dict)
     model_name: str = ""
     cross_session_memory: list[dict[str, Any]] = field(default_factory=list)
+    indicator_stats_snapshot: str = ""
 
     # Reprise de session Builder max_iterations
     resume_parent_session_id: str = ""

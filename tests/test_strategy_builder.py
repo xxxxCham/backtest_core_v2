@@ -46,8 +46,10 @@ from agents.strategy_builder import (
     _sanitize_proposal_payload,
     _validate_llm_logic_block,
     _repair_code,
+    classify_builder_candidate_tier,
     compute_continuous_builder_score,
     _is_accept_candidate,
+    _builder_iteration_selection_key,
     _policy_change_type_override,
     _ranking_sharpe,
     _select_session_recovery_anchor,
@@ -368,6 +370,125 @@ def test_precheck_signal_counts_handles_nameerror(sample_ohlcv):
     assert "missing_filter" in probe["error"]
 
 
+class _TrivialLongStrategy(StrategyBase):
+    """Stratégie déterministe : signal long quand close > open. Utilisée par
+    les tests de troncature du précheck."""
+
+    def __init__(self):
+        super().__init__(name="trivial_precheck")
+
+    @property
+    def required_indicators(self):
+        return []
+
+    @property
+    def default_params(self):
+        return {}
+
+    @property
+    def parameter_specs(self):
+        return {}
+
+    def generate_signals(self, df, indicators, params):
+        signals = pd.Series(0.0, index=df.index, dtype=np.float64)
+        signals[df["close"] > df["open"]] = 1.0
+        return signals
+
+
+def _make_large_ohlcv(n: int) -> pd.DataFrame:
+    """OHLCV ~n bougies avec une dérive contrôlée pour signaux reproductibles."""
+    np.random.seed(123)
+    close = np.cumsum(np.random.randn(n)) + 1000.0
+    open_ = close + np.random.randn(n) * 0.3
+    high = np.maximum(close, open_) + np.abs(np.random.randn(n)) * 0.2
+    low = np.minimum(close, open_) - np.abs(np.random.randn(n)) * 0.2
+    volume = np.random.randint(100, 10000, n).astype(float)
+    index = pd.date_range("2025-01-01", periods=n, freq="5min", tz="UTC")
+    return pd.DataFrame(
+        {"open": open_, "high": high, "low": low, "close": close, "volume": volume},
+        index=index,
+    )
+
+
+def test_precheck_signal_counts_truncates_to_max_bars():
+    """Quand max_bars < len(data), le précheck utilise les N dernières bougies
+    et expose precheck_truncated=True + full_dataset_bars."""
+    data = _make_large_ohlcv(12_000)
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+
+    probe = builder._precheck_signal_counts(
+        _TrivialLongStrategy,
+        data,
+        params={},
+        max_bars=2_000,
+    )
+
+    assert probe["ok"] is True
+    assert probe["bar_count"] == 2_000
+    assert probe["precheck_truncated"] is True
+    assert probe["precheck_max_bars"] == 2_000
+    assert probe["full_dataset_bars"] == 12_000
+    # La logique close>open doit déclencher des signaux sur ~la moitié des bougies
+    assert probe["total_signals"] > 0
+
+
+def test_precheck_signal_counts_no_truncation_when_below_max_bars(sample_ohlcv):
+    """Quand len(data) <= max_bars, precheck_truncated reste False."""
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+
+    probe = builder._precheck_signal_counts(
+        _TrivialLongStrategy,
+        sample_ohlcv,
+        params={},
+        max_bars=5_000,
+    )
+
+    assert probe["ok"] is True
+    assert probe["bar_count"] == len(sample_ohlcv)
+    assert probe["precheck_truncated"] is False
+    assert probe["full_dataset_bars"] == len(sample_ohlcv)
+
+
+def test_precheck_signal_counts_max_bars_zero_disables_truncation():
+    """max_bars=0 désactive la troncature même sur grand dataset."""
+    data = _make_large_ohlcv(8_000)
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+
+    probe = builder._precheck_signal_counts(
+        _TrivialLongStrategy,
+        data,
+        params={},
+        max_bars=0,
+    )
+
+    assert probe["ok"] is True
+    assert probe["bar_count"] == 8_000
+    assert probe["precheck_truncated"] is False
+
+
+def test_precheck_signal_counts_keeps_last_window():
+    """La troncature conserve les N DERNIÈRES bougies (pas les premières),
+    pour refléter les conditions de marché récentes."""
+    data = _make_large_ohlcv(10_000)
+    # Marqueur : on force close>open uniquement sur les 100 dernières bougies
+    data.loc[data.index[:-100], "close"] = data.loc[data.index[:-100], "open"] - 1.0
+    data.loc[data.index[-100:], "close"] = data.loc[data.index[-100:], "open"] + 1.0
+
+    builder = StrategyBuilder(llm_client=SimpleNamespace())
+
+    probe_truncated = builder._precheck_signal_counts(
+        _TrivialLongStrategy,
+        data,
+        params={},
+        max_bars=500,
+    )
+
+    # Seules les 100 dernières bougies déclenchent — toutes incluses dans la
+    # fenêtre tronquée [-500:]
+    assert probe_truncated["total_signals"] == 100
+    assert probe_truncated["precheck_truncated"] is True
+
+
 def test_chat_llm_uses_phase_specific_client_for_analysis():
     class _FakeClient:
         def __init__(self, name: str):
@@ -420,7 +541,7 @@ def test_chat_llm_extends_timeout_for_vision_models(monkeypatch):
         def __init__(self):
             self.config = LLMConfig(
                 provider=LLMProvider.OLLAMA,
-                model="qwen3-vl:32b",
+                model="llava:34b",
                 ollama_host="http://127.0.0.1:11434",
             )
 
@@ -471,6 +592,87 @@ def test_validate_builder_dataset_exploitability_rejects_high_untradable_ratio(s
 
     assert ok is False
     assert "trop peu tradable" in reason.lower()
+
+
+def test_safe_path_defaults_to_prefer_only_for_autonomous(monkeypatch):
+    monkeypatch.delenv("BACKTEST_BUILDER_SAFE_PATH", raising=False)
+
+    assert strategy_builder_module._safe_path_mode("builder_autonomous") == "prefer"
+    assert strategy_builder_module._safe_path_mode("builder_manual") == "off"
+
+    monkeypatch.setenv("BACKTEST_BUILDER_SAFE_PATH", "off")
+    assert strategy_builder_module._safe_path_mode("builder_autonomous") == "off"
+
+
+def test_precheck_no_trade_result_is_penalized():
+    result = StrategyBuilder._build_precheck_blocked_result(
+        {
+            "ok": True,
+            "bar_count": 500,
+            "total_signals": 0,
+            "signal_density": 0.0,
+            "transition_density": 0.0,
+            "repeated_same_ratio": 0.0,
+        },
+        skip_reason="no_trade_signal_profile",
+    )
+
+    assert result.metrics["total_return_pct"] < 0
+    assert result.metrics["sharpe_ratio"] < 0
+    assert result.metrics["profit_factor"] == 0.0
+
+
+def test_builder_sweep_uses_fast_metrics_then_full_rerun(monkeypatch, sample_ohlcv):
+    builder = StrategyBuilder(llm_client=SimpleNamespace(config=SimpleNamespace(model="test")))
+    calls = []
+
+    def _fake_run_backtest(
+        strategy_cls,
+        data,
+        params,
+        initial_capital=10000.0,
+        symbol="UNKNOWN",
+        timeframe="1h",
+        fees_bps=10.0,
+        slippage_bps=5.0,
+        direction_constraint="long_short",
+        fast_metrics=False,
+    ):
+        del strategy_cls, data, initial_capital, symbol, timeframe, fees_bps, slippage_bps, direction_constraint
+        calls.append((dict(params), bool(fast_metrics)))
+        score = float(params["rsi_period"])
+        return SimpleNamespace(
+            metrics={
+                "sharpe_ratio": score / 10.0,
+                "total_return_pct": score,
+                "max_drawdown_pct": -5.0,
+                "profit_factor": 1.2,
+                "total_trades": 30,
+                "win_rate_pct": 42.0,
+            },
+            run_result=SimpleNamespace(meta={}),
+        )
+
+    monkeypatch.setattr(builder, "_run_backtest", _fake_run_backtest)
+    result, feedback = builder._run_backtest_with_optional_sweep(
+        object,
+        sample_ohlcv,
+        {
+            "change_type": "params",
+            "default_params": {"rsi_period": 14, "leverage": 1},
+            "parameter_specs": {
+                "rsi_period": {"min": 10, "max": 20, "default": 14, "type": "int", "step": 1},
+            },
+        },
+        target_sharpe=1.0,
+    )
+
+    assert len(calls) == 4
+    assert all(fast for _, fast in calls[:3])
+    assert calls[-1] == ({"rsi_period": 15, "leverage": 1}, False)
+    assert result.metrics["sharpe_ratio"] == pytest.approx(1.5)
+    assert feedback["sweep_fast_metrics"] is True
+    assert feedback["sweep_full_rerun"] is True
 
 
 def test_extract_default_params_signature_reads_generated_literal(valid_strategy_code):
@@ -1136,6 +1338,34 @@ class TestValidateCode:
     def test_valid_code(self, valid_strategy_code):
         is_valid, msg = validate_generated_code(valid_strategy_code)
         assert is_valid, f"Code devrait être valide: {msg}"
+
+    def test_rejects_hardcoded_atr_risk_multiplier(self):
+        code = textwrap.dedent(f"""\
+            from typing import Any, Dict, List
+            import numpy as np
+            import pandas as pd
+            from strategies.base import StrategyBase
+
+            class {GENERATED_CLASS_NAME}(StrategyBase):
+                @property
+                def required_indicators(self) -> List[str]:
+                    return ["atr"]
+
+                @property
+                def default_params(self) -> Dict[str, Any]:
+                    return {{"leverage": 1, "stop_atr_mult": 1.5, "tp_atr_mult": 3.0}}
+
+                def generate_signals(self, df, indicators, params):
+                    signals = pd.Series(0.0, index=df.index, dtype=np.float64)
+                    atr = np.nan_to_num(indicators["atr"])
+                    long_mask = df["close"].to_numpy() > df["open"].to_numpy()
+                    signals[long_mask] = 1.0
+                    df["bb_stop_long"] = df["close"] - (atr * 2)
+                    return signals
+        """)
+        is_valid, msg = validate_generated_code(code)
+        assert not is_valid
+        assert "multiplicateur atr" in msg.lower()
 
     def test_syntax_error(self):
         code = "class Foo(\n  def bar(self):\n    pass"
@@ -2685,6 +2915,19 @@ class TestBuilderRobustnessGate:
         }
         assert _ranking_sharpe(metrics) <= -5.0
 
+    def test_selection_key_penalizes_extreme_trade_count(self):
+        base = {
+            "sharpe_ratio": 1.2,
+            "total_return_pct": 20.0,
+            "max_drawdown_pct": -10.0,
+            "profit_factor": 1.3,
+            "win_rate_pct": 42.0,
+        }
+        healthy = {**base, "total_trades": 120}
+        excessive = {**base, "total_trades": 12000}
+
+        assert _builder_iteration_selection_key(healthy) > _builder_iteration_selection_key(excessive)
+
     def test_accept_candidate_requires_robustness(self):
         metrics = {
             "sharpe_ratio": 1.2,
@@ -3395,10 +3638,17 @@ class TestBuilderSummaryLeaderboard:
             assert md_path.exists()
 
             payload = json.loads(summary_path.read_text(encoding="utf-8"))
+            assert payload["summary_schema_version"] == 3
             assert "leaderboard" in payload
             assert len(payload["leaderboard"]) == 2
             assert payload["leaderboard"][0]["iteration"] == 2
+            assert payload["leaderboard"][0]["candidate_tier"] == "success"
             assert payload["leaderboard"][0]["total_pnl"] == 3750.0
+            assert payload["best_iteration"] == 2
+            assert payload["best_candidate_tier"] == "success"
+            assert payload["best_return_pct"] == 15.0
+            assert payload["best_trades"] == 55
+            assert payload["best_raw_sharpe"] == 1.4
             assert payload["auto_reset_count"] == 1
             assert payload["recovery_events"][0]["trigger"] == "consecutive_failures"
             assert payload["symbol"] == "ETHUSDC"
@@ -3727,8 +3977,8 @@ class TestRefactorCheckpoints:
         assert status == "success"
         assert reason == "best_iteration_accept_candidate"
 
-    def test_completion_status_rejects_promising_best_run_with_too_few_trades(self, tmp_path):
-        """Un meilleur run rentable mais trop rare reste non validé."""
+    def test_completion_status_marks_sparse_positive_run_as_positive(self, tmp_path):
+        """Un run rentable mais trop rare n'est pas success, mais il n'est plus perdu."""
         from agents.builder_diagnostics import resolve_builder_completion_status
 
         session = BuilderSession(
@@ -3757,5 +4007,246 @@ class TestRefactorCheckpoints:
             fallback_status="failed",
         )
 
-        assert status == "failed"
-        assert reason == "insufficient_trades"
+        assert status == "positive"
+        assert reason.startswith("best_iteration_positive:")
+
+    def test_candidate_tier_marks_single_trade_as_positive_not_promising(self):
+        metrics = {
+            "sharpe_ratio": 0.12,
+            "total_return_pct": 2.0,
+            "max_drawdown_pct": -18.0,
+            "total_trades": 1,
+            "profit_factor": 1.01,
+        }
+
+        classification = classify_builder_candidate_tier(metrics, target_sharpe=1.0)
+
+        assert classification["tier"] == "positive"
+        assert "promising_trades" in classification["reason"]
+
+    def test_candidate_tier_marks_builder_example_as_promising(self):
+        metrics = {
+            "sharpe_ratio": 0.678,
+            "total_return_pct": 16.77,
+            "max_drawdown_pct": -25.93,
+            "total_trades": 20,
+            "profit_factor": 1.19,
+            "win_rate_pct": 40.0,
+        }
+
+        classification = classify_builder_candidate_tier(metrics, target_sharpe=1.0)
+
+        assert classification["tier"] == "promising"
+
+    def test_candidate_tier_keeps_extreme_drawdown_out_of_promising(self):
+        metrics = {
+            "sharpe_ratio": 0.96,
+            "total_return_pct": 43.74,
+            "max_drawdown_pct": -99.74,
+            "total_trades": 3,
+            "profit_factor": 1.83,
+            "win_rate_pct": 66.7,
+        }
+
+        classification = classify_builder_candidate_tier(metrics, target_sharpe=1.0)
+
+        assert classification["tier"] == "positive"
+        assert "promising_drawdown" in classification["reason"]
+
+
+# ─── Tests soft indicator contract repair ──────────────────────────────────
+
+
+def _build_minimal_candidate_executor(req_inds: list[str]):
+    """Construit un BuilderCandidateExecutorV2 minimal pour tests unitaires de
+    `_enforce_indicator_contract` (bypass __init__ via __new__).
+    """
+    from agents.builder_candidate_executor import BuilderCandidateExecutorV2
+    from agents.pipeline_instrumentation import AblationController
+
+    executor = BuilderCandidateExecutorV2.__new__(BuilderCandidateExecutorV2)
+    executor.req_inds = list(req_inds)
+    executor.code_feedback = {}
+    executor.builder = SimpleNamespace(ablation=AblationController())
+    return executor
+
+
+_VALID_STRATEGY_TEMPLATE = textwrap.dedent(
+    '''
+    from typing import Any, Dict, List
+    import numpy as np
+    import pandas as pd
+    from strategies.base import StrategyBase
+    from utils.parameters import ParameterSpec
+
+
+    class BuilderGeneratedStrategy(StrategyBase):
+        def __init__(self):
+            super().__init__(name="test_strat")
+
+        @property
+        def required_indicators(self) -> List[str]:
+            return {required_indicators!r}
+
+        @property
+        def default_params(self) -> Dict[str, Any]:
+            return {{}}
+
+        @property
+        def parameter_specs(self) -> Dict[str, ParameterSpec]:
+            return {{}}
+
+        def generate_signals(self, df, indicators, params):
+    {body}
+    '''
+).strip()
+
+
+def test_soft_contract_repair_promotes_inferred_indicator():
+    """Soft repair : LLM utilise `atr` (indicateur array) mais déclare seulement `rsi`.
+    Doit promouvoir atr, injecter le binding, et retourner le code repaired sans
+    fallback déterministe ni retry LLM.
+    """
+    body = "        " + "\n        ".join(
+        [
+            "rsi_val = np.nan_to_num(indicators['rsi'])",
+            "atr_val = np.nan_to_num(indicators['atr'])",
+            "signals = pd.Series(0.0, index=df.index)",
+            "signals[rsi_val < 30] = 1.0",
+            "signals[atr_val > 1.0] = -1.0",
+            "return signals",
+        ],
+    )
+    code = _VALID_STRATEGY_TEMPLATE.format(
+        required_indicators=["rsi", "atr"],
+        body=body,
+    )
+
+    executor = _build_minimal_candidate_executor(req_inds=["rsi"])
+    result = executor._enforce_indicator_contract(code, allow_retry=True)
+
+    # Le résultat est du code (pas le fallback déterministe)
+    assert result, "soft repair devrait retourner du code valide"
+    # req_inds étendu avec atr
+    assert "atr" in executor.req_inds
+    assert "rsi" in executor.req_inds
+    # Télémétrie soft_repaired enregistrée
+    assert executor.code_feedback.get("indicator_contract_status") == "soft_repaired"
+    soft = executor.code_feedback.get("indicator_contract_soft_repaired")
+    assert soft is not None
+    assert "atr" in soft["promoted"]
+    assert "atr" in soft["new_req_inds"]
+    # La violation originale est aussi enregistrée (avec declared = état initial)
+    violation = executor.code_feedback.get("indicator_contract_violation")
+    assert violation is not None
+    assert violation["declared"] == ["rsi"]
+    assert "atr" in violation["unexpected"]
+
+
+def test_soft_contract_repair_no_violation_returns_code_unchanged():
+    """Pas de violation : code n'utilise que des indicateurs déclarés.
+    Méthode doit retourner immédiatement sans muter l'état.
+    """
+    body = "        " + "\n        ".join(
+        [
+            "rsi_val = np.nan_to_num(indicators['rsi'])",
+            "signals = pd.Series(0.0, index=df.index)",
+            "signals[rsi_val < 30] = 1.0",
+            "return signals",
+        ],
+    )
+    code = _VALID_STRATEGY_TEMPLATE.format(
+        required_indicators=["rsi"],
+        body=body,
+    )
+
+    executor = _build_minimal_candidate_executor(req_inds=["rsi"])
+    result = executor._enforce_indicator_contract(code, allow_retry=True)
+
+    assert result == code
+    # Aucune mutation
+    assert executor.req_inds == ["rsi"]
+    # Aucune violation enregistrée
+    assert "indicator_contract_violation" not in executor.code_feedback
+    assert "indicator_contract_soft_repaired" not in executor.code_feedback
+
+
+def test_soft_contract_repair_empty_req_inds_returns_immediately():
+    """req_inds vide : pas de contrat à enforcer."""
+    body = "        " + "\n        ".join(
+        [
+            "rsi_val = np.nan_to_num(indicators['rsi'])",
+            "signals = pd.Series(0.0, index=df.index)",
+            "return signals",
+        ],
+    )
+    code = _VALID_STRATEGY_TEMPLATE.format(
+        required_indicators=["rsi"],
+        body=body,
+    )
+
+    executor = _build_minimal_candidate_executor(req_inds=[])
+    result = executor._enforce_indicator_contract(code, allow_retry=True)
+
+    assert result == code
+    assert executor.req_inds == []
+    assert "indicator_contract_violation" not in executor.code_feedback
+
+
+def test_soft_contract_repair_hallucinated_name_not_promoted():
+    """Indicateur halluciné (pas dans _get_known_indicator_names) : n'apparaît
+    pas dans `inferred` → aucune violation détectée par _enforce_indicator_contract.
+    Comportement préservé : la détection runtime gère ce cas en aval.
+    """
+    body = "        " + "\n        ".join(
+        [
+            "rsi_val = np.nan_to_num(indicators['rsi'])",
+            "fake_val = indicators.get('totally_made_up_indicator_xyz', 0)",
+            "signals = pd.Series(0.0, index=df.index)",
+            "signals[rsi_val < 30] = 1.0",
+            "return signals",
+        ],
+    )
+    code = _VALID_STRATEGY_TEMPLATE.format(
+        required_indicators=["rsi"],
+        body=body,
+    )
+
+    executor = _build_minimal_candidate_executor(req_inds=["rsi"])
+    result = executor._enforce_indicator_contract(code, allow_retry=True)
+
+    # `totally_made_up_indicator_xyz` n'est pas dans known → pas dans inferred → pas de violation
+    assert result == code
+    assert executor.req_inds == ["rsi"]
+    assert "totally_made_up_indicator_xyz" not in executor.req_inds
+    # Aucune promotion silencieuse d'un nom halluciné
+    assert "indicator_contract_soft_repaired" not in executor.code_feedback
+
+
+def test_soft_contract_repair_multiple_indicators_promoted_atomically():
+    """Plusieurs indicateurs non déclarés : tous promus en une passe."""
+    body = "        " + "\n        ".join(
+        [
+            "rsi_val = np.nan_to_num(indicators['rsi'])",
+            "atr_val = np.nan_to_num(indicators['atr'])",
+            "boll = indicators['bollinger']",
+            "boll_upper = np.nan_to_num(boll['upper'])",
+            "signals = pd.Series(0.0, index=df.index)",
+            "signals[rsi_val < 30] = 1.0",
+            "return signals",
+        ],
+    )
+    code = _VALID_STRATEGY_TEMPLATE.format(
+        required_indicators=["rsi", "atr", "bollinger"],
+        body=body,
+    )
+
+    executor = _build_minimal_candidate_executor(req_inds=["rsi"])
+    result = executor._enforce_indicator_contract(code, allow_retry=True)
+
+    assert result, "soft repair devrait réussir avec plusieurs promotions"
+    assert "atr" in executor.req_inds
+    assert "bollinger" in executor.req_inds
+    assert executor.code_feedback.get("indicator_contract_status") == "soft_repaired"
+    soft = executor.code_feedback["indicator_contract_soft_repaired"]
+    assert {"atr", "bollinger"}.issubset(set(soft["promoted"]))

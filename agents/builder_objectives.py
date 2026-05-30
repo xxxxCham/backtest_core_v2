@@ -6,6 +6,7 @@ public wrappers compatible in the original module.
 
 from __future__ import annotations
 
+import os
 import random
 import re
 import uuid
@@ -37,6 +38,26 @@ from indicators.registry import list_indicators
 from utils.observability import get_obs_logger
 
 logger = get_obs_logger(__name__)
+
+
+def _resolve_objective_llm_timeout_sec() -> float:
+    """Budget HTTP (s) pour les appels LLM courts de début de session.
+
+    Borne la génération d'objectif et la sélection de marché : si le GPU cale
+    le flux (stream stoppé mais process vivant), la socket se ferme au lieu de
+    pendre sur le timeout adaptatif (600-900s) juste après « Session terminée ».
+    Surchargeable via ``BUILDER_OBJECTIVE_LLM_TIMEOUT_SEC``.
+    """
+    raw = os.environ.get("BUILDER_OBJECTIVE_LLM_TIMEOUT_SEC", "").strip()
+    if raw:
+        try:
+            value = float(raw)
+        except ValueError:
+            value = 0.0
+        if value > 0:
+            return value
+    return 180.0
+
 
 # ---------------------------------------------------------------------------
 # Générateurs d'objectifs pour le mode autonome
@@ -619,15 +640,31 @@ def _request_structured_objective_payload(
         LLMMessage(role="system", content=system_prompt),
         LLMMessage(role="user", content=user_prompt),
     ]
+    http_timeout = _resolve_objective_llm_timeout_sec()
     if stream_callback and hasattr(llm_client, "chat_stream"):
-        raw = llm_client.chat_stream(
-            messages,
-            on_chunk=lambda c: stream_callback("objective_gen", c),
-            max_tokens=max_tokens,
-            json_mode=True,
-        )
+        try:
+            raw = llm_client.chat_stream(
+                messages,
+                on_chunk=lambda c: stream_callback("objective_gen", c),
+                max_tokens=max_tokens,
+                json_mode=True,
+                http_timeout=http_timeout,
+            )
+        except TypeError:
+            # Client sans support http_timeout (signature ancienne).
+            raw = llm_client.chat_stream(
+                messages,
+                on_chunk=lambda c: stream_callback("objective_gen", c),
+                max_tokens=max_tokens,
+                json_mode=True,
+            )
     else:
-        raw = llm_client.chat(messages, max_tokens=max_tokens, json_mode=True)
+        try:
+            raw = llm_client.chat(
+                messages, max_tokens=max_tokens, json_mode=True, http_timeout=http_timeout
+            )
+        except TypeError:
+            raw = llm_client.chat(messages, max_tokens=max_tokens, json_mode=True)
 
     raw_text = str(getattr(raw, "content", raw) or "").strip()
     return _extract_json_from_response(raw_text), raw_text
@@ -1305,6 +1342,58 @@ def _find_objective_market_hints(
     return hinted_symbol, hinted_timeframe
 
 
+def _timeframe_to_minutes(timeframe: str) -> float | None:
+    match = re.fullmatch(r"\s*(\d+)\s*([mhdwM])\s*", str(timeframe or ""))
+    if not match:
+        return None
+    value = float(match.group(1))
+    unit = match.group(2).lower()
+    if unit == "m":
+        return value
+    if unit == "h":
+        return value * 60.0
+    if unit == "d":
+        return value * 1440.0
+    if unit == "w":
+        return value * 10080.0
+    return None
+
+
+def _rank_timeframes_for_strategy(timeframes: list[str], strategy_type: str) -> list[str]:
+    clean_timeframes = _unique_non_empty(timeframes)
+    detected_type = infer_strategy_type(strategy_type=strategy_type)
+    if not clean_timeframes or detected_type == "unknown":
+        return clean_timeframes
+    try:
+        requirements = get_strategy_requirements(detected_type)
+    except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError):
+        return clean_timeframes
+    recommended_exact = [
+        str(tf or "").strip()
+        for tf in (requirements.get("timeframes", []) or [])
+        if str(tf or "").strip() in clean_timeframes
+    ]
+    if recommended_exact:
+        return [*recommended_exact, *[tf for tf in clean_timeframes if tf not in recommended_exact]]
+
+    reference_minutes = [
+        minutes
+        for minutes in (_timeframe_to_minutes(str(tf or "").strip()) for tf in (requirements.get("timeframes", []) or []))
+        if minutes is not None and minutes > 0
+    ]
+    if not reference_minutes:
+        return clean_timeframes
+
+    def _distance_to_recommended(tf: str) -> tuple[float, float, str]:
+        minutes = _timeframe_to_minutes(tf)
+        if minutes is None or minutes <= 0:
+            return (float("inf"), float("inf"), tf)
+        distance = min(abs((minutes / ref) - 1.0) for ref in reference_minutes)
+        return (distance, minutes, tf)
+
+    return sorted(clean_timeframes, key=_distance_to_recommended)
+
+
 def _rank_and_select_market_candidates(
     *,
     clean_objective: str,
@@ -1338,7 +1427,7 @@ def _rank_and_select_market_candidates(
         shuffled_symbols = symbols.copy()
         logger.info("Market selection: strategy_type=UNKNOWN, tokens=ordered")
 
-    shuffled_timeframes = timeframes.copy()
+    shuffled_timeframes = _rank_timeframes_for_strategy(timeframes, detected_strategy_type or "")
 
     if not detected_strategy_type:
         logger.info(
@@ -1717,15 +1806,31 @@ def recommend_market_context(
     )
 
     # --- Phase 12 : appel LLM --- #
+    http_timeout = _resolve_objective_llm_timeout_sec()
     try:
         if stream_callback and hasattr(llm_client, "chat_stream"):
-            raw = llm_client.chat_stream(
-                [system_msg, user_msg],
-                on_chunk=lambda c: stream_callback("market_pick", c),
-                max_tokens=180,
-            )
+            try:
+                raw = llm_client.chat_stream(
+                    [system_msg, user_msg],
+                    on_chunk=lambda c: stream_callback("market_pick", c),
+                    max_tokens=180,
+                    json_mode=True,
+                    http_timeout=http_timeout,
+                )
+            except TypeError:
+                raw = llm_client.chat_stream(
+                    [system_msg, user_msg],
+                    on_chunk=lambda c: stream_callback("market_pick", c),
+                    max_tokens=180,
+                    json_mode=True,
+                )
         else:
-            raw = llm_client.chat([system_msg, user_msg], max_tokens=180)
+            try:
+                raw = llm_client.chat(
+                    [system_msg, user_msg], max_tokens=180, json_mode=True, http_timeout=http_timeout
+                )
+            except TypeError:
+                raw = llm_client.chat([system_msg, user_msg], max_tokens=180, json_mode=True)
         raw_text = str(getattr(raw, "content", raw) or "").strip()
     except (ValueError, KeyError, RuntimeError, AttributeError, TypeError, IndexError) as exc:
         logger.warning("recommend_market_context: fallback exception=%s", exc)

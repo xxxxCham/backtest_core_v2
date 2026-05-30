@@ -279,6 +279,17 @@ class TestRankIndicatorSelection:
         # (sauf si un autre indicateur a un score de pertinence très fort)
         assert ranked[0] == "unusual_indicator" or "unusual_indicator" in ranked[:2]
 
+    def test_performance_priors_raise_rank(self):
+        """Un prior historique positif doit favoriser un indicateur."""
+        candidates = ["rsi", "bollinger"]
+        ranked = self._rank(
+            candidates,
+            session_seed="performance-prior-test",
+            performance_priors={"rsi": -2.0, "bollinger": 2.0},
+            performance_prior_weight=10.0,
+        )
+        assert ranked.index("bollinger") < ranked.index("rsi")
+
     def test_family_penalty_applied(self):
         """Les indicateurs d'une famille récente reçoivent un malus."""
         from agents.indicator_context import rank_indicator_selection

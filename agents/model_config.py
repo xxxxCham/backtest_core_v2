@@ -232,7 +232,6 @@ _MODEL_SELECTOR_FALLBACK_ORDER: tuple[str, ...] = (
     "gemma4:31b",
     "gemma4:26b",
     "qwen3.5:35b",
-    "qwen3-vl:32b",
     "lfm2:24b",
     "devstral-small-2:24b",
     "ministral-3:14b",
@@ -254,7 +253,6 @@ _MODEL_SELECTOR_FALLBACK_ORDER: tuple[str, ...] = (
     "qwen3-coder:480b",
     "qwen3-coder-next",
     "qwen3-next:80b",
-    "qwen3-vl:235b",
     "devstral-2:123b",
     "glm-4.7",
     "glm-4.6",
@@ -266,7 +264,7 @@ _MODEL_SELECTOR_FALLBACK_ORDER: tuple[str, ...] = (
 )
 
 _MODEL_RECOMMENDATIONS_BY_CONTEXT: dict[str, tuple[str, ...]] = {
-    "analysis": ("qwen3.6:27b", "gemma4:26b", "qwen3-vl:32b", "ministral-3:14b", "qwen3.6:35b", "nemotron-3-nano:30b-a3b-q4_K_M"),
+    "analysis": ("qwen3.6:27b", "gemma4:26b", "ministral-3:14b", "qwen3.6:35b", "nemotron-3-nano:30b-a3b-q4_K_M"),
     "strategy": ("qwen3.6:27b", "qwen3.6:35b", "gemma4:26b", "gemma4:31b", "rnj-1:8b-instruct-fp16", "qwen3.6:35b", "granite4.1:30b-q6_K", "nemotron-3-nano:30b-a3b-q4_K_M"),
     "criticism": ("qwen3.6:27b", "gemma4:31b", "qwen3.6:35b", "deepseek-r1:32b", "granite4.1:30b-q6_K"),
     "fast": ("gemma4:26b", "lfm2:24b", "mistral:7b-instruct"),
@@ -489,14 +487,6 @@ KNOWN_MODELS: dict[str, ModelInfo] = {
         recommended_for=['builder'],
         avg_response_time_s=150.0,
         params_billions=32.0,
-    ),
-    "qwen3-vl:32b": ModelInfo(
-        name="qwen3-vl:32b",
-        category=ModelCategory.HEAVY,
-        description="Qwen 3 VL 32B - Vision + langage, outils, thinking",
-        recommended_for=['builder'],  # Pour analyse de charts
-        avg_response_time_s=180.0,
-        params_billions=33.4,
     ),
     "deepseek-coder-33b-local": ModelInfo(
         name="deepseek-coder-33b-local",
@@ -880,15 +870,6 @@ KNOWN_MODELS: dict[str, ModelInfo] = {
         params_billions=80.0,
         cloud_only=True,
     ),
-    "qwen3-vl:235b": ModelInfo(
-        name="qwen3-vl:235b",
-        category=ModelCategory.HEAVY,
-        description="Qwen3 VL 235B - Vision + language + thinking, flagship Qwen multimodal ☁️ Cloud",
-        recommended_for=['builder'],
-        avg_response_time_s=80.0,
-        params_billions=235.0,
-        cloud_only=True,
-    ),
     # Kimi (Moonshot AI)
     "kimi-k2": ModelInfo(
         name="kimi-k2",
@@ -1101,7 +1082,6 @@ class RoleModelConfig:
                 "lfm2:24b",
                 # Heavy
                 "gemma4:31b",
-                "qwen3-vl:32b",
                 "qwen3.6:35b",
                 "qwen3.5:35b",
                 "llama4:16x17b",
@@ -1189,7 +1169,6 @@ class RoleModelConfig:
                 "glm-4.6",
                 "minimax-m2.5",
                 "minimax-m2.1",
-                "qwen3-vl:235b",
                 "qwen3-coder:480b",
                 "qwen3-next:80b",
                 "devstral-2:123b",
@@ -1224,7 +1203,6 @@ class RoleModelConfig:
                 "llama3.3:70b-instruct-q4_K_M",
                 "llama3.3-70b-2gpu",
                 # Cloud Free (☁️ Ollama Cloud, plan Free)
-                "qwen3-vl:235b",
                 "qwen3-next:80b",
                 "qwen3-coder:480b",
                 "gpt-oss:120b",

@@ -953,7 +953,7 @@ def _render_builder_max_iterations_resume_panel(builder_df: pd.DataFrame) -> Non
             "Reprendre toutes les max_iterations",
             key="results-store-builder-resume-all",
             disabled=disabled,
-            use_container_width=True,
+            width="stretch",
         ):
             progress = st.progress(0.0)
             status_line = st.empty()

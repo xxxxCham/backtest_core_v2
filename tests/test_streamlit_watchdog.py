@@ -7,8 +7,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import tools.autonomous_builder_supervisor as supervisor_module
-import tools.supervisor_control_panel as supervisor_panel_module
 import tools.streamlit_watchdog as watchdog_module
+import tools.supervisor_control_panel as supervisor_panel_module
 from tools.streamlit_watchdog import (
     decide_exit_restart,
     decide_stall_restart,
@@ -440,6 +440,20 @@ def test_open_browser_once_when_streamlit_is_ready_opens_localhost_url(monkeypat
 
     assert opened is True
     assert calls == [8502]
+
+
+def test_open_streamlit_browser_skips_non_interactive_windows_session(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(watchdog_module.os, "name", "nt")
+    monkeypatch.setattr(watchdog_module, "_is_interactive_desktop_session", lambda: False)
+    monkeypatch.setattr(watchdog_module, "_current_windows_session_id", lambda: 0)
+    monkeypatch.setattr(watchdog_module.os, "startfile", lambda url: calls.append(url), raising=False)
+
+    opened = watchdog_module._open_streamlit_browser(8502)
+
+    assert opened is False
+    assert calls == []
+    assert "non-interactive Windows session" in capsys.readouterr().out
 
 
 def test_open_browser_once_when_streamlit_is_ready_skips_when_process_exits(monkeypatch):

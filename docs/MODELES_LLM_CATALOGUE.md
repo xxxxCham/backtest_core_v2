@@ -55,7 +55,6 @@
 | `qwen3:32b` | 32 B | Général | **83 %** | Thinking + tools, flagship Alibaba 2025, très polyvalent pour tous les rôles Builder |
 | `qwen3.5:35b` | 36 B | Général | **82 %** | Généraliste multimodal récent, haut de gamme local, bon pour Analyst + Strategist |
 | `qwen3-30b-a3b:q4_k_m` | 30.5 B | Code | **80 %** | MoE coding/reasoning Q4, efficace en mémoire, bon compromis vitesse/qualité |
-| `qwen3-vl:32b` | 33.4 B | Multimodal | **80 %** | Vision + langage + thinking, unique pour lire des graphiques si usage multimodal futur |
 | `qwen2.5:32b` | 32 B | Général | **78 %** | Polyvalent haute qualité génération précédente, stable et fiable |
 | `deepseek-coder-33b-local` | 33.3 B | Code | **81 %** | Spécialisé code dense, excellent debugger, Q5_K_M local |
 | `llama4:16x17b` ⚠️ | 109 B | Multimodal | **75 %** | Meta MoE vision, très lourd, score limité par la lenteur locale et la moins bonne tenue sur raisonnement structuré |

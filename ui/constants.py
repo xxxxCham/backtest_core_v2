@@ -263,32 +263,30 @@ MODE_BUTTON_CSS = """
 <style>
     .mode-button {
         width: 100%;
-        padding: 12px 16px;
-        margin: 6px 0;
-        border: 1px solid rgba(96, 165, 250, 0.25);
-        border-radius: 14px;
-        font-size: 14px;
-        font-weight: 650;
+        padding: 8px 12px;
+        margin: 4px 0;
+        border: 1px solid var(--bc-border);
+        border-radius: var(--bc-r-sm);
+        font-size: var(--bc-fs-text);
+        font-weight: var(--bc-fw-sb);
         cursor: pointer;
         text-align: center;
-        color: #dbeafe;
-        transition: all 0.2s ease;
+        color: var(--bc-text-2);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
     }
     .mode-button:hover {
-        transform: translateY(-2px);
-        border-color: rgba(147, 197, 253, 0.55);
-        box-shadow: 0 10px 24px rgba(2, 8, 23, 0.25);
+        border-color: var(--bc-gold);
+        color: var(--bc-text);
     }
     .mode-inactive {
-        background: linear-gradient(180deg, rgba(14, 27, 45, 0.94), rgba(18, 34, 57, 0.92));
-        opacity: 0.7;
+        background: var(--bc-surface);
     }
     .mode-active {
-        background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 58%, #60a5fa 100%);
-        color: #ffffff;
-        opacity: 1;
-        border-color: rgba(147, 197, 253, 0.78);
-        box-shadow: 0 14px 30px rgba(30, 64, 175, 0.34);
+        background: var(--bc-gold);
+        color: var(--bc-bg);
+        border-color: var(--bc-gold);
     }
 </style>
 """

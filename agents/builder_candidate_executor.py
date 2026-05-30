@@ -171,6 +171,9 @@ class BuilderCandidateExecutorV2:
                     "transition_signals": int(signal_probe.get("transition_signals", 0) or 0),
                     "transition_density": float(signal_probe.get("transition_density", 0.0) or 0.0),
                     "repeated_same_ratio": float(signal_probe.get("repeated_same_ratio", 0.0) or 0.0),
+                    "precheck_truncated": bool(signal_probe.get("precheck_truncated", False)),
+                    "precheck_max_bars": int(signal_probe.get("precheck_max_bars", 0) or 0),
+                    "full_dataset_bars": int(signal_probe.get("full_dataset_bars", 0) or 0),
                 },
             )
             self._checkpoint(
@@ -524,6 +527,31 @@ class BuilderCandidateExecutorV2:
             "inferred": list(inferred),
             "unexpected": list(unexpected),
         }
+
+        # Soft repair: extend the declared contract to include the inferred indicators.
+        # _infer_required_indicator_names_from_code only returns indicators present in
+        # _get_known_indicator_names(), so `unexpected` cannot contain hallucinated names.
+        # _repair_candidate_code is idempotent on already-bound indicators (cf.
+        # _inject_generate_signals_indicator_bindings:691-695 explicit guard).
+        original_req_inds = list(self.req_inds)
+        promoted = [ind for ind in unexpected if ind not in self.req_inds]
+        if promoted:
+            self.req_inds = list(self.req_inds) + promoted
+            repaired_code = self._repair_candidate_code(code)
+            is_valid, _validation_err = validate_generated_code(repaired_code)
+            if is_valid:
+                _, post_unexpected = self._infer_indicator_contract_gap(repaired_code)
+                if not post_unexpected:
+                    self.code_feedback["indicator_contract_soft_repaired"] = {
+                        "promoted": list(promoted),
+                        "new_req_inds": list(self.req_inds),
+                    }
+                    self.code_feedback["indicator_contract_status"] = "soft_repaired"
+                    return repaired_code
+            # Soft repair did not resolve the violation — rollback contract
+            # and fall through to the existing retry/fallback flow.
+            self.req_inds = original_req_inds
+
         self.code_feedback["indicator_contract_status"] = "retry" if allow_retry else "fallback"
 
         if allow_retry:

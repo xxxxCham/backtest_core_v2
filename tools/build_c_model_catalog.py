@@ -66,8 +66,6 @@ CANONICAL_OLLAMA_NAMES = {
     "qwen3.5": "qwen3.5:35b",
     "qwen3-coder-next": "qwen3-coder:30b",
     "qwen3-coder-next:q4_k_m": "qwen3-coder:30b",
-    "qwen3-vl": "qwen3-vl:32b",
-    "qwen3-vl:30b": "qwen3-vl:32b",
 }
 
 DISCOVERED_OLLAMA_METADATA_OVERRIDES: dict[str, dict[str, Any]] = {
@@ -97,15 +95,6 @@ DISCOVERED_OLLAMA_METADATA_OVERRIDES: dict[str, dict[str, Any]] = {
         "quantization": "Q4_K_M",
         "context_length": 40960,
         "description": "Qwen3 30B A3B Q4_K_M importe depuis la bibliotheque GGUF canonique.",
-    },
-    "qwen3-vl:32b": {
-        "id": "qwen3-vl-32b",
-        "name": "Qwen3 VL 32B",
-        "use_case": "multimodal",
-        "parameters": "33.4B",
-        "quantization": "Q4_K_M",
-        "context_length": 262144,
-        "description": "Qwen3 Vision-Language 32B - vision, outils et raisonnement sur endpoint Ollama local.",
     },
     "qwen3.5:35b": {
         "id": "qwen3.5-35b",

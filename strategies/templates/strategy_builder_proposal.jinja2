@@ -126,6 +126,10 @@ Required behavior:
 {% endfor %}
 {% endif %}
 
+{% if indicator_stats_block %}
+{{ indicator_stats_block }}
+{% endif %}
+
 ## HARD RULES
 - Output ONE valid JSON object only. No nested objects inside logic fields.
 - No placeholders (forbidden: "brief description", "when to BUY", "N/A").

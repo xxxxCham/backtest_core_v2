@@ -106,37 +106,14 @@ from utils.run_tracker import RunSignature, get_global_tracker
 
 logger = logging.getLogger(__name__)
 
+# Bloc principal (cartes/boutons) défini dans ui.theme.streamlit_css ; on garde
+# ici un overlay minimal pour épaissir les boutons de l'action bar.
 MAIN_ACTION_BAR_CSS = """
 <style>
-div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) {
-    border: 1px solid rgba(59, 130, 246, 0.24);
-    border-radius: 16px;
-    padding: 1.05rem 1.05rem 0.45rem 1.05rem;
-    background:
-        radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 42%),
-        linear-gradient(180deg, rgba(9, 17, 31, 0.98), rgba(14, 26, 45, 0.97));
-    margin: 0.75rem 0 1.2rem 0;
-    box-shadow: 0 18px 36px rgba(2, 8, 23, 0.22);
-}
 div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) [data-testid="stButton"] > button {
-    min-height: 3.35rem;
-    border-radius: 14px;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-}
-div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) [data-testid="stButton"] > button[kind="primary"] {
-    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #3b82f6 100%);
-    border: 1px solid #3b82f6;
-    color: #ffffff !important;
-    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25), 0 10px 24px rgba(30, 64, 175, 0.35);
-}
-div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) [data-testid="stButton"] > button[kind="secondary"] {
-    background: linear-gradient(180deg, rgba(16, 31, 57, 0.96), rgba(22, 43, 79, 0.94));
-    border: 1px solid rgba(96, 165, 250, 0.32);
-    color: #dce9fb !important;
-}
-div[data-testid="stVerticalBlock"]:has(.bc-main-actions-anchor) h3 {
-    margin-bottom: 0.35rem;
+    min-height: 44px;
+    font-weight: var(--bc-fw-bold);
+    letter-spacing: 0.02em;
 }
 </style>
 """
@@ -838,7 +815,7 @@ def render_primary_action_bar(state: SidebarState) -> None:
                 key="main_load_ohlcv_action",
                 type="secondary",
                 disabled=is_running,
-                use_container_width=True,
+                width="stretch",
                 on_click=_queue_main_load_action,
                 help="Charge le marché sélectionné et met à jour l'aperçu OHLCV + indicateurs.",
             )
@@ -849,7 +826,7 @@ def render_primary_action_bar(state: SidebarState) -> None:
             key="main_run_action",
             type="primary",
             disabled=is_running,
-            use_container_width=True,
+            width="stretch",
             on_click=_queue_main_run_action,
             args=(str(state.optimization_mode or ""),),
         )
@@ -860,7 +837,7 @@ def render_primary_action_bar(state: SidebarState) -> None:
             key="main_stop_action",
             type="secondary",
             disabled=not is_running,
-            use_container_width=True,
+            width="stretch",
             help=(
                 "Arrête le run courant, décharge les modèles Ollama détectés, vide les caches "
                 "et réinitialise le runtime Builder/LLM pour un nouveau lancement propre."
@@ -1636,7 +1613,7 @@ def _run_grid_search_mode(
             error_df = pd.DataFrame(
                 [{"error": msg, "count": count} for msg, count in error_items[:10]],
             )
-            st.dataframe(error_df, use_container_width=True)
+            st.dataframe(error_df, width="stretch")
 
     error_column = results_df.get("error")
     if error_column is not None:
@@ -1662,7 +1639,7 @@ def _run_grid_search_mode(
                     f"  Mean: {valid_results['trades'].mean():.2f}",
                 )
 
-        st.dataframe(valid_results.head(10), use_container_width=True)
+        st.dataframe(valid_results.head(10), width="stretch")
 
         best = valid_results.iloc[0]
         st.info(f"🥇 Meilleure: {best['params']}")
@@ -1881,7 +1858,7 @@ def _run_llm_optimization_mode(
                 st.caption(
                     f"Runs effectues: {len(comparison_results)} / {total_runs}",
                 )
-                st.dataframe(pd.DataFrame(comparison_summary), use_container_width=True)
+                st.dataframe(pd.DataFrame(comparison_summary), width="stretch")
 
                 chart_rows = []
                 for row in comparison_summary:
@@ -2106,7 +2083,7 @@ def _run_llm_optimization_mode(
                 st.markdown("---")
                 st.dataframe(
                     pd.DataFrame(orchestrator_result.iteration_history),
-                    use_container_width=True,
+                    width="stretch",
                 )
 
             best_params = orchestrator_result.final_params or {}

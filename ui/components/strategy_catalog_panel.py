@@ -435,7 +435,7 @@ def render_strategy_catalog_panel(strategy_options: dict[str, str]) -> None:
     )
     edited = st.data_editor(
         df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "select": st.column_config.CheckboxColumn("Select"),
@@ -496,7 +496,7 @@ def render_strategy_catalog_panel(strategy_options: dict[str, str]) -> None:
             help="Déplacer les stratégies sélectionnées vers une autre catégorie",
         )
     with action_col_b:
-        if st.button("📦 Move", key="catalog_move_btn", disabled=not selected_ids, use_container_width=True):
+        if st.button("📦 Move", key="catalog_move_btn", disabled=not selected_ids, width="stretch"):
             changed = move_entries(selected_ids, move_to)
             st.success(f"✅ {changed} stratégie(s) déplacée(s)")
             st.rerun()
@@ -506,7 +506,7 @@ def render_strategy_catalog_panel(strategy_options: dict[str, str]) -> None:
             key="catalog_set_selection",
             disabled=not selected_ids,
             type="primary",
-            use_container_width=True,
+            width="stretch",
             help="Appliquer cette sélection comme stratégies actives pour le backtest",
         ):
             labels = []

@@ -22,6 +22,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from backtest.audit_contract import audit_hashes, build_effective_config
 from backtest.performance import calculate_metrics
 from strategies.base import StrategyBase
 
@@ -197,6 +198,8 @@ class BacktestEngine:
         seed: int = 42,
         silent_mode: bool = False,
         fast_metrics: bool = True,  # ⚡ Performance: 536 bt/s (True) vs 85 bt/s (False)
+        audit_mode: bool = False,
+        strict_params: bool = False,
     ) -> RunResult:
         """Exécute un backtest complet.
 
@@ -209,6 +212,8 @@ class BacktestEngine:
             seed: Seed pour reproductibilité
             silent_mode: Si True, désactive les logs structurés pour améliorer les performances en grid search
             fast_metrics: Si True, utilise les métriques rapides pour sweeps/optimisations
+            audit_mode: Si True, ajoute une preuve minimale de configuration/signaux/trades
+            strict_params: Si True, refuse les paramètres non déclarés ou overrides critiques silencieux
 
         Returns:
             RunResult avec equity, returns, trades, metrics et meta
@@ -261,13 +266,24 @@ class BacktestEngine:
                 self.logger = self.logger.with_context(strategy=strategy_name)
 
             # 3. Fusionner paramètres
-            final_params = {
-                "initial_capital": self.initial_capital,
-                "fees_bps": self.config.fees_bps,
-                "slippage_bps": self.config.slippage_bps,
-                **strategy.default_params,
-                **(params or {}),
-            }
+            effective_config = None
+            if audit_mode or strict_params:
+                effective_config, final_params = build_effective_config(
+                    strategy=strategy,
+                    provided_params=params,
+                    initial_capital=self.initial_capital,
+                    fees_bps=self.config.fees_bps,
+                    slippage_bps=self.config.slippage_bps,
+                    strict_params=strict_params,
+                )
+            else:
+                final_params = {
+                    "initial_capital": self.initial_capital,
+                    "fees_bps": self.config.fees_bps,
+                    "slippage_bps": self.config.slippage_bps,
+                    **strategy.default_params,
+                    **(params or {}),
+                }
 
             self.logger.debug("params=%s", final_params)
 
@@ -443,6 +459,16 @@ class BacktestEngine:
                 "seed": seed,
                 "perf_counters": perf_counters,
             }
+            if audit_mode or strict_params:
+                meta["audit"] = {
+                    "effective_config": effective_config,
+                    **audit_hashes(
+                        signals=signals,
+                        trades=trades_df,
+                        equity=equity,
+                        metrics=metrics,
+                    ),
+                }
 
             self.last_run_meta = meta
 

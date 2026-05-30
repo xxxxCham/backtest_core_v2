@@ -89,6 +89,7 @@ DEFAULT_LLM_INFERENCE_SETTINGS: dict[str, Any] = {
     "temperature": 0.7,
     "max_tokens": 2000,
     "num_ctx": None,
+    "repeat_penalty": 1.15,
 }
 BUILTIN_LLM_INFERENCE_PROFILES: dict[str, dict[str, Any]] = {
     # ===== LIGHT (<10B) — num_ctx=32768, max_tokens=4096 =====
@@ -118,6 +119,7 @@ BUILTIN_LLM_INFERENCE_PROFILES: dict[str, dict[str, Any]] = {
     "magistral:24b":           {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
     "lfm2:24b":                {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
     "gemma4:26b":              {"temperature": 0.20, "max_tokens": 4096, "num_ctx": 16384},
+    "gemma3:27b":              {"temperature": 0.20, "max_tokens": 4096, "num_ctx": 8192},
     "glm-4.7-flash-23b-local": {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
     "qwen3.5:27b":             {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
     # Qwen 3.6 27B Dense : agentic coding (SWE-bench 77.2%) + reasoning integre.
@@ -126,6 +128,9 @@ BUILTIN_LLM_INFERENCE_PROFILES: dict[str, dict[str, Any]] = {
     # troncature). num_ctx=24576 absorbe prompt (3000-5000) + thinking + code.
     "qwen3.6:27b":             {"temperature": 0.20, "max_tokens": 12288, "num_ctx": 24576},
     "qwen3-30b-a3b:q4_k_m":    {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 16384},
+    "acereason-nemotron:14b-q5_k_m": {"temperature": 0.60, "max_tokens": 6144, "num_ctx": 32768},
+    "fin-o1:14b-q6_k":               {"temperature": 0.60, "max_tokens": 4096, "num_ctx": 8192},
+    "nemotron-cascade-14b-local":    {"temperature": 0.60, "max_tokens": 6144, "num_ctx": 32768},
 
     # ===== HEAVY local (30-50B) — num_ctx=10240, max_tokens=2048 (reasoning=4096) =====
     "granite4.1:30b-q6_K":            {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 10240},
@@ -137,10 +142,11 @@ BUILTIN_LLM_INFERENCE_PROFILES: dict[str, dict[str, Any]] = {
     "qwen2.5:32b":                    {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 10240},
     "qwen3:32b":                      {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 10240},
     "cogito:32b":                     {"temperature": 0.60, "max_tokens": 4096, "num_ctx": 10240},
-    "qwen3-vl:32b":                   {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 10240},
     "deepseek-coder-33b-local":       {"temperature": 0.15, "max_tokens": 4096, "num_ctx": 16384},
     "qwen3.5:35b":                    {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 10240},
     "qwen3.6:35b":                    {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 10240},
+    "qwen3-48b-savant":               {"temperature": 0.60, "max_tokens": 4096, "num_ctx": 10240},
+    "llama-3.3-nemotron-super:49b-q3_k_s": {"temperature": 0.60, "max_tokens": 4096, "num_ctx": 10240},
 
     # ===== VERY HEAVY local (>50B) — num_ctx=8192, max_tokens=2048 (reasoning=4096) =====
     "llama3.3:70b-instruct-q4_K_M":      {"temperature": 0.30, "max_tokens": 2048, "num_ctx": 8192},
@@ -163,7 +169,6 @@ BUILTIN_LLM_INFERENCE_PROFILES: dict[str, dict[str, Any]] = {
     "qwen3-coder-next":      {"temperature": 0.20, "max_tokens": 4096, "num_ctx": 65536},
     "qwen3-next:80b":        {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
     "qwen3.5:122b":          {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
-    "qwen3-vl:235b":         {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
     "deepseek-v3.1":         {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
     "deepseek-v3.2":         {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
     "deepseek-v4-flash":     {"temperature": 0.30, "max_tokens": 4096, "num_ctx": 65536},
@@ -235,6 +240,14 @@ def _coerce_num_ctx(value: Any) -> int | None:
     return max(1, resolved)
 
 
+def _coerce_repeat_penalty(value: Any, default: float) -> float:
+    try:
+        resolved = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(1.0, min(resolved, 2.0))
+
+
 def normalize_llm_inference_settings(
     raw_settings: dict[str, Any] | None = None,
     *,
@@ -248,6 +261,10 @@ def normalize_llm_inference_settings(
         "temperature": _coerce_temperature(raw.get("temperature"), float(base["temperature"])),
         "max_tokens": _coerce_max_tokens(raw.get("max_tokens"), int(base["max_tokens"])),
         "num_ctx": _coerce_num_ctx(raw.get("num_ctx", base.get("num_ctx"))),
+        "repeat_penalty": _coerce_repeat_penalty(
+            raw.get("repeat_penalty"),
+            float(base.get("repeat_penalty", 1.15)),
+        ),
     }
 
 
@@ -317,6 +334,8 @@ def apply_llm_inference_settings(
     config.temperature = resolved["temperature"]
     config.max_tokens = resolved["max_tokens"]
     config.num_ctx = resolved["num_ctx"]
+    if hasattr(config, "repeat_penalty"):
+        config.repeat_penalty = resolved["repeat_penalty"]
     return config
 
 

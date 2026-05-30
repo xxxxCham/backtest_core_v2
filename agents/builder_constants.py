@@ -53,8 +53,15 @@ POSITIVE_PROGRESS_GATE_CHECKPOINTS: dict[int, int] = {2: 1, 4: 2}
 MIN_TRADES_FOR_POSITIVE_PROGRESS = 1
 # Quota max de fallbacks positifs comptabilisés dans la progression
 MAX_POSITIVE_FALLBACK_COUNT = 1
+# Seuils fixes radoucis pour distinguer un positif simple d'un candidat prometteur.
+MIN_TRADES_FOR_PROMISING = int(os.getenv("BACKTEST_BUILDER_PROMISING_MIN_TRADES", "5"))
+MIN_PROFIT_FACTOR_FOR_PROMISING = float(os.getenv("BACKTEST_BUILDER_PROMISING_MIN_PF", "1.03"))
+MAX_DRAWDOWN_PCT_FOR_PROMISING = float(os.getenv("BACKTEST_BUILDER_PROMISING_MAX_DD", "45.0"))
+MIN_SHARPE_FOR_PROMISING = float(os.getenv("BACKTEST_BUILDER_PROMISING_MIN_SHARPE", "0.25"))
+MIN_TELEMETRY_SCORE_FOR_PROMISING = float(os.getenv("BACKTEST_BUILDER_PROMISING_MIN_SCORE", "20.0"))
 # Nombre mini de trades pour accepter une stratégie en cours d'optimisation
 MIN_TRADES_FOR_ACCEPT = 20
+MAX_TRADES_FOR_RANK_PREFERENCE = int(os.getenv("BACKTEST_BUILDER_MAX_RANK_TRADES", "3000"))
 MAX_DRAWDOWN_PCT_FOR_ACCEPT = 35.0
 MIN_RETURN_PCT_FOR_ACCEPT = 0.0
 MIN_PROFIT_FACTOR_FOR_ACCEPT = 1.05

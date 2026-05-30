@@ -25,6 +25,10 @@ import streamlit as st
 
 from utils.range_manager import RangeManager
 
+# Racine du projet pour résoudre les paths config indépendamment du cwd
+# (Streamlit / sous-processus changent parfois cwd → OSError Errno 22 sur Windows).
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 
 class RangeEditorState:
     """État de l'éditeur de plages."""
@@ -168,7 +172,7 @@ def render_range_editor():
                 st.rerun()
 
         if st.button("📥 Exporter JSON", width="stretch"):
-            export_path = Path("config/indicator_ranges_export.json")
+            export_path = _PROJECT_ROOT / "config" / "indicator_ranges_export.json"
             data = manager.export_to_dict()
             import json
 

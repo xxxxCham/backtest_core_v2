@@ -47,6 +47,13 @@ from catalog.strategy_catalog import (
     prepare_saved_run_entry,
     upsert_entries,
 )
+from config.token_taxonomy import (
+    get_adjacent_bucket_tokens,
+    get_cross_universe_diagnostic_tokens,
+    get_token_bucket,
+    get_token_universe,
+    get_tokens_in_universe,
+)
 
 # pylint: disable=broad-exception-caught
 
@@ -57,6 +64,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
+
+# Racine du projet pour résoudre les paths config indépendamment du cwd
+# (Streamlit / sous-processus changent parfois cwd → OSError Errno 22 sur Windows).
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 SANDBOX_DIR = get_builder_sessions_dir()
 
@@ -87,7 +98,7 @@ def _default_promotion_dir() -> Path:
     raw = os.environ.get("BACKTEST_STRATEGY_PROMOTION_DIR", "").strip()
     if raw:
         return Path(raw)
-    return Path("strategies/graduated")
+    return _PROJECT_ROOT / "strategies" / "graduated"
 
 
 def _default_source_min_history_bars() -> dict[str, int]:
@@ -152,21 +163,32 @@ class GraduationConfig:
     p2_min_trades: int = 1
     p2_min_profit_factor: float = 0.0
 
-    # Phase 3 — Benchmark suite
+    # Phase 3 — Validation univers naturel (cross-token au sein de primary_universe + liquidity_bucket)
+    # Conservés pour rétrocompat des anchors P4/P5 (_validation_anchor_*), mais P3 ne les utilise plus.
     validation_tokens: list[str] = field(
         default_factory=lambda: [
-            "BTCUSDC",  # majeur / trend
-            "SOLUSDC",  # mid-cap / momentum volatile
-            "AVAXUSDC",  # small-cap / stress test
+            "BTCUSDC",
+            "SOLUSDC",
+            "AVAXUSDC",
         ],
     )
-    validation_timeframes: list[str] = field(default_factory=lambda: ["1h", "4h"])
+    # NOTE: cross-timeframe retiré du flow P3 actif (refonte 2026-05-26). La liste est conservée
+    # uniquement pour les anchors fallback dans P4/P5 (_validation_anchor_timeframe). Si on veut
+    # tester une stratégie sur 1h ET 4h, on le fera explicitement via deux sessions distinctes.
+    validation_timeframes: list[str] = field(default_factory=lambda: ["1h"])
     min_contexts_pass: int = 2
     min_context_coverage_pct: float = 70.0
     max_drawdown_abs: float = 30.0
     min_trades_per_context: int = 30
     min_profit_factor_per_context: float = 1.05
     min_sharpe_per_context: float = 0.3
+
+    # Phase 3 — Univers naturel (taxonomie config/token_taxonomy.json)
+    p3_universe_min_pass_rate_pct: float = 50.0  # ≥50% des tokens du même univers doivent passer
+    p3_universe_min_tokens: int = 2  # plancher absolu (sinon REJECTED + decision=MANUAL_REVIEW)
+    p3_include_adjacent_bucket: bool = True  # fallback bucket voisin si pool < min_tokens
+    p3_diagnostic_cross_universe: bool = True  # tester aussi d'autres univers (non-bloquant)
+    p3_diagnostic_tokens_per_universe: int = 2
 
     # Phase 4 — Sweep sensibilité
     sweep_neighborhood: float = 0.10  # ±10% autour des params
@@ -192,9 +214,9 @@ class GraduationConfig:
     wfa_hard_min_positive_folds_pct: float = 60.0
 
     # Output
-    output_dir: Path = field(default_factory=lambda: Path("catalog/graduation_results"))
+    output_dir: Path = field(default_factory=lambda: _PROJECT_ROOT / "catalog" / "graduation_results")
     promotion_dir: Path = field(default_factory=_default_promotion_dir)
-    catalog_path: Path = field(default_factory=lambda: Path("config/strategy_catalog.json"))
+    catalog_path: Path = field(default_factory=lambda: _PROJECT_ROOT / "config" / "strategy_catalog.json")
     sync_catalog: bool = False
     full_progress_filename: str = "graduation_full_progress.json"
     positive_progress_filename: str = "positive_imports_progress.json"
@@ -284,6 +306,20 @@ class GraduationCandidate:
     rejection_reason: str = ""
     catalog_category: str | None = None
     catalog_entry_id: str | None = None
+
+    # P3 univers naturel (refonte 2026-05-26)
+    primary_universe: str = ""
+    liquidity_bucket: str = ""
+    natural_universe_id: str = ""
+    required_universe_tokens: list[str] = field(default_factory=list)
+    diagnostic_universe_tokens: list[str] = field(default_factory=list)
+    required_pass_rate_pct: float | None = None
+    required_passed_count: int = 0
+    required_total_count: int = 0
+    diagnostic_pass_rate_pct: float | None = None
+    diagnostic_passed_count: int = 0
+    diagnostic_total_count: int = 0
+    used_adjacent_bucket_fallback: bool = False
 
     # Fichier stratégie associé
     strategy_file: str = ""  # chemin relatif vers le .py
@@ -398,6 +434,19 @@ class GraduationCandidate:
             "rejection_reason": self.rejection_reason,
             "catalog_category": self.catalog_category,
             "catalog_entry_id": self.catalog_entry_id,
+            # P3 univers naturel
+            "primary_universe": self.primary_universe,
+            "liquidity_bucket": self.liquidity_bucket,
+            "natural_universe_id": self.natural_universe_id,
+            "required_universe_tokens": list(self.required_universe_tokens or []),
+            "diagnostic_universe_tokens": list(self.diagnostic_universe_tokens or []),
+            "required_pass_rate_pct": _safe_round(self.required_pass_rate_pct, 1),
+            "required_passed_count": int(self.required_passed_count or 0),
+            "required_total_count": int(self.required_total_count or 0),
+            "diagnostic_pass_rate_pct": _safe_round(self.diagnostic_pass_rate_pct, 1),
+            "diagnostic_passed_count": int(self.diagnostic_passed_count or 0),
+            "diagnostic_total_count": int(self.diagnostic_total_count or 0),
+            "used_adjacent_bucket_fallback": bool(self.used_adjacent_bucket_fallback),
         }
 
 
@@ -735,103 +784,11 @@ def _build_candidate_id(candidate: GraduationCandidate) -> str:
     return f"{candidate.strategy_name or 'candidate'}|{candidate.source_symbol or 'MULTI'}|{candidate.source_timeframe or 'MULTI'}"
 
 
-def _load_postfilter_benchmark_config() -> dict[str, Any]:
-    try:
-        from config.market_selection import get_postfilter_benchmark_config
-
-        payload = get_postfilter_benchmark_config()
-        if isinstance(payload, dict):
-            return payload
-    except Exception as exc:
-        logger.debug("Unable to load postfilter benchmark config: %s", exc)
-    return {}
-
-
-def _resolve_postfilter_benchmarks(config: GraduationConfig) -> dict[str, dict[str, Any]]:
-    payload = _load_postfilter_benchmark_config()
-    benchmark_map = payload.get("benchmarks", {}) if isinstance(payload, dict) else {}
-    if not isinstance(benchmark_map, dict):
-        benchmark_map = {}
-
-    resolved: dict[str, dict[str, Any]] = {}
-    for name in config.benchmark_names:
-        benchmark = benchmark_map.get(name)
-        if not isinstance(benchmark, dict):
-            continue
-        tokens = [str(token).strip().upper() for token in benchmark.get("tokens", []) if str(token).strip()]
-        token_count = max(1, min(int(config.token_count), len(tokens) or int(config.token_count)))
-        resolved[name] = {
-            "name": name,
-            "label": _benchmark_label(name, benchmark),
-            "tokens": tokens[:token_count],
-        }
-    if resolved:
-        return resolved
-
-    fallback_tokens = [str(token).strip().upper() for token in config.validation_tokens if str(token).strip()]
-    resolved["fallback_validation_tokens"] = {
-        "name": "fallback_validation_tokens",
-        "label": "Fallback Validation Tokens",
-        "tokens": fallback_tokens[
-            : max(1, min(int(config.token_count), len(fallback_tokens) or int(config.token_count)))
-        ],
-    }
-    return resolved
-
-
-def _resolve_validation_contexts(config: GraduationConfig) -> dict[str, Any]:
-    from data import discover_data_inventory
-
-    inventory = discover_data_inventory()
-    timeframes = [str(tf).strip() for tf in config.validation_timeframes if str(tf).strip()]
-    benchmarks = _resolve_postfilter_benchmarks(config)
-
-    configured_contexts: list[str] = []
-    configured_context_slots: list[str] = []
-    loaded_contexts: dict[str, Any] = {}
-    missing_contexts: list[str] = []
-    benchmark_contexts: dict[str, list[str]] = {}
-    seen_contexts: set[str] = set()
-
-    for benchmark_name, benchmark in benchmarks.items():
-        keys: list[str] = []
-        for token in benchmark.get("tokens", []):
-            token_inventory = inventory.get(token, {})
-            for tf in timeframes:
-                key = f"{token}_{tf}"
-                configured_context_slots.append(key)
-                if key not in seen_contexts:
-                    configured_contexts.append(key)
-                    seen_contexts.add(key)
-                keys.append(key)
-                tf_payload = token_inventory.get(tf)
-                if isinstance(tf_payload, dict) and tf_payload.get("n_bars"):
-                    loaded_contexts[key] = tf_payload
-                else:
-                    missing_contexts.append(key)
-        benchmark_contexts[benchmark_name] = keys
-
-    coverage_pct = 0.0
-    if configured_contexts:
-        coverage_pct = round(len(loaded_contexts) / len(configured_contexts) * 100.0, 1)
-
-    benchmark_slot_coverage_pct = 0.0
-    if configured_context_slots:
-        loaded_slot_count = sum(1 for key in configured_context_slots if key in loaded_contexts)
-        benchmark_slot_coverage_pct = round(loaded_slot_count / len(configured_context_slots) * 100.0, 1)
-
-    return {
-        "universe_mode": str(config.universe_mode or "canonical"),
-        "timeframes": timeframes,
-        "benchmarks": benchmarks,
-        "configured_contexts": configured_contexts,
-        "configured_context_slots": configured_context_slots,
-        "loaded_contexts": loaded_contexts,
-        "missing_contexts": missing_contexts,
-        "benchmark_contexts": benchmark_contexts,
-        "coverage_pct": coverage_pct,
-        "benchmark_slot_coverage_pct": benchmark_slot_coverage_pct,
-    }
+# NOTE 2026-05-26 — Bloc legacy supprimé : `_load_postfilter_benchmark_config`,
+# `_resolve_postfilter_benchmarks`, `_resolve_validation_contexts` étaient consommés
+# uniquement par l'ancienne version multi-benchmark de P3 (cross-token × cross-TF).
+# La nouvelle P3 univers naturel résout son pool per-candidate via
+# `_resolve_natural_universe_pool`. Voir config/token_taxonomy.py.
 
 
 def _candidate_progress_payload(candidate: GraduationCandidate | None) -> dict[str, Any]:
@@ -1555,7 +1512,7 @@ def save_graduation_report(
 ) -> Path:
     """Sauvegarde le rapport de graduation en JSON."""
     if output_dir is None:
-        output_dir = Path("catalog/graduation_results")
+        output_dir = _PROJECT_ROOT / "catalog" / "graduation_results"
 
     output_dir.mkdir(parents=True, exist_ok=True)
     meta_payload = _json_safe(meta or {})
@@ -1656,8 +1613,13 @@ def _graduation_phase_contract() -> dict[str, dict[str, str]]:
             "purpose": "Garder uniquement les runs positifs, complets, sans erreur runtime et rejouables.",
         },
         "P3": {
-            "name": "Robustesse benchmark",
-            "purpose": "Mesurer la généralisation cross-token/cross-timeframe sur les packs de benchmarks.",
+            "name": "Robustesse univers naturel",
+            "purpose": (
+                "Mesurer la généralisation cross-token au sein du primary_universe + "
+                "liquidity_bucket de la stratégie source. Le source_timeframe est conservé "
+                "(pas de cross-timeframe). Les stratégies dont l'univers naturel est inconnu "
+                "sont marquées decision=MANUAL_REVIEW pour examen ultérieur."
+            ),
         },
         "P4": {
             "name": "Sensibilité paramétrique",
@@ -1688,8 +1650,13 @@ def _graduation_config_snapshot(config: GraduationConfig) -> dict[str, Any]:
         "benchmark_names": list(config.benchmark_names),
         "required_benchmark_name": config.required_benchmark_name,
         "min_benchmarks_pass": config.min_benchmarks_pass,
-        "validation_tokens": list(config.validation_tokens),
-        "validation_timeframes": list(config.validation_timeframes),
+        "validation_tokens_legacy_anchor": list(config.validation_tokens),
+        "validation_timeframes_legacy_anchor": list(config.validation_timeframes),
+        "p3_universe_min_pass_rate_pct": config.p3_universe_min_pass_rate_pct,
+        "p3_universe_min_tokens": config.p3_universe_min_tokens,
+        "p3_include_adjacent_bucket": config.p3_include_adjacent_bucket,
+        "p3_diagnostic_cross_universe": config.p3_diagnostic_cross_universe,
+        "p3_diagnostic_tokens_per_universe": config.p3_diagnostic_tokens_per_universe,
         "min_context_coverage_pct": config.min_context_coverage_pct,
         "sweep_neighborhood": config.sweep_neighborhood,
         "sweep_min_profitable_pct": config.sweep_min_profitable_pct,
@@ -3073,16 +3040,62 @@ def _load_strategy_for_candidate(candidate: GraduationCandidate):
     return strategy, params
 
 
-def run_multi_context_validation(
-    candidates: list[GraduationCandidate],
-    config: GraduationConfig | None = None,
-    *,
-    progress_callback: Callable[..., None] | None = None,
-) -> list[GraduationCandidate]:
-    """Phase 3 — Validation benchmark multi-token / multi-timeframe."""
-    if config is None:
-        config = GraduationConfig()
+_DECISION_MANUAL_REVIEW = "MANUAL_REVIEW"
 
+
+def _evaluate_context_metrics(
+    metrics: dict[str, Any],
+    *,
+    config: GraduationConfig,
+) -> tuple[bool, dict[str, Any]]:
+    """Évalue les métriques d'un backtest sur un contexte unique (token, tf).
+
+    Critères inchangés vs version legacy (max_drawdown_abs, min_trades_per_context,
+    min_profit_factor_per_context, min_sharpe_per_context, return > 0).
+    """
+    ret = float(metrics.get("total_return_pct", 0) or 0)
+    dd = abs(float(metrics.get("max_drawdown_pct", 0) or 0))
+    pf = float(metrics.get("profit_factor", 0) or 0)
+    trades = int(metrics.get("total_trades", 0) or 0)
+    sharpe = float(metrics.get("sharpe_ratio", 0) or 0)
+    passed = bool(
+        ret > 0
+        and dd <= config.max_drawdown_abs
+        and trades >= config.min_trades_per_context
+        and pf >= config.min_profit_factor_per_context
+        and sharpe >= config.min_sharpe_per_context,
+    )
+    summary = {
+        "return_pct": round(ret, 2),
+        "max_drawdown_pct": round(dd, 2),
+        "profit_factor": round(pf, 4),
+        "sharpe_ratio": round(sharpe, 4),
+        "trades": trades,
+        "passed": passed,
+    }
+    return passed, summary
+
+
+def _backtest_pool(
+    engine,
+    *,
+    strategy,
+    params: dict[str, Any],
+    candidate: GraduationCandidate,
+    tokens: list[str],
+    timeframe: str,
+    config: GraduationConfig,
+    df_cache: dict[tuple[str, str], Any],
+    pool_label: str,
+) -> tuple[dict[str, dict[str, Any]], int, int]:
+    """Backteste une stratégie sur un pool de tokens au même timeframe.
+
+    Returns:
+        (results_by_token, passed_count, total_count_with_data)
+        - results_by_token: {symbol: {return_pct, max_drawdown_pct, ..., passed, error?}}
+        - passed_count: nombre de tokens qui passent les seuils par-contexte.
+        - total_count_with_data: nombre de tokens où le backtest a vraiment tourné (data ok).
+    """
     import warnings
 
     try:
@@ -3090,72 +3103,174 @@ def run_multi_context_validation(
     except ImportError:
         SettingWithCopyWarning = Warning  # type: ignore[misc,assignment]
 
-    from backtest.engine import BacktestEngine
-    from config.market_selection import evaluate_market_dataset, infer_strategy_type
+    from config.market_selection import evaluate_market_dataset
     from data.loader import load_ohlcv
 
-    engine = BacktestEngine(initial_capital=10000.0)
-    context_plan = _resolve_validation_contexts(config)
-    timeframes = context_plan["timeframes"]
-    benchmarks = context_plan["benchmarks"]
-    benchmark_contexts = context_plan["benchmark_contexts"]
-    configured_contexts = list(context_plan["configured_contexts"])
-    configured_context_slots = list(context_plan.get("configured_context_slots") or configured_contexts)
-    missing_contexts = list(context_plan["missing_contexts"])
-    total_contexts = len(configured_contexts)
-    total_benchmark_slots = len(configured_context_slots)
-    survivors: list[GraduationCandidate] = []
-    excluded_contexts: dict[str, list[str]] = {}
+    results: dict[str, dict[str, Any]] = {}
+    passed = 0
+    total_with_data = 0
+    normalized_tf = str(timeframe or "").strip()
 
-    logger.info(
-        "Phase 3: validating %d candidates on %d configured contexts across benchmarks=%s timeframes=%s",
-        len(candidates),
-        total_contexts,
-        list(benchmarks.keys()),
-        timeframes,
-    )
-
-    # Précharger les DataFrames
-    dataframes: dict[str, Any] = {}
-    for key in configured_contexts:
-        token, tf = key.split("_", 1)
-        try:
-            df = load_ohlcv(token, tf)
-            if df is not None and len(df) > 100:
+    for symbol in tokens:
+        normalized_symbol = str(symbol or "").strip().upper()
+        if not normalized_symbol or not normalized_tf:
+            continue
+        cache_key = (normalized_symbol, normalized_tf)
+        df = df_cache.get(cache_key)
+        if df is None:
+            try:
+                df = load_ohlcv(normalized_symbol, normalized_tf)
+            except Exception as exc:  # noqa: BLE001
+                results[normalized_symbol] = {
+                    "token": normalized_symbol,
+                    "timeframe": normalized_tf,
+                    "pool": pool_label,
+                    "passed": False,
+                    "error": f"data load failed: {exc}",
+                }
+                continue
+            if df is None or len(df) <= 100:
+                results[normalized_symbol] = {
+                    "token": normalized_symbol,
+                    "timeframe": normalized_tf,
+                    "pool": pool_label,
+                    "passed": False,
+                    "error": f"insufficient_data ({len(df) if df is not None else 0} bars)",
+                }
+                continue
+            try:
                 evaluation = evaluate_market_dataset(
                     df,
-                    symbol=token,
-                    timeframe=tf,
+                    symbol=normalized_symbol,
+                    timeframe=normalized_tf,
                     universe_mode=config.universe_mode,
                     purpose="validation",
                 )
-                if not evaluation.get("accepted"):
-                    excluded_contexts[key] = list(
+            except Exception:  # noqa: BLE001
+                evaluation = {"accepted": True}
+            if not evaluation.get("accepted"):
+                results[normalized_symbol] = {
+                    "token": normalized_symbol,
+                    "timeframe": normalized_tf,
+                    "pool": pool_label,
+                    "passed": False,
+                    "error": "excluded_by_universe: " + "; ".join(
                         evaluation.get("exclusion_reasons", []) or ["excluded_by_universe"],
-                    )
-                    logger.warning(
-                        "Phase 3 excluding context %s mode=%s reasons=%s",
-                        key,
-                        config.universe_mode,
-                        "; ".join(excluded_contexts[key]),
-                    )
-                    continue
-                dataframes[key] = df
-                logger.debug("Loaded %s: %d bars", key, len(df))
-            else:
-                logger.warning("Skipping %s: insufficient data (%d bars)", key, len(df) if df is not None else 0)
-        except Exception as e:
-            logger.warning("Cannot load %s: %s", key, e)
+                    ),
+                }
+                continue
+            df_cache[cache_key] = df
 
-    if not dataframes:
-        logger.error("No data loaded — Phase 3 aborted")
-        return candidates  # Retourner tels quels
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=SettingWithCopyWarning)
+                result = engine.run(
+                    df=df,
+                    strategy=strategy,
+                    params=params,
+                    fast_metrics=True,
+                    silent_mode=True,
+                )
+            ctx_passed, summary = _evaluate_context_metrics(result.metrics, config=config)
+            entry = {
+                "token": normalized_symbol,
+                "timeframe": normalized_tf,
+                "pool": pool_label,
+                **summary,
+            }
+            results[normalized_symbol] = entry
+            total_with_data += 1
+            if ctx_passed:
+                passed += 1
+        except Exception as exc:  # noqa: BLE001
+            results[normalized_symbol] = {
+                "token": normalized_symbol,
+                "timeframe": normalized_tf,
+                "pool": pool_label,
+                "passed": False,
+                "error": str(exc),
+            }
 
-    eligible_contexts = [key for key in configured_contexts if key not in excluded_contexts]
-    eligible_context_count = len(eligible_contexts)
+    return results, passed, total_with_data
 
-    loaded_benchmark_slots = sum(1 for key in configured_context_slots if key in dataframes)
-    benchmark_slot_coverage_pct = round(loaded_benchmark_slots / max(total_benchmark_slots, 1) * 100.0, 1)
+
+def _resolve_natural_universe_pool(
+    candidate: GraduationCandidate,
+    *,
+    config: GraduationConfig,
+) -> dict[str, Any]:
+    """Détermine le pool P3 pour un candidat à partir de son source_symbol.
+
+    Returns:
+        {
+            "primary_universe": str,
+            "liquidity_bucket": str,
+            "natural_universe_id": str,
+            "required_tokens": list[str],   # même universe + même bucket (source exclu)
+            "diagnostic_tokens": list[str], # autres univers (sample non-bloquant)
+            "used_adjacent_bucket_fallback": bool,
+            "error": str | None,            # 'unknown_natural_universe' | 'missing_source_symbol'
+        }
+    """
+    source_symbol = str(candidate.source_symbol or "").strip().upper()
+    if not source_symbol:
+        return {"error": "missing_source_symbol"}
+
+    universe = get_token_universe(source_symbol)
+    bucket = get_token_bucket(source_symbol)
+    if not universe or not bucket:
+        return {"error": "unknown_natural_universe", "source_symbol": source_symbol}
+
+    required_tokens = get_tokens_in_universe(universe, bucket, exclude=[source_symbol])
+    used_adjacent_fallback = False
+    if len(required_tokens) < config.p3_universe_min_tokens and config.p3_include_adjacent_bucket:
+        adjacent = get_adjacent_bucket_tokens(universe, bucket, exclude=[source_symbol])
+        if adjacent:
+            used_adjacent_fallback = True
+            required_tokens = sorted(set(required_tokens) | set(adjacent))
+
+    diagnostic_tokens: list[str] = []
+    if config.p3_diagnostic_cross_universe:
+        diagnostic_tokens = get_cross_universe_diagnostic_tokens(
+            universe,
+            n_per_universe=config.p3_diagnostic_tokens_per_universe,
+        )
+
+    return {
+        "primary_universe": universe,
+        "liquidity_bucket": bucket,
+        "natural_universe_id": f"{universe}:{bucket}",
+        "required_tokens": required_tokens,
+        "diagnostic_tokens": diagnostic_tokens,
+        "used_adjacent_bucket_fallback": used_adjacent_fallback,
+        "error": None,
+    }
+
+
+def run_multi_context_validation(
+    candidates: list[GraduationCandidate],
+    config: GraduationConfig | None = None,
+    *,
+    progress_callback: Callable[..., None] | None = None,
+) -> list[GraduationCandidate]:
+    """Phase 3 — Validation univers naturel (cross-token au sein de primary_universe + liquidity_bucket).
+
+    Le source_timeframe de la stratégie est conservé : pas de cross-timeframe.
+    Verdict : pass-rate ≥ config.p3_universe_min_pass_rate_pct sur le pool required
+    (mêmes primary_universe + liquidity_bucket que la source, source exclue).
+    Cross-univers reste diagnostic (non-bloquant).
+
+    Stratégies dont l'univers naturel est inconnu → decision="MANUAL_REVIEW"
+    (pas perdues, isolées pour réexamen ultérieur).
+    """
+    if config is None:
+        config = GraduationConfig()
+
+    from backtest.engine import BacktestEngine
+
+    engine = BacktestEngine(initial_capital=10000.0)
+    survivors: list[GraduationCandidate] = []
+    df_cache: dict[tuple[str, str], Any] = {}
 
     if progress_callback:
         progress_callback(
@@ -3166,25 +3281,103 @@ def run_multi_context_validation(
             total=len(candidates),
             survivors=0,
             extra={
-                "loaded_contexts": len(dataframes),
-                "configured_contexts": total_contexts,
-                "eligible_contexts": eligible_context_count,
-                "benchmark_slot_coverage_pct": benchmark_slot_coverage_pct,
-                "benchmarks": list(benchmarks.keys()),
+                "scheme": "natural_universe",
+                "min_pass_rate_pct": config.p3_universe_min_pass_rate_pct,
+                "min_tokens": config.p3_universe_min_tokens,
+                "include_adjacent_bucket": config.p3_include_adjacent_bucket,
+                "diagnostic_cross_universe": config.p3_diagnostic_cross_universe,
             },
         )
 
     for index, candidate in enumerate(candidates, 1):
         candidate.candidate_id = _build_candidate_id(candidate)
         candidate.phase = "P3"
-        candidate.configured_contexts = list(configured_contexts)
-        candidate.loaded_contexts = sorted(dataframes.keys())
-        candidate.missing_contexts = list(dict.fromkeys([*missing_contexts, *sorted(excluded_contexts.keys())]))
-        candidate.tested_timeframes = list(timeframes)
-        candidate.coverage_pct = round(
-            len(dataframes) / max(eligible_context_count, 1) * 100.0,
-            1,
-        )
+
+        source_symbol = str(candidate.source_symbol or "").strip().upper()
+        source_tf = str(candidate.source_timeframe or "").strip()
+
+        # Garde-fou TF source : obligatoire pour P3 (pas de fallback cross-TF)
+        if not source_tf:
+            candidate.p3_verdict = "REJECTED"
+            candidate.decision = "REJECTED"
+            candidate.rejection_reason = "P3 missing_source_timeframe"
+            candidate.multi_ctx_results = {
+                "scheme": "natural_universe",
+                "source_symbol": source_symbol,
+                "source_timeframe": source_tf,
+                "error": "missing_source_timeframe",
+            }
+            if progress_callback:
+                progress_callback(
+                    phase="P3",
+                    event="candidate_done",
+                    candidate=candidate,
+                    index=index,
+                    total=len(candidates),
+                    survivors=len(survivors),
+                    extra={"reason": "missing_source_timeframe"},
+                )
+            continue
+
+        pool_plan = _resolve_natural_universe_pool(candidate, config=config)
+        if pool_plan.get("error") == "missing_source_symbol":
+            candidate.p3_verdict = "REJECTED"
+            candidate.decision = "REJECTED"
+            candidate.rejection_reason = "P3 missing_source_symbol"
+            candidate.multi_ctx_results = {
+                "scheme": "natural_universe",
+                "source_timeframe": source_tf,
+                "error": "missing_source_symbol",
+            }
+            if progress_callback:
+                progress_callback(
+                    phase="P3",
+                    event="candidate_done",
+                    candidate=candidate,
+                    index=index,
+                    total=len(candidates),
+                    survivors=len(survivors),
+                    extra={"reason": "missing_source_symbol"},
+                )
+            continue
+        if pool_plan.get("error") == "unknown_natural_universe":
+            candidate.p3_verdict = "REJECTED"
+            candidate.decision = _DECISION_MANUAL_REVIEW
+            candidate.rejection_reason = (
+                f"P3 unknown_natural_universe(source_symbol={source_symbol}) — "
+                "ajouter le token à config/token_taxonomy.json pour réévaluer"
+            )
+            candidate.multi_ctx_results = {
+                "scheme": "natural_universe",
+                "source_symbol": source_symbol,
+                "source_timeframe": source_tf,
+                "error": "unknown_natural_universe",
+            }
+            if progress_callback:
+                progress_callback(
+                    phase="P3",
+                    event="candidate_done",
+                    candidate=candidate,
+                    index=index,
+                    total=len(candidates),
+                    survivors=len(survivors),
+                    extra={"reason": "unknown_natural_universe"},
+                )
+            continue
+
+        universe = pool_plan["primary_universe"]
+        bucket = pool_plan["liquidity_bucket"]
+        required_tokens = pool_plan["required_tokens"]
+        diagnostic_tokens = pool_plan["diagnostic_tokens"]
+        used_adjacent_fallback = pool_plan["used_adjacent_bucket_fallback"]
+        candidate.primary_universe = universe
+        candidate.liquidity_bucket = bucket
+        candidate.natural_universe_id = pool_plan["natural_universe_id"]
+        candidate.required_universe_tokens = list(required_tokens)
+        candidate.diagnostic_universe_tokens = list(diagnostic_tokens)
+        candidate.used_adjacent_bucket_fallback = used_adjacent_fallback
+        candidate.configured_contexts = [f"{tok}_{source_tf}" for tok in required_tokens]
+        candidate.tested_timeframes = [source_tf]
 
         if progress_callback:
             progress_callback(
@@ -3195,24 +3388,20 @@ def run_multi_context_validation(
                 total=len(candidates),
                 survivors=len(survivors),
                 extra={
-                    "loaded_contexts": len(dataframes),
-                    "configured_contexts": total_contexts,
-                    "eligible_contexts": eligible_context_count,
-                    "benchmark_slot_coverage_pct": benchmark_slot_coverage_pct,
-                    "benchmarks": list(benchmarks.keys()),
+                    "natural_universe_id": candidate.natural_universe_id,
+                    "required_tokens_count": len(required_tokens),
+                    "diagnostic_tokens_count": len(diagnostic_tokens),
+                    "used_adjacent_bucket_fallback": used_adjacent_fallback,
                 },
             )
+
+        # Charge la stratégie
         try:
             strategy, params = _load_strategy_for_candidate(candidate)
-            strategy_type = infer_strategy_type(
-                objective=candidate.objective,
-                strategy_key=candidate.strategy_name,
-            )
-        except Exception as e:
-            candidate.decision = "REJECTED"
-            candidate.rejection_reason = f"load error: {e}"
+        except Exception as exc:  # noqa: BLE001
             candidate.p3_verdict = "REJECTED"
-            logger.debug("Cannot load %s: %s", candidate.session_id, e)
+            candidate.decision = "REJECTED"
+            candidate.rejection_reason = f"P3 load error: {exc}"
             if progress_callback:
                 progress_callback(
                     phase="P3",
@@ -3221,219 +3410,88 @@ def run_multi_context_validation(
                     index=index,
                     total=len(candidates),
                     survivors=len(survivors),
-                    extra={
-                        "loaded_contexts": len(dataframes),
-                        "configured_contexts": total_contexts,
-                        "eligible_contexts": eligible_context_count,
-                        "benchmarks": list(benchmarks.keys()),
-                    },
+                    extra={"reason": "load_error"},
                 )
             continue
 
-        # Backtester sur chaque contexte
-        ctx_results: dict[str, dict[str, Any]] = {}
-        passed_context_keys: set[str] = set()
-        benchmark_results: dict[str, dict[str, Any]] = {}
-        benchmarks_passed: list[str] = []
-
-        for benchmark_name, benchmark in benchmarks.items():
-            benchmark_keys = benchmark_contexts.get(benchmark_name, [])
-            benchmark_excluded = [key for key in benchmark_keys if key in excluded_contexts]
-            benchmark_eligible = [key for key in benchmark_keys if key not in excluded_contexts]
-            benchmark_loaded = [key for key in benchmark_eligible if key in dataframes]
-            benchmark_missing = [key for key in benchmark_keys if key not in dataframes]
-            benchmark_passed_count = 0
-            benchmark_context_results: dict[str, dict[str, Any]] = {}
-
-            for key in benchmark_loaded:
-                df = dataframes[key]
-                token, tf = _split_context_key(key)
-                try:
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore", category=SettingWithCopyWarning)
-                        result = engine.run(
-                            df=df,
-                            strategy=strategy,
-                            params=params,
-                            fast_metrics=True,
-                            silent_mode=True,
-                        )
-                    m = result.metrics
-                    ret = float(m.get("total_return_pct", 0) or 0)
-                    dd = abs(float(m.get("max_drawdown_pct", 0) or 0))
-                    pf = float(m.get("profit_factor", 0) or 0)
-                    trades = int(m.get("total_trades", 0) or 0)
-                    sharpe = float(m.get("sharpe_ratio", 0) or 0)
-
-                    ctx_passed = bool(
-                        ret > 0
-                        and dd <= config.max_drawdown_abs
-                        and trades >= config.min_trades_per_context
-                        and pf >= config.min_profit_factor_per_context
-                        and sharpe >= config.min_sharpe_per_context,
-                    )
-
-                    context_result = {
-                        "token": token,
-                        "timeframe": tf,
-                        "configured": True,
-                        "loaded": True,
-                        "missing": False,
-                        "return_pct": round(ret, 2),
-                        "max_drawdown_pct": round(dd, 2),
-                        "profit_factor": round(pf, 4),
-                        "sharpe_ratio": round(sharpe, 4),
-                        "trades": trades,
-                        "passed": ctx_passed,
-                        "benchmark": benchmark_name,
-                    }
-                    ctx_results[key] = context_result
-                    benchmark_context_results[key] = dict(context_result)
-                    if ctx_passed:
-                        passed_context_keys.add(key)
-                        benchmark_passed_count += 1
-                except Exception as e:
-                    error_result = {
-                        "token": token,
-                        "timeframe": tf,
-                        "configured": True,
-                        "loaded": True,
-                        "missing": False,
-                        "error": str(e),
-                        "passed": False,
-                        "benchmark": benchmark_name,
-                    }
-                    ctx_results[key] = error_result
-                    benchmark_context_results[key] = dict(error_result)
-                    logger.debug("Backtest error %s on %s: %s", candidate.session_id, key, e)
-
-            for key in benchmark_missing:
-                token, tf = _split_context_key(key)
-                error_message = "missing_data"
-                if key in excluded_contexts:
-                    error_message = "excluded_by_universe: " + "; ".join(excluded_contexts[key])
-                missing_result = {
-                    "token": token,
-                    "timeframe": tf,
-                    "configured": True,
-                    "loaded": False,
-                    "missing": True,
-                    "error": error_message,
-                    "passed": False,
-                    "benchmark": benchmark_name,
-                }
-                ctx_results[key] = missing_result
-                benchmark_context_results[key] = dict(missing_result)
-
-            benchmark_coverage_pct = round(
-                len(benchmark_loaded) / max(len(benchmark_eligible), 1) * 100.0,
-                1,
-            )
-            benchmark_configured_coverage_pct = round(
-                len(benchmark_loaded) / max(len(benchmark_keys), 1) * 100.0,
-                1,
-            )
-            benchmark_pass = bool(
-                benchmark_eligible
-                and benchmark_loaded
-                and benchmark_coverage_pct >= config.min_context_coverage_pct
-                and benchmark_passed_count >= config.min_contexts_pass,
-            )
-            benchmark_results[benchmark_name] = {
-                "label": benchmark.get("label", benchmark_name),
-                "tokens": list(benchmark.get("tokens", [])),
-                "timeframes": list(timeframes),
-                "configured_contexts": list(benchmark_keys),
-                "configured_context_count": len(benchmark_keys),
-                "eligible_contexts": list(benchmark_eligible),
-                "eligible_context_count": len(benchmark_eligible),
-                "loaded_contexts": list(benchmark_loaded),
-                "loaded_context_count": len(benchmark_loaded),
-                "excluded_contexts": list(benchmark_excluded),
-                "excluded_context_count": len(benchmark_excluded),
-                "missing_contexts": list(benchmark_missing),
-                "missing_context_count": len(benchmark_missing),
-                "passed_contexts": benchmark_passed_count,
-                "passed_context_count": benchmark_passed_count,
-                "coverage_pct": benchmark_coverage_pct,
-                "configured_coverage_pct": benchmark_configured_coverage_pct,
-                "pass_rate_pct": round(benchmark_passed_count / max(len(benchmark_loaded), 1) * 100.0, 1)
-                if benchmark_loaded
-                else 0.0,
-                "passed": benchmark_pass,
-                "contexts": benchmark_context_results,
-            }
-            if benchmark_pass:
-                benchmarks_passed.append(benchmark_name)
-
-        passed_count = len(passed_context_keys)
-
-        candidate.multi_ctx_results = {
-            "contexts": ctx_results,
-            "passed_count": passed_count,
-            "total_contexts": eligible_context_count,
-            "eligible_context_count": eligible_context_count,
-            "configured_context_count": total_contexts,
-            "loaded_contexts": len(dataframes),
-            "missing_contexts": len(candidate.missing_contexts),
-            "configured_benchmark_slots": total_benchmark_slots,
-            "loaded_benchmark_slots": loaded_benchmark_slots,
-            "benchmark_slot_coverage_pct": benchmark_slot_coverage_pct,
-            "excluded_context_count": len(excluded_contexts),
-            "excluded_context_reasons": dict(excluded_contexts),
-            "universe_mode": str(config.universe_mode or "canonical"),
-            "strategy_type": strategy_type,
-            "pass_rate": round(passed_count / max(eligible_context_count, 1) * 100, 1),
-        }
-        candidate.benchmark_results = benchmark_results
-
-        required_benchmark_name = (
-            config.required_benchmark_name
-            if config.required_benchmark_name in benchmarks
-            else (next(iter(benchmarks.keys()), ""))
+        # Backtest pool obligatoire (univers + bucket source)
+        required_results, required_passed, required_total = _backtest_pool(
+            engine,
+            strategy=strategy,
+            params=params,
+            candidate=candidate,
+            tokens=required_tokens,
+            timeframe=source_tf,
+            config=config,
+            df_cache=df_cache,
+            pool_label="required",
         )
-        required_passed = required_benchmark_name in benchmarks_passed if required_benchmark_name else True
-        consensus_passed = bool(required_passed and len(benchmarks_passed) >= config.min_benchmarks_pass)
-        contradicted = bool(benchmarks_passed and not consensus_passed)
-        candidate.benchmark_consensus = {
-            "required_benchmark_name": required_benchmark_name,
-            "required_passed": required_passed,
-            "configured_benchmark_names": sorted(benchmarks.keys()),
-            "benchmarks_passed": benchmarks_passed,
-            "benchmarks_failed": sorted(name for name in benchmarks.keys() if name not in benchmarks_passed),
-            "benchmarks_total": len(benchmarks),
-            "n_passed": len(benchmarks_passed),
-            "min_benchmarks_pass": config.min_benchmarks_pass,
-            "consensus_passed": consensus_passed,
-            "contradicted": contradicted,
-            "coverage_scope": "unique_contexts",
-            "unique_context_coverage_pct": candidate.coverage_pct,
-            "benchmark_slot_coverage_pct": benchmark_slot_coverage_pct,
+        # Backtest pool diagnostic (autres univers, non-bloquant)
+        diagnostic_results, diagnostic_passed, diagnostic_total = _backtest_pool(
+            engine,
+            strategy=strategy,
+            params=params,
+            candidate=candidate,
+            tokens=diagnostic_tokens,
+            timeframe=source_tf,
+            config=config,
+            df_cache=df_cache,
+            pool_label="diagnostic",
+        )
+
+        pass_rate = (required_passed / required_total * 100.0) if required_total else 0.0
+        diag_rate = (diagnostic_passed / diagnostic_total * 100.0) if diagnostic_total else 0.0
+
+        candidate.required_pass_rate_pct = round(pass_rate, 1)
+        candidate.required_passed_count = required_passed
+        candidate.required_total_count = required_total
+        candidate.diagnostic_pass_rate_pct = round(diag_rate, 1) if diagnostic_total else None
+        candidate.diagnostic_passed_count = diagnostic_passed
+        candidate.diagnostic_total_count = diagnostic_total
+
+        # Garde compatibilité UI/CSV historique (champs benchmark_*)
+        all_contexts: dict[str, Any] = {}
+        for symbol, payload in required_results.items():
+            all_contexts[f"{symbol}_{source_tf}"] = payload
+        for symbol, payload in diagnostic_results.items():
+            all_contexts[f"{symbol}_{source_tf}"] = payload
+        candidate.multi_ctx_results = {
+            "scheme": "natural_universe",
+            "primary_universe": universe,
+            "liquidity_bucket": bucket,
+            "natural_universe_id": candidate.natural_universe_id,
+            "source_symbol": source_symbol,
+            "source_timeframe": source_tf,
+            "required_tokens": list(required_tokens),
+            "diagnostic_tokens": list(diagnostic_tokens),
+            "required_pass_rate_pct": candidate.required_pass_rate_pct,
+            "diagnostic_pass_rate_pct": candidate.diagnostic_pass_rate_pct,
+            "used_adjacent_bucket_fallback": used_adjacent_fallback,
+            "contexts": all_contexts,
+            "passed_count": required_passed,
+            "total_contexts": required_total,
         }
 
-        if consensus_passed:
+        # Verdict
+        if required_total < config.p3_universe_min_tokens:
+            candidate.p3_verdict = "REJECTED"
+            candidate.decision = _DECISION_MANUAL_REVIEW
+            candidate.rejection_reason = (
+                f"P3 universe_pool_too_small "
+                f"(loaded={required_total}<{config.p3_universe_min_tokens}, "
+                f"universe={universe}:{bucket})"
+            )
+        elif pass_rate >= config.p3_universe_min_pass_rate_pct:
             candidate.p3_verdict = "PASSED"
             candidate.decision = "WATCHLIST"
             survivors.append(candidate)
-            logger.debug(
-                "P3 PASS: %s — benchmarks=%s",
-                candidate.session_id,
-                benchmarks_passed,
-            )
         else:
-            reasons = []
-            if not required_passed and required_benchmark_name:
-                reasons.append(f"required_benchmark_failed={required_benchmark_name}")
-            reasons.append(
-                f"benchmarks={len(benchmarks_passed)}/{len(benchmarks)}<{config.min_benchmarks_pass}",
-            )
-            if candidate.coverage_pct is not None and candidate.coverage_pct < config.min_context_coverage_pct:
-                reasons.append(
-                    f"coverage={candidate.coverage_pct:.1f}%<{config.min_context_coverage_pct}%",
-                )
             candidate.p3_verdict = "REJECTED"
             candidate.decision = "REJECTED"
-            candidate.rejection_reason = "; ".join(reasons)
+            candidate.rejection_reason = (
+                f"P3 natural_universe_pass_rate={pass_rate:.1f}%<{config.p3_universe_min_pass_rate_pct}% "
+                f"(passed={required_passed}/{required_total}, universe={universe}:{bucket})"
+            )
 
         if progress_callback:
             progress_callback(
@@ -3444,16 +3502,16 @@ def run_multi_context_validation(
                 total=len(candidates),
                 survivors=len(survivors),
                 extra={
-                    "loaded_contexts": len(dataframes),
-                    "configured_contexts": total_contexts,
-                    "eligible_contexts": eligible_context_count,
-                    "benchmark_slot_coverage_pct": benchmark_slot_coverage_pct,
-                    "benchmarks_passed": benchmarks_passed,
+                    "natural_universe_id": candidate.natural_universe_id,
+                    "required_pass_rate_pct": candidate.required_pass_rate_pct,
+                    "required_passed": required_passed,
+                    "required_total": required_total,
+                    "diagnostic_pass_rate_pct": candidate.diagnostic_pass_rate_pct,
                 },
             )
 
     logger.info(
-        "Phase 3 done: %d/%d survived",
+        "Phase 3 (natural universe) done: %d/%d survived",
         len(survivors),
         len(candidates),
     )
@@ -3466,17 +3524,15 @@ def run_multi_context_validation(
             index=len(candidates),
             total=len(candidates),
             survivors=len(survivors),
-            extra={
-                "loaded_contexts": len(dataframes),
-                "configured_contexts": total_contexts,
-                "eligible_contexts": eligible_context_count,
-                "benchmark_slot_coverage_pct": benchmark_slot_coverage_pct,
-                "benchmarks": list(benchmarks.keys()),
-            },
+            extra={"scheme": "natural_universe"},
         )
 
     return survivors
 
+
+# NOTE 2026-05-26 — _legacy_run_multi_context_validation_benchmarks supprimée.
+# L'ancienne P3 multi-benchmark (cross-token × cross-TF) a été remplacée par
+# run_multi_context_validation (univers naturel, mono-TF) — voir refonte P3.
 
 # ---------------------------------------------------------------------------
 # Phase 4 — Sensibilité paramétrique
@@ -4361,9 +4417,16 @@ def _candidate_catalog_category(
     if candidate.p4_verdict == "PASSED":
         return "p4_param_robust"
 
-    consensus_passed = bool((candidate.benchmark_consensus or {}).get("consensus_passed"))
-    if consensus_passed or candidate.p3_verdict == "PASSED":
+    # P3 univers naturel : verdict PASSED ⇒ catégorie validée
+    if candidate.p3_verdict == "PASSED":
         return "p3_benchmark_consensus"
+
+    # P3 univers naturel : decision MANUAL_REVIEW ⇒ catégorie dédiée à la revue manuelle.
+    # Cas d'usage : source_symbol absent de config/token_taxonomy.json, ou pool d'univers
+    # trop petit (< p3_universe_min_tokens). Ces stratégies ne sont pas REJECTED — elles
+    # attendent une classification taxonomie puis un re-run.
+    if str(candidate.decision or "").upper() == _DECISION_MANUAL_REVIEW:
+        return "p3_manual_review"
 
     if candidate.p2_verdict == "PASSED" or candidate.best_return_pct > 0:
         return "p2_positive_observed"
@@ -4397,10 +4460,15 @@ def _candidate_should_sync_to_catalog(candidate: GraduationCandidate) -> bool:
         return False
     if str(candidate.p2_verdict or "").strip().upper() == "PASSED":
         return True
+    decision_upper = str(candidate.decision or "").strip().upper()
+    # MANUAL_REVIEW : on synchronise pour que ces candidats apparaissent dans le catalog
+    # sous la catégorie p3_manual_review (visibles dans l'UI pour classification ultérieure).
+    if decision_upper in {"PROMOTED", _DECISION_MANUAL_REVIEW}:
+        return True
     return any(
         str(verdict or "").strip().upper() == "PASSED"
         for verdict in (candidate.p3_verdict, candidate.p4_verdict, candidate.p5_verdict, candidate.p6_verdict)
-    ) or str(candidate.decision or "").strip().upper() == "PROMOTED"
+    )
 
 
 def sync_graduation_to_catalog(
@@ -4551,8 +4619,18 @@ def sync_graduation_to_catalog(
                     "missing_contexts": candidate.missing_contexts,
                     "tested_timeframes": candidate.tested_timeframes,
                     "coverage_pct": candidate.coverage_pct,
-                    "validation_tokens": config.validation_tokens,
-                    "validation_timeframes": config.validation_timeframes,
+                    # P3 univers naturel (refonte 2026-05-26) : on remplace
+                    # validation_tokens/validation_timeframes par les vrais paramètres
+                    # consommés + le résultat propre au candidat.
+                    "p3_universe_min_pass_rate_pct": config.p3_universe_min_pass_rate_pct,
+                    "p3_universe_min_tokens": config.p3_universe_min_tokens,
+                    "p3_include_adjacent_bucket": config.p3_include_adjacent_bucket,
+                    "natural_universe_id": candidate.natural_universe_id or None,
+                    "primary_universe": candidate.primary_universe or None,
+                    "liquidity_bucket": candidate.liquidity_bucket or None,
+                    "required_pass_rate_pct": candidate.required_pass_rate_pct,
+                    "required_passed_count": candidate.required_passed_count,
+                    "required_total_count": candidate.required_total_count,
                     "decision": candidate.decision,
                     "phase": candidate.phase,
                     "p2_verdict": candidate.p2_verdict,
@@ -4727,8 +4805,15 @@ def sync_positive_import_candidates_to_catalog(
                     "positive_pipeline_wfa_classic_overfitting_ratio": candidate.wfa_classic_overfitting_ratio,
                     "positive_pipeline_wfa_robust_overfitting_score": candidate.wfa_robust_overfitting_score,
                     "positive_pipeline_wfa_confidence_tier": candidate.wfa_confidence_tier or None,
-                    "positive_pipeline_tokens": config.validation_tokens,
-                    "positive_pipeline_timeframes": config.validation_timeframes,
+                    # P3 univers naturel (refonte 2026-05-26)
+                    "positive_pipeline_p3_universe_min_pass_rate_pct": config.p3_universe_min_pass_rate_pct,
+                    "positive_pipeline_p3_universe_min_tokens": config.p3_universe_min_tokens,
+                    "positive_pipeline_natural_universe_id": candidate.natural_universe_id or None,
+                    "positive_pipeline_primary_universe": candidate.primary_universe or None,
+                    "positive_pipeline_liquidity_bucket": candidate.liquidity_bucket or None,
+                    "positive_pipeline_required_pass_rate_pct": candidate.required_pass_rate_pct,
+                    "positive_pipeline_required_passed_count": candidate.required_passed_count,
+                    "positive_pipeline_required_total_count": candidate.required_total_count,
                     "positive_pipeline_passed_count": (candidate.multi_ctx_results or {}).get("passed_count"),
                     "positive_pipeline_total_contexts": (candidate.multi_ctx_results or {}).get("total_contexts"),
                 },

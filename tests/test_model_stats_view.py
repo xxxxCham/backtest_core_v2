@@ -86,6 +86,25 @@ def test_aggregate_model_records_counts_returns_and_statuses():
     assert lfm_row["error_rate_pct"] == 0.0
 
 
+def test_aggregate_model_records_counts_positive_status_separately():
+    history = [
+        {
+            "session_num": 1,
+            "session_id": "positive-session",
+            "status": "positive",
+            "best_return": 4.0,
+            "model_name": "gemma4:26b",
+        },
+    ]
+    records = model_stats_view.extract_builder_model_records(history)
+
+    rows = model_stats_view.aggregate_model_records(records)
+
+    row = rows[0]
+    assert row["positive_status"] == 1
+    assert row["failed_status"] == 0
+
+
 def test_aggregate_model_records_adds_productivity_metrics_and_sorts_by_profit_per_hour():
     history = _history_sample()
     records = model_stats_view.extract_builder_model_records(history)
