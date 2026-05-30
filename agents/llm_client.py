@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import threading
 import time
 
@@ -369,6 +370,80 @@ def _safe_response_text(response: httpx.Response) -> str:
         return ""
 
 
+# --- Rate-limit cloud (HTTP 429) -------------------------------------------
+# Ollama cloud (https://ollama.com) impose des quotas. Sans backoff, la boucle
+# autonome (+ pré-réflexion parallèle) refait feu toutes les ~1s sur plusieurs
+# threads et entretient le flood de 429. On partage une fenêtre de
+# refroidissement entre tous les clients/threads : un seul thread encaisse le
+# 429, et tout le monde patiente jusqu'à expiration (Retry-After borné).
+_RATE_LIMIT_LOCK = threading.Lock()
+_RATE_LIMIT_UNTIL = 0.0  # time.monotonic() jusqu'auquel s'abstenir d'appeler
+_RATE_LIMIT_MAX_WAIT = float(os.environ.get("OLLAMA_RATE_LIMIT_MAX_WAIT", "30"))
+
+
+def _parse_retry_after(value: str | None) -> Optional[float]:
+    """Convertit l'en-tête Retry-After (secondes ou HTTP-date) en secondes."""
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        pass
+    try:
+        from email.utils import parsedate_to_datetime
+
+        dt = parsedate_to_datetime(raw)
+    except Exception:  # noqa: BLE001
+        return None
+    if dt is None:
+        return None
+    import datetime as _datetime
+
+    now = _datetime.datetime.now(dt.tzinfo) if dt.tzinfo else _datetime.datetime.now()
+    return max(0.0, (dt - now).total_seconds())
+
+
+def _register_rate_limit_cooldown(wait_seconds: float) -> float:
+    """Arme la fenêtre de cooldown partagée ; renvoie l'attente effectivement retenue."""
+    global _RATE_LIMIT_UNTIL
+    wait = max(0.0, min(float(wait_seconds), _RATE_LIMIT_MAX_WAIT))
+    with _RATE_LIMIT_LOCK:
+        target = time.monotonic() + wait
+        if target > _RATE_LIMIT_UNTIL:
+            _RATE_LIMIT_UNTIL = target
+    return wait
+
+
+def _wait_for_rate_limit_window() -> None:
+    """Bloque le thread courant si un 429 récent a ouvert une fenêtre de cooldown."""
+    with _RATE_LIMIT_LOCK:
+        remaining = _RATE_LIMIT_UNTIL - time.monotonic()
+    if remaining > 0:
+        time.sleep(min(remaining, _RATE_LIMIT_MAX_WAIT))
+
+
+def _extract_rate_limit_response(exc: BaseException) -> Optional[httpx.Response]:
+    """Renvoie la réponse HTTP si l'exception correspond à un 429, sinon None."""
+    response = getattr(exc, "response", None)
+    if isinstance(response, httpx.Response) and response.status_code == 429:
+        return response
+    return None
+
+
+def _rate_limit_backoff_seconds(
+    response: Optional[httpx.Response],
+    attempt: int,
+    base_delay: float,
+) -> float:
+    """Délai sur 429 : Retry-After si présent, sinon backoff exponentiel + jitter."""
+    if response is not None:
+        retry_after = _parse_retry_after(response.headers.get("Retry-After"))
+        if retry_after is not None:
+            return retry_after
+    return base_delay * (2 ** max(0, attempt)) + random.uniform(0.0, 0.5)
+
+
 class OllamaClient(LLMClient):
     """Client pour Ollama (LLM local)."""
 
@@ -471,8 +546,12 @@ class OllamaClient(LLMClient):
         max_tokens: Optional[int],
         json_mode: bool,
         request_ctx: Optional[dict[str, Any]] = None,
+        http_timeout: Optional[float] = None,
     ) -> LLMResponse:
         """Fallback Ollama via /api/generate quand /api/chat est indisponible."""
+        effective_timeout = (
+            float(http_timeout) if http_timeout and http_timeout > 0 else float(self._adaptive_timeout)
+        )
         if request_ctx is None:
             request_ctx, url, headers, resolved_model, candidate_names = _resolve_ollama_request_targets(
                 self.config,
@@ -504,7 +583,7 @@ class OllamaClient(LLMClient):
                     url,
                     json=payload,
                     headers=headers,
-                    timeout=self._adaptive_timeout,
+                    timeout=effective_timeout,
                 )
                 if is_ollama_model_not_found_response(response.status_code, getattr(response, "text", "")):
                     last_error = getattr(response, "text", "") or "model not found"
@@ -620,8 +699,18 @@ class OllamaClient(LLMClient):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         json_mode: bool = False,
+        http_timeout: Optional[float] = None,
     ) -> LLMResponse:
-        """Envoie une conversation à Ollama."""
+        """Envoie une conversation à Ollama.
+
+        ``http_timeout`` permet d'imposer un budget par appel (ex: timeout par
+        phase du Builder) au lieu du timeout adaptatif global (600s). Évite qu'un
+        fallback non-stream issu d'un stream tronqué reparte sur 10 min.
+        """
+
+        effective_timeout = (
+            float(http_timeout) if http_timeout and http_timeout > 0 else float(self._adaptive_timeout)
+        )
 
         request_ctx, url, headers, request_model, candidate_names = _resolve_ollama_request_targets(
             self.config,
@@ -647,11 +736,13 @@ class OllamaClient(LLMClient):
                         max_tokens,
                         json_mode,
                         request_ctx=request_ctx,
+                        http_timeout=effective_timeout,
                     )
 
                 response_data: Dict[str, Any] | None = None
                 resolved_model = request_model
                 last_missing_model = False
+                _wait_for_rate_limit_window()
                 for candidate_name in candidate_names:
                     payload = self._build_ollama_payload(
                         model_name=candidate_name,
@@ -665,7 +756,7 @@ class OllamaClient(LLMClient):
                         url,
                         json=payload,
                         headers=headers,
-                        timeout=self._adaptive_timeout,
+                        timeout=effective_timeout,
                     )
                     if is_ollama_model_not_found_response(response.status_code, getattr(response, "text", "")):
                         last_missing_model = True
@@ -694,6 +785,7 @@ class OllamaClient(LLMClient):
                         max_tokens,
                         json_mode,
                         request_ctx=request_ctx,
+                        http_timeout=effective_timeout,
                     )
 
                 latency = (time.time() - start_time) * 1000
@@ -734,6 +826,22 @@ class OllamaClient(LLMClient):
                 )
                 if attempt < self.config.max_retries - 1:
                     time.sleep(self.config.retry_delay_seconds * (attempt + 1))
+            except httpx.HTTPStatusError as e:
+                rate_limited = _extract_rate_limit_response(e)
+                if rate_limited is not None:
+                    wait = _register_rate_limit_cooldown(
+                        _rate_limit_backoff_seconds(rate_limited, attempt, self.config.retry_delay_seconds)
+                    )
+                    logger.warning(
+                        "🚦 Rate limit Ollama cloud (429) — cooldown %.1fs (tentative %d/%d)",
+                        wait, attempt + 1, self.config.max_retries,
+                    )
+                    if attempt < self.config.max_retries - 1:
+                        time.sleep(wait)
+                    continue
+                logger.error(f"Erreur Ollama HTTP: {e}")
+                if attempt < self.config.max_retries - 1:
+                    time.sleep(self.config.retry_delay_seconds)
             except Exception as e:
                 logger.error(f"Erreur Ollama: {e}")
                 if attempt < self.config.max_retries - 1:
@@ -795,6 +903,7 @@ class OllamaClient(LLMClient):
 
         try:
             stream_started = False
+            _wait_for_rate_limit_window()
             for candidate_name in candidate_names:
                 payload = self._build_ollama_payload(
                     model_name=candidate_name,
@@ -858,19 +967,61 @@ class OllamaClient(LLMClient):
             if not stream_started:
                 raise RuntimeError("model not found")
         except Exception as exc:
+            _is_timeout = isinstance(exc, httpx.TimeoutException) or "timed out" in str(exc).lower()
+            rate_limited = _extract_rate_limit_response(exc)
             if self._consume_stream_abort_requested():
                 logger.info(
                     "Streaming Ollama interrompu explicitement model=%s",
                     self.config.model,
                 )
                 _stream_aborted = True
+            elif rate_limited is not None:
+                # 429 cloud : refaire un appel non-stream immédiat ne ferait
+                # qu'amplifier le flood. On arme la fenêtre de cooldown partagée
+                # (le prochain appel patientera) et on abandonne proprement.
+                wait = _register_rate_limit_cooldown(
+                    _rate_limit_backoff_seconds(rate_limited, 0, self.config.retry_delay_seconds)
+                )
+                logger.warning(
+                    "🚦 Rate limit Ollama cloud (429) en streaming — cooldown %.1fs, "
+                    "abandon (pas de fallback non-stream)",
+                    wait,
+                )
+                return LLMResponse(
+                    content="",
+                    model=resolved_model,
+                    provider=LLMProvider.OLLAMA,
+                    parse_error="rate_limited (429)",
+                    latency_ms=(time.time() - start_time) * 1000,
+                )
+            elif _is_timeout:
+                # Un timeout de stream = modèle trop lent pour le budget imparti.
+                # Refaire un appel NON-stream relancerait le même prompt sur le
+                # timeout adaptatif (600s) sans être abortable, alors que l'appelant
+                # (ex: Builder) a déjà abandonné la phase → session figée 10 min.
+                # On abandonne proprement avec une réponse vide.
+                logger.warning(
+                    "Streaming Ollama timeout après %.0fs model=%s — abandon (pas de fallback non-stream)",
+                    effective_timeout, self.config.model,
+                )
+                return LLMResponse(
+                    content="",
+                    model=resolved_model,
+                    provider=LLMProvider.OLLAMA,
+                    parse_error=f"stream timeout after {effective_timeout:.0f}s",
+                    latency_ms=(time.time() - start_time) * 1000,
+                )
             else:
+                # Erreur non-timeout (ex: protocole stream non supporté): un fallback
+                # non-stream a du sens, MAIS borné au même budget que le stream pour
+                # ne pas dépasser le timeout par phase.
                 logger.warning("Streaming Ollama échoué (%s) — fallback non-stream", exc)
                 return self.chat(
                     messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
                     json_mode=json_mode,
+                    http_timeout=effective_timeout,
                 )
 
         latency = (time.time() - start_time) * 1000
