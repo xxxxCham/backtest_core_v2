@@ -50,6 +50,7 @@ import agents.ollama_manager as ollama_manager_module
 from agents.llm_config import (
     normalize_llm_inference_settings,
     normalize_llm_model_inference_profiles,
+    resolve_llm_inference_settings,
 )
 from agents.ollama_runtime import (
     is_ollama_cloud_model,
@@ -221,6 +222,11 @@ BUILDER_VIEW_CSS = """
     text-transform: uppercase;
     letter-spacing: 0.06em;
     font-weight: var(--bc-fw-sb);
+}
+.bc-builder-attribution-highlight {
+    border-color: rgba(88, 166, 255, 0.42);
+    background: rgba(88, 166, 255, 0.10);
+    color: var(--bc-info);
 }
 .bc-builder-runtime-note {
     margin: var(--bc-sp-xs) 0 var(--bc-sp-sm) 0;
@@ -415,10 +421,63 @@ def _render_builder_badge_row(labels: List[str]) -> None:
     visible = [label for label in labels if str(label or "").strip()]
     if not visible:
         return
-    badges = "".join(
-        f"<span class='bc-builder-badge'>{html.escape(label)}</span>" for label in visible
-    )
+    badges = ""
+    for label in visible:
+        label_text = str(label or "").strip()
+        extra_class = (
+            " bc-builder-attribution-highlight"
+            if label_text.lower().startswith("attribution")
+            or " attribution:" in label_text.lower()
+            else ""
+        )
+        badges += (
+            f"<span class='bc-builder-badge{extra_class}'>"
+            f"{html.escape(label_text)}</span>"
+        )
     st.markdown(f"<div class='bc-builder-badge-row'>{badges}</div>", unsafe_allow_html=True)
+
+
+def _format_builder_attribution_label(badge: Dict[str, str]) -> str:
+    raw_label = str((badge or {}).get("label") or "").strip()
+    normalized = raw_label.lower()
+    label_map = {
+        "succes": "Succès",
+        "success": "Succès",
+        "prometteur": "Prometteur",
+        "promising": "Prometteur",
+        "positif": "Positif",
+        "positive": "Positif",
+        "negatif": "Négatif",
+        "negative": "Négatif",
+        "echec": "Échec",
+        "failed": "Échec",
+        "erreur": "Erreur",
+        "error": "Erreur",
+        "crash": "Crash",
+        "max_iterations": "Max iterations",
+        "en cours": "En cours",
+        "running": "En cours",
+        "inconnu": "Inconnu",
+        "unknown": "Inconnu",
+    }
+    if normalized in label_map:
+        return label_map[normalized]
+    if not raw_label:
+        return "Inconnu"
+    return raw_label.replace("_", " ").capitalize()
+
+
+def _format_builder_attribution_badge_text(
+    badge: Dict[str, str],
+    *,
+    prefix: str = "Attribution",
+) -> str:
+    icon = str((badge or {}).get("icon") or "").strip()
+    label = _format_builder_attribution_label(badge)
+    core = f"{icon} {label}".strip()
+    if not prefix:
+        return core
+    return f"{prefix}: {core}"
 
 
 def _format_optional_float(value: Any, pattern: str, default: str = "n/a") -> str:
@@ -428,6 +487,54 @@ def _format_optional_float(value: Any, pattern: str, default: str = "n/a") -> st
         return pattern.format(float(value))
     except Exception:
         return default
+
+
+def _format_builder_token_budget(value: Any, *, auto_label: str = "auto") -> str:
+    if value in (None, "", 0, "0"):
+        return auto_label
+    try:
+        resolved = int(value)
+    except (TypeError, ValueError):
+        return auto_label
+    if resolved <= 0:
+        return auto_label
+    return f"{resolved:,}".replace(",", " ")
+
+
+def _build_builder_inference_budget_chip(
+    model: str,
+    *,
+    global_settings: Optional[Dict[str, Any]] = None,
+    model_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> str:
+    settings = resolve_llm_inference_settings(
+        model,
+        global_settings=global_settings,
+        model_profiles=model_profiles,
+    )
+    context_label = _format_builder_token_budget(settings.get("num_ctx"))
+    response_label = _format_builder_token_budget(settings.get("max_tokens"))
+    context_unit = "" if context_label == "auto" else " tok."
+    response_unit = "" if response_label == "auto" else " tok."
+    return f"Contexte: {context_label}{context_unit} | Réponse: {response_label}{response_unit}"
+
+
+def _build_builder_max_iteration_chips(
+    max_iterations: int,
+    *,
+    model: str,
+    global_settings: Optional[Dict[str, Any]] = None,
+    model_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
+    max_label: str = "Max itérations",
+) -> List[str]:
+    return [
+        f"{max_label}: {max_iterations}",
+        _build_builder_inference_budget_chip(
+            model,
+            global_settings=global_settings,
+            model_profiles=model_profiles,
+        ),
+    ]
 
 
 def _normalize_builder_code_source(source: Any) -> str:
@@ -702,7 +809,19 @@ def _format_builder_live_event_line(event_payload: Dict[str, Any]) -> str:
         sharpe = _safe_optional_float(payload.get("sharpe"))
         ret_pct = _safe_optional_float(payload.get("total_return_pct"))
         if sharpe is not None and ret_pct is not None:
-            return f"{prefix}Backtest: Sharpe {sharpe:.3f} | Return {ret_pct:+.2f}%"
+            line = f"{prefix}Backtest: Sharpe {sharpe:.3f} | Return {ret_pct:+.2f}%"
+            try:
+                trades_raw = payload.get("total_trades")
+                if trades_raw is not None:
+                    line += f" | Trades {int(trades_raw)}"
+            except Exception:
+                pass
+            return line
+    if event == "session_done":
+        badge = _get_autonomous_recap_status_badge(
+            {"status": event_payload.get("status", "") or payload.get("status", "")}
+        )
+        return f"{prefix}Session terminée: {_format_builder_attribution_badge_text(badge)}"
     if message:
         return prefix + message
     if event == "iteration_done":
@@ -2121,6 +2240,88 @@ def _get_autonomous_recap_status_badge(entry: Dict[str, Any]) -> Dict[str, str]:
     )
 
 
+def _get_builder_run_attribution_badge(
+    *,
+    status: Any = "",
+    metrics: Optional[Dict[str, Any]] = None,
+    candidate_tier: Any = "",
+    target_sharpe: Any = 1.0,
+) -> Dict[str, str]:
+    """Construit le même badge d'attribution que le grand récap autonome."""
+    resolved_status = str(status or "").strip().lower()
+    entry: Dict[str, Any] = {"status": resolved_status}
+    if isinstance(metrics, dict) and metrics:
+        tier = str(candidate_tier or "").strip().lower()
+        if not tier:
+            try:
+                tier = str(
+                    classify_builder_candidate_tier(
+                        metrics,
+                        target_sharpe=float(target_sharpe or 1.0),
+                    ).get("tier")
+                    or ""
+                ).strip().lower()
+            except Exception:
+                tier = ""
+        if tier:
+            entry["best_candidate_tier"] = tier
+            entry["candidate_tier"] = tier
+        return_pct = metrics.get("total_return_pct")
+        entry.update(
+            {
+                "best_return": return_pct,
+                "final_return": return_pct,
+                "best_return_sharpe": metrics.get("sharpe_ratio"),
+                "best_max_dd": metrics.get("max_drawdown_pct"),
+                "best_pf": metrics.get("profit_factor"),
+                "best_trades": metrics.get("total_trades"),
+            }
+        )
+        if not resolved_status:
+            if tier == "success":
+                entry["status"] = "success"
+            elif tier in {"positive", "promising"}:
+                entry["status"] = "positive"
+            else:
+                entry["status"] = "failed"
+    return _get_autonomous_recap_status_badge(entry)
+
+
+def _get_builder_iteration_attribution_badge(iteration: Any) -> Dict[str, str]:
+    backtest_result = getattr(iteration, "backtest_result", None)
+    metrics = getattr(backtest_result, "metrics", None)
+    decision = str(getattr(iteration, "decision", "") or "").strip().lower()
+    has_error = bool(str(getattr(iteration, "error", "") or "").strip())
+    if decision == "accept":
+        status = "success"
+    elif has_error and not isinstance(metrics, dict):
+        status = "error"
+    elif isinstance(metrics, dict) and metrics:
+        status = ""
+    elif decision == "stop":
+        status = "max_iterations"
+    else:
+        status = "running"
+    return _get_builder_run_attribution_badge(status=status, metrics=metrics)
+
+
+def _get_builder_session_attribution_badge(session: Any) -> Dict[str, str]:
+    best = getattr(session, "best_iteration", None)
+    best_metrics = (
+        best.backtest_result.metrics
+        if best is not None
+        and getattr(best, "backtest_result", None) is not None
+        and isinstance(getattr(best.backtest_result, "metrics", None), dict)
+        else None
+    )
+    return _get_builder_run_attribution_badge(
+        status=getattr(session, "status", ""),
+        metrics=best_metrics,
+        candidate_tier=getattr(session, "best_candidate_tier", ""),
+        target_sharpe=getattr(session, "target_sharpe", 1.0),
+    )
+
+
 def _session_iteration_metrics(iteration: Any) -> tuple[Optional[Dict[str, Any]], Any]:
     backtest_result = getattr(iteration, "backtest_result", None)
     metrics = getattr(backtest_result, "metrics", None)
@@ -2452,11 +2653,19 @@ def _render_autonomous_iteration_history(history: List[Dict[str, Any]]) -> None:
             if isinstance(row, dict) and str(row.get("Stratégie", "") or "").strip()
         ]
         strategy_label = strategy_names[-1] if strategy_names else "stratégie générée"
+        attribution = _get_autonomous_recap_status_badge(entry)
+        attribution_text = _format_builder_attribution_badge_text(
+            attribution,
+            prefix="",
+        )
         title = (
-            f"Session #{session_num} · {strategy_label} · {symbol} {timeframe} · "
+            f"Session #{session_num} · {attribution_text} · {strategy_label} · {symbol} {timeframe} · "
             f"best return {_format_optional_float(best_return, '{:+.2f}%')}"
         )
         with st.expander(title, expanded=fallback_idx == 1):
+            _render_builder_badge_row(
+                [_format_builder_attribution_badge_text(attribution)]
+            )
             indicator_sets = [
                 str(row.get("Indicateurs", "") or "").strip()
                 for row in rows
@@ -2481,6 +2690,9 @@ def render_iteration_card(
     diag = getattr(iteration, "diagnostic_detail", {}) or {}
     phase_feedback = getattr(iteration, "phase_feedback", {}) or {}
     provenance = _get_builder_code_provenance_badge(phase_feedback)
+    bt = getattr(iteration, "backtest_result", None)
+    metrics = getattr(bt, "metrics", None) if bt is not None else None
+    attribution = _get_builder_iteration_attribution_badge(iteration)
 
     # Icône selon résultat
     if error:
@@ -2517,7 +2729,9 @@ def render_iteration_card(
 
     st.markdown(f"**{icon} {label}**")
 
-    badge_labels: List[str] = []
+    badge_labels: List[str] = [
+        _format_builder_attribution_badge_text(attribution),
+    ]
     if cat_lbl:
         badge_labels.append(f"{sev_icon} {cat_lbl}")
     if type_lbl:
@@ -2539,8 +2753,6 @@ def render_iteration_card(
     if error:
         st.error(f"Erreur: {error}")
 
-    bt = getattr(iteration, "backtest_result", None)
-    metrics = getattr(bt, "metrics", None) if bt is not None else None
     backtest_feedback = phase_feedback.get("backtest", {}) or {}
     if isinstance(metrics, dict):
         summary_parts = [
@@ -2597,6 +2809,8 @@ def render_session_summary(session: Any) -> None:
             or ""
         ).strip().lower()
 
+    session_attribution = _get_builder_session_attribution_badge(session)
+
     # Statut global
     status_map = {
         "success": ("🏆", "Stratégie acceptée"),
@@ -2613,7 +2827,7 @@ def render_session_summary(session: Any) -> None:
     else:
         icon, label = status_map.get(status, ("❓", status))
 
-    st.markdown(f"### {icon} {label}")
+    st.markdown(f"### {_format_builder_attribution_badge_text(session_attribution)}")
     sharpe_txt = _format_optional_float(best_sharpe_raw, "{:.3f}")
     model_name_display = str(getattr(session, "model_name", "") or "")
     gen_stats = compute_session_generation_stats(session) if hasattr(session, "iterations") else {}
@@ -2621,7 +2835,8 @@ def render_session_summary(session: Any) -> None:
     canonical_pct_txt = f"{canonical_rate * 100:.0f}%" if canonical_rate is not None else "n/a"
     model_info = f" | **Modèle:** {model_name_display}" if model_name_display else ""
     st.markdown(
-        f"**Itérations:** {n_iters} | **Meilleur Sharpe:** {sharpe_txt}"
+        f"**Statut technique:** {icon} {label} | **Itérations:** {n_iters} | "
+        f"**Meilleur Sharpe:** {sharpe_txt}"
         f"{model_info} | **LLM canonique:** {canonical_pct_txt}"
     )
     best_raw_sharpe = _safe_optional_float(getattr(session, "best_raw_sharpe", None))
@@ -2660,9 +2875,22 @@ def render_session_summary(session: Any) -> None:
         metrics = best.backtest_result.metrics
         best_phase_feedback = getattr(best, "phase_feedback", {}) or {}
         provenance = _get_builder_code_provenance_badge(best_phase_feedback)
+        best_attribution = _get_builder_run_attribution_badge(
+            status=status,
+            metrics=metrics if isinstance(metrics, dict) else None,
+            candidate_tier=best_candidate_tier,
+            target_sharpe=getattr(session, "target_sharpe", 1.0),
+        )
         st.markdown("#### 🥇 Meilleur résultat")
+        best_badges = [
+            _format_builder_attribution_badge_text(
+                best_attribution,
+                prefix="Attribution du meilleur run",
+            )
+        ]
         if provenance.get("badge"):
-            _render_builder_badge_row([provenance["badge"]])
+            best_badges.append(provenance["badge"])
+        _render_builder_badge_row(best_badges)
         provenance_detail = str(provenance.get("detail", "") or "").strip()
         if provenance_detail:
             st.caption(f"Origine du meilleur résultat: {provenance_detail}")
@@ -5022,8 +5250,14 @@ def _run_single_builder_session(
         st.markdown(f"### {session_label}")
     st.markdown(f"**Objectif:** {objective}")
     if show_config_caption:
+        inference_budget = _build_builder_inference_budget_chip(
+            model,
+            global_settings=llm_inference_global_settings,
+            model_profiles=llm_inference_model_profiles,
+        )
         st.caption(
             f"Modèle: `{model}` | Max itérations: {max_iterations} | "
+            f"{inference_budget} | "
             f"Sharpe cible: {target_sharpe} | Capital: ${capital:,.0f} | "
             f"Marché: {symbol} {timeframe} | "
             f"Univers: `{universe_mode}` | "
@@ -5207,9 +5441,13 @@ def _run_single_builder_session(
                 decision = str(raw_payload.get("decision", "") or "continue")
                 progress_text = f"Itération {iteration}/{max_iters} — décision {decision}"
             elif event == "session_done":
+                done_badge = _get_autonomous_recap_status_badge(
+                    {"status": event_payload.get("status", "")}
+                )
                 progress_text = (
-                    f"Session terminée — {event_payload.get('status', 'n/a')} "
-                    f"({raw_payload.get('total_iterations', 0)} itérations)"
+                    f"Session terminée — {_format_builder_attribution_badge_text(done_badge)} "
+                    f"(statut {event_payload.get('status', 'n/a')}, "
+                    f"{raw_payload.get('total_iterations', 0)} itérations)"
                 )
             else:
                 progress_text = f"Itération {iteration}/{max_iters} — activité en cours"
@@ -5526,7 +5764,7 @@ def _render_autonomous_recap(
             f"<span class='builder-autonomous-recap-status "
             f"builder-autonomous-recap-status--{badge['tone']}'>"
             f"{_escape_autonomous_recap_cell(badge['icon'])} "
-            f"{_escape_autonomous_recap_cell(badge['label'])}</span>"
+            f"{_escape_autonomous_recap_cell(_format_builder_attribution_label(badge))}</span>"
         )
         objective_html = (
             "<div class='builder-autonomous-recap-objective-cell' "
@@ -5577,7 +5815,11 @@ def _render_autonomous_recap(
                 "model_name": h_model,
                 "llm_canonical_pct": h_llm_pct,
                 "status": status,
-                "status_display": f"{badge['icon']} {badge['label']}",
+                "status_display": _format_builder_attribution_badge_text(
+                    badge,
+                    prefix="",
+                ),
+                "attribution": _format_builder_attribution_label(badge),
                 "best_sharpe": h.get("best_sharpe"),
                 "final_sharpe": sharpe,
                 "final_return_pct": ret,
@@ -5814,7 +6056,7 @@ def _render_autonomous_recap(
       <th>Modele</th>
       <th class="builder-autonomous-recap-num">LLM %</th>
       <th>Objectif</th>
-      <th>Statut</th>
+      <th>Attribution</th>
       <th class="builder-autonomous-recap-num" title="Meilleur Sharpe atteint pendant la session (best run)">Sharpe</th>
       <th class="builder-autonomous-recap-num" title="Meilleur return atteint pendant la session (best run)">Return</th>
       <th class="builder-autonomous-recap-num">Gain total $</th>
@@ -5851,6 +6093,7 @@ def _render_autonomous_recap(
     <strong>Fallback simple</strong> = objectif de secours produit par le runtime quand il doit repartir sans dependre du flux LLM principal.<br>
     <strong>Modele :</strong> nom du modele LLM utilise pour la session.
     <strong>LLM % :</strong> pourcentage d'iterations generees par le LLM (canoniques) vs fallback deterministe.<br>
+    <strong>Attribution :</strong> libelle commun du run, identique a celui affiche dans les resumes et cartes de resultat.<br>
     <strong>Lecture des metriques :</strong> <strong>Sharpe/Return/Max DD/Trades</strong> = metriques du <em>best run</em> (meilleure itération de la session).
     Si l'itération finale a régressé par rapport au best, une annotation <span style="color:var(--bc-error);font-weight:var(--bc-fw-bold)">↓</span> en dessous indique la valeur de la dernière itération.<br>
     <strong>Gain total $ / $ par jour</strong> = derive du PnL final si disponible, sinon du return final applique au capital initial ;
@@ -5868,8 +6111,10 @@ def _render_autonomous_recap(
     with overview_tab:
         if history:
             best = max(history, key=_autonomous_history_strategy_sort_key)
+            best_badge = _get_autonomous_recap_status_badge(best)
             st.success(
-                f"**Meilleure session :** Return {_fmt_float(best.get('final_return', best.get('best_return')), '{:+.2f}%')} "
+                f"**Meilleure session :** {_format_builder_attribution_badge_text(best_badge)} — "
+                f"Return {_fmt_float(best.get('final_return', best.get('best_return')), '{:+.2f}%')} "
                 f"(Sharpe {_fmt_float(best.get('final_sharpe', best.get('best_sharpe')), '{:.3f}')}) — "
                 f"{best.get('objective', '')[:80]}"
             )
@@ -6337,8 +6582,14 @@ def _init_autonomous_loop_runtime(
         extra_chips=[
             f"Pause: {auto_pause}s",
             "Objectifs: llm-first",
-            f"Max itérations/session: {max_iterations}",
-        ],
+        ]
+        + _build_builder_max_iteration_chips(
+            max_iterations,
+            model=model,
+            global_settings=llm_inference_global_settings,
+            model_profiles=llm_inference_model_profiles,
+            max_label="Max itérations/session",
+        ),
         subtitle="Boucle continue pensée pour garder le contexte, le rythme et le meilleur résultat visibles sans noyer l'écran sous le runtime.",
     )
     autonomous_runtime_lines: List[str] = [
@@ -6528,9 +6779,13 @@ def _finalize_autonomous_loop(*, ctx: Dict[str, Any]) -> None:
         with status_container:
             n = len(history)
             best_ever = _history_best_sharpe(history)
+            best_entry = max(history, key=_autonomous_history_strategy_sort_key) if history else {}
+            best_attribution = _format_builder_attribution_badge_text(
+                _get_autonomous_recap_status_badge(best_entry),
+            ) if best_entry else "Attribution: n/a"
             show_status(
                 "success" if best_ever > 0 else "info",
-                f"Mode autonome terminé : {n} sessions | Meilleur Sharpe: {best_ever:.3f}",
+                f"Mode autonome terminé : {n} sessions | {best_attribution} | Meilleur Sharpe: {best_ever:.3f}",
             )
 
         if unload_after_run and terminal_reason != "manual_stop":
@@ -7180,7 +7435,12 @@ def _execute_builder_manual_session(
         target_sharpe=target_sharpe,
         capital=capital,
         auto_market_pick=auto_market_pick,
-        extra_chips=[f"Max itérations: {max_iterations}"],
+        extra_chips=_build_builder_max_iteration_chips(
+            max_iterations,
+            model=model,
+            global_settings=llm_inference_global_settings,
+            model_profiles=llm_inference_model_profiles,
+        ),
         subtitle="Session unique orientée création et lecture rapide des itérations.",
     )
     live_thoughts_panel_placeholder = st.empty()
@@ -7312,11 +7572,13 @@ def _execute_builder_manual_session(
     if session is not None:
         st.session_state["builder_session"] = session
         st.session_state["builder_last_objective"] = objective
+        attribution = _get_builder_session_attribution_badge(session)
         with status_container:
             show_status(
                 "success" if session.status == "success" else "info",
                 "Builder terminé: "
-                f"{session.status} (Sharpe {_format_optional_float(getattr(session, 'best_sharpe', None), '{:.3f}')})",
+                f"{_format_builder_attribution_badge_text(attribution, prefix='Attribution')} "
+                f"(statut {session.status}, Sharpe {_format_optional_float(getattr(session, 'best_sharpe', None), '{:.3f}')})",
             )
     clear_execution_state(st.session_state)
     return
@@ -7498,8 +7760,14 @@ def render_builder_view(
             extra_chips=[
                 f"Pause: {auto_pause}s",
                 "Objectifs: llm-first",
-                f"Max itérations/session: {max_iterations}",
-            ],
+            ]
+            + _build_builder_max_iteration_chips(
+                max_iterations,
+                model=model,
+                global_settings=llm_inference_global_settings,
+                model_profiles=llm_inference_model_profiles,
+                max_label="Max itérations/session",
+            ),
             subtitle="Mode armé mais inactif: le bootstrap marché et le runtime ne démarrent qu'au lancement.",
         )
 

@@ -2299,6 +2299,18 @@ def test_format_builder_live_event_line_uses_backtest_metrics_from_canonical_pay
     assert line == "[keep] Backtest: Sharpe 1.234 | Return +12.50% | Trades 42"
 
 
+def test_format_builder_live_event_line_surfaces_session_attribution():
+    line = _format_builder_live_event_line(
+        {
+            "event": "session_done",
+            "status": "positive",
+            "payload": {},
+        },
+    )
+
+    assert line == "Session terminée: Attribution: + Positif"
+
+
 def test_resolve_requested_model_refuses_silent_fallback_when_absent():
     resolved, note, found = _resolve_requested_model(
         "deepseek-r1:32b",
@@ -2934,6 +2946,62 @@ def test_normalize_llm_inference_settings_clamps_ui_incompatible_max_tokens():
 
     settings = exec_tabs_module.normalize_llm_inference_settings({"max_tokens": 1})
     assert settings["max_tokens"] == 64
+
+
+def test_exec_tabs_inference_token_budget_formats_auto_context():
+    label = exec_tabs_module._format_inference_token_budget(
+        {"temperature": 0.7, "max_tokens": 2000, "num_ctx": None},
+    )
+
+    assert label == "Contexte: auto | Réponse: 2 000 tok."
+
+
+def test_exec_tabs_builder_guardrail_band_surfaces_runtime_contract():
+    html = exec_tabs_module._build_builder_guardrail_band_html(
+        universe_mode="canonical",
+        runtime_preferences={
+            "builder_auto_start_ollama": False,
+            "builder_preload_model": False,
+            "builder_keep_alive_minutes": 1440,
+            "builder_unload_after_run": False,
+        },
+    )
+
+    assert "Garde-fous actifs" in html
+    assert "Critères Builder" in html
+    assert "&gt;=20 trades" in html
+    assert "Qualité marché" in html
+    assert "tradable &gt;= 90%" in html
+    assert "Budget sweep" in html
+    assert "9 combos" in html
+    assert "Timeouts LLM" in html
+    assert "idée 120s" in html
+    assert "Politique runtime" in html
+    assert "keep 24 h" in html
+
+
+def test_builder_max_iteration_chips_surface_model_token_budget():
+    chips = builder_view_module._build_builder_max_iteration_chips(
+        7,
+        model="gemma4:26b",
+        global_settings={"temperature": 0.7, "max_tokens": 2000, "num_ctx": None},
+        model_profiles={},
+    )
+
+    assert chips == [
+        "Max itérations: 7",
+        "Contexte: 16 384 tok. | Réponse: 4 096 tok.",
+    ]
+
+
+def test_builder_inference_budget_chip_supports_auto_context():
+    chip = builder_view_module._build_builder_inference_budget_chip(
+        "modele-inconnu",
+        global_settings={"temperature": 0.7, "max_tokens": 2000, "num_ctx": None},
+        model_profiles={},
+    )
+
+    assert chip == "Contexte: auto | Réponse: 2 000 tok."
 
 
 def test_prepare_builder_llm_surfaces_cloud_runtime_unavailable_without_alias_or_api_key(monkeypatch):
@@ -5936,12 +6004,13 @@ def test_render_autonomous_recap_uses_best_metrics_and_negative_status_without_p
     assert "+0.00%" in joined_html
     assert "0.00%" in joined_html
     assert ">0</td>" in joined_html
-    assert "− negatif" in joined_html
+    assert "− Négatif" in joined_html
 
 
 def test_render_autonomous_recap_marks_promising_best_run_even_when_final_regresses(monkeypatch):
     st.session_state.clear()
     rendered_html = []
+    success_messages = []
 
     monkeypatch.setattr(
         builder_view_module,
@@ -5950,7 +6019,7 @@ def test_render_autonomous_recap_marks_promising_best_run_even_when_final_regres
     )
     monkeypatch.setattr(builder_view_module.st, "markdown", lambda text, **kwargs: rendered_html.append(str(text)))
     monkeypatch.setattr(builder_view_module.st, "caption", lambda *args, **kwargs: None)
-    monkeypatch.setattr(builder_view_module.st, "success", lambda *args, **kwargs: None)
+    monkeypatch.setattr(builder_view_module.st, "success", lambda message, *args, **kwargs: success_messages.append(str(message)))
     monkeypatch.setattr(builder_view_module.st, "progress", lambda *args, **kwargs: None)
     monkeypatch.setattr(builder_view_module.st, "json", lambda *args, **kwargs: None)
     monkeypatch.setattr(builder_view_module.st, "download_button", lambda *args, **kwargs: None)
@@ -5988,14 +6057,16 @@ def test_render_autonomous_recap_marks_promising_best_run_even_when_final_regres
     builder_view_module._render_autonomous_recap(history, {})
 
     joined_html = "\n".join(rendered_html)
-    assert "◇ prometteur" in joined_html
+    assert "◇ Prometteur" in joined_html
+    assert "<th>Attribution</th>" in joined_html
+    assert any("Attribution: ◇ Prometteur" in message for message in success_messages)
     assert "+143.69%" in joined_html
     # Le marqueur de régression est désormais une icône discrète ↻ ; la valeur
     # finale (-190%) reste consultable dans l'infobulle (title), plus en gros rouge.
     assert "↻" in joined_html
     assert "return=-190.00%" in joined_html
     assert "↓ -190%" not in joined_html
-    assert "− negatif" not in joined_html
+    assert "− Négatif" not in joined_html
 
 
 def test_render_autonomous_recap_displays_gain_total_days_and_gain_per_day_for_positive_completed_runs(monkeypatch):
@@ -6178,6 +6249,7 @@ def test_render_iteration_card_surfaces_provenance_badge(monkeypatch):
 
     builder_view_module.render_iteration_card(iteration)
 
+    assert any(any("Attribution:" in label for label in labels) for labels in captured_badges)
     assert any(any("LLM corrigé" in label for label in labels) for labels in captured_badges)
 
 
@@ -6237,6 +6309,7 @@ def test_render_session_summary_surfaces_best_result_provenance_badge(monkeypatc
 
     builder_view_module.render_session_summary(session)
 
+    assert any(any("Attribution du meilleur run:" in label for label in labels) for labels in captured_badges)
     assert any(any("Runtime-fix" in label for label in labels) for labels in captured_badges)
 
 
@@ -8081,6 +8154,7 @@ def test_restore_builder_autonomous_ui_state_syncs_builder_model_widget_key(monk
 def test_render_builder_tab_places_runtime_action_before_model_selector(monkeypatch, tmp_path):
     st.session_state.clear()
     render_order: list[str] = []
+    model_selector_calls: list[dict[str, Any]] = []
     state = _sample_sidebar_state(
         optimization_mode="🏗️ Strategy Builder",
         builder_execution_mode=BUILDER_EXECUTION_MODE_MONO,
@@ -8146,6 +8220,7 @@ def test_render_builder_tab_places_runtime_action_before_model_selector(monkeypa
 
     def _stub_render_model_selector(**kwargs):
         render_order.append("model_selector")
+        model_selector_calls.append(dict(kwargs))
         selected = str(kwargs.get("current_value") or "deepseek-r1:32b")
         key = kwargs.get("key")
         if isinstance(key, str):
@@ -8165,6 +8240,7 @@ def test_render_builder_tab_places_runtime_action_before_model_selector(monkeypa
 
     assert render_order.index("ollama_url") < render_order.index("model_selector")
     assert render_order.index("runtime_action") < render_order.index("model_selector")
+    assert model_selector_calls[-1]["display_mode"] == "selectbox"
 
 
 def test_render_builder_tab_surfaces_effective_inference_settings(monkeypatch, tmp_path):
@@ -8245,6 +8321,11 @@ def test_render_builder_tab_surfaces_effective_inference_settings(monkeypatch, t
     assert any(
         "Réglages d'inférence effectifs du modèle sélectionné" in caption
         and "temp=0.20 | ctx=16384 | max_tokens=4096" in caption
+        for caption in captions
+    )
+    assert any("Budget modèle" in caption for caption in captions)
+    assert any(
+        "Contexte: 16 384 tok. | Réponse: 4 096 tok." in caption
         for caption in captions
     )
 
