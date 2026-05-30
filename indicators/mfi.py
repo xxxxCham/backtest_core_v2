@@ -81,7 +81,13 @@ def mfi(
     negative_mf = neg_series.rolling(window=period).sum().values
 
     # Money Flow Ratio
-    mf_ratio = np.where(negative_mf != 0, positive_mf / negative_mf, 1.0)
+    # np.where évalue positive_mf / negative_mf sur TOUT le tableau avant la
+    # sélection : aux positions où negative_mf == 0 (ou NaN pendant le warmup
+    # du rolling), la division déclenche un RuntimeWarning "divide by zero"
+    # bien que le résultat soit ensuite masqué par np.where. On neutralise ces
+    # warnings localement — le résultat final est strictement identique.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        mf_ratio = np.where(negative_mf != 0, positive_mf / negative_mf, 1.0)
 
     # MFI
     mfi_values = 100.0 - (100.0 / (1.0 + mf_ratio))

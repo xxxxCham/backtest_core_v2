@@ -763,11 +763,13 @@ def load_ohlcv(
     cache_key = (symbol_norm, timeframe, _ohlcv_resident_trim_key(trim_launch_pct))
 
     df_full: pd.DataFrame | None = None
+    resident_cache_hit = False
     if _OHLCV_RESIDENT_ENABLED:
         cached = _OHLCV_RESIDENT_CACHE.get(cache_key)
         if cached is not None:
             _OHLCV_RESIDENT_HITS += 1
             df_full = cached
+            resident_cache_hit = True
             logger.debug(
                 f"OHLCV resident cache HIT: {symbol_norm}/{timeframe} "
                 f"({len(df_full)} barres) hits={_OHLCV_RESIDENT_HITS} "
@@ -817,7 +819,8 @@ def load_ohlcv(
             f"{data_end.strftime('%Y-%m-%d')}",
         )
 
-    logger.info(f"  Apres filtrage: {len(df)} barres")
+    log_filtered = logger.debug if resident_cache_hit else logger.info
+    log_filtered(f"  Apres filtrage: {len(df)} barres")
     return df
 
 
