@@ -3715,7 +3715,7 @@ def _render_results_hub_actions(
         if st.button(
             "Précharger replay",
             disabled=selected_catalog_entry is None,
-            use_container_width=True,
+            width="stretch",
             key="results_hub_unified_preload_replay",
         ):
             replay_request, replay_msg = _build_catalog_replay_request(
@@ -3734,7 +3734,7 @@ def _render_results_hub_actions(
             "Rejouer maintenant",
             type="primary",
             disabled=selected_catalog_entry is None,
-            use_container_width=True,
+            width="stretch",
             key="results_hub_unified_run_replay",
         ):
             replay_request, replay_msg = _build_catalog_replay_request(
@@ -3752,7 +3752,7 @@ def _render_results_hub_actions(
         if st.button(
             "Promouvoir sélection",
             disabled=not selected_run_rows,
-            use_container_width=True,
+            width="stretch",
             key="results_hub_unified_promote",
         ):
             promoted = 0
@@ -3772,7 +3772,7 @@ def _render_results_hub_actions(
         if st.button(
             "Promouvoir + rejouer",
             disabled=len(selected_run_rows) != 1,
-            use_container_width=True,
+            width="stretch",
             key="results_hub_unified_promote_and_replay",
         ):
             selected_candidate_row = selected_run_rows[0] if selected_run_rows else None
@@ -3819,7 +3819,7 @@ def _render_graduation_controls_and_progress(
         "▶️ Analyser les résultats P1→P6",
         key="graduation_run_full",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         help=(
             "Relance réellement la graduation complète via `python -m catalog.graduation --full`. "
             "Nécessaire après changement des règles P4/P5."
@@ -3832,7 +3832,7 @@ def _render_graduation_controls_and_progress(
     if main_col_c.button(
         "🔄 Actualiser",
         key="graduation_refresh",
-        use_container_width=True,
+        width="stretch",
         help="Recharge l'état affiché (rapports, progression, logs). Ne relance aucun pipeline.",
     ):
         st.rerun()

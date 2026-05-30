@@ -815,7 +815,7 @@ def render_primary_action_bar(state: SidebarState) -> None:
                 key="main_load_ohlcv_action",
                 type="secondary",
                 disabled=is_running,
-                use_container_width=True,
+                width="stretch",
                 on_click=_queue_main_load_action,
                 help="Charge le marché sélectionné et met à jour l'aperçu OHLCV + indicateurs.",
             )
@@ -826,7 +826,7 @@ def render_primary_action_bar(state: SidebarState) -> None:
             key="main_run_action",
             type="primary",
             disabled=is_running,
-            use_container_width=True,
+            width="stretch",
             on_click=_queue_main_run_action,
             args=(str(state.optimization_mode or ""),),
         )
@@ -837,7 +837,7 @@ def render_primary_action_bar(state: SidebarState) -> None:
             key="main_stop_action",
             type="secondary",
             disabled=not is_running,
-            use_container_width=True,
+            width="stretch",
             help=(
                 "Arrête le run courant, décharge les modèles Ollama détectés, vide les caches "
                 "et réinitialise le runtime Builder/LLM pour un nouveau lancement propre."
@@ -1613,7 +1613,7 @@ def _run_grid_search_mode(
             error_df = pd.DataFrame(
                 [{"error": msg, "count": count} for msg, count in error_items[:10]],
             )
-            st.dataframe(error_df, use_container_width=True)
+            st.dataframe(error_df, width="stretch")
 
     error_column = results_df.get("error")
     if error_column is not None:
@@ -1639,7 +1639,7 @@ def _run_grid_search_mode(
                     f"  Mean: {valid_results['trades'].mean():.2f}",
                 )
 
-        st.dataframe(valid_results.head(10), use_container_width=True)
+        st.dataframe(valid_results.head(10), width="stretch")
 
         best = valid_results.iloc[0]
         st.info(f"🥇 Meilleure: {best['params']}")
@@ -1858,7 +1858,7 @@ def _run_llm_optimization_mode(
                 st.caption(
                     f"Runs effectues: {len(comparison_results)} / {total_runs}",
                 )
-                st.dataframe(pd.DataFrame(comparison_summary), use_container_width=True)
+                st.dataframe(pd.DataFrame(comparison_summary), width="stretch")
 
                 chart_rows = []
                 for row in comparison_summary:
@@ -2083,7 +2083,7 @@ def _run_llm_optimization_mode(
                 st.markdown("---")
                 st.dataframe(
                     pd.DataFrame(orchestrator_result.iteration_history),
-                    use_container_width=True,
+                    width="stretch",
                 )
 
             best_params = orchestrator_result.final_params or {}

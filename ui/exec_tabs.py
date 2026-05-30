@@ -32,6 +32,15 @@ from agents.llm_router import (
     build_single_host_topology,
     normalize_ollama_host,
 )
+from agents.builder_constants import (
+    MAX_DRAWDOWN_PCT_FOR_ACCEPT,
+    MIN_BUILDER_BARS,
+    MIN_PROFIT_FACTOR_FOR_ACCEPT,
+    MIN_TRADES_FOR_ACCEPT,
+    SHARPE_TOLERANCE_RATIO,
+    TOLERANT_MAX_DRAWDOWN_PCT,
+    TOLERANT_MIN_PROFIT_FACTOR,
+)
 from agents.model_config import (
     KNOWN_MODELS,
     ModelCategory,
@@ -52,6 +61,7 @@ logger = logging.getLogger(__name__)
 from config.market_selection import (
     UNIVERSE_MODE_CANONICAL,
     UNIVERSE_MODE_EXPLORATORY,
+    get_universe_config,
 )
 from ui.components.model_selector import render_model_selector
 from ui.constants import MODE_OPTIONS, build_strategy_options
@@ -227,6 +237,25 @@ def _format_inference_settings_caption(settings: dict[str, Any]) -> str:
     )
 
 
+def _format_inference_token_budget(settings: dict[str, Any]) -> str:
+    def _fmt(value: Any, *, auto_label: str = "auto") -> str:
+        if value in (None, "", 0, "0"):
+            return auto_label
+        try:
+            resolved = int(value)
+        except (TypeError, ValueError):
+            return auto_label
+        if resolved <= 0:
+            return auto_label
+        return f"{resolved:,}".replace(",", " ")
+
+    context_label = _fmt(settings.get("num_ctx"))
+    response_label = _fmt(settings.get("max_tokens"))
+    context_unit = "" if context_label == "auto" else " tok."
+    response_unit = "" if response_label == "auto" else " tok."
+    return f"Contexte: {context_label}{context_unit} | Réponse: {response_label}{response_unit}"
+
+
 def _render_llm_inference_settings_editor(
     *,
     active_models: list[str],
@@ -387,13 +416,13 @@ def _render_llm_inference_settings_editor(
                 with save_col:
                     save_override = st.form_submit_button(
                         "Enregistrer l'override",
-                        use_container_width=True,
+                        width="stretch",
                     )
                 with reset_col:
                     remove_override = st.form_submit_button(
                         "Supprimer l'override",
                         type="secondary",
-                        use_container_width=True,
+                        width="stretch",
                         disabled=not has_override,
                     )
 
@@ -1255,6 +1284,50 @@ BUILDER_CONFIG_CSS = """
     opacity: 1;
     visibility: visible;
 }
+.bc-builder-guardrails {
+    margin: 0.85rem 0 0.25rem 0;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--bc-border, rgba(148, 163, 184, 0.22));
+    border-left: 3px solid var(--bc-accent, #d4a72c);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--bc-surface-2, #111827) 88%, transparent);
+}
+.bc-builder-guardrails-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.7rem;
+    margin-bottom: 0.55rem;
+}
+.bc-builder-guardrails-title {
+    color: var(--bc-text, #e5e7eb);
+    font-size: var(--bc-fs-small, 0.84rem);
+    font-weight: var(--bc-fw-sb, 650);
+}
+.bc-builder-guardrails-subtitle {
+    color: var(--bc-text-2, #94a3b8);
+    font-size: var(--bc-fs-caption, 0.74rem);
+    text-align: right;
+}
+.bc-builder-guardrails-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+    gap: 0.45rem 0.7rem;
+}
+.bc-builder-guardrail-label {
+    color: var(--bc-text-2, #94a3b8);
+    font-size: var(--bc-fs-caption, 0.72rem);
+    font-weight: var(--bc-fw-sb, 650);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    line-height: 1.25;
+}
+.bc-builder-guardrail-value {
+    margin-top: 0.14rem;
+    color: var(--bc-text, #e5e7eb);
+    font-size: var(--bc-fs-small, 0.82rem);
+    line-height: 1.35;
+}
 </style>
 """
 
@@ -1276,6 +1349,155 @@ def _render_inline_help_label(label: str, help_text: str) -> None:
     </span>
 </div>
 """,
+        unsafe_allow_html=True,
+    )
+
+
+def _env_positive_int(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.getenv(name, str(default))))
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _safe_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _format_pct(value: float, *, decimals: int = 0) -> str:
+    return f"{float(value) * 100:.{decimals}f}%"
+
+
+def _format_compact_money(value: float) -> str:
+    amount = float(value)
+    if amount >= 1_000_000:
+        return f"${amount / 1_000_000:.1f}M"
+    if amount >= 1_000:
+        return f"${amount / 1_000:.0f}k"
+    return f"${amount:.0f}"
+
+
+def _format_on_off(value: Any) -> str:
+    return "on" if bool(value) else "off"
+
+
+def _format_keep_alive_compact(minutes: int) -> str:
+    if minutes <= 0:
+        return "0 min"
+    if minutes % 1440 == 0:
+        days = minutes // 1440
+        return "24 h" if days == 1 else f"{days} j"
+    if minutes % 60 == 0:
+        return f"{minutes // 60} h"
+    return f"{minutes} min"
+
+
+def _build_builder_guardrail_items(
+    *,
+    universe_mode: str,
+    runtime_preferences: dict[str, Any],
+) -> list[tuple[str, str]]:
+    local_filters = dict(get_universe_config().get("local_filters", {}) or {})
+    min_bars = max(
+        int(MIN_BUILDER_BARS),
+        int(_safe_float(local_filters.get("min_segment_bars_floor"), MIN_BUILDER_BARS)),
+    )
+    hard_tradable_ratio = max(
+        0.0,
+        min(1.0, _safe_float(local_filters.get("min_tradable_ratio_hard"), 0.75)),
+    )
+    canonical_tradable_ratio = max(
+        hard_tradable_ratio,
+        min(1.0, _safe_float(local_filters.get("min_tradable_ratio_canonical"), 0.90)),
+    )
+    median_dollar_volume = max(
+        0.0,
+        _safe_float(local_filters.get("min_median_dollar_volume_canonical"), 250_000.0),
+    )
+    if str(universe_mode or "").strip().lower() == UNIVERSE_MODE_CANONICAL:
+        market_quality = (
+            f">={min_bars} barres · tradable >= {_format_pct(canonical_tradable_ratio)} · "
+            f"volume >= {_format_compact_money(median_dollar_volume)}"
+        )
+    else:
+        market_quality = (
+            f">={min_bars} barres · tradable >= {_format_pct(hard_tradable_ratio)} · "
+            "canonique non bloquant"
+        )
+
+    sweep_combinations = _env_positive_int("BACKTEST_BUILDER_SWEEP_MAX_COMBINATIONS", 9)
+    sweep_params = _env_positive_int("BACKTEST_BUILDER_SWEEP_MAX_PARAMS", 3)
+    sweep_top = _env_positive_int("BACKTEST_BUILDER_SWEEP_TOP_RESULTS", 3)
+    timeout_proposal = _env_positive_int("BACKTEST_BUILDER_TIMEOUT_PROPOSAL", 120)
+    timeout_code = _env_positive_int("BACKTEST_BUILDER_TIMEOUT_CODE", 180)
+    timeout_analysis = _env_positive_int("BACKTEST_BUILDER_TIMEOUT_ANALYSIS", 90)
+    keep_alive_minutes = int(runtime_preferences.get("builder_keep_alive_minutes", 0) or 0)
+
+    return [
+        (
+            "Critères Builder",
+            f">={MIN_TRADES_FOR_ACCEPT} trades · PF >= {MIN_PROFIT_FACTOR_FOR_ACCEPT:.2f} · "
+            f"Sharpe >= {_format_pct(SHARPE_TOLERANCE_RATIO)} cible",
+        ),
+        ("Qualité marché", market_quality),
+        ("Budget sweep", f"{sweep_combinations} combos · {sweep_params} params · top {sweep_top}"),
+        ("Timeouts LLM", f"idée {timeout_proposal}s · code {timeout_code}s · analyse {timeout_analysis}s"),
+        (
+            "Politique runtime",
+            "start "
+            f"{_format_on_off(runtime_preferences.get('builder_auto_start_ollama'))} · "
+            f"preload {_format_on_off(runtime_preferences.get('builder_preload_model'))} · "
+            f"keep {_format_keep_alive_compact(keep_alive_minutes)} · "
+            f"unload {_format_on_off(runtime_preferences.get('builder_unload_after_run'))}",
+        ),
+        (
+            "Tolérance forte",
+            f"PF >= {TOLERANT_MIN_PROFIT_FACTOR:.2f} · DD <= {TOLERANT_MAX_DRAWDOWN_PCT:.0f}% "
+            f"(nominal {MAX_DRAWDOWN_PCT_FOR_ACCEPT:.0f}%)",
+        ),
+    ]
+
+
+def _build_builder_guardrail_band_html(
+    *,
+    universe_mode: str,
+    runtime_preferences: dict[str, Any],
+) -> str:
+    items = _build_builder_guardrail_items(
+        universe_mode=universe_mode,
+        runtime_preferences=runtime_preferences,
+    )
+    cells = "".join(
+        "<div class='bc-builder-guardrail'>"
+        f"<div class='bc-builder-guardrail-label'>{html.escape(label)}</div>"
+        f"<div class='bc-builder-guardrail-value'>{html.escape(value)}</div>"
+        "</div>"
+        for label, value in items
+    )
+    return (
+        "<div class='bc-builder-guardrails'>"
+        "<div class='bc-builder-guardrails-head'>"
+        "<div class='bc-builder-guardrails-title'>Garde-fous actifs</div>"
+        "<div class='bc-builder-guardrails-subtitle'>seuils appliqués au prochain lancement</div>"
+        "</div>"
+        f"<div class='bc-builder-guardrails-grid'>{cells}</div>"
+        "</div>"
+    )
+
+
+def _render_builder_guardrail_band(
+    *,
+    universe_mode: str,
+    runtime_preferences: dict[str, Any],
+) -> None:
+    st.markdown(
+        _build_builder_guardrail_band_html(
+            universe_mode=universe_mode,
+            runtime_preferences=runtime_preferences,
+        ),
         unsafe_allow_html=True,
     )
 
@@ -1654,7 +1876,7 @@ def _render_builder_tab(state: SidebarState) -> None:
         ollama_host=builder_ollama_host,
         include_library_models=True,
         current_value=builder_model_single_llm,
-        display_mode="radio",
+        display_mode="selectbox",
     )
     st.session_state["builder_model_single_llm"] = builder_model_single_llm
 
@@ -1687,14 +1909,19 @@ def _render_builder_tab(state: SidebarState) -> None:
     # ── Section 3 : Pipeline & paramètres ─────────────────────────────
     st.markdown("---")
     st.markdown("##### ⚙️ Pipeline & paramètres")
-    builder_max_iterations = st.slider(
-        "Itérations max",
-        min_value=1,
-        max_value=30,
-        value=st.session_state.get("builder_max_iterations", BUILDER_MAX_ITERATIONS_DEFAULT),
-        key="builder_max_iters_slider",
-        help="Nombre maximum de tentatives pour améliorer la stratégie.",
-    )
+    _max_iter_col, _token_budget_col = st.columns([3, 2])
+    with _max_iter_col:
+        builder_max_iterations = st.slider(
+            "Itérations max",
+            min_value=1,
+            max_value=30,
+            value=st.session_state.get("builder_max_iterations", BUILDER_MAX_ITERATIONS_DEFAULT),
+            key="builder_max_iters_slider",
+            help="Nombre maximum de tentatives pour améliorer la stratégie.",
+        )
+    with _token_budget_col:
+        st.caption("Budget modèle")
+        st.caption(_format_inference_token_budget(builder_effective_inference))
     _param_col1, _param_col2 = st.columns(2)
     with _param_col1:
         builder_target_sharpe = st.number_input(
@@ -1716,6 +1943,11 @@ def _render_builder_tab(state: SidebarState) -> None:
             key="builder_capital_input",
             format="%.0f",
         )
+
+    _render_builder_guardrail_band(
+        universe_mode=builder_universe_mode,
+        runtime_preferences=runtime_preferences,
+    )
 
     try:
         from indicators.registry import list_indicators
@@ -2302,7 +2534,3 @@ def render_exec_tabs(state: SidebarState) -> None:
         _render_llm_tab(state)
     elif active_mode == "🏗️ Strategy Builder":
         _render_builder_tab(state)
-
-
-
-

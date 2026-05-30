@@ -2939,7 +2939,7 @@ def render_walk_forward_results(summary: Any, key: str = "wfa_chart") -> None:
             },
         )
 
-    st.dataframe(pd.DataFrame(rows), use_container_width=True)
+    st.dataframe(pd.DataFrame(rows), width="stretch")
 
     with st.expander("📋 Détails techniques WFA"):
         st.json(payload)

@@ -632,7 +632,7 @@ def _render_sidebar_mode_selector(current_mode: str) -> str:
                     f"{icon} {clean_name}",
                     key=f"sidebar_exec_mode_button_{row_start}_{mode_name}",
                     type="primary" if mode_name == selected_mode else "secondary",
-                    use_container_width=True,
+                    width="stretch",
                     help=description,
                 ):
                     if request_execution_mode_change(mode_name):

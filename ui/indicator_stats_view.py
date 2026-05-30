@@ -210,7 +210,7 @@ def _render_table_tab(rows, filters: Filters, mode: str, min_n: int) -> None:
     st.dataframe(
         df,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "indicator": st.column_config.TextColumn("Indicateur", width="medium"),
             "n": st.column_config.NumberColumn("n", width="small"),
@@ -253,7 +253,7 @@ def _render_cooccurrence_tab(rows, filters: Filters, mode: str) -> None:
         return
     df = pd.DataFrame(pairs)
     st.caption(f"Top {len(df)} paires d'indicateurs co-occurrentes, triees par mean_score.")
-    st.dataframe(df, hide_index=True, use_container_width=True)
+    st.dataframe(df, hide_index=True, width="stretch")
 
 
 def _render_unexpected_tab(rows, filters: Filters) -> None:
@@ -267,7 +267,7 @@ def _render_unexpected_tab(rows, filters: Filters) -> None:
         st.info("Aucun ecart declare/inferre detecte.")
         return
     df = pd.DataFrame(data)
-    st.dataframe(df, hide_index=True, use_container_width=True)
+    st.dataframe(df, hide_index=True, width="stretch")
 
 
 def _render_prompt_export_tab(rows, filters: Filters, mode: str, min_n: int) -> None:

@@ -268,13 +268,13 @@ def render_llm_model_stats_panel(
         st.caption("Latence moyenne (ms) par iteration")
         st.line_chart(
             iter_curve.set_index("iteration")[["latence_moy_ms"]],
-            use_container_width=True,
+            width="stretch",
         )
     with chart_col_2:
         st.caption("Taux de succes (%) par iteration")
         st.line_chart(
             iter_curve.set_index("iteration")[["taux_succes"]],
-            use_container_width=True,
+            width="stretch",
         )
 
     st.markdown("#### Detail role x modele")

@@ -282,7 +282,7 @@ def render_page() -> None:
             }
         )
     if rows:
-        st.dataframe(pd.DataFrame(rows), use_container_width=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch")
 
     # Detail par iteration
     for it in session.iterations:
