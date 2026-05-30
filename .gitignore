@@ -311,3 +311,11 @@ analysis_top_configs.csv
 /runs/
 /docs/terminal*.txt
 /catalog/graduation_results/graduation_full_progress.json
+
+# Données runtime volumineuses — gardées en LOCAL, exclues de git/GitHub.
+# graduation_full.json est sous /catalog/graduation_results/ (déjà ignoré plus haut).
+/config/strategy_catalog.json
+/config/indicator_history.json
+
+# Espace de travail local (diagnostics jetables, scripts one-off, normaliseur EOL)
+/_scratch/
