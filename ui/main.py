@@ -580,7 +580,7 @@ def _run_grid_parallel_basic(
                     render_progress_monitor(monitor, progress_placeholder)
                     if best_metrics:
                         stats_placeholder.caption(
-                            f"⚡ {completed}/{total_runs} | "
+                            f"{completed}/{total_runs} | "
                             f"Sharpe {best_metrics.get('sharpe_ratio', 0):.2f} | "
                             f"PnL ${best_metrics.get('total_pnl', 0):,.2f}",
                         )
@@ -794,7 +794,7 @@ def render_primary_action_bar(state: SidebarState) -> None:
     st.markdown("### Actions d'exécution")
     if pending:
         st.caption(
-            "⚠️ Modifications non appliquées: elles seront appliquées au prochain chargement ou lancement.",
+            "Modifications non appliquées: elles seront appliquées au prochain chargement ou lancement.",
         )
     else:
         st.caption("Configuration prête pour chargement, lancement ou arrêt propre.")
@@ -811,7 +811,7 @@ def render_primary_action_bar(state: SidebarState) -> None:
         col_load, col_run, col_stop = st.columns([1.05, 1.15, 0.9])
         with col_load:
             st.button(
-                "⬇️ Charger marché & aperçu",
+                "Charger marché & aperçu",
                 key="main_load_ohlcv_action",
                 type="secondary",
                 disabled=is_running,
@@ -833,7 +833,7 @@ def render_primary_action_bar(state: SidebarState) -> None:
 
     with col_stop:
         if st.button(
-            "🛑 Arrêter et nettoyer",
+            "Arrêter et nettoyer",
             key="main_stop_action",
             type="secondary",
             disabled=not is_running,
@@ -848,20 +848,9 @@ def render_primary_action_bar(state: SidebarState) -> None:
 
 
 def render_controls() -> tuple[bool, Any]:
-    st.title("📈 Backtest Core - Moteur Simplifié")
-
     status_container = st.container()
 
-    st.markdown(
-        """
-Interface avec validation des paramètres et feedback utilisateur.
-Le système de granularité limite le nombre de valeurs testables.
-""",
-    )
-
     ensure_ui_execution_state_defaults(st.session_state)
-
-    st.markdown("---")
 
     run_requested = consume_ui_run_request(st.session_state)
 
@@ -957,7 +946,7 @@ def _abort_main_run(
     """Point de sortie unique pour les aborts de run dans render_main et ses extractions."""
     if live_status is not None:
         try:
-            live_status.update(label=f"❌ {msg}", state="error")
+            live_status.update(label=f"{msg}", state="error")
         except Exception:
             pass
     with status_container:
@@ -1037,7 +1026,7 @@ def _run_grid_search_mode(
     worker_thread_limit = _resolve_threads(worker_thread_limit)
     _apply_thread_limit(worker_thread_limit, label="main")
 
-    with st.spinner("📊 Génération de la grille..."):
+    with st.spinner("Génération de la grille..."):
         try:
             param_names = list(param_ranges.keys())
             param_values_lists: list[list[Any]] = []
@@ -1122,7 +1111,7 @@ def _run_grid_search_mode(
     except (TypeError, ValueError):
         error_log_limit = 3
 
-    st.markdown("### 📊 Progression en temps réel")
+    st.markdown("### Progression en temps réel")
     render_progress_monitor(monitor, monitor_placeholder)
 
     def _normalize_param_combo(param_combo: dict[str, Any]) -> dict[str, Any]:
@@ -1254,7 +1243,7 @@ def _run_grid_search_mode(
                     # Barre de progression simple (pas d'HTML custom lourd)
                     st.progress(progress_pct / 100.0)
                     st.text(
-                        f"⚡ {completed:,}/{total_runs:,} runs ({progress_pct:.1f}%) | {rate:.1f} bt/s | ETA: {int(remaining // 60)}m{int(remaining % 60)}s",
+                        f"{completed:,}/{total_runs:,} runs ({progress_pct:.1f}%) | {rate:.1f} bt/s | ETA: {int(remaining // 60)}m{int(remaining % 60)}s",
                     )
 
                     # Afficher uniquement le meilleur PnL (pas de graphiques ni tableaux)
@@ -1264,7 +1253,7 @@ def _run_grid_search_mode(
                         )
                         best_pnl = best_result.metrics.get("total_pnl", 0)
                         pnl_color = "green" if best_pnl > 0 else "red"
-                        st.markdown(f"💰 **Meilleur PnL**: :{pnl_color}[**${best_pnl:+,.2f}**]")
+                        st.markdown(f"**Meilleur PnL**: :{pnl_color}[**${best_pnl:+,.2f}**]")
 
                 last_render_time = current_time
                 time.sleep(0.01)
@@ -1486,7 +1475,7 @@ def _run_grid_search_mode(
                             # Barre de progression simple (pas d'HTML custom lourd)
                             st.progress(progress_pct / 100.0)
                             st.text(
-                                f"⚡ {completed:,}/{total_runs:,} runs ({progress_pct:.1f}%) | {rate:.1f} bt/s | ETA: {int(remaining // 60)}m{int(remaining % 60)}s",
+                                f"{completed:,}/{total_runs:,} runs ({progress_pct:.1f}%) | {rate:.1f} bt/s | ETA: {int(remaining // 60)}m{int(remaining % 60)}s",
                             )
 
                             # Afficher uniquement le meilleur PnL (pas de graphiques ni tableaux)
@@ -1496,7 +1485,7 @@ def _run_grid_search_mode(
                                 )
                                 best_pnl = best_result.metrics.get("total_pnl", 0)
                                 pnl_color = "green" if best_pnl > 0 else "red"
-                                st.markdown(f"💰 **Meilleur PnL**: :{pnl_color}[**${best_pnl:+,.2f}**]")
+                                st.markdown(f"**Meilleur PnL**: :{pnl_color}[**${best_pnl:+,.2f}**]")
 
                         last_render_time = current_time
                         time.sleep(0.01)
@@ -1519,7 +1508,7 @@ def _run_grid_search_mode(
                 if pool_fail_reason == "pickle":
                     show_status(
                         "error",
-                        "⚠️ Erreur de pickling: le module a été rechargé par Streamlit pendant le sweep. "
+                        "Erreur de pickling: le module a été rechargé par Streamlit pendant le sweep."
                         "Relancez le sweep - il reprendra depuis les combinaisons non testées.",
                     )
                 else:
@@ -1554,12 +1543,12 @@ def _run_grid_search_mode(
         )
 
     st.markdown("---")
-    st.markdown("### 🎯 Résumé de l'Optimisation")
+    st.markdown("### Résumé de l'Optimisation")
     render_sweep_summary(sweep_monitor, key="sweep_summary")
 
     # Finalize diagnostics
     diag.log_final_summary()
-    st.caption(f"📋 Logs diagnostiques: `{diag.log_file}`")
+    st.caption(f"Logs diagnostiques: `{diag.log_file}`")
 
     monitor_placeholder.empty()
     sweep_placeholder.empty()
@@ -1572,7 +1561,7 @@ def _run_grid_search_mode(
     if "trades" in results_df.columns:
         logger = logging.getLogger(__name__)
         logger.info("=" * 80)
-        logger.info("🔍 DEBUG GRID SEARCH - Analyse de la colonne 'trades'")
+        logger.info("DEBUG GRID SEARCH - Analyse de la colonne 'trades'")
         logger.info("   Type: %s", results_df["trades"].dtype)
         logger.info("   Shape: %s", results_df["trades"].shape)
         logger.info(
@@ -1590,18 +1579,18 @@ def _run_grid_search_mode(
         fractional = [x for x in trades_values if isinstance(x, float) and not x.is_integer()]
         if fractional:
             logger.warning(
-                "   ⚠️  %s valeurs fractionnaires détectées: %s",
+                "%s valeurs fractionnaires détectées: %s",
                 len(fractional),
                 fractional[:5],
             )
         else:
-            logger.info("   ✅ Toutes les valeurs sont des entiers")
+            logger.info("Toutes les valeurs sont des entiers")
         logger.info("=" * 80)
 
     error_items = []
     if error_counts:
         total_errors = sum(error_counts.values())
-        with st.expander("❌ Erreurs (extraits)", expanded=True):
+        with st.expander("Erreurs (extraits)", expanded=True):
             st.caption(
                 f"{total_errors} erreurs detectees. Consultez le terminal pour les premiers messages.",
             )
@@ -1624,9 +1613,9 @@ def _run_grid_search_mode(
     if not valid_results.empty:
         valid_results = valid_results.sort_values("sharpe", ascending=False)
 
-        st.subheader("🏆 Top 10 Combinaisons")
+        st.subheader("Top 10 Combinaisons")
 
-        with st.expander("🔍 Debug Info - Types de données"):
+        with st.expander("Debug Info - Types de données"):
             st.text(f"Nombre de résultats: {len(valid_results)}")
             st.text("Types des colonnes:")
             st.text(str(valid_results.dtypes))
@@ -1642,7 +1631,7 @@ def _run_grid_search_mode(
         st.dataframe(valid_results.head(10), width="stretch")
 
         best = valid_results.iloc[0]
-        st.info(f"🥇 Meilleure: {best['params']}")
+        st.info(f"Meilleure: {best['params']}")
 
         best_params = param_combos_map.get(best["params"], {})
         result, _ = safe_run_backtest(
@@ -1659,7 +1648,7 @@ def _run_grid_search_mode(
     else:
 
         def _grid_diagnostic():
-            st.markdown("### 🔍 Diagnostic")
+            st.markdown("### Diagnostic")
             st.warning(
                 f"Sur {len(results_list)} combinaisons évaluées, toutes ont échoué.",
             )
@@ -1926,7 +1915,7 @@ def _run_llm_optimization_mode(
                         st.warning(f"Justification LLM indisponible: {exc}")
             st.session_state["llm_compare_run_now"] = False
 
-    st.subheader("🤖 Optimisation par Agents LLM")
+    st.subheader("Optimisation par Agents LLM")
 
     col_info, col_timeline = st.columns([1, 2])
 
@@ -1947,10 +1936,10 @@ def _run_llm_optimization_mode(
         if llm_space_stats:
             st.markdown("---")
             if llm_space_stats.is_continuous:
-                st.info("ℹ️ **Espace continu** : exploration adaptative par LLM")
+                st.info("**Espace continu** : exploration adaptative par LLM")
             else:
                 st.caption(
-                    f"📊 Espace discret estimé: ~{llm_space_stats.total_combinations:,} combinaisons",
+                    f"Espace discret estimé: ~{llm_space_stats.total_combinations:,} combinaisons",
                 )
                 st.caption("_(Le LLM explore de façon intelligente sans énumérer)_")
 
@@ -1975,7 +1964,7 @@ def _run_llm_optimization_mode(
     # Note: Le tracking des duplications durant la session est géré par session_param_tracker
     run_tracker.register(run_signature)
 
-    with st.spinner("🔌 Connexion au LLM..."):
+    with st.spinner("Connexion au LLM..."):
         try:
             if llm_use_multi_agent:
                 live_events_placeholder = st.empty()
@@ -2103,10 +2092,10 @@ def _run_llm_optimization_mode(
             _abort_main_run(status_container, f"Erreur optimisation multi-agents: {exc}", tb=True)
     else:
         st.markdown("---")
-        st.markdown("### 📊 Progression de l'optimisation LLM")
+        st.markdown("### Progression de l'optimisation LLM")
 
         live_status = st.status(
-            "🚀 Démarrage de l'optimisation...",
+            "Démarrage de l'optimisation...",
             expanded=True,
         )
         live_events_placeholder = st.empty()
@@ -2126,16 +2115,16 @@ def _run_llm_optimization_mode(
 
         n_workers_effective = _resolve_workers(n_workers)
         st.caption(
-            "🔧 Limite: "
+            "Limite:"
             f"{_format_combo_limit(max_combos)} backtests max, {n_workers_effective} workers, "
             f"{max_iterations} itérations max",
         )
 
         try:
             with live_status:
-                st.write("🤖 **Agent LLM actif** - Optimisation autonome")
+                st.write("**Agent LLM actif** - Optimisation autonome")
                 st.write(
-                    f"📊 Stratégie: `{strategy_key}` | Modèle: `{llm_model}`",
+                    f"Stratégie: `{strategy_key}` | Modèle: `{llm_model}`",
                 )
 
                 session = strategist.optimize(  # type: ignore[union-attr]
@@ -2148,16 +2137,16 @@ def _run_llm_optimization_mode(
                 )
 
                 live_status.update(
-                    label=(f"✅ Optimisation terminée en {session.current_iteration} itérations"),
+                    label=(f"Optimisation terminée en {session.current_iteration} itérations"),
                     state="complete",
                     expanded=False,
                 )
 
             st.success(
-                f"✅ Optimisation terminée en {session.current_iteration} itérations",
+                f"Optimisation terminée en {session.current_iteration} itérations",
             )
 
-            with st.expander("📝 Historique des itérations", expanded=True):
+            with st.expander("Historique des itérations", expanded=True):
                 for i, exp in enumerate(session.all_results):
                     icon = "🟢" if exp.sharpe_ratio > 0 else "🔴"
                     col_it1, col_it2, col_it3 = st.columns([2, 1, 1])
@@ -2180,7 +2169,7 @@ def _run_llm_optimization_mode(
                 st.markdown("---")
 
                 tab_simple, tab_deep = st.tabs(
-                    ["📋 Logs d'orchestration", "🔍 Deep Trace (avancé)"],
+                    ["Logs d'orchestration", "Deep Trace (avancé)"],
                 )
 
                 with tab_simple:
@@ -2200,7 +2189,7 @@ def _run_llm_optimization_mode(
                         )
 
             st.markdown("---")
-            st.subheader("🏆 Résultat de l'optimisation LLM")
+            st.subheader("Résultat de l'optimisation LLM")
 
             col_best, col_improve = st.columns(2)
 
@@ -2233,7 +2222,7 @@ def _run_llm_optimization_mode(
                     st.metric("Itérations utilisées", session.current_iteration)
 
                     if session.final_reasoning:
-                        st.info(f"🛑 Arrêt: {session.final_reasoning}")
+                        st.info(f"Arrêt: {session.final_reasoning}")
 
             best_params = session.best_result.request.parameters
             result, _ = safe_run_backtest(
@@ -2350,7 +2339,7 @@ def render_main(
         if stab_info.get("applied"):
             if show_ui:
                 st.caption(
-                    f"🛡️ Stabilisation {symbol_value}/{timeframe_value}: "
+                    f"Stabilisation {symbol_value}/{timeframe_value}: "
                     f"-{stab_info.get('cut_bars', 0)} barres, départ {stab_info.get('start_ts', 'n/a')}",
                 )
             return filtered_df, stab_info
@@ -2397,7 +2386,7 @@ def render_main(
         run_result.metrics["anti_overfit_score"] = float(anti_overfit_score)
         run_result.meta["walk_forward"] = summary.to_dict()
 
-        verdict = "✅ robuste" if summary.is_robust else "⚠️ overfitting probable"
+        verdict = "robuste" if summary.is_robust else "overfitting probable"
         return (
             run_result,
             summary,
@@ -2460,14 +2449,14 @@ def render_main(
             st.session_state["multi_sweep_plan"] = sweep_plan
 
             st.info(
-                f"🔄 **Mode multi-sweep séquentiel**\n\n"
+                f"**Mode multi-sweep séquentiel**\n\n"
                 f"- {len(state.symbols)} token(s)\n"
                 f"- {len(state.timeframes)} timeframe(s)\n"
                 f"- {total_sweeps} sweep(s) au total\n\n"
                 "Exécution **un par un** pour éviter la saturation mémoire.",
             )
 
-            with st.expander("📋 Plan des sweeps", expanded=False):
+            with st.expander("Plan des sweeps", expanded=False):
                 plan_df = pd.DataFrame(
                     [{"symbol": sym, "timeframe": tf} for sym, tf in sweep_plan],
                 )
@@ -2504,11 +2493,11 @@ def render_main(
 
             for idx, (sym, tf) in enumerate(sweep_plan, start=1):
                 if st.session_state.get("stop_requested", False):
-                    st.warning("🛑 Arrêt demandé par l'utilisateur")
+                    st.warning("Arrêt demandé par l'utilisateur")
                     break
 
                 status_placeholder.info(
-                    f"⏳ Sweep {idx}/{total_sweeps}: {strategy_key} × {sym} × {tf}",
+                    f"Sweep {idx}/{total_sweeps}: {strategy_key} × {sym} × {tf}",
                 )
 
                 df, msg = safe_load_data(sym, tf, start=start_str, end=end_str)
@@ -2652,19 +2641,19 @@ def render_main(
                     )
 
                 results_df = pd.DataFrame(summary_rows)
-                st.markdown("### ✅ Résumé Multi-Sweep")
+                st.markdown("### Résumé Multi-Sweep")
                 st.dataframe(results_df, width="stretch")
 
                 ok_df = results_df[results_df["status"] == "ok"].copy()
                 if not ok_df.empty:
                     best_row = ok_df.loc[ok_df["total_pnl"].idxmax()]
                     st.success(
-                        f"🏆 Meilleur résultat: {best_row['symbol']} {best_row['timeframe']} "
+                        f"Meilleur résultat: {best_row['symbol']} {best_row['timeframe']} "
                         f"| PnL ${best_row['total_pnl']:,.2f} | Sharpe {best_row['sharpe_ratio']:.2f}",
                     )
 
                     tab_table, tab_heatmap, tab_rank = st.tabs(
-                        ["📊 Tableau", "🔥 Heatmap", "🏆 Classement"],
+                        ["Tableau", "Heatmap", "Classement"],
                     )
                     with tab_table:
                         st.dataframe(ok_df, width="stretch")
@@ -2695,7 +2684,7 @@ def render_main(
             )
             return
 
-        with st.spinner("📥 Chargement des données..."):
+        with st.spinner("Chargement des données..."):
             df = st.session_state.get("ohlcv_df")
             data_msg = st.session_state.get("ohlcv_status_msg", "")
 
@@ -2720,9 +2709,9 @@ def render_main(
                     status_container,
                     f"Échec chargement: {data_msg}",
                     extra=lambda: st.info(
-                        f"💡 Vérifiez les fichiers dans `{_data_hint}`"
+                        f"Vérifiez les fichiers dans `{_data_hint}`"
                         if _data_hint
-                        else "💡 Vérifiez la configuration de vos chemins de données.",
+                        else "Vérifiez la configuration de vos chemins de données.",
                     ),
                 )
 
@@ -2747,7 +2736,7 @@ def render_main(
         engine = BacktestEngine(initial_capital=state.initial_capital)  # type: ignore[misc]
 
         if optimization_mode == "Backtest Simple":
-            with st.spinner("⚙️ Exécution du backtest..."):
+            with st.spinner("Exécution du backtest..."):
                 result, result_msg = safe_run_backtest(
                     engine,
                     df,
@@ -2792,7 +2781,7 @@ def render_main(
                 attach_wfa_metrics=_attach_wfa_metrics,
             )
 
-        elif optimization_mode == "🤖 Optimisation LLM":
+        elif optimization_mode == "Optimisation LLM":
             _run_llm_optimization_mode(
                 df=df,
                 engine=engine,

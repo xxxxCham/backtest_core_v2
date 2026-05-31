@@ -31,11 +31,11 @@ def _render_page_navigation() -> None:
 <div class="bc-sidebar-nav-block">
   <div class="bc-sidebar-nav-title">Navigation</div>
   <div class="bc-sidebar-nav-links">
-    <a class="bc-nav-link" href="/" target="_self">🏠 Application</a>
-    <a class="bc-nav-link active" href="/range_editor_page" target="_self">⚙️ Éditeur de plages</a>
-    <a class="bc-nav-link" href="/model_stats_page" target="_self">📊 Statistiques des modèles</a>
-    <a class="bc-nav-link" href="/indicator_stats_page" target="_self">📈 Indicateurs × Perf</a>
-    <a class="bc-nav-link" href="/results_store_page" target="_self">📚 Hub résultats</a>
+    <a class="bc-nav-link" href="/" target="_self">Application</a>
+    <a class="bc-nav-link active" href="/range_editor_page" target="_self">Éditeur de plages</a>
+    <a class="bc-nav-link" href="/model_stats_page" target="_self">Statistiques des modèles</a>
+    <a class="bc-nav-link" href="/indicator_stats_page" target="_self">Indicateurs × Perf</a>
+    <a class="bc-nav-link" href="/results_store_page" target="_self">Hub résultats</a>
   </div>
 </div>
 """,
@@ -55,10 +55,10 @@ def main():
     _render_page_navigation()
 
     # Avertissement en en-tête
-    st.title("⚙️ Éditeur de plages")
+    st.title("Éditeur de plages")
     st.caption("Ajustez les bornes, steps et valeurs par défaut sans quitter l'interface principale.")
     st.warning(
-        "⚠️ **Attention**: Les modifications des plages affectent toutes les stratégies utilisant ces paramètres. "
+        "**Attention**: Les modifications des plages affectent toutes les stratégies utilisant ces paramètres."
         "Une sauvegarde automatique (.bak) est créée avant chaque modification.",
     )
 
@@ -67,7 +67,7 @@ def main():
 
     st.markdown("---")
     st.caption(
-        "💡 Astuce: utilisez la recherche pour filtrer rapidement les paramètres. "
+        "Astuce: utilisez la recherche pour filtrer rapidement les paramètres."
         "Les modifications s'appliqueront aux nouveaux backtests.",
     )
 

@@ -381,7 +381,7 @@ def render_timeline_panel(logger: OrchestrationLogger, filters: dict[str, Any]):
         filters: Dict avec 'iteration', 'agent', 'event_type', 'level'
 
     """
-    st.markdown("### 📋 Timeline des Événements")
+    st.markdown("### Timeline des Événements")
 
     # Appliquer les filtres
     filtered_logs = logger.logs
@@ -427,7 +427,7 @@ def render_timeline_panel(logger: OrchestrationLogger, filters: dict[str, Any]):
         iteration_logs = logs_by_iteration[iteration]
 
         with st.expander(
-            f"🔄 **Itération {iteration}** ({len(iteration_logs)} événements)",
+            f"**Itération {iteration}** ({len(iteration_logs)} événements)",
             expanded=(iteration == max(logs_by_iteration.keys())),
         ):
             for log in iteration_logs:
@@ -474,51 +474,51 @@ def _render_event_details(log: OrchestrationLogEntry):
 
     # Modèle LLM
     if "model" in details:
-        important_fields.append(f"📦 Modèle: `{details['model']}`")
+        important_fields.append(f"Modèle: `{details['model']}`")
 
     # Latence
     if "latency_ms" in details:
         latency = details["latency_ms"]
         latency_str = _format_float(latency, 0) or str(latency)
-        important_fields.append(f"⏱️ Latence: {latency_str}ms")
+        important_fields.append(f"Latence: {latency_str}ms")
 
     # Métriques
     if "sharpe" in details or "sharpe_ratio" in details:
         sharpe = details.get("sharpe") or details.get("sharpe_ratio")
         sharpe_str = _format_float(sharpe, 3) or "N/A"
-        important_fields.append(f"📊 Sharpe: {sharpe_str}")
+        important_fields.append(f"Sharpe: {sharpe_str}")
 
     if "total_return" in details:
         ret = details["total_return"]
         ret_str = _format_percent(ret, 2)
         if ret_str is None:
             ret_str = str(ret) if ret is not None else "N/A"
-        important_fields.append(f"💰 Return: {ret_str}")
+        important_fields.append(f"Return: {ret_str}")
 
     if "max_drawdown" in details:
         dd = details["max_drawdown"]
         dd_str = _format_percent(dd, 2)
         if dd_str is None:
             dd_str = str(dd) if dd is not None else "N/A"
-        important_fields.append(f"📉 Drawdown: {dd_str}")
+        important_fields.append(f"Drawdown: {dd_str}")
 
     # Décision
     if "decision" in details:
-        important_fields.append(f"⚖️ Décision: **{details['decision']}**")
+        important_fields.append(f"Décision: **{details['decision']}**")
 
     # Propositions
     if "count" in details:
-        important_fields.append(f"💡 Nombre: {details['count']}")
+        important_fields.append(f"Nombre: {details['count']}")
 
     # Message/Erreur
     if "message" in details:
         msg = details["message"]
         if log.action_type == OrchestrationActionType.ERROR:
-            important_fields.append(f"❌ {msg}")
+            important_fields.append(f"{msg}")
         elif log.action_type == OrchestrationActionType.WARNING:
-            important_fields.append(f"⚠️ {msg}")
+            important_fields.append(f"{msg}")
         else:
-            important_fields.append(f"📝 {msg}")
+            important_fields.append(f"{msg}")
 
     # Afficher les champs importants
     if important_fields:
@@ -526,7 +526,7 @@ def _render_event_details(log: OrchestrationLogEntry):
             st.caption(f"   {field}")
 
     # Bouton pour afficher le JSON complet
-    with st.expander("🔍 Détails complets (JSON)", expanded=False):
+    with st.expander("Détails complets (JSON)", expanded=False):
         st.json(details, expanded=False)
 
 
@@ -537,7 +537,7 @@ def _render_event_details(log: OrchestrationLogEntry):
 
 def render_llm_inspector_panel(logger: OrchestrationLogger):
     """Affiche l'inspecteur des échanges LLM par rôle."""
-    st.markdown("### 🤖 Inspecteur LLM")
+    st.markdown("### Inspecteur LLM")
 
     # Récupérer tous les événements d'agents
     agent_events = [
@@ -567,7 +567,7 @@ def render_llm_inspector_panel(logger: OrchestrationLogger):
     if len(roles) == 1:
         _render_llm_role_details(roles[0], events_by_role[roles[0]])
     else:
-        tabs = st.tabs([f"🎭 {role.capitalize()}" for role in roles])
+        tabs = st.tabs([f"{role.capitalize()}" for role in roles])
         for tab, role in zip(tabs, roles):
             with tab:
                 _render_llm_role_details(role, events_by_role[role])
@@ -597,7 +597,7 @@ def _render_llm_role_details(role: str, events: list[OrchestrationLogEntry]):
     st.markdown("---")
 
     # Liste des appels
-    st.markdown("#### 📞 Historique des Appels")
+    st.markdown("#### Historique des Appels")
 
     # Filtrer uniquement les événements END (qui contiennent le résumé)
     end_events = [e for e in events if e.action_type == OrchestrationActionType.AGENT_EXECUTE_END]
@@ -620,7 +620,7 @@ def _render_llm_role_details(role: str, events: list[OrchestrationLogEntry]):
             st.markdown(f"**Itération:** {iteration}")
             st.markdown(f"**Timestamp:** {timestamp}")
             st.markdown(f"**Latence:** {latency}ms")
-            st.markdown(f"**Statut:** {'Réussi ✅' if success else 'Échoué ❌'}")
+            st.markdown(f"**Statut:** {'Réussi' if success else 'Échoué'}")
 
             # Détails complets
             st.markdown("**Métadonnées complètes:**")
@@ -634,7 +634,7 @@ def _render_llm_role_details(role: str, events: list[OrchestrationLogEntry]):
 
 def render_proposals_panel(logger: OrchestrationLogger):
     """Affiche le panneau Propositions & Tests."""
-    st.markdown("### 💡 Propositions & Tests")
+    st.markdown("### Propositions & Tests")
 
     # Récupérer les événements de propositions
     proposal_events = [
@@ -672,7 +672,7 @@ def render_proposals_panel(logger: OrchestrationLogger):
 
     # Tableau des tests
     if test_ended_events:
-        st.markdown("#### 📊 Résultats des Tests")
+        st.markdown("#### Résultats des Tests")
 
         test_data = []
         for event in test_ended_events:
@@ -705,7 +705,7 @@ def render_proposals_panel(logger: OrchestrationLogger):
 
 def render_state_machine_panel(logger: OrchestrationLogger):
     """Affiche le panneau State Machine."""
-    st.markdown("### 🔄 State Machine")
+    st.markdown("### State Machine")
 
     # Récupérer les événements d'états
     state_events = [
@@ -749,7 +749,7 @@ def render_state_machine_panel(logger: OrchestrationLogger):
     st.markdown("---")
 
     # Historique des transitions
-    st.markdown("#### 📜 Historique des Transitions")
+    st.markdown("#### Historique des Transitions")
 
     if state_changes:
         transitions_data = []
@@ -767,7 +767,7 @@ def render_state_machine_panel(logger: OrchestrationLogger):
         df = pd.DataFrame(transitions_data)
         st.dataframe(df, width="stretch", hide_index=True)
     else:
-        st.write("ℹ️ Aucune transition enregistrée")
+        st.write("Aucune transition enregistrée")
 
 
 # ============================================================================
@@ -777,7 +777,7 @@ def render_state_machine_panel(logger: OrchestrationLogger):
 
 def render_metrics_panel(logger: OrchestrationLogger):
     """Affiche le panneau Métriques Globales de la session."""
-    st.markdown("### 📈 Métriques Globales Session")
+    st.markdown("### Métriques Globales Session")
 
     # Compter les différents types d'événements
     llm_calls = len([e for e in logger.logs if e.action_type == OrchestrationActionType.AGENT_EXECUTE_END])
@@ -813,14 +813,14 @@ def render_metrics_panel(logger: OrchestrationLogger):
     with col3:
         st.metric("Temps Total", f"{total_time_s:.1f}s" if total_time_s > 0 else "N/A")
     with col4:
-        st.metric("⚠️ Warnings", warnings_count)
+        st.metric("Warnings", warnings_count)
     with col5:
-        st.metric("❌ Errors", errors_count)
+        st.metric("Errors", errors_count)
 
     st.markdown("---")
 
     # Meilleur résultat (si disponible)
-    st.markdown("#### 🏆 Meilleur Résultat")
+    st.markdown("#### Meilleur Résultat")
 
     # Chercher dans les événements iteration_recorded
     iteration_events = [e for e in logger.logs if e.action_type == OrchestrationActionType.ITERATION_RECORDED]
@@ -845,11 +845,11 @@ def render_metrics_panel(logger: OrchestrationLogger):
                     dd = details.get("max_drawdown", 0)
                     st.metric("Max Drawdown", f"{dd:.2%}" if dd else "N/A")
             else:
-                st.write("ℹ️ Données de meilleur résultat non disponibles")
+                st.write("Données de meilleur résultat non disponibles")
         else:
-            st.write("ℹ️ Aucune métrique Sharpe enregistrée")
+            st.write("Aucune métrique Sharpe enregistrée")
     else:
-        st.write("ℹ️ Aucune itération enregistrée")
+        st.write("Aucune itération enregistrée")
 
 
 # ============================================================================
@@ -864,7 +864,7 @@ def render_filters_sidebar(logger: OrchestrationLogger) -> dict[str, Any]:
         Dict avec les filtres sélectionnés
 
     """
-    st.sidebar.markdown("### 🔍 Filtres")
+    st.sidebar.markdown("### Filtres")
 
     # Filtre par itération
     iterations = sorted(set(log.iteration for log in logger.logs))
@@ -917,7 +917,7 @@ def render_session_selector() -> OrchestrationLogger | None:
         OrchestrationLogger chargé ou None
 
     """
-    st.sidebar.markdown("### 📂 Chargement de Session")
+    st.sidebar.markdown("### Chargement de Session")
 
     # Découvrir les sessions disponibles dans runs/
     runs_dir = get_saved_runs_dir()
@@ -951,10 +951,10 @@ def render_session_selector() -> OrchestrationLogger | None:
 
                 # Charger
                 logger = OrchestrationLogger.load_from_file(temp_path)
-                st.sidebar.success(f"✅ Session {logger.session_id} chargée")
+                st.sidebar.success(f"Session {logger.session_id} chargée")
                 return logger
             except Exception as e:
-                st.sidebar.error(f"❌ Erreur de chargement: {e}")
+                st.sidebar.error(f"Erreur de chargement: {e}")
                 return None
 
         return None
@@ -973,10 +973,10 @@ def render_session_selector() -> OrchestrationLogger | None:
     trace_file = runs_dir / selected_session / "trace.jsonl"
     try:
         logger = OrchestrationLogger.load_from_file(trace_file)
-        st.sidebar.success(f"✅ Session chargée: {selected_session}")
+        st.sidebar.success(f"Session chargée: {selected_session}")
         return logger
     except Exception as e:
-        st.sidebar.error(f"❌ Erreur de chargement: {e}")
+        st.sidebar.error(f"Erreur de chargement: {e}")
         return None
 
 
@@ -987,21 +987,21 @@ def render_session_selector() -> OrchestrationLogger | None:
 
 def render_export_panel(logger: OrchestrationLogger, filters: dict[str, Any]):
     """Affiche un panneau d'export des logs filtrés."""
-    st.markdown("### 💾 Export")
+    st.markdown("### Export")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("📥 Exporter JSON complet"):
+        if st.button("Exporter JSON complet"):
             export_path = Path(f"orchestration_export_{logger.session_id}.json")
             logger.save_to_file(export_path)
-            st.write(f"✅ Exporté vers {export_path}")
+            st.write(f"Exporté vers {export_path}")
 
     with col2:
-        if st.button("📥 Exporter JSONL"):
+        if st.button("Exporter JSONL"):
             export_path = Path(f"orchestration_export_{logger.session_id}.jsonl")
             logger.save_to_jsonl(export_path)
-            st.write(f"✅ Exporté vers {export_path}")
+            st.write(f"Exporté vers {export_path}")
 
 
 # ============================================================================
@@ -1016,14 +1016,14 @@ def render_deep_trace_viewer(logger: OrchestrationLogger | None = None):
         logger: Instance OrchestrationLogger (peut être None, auquel cas on charge depuis sélecteur)
 
     """
-    st.markdown("## 🔍 Orchestration Deep Trace")
+    st.markdown("## Orchestration Deep Trace")
 
     # Si pas de logger fourni, essayer de charger depuis sélecteur
     if logger is None:
         logger = render_session_selector()
 
     if logger is None:
-        st.write("👈 Sélectionnez une session dans la sidebar pour commencer")
+        st.write("Sélectionnez une session dans la sidebar pour commencer")
         return
 
     # Informations de session
@@ -1040,12 +1040,12 @@ def render_deep_trace_viewer(logger: OrchestrationLogger | None = None):
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
         [
             "Stats modeles LLM",
-            "📋 Timeline",
-            "🤖 Inspecteur LLM",
-            "💡 Propositions",
-            "🔄 State Machine",
-            "📈 Métriques",
-            "💾 Export",
+            "Timeline",
+            "Inspecteur LLM",
+            "Propositions",
+            "State Machine",
+            "Métriques",
+            "Export",
         ],
     )
 

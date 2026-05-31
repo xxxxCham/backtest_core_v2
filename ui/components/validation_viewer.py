@@ -433,7 +433,7 @@ def render_validation_report(
     st.caption(f"Créé le {report.created_at.strftime('%d/%m/%Y %H:%M')}")
 
     # Métriques résumé
-    st.markdown("### 📊 Métriques Globales")
+    st.markdown("### Métriques Globales")
 
     metrics = report.aggregate_metrics
 
@@ -478,12 +478,12 @@ def render_validation_report(
     )
 
     # Graphique
-    st.markdown("### 📈 Visualisation")
+    st.markdown("### Visualisation")
     fig = create_validation_figure(report)
     st.plotly_chart(fig, width="stretch", key=f"{key}_chart")
 
     # Détails par fenêtre
-    st.markdown("### 🔍 Détails par Fenêtre")
+    st.markdown("### Détails par Fenêtre")
 
     # Tableau récapitulatif
     data = []
@@ -509,7 +509,7 @@ def render_validation_report(
             col1, col2 = st.columns(2)
 
             with col1:
-                st.markdown("**📈 Train**")
+                st.markdown("**Train**")
                 st.write(f"Période: {w.train_start.date()} → {w.train_end.date()}")
                 st.write(f"Sharpe: {w.train_sharpe:.3f}")
                 st.write(f"Return: {w.train_return:.2%}")
@@ -517,7 +517,7 @@ def render_validation_report(
                 st.write(f"Trades: {w.train_trades}")
 
             with col2:
-                st.markdown("**🧪 Test**")
+                st.markdown("**Test**")
                 st.write(f"Période: {w.test_start.date()} → {w.test_end.date()}")
                 st.write(f"Sharpe: {w.test_sharpe:.3f}")
                 st.write(f"Return: {w.test_return:.2%}")
@@ -525,15 +525,15 @@ def render_validation_report(
                 st.write(f"Trades: {w.test_trades}")
 
             if w.params:
-                st.markdown("**🔧 Paramètres optimaux**")
+                st.markdown("**Paramètres optimaux**")
                 st.json(w.params)
 
     # Recommandation
-    st.markdown("### 💡 Recommandation")
+    st.markdown("### Recommandation")
 
     if report.overall_status == ValidationStatus.PASSED:
         st.success(
-            "✅ **Stratégie validée** - Les performances sont consistantes entre "
+            "**Stratégie validée** - Les performances sont consistantes entre"
             "l'entraînement et le test. La stratégie peut être utilisée en production.",
         )
         best_params = report.get_best_params()
@@ -543,24 +543,24 @@ def render_validation_report(
 
     elif report.overall_status == ValidationStatus.WARNING:
         st.warning(
-            "⚠️ **Attention** - Dégradation significative entre train et test. "
+            "**Attention** - Dégradation significative entre train et test."
             "Considérez d'ajuster les paramètres ou de réduire la complexité.",
         )
 
     elif report.overall_status == ValidationStatus.OVERFITTING:
         st.error(
-            "📈❌ **Overfitting détecté** - Les performances train ne se généralisent pas "
+            "**Overfitting détecté** - Les performances train ne se généralisent pas"
             "sur les données de test. Simplifiez la stratégie ou utilisez moins de paramètres.",
         )
 
     else:
         st.error(
-            "❌ **Échec de validation** - La stratégie ne performe pas de manière "
+            "**Échec de validation** - La stratégie ne performe pas de manière"
             "satisfaisante sur les données de test.",
         )
 
     # Export
-    with st.expander("📥 Export"):
+    with st.expander("Export"):
         import json
 
         report_json = json.dumps(report.to_dict(), indent=2, default=str)

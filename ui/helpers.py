@@ -387,11 +387,11 @@ def render_live_metrics(
 
     # ━━━ Tout en un seul bloc markdown ━━━
     if completed >= total > 0:
-        line1 = f"### ✅ Terminé en {_fmt(elapsed)} · ⚡ {rate:,.0f} bt/s"
+        line1 = f"### Terminé en {_fmt(elapsed)} · {rate:,.0f} bt/s"
     elif rate > 0:
-        line1 = f"### ⏱️ {_fmt(elapsed)} écoulé · ⏳ ~{_fmt(remaining)} restant · ⚡ {rate:,.0f} bt/s"
+        line1 = f"### {_fmt(elapsed)} écoulé · ~{_fmt(remaining)} restant · {rate:,.0f} bt/s"
     else:
-        line1 = f"### ⏱️ {_fmt(elapsed)} écoulé · ⏳ démarrage..."
+        line1 = f"### {_fmt(elapsed)} écoulé · démarrage..."
 
     bar_len = 30
     filled = int(bar_len * pct / 100) if pct > 0 else 0
@@ -400,10 +400,10 @@ def render_live_metrics(
 
     parts = [line1, line2]
     if completed > 0 and (best_pnl != 0 or best_dd != 0):
-        pnl_str = f"💰 **${best_pnl:+,.0f}**"
-        dd_str = f"📉 DD {abs(best_dd):.1f}%"
+        pnl_str = f"**${best_pnl:+,.0f}**"
+        dd_str = f"DD {abs(best_dd):.1f}%"
         if equity is not None:
-            eq_str = f"💹 Equity ${equity:,.0f}"
+            eq_str = f"Equity ${equity:,.0f}"
             parts.append(f"{pnl_str} · {dd_str} · {eq_str}")
         else:
             parts.append(f"{pnl_str} · {dd_str}")
@@ -417,16 +417,16 @@ def render_live_metrics(
 
 def show_status(status_type: str, message: str, details: str | None = None):
     if status_type == "success":
-        st.success(f"✅ {message}")
+        st.success(f"{message}")
     elif status_type == "error":
-        st.error(f"❌ {message}")
+        st.error(f"{message}")
         if details:
             with st.expander("Détails de l'erreur"):
                 st.code(details)
     elif status_type == "warning":
-        st.warning(f"⚠️ {message}")
+        st.warning(f"{message}")
     elif status_type == "info":
-        st.info(f"ℹ️ {message}")
+        st.info(f"{message}")
 
 
 def validate_param(name: str, value: Any) -> tuple[bool, str]:
@@ -738,7 +738,7 @@ def create_param_range_selector(
             key=unique_key,
         )
 
-    with ui.expander(f"📊 {display_name}", expanded=False):
+    with ui.expander(f"{display_name}", expanded=False):
         st.caption(constraints["description"])
 
         col1, col2 = st.columns(2)
@@ -797,7 +797,7 @@ def create_param_range_selector(
             st.caption(f"→ {nb_values} valeurs à tester")
         else:
             nb_values = 1
-            st.warning("⚠️ Plage invalide")
+            st.warning("Plage invalide")
 
         return {
             "min": param_min,
@@ -881,7 +881,7 @@ def render_multi_strategy_params(
 
         # Section pour cette stratégie
         st.sidebar.markdown("---")
-        strategy_header = f"📋 **Stratégie {idx + 1}**: {strat_name}"
+        strategy_header = f"**Stratégie {idx + 1}**: {strat_name}"
         st.sidebar.markdown(strategy_header)
 
         params = {}
@@ -998,21 +998,21 @@ def safe_load_data(
     symbol = str(symbol or "").strip().upper()
     timeframe = str(timeframe or "").strip()
     if symbol in {"", "_", "UNKNOWN"} or timeframe in {"", "_"}:
-        return None, "❌ Sélectionnez un symbole et un timeframe valides."
+        return None, "Sélectionnez un symbole et un timeframe valides."
 
     try:
         df = load_ohlcv(symbol, timeframe, start=start, end=end)
 
         if df is None or df.empty:
-            return None, "❌ Données vides ou fichier non trouvé"
+            return None, "Données vides ou fichier non trouvé"
 
         required_cols = ["open", "high", "low", "close", "volume"]
         missing = [c for c in required_cols if c not in df.columns]
         if missing:
-            return None, f"❌ Colonnes manquantes: {missing}"
+            return None, f"Colonnes manquantes: {missing}"
 
         if not isinstance(df.index, pd.DatetimeIndex):
-            return None, "❌ L'index n'est pas un DatetimeIndex"
+            return None, "L'index n'est pas un DatetimeIndex"
 
         # Validation plus détaillée des données
         nan_count = df.isna().sum().sum()
@@ -1020,7 +1020,7 @@ def safe_load_data(
         nan_pct = (nan_count / total_values) * 100 if total_values > 0 else 0
 
         if nan_pct > 10:
-            return None, f"❌ Trop de valeurs NaN ({nan_pct:.1f}%, {nan_count}/{total_values})"
+            return None, f"Trop de valeurs NaN ({nan_pct:.1f}%, {nan_count}/{total_values})"
 
         # Validation cohérence OHLC
         invalid_ohlc = (
@@ -1032,29 +1032,29 @@ def safe_load_data(
         ).sum()
 
         if invalid_ohlc > 0:
-            return None, f"❌ Données OHLC incohérentes ({invalid_ohlc} barres)"
+            return None, f"Données OHLC incohérentes ({invalid_ohlc} barres)"
 
         start_fmt = df.index[0].strftime("%Y-%m-%d %H:%M")
         end_fmt = df.index[-1].strftime("%Y-%m-%d %H:%M")
         quality_msg = f"NaN: {nan_pct:.1f}%" if nan_pct > 0 else "✓ Propre"
-        return df, f"✅ {len(df)} barres ({start_fmt} → {end_fmt}) - {quality_msg}"
+        return df, f"{len(df)} barres ({start_fmt} → {end_fmt}) - {quality_msg}"
 
     except FileNotFoundError:
         from data.loader import _get_data_dir
 
         data_dir = _get_data_dir()
-        return None, f"📁 Fichier non trouvé: {symbol}_{timeframe} dans {data_dir}"
+        return None, f"Fichier non trouvé: {symbol}_{timeframe} dans {data_dir}"
     except ValueError as e:
-        return None, f"📊 Erreur de données: {e!s}"
+        return None, f"Erreur de données: {e!s}"
     except pd.errors.EmptyDataError:
-        return None, f"📄 Fichier vide: {symbol}_{timeframe}"
+        return None, f"Fichier vide: {symbol}_{timeframe}"
     except pd.errors.ParserError as e:
-        return None, f"🔧 Erreur format fichier: {e!s}"
+        return None, f"Erreur format fichier: {e!s}"
     except Exception as exc:
         import traceback
 
         tb_summary = traceback.format_exc().split("\n")[-3] if len(traceback.format_exc().split("\n")) > 2 else str(exc)
-        return None, f"⚠️ Erreur inattendue: {tb_summary}"
+        return None, f"Erreur inattendue: {tb_summary}"
 
 
 def apply_auto_market_stabilization_filter(
@@ -1212,8 +1212,8 @@ def load_selected_data(
             start_date,
             end_date,
         )
-        st.session_state["ohlcv_status_msg"] = "📋 Données du cache (5min TTL)"
-        return cached_df, "📋 Données du cache (5min TTL)"
+        st.session_state["ohlcv_status_msg"] = "Données du cache (5min TTL)"
+        return cached_df, "Données du cache (5min TTL)"
 
     # Charger depuis source si pas en cache
     start_str = str(start_date) if start_date else None
@@ -1371,7 +1371,7 @@ def render_saved_runs_panel(
     symbol: str,
     timeframe: str,
 ) -> None:
-    with st.sidebar.expander("🗂️ Runs sauvegardés", expanded=False):
+    with st.sidebar.expander("Runs sauvegardés", expanded=False):
         if not BACKEND_AVAILABLE:
             st.info("Runs sauvegardés indisponibles (backend non disponible).")
             return
@@ -1540,7 +1540,7 @@ def safe_run_walk_forward(
         summary = run_walk_forward(df, strategy, params, config=config)
         if summary.n_valid_folds == 0:
             return None, "WFA : aucun fold valide (données insuffisantes)"
-        verdict = "✅ Robuste" if summary.is_robust else "⚠️ Overfitting probable"
+        verdict = "Robuste" if summary.is_robust else "Overfitting probable"
         msg = (
             f"{verdict} | {summary.n_valid_folds} folds "
             f"| Sharpe train {summary.avg_train_sharpe:.2f} → test {summary.avg_test_sharpe:.2f} "

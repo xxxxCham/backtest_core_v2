@@ -378,15 +378,15 @@ def _normalize_graduation_candidate_df(df: pd.DataFrame) -> pd.DataFrame:
         def _decision_badge(value: Any) -> str:
             decision = str(value or "").strip().upper()
             if decision == "MANUAL_REVIEW":
-                return "⚠️ Revoir"
+                return "Revoir"
             if decision == "PROMOTED":
-                return "🟢 Promu"
+                return "Promu"
             if decision == "WATCHLIST":
-                return "🔵 Watch"
+                return "Watch"
             if decision == "REJECTED":
-                return "🔴 Rejeté"
+                return "Rejeté"
             if decision == "PENDING":
-                return "⏳ Pending"
+                return "Pending"
             return decision
 
         df["decision_badge"] = df["decision"].apply(_decision_badge)
@@ -1722,7 +1722,7 @@ def _render_progress_section(
 ) -> None:
     st.markdown(f"### {title}")
     if not payload:
-        st.write("ℹ️ Aucun état d'exécution en cours.")
+        st.write("Aucun état d'exécution en cours.")
         return
 
     stats = payload.get("stats") or {}
@@ -1966,7 +1966,7 @@ def _render_candidate_report_section(
 ) -> None:
     st.markdown(f"### {title}")
     if not payload:
-        st.write("ℹ️ Aucun rapport disponible.")
+        st.write("Aucun rapport disponible.")
         return
 
     stats = payload.get("stats") or {}
@@ -2020,7 +2020,7 @@ def _render_candidate_report_section(
     _render_threshold_sensitivity_section(payload)
 
     if df.empty:
-        st.write("ℹ️ Le rapport est présent mais ne contient aucun candidat.")
+        st.write("Le rapport est présent mais ne contient aucun candidat.")
         return
 
     phase_options = (
@@ -2891,7 +2891,7 @@ def _render_latest_run(
     runs_overview: pd.DataFrame,
     builder_sessions_df: pd.DataFrame,
 ) -> None:
-    st.subheader("🕒 Dernier run")
+    st.subheader("Dernier run")
 
     session_result = st.session_state.get("last_run_result")
     session_meta = st.session_state.get("last_winner_meta")
@@ -2916,7 +2916,7 @@ def _render_latest_run(
 
     latest = _pick_latest_from_catalogs(backtest_overview, runs_overview, builder_sessions_df)
     if latest is None:
-        st.write("ℹ️ Aucun run détecté pour le moment.")
+        st.write("Aucun run détecté pour le moment.")
         return
 
     if latest["source"] == "backtest_results":
@@ -2947,7 +2947,7 @@ def _render_latest_run(
                 f"{latest.get('timestamp', '')}",
             )
         else:
-            st.write(f"ℹ️ Dernier run LLM ({RUNS_DIR})")
+            st.write(f"Dernier run LLM ({RUNS_DIR})")
             st.caption(
                 f"Mode: {latest.get('kind', '')} | Session: {latest.get('id', '')} | "
                 f"Stratégie: {latest.get('strategy', '')} | {latest.get('timestamp', '')}",
@@ -3160,7 +3160,7 @@ def _get_numeric_column_config() -> dict[str, Any]:
             display_text=r".*#(.*)$",
         ),
         "replayable": st.column_config.CheckboxColumn("Replay", width="small"),
-        "open_folder": st.column_config.LinkColumn("Dossier", display_text="📂 Ouvrir"),
+        "open_folder": st.column_config.LinkColumn("Dossier", display_text="Ouvrir"),
         "strategy_file_link": st.column_config.LinkColumn("Code", display_text="code.py"),
         "_row_key": None,
         "_row_origin": None,
@@ -3629,7 +3629,7 @@ def _render_results_hub_summary(table_df: pd.DataFrame, filtered_df: pd.DataFram
 
 def _render_results_hub_table(filtered_df: pd.DataFrame) -> pd.DataFrame:
     if filtered_df.empty:
-        st.write("ℹ️ Aucun résultat ne correspond aux filtres.")
+        st.write("Aucun résultat ne correspond aux filtres.")
         return filtered_df
 
     display_cols = [col for col in _RESULTS_HUB_TABLE_COLUMNS if col in filtered_df.columns]
@@ -3764,7 +3764,7 @@ def _render_results_hub_actions(
                 except Exception as exc:
                     failures.append(f"{row.get('run_id', '?')}: {exc}")
             if promoted:
-                st.success(f"✅ {promoted} stratégie(s) synchronisée(s) vers le catalogue.")
+                st.success(f"{promoted} stratégie(s) synchronisée(s) vers le catalogue.")
             if failures:
                 st.warning(" | ".join(failures[:5]))
             st.rerun()
@@ -3816,7 +3816,7 @@ def _render_graduation_controls_and_progress(
         key="graduation_sync_catalog",
     )
     if main_col_a.button(
-        "▶️ Analyser les résultats P1→P6",
+        "Analyser les résultats P1→P6",
         key="graduation_run_full",
         type="primary",
         width="stretch",
@@ -3830,7 +3830,7 @@ def _render_graduation_controls_and_progress(
         st.session_state["graduation_status_error"] = not ok
         st.rerun()
     if main_col_c.button(
-        "🔄 Actualiser",
+        "Actualiser",
         key="graduation_refresh",
         width="stretch",
         help="Recharge l'état affiché (rapports, progression, logs). Ne relance aucun pipeline.",
@@ -3868,9 +3868,9 @@ def _render_graduation_controls_and_progress(
 
 def render_results_hub(*, embedded: bool = False) -> None:
     if embedded:
-        st.subheader("📚 Résultats, sauvegardes et catalogue")
+        st.subheader("Résultats, sauvegardes et catalogue")
     else:
-        st.header("📚 Résultats & Catalogues")
+        st.header("Résultats & Catalogues")
 
     sandbox_payload, sandbox_df = _load_graduation_report()
     positive_payload, positive_df = _load_positive_import_report()
@@ -3885,7 +3885,7 @@ def render_results_hub(*, embedded: bool = False) -> None:
 
     col_left, col_right = st.columns([1, 2])
     with col_left:
-        refresh = st.button("🔄 Rafraîchir catalogues")
+        refresh = st.button("Rafraîchir catalogues")
     with col_right:
         st.caption(
             "Catalogues CSV non-destructifs basés sur "
@@ -3903,7 +3903,7 @@ def render_results_hub(*, embedded: bool = False) -> None:
     _render_latest_run(backtest_overview, runs_overview, builder_sessions_df)
 
     st.markdown("---")
-    st.subheader("🗂️ Catalogue global unifié")
+    st.subheader("Catalogue global unifié")
 
     if (
         backtest_overview.empty
@@ -3915,7 +3915,7 @@ def render_results_hub(*, embedded: bool = False) -> None:
         and sandbox_df.empty
         and positive_df.empty
     ):
-        st.write("ℹ️ Aucun catalogue disponible. Lancez un run puis cliquez sur Rafraîchir catalogues.")
+        st.write("Aucun catalogue disponible. Lancez un run puis cliquez sur Rafraîchir catalogues.")
         return
 
     table_df = _build_results_hub_table_df(

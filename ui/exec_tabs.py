@@ -87,6 +87,48 @@ from ui.state import (
 )
 
 
+EXEC_MODE_PAGE_TITLES: dict[str, str] = {
+    "Backtest Simple": "BACKTEST SIMPLE",
+    "Grille de Paramètres": "GRILLE DE PARAMÈTRES / OPTUNA",
+    "Optimisation LLM": "OPTIMISATION LLM",
+    "Strategy Builder": "STRATEGY BUILDER",
+}
+
+EXEC_MODE_TITLE_CSS = """
+<style>
+.bc-exec-page-title {
+    margin: 0.15rem 0 1.6rem 0;
+    padding: 0 0 0.8rem 0;
+    border-bottom: 1px solid var(--bc-border, rgba(148, 163, 184, 0.18));
+    text-align: center;
+}
+.bc-exec-page-title span {
+    display: inline-block;
+    padding: 0 0 0.44rem 0;
+    border-bottom: 2px solid var(--bc-accent, #2dd4bf);
+    color: var(--bc-text, #e5e7eb);
+    font-size: 1.08rem;
+    font-weight: var(--bc-fw-bold, 750);
+    letter-spacing: 0;
+    line-height: 1.25;
+}
+</style>
+"""
+
+
+def _build_exec_mode_page_title_html(mode: str) -> str:
+    title = EXEC_MODE_PAGE_TITLES.get(str(mode or "").strip(), str(mode or "").strip())
+    return f"<div class='bc-exec-page-title'><span>{html.escape(title)}</span></div>"
+
+
+def _inject_exec_mode_title_styles() -> None:
+    st.markdown(EXEC_MODE_TITLE_CSS, unsafe_allow_html=True)
+
+
+def _render_exec_mode_page_title(mode: str) -> None:
+    st.markdown(_build_exec_mode_page_title_html(mode), unsafe_allow_html=True)
+
+
 def _ollama_is_available(ollama_host: str | None = None) -> bool:
     """Retourne l'etat Ollama de maniere defensive si helper optionnel absent."""
     if callable(is_ollama_available):
@@ -466,7 +508,7 @@ def _render_llm_inference_settings_editor(
 def _render_builder_runtime_diagnostic_panel() -> None:
     diagnostic = st.session_state.get("builder_runtime_diagnostic")
     acceptance_probe = st.session_state.get("builder_runtime_acceptance_probe")
-    with st.expander("🛰️ Diagnostic runtime", expanded=False):
+    with st.expander("Diagnostic runtime", expanded=False):
         if isinstance(acceptance_probe, dict):
             st.markdown("**Validation hôte / modèle exact**")
             probe_message = str(acceptance_probe.get("message", "") or "").strip()
@@ -687,7 +729,7 @@ _BUILDER_TAB_DEFAULTS_MARKER = "_builder_autonomous_defaults_initialized"
 _BUILDER_LEGACY_DEFAULTS: dict[str, set[Any]] = {
     "builder_model_single_llm": {"", "deepseek-r1:32b"},
     "builder_model_select": {"", "deepseek-r1:32b"},
-    "builder_universe_mode": {"", BUILDER_UNIVERSE_MODE_CANONICAL},
+    "builder_universe_mode": {"", UNIVERSE_MODE_EXPLORATORY},
     "llm_inference_mode": {"", "global"},
 }
 
@@ -749,7 +791,7 @@ def _render_topology_runtime_status(
         st.code(f"{primary_host}\nGPU cible: {primary_gpu}")
         if not primary_available and primary_host.startswith("http://127.0.0.1"):
             if st.button(
-                "🚀 Demarrer endpoint",
+                "Demarrer endpoint",
                 key=f"{session_prefix}_start_primary_endpoint",
             ):
                 success, msg = _ollama_start_if_needed(
@@ -801,7 +843,7 @@ def _render_topology_runtime_status(
         st.code(f"{primary_host}\nGPU cible: {primary_gpu}")
         if not primary_available and primary_host.startswith("http://127.0.0.1"):
             if st.button(
-                "🚀 Demarrer principal",
+                "Demarrer principal",
                 key=f"{session_prefix}_start_primary_endpoint",
             ):
                 success, msg = _ollama_start_if_needed(
@@ -820,7 +862,7 @@ def _render_topology_runtime_status(
         st.code(f"{control_host}\nGPU cible: {control_gpu}")
         if not control_available and control_host.startswith("http://127.0.0.1"):
             if st.button(
-                "🚀 Demarrer critique",
+                "Demarrer critique",
                 key=f"{session_prefix}_start_control_endpoint",
             ):
                 success, msg = _ollama_start_if_needed(
@@ -1131,7 +1173,7 @@ def _render_phase1_topology_editor(
     control_endpoint = topology.endpoints.get("control", topology.endpoints.get("default"))
     routing_mode = _current_llm_routing_mode(routing_mode_key)
 
-    with st.expander("🧭 Topologie multi-host (Phase 1)", expanded=False):
+    with st.expander("Topologie multi-host (Phase 1)", expanded=False):
         if routing_mode == LLM_ROUTING_MODE_COOPERATIVE:
             st.caption(
                 "Phase 1: séparation des endpoints productif et de contrôle avec "
@@ -1288,7 +1330,7 @@ BUILDER_CONFIG_CSS = """
     margin: 0.85rem 0 0.25rem 0;
     padding: 0.7rem 0.8rem;
     border: 1px solid var(--bc-border, rgba(148, 163, 184, 0.22));
-    border-left: 3px solid var(--bc-accent, #d4a72c);
+    border-left: 3px solid var(--bc-accent, #2dd4bf);
     border-radius: 8px;
     background: color-mix(in srgb, var(--bc-surface-2, #111827) 88%, transparent);
 }
@@ -1528,7 +1570,6 @@ def _init_exec_tabs_state() -> None:
 
 def _render_backtest_tab(state: SidebarState) -> None:
     """Contenu de l'onglet Backtest Simple."""
-    st.markdown("#### 📊 Backtest Simple")
     st.caption("Teste **1 combinaison** de paramètres — résultat immédiat, idéal pour valider une hypothèse.")
 
     if state.strategy_key:
@@ -1541,7 +1582,7 @@ def _render_backtest_tab(state: SidebarState) -> None:
             st.json(state.params)
 
         if state.use_walk_forward:
-            st.info(f"🔬 Walk-Forward actif — {state.wfa_n_folds} folds, train {state.wfa_train_ratio:.0%}")
+            st.info(f"Walk-Forward actif — {state.wfa_n_folds} folds, train {state.wfa_train_ratio:.0%}")
     else:
         st.info("Sélectionnez une stratégie dans la sidebar pour commencer.")
 
@@ -1560,17 +1601,16 @@ def _render_grid_tab(state: SidebarState) -> None:
     Widgets écrits dans session_state (via key=).  sidebar.py les lit ensuite
     pour alimenter SidebarState avant chaque run.
     """
-    st.markdown("#### 🔢 Grille de Paramètres / Optuna")
     n_workers = int(st.session_state.get("ui_n_workers", 32))
 
     use_optuna = st.checkbox(
-        "⚡ Utiliser Optuna (Bayésien)",
+        "Utiliser Optuna (Bayésien)",
         key=EXEC_GRID_USE_OPTUNA,
         help="Explore intelligemment l'espace — 10‑100× plus rapide que la grille exhaustive.",
     )
 
     if use_optuna:
-        st.caption("🎯 **Mode Bayésien** — exploration intelligente")
+        st.caption("**Mode Bayésien** — exploration intelligente")
         col_a, col_b = st.columns(2)
         with col_a:
             st.number_input(
@@ -1594,7 +1634,7 @@ def _render_grid_tab(state: SidebarState) -> None:
                 key=EXEC_GRID_METRIC,
             )
             st.checkbox(
-                "Pruning ✂️ (arrêt précoce)",
+                "Pruning (arrêt précoce)",
                 key=EXEC_GRID_PRUNING,
                 help="Abandonne les trials peu prometteurs — accélère la recherche.",
             )
@@ -1606,9 +1646,9 @@ def _render_grid_tab(state: SidebarState) -> None:
             key=EXEC_GRID_EARLY_STOP,
             help="Arrêt après N trials sans amélioration.",
         )
-        st.caption(f"⚡ {n_trials_val} trials × {n_workers} workers")
+        st.caption(f"{n_trials_val} trials × {n_workers} workers")
     else:
-        st.caption("🔢 **Mode Grille exhaustive** — explore tous les points min/max/step")
+        st.caption("**Mode Grille exhaustive** — explore tous les points min/max/step")
         st.markdown("---")
         # CRITICAL: key='grid_worker_threads' conservée verbatim — lue par render_main
         _default_threads = max(1, min(int(st.session_state.get("grid_worker_threads", 1)), 16))
@@ -1653,8 +1693,6 @@ def _render_builder_tab(state: SidebarState) -> None:
     st.session_state["builder_flow_analysis_ablation"] = {}
     st.session_state.pop("builder_flow_analysis_disabled_steps_multiselect", None)
 
-    st.markdown("#### 🏗️ Strategy Builder")
-
     builder_execution_mode = BUILDER_EXECUTION_MODE_MONO
     st.session_state["builder_execution_mode"] = builder_execution_mode
     st.session_state["builder_llm_routing_mode"] = LLM_ROUTING_MODE_STANDARD
@@ -1672,7 +1710,7 @@ def _render_builder_tab(state: SidebarState) -> None:
             "Quand ce mode est activé, le Builder génère des objectifs variés et enchaîne les sessions automatiquement jusqu'à arrêt manuel.",
         )
         builder_autonomous = st.toggle(
-            "🔄 Mode autonome 24/24",
+            "Mode autonome 24/24",
             key="builder_autonomous_toggle",
             label_visibility="collapsed",
         )
@@ -1699,11 +1737,11 @@ def _render_builder_tab(state: SidebarState) -> None:
     )
     st.session_state["builder_model_single_llm"] = builder_model_single_llm
     # ── Section 1 : Mission ─────────────────────────────────────────────
-    st.markdown("##### 🎯 Mission")
+    st.markdown("##### Mission")
 
     if builder_autonomous:
         builder_auto_pause = st.slider(
-            "⏱️ Pause entre runs (s)",
+            "Pause entre runs (s)",
             min_value=0,
             max_value=120,
             value=st.session_state.get("builder_auto_pause", BUILDER_AUTO_PAUSE_DEFAULT),
@@ -1725,7 +1763,7 @@ def _render_builder_tab(state: SidebarState) -> None:
         st.session_state["builder_objective_input"] = pending_objective_sync
 
     builder_objective = st.text_area(
-        "🎯 Objectif de la stratégie",
+        "Objectif de la stratégie",
         value=st.session_state.get("builder_objective", ""),
         height=120,
         placeholder=(
@@ -1746,7 +1784,7 @@ def _render_builder_tab(state: SidebarState) -> None:
             BUILDER_AUTO_MARKET_PICK_DEFAULT,
         )
         builder_auto_market_pick = st.toggle(
-            "🧭 LLM choisit token/TF",
+            "LLM choisit token/TF",
             value=_market_pick_default,
             key="builder_auto_market_pick_toggle",
             help=(
@@ -1767,7 +1805,7 @@ def _render_builder_tab(state: SidebarState) -> None:
         if current_universe_mode not in universe_mode_options:
             current_universe_mode = BUILDER_UNIVERSE_MODE_DEFAULT
         builder_universe_mode = st.radio(
-            "🌐 Univers",
+            "Univers",
             options=universe_mode_options,
             index=universe_mode_options.index(current_universe_mode),
             format_func=lambda value: (
@@ -1795,7 +1833,7 @@ def _render_builder_tab(state: SidebarState) -> None:
 
     # ── Section 2 : Modèle & connexion ───────────────────────────────
     st.markdown("---")
-    st.markdown("##### 🤖 Modèle & connexion")
+    st.markdown("##### Modèle & connexion")
     builder_ollama_host = st.text_input(
         "URL Ollama (Builder)",
         value=str(
@@ -1835,10 +1873,10 @@ def _render_builder_tab(state: SidebarState) -> None:
     with _rt_status_col:
         st.markdown("##### Runtime & connexion")
         st.caption(
-            f"{'🟢 Connecté' if builder_ollama_available else '⚠️ Hors ligne'} sur {builder_ollama_host}",
+            f"{'Connecté' if builder_ollama_available else 'Hors ligne'} sur {builder_ollama_host}",
         )
     with _rt_action_col:
-        builder_ollama_action_label = "🧪 Tester" if builder_ollama_available else "🚀 Démarrer"
+        builder_ollama_action_label = "Tester" if builder_ollama_available else "Démarrer"
         if st.button(builder_ollama_action_label, key="builder_start_ollama"):
             with st.spinner("Vérification / démarrage d'Ollama..."):
                 success, msg = _ollama_start_if_needed(
@@ -1908,7 +1946,7 @@ def _render_builder_tab(state: SidebarState) -> None:
 
     # ── Section 3 : Pipeline & paramètres ─────────────────────────────
     st.markdown("---")
-    st.markdown("##### ⚙️ Pipeline & paramètres")
+    st.markdown("##### Pipeline & paramètres")
     _max_iter_col, _token_budget_col = st.columns([3, 2])
     with _max_iter_col:
         builder_max_iterations = st.slider(
@@ -1987,7 +2025,6 @@ def _render_builder_tab(state: SidebarState) -> None:
 
 def _render_llm_tab(state: SidebarState) -> None:
     """Contenu de l'onglet Optimisation LLM (migration depuis sidebar)."""
-    st.markdown("#### 🤖 Optimisation LLM")
     st.caption("∞ Combinaisons LLM (non limitées)")
     _render_global_llm_routing_mode_control(
         scope_label="Optimisation LLM",
@@ -1999,7 +2036,7 @@ def _render_llm_tab(state: SidebarState) -> None:
     )
     st.caption("Le lancement se fait via la sidebar, section `Actions`.")
     n_workers = int(st.session_state.get("ui_n_workers", 32))
-    st.caption(f"🔧 Parallélisation: jusqu'à {n_workers} backtests simultanés")
+    st.caption(f"Parallélisation: jusqu'à {n_workers} backtests simultanés")
 
     llm_config = None
     llm_model = None
@@ -2033,7 +2070,7 @@ def _render_llm_tab(state: SidebarState) -> None:
     available_timeframes = state.available_timeframes
 
     if not LLM_AVAILABLE:
-        st.error("❌ Module LLM non disponible")
+        st.error("Module LLM non disponible")
         st.caption(f"Erreur: {LLM_IMPORT_ERROR}")
     else:
         llm_provider = st.selectbox(
@@ -2044,7 +2081,7 @@ def _render_llm_tab(state: SidebarState) -> None:
         )
 
         llm_use_multi_agent = st.checkbox(
-            "Mode multi-agents 👥",
+            "Mode multi-agents",
             value=bool(st.session_state.get("llm_use_multi_agent", False)),
             key="llm_use_multi_agent",
             help="Utiliser Analyst/Strategist/Critic/Validator",
@@ -2085,10 +2122,10 @@ def _render_llm_tab(state: SidebarState) -> None:
             )
             exec_ollama_available = _ollama_is_available(ollama_host)
             if exec_ollama_available:
-                st.caption(f"🟢 Ollama connecté sur `{ollama_host}`")
+                st.caption(f"Ollama connecté sur `{ollama_host}`")
             else:
-                st.warning(f"⚠️ Ollama non détecté sur `{ollama_host}`")
-            exec_ollama_action_label = "🧪 Tester Ollama" if exec_ollama_available else "🚀 Démarrer Ollama"
+                st.warning(f"Ollama non détecté sur `{ollama_host}`")
+            exec_ollama_action_label = "Tester Ollama" if exec_ollama_available else "Démarrer Ollama"
             if st.button(exec_ollama_action_label, key="exec_start_ollama"):
                 with st.spinner("Vérification / démarrage d'Ollama..."):
                     success, msg = _ollama_start_if_needed(
@@ -2333,9 +2370,9 @@ def _render_llm_tab(state: SidebarState) -> None:
                     openai_api_key=openai_key,
                 )
             else:
-                st.warning("⚠️ Clé API requise")
+                st.warning("Clé API requise")
 
-        with st.expander("⚙️ Options d'optimisation LLM", expanded=False):
+        with st.expander("Options d'optimisation LLM", expanded=False):
             llm_unlimited_iterations = st.checkbox(
                 "Itérations illimitées",
                 value=bool(st.session_state.get("llm_unlimited_iterations", True)),
@@ -2518,6 +2555,7 @@ def _render_mode_selector(current_mode: str) -> str:
 def render_exec_tabs(state: SidebarState) -> None:
     """Affiche uniquement le contenu du mode d'exécution actif."""
     _init_exec_tabs_state()
+    _inject_exec_mode_title_styles()
     mode_names = [mode_name for mode_name, _icon, _desc in MODE_OPTIONS]
     active_mode = str(
         st.session_state.get("optimization_mode", state.optimization_mode) or state.optimization_mode,
@@ -2525,12 +2563,12 @@ def render_exec_tabs(state: SidebarState) -> None:
     if active_mode not in mode_names:
         active_mode = mode_names[0]
         st.session_state["optimization_mode"] = active_mode
-    st.markdown("---")
+    _render_exec_mode_page_title(active_mode)
     if active_mode == "Backtest Simple":
         _render_backtest_tab(state)
     elif active_mode == "Grille de Paramètres":
         _render_grid_tab(state)
-    elif active_mode == "🤖 Optimisation LLM":
+    elif active_mode == "Optimisation LLM":
         _render_llm_tab(state)
-    elif active_mode == "🏗️ Strategy Builder":
+    elif active_mode == "Strategy Builder":
         _render_builder_tab(state)

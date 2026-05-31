@@ -166,10 +166,10 @@ class SweepMonitor:
         total_combinations: Nombre total de combinaisons à évaluer
         objectives: Liste des objectifs à tracker
         top_k: Nombre de meilleurs résultats à garder
-        max_results: Limite résultats en mémoire (défaut: 100, 0=illimité ⚠️ OOM risk)
-        max_history: Limite historique graphiques (défaut: 1000, 0=illimité ⚠️ OOM risk)
+        max_results: Limite résultats en mémoire (défaut: 100, 0=illimité OOM risk)
+        max_history: Limite historique graphiques (défaut: 1000, 0=illimité OOM risk)
 
-        """
+"""
         self.total = total_combinations
         # Note: Utiliser les clés correctes retournées par calculate_metrics
         # Ajout de 'total_pnl' pour tracking visible du meilleur gain
@@ -337,7 +337,7 @@ class SweepMonitor:
     ) -> list[float]:
         """Retourne l'historique d'une métrique avec downsampling automatique.
 
-        ✅ FIX OOM: Pour sweeps longs (>10k runs), réduit automatiquement
+        FIX OOM: Pour sweeps longs (>10k runs), réduit automatiquement
         le nombre de points affichés sans perdre la tendance visuelle.
 
         Args:
@@ -347,7 +347,7 @@ class SweepMonitor:
         Returns:
             Liste de valeurs (downsamplée si nécessaire)
 
-        """
+"""
         history = list(self._metric_history.get(objective, []))
 
         if len(history) <= max_points:
@@ -519,7 +519,7 @@ def render_sweep_progress(
     stats = monitor.stats
 
     # Header avec stats principales
-    st.subheader("🔄 Sweep Progress")
+    st.subheader("Sweep Progress")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # 🚀 AFFICHAGE DÉBIT EN TEMPS RÉEL (bt/s) - Style "Gaming"
@@ -600,24 +600,24 @@ def render_sweep_progress(
 
     with col1:
         st.metric(
-            "📊 Progression",
+            "Progression",
             f"{stats.progress_percent:.1f}%",
             f"{stats.evaluated}/{stats.total_combinations}",
         )
 
     with col2:
         st.metric(
-            "⚡ Vitesse",
+            "Vitesse",
             f"{stats.rate:.1f}/s",
             f"{stats.elapsed_seconds:.0f}s écoulés",
         )
 
     with col3:
-        st.metric("⏱️ ETA", stats.eta_str)
+        st.metric("ETA", stats.eta_str)
 
     with col4:
         st.metric(
-            "✂️ Prunés",
+            "Prunés",
             f"{stats.pruned}",
             delta=f"-{stats.pruned}" if stats.pruned > 0 else None,
             delta_color="off",
@@ -625,7 +625,7 @@ def render_sweep_progress(
 
     with col5:
         st.metric(
-            "❌ Erreurs",
+            "Erreurs",
             f"{stats.errors}",
             delta=f"+{stats.errors}" if stats.errors > 0 else None,
             delta_color="inverse",
@@ -701,7 +701,7 @@ def render_sweep_progress(
     # Meilleurs résultats avec design amélioré
     if show_top_results:
         st.markdown("---")
-        st.markdown("### 🏆 Top Résultats par Métrique")
+        st.markdown("### Top Résultats par Métrique")
 
         tabs = st.tabs([f"{obj.replace('_', ' ').title()}" for obj in monitor.objectives])
 
@@ -762,7 +762,7 @@ def render_sweep_progress(
                         },
                     )
                 else:
-                    st.info("⏳ En attente des premiers résultats...")
+                    st.info("En attente des premiers résultats...")
 
 
 def render_sweep_summary(monitor: SweepMonitor, key: str = "sweep_summary"):
@@ -780,11 +780,11 @@ def render_sweep_summary(monitor: SweepMonitor, key: str = "sweep_summary"):
 
     stats = monitor.stats
 
-    st.success(f"✅ Sweep terminé - {stats.evaluated} combinaisons évaluées")
+    st.success(f"Sweep terminé - {stats.evaluated} combinaisons évaluées")
     ruined_count = sum(1 for r in monitor.results if r.metrics.get("account_ruined"))
     if ruined_count:
         st.warning(
-            f"⚠️ {ruined_count} combinaison(s) ont ruiné le compte et sont exclues du classement.",
+            f"{ruined_count} combinaison(s) ont ruiné le compte et sont exclues du classement.",
         )
 
     # Stats finales
@@ -800,7 +800,7 @@ def render_sweep_summary(monitor: SweepMonitor, key: str = "sweep_summary"):
         st.metric("Taux de pruning", f"{(stats.pruned / stats.total_combinations) * 100:.1f}%")
 
     # Meilleurs paramètres
-    st.markdown("### 🏆 Meilleurs paramètres")
+    st.markdown("### Meilleurs paramètres")
 
     any_best_found = False
     for obj in monitor.objectives:
@@ -812,7 +812,7 @@ def render_sweep_summary(monitor: SweepMonitor, key: str = "sweep_summary"):
 
     if not any_best_found:
         st.warning(
-            f"❌ Aucun résultat valide trouvé.\n\n"
+            f"Aucun résultat valide trouvé.\n\n"
             f"**{stats.errors}** erreurs sur **{stats.evaluated}** combinaisons évaluées.\n\n"
             "Vérifiez les logs ci-dessus pour identifier le problème.",
         )

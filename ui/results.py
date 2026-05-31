@@ -52,7 +52,7 @@ def render_results(state: SidebarState, best_pnl_tracker: BestPnlTracker | None)
     winner_meta = st.session_state.get("last_winner_meta")
 
     if result is not None:
-        st.header("📊 Résultats du Backtest")
+        st.header("Résultats du Backtest")
         partial_notice = get_partial_result_notice(result)
         if partial_notice:
             st.warning(partial_notice)
@@ -112,11 +112,11 @@ def render_results(state: SidebarState, best_pnl_tracker: BestPnlTracker | None)
                 liquidation_time = result.metrics.get("liquidation_time")
                 time_note = f" à {liquidation_time}" if liquidation_time else ""
                 st.write(
-                    f"💥 Liquidation détectée{time_note}. "
+                    f"Liquidation détectée{time_note}. "
                     "Le mode liquidation coupe les trades dès que le capital atteint 0.",
                 )
 
-            with st.expander("🧯 Liquidation vs crédit infini", expanded=False):
+            with st.expander("Liquidation vs crédit infini", expanded=False):
                 credit_col, liq_col = st.columns(2)
                 with credit_col:
                     st.markdown("**Crédit infini**")
@@ -199,9 +199,9 @@ def render_results(state: SidebarState, best_pnl_tracker: BestPnlTracker | None)
                     st.session_state["versioned_preset_last_saved"] = saved.name
                     st.rerun()
                 except Exception as exc:
-                    st.write(f"❌ Save failed: {exc}")
+                    st.write(f"Save failed: {exc}")
 
-        st.subheader("💰 Courbe d'Équité")
+        st.subheader("Courbe d'Équité")
 
         if result is not None and hasattr(result, "equity") and result.equity is not None:
             initial_capital = state.params.get("initial_capital", 10000.0)
@@ -213,14 +213,14 @@ def render_results(state: SidebarState, best_pnl_tracker: BestPnlTracker | None)
                 summary_metrics=result.metrics,
             )
         elif result is not None:
-            st.write("ℹ️ Courbe d'équité non disponible pour cette stratégie")
+            st.write("Courbe d'équité non disponible pour cette stratégie")
 
-        st.subheader("📈 Prix et Trades")
+        st.subheader("Prix et Trades")
 
         if result is not None:
             chart_df = st.session_state.get("ohlcv_df")
             if chart_df is None:
-                st.write("ℹ️ Donnees non chargees. Cliquez sur 'Charger donnees'.")
+                st.write("Donnees non chargees. Cliquez sur 'Charger donnees'.")
             else:
                 chart_params = result.meta.get("params", state.params)
                 indicator_overlays = build_indicator_overlays(
@@ -235,7 +235,7 @@ def render_results(state: SidebarState, best_pnl_tracker: BestPnlTracker | None)
                         trades_df=result.trades,
                         overlays=indicator_overlays,
                         active_indicators=state.active_indicators,
-                        title="📊 OHLCV + Indicateurs + Entrees/Sorties",
+                        title="OHLCV + Indicateurs + Entrees/Sorties",
                         key="ohlcv_trades_indicators_main",
                         height=700,
                     )
@@ -243,29 +243,29 @@ def render_results(state: SidebarState, best_pnl_tracker: BestPnlTracker | None)
                     render_ohlcv_with_trades(
                         df=chart_df,
                         trades_df=result.trades,
-                        title="📊 Graphique OHLCV avec Points d'Entree/Sortie",
+                        title="Graphique OHLCV avec Points d'Entree/Sortie",
                         key="ohlcv_trades_main",
                         height=600,
                     )
                 else:
                     st.write(
-                        "ℹ️ Aucun trade execute, affichage du graphique de prix uniquement",
+                        "Aucun trade execute, affichage du graphique de prix uniquement",
                     )
                     render_ohlcv_with_trades(
                         df=chart_df,
                         trades_df=pd.DataFrame(),
-                        title="📊 Graphique OHLCV",
+                        title="Graphique OHLCV",
                         key="ohlcv_main_notrades",
                         height=600,
                     )
 
-        st.subheader("📈 Métriques Détaillées")
+        st.subheader("Métriques Détaillées")
 
         if result is not None:
             col1, col2, col3 = st.columns(3)
 
             with col1:
-                st.markdown("**💰 Rendement**")
+                st.markdown("**Rendement**")
                 st.text(f"P&L Total: ${result.metrics.get('total_pnl', 0):,.2f}")
                 st.text(f"Rendement: {result.metrics.get('total_return_pct', 0):.2f}%")
                 st.text(f"Buy & Hold: {result.metrics.get('benchmark_return_pct', 0):.2f}%")
@@ -274,7 +274,7 @@ def render_results(state: SidebarState, best_pnl_tracker: BestPnlTracker | None)
                 st.text(f"Volatilité: {result.metrics.get('volatility_annual', 0):.2f}%")
 
             with col2:
-                st.markdown("**📊 Risque**")
+                st.markdown("**Risque**")
                 st.text(f"Sharpe: {result.metrics.get('sharpe_ratio', 0):.2f}")
                 st.text(f"Sortino: {result.metrics.get('sortino_ratio', 0):.2f}")
                 st.text(f"Calmar: {result.metrics.get('calmar_ratio', 0):.2f}")
@@ -283,7 +283,7 @@ def render_results(state: SidebarState, best_pnl_tracker: BestPnlTracker | None)
                 st.text(f"Max DD: {max_dd:.2f}%")
 
             with col3:
-                st.markdown("**🎯 Trading**")
+                st.markdown("**Trading**")
                 st.text(f"Trades: {result.metrics.get('total_trades', 0)}")
                 # Compatibilité: fallback win_rate si win_rate_pct absent
                 win_rate = result.metrics.get("win_rate_pct", result.metrics.get("win_rate", 0))
@@ -294,11 +294,11 @@ def render_results(state: SidebarState, best_pnl_tracker: BestPnlTracker | None)
         # ── Walk-Forward (si disponible) ────────────────────────────────
         wfa_summary = result.meta.get("walk_forward") if result is not None else None
         if wfa_summary:
-            st.subheader("🧭 Frise Walk-Forward")
+            st.subheader("Frise Walk-Forward")
             render_walk_forward_results(wfa_summary, key="wfa_results_main")
 
         if result is not None and not result.trades.empty:
-            with st.expander("📊 Analyse Statistique Avancée (Seaborn)", expanded=True):
+            with st.expander("Analyse Statistique Avancée (Seaborn)", expanded=True):
                 col1, col2 = st.columns(2)
 
                 with col1:
@@ -318,10 +318,10 @@ def render_results(state: SidebarState, best_pnl_tracker: BestPnlTracker | None)
                             height=400,
                         )
                     else:
-                        st.write("ℹ️ Rendements non disponibles pour cette analyse")
+                        st.write("Rendements non disponibles pour cette analyse")
 
         if result is not None and not result.trades.empty:
-            st.subheader("📋 Historique des Trades")
+            st.subheader("Historique des Trades")
 
             trades_display = result.trades.copy()
 
@@ -378,19 +378,19 @@ def render_results(state: SidebarState, best_pnl_tracker: BestPnlTracker | None)
                 f"Total: {total_trades} | Gagnants: {winners} | Perdants: {losers}",
             )
         elif result is not None:
-            st.write("ℹ️ Aucun trade exécuté pendant cette période")
+            st.write("Aucun trade exécuté pendant cette période")
 
     else:
         render_home(state)
 
 
 def render_home(state: SidebarState) -> None:
-    st.write("👆 Configurez dans la sidebar puis cliquez sur **🚀 Lancer le Backtest**")
+    st.write("Configurez dans la sidebar puis cliquez sur **Lancer le Backtest**")
 
-    llm_mode_active = state.optimization_mode == "🤖 Optimisation LLM"
+    llm_mode_active = state.optimization_mode == "Optimisation LLM"
 
     tab1, tab2, tab3, tab4 = st.tabs(
-        ["🎯 Stratégies", "📊 Optimisation", "📁 Données", "❓ FAQ"],
+        ["Stratégies", "Optimisation", "Données", "FAQ"],
     )
 
     with tab1:
@@ -422,24 +422,24 @@ def render_home(state: SidebarState) -> None:
         table_lines = [
             "| Mode | Combinaisons | Intelligence | Coût |",
             "|------|--------------|--------------|------|",
-            "| Simple | 1 | ❌ | Gratuit |",
-            "| Grille | Jusqu'à 1M | ❌ | Gratuit |",
+            "| Simple | 1 | | Gratuit |",
+            "| Grille | Jusqu'à 1M | | Gratuit |",
         ]
         if llm_mode_active:
-            table_lines.append("| LLM | ~10-50 ciblées | ✅ | Variable |")
+            table_lines.append("| LLM | ~10-50 ciblées | | Variable |")
         st.markdown("\n".join(table_lines))
 
         if llm_mode_active:
             st.markdown(
                 """
-        **Mode LLM** 🤖 : Optimisation intelligente par agents IA.
+        **Mode LLM** : Optimisation intelligente par agents IA.
         - 4 agents spécialisés (Analyst, Strategist, Critic, Validator)
         - Boucle d'amélioration itérative automatique
         - Walk-Forward anti-overfitting intégré
         - Supporte Ollama (local/gratuit) ou OpenAI
 
-        ⚠️ Mode LLM nécessite Ollama installé localement ou une clé OpenAI.
-        """,
+        Mode LLM nécessite Ollama installé localement ou une clé OpenAI.
+""",
             )
 
     with tab3:

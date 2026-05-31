@@ -294,8 +294,8 @@ MODE_BUTTON_CSS = """
 MODE_OPTIONS: list[tuple[str, str, str]] = [
     ("Backtest Simple", "📊", "1 combinaison de paramètres"),
     ("Grille de Paramètres", "🔢", "Exploration min/max/step"),
-    ("🤖 Optimisation LLM", "🧠", "Agents IA + Deep Trace intégré"),
-    ("🏗️ Strategy Builder", "🔧", "Création de stratégies par IA"),
+    ("Optimisation LLM", "🧠", "Agents IA + Deep Trace intégré"),
+    ("Strategy Builder", "🔧", "Création de stratégies par IA"),
 ]
 
 

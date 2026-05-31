@@ -942,7 +942,7 @@ def _render_table_section(
         frame = _reorder_session_frame(frame)
     st.dataframe(frame, width="stretch", hide_index=True)
     st.download_button(
-        f"⬇️ Export CSV - {title}",
+        f"Export CSV - {title}",
         data=_rows_to_csv(rows if title == "Sessions Builder brutes" else frame.to_dict(orient="records")),
         file_name=csv_name,
         mime="text/csv",
@@ -1021,7 +1021,7 @@ def _render_archives_section(state: dict[str, Any]) -> None:
     col_download_json, col_download_csv = st.columns(2)
     with col_download_json:
         st.download_button(
-            "⬇️ Télécharger l'archive JSON",
+            "Télécharger l'archive JSON",
             data=json_payload,
             file_name=f"{selected_archive.get('id', 'builder_model_stats_archive')}.json",
             mime="application/json",
@@ -1029,7 +1029,7 @@ def _render_archives_section(state: dict[str, Any]) -> None:
         )
     with col_download_csv:
         st.download_button(
-            "⬇️ Export CSV builder",
+            "Export CSV builder",
             data=_rows_to_csv(archive_builder_frame.to_dict(orient="records")),
             file_name=f"{selected_archive.get('id', 'builder_model_stats_archive')}_builder.csv",
             mime="text/csv",
@@ -1055,7 +1055,7 @@ def _consume_pending_archive_notice() -> dict[str, Any] | None:
 
 
 def render_model_stats_page() -> None:
-    st.title("📊 Statistiques des modèles")
+    st.title("Statistiques des modèles")
     st.caption(
         "Périmètre strictement limité au mode Builder autonome et à son historique persistant.",
     )
@@ -1103,7 +1103,7 @@ def render_model_stats_page() -> None:
         "Le reset archive la fenêtre active actuelle, puis redémarre les nouvelles stats Builder à partir du dernier numéro de session observé.",
     )
     if st.button(
-        "🗃️ Archiver puis reset des statistiques Builder",
+        "Archiver puis reset des statistiques Builder",
         type="secondary",
         disabled=not bool(report.get("active_entries")),
         key="builder_model_stats_archive_reset_btn",

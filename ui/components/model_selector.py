@@ -73,7 +73,7 @@ _CATEGORY_LABELS = {
     "Instruction": "instruction",
     "Multimodal": "multimodal",
     "Securite": "safety",
-    "☁\ufe0f Cloud": "__cloud__",
+    "\ufe0f Cloud": "__cloud__",
 }
 
 
@@ -724,14 +724,14 @@ def render_model_selector(
         d = details_map.get(selected) or get_model_details(selected, ollama_host=ollama_host)
         if _is_cloud_model(selected):
             st.info(
-                "☁️ **Modèle Cloud Ollama** — Ce modèle s'exécute sur l'infrastructure Ollama Cloud. "
+                "**Modèle Cloud Ollama** — Ce modèle s'exécute sur l'infrastructure Ollama Cloud."
                 "Il **nécessite des crédits Ollama**. Il ne sera pas téléchargé sur votre machine.",
                 icon="☁️",
             )
         _render_model_card(d, compact=compact, ollama_host=ollama_host)
         if include_library_models and selected not in installed_models:
             st.caption(
-                "ℹ️ Modèle issu du catalogue local, non vérifié sur l'instance Ollama courante. "
+                "Modèle issu du catalogue local, non vérifié sur l'instance Ollama courante."
                 "Il sera utilisé tel quel, avec erreur explicite s'il est absent côté serveur.",
             )
 

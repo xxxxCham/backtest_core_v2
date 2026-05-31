@@ -1355,7 +1355,7 @@ def render_results_store_page() -> None:
     analysis_files_df = _load_analysis_files_df(str(analysis_root))
     builder_catalog_audit = _load_builder_catalog_reconciliation(str(builder_root), str(results_root))
 
-    st.title("📚 Hub resultats")
+    st.title("Hub resultats")
     st.caption(
         "Page dediee au store centralise: catalogues, runs, sessions Builder, analyses et artefacts.",
     )

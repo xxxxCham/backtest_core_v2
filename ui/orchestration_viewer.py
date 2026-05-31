@@ -46,7 +46,7 @@ def render_orchestration_logs(
         max_entries: Nombre maximum d'entrées à afficher
 
     """
-    st.markdown("### 🤖 Journal d'Orchestration LLM")
+    st.markdown("### Journal d'Orchestration LLM")
 
     if len(orchestration_logger.logs) == 0:
         st.info("Aucun log d'orchestration disponible")
@@ -126,7 +126,7 @@ def render_orchestration_logs(
 
 def _render_logs_timeline(logs: list[OrchestrationLogEntry], max_entries: int):
     """Affiche les logs sous forme de timeline."""
-    st.markdown("#### 📋 Timeline des Actions")
+    st.markdown("#### Timeline des Actions")
 
     # Limiter le nombre de logs
     display_logs = logs[-max_entries:] if len(logs) > max_entries else logs
@@ -147,7 +147,7 @@ def _render_logs_timeline(logs: list[OrchestrationLogEntry], max_entries: int):
         iteration_logs = logs_by_iteration[iteration]
 
         with st.expander(
-            f"🔄 **Itération {iteration}** ({len(iteration_logs)} actions)",
+            f"**Itération {iteration}** ({len(iteration_logs)} actions)",
             expanded=(iteration == max(logs_by_iteration.keys())),
         ):
             for log in iteration_logs:
@@ -245,9 +245,9 @@ def _render_log_details(log: OrchestrationLogEntry):
         results = details["results"]
         if isinstance(results, dict):
             if "sharpe" in results:
-                st.caption(f"   📊 Sharpe: {results['sharpe']:.3f}")
+                st.caption(f"   Sharpe: {results['sharpe']:.3f}")
             if "pnl" in results:
-                st.caption(f"   💰 PnL: {results['pnl']:.2f}")
+                st.caption(f"   PnL: {results['pnl']:.2f}")
 
     # Raison
     if "reason" in details:
@@ -264,10 +264,10 @@ def _render_log_details(log: OrchestrationLogEntry):
 
     # Message / Erreur
     if "message" in details:
-        st.caption(f"   📝 {details['message']}")
+        st.caption(f"   {details['message']}")
 
     if "error" in details:
-        st.error(f"   ❌ Erreur: {details['error']}")
+        st.error(f"   Erreur: {details['error']}")
 
 
 def _get_status_color(status: OrchestrationStatus) -> str:
@@ -307,7 +307,7 @@ def _get_timestamp_chip_colors(text_color: str) -> tuple[str, str]:
 
 def render_orchestration_summary_table(orchestration_logger: OrchestrationLogger):
     """Affiche un tableau récapitulatif des actions par agent."""
-    st.markdown("#### 📊 Récapitulatif par Agent")
+    st.markdown("#### Récapitulatif par Agent")
 
     # Compter les actions par agent
     agent_actions = {}
@@ -343,7 +343,7 @@ def render_orchestration_summary_table(orchestration_logger: OrchestrationLogger
 
 def render_orchestration_metrics(orchestration_logger: OrchestrationLogger):
     """Affiche les métriques clés de l'orchestration."""
-    st.markdown("#### 📈 Métriques d'Orchestration")
+    st.markdown("#### Métriques d'Orchestration")
 
     # Compter les backtests
     backtests_launched = len(
@@ -395,7 +395,7 @@ def render_full_orchestration_viewer(
 ):
     """Affiche le visualiseur complet d'orchestration."""
     # Onglets
-    tab1, tab2, tab3 = st.tabs(["📋 Timeline", "📊 Résumé", "📈 Métriques"])
+    tab1, tab2, tab3 = st.tabs(["Timeline", "Résumé", "Métriques"])
 
     with tab1:
         render_orchestration_logs(
@@ -464,18 +464,18 @@ class LiveOrchestrationViewer:
         completed = sum(1 for e in self._events if e.status == OrchestrationStatus.COMPLETED)
 
         with col1:
-            st.metric("🎯 Événements", len(self._events))
+            st.metric("Événements", len(self._events))
         with col2:
-            st.metric("🤖 Agents actifs", len(agents))
+            st.metric("Agents actifs", len(agents))
         with col3:
-            st.metric("🔄 Itérations", max(iterations) if iterations else 0)
+            st.metric("Itérations", max(iterations) if iterations else 0)
         with col4:
-            st.metric("✅ Complétés", completed)
+            st.metric("Complétés", completed)
 
     def _render_events(self) -> None:
         """Affiche les derniers événements."""
         if not self._events:
-            st.info("⏳ En attente des événements...")
+            st.info("En attente des événements...")
             return
 
         # Afficher les derniers événements (plus récents en haut)
@@ -572,16 +572,16 @@ def render_live_orchestration_panel(
 
         logs = orchestration_logger.logs
         with col1:
-            st.metric("📊 Événements", len(logs))
+            st.metric("Événements", len(logs))
         with col2:
-            st.metric("🔄 Itération", orchestration_logger.current_iteration)
+            st.metric("Itération", orchestration_logger.current_iteration)
         with col3:
             # Dernier agent actif
             last_agent = logs[-1].agent if logs else "—"
-            st.metric("🤖 Dernier agent", last_agent or "—")
+            st.metric("Dernier agent", last_agent or "—")
 
         # Afficher les 10 derniers événements
-        st.markdown("**📋 Derniers événements:**")
+        st.markdown("**Derniers événements:**")
         recent = logs[-10:][::-1] if logs else []
 
         for event in recent:

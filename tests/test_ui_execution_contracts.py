@@ -2261,6 +2261,42 @@ def test_sanitize_builder_stream_text_extracts_useful_code_for_code_phase():
     assert "Okay, I need to" not in cleaned
 
 
+def test_sanitize_builder_stream_text_pretty_prints_json_proposal():
+    raw = 'prefix {"strategy_name":"vix_test","hypothesis":"mean reversion"} suffix'
+
+    cleaned, language = _sanitize_builder_stream_text("proposal", raw)
+
+    assert language == "json"
+    assert '"strategy_name": "vix_test"' in cleaned
+    assert '"hypothesis": "mean reversion"' in cleaned
+
+
+def test_render_builder_stream_frame_wraps_generation_text(monkeypatch):
+    rendered: list[str] = []
+    monkeypatch.setattr(
+        builder_view_module.st,
+        "markdown",
+        lambda body, **kwargs: rendered.append(str(body)),
+    )
+
+    builder_view_module._render_builder_stream_frame(
+        icon="🔧",
+        label="Génération de code",
+        text="class BuilderGeneratedStrategy:\n    pass",
+        language="python",
+    )
+
+    html_body = "\n".join(rendered)
+    assert "bc-builder-stream-frame" in html_body
+    assert "Génération de code" in html_body
+    assert "PYTHON" in html_body
+    assert "class BuilderGeneratedStrategy" in html_body
+
+
+def test_format_builder_model_display_name_shortens_gemma_alias():
+    assert builder_view_module._format_builder_model_display_name("gemma4:26b") == "Gemma 4 26B"
+
+
 def test_format_builder_live_event_line_marks_selected_branch():
     line = _format_builder_live_event_line(
         {
@@ -7655,7 +7691,11 @@ def test_render_controls_initializes_and_consumes_run_request(monkeypatch):
     st.session_state.clear()
     st.session_state["run_backtest_requested"] = True
 
-    monkeypatch.setattr(main_module.st, "title", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        main_module.st,
+        "title",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("generic title should not render")),
+    )
     monkeypatch.setattr(main_module.st, "container", lambda: nullcontext())
     monkeypatch.setattr(main_module.st, "markdown", lambda *args, **kwargs: None)
 
@@ -7667,6 +7707,20 @@ def test_render_controls_initializes_and_consumes_run_request(monkeypatch):
     assert st.session_state["stop_requested"] is False
     assert st.session_state["load_ohlcv_requested"] is False
     assert get_ui_execution_phase(st.session_state) == UI_EXECUTION_PHASE_LAUNCH_PENDING
+
+
+def test_exec_mode_page_titles_are_centered_and_cover_all_modes():
+    mode_names = [mode_name for mode_name, _icon, _desc in exec_tabs_module.MODE_OPTIONS]
+
+    assert set(exec_tabs_module.EXEC_MODE_PAGE_TITLES) == set(mode_names)
+    assert exec_tabs_module.EXEC_MODE_PAGE_TITLES["Grille de Paramètres"] == "GRILLE DE PARAMÈTRES / OPTUNA"
+    assert "text-align: center" in exec_tabs_module.EXEC_MODE_TITLE_CSS
+    assert "letter-spacing: 0" in exec_tabs_module.EXEC_MODE_TITLE_CSS
+
+    for mode_name in mode_names:
+        html = exec_tabs_module._build_exec_mode_page_title_html(mode_name)
+        assert "bc-exec-page-title" in html
+        assert exec_tabs_module.EXEC_MODE_PAGE_TITLES[mode_name] in html
 
 
 def test_app_clear_execution_lock_clears_builder_launch_metadata():
@@ -7827,7 +7881,18 @@ def test_app_exec_modes_render_without_activation_buttons():
     assert "🔢 Grille de Paramètres" in button_labels
     assert "🧠 Optimisation LLM" in button_labels
     assert "🔧 Strategy Builder" in button_labels
-    assert "⬇️ Charger marché & aperçu" in button_labels
+    assert "Charger marché & aperçu" in button_labels
+
+
+def test_sidebar_execution_mode_buttons_share_fixed_tile_style():
+    css = sidebar_module.SIDEBAR_STYLE_CSS
+
+    assert "bc-sidebar-exec-mode-anchor" in css
+    assert "height: 4.35rem" in css
+    assert "min-height: 4.35rem" in css
+    assert "align-items: center" in css
+    assert "justify-content: center" in css
+    assert "white-space: normal" in css
 
 
 def test_app_sidebar_hides_keeper_mode_controls():
@@ -7865,16 +7930,16 @@ def test_keeper_mode_button_launches_supervisor_panel(monkeypatch):
 
 def test_app_builder_mode_is_directly_rendered_from_mode_selection():
     at = AppTest.from_file("ui/app.py")
-    at.session_state["optimization_mode"] = "🏗️ Strategy Builder"
+    at.session_state["optimization_mode"] = "Strategy Builder"
 
     at.run(timeout=60)
 
     button_labels = [button.label for button in at.button]
     assert all(not label.startswith("→ Activer") for label in button_labels)
-    assert any(text_area.label == "🎯 Objectif de la stratégie" for text_area in at.text_area)
+    assert any(text_area.label == "Objectif de la stratégie" for text_area in at.text_area)
     assert all(radio.label != "Mode d'exécution" for radio in at.radio)
-    assert "⬇️ Charger marché & aperçu" not in button_labels
-    assert at.session_state["optimization_mode"] == "🏗️ Strategy Builder"
+    assert "Charger marché & aperçu" not in button_labels
+    assert at.session_state["optimization_mode"] == "Strategy Builder"
 
 
 def test_app_builder_main_run_button_launches_on_first_click(monkeypatch):
@@ -8083,7 +8148,7 @@ def test_builder_tab_defaults_match_autonomous_screen_preset():
     st.session_state.clear()
     # Anciens defaults persistes -> migration vers nouveaux defaults
     st.session_state["builder_model_single_llm"] = "deepseek-r1:32b"
-    st.session_state["builder_universe_mode"] = "canonical"
+    st.session_state["builder_universe_mode"] = "exploratory"
     st.session_state["llm_inference_mode"] = "global"
     # Choix utilisateurs explicites -> doivent etre respectes
     st.session_state["builder_autonomous"] = False
@@ -8093,7 +8158,7 @@ def test_builder_tab_defaults_match_autonomous_screen_preset():
     exec_tabs_module._ensure_builder_autonomous_defaults()
 
     # Migration string defaults
-    assert st.session_state["builder_universe_mode"] == "exploratory"
+    assert st.session_state["builder_universe_mode"] == "canonical"
     assert st.session_state["builder_model_single_llm"] == "gemma4:26b"
     assert st.session_state["builder_model_select"] == "gemma4:26b"
     assert st.session_state["llm_inference_mode"] == "per_model"

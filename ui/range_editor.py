@@ -77,7 +77,7 @@ def render_range_editor():
     """
     RangeEditorState.init()
 
-    st.title("⚙️ Éditeur de Plages de Paramètres")
+    st.title("Éditeur de Plages de Paramètres")
     st.markdown("---")
 
     manager: RangeManager = st.session_state.range_manager
@@ -107,7 +107,7 @@ def render_range_editor():
 
     # Barre de recherche
     search_term = st.text_input(
-        "🔍 Rechercher un paramètre",
+        "Rechercher un paramètre",
         value=st.session_state.range_editor_search,
         placeholder="Ex: ema, period, rsi...",
     )
@@ -115,7 +115,7 @@ def render_range_editor():
 
     # Sidebar pour sélection de catégorie
     with st.sidebar:
-        st.header("📚 Catégories")
+        st.header("Catégories")
 
         categories = manager.get_all_categories()
 
@@ -142,7 +142,7 @@ def render_range_editor():
             )
             st.session_state.range_editor_category = selected_category
         else:
-            st.write("⚠️ Aucune catégorie trouvée.")
+            st.write("Aucune catégorie trouvée.")
             selected_category = None
 
         st.markdown("---")
@@ -152,42 +152,42 @@ def render_range_editor():
 
         with col_save:
             if st.button(
-                "💾 Sauvegarder",
+                "Sauvegarder",
                 width="stretch",
                 disabled=not st.session_state.range_editor_modified,
             ):
                 try:
                     manager.save_ranges(backup=True)
                     st.session_state.range_editor_modified = False
-                    st.write("✅ Plages sauvegardées !")
+                    st.write("Plages sauvegardées !")
                     st.rerun()
                 except Exception as e:
-                    st.write(f"❌ Erreur: {e}")
+                    st.write(f"Erreur: {e}")
 
         with col_reload:
-            if st.button("🔄 Recharger", width="stretch"):
+            if st.button("Recharger", width="stretch"):
                 manager._load_ranges()
                 st.session_state.range_editor_modified = False
-                st.write("✅ Plages rechargées !")
+                st.write("Plages rechargées !")
                 st.rerun()
 
-        if st.button("📥 Exporter JSON", width="stretch"):
+        if st.button("Exporter JSON", width="stretch"):
             export_path = _PROJECT_ROOT / "config" / "indicator_ranges_export.json"
             data = manager.export_to_dict()
             import json
 
             with open(export_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-            st.write(f"✅ Exporté vers: {export_path}")
+            st.write(f"Exporté vers: {export_path}")
 
     # Contenu principal - Édition des paramètres
     if selected_category:
-        st.header(f"📊 Catégorie: {selected_category}")
+        st.header(f"Catégorie: {selected_category}")
 
         params = manager.get_category_params(selected_category)
 
         if not params:
-            st.write(f"ℹ️ Aucun paramètre dans la catégorie '{selected_category}'.")
+            st.write(f"Aucun paramètre dans la catégorie '{selected_category}'.")
             return
 
         # Filtrer les paramètres par recherche
@@ -195,7 +195,7 @@ def render_range_editor():
             params = [p for p in params if search_term.lower() in p.lower()]
 
         if not params:
-            st.write(f"⚠️ Aucun paramètre trouvé avec '{search_term}'.")
+            st.write(f"Aucun paramètre trouvé avec '{search_term}'.")
             return
 
         st.write(f"**{len(params)} paramètre(s) trouvé(s)**")
@@ -208,7 +208,7 @@ def render_range_editor():
             if range_cfg is None:
                 continue
 
-            with st.expander(f"📌 {param}", expanded=True):
+            with st.expander(f"{param}", expanded=True):
                 st.markdown(f"*{range_cfg.description}*")
 
                 # Afficher les valeurs actuelles
@@ -228,7 +228,7 @@ Default: {range_cfg.default}
 
                     # Options ou valeurs numériques
                     if range_cfg.options:
-                        st.write("ℹ️ Type: Options prédéfinies")
+                        st.write("Type: Options prédéfinies")
                         st.write("Options:", ", ".join(range_cfg.options))
 
                         new_default = st.selectbox(
@@ -241,10 +241,10 @@ Default: {range_cfg.default}
                         )
 
                         if new_default != range_cfg.default:
-                            if st.button("✅ Appliquer", key=f"apply_{selected_category}_{param}"):
+                            if st.button("Appliquer", key=f"apply_{selected_category}_{param}"):
                                 manager.update_range(selected_category, param, default=new_default)
                                 st.session_state.range_editor_modified = True
-                                st.write("✅ Modifié !")
+                                st.write("Modifié !")
                                 st.rerun()
 
                     else:
@@ -291,13 +291,13 @@ Default: {range_cfg.default}
                         # Validation
                         valid = True
                         if new_min >= new_max:
-                            st.write("❌ Min doit être < Max")
+                            st.write("Min doit être < Max")
                             valid = False
                         if new_default < new_min or new_default > new_max:
-                            st.write("❌ Default doit être entre Min et Max")
+                            st.write("Default doit être entre Min et Max")
                             valid = False
                         if new_step <= 0:
-                            st.write("❌ Step doit être > 0")
+                            st.write("Step doit être > 0")
                             valid = False
 
                         # Bouton d'application
@@ -311,7 +311,7 @@ Default: {range_cfg.default}
 
                             if changed:
                                 if st.button(
-                                    "✅ Appliquer les modifications", key=f"apply_{selected_category}_{param}",
+                                    "Appliquer les modifications", key=f"apply_{selected_category}_{param}",
                                 ):
                                     manager.update_range(
                                         selected_category,
@@ -322,15 +322,15 @@ Default: {range_cfg.default}
                                         default=new_default,
                                     )
                                     st.session_state.range_editor_modified = True
-                                    st.write("✅ Modifications appliquées !")
+                                    st.write("Modifications appliquées !")
                                     st.rerun()
                             else:
-                                st.write("ℹ️ Aucune modification détectée.")
+                                st.write("Aucune modification détectée.")
 
                 st.markdown("---")
 
     else:
-        st.write("👈 Sélectionnez une catégorie dans la sidebar pour commencer.")
+        st.write("Sélectionnez une catégorie dans la sidebar pour commencer.")
 
 
 def render_range_editor_compact():
@@ -342,7 +342,7 @@ def render_range_editor_compact():
 
     manager: RangeManager = st.session_state.range_manager
 
-    st.subheader("⚙️ Édition Rapide des Plages")
+    st.subheader("Édition Rapide des Plages")
 
     # Sélection catégorie
     categories = manager.get_all_categories()
@@ -379,7 +379,7 @@ def render_range_editor_compact():
             with col4:
                 new_default = st.number_input("Default", value=safe_default, key="compact_default")
 
-            if st.button("✅ Appliquer", key="compact_apply"):
+            if st.button("Appliquer", key="compact_apply"):
                 manager.update_range(
                     selected_category,
                     selected_param,
@@ -389,7 +389,7 @@ def render_range_editor_compact():
                     default=new_default,
                 )
                 manager.save_ranges(backup=True)
-                st.write("✅ Modifications appliquées et sauvegardées !")
+                st.write("Modifications appliquées et sauvegardées !")
 
 
 # Point d'entrée pour test standalone

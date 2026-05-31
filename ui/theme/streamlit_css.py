@@ -1,7 +1,7 @@
 """Module-ID: ui.theme.streamlit_css
 
 Purpose: CSS global injecté dans Streamlit pour le thème
-"Trading desk sombre, accent or" — applique la palette aux composants
+"Trading desk sombre, accent cyan-teal" — applique la palette aux composants
 Streamlit (boutons, sidebar, métriques, expanders, onglets, inputs, scrollbars).
 
 Role in pipeline: UI theming (Streamlit DOM)
@@ -48,7 +48,7 @@ def build_theme_css(palette: ColorPalette | None = None) -> str:
     - variables :root pour palette/typographie/espacements
     - reset des couleurs Streamlit (fond, texte, sidebar)
     - styles cartes / métriques / expanders / alerts
-    - 4 niveaux de boutons (primary or, default, danger, ghost)
+    - 4 niveaux de boutons (primary accent, default, danger, ghost)
     - onglets, inputs, sliders, scrollbars
     - sémantique dynamique (.bc-up, .bc-down, .bc-warn, .bc-info)
     """
@@ -57,7 +57,7 @@ def build_theme_css(palette: ColorPalette | None = None) -> str:
     return f"""
 <style>
 /* ====================================================================
-   THEME — Trading desk sombre, accent or
+   THEME — Trading desk sombre, accent cyan-teal
    ==================================================================== */
 :root {{
     /* --- Fonds --- */
@@ -77,7 +77,7 @@ def build_theme_css(palette: ColorPalette | None = None) -> str:
     --bc-text-2:        {c["text_secondary"]};
     --bc-text-3:        {c["text_muted"]};
 
-    /* --- Or (accent unique) --- */
+    /* --- Accent principal (noms legacy conservés pour compat CSS) --- */
     --bc-gold:          {c.get("gold", c["primary"])};
     --bc-gold-bright:   {c.get("gold_bright", c["secondary"])};
     --bc-gold-pale:     {c.get("gold_pale", c["secondary"])};
@@ -526,7 +526,7 @@ div[role="alert"][data-baseweb="notification"][kind="info"],
    BOUTONS POUSSOIRS — règle universelle pour TOUTE l'application
    Seul le petit marker (case/cercle/track) change de couleur :
    - INACTIF  → bordure rouge, fond transparent
-   - ACTIF    → fond or, bordure or
+   - ACTIF    → fond accent, bordure accent
    Aucun label/texte n'est jamais coloré.
 
    On chaîne plusieurs familles de sélecteurs pour couvrir toutes les
@@ -551,7 +551,7 @@ div[role="alert"][data-baseweb="notification"][kind="info"],
     box-shadow: none !important;
 }}
 
-/* --- État ACTIF : marker fond or --- */
+/* --- État ACTIF : marker fond accent --- */
 [data-baseweb="checkbox"] [role="checkbox"][aria-checked="true"],
 [data-baseweb="radio"] [role="radio"][aria-checked="true"],
 [data-baseweb="switch"] [role="switch"][aria-checked="true"],
@@ -618,7 +618,7 @@ input[type="radio"]:not(:checked) {{
 
 /* ====================================================================
    SEGMENTED CONTROL / BUTTON GROUP (st.segmented_control / button group)
-   Sous-tendu par un radio group : option active → or, inactive → bordure
+   Sous-tendu par un radio group : option active → accent, inactive → bordure
    discrète. (On NE met PAS de fond rouge sur les segments inactifs,
    sinon toute la barre devient rouge — règle "discrète" pour ce cas.)
    ==================================================================== */

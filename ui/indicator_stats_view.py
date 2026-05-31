@@ -290,9 +290,9 @@ def _render_prompt_export_tab(rows, filters: Filters, mode: str, min_n: int) -> 
         )
     with col_status:
         if currently_enabled:
-            st.success("✅ Injection ACTIVE — le bloc est ajoute a chaque session Builder.")
+            st.success("Injection ACTIVE — le bloc est ajoute a chaque session Builder.")
         else:
-            st.info("⚪ Injection INACTIVE — les tableaux ne sont pas vus par le LLM.")
+            st.info("Injection INACTIVE — les tableaux ne sont pas vus par le LLM.")
 
     if new_value != currently_enabled:
         update_policy_field("inject_stats_into_prompt", bool(new_value))
@@ -396,7 +396,7 @@ def _render_prompt_export_tab(rows, filters: Filters, mode: str, min_n: int) -> 
 
 
 def render_indicator_stats_page() -> None:
-    st.title("📈 Statistiques indicateur × performance")
+    st.title("Statistiques indicateur × performance")
     st.caption(
         "Agregat cross-sessions du Strategy Builder. "
         "Identifie quels indicateurs sont sur/sous-representes dans les bonnes strategies."
@@ -418,7 +418,7 @@ def render_indicator_stats_page() -> None:
     st.markdown("---")
 
     tabs = st.tabs(
-        ["📊 Tableau", "🔗 Co-occurrence", "🎭 Auto-honnetete LLM", "💉 Export prompt"]
+        ["Tableau", "Co-occurrence", "Auto-honnetete LLM", "Export prompt"]
     )
     min_n = int(st.session_state.get("ind_stats_min_n", 20))
 

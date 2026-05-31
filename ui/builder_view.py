@@ -237,6 +237,120 @@ BUILDER_VIEW_CSS = """
     color: var(--bc-text-2);
     font-size: var(--bc-fs-text);
 }
+.bc-builder-execution-section {
+    margin: 2.5rem 0 1.0rem 0;
+    padding: 1.05rem 1.15rem;
+    border: 1px solid var(--bc-border);
+    border-left: 3px solid var(--bc-gold);
+    border-radius: var(--bc-r-md);
+    background: linear-gradient(135deg, rgba(45, 212, 191, 0.08), rgba(88, 166, 255, 0.04));
+}
+.bc-builder-result-section {
+    margin: 2.0rem 0 1.0rem 0;
+    padding: 1.0rem 1.15rem;
+    border: 1px solid var(--bc-border);
+    border-left: 3px solid var(--bc-info);
+    border-radius: var(--bc-r-md);
+    background: color-mix(in srgb, var(--bc-surface) 88%, transparent);
+}
+.bc-builder-section-kicker {
+    color: var(--bc-text-2);
+    font-size: var(--bc-fs-caption);
+    font-weight: var(--bc-fw-sb);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.bc-builder-section-title {
+    margin-top: 0.2rem;
+    color: var(--bc-text);
+    font-size: var(--bc-fs-card);
+    font-weight: var(--bc-fw-bold);
+    letter-spacing: 0;
+}
+.bc-builder-section-subtitle {
+    margin-top: 0.3rem;
+    color: var(--bc-text-2);
+    font-size: var(--bc-fs-text);
+    line-height: 1.45;
+}
+.bc-builder-section-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 0.75rem;
+}
+.bc-builder-section-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.55rem;
+    padding: 0.18rem 0.55rem;
+    border: 1px solid var(--bc-border);
+    border-radius: var(--bc-r-sm);
+    background: var(--bc-surface-2);
+    color: var(--bc-text);
+    font-size: var(--bc-fs-caption);
+    font-weight: var(--bc-fw-sb);
+    white-space: nowrap;
+}
+.bc-builder-stream-frame {
+    margin: 0.75rem 0 1.1rem 0;
+    border: 1px solid var(--bc-border);
+    border-left: 3px solid var(--bc-gold);
+    border-radius: var(--bc-r-md);
+    background: var(--bc-surface);
+    overflow: hidden;
+}
+.bc-builder-stream-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.9rem;
+    padding: 0.72rem 0.9rem;
+    border-bottom: 1px solid var(--bc-divider);
+    background: color-mix(in srgb, var(--bc-surface-2) 72%, transparent);
+}
+.bc-builder-stream-title {
+    color: var(--bc-text);
+    font-size: var(--bc-fs-card);
+    font-weight: var(--bc-fw-bold);
+    letter-spacing: 0;
+}
+.bc-builder-stream-state {
+    margin-top: 0.18rem;
+    color: var(--bc-text-2);
+    font-size: var(--bc-fs-caption);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+}
+.bc-builder-stream-meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.35rem;
+}
+.bc-builder-stream-chip {
+    padding: 0.14rem 0.48rem;
+    border: 1px solid var(--bc-border);
+    border-radius: var(--bc-r-sm);
+    background: var(--bc-console);
+    color: var(--bc-text-2);
+    font-size: var(--bc-fs-caption);
+    font-weight: var(--bc-fw-sb);
+    white-space: nowrap;
+}
+.bc-builder-stream-code {
+    margin: 0;
+    padding: 0.9rem;
+    max-height: 38rem;
+    overflow: auto;
+    background: var(--bc-console);
+    color: var(--bc-text);
+    font-family: var(--bc-font-mono);
+    font-size: var(--bc-fs-mono);
+    line-height: 1.5;
+    white-space: pre;
+    tab-size: 4;
+}
 </style>
 """
 
@@ -248,6 +362,28 @@ def _safe_numeric_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return default
+
+
+def _format_builder_model_display_name(model: Any) -> str:
+    raw = str(model or "").strip()
+    if not raw:
+        return "Modèle Builder"
+    name = strip_ollama_cloud_model_alias(raw.split("|", 1)[0].strip())
+    name = name.rsplit("/", 1)[-1]
+    name = re.sub(r"[:_\-]+", " ", name)
+    name = re.sub(r"\bgemma\s*(\d+)\b", r"Gemma \1", name, flags=re.IGNORECASE)
+    parts = [part for part in name.split() if part]
+    pretty: List[str] = []
+    for part in parts[:4]:
+        if re.fullmatch(r"\d+(?:\.\d+)?b", part, flags=re.IGNORECASE):
+            pretty.append(part.upper())
+        elif re.fullmatch(r"q\d+(?:_[a-z])?", part, flags=re.IGNORECASE):
+            pretty.append(part.upper())
+        elif part.isupper():
+            pretty.append(part)
+        else:
+            pretty.append(part[:1].upper() + part[1:])
+    return " ".join(pretty) or "Modèle Builder"
 
 
 def _inject_builder_view_styles() -> None:
@@ -338,7 +474,7 @@ def _refresh_live_thoughts_code_slot(tail_lines: int = 180) -> None:
 
 def _render_builder_live_thoughts_panel(
     *,
-    title: str = "📂 Live Thought Stream",
+    title: str = "Live Thought Stream",
     expanded: bool = False,
     show_terminal_command: bool = True,
     tail_lines: int = 220,
@@ -365,7 +501,7 @@ def _render_builder_live_thoughts_panel(
                 file_exists = False
                 modified_at = "n/a"
             st.caption(
-                f"📄 File: `{STREAM_FILE}`"
+                f"File: `{STREAM_FILE}`"
                 + (f" | Updated: {modified_at}" if file_exists else "")
             )
             code_slot = st.empty()
@@ -537,6 +673,86 @@ def _build_builder_max_iteration_chips(
     ]
 
 
+def _render_builder_section_panel(
+    *,
+    css_class: str,
+    kicker: str,
+    title: str,
+    subtitle: str,
+    chips: Iterable[str] = (),
+) -> None:
+    chip_html = "".join(
+        "<span class='bc-builder-section-chip'>"
+        f"{html.escape(str(chip))}"
+        "</span>"
+        for chip in chips
+        if str(chip).strip()
+    )
+    chips_block = (
+        f"<div class='bc-builder-section-chips'>{chip_html}</div>"
+        if chip_html
+        else ""
+    )
+    st.markdown(
+        "<div class='"
+        + html.escape(css_class)
+        + "'>"
+        f"<div class='bc-builder-section-kicker'>{html.escape(kicker)}</div>"
+        f"<div class='bc-builder-section-title'>{html.escape(title)}</div>"
+        f"<div class='bc-builder-section-subtitle'>{html.escape(subtitle)}</div>"
+        f"{chips_block}"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_builder_monitoring_section(
+    *,
+    model: str,
+    symbol: str,
+    timeframe: str,
+    n_bars: int,
+    max_iterations: int,
+    global_settings: Optional[Dict[str, Any]] = None,
+    model_profiles: Optional[Dict[str, Dict[str, Any]]] = None,
+    mode_label: str = "Autonome",
+) -> None:
+    model_label = _format_builder_model_display_name(model)
+    _render_builder_section_panel(
+        css_class="bc-builder-execution-section",
+        kicker="Monitoring",
+        title=f"Inside the Motor · {model_label} en exécution",
+        subtitle=(
+            "Données, runtime LLM et génération live sont regroupés ici pour "
+            "séparer clairement les réglages du moteur en train de travailler."
+        ),
+        chips=[
+            f"Mode: {mode_label}",
+            f"Marché: {symbol} {timeframe}",
+            f"Données: {int(n_bars):,} barres".replace(",", " "),
+            f"Max itérations: {max_iterations}",
+            _build_builder_inference_budget_chip(
+                model,
+                global_settings=global_settings,
+                model_profiles=model_profiles,
+            ),
+        ],
+    )
+
+
+def _render_builder_result_section(history_count: int = 0) -> None:
+    _render_builder_section_panel(
+        css_class="bc-builder-result-section",
+        kicker="Résultat",
+        title="Récapitulatif des sessions autonomes",
+        subtitle=(
+            "Lecture des sessions terminées, du meilleur run et des écarts entre "
+            "la dernière itération et le meilleur résultat conservé."
+        ),
+        chips=[f"Sessions suivies: {int(history_count)}"],
+    )
+
+
 def _normalize_builder_code_source(source: Any) -> str:
     raw = str(source or "").strip().lower().replace("_", "-")
     return re.sub(r"\s+", "-", raw)
@@ -555,21 +771,21 @@ def _get_builder_code_provenance_badge(
     if backtest_feedback.get("runtime_fix_fallback_deterministic_used"):
         return {
             "kind": "runtime_fix_fallback",
-            "badge": "🛠️ Runtime-fix + fallback",
+            "badge": "Runtime-fix + fallback",
             "detail": "Statistiques issues d'un correctif runtime puis d'une bascule vers le fallback déterministe.",
         }
 
     if backtest_feedback.get("runtime_fix_applied"):
         return {
             "kind": "runtime_fix",
-            "badge": "🛠️ Runtime-fix",
+            "badge": "Runtime-fix",
             "detail": "Statistiques issues d'un correctif runtime appliqué après un premier échec en exécution.",
         }
 
     if code_feedback.get("fallback_deterministic_used"):
         return {
             "kind": "deterministic_fallback",
-            "badge": "🧱 Fallback déterministe",
+            "badge": "Fallback déterministe",
             "detail": "Statistiques issues du code déterministe de secours, pas du code LLM original.",
         }
 
@@ -584,21 +800,21 @@ def _get_builder_code_provenance_badge(
     if retry_like_source:
         return {
             "kind": "retry",
-            "badge": "♻️ LLM corrigé",
+            "badge": "LLM corrigé",
             "detail": "Statistiques issues d'un code LLM corrigé ou regénéré après un premier essai invalide.",
         }
 
     if source in {"", "llm", "direct-llm", "llm-direct", "initial", "raw-llm"}:
         return {
             "kind": "llm",
-            "badge": "🧠 LLM direct",
+            "badge": "LLM direct",
             "detail": "Statistiques issues du code LLM validé sans fallback déterministe ni correctif runtime.",
         }
 
     source_label = source_raw or source or "inconnue"
     return {
         "kind": "other",
-        "badge": f"🧩 Source: {source_label}",
+        "badge": f"Source: {source_label}",
         "detail": f"Statistiques issues d'une source Builder spécifique: {source_label}.",
     }
 
@@ -717,6 +933,21 @@ def _extract_code_from_stream_text(text: str) -> str:
     return "\n".join(code_lines).strip()
 
 
+def _pretty_builder_stream_json(text: str) -> str:
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return ""
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start < 0 or end <= start:
+        return ""
+    try:
+        payload = json.loads(cleaned[start : end + 1])
+    except Exception:
+        return ""
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
 def _sanitize_builder_stream_text(phase: str, text: str) -> tuple[str, str]:
     cleaned = str(text or "").replace("\r\n", "\n")
     cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
@@ -733,6 +964,11 @@ def _sanitize_builder_stream_text(phase: str, text: str) -> tuple[str, str]:
             "text",
         )
 
+    if phase in {"proposal", "retry_proposal", "analysis"}:
+        pretty_json = _pretty_builder_stream_json(cleaned)
+        if pretty_json:
+            return pretty_json, "json"
+
     lines = []
     for line in cleaned.splitlines():
         stripped = line.strip()
@@ -745,6 +981,37 @@ def _sanitize_builder_stream_text(phase: str, text: str) -> tuple[str, str]:
             continue
         lines.append(line)
     return "\n".join(lines).strip(), "text"
+
+
+def _render_builder_stream_frame(
+    *,
+    icon: str,
+    label: str,
+    text: str,
+    language: str,
+) -> None:
+    display_text = str(text or "").strip() or "Flux en attente..."
+    line_count = max(len(display_text.splitlines()), 1)
+    char_count = len(display_text)
+    language_label = str(language or "text").upper()
+    char_chip = f"{char_count:,} car.".replace(",", " ")
+    st.markdown(
+        "<div class='bc-builder-stream-frame'>"
+        "<div class='bc-builder-stream-head'>"
+        "<div>"
+        f"<div class='bc-builder-stream-title'>{html.escape(icon)} {html.escape(label)}</div>"
+        "<div class='bc-builder-stream-state'>Streaming en cours</div>"
+        "</div>"
+        "<div class='bc-builder-stream-meta'>"
+        f"<span class='bc-builder-stream-chip'>{html.escape(language_label)}</span>"
+        f"<span class='bc-builder-stream-chip'>{line_count} lignes</span>"
+        f"<span class='bc-builder-stream-chip'>{html.escape(char_chip)}</span>"
+        "</div>"
+        "</div>"
+        f"<pre class='bc-builder-stream-code'><code>{html.escape(display_text)}</code></pre>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 
 _BUILDER_PROGRESS_PHASE_LABELS = {
@@ -1968,7 +2235,7 @@ def _save_autonomous_runtime_state(runtime: Dict[str, Any]) -> None:
 
 
 def should_auto_resume_builder_autonomous(state: Any) -> tuple[bool, Dict[str, Any]]:
-    if getattr(state, "optimization_mode", "") != "🏗️ Strategy Builder":
+    if getattr(state, "optimization_mode", "") != "Strategy Builder":
         return False, _default_autonomous_runtime_state()
     if not bool(getattr(state, "builder_autonomous", False)):
         return False, _default_autonomous_runtime_state()
@@ -2001,8 +2268,8 @@ def restore_builder_autonomous_ui_state_from_runtime() -> tuple[bool, Dict[str, 
     if not isinstance(resume_ui_state, dict):
         resume_ui_state = {}
 
-    st.session_state["optimization_mode"] = "🏗️ Strategy Builder"
-    st.session_state["exec_mode_selector"] = "🏗️ Strategy Builder"
+    st.session_state["optimization_mode"] = "Strategy Builder"
+    st.session_state["exec_mode_selector"] = "Strategy Builder"
     st.session_state["builder_autonomous"] = True
     st.session_state["_builder_autonomous_toggle_sync"] = True
 
@@ -2623,13 +2890,13 @@ def _render_iterations_compact_table(session: Any) -> None:
     if not rows:
         return
     n = len(rows)
-    with st.expander(f"📋 Historique des itérations ({n})", expanded=False):
+    with st.expander(f"Historique des itérations ({n})", expanded=False):
         st.dataframe(rows, hide_index=True, width="stretch")
 
 
 def _render_autonomous_iteration_history(history: List[Dict[str, Any]]) -> None:
     """Affiche un journal d'itérations accumulé, une table par session autonome."""
-    st.markdown("### 📋 Itérations par session")
+    st.markdown("### Itérations par session")
     if not history:
         st.caption("Aucun historique d'itérations autonome pour le moment.")
         return
@@ -2718,10 +2985,10 @@ def render_iteration_card(
         "info": "🔵", "success": "🟢",
     }
     type_labels = {
-        "logic": "🔀 Logique",
-        "params": "🎛️ Paramètres",
-        "both": "🔀🎛️ Logique + Params",
-        "accept": "✅ Acceptation",
+        "logic": "Logique",
+        "params": "Paramètres",
+        "both": "Logique + Params",
+        "accept": "Acceptation",
     }
     sev_icon = sev_icons.get(severity, "⚪")
     type_lbl = type_labels.get(change_type, "")
@@ -2881,7 +3148,7 @@ def render_session_summary(session: Any) -> None:
             candidate_tier=best_candidate_tier,
             target_sharpe=getattr(session, "target_sharpe", 1.0),
         )
-        st.markdown("#### 🥇 Meilleur résultat")
+        st.markdown("#### Meilleur résultat")
         best_badges = [
             _format_builder_attribution_badge_text(
                 best_attribution,
@@ -2929,13 +3196,13 @@ def render_session_summary(session: Any) -> None:
         # Code final
         code = getattr(best, "code", "")
         if code:
-            with st.expander("📝 Code de la stratégie gagnante", expanded=False):
+            with st.expander("Code de la stratégie gagnante", expanded=False):
                 st.code(code, language="python")
 
     # Chemin sandbox
     session_dir = getattr(session, "session_dir", None)
     if session_dir:
-        st.caption(f"📁 Fichiers de session: `{session_dir}`")
+        st.caption(f"Fichiers de session: `{session_dir}`")
 
 
 def _clone_json_compatible(payload: Any) -> Any:
@@ -4453,7 +4720,7 @@ def _prewarm_builder_universe_ohlcv(
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             list(executor.map(_warm, pairs))
         logger.info(
-            "🔥 [PERF] Pré-chauffage univers: %d paires / %d workers en %.1fs",
+            "[PERF] Pré-chauffage univers: %d paires / %d workers en %.1fs",
             len(pairs),
             max_workers,
             time.perf_counter() - t0,
@@ -5279,20 +5546,20 @@ def _run_single_builder_session(
         if runtime_model_released or not unload_after_run:
             return
         runtime_model_released = True
-        with st.spinner(f"💾 Déchargement du modèle `{runtime_model}`…"):
+        with st.spinner(f"Déchargement du modèle `{runtime_model}`…"):
             released, detail = _release_runtime_ollama_model(
                 model=runtime_model,
                 ollama_host=ollama_host,
             )
             if released:
-                st.caption(f"✅ {detail}")
+                st.caption(f"{detail}")
                 if st.session_state.get("builder_model_effective") == runtime_model:
                     st.session_state["builder_model_effective"] = ""
             else:
-                st.warning(f"⚠️ {detail}")
+                st.warning(f"{detail}")
 
     if not skip_llm_prepare:
-        with st.spinner(f"⏳ Préparation LLM `{model}` ({ollama_host})…"):
+        with st.spinner(f"Préparation LLM `{model}` ({ollama_host})…"):
             ok, msg, resolved_model = _prepare_builder_llm(
                 model=model,
                 ollama_host=ollama_host,
@@ -5302,15 +5569,15 @@ def _run_single_builder_session(
                 auto_start_ollama=auto_start_ollama,
             )
             if ok:
-                st.caption(f"✅ {msg}")
+                st.caption(f"{msg}")
                 runtime_model = resolved_model
                 if runtime_model != model:
                     st.info(
-                        f"ℹ️ Modèle effectif Builder: `{runtime_model}` "
+                        f"Modèle effectif Builder: `{runtime_model}` "
                         f"(fallback depuis `{model}`)"
                     )
             else:
-                st.error(f"❌ {msg}")
+                st.error(f"{msg}")
                 if unload_after_run and resolved_model:
                     _release_runtime_ollama_model(
                         model=resolved_model,
@@ -5488,11 +5755,15 @@ def _run_single_builder_session(
 
         try:
             with stream_placeholder.container():
-                st.caption(f"{icon} **{label}** — streaming en cours…")
                 display = text[-4000:] if len(text) > 4000 else text
                 if len(text) > 4000:
                     display = "…(tronqué)…\n" + display
-                st.code(display, language=lang)
+                _render_builder_stream_frame(
+                    icon=icon,
+                    label=label,
+                    text=display,
+                    language=lang,
+                )
         except Exception:
             pass
 
@@ -5664,8 +5935,8 @@ def _render_autonomous_recap(
             return ""
         return html.escape(str(value))
 
-    st.markdown("---")
-    st.markdown("## 📊 Récapitulatif des sessions autonomes")
+    _render_builder_result_section(len(history))
+    st.markdown("## Récapitulatif des sessions autonomes")
 
     runtime_state = _load_autonomous_runtime_state()
     recovered_history, recovered_changed = _recover_autonomous_history_from_disk(
@@ -5749,14 +6020,14 @@ def _render_autonomous_recap(
             sharpe_regression_html = (
                 f"<span class='builder-autonomous-recap-regress' "
                 f"title='Run affiché = meilleur PnL. Le LLM a régressé ensuite "
-                f"(dernière itération sharpe={_final_sharpe:.3f}).'>↻</span>"
+                f"(dernière itération sharpe={_final_sharpe:.3f}).'></span>"
             )
         return_regression_html = ""
         if regression_return:
             return_regression_html = (
                 f"<span class='builder-autonomous-recap-regress' "
                 f"title='Run affiché = meilleur PnL. Le LLM a régressé ensuite "
-                f"(dernière itération return={_final_return:+.2f}%).'>↻</span>"
+                f"(dernière itération return={_final_return:+.2f}%).'></span>"
             )
 
         badge = _get_autonomous_recap_status_badge(h)
@@ -5770,7 +6041,7 @@ def _render_autonomous_recap(
             "<div class='builder-autonomous-recap-objective-cell' "
             f"title='{_escape_autonomous_recap_cell(objective_one_line)}'>"
             f"<div class='builder-autonomous-recap-objective-preview'>{_escape_autonomous_recap_cell(obj_short)}</div>"
-            "<div class='builder-autonomous-recap-objective-trigger' aria-hidden='true'>↗</div>"
+            "<div class='builder-autonomous-recap-objective-trigger' aria-hidden='true'></div>"
             f"<div class='builder-autonomous-recap-objective-full'>{_escape_autonomous_recap_cell(objective_one_line)}</div>"
             "</div>"
         )
@@ -6073,7 +6344,7 @@ def _render_autonomous_recap(
 </table>
 </details>
 <details class="builder-autonomous-recap-details">
-    <summary>📜 Voir les objectifs complets</summary>
+    <summary>Voir les objectifs complets</summary>
     <table class="builder-autonomous-recap-table">
         <thead>
             <tr>
@@ -6128,7 +6399,7 @@ def _render_autonomous_recap(
             writer.writerows(export_rows)
             render_seq = _next_autonomous_recap_render_seq()
             st.download_button(
-                "⬇️ Export leaderboard CSV",
+                "Export leaderboard CSV",
                 data=csv_buf.getvalue(),
                 file_name="builder_autonomous_leaderboard.csv",
                 mime="text/csv",
@@ -6143,7 +6414,7 @@ def _render_autonomous_recap(
         _render_autonomous_iteration_history(history)
         render_seq_reset = _next_autonomous_recap_render_seq()
         if st.button(
-            "🗑️ Réinitialiser l'historique",
+            "Réinitialiser l'historique",
             key=f"builder_recap_reset_btn_{render_seq_reset}",
             help="Effacer tout l'historique des sessions autonomes et repartir à zéro.",
             type="secondary",
@@ -6596,11 +6867,11 @@ def _init_autonomous_loop_runtime(
         "Architecture: mono-LLM",
         f"Modèle: `{model}`",
     ]
-    _render_builder_runtime_notes("🧩 Détails runtime autonome", autonomous_runtime_lines, expanded=False)
+    _render_builder_runtime_notes("Détails runtime autonome", autonomous_runtime_lines, expanded=False)
 
     live_thoughts_panel_placeholder = st.empty()
     live_thoughts_panel_kwargs = {
-        "title": "📂 Flux de pensée live (optionnel)",
+        "title": "Flux de pensée live (optionnel)",
         "expanded": False,
         "show_terminal_command": True,
         "tail_lines": 180,
@@ -6626,7 +6897,7 @@ def _init_autonomous_loop_runtime(
         last_progress_event="runtime_prepare",
         last_progress_phase="initialisation",
     )
-    with st.spinner(f"⏳ Préparation LLM `{model}` ({ollama_host})…"):
+    with st.spinner(f"Préparation LLM `{model}` ({ollama_host})…"):
         ok, msg, resolved_model, lazy_fallback_used = _prepare_builder_llm_resilient(
             model=model,
             ollama_host=builder_runtime_host,
@@ -6637,7 +6908,7 @@ def _init_autonomous_loop_runtime(
             allow_lazy_fallback=True,
         )
         if ok:
-            st.caption(f"✅ {msg}")
+            st.caption(f"{msg}")
             if lazy_fallback_used:
                 st.warning(
                     "Préchargement Builder dégradé: lancement maintenu en lazy-load "
@@ -6789,11 +7060,11 @@ def _finalize_autonomous_loop(*, ctx: Dict[str, Any]) -> None:
             )
 
         if unload_after_run and terminal_reason != "manual_stop":
-            with st.spinner(f"💾 Déchargement du modèle `{model}`…"):
+            with st.spinner(f"Déchargement du modèle `{model}`…"):
                 if _unload_ollama_model(model=model, ollama_host=ollama_host):
-                    st.caption(f"✅ Modèle `{model}` déchargé")
+                    st.caption(f"Modèle `{model}` déchargé")
                 else:
-                    st.warning(f"⚠️ Impossible de décharger `{model}`")
+                    st.warning(f"Impossible de décharger `{model}`")
     except Exception:
         logger.warning("autonomous_finalize_render_failed", exc_info=True)
 
@@ -6919,10 +7190,10 @@ def _execute_builder_autonomous_loop(
 
             # ── DIAG: Historique de diversité ──
             logger.info(
-                "🔍 [DIAG] Session #%d | Historique total: %d runs | Marchés récents (6 derniers): %s",
+                "[DIAG] Session #%d | Historique total: %d runs | Marchés récents (6 derniers): %s",
                 session_num,
                 len(history),
-                _recent_markets if _recent_markets else "❌ VIDE (premier run ou historique perdu)",
+                _recent_markets if _recent_markets else "VIDE (premier run ou historique perdu)",
             )
 
             objective_mode_policy = _choose_autonomous_objective_mode(
@@ -6985,11 +7256,11 @@ def _execute_builder_autonomous_loop(
             )
             if reuse_prepared_runtime:
                 st.caption(
-                    f"♻️ Runtime LLM déjà préparé — réutilisation pour la session #{session_num}."
+                    f"Runtime LLM déjà préparé — réutilisation pour la session #{session_num}."
                 )
                 session_model = model
             else:
-                with st.spinner(f"⏳ Vérification LLM session #{session_num}…"):
+                with st.spinner(f"Vérification LLM session #{session_num}…"):
                     ok, msg, resolved_model = _prepare_builder_llm(
                         model=model,
                         ollama_host=session_llm_host,
@@ -7002,7 +7273,7 @@ def _execute_builder_autonomous_loop(
                         raise RuntimeError(msg)
                     if resolved_model != model:
                         st.caption(
-                            f"ℹ️ Modèle effectif session #{session_num}: `{resolved_model}`"
+                            f"Modèle effectif session #{session_num}: `{resolved_model}`"
                         )
                         model = resolved_model
                     session_model = model
@@ -7024,7 +7295,7 @@ def _execute_builder_autonomous_loop(
             # ── Générer l'objectif ──
             source_label = "LLM"
             if effective_objective_mode == "llm" and llm_client_for_obj is not None:
-                with st.spinner("🧠 Génération de l'objectif par LLM..."):
+                with st.spinner("Génération de l'objectif par LLM..."):
                     objective = generate_llm_objective(
                         llm_client_for_obj,
                         symbol=None if effective_auto_market_pick else all_symbols,
@@ -7072,7 +7343,7 @@ def _execute_builder_autonomous_loop(
                 )
                 if pre_load_error:
                     logger.warning(
-                        "🔍 [DIAG] Default session market preload failed for %s %s: %s (source=%s)",
+                        "[DIAG] Default session market preload failed for %s %s: %s (source=%s)",
                         default_session_symbol,
                         default_session_timeframe,
                         pre_load_error,
@@ -7081,9 +7352,9 @@ def _execute_builder_autonomous_loop(
             market_pick: Dict[str, Any] = {}
             if effective_auto_market_pick:
                 spinner_label = (
-                    "🧭 Sélection automatique du marché (token/TF)…"
+                    "Sélection automatique du marché (token/TF)…"
                     if effective_objective_mode == "llm" and llm_client_for_market is not None
-                    else "🧭 Sélection automatique du marché (fallback déterministe)…"
+                    else "Sélection automatique du marché (fallback déterministe)…"
                 )
                 with st.spinner(spinner_label):
                     session_symbol, session_timeframe, session_df, market_pick = _select_autonomous_market_for_session(
@@ -7131,13 +7402,13 @@ def _execute_builder_autonomous_loop(
                     )
                 else:
                     st.caption(
-                        f"🧭 Session #{session_num}: {session_symbol} {session_timeframe} "
+                        f"Session #{session_num}: {session_symbol} {session_timeframe} "
                         f"(source={source}, data={data_source}, conf={confidence:.2f})"
                     )
 
                 # ── DIAG: Sélection finale ──
                 logger.info(
-                    "🔍 [DIAG] Session #%d → Marché sélectionné: %s %s | "
+                    "[DIAG] Session #%d → Marché sélectionné: %s %s |"
                     "Source: %s | Confidence: %.2f | Data: %s | "
                     "Candidats: %d symbols × %d timeframes",
                     session_num,
@@ -7152,7 +7423,7 @@ def _execute_builder_autonomous_loop(
             else:
                 # ── DIAG: Mode auto-pick désactivé ──
                 logger.info(
-                    "🔍 [DIAG] Session #%d → Marché PAR DÉFAUT (auto_market_pick=OFF): %s %s",
+                    "[DIAG] Session #%d → Marché PAR DÉFAUT (auto_market_pick=OFF): %s %s",
                     session_num,
                     session_symbol,
                     session_timeframe,
@@ -7183,7 +7454,7 @@ def _execute_builder_autonomous_loop(
                 objective = objective.replace("{timeframe}", session_timeframe)
                 objective = sanitize_objective_text(objective)
                 logger.info(
-                    "🔍 [DIAG] Placeholders remplacés dans objectif → %s %s",
+                    "[DIAG] Placeholders remplacés dans objectif → %s %s",
                     session_symbol,
                     session_timeframe,
                 )
@@ -7224,7 +7495,7 @@ def _execute_builder_autonomous_loop(
                         supervisor["disable_auto_market_pick_once"] = True
                         supervisor["consecutive_dataset_rejections"] = 0
                         st.info(
-                            f"🛟 {_dataset_rejections} rejets marché consécutifs — "
+                            f"{_dataset_rejections} rejets marché consécutifs — "
                             "auto-marché désactivé pour la prochaine session "
                             "(retour au marché par défaut)."
                         )
@@ -7264,7 +7535,7 @@ def _execute_builder_autonomous_loop(
                         universe_purpose="builder_autonomous",
                         universe_strategy_type=autonomous_strategy_type,
                         universe_meta=autonomous_universe_meta,
-                        session_label=f"🔄 Session autonome #{session_num}",
+                        session_label=f"Session autonome #{session_num}",
                         skip_llm_prepare=True,
                         show_config_caption=False,
                         autonomous_runtime_watchdog=True,
@@ -7370,7 +7641,7 @@ def _execute_builder_autonomous_loop(
                         last_progress_iteration=0,
                     )
                     countdown_placeholder.info(
-                        f"⏱️ Prochaine session dans **{remaining}s**..."
+                        f"Prochaine session dans **{remaining}s**..."
                     )
                 except Exception:
                     logger.debug("autonomous_countdown_tick_failed", exc_info=True)
@@ -7445,7 +7716,7 @@ def _execute_builder_manual_session(
     )
     live_thoughts_panel_placeholder = st.empty()
     live_thoughts_panel_kwargs = {
-        "title": "📂 Flux de pensée live (optionnel)",
+        "title": "Flux de pensée live (optionnel)",
         "expanded": False,
         "show_terminal_command": True,
         "tail_lines": 180,
@@ -7488,7 +7759,7 @@ def _execute_builder_manual_session(
                 llm_inference_model_profiles=llm_inference_model_profiles,
             ),
         )
-        with st.spinner("🧭 Sélection automatique du marché (token/TF)…"):
+        with st.spinner("Sélection automatique du marché (token/TF)…"):
             run_symbol, run_timeframe, run_df, market_pick = _pick_market_for_objective(
                 state=state,
                 objective=objective,
@@ -7516,7 +7787,7 @@ def _execute_builder_manual_session(
         source = str(market_pick.get("source", "") or "")
         data_source = str(market_pick.get("data_source", "") or "")
         st.info(
-            f"🧭 Marché sélectionné: `{run_symbol} {run_timeframe}` "
+            f"Marché sélectionné: `{run_symbol} {run_timeframe}` "
             f"(source: `{source}`, données: `{data_source}`, confiance: {confidence:.2f})."
         )
 
@@ -7536,6 +7807,17 @@ def _execute_builder_manual_session(
         )
         clear_execution_state(st.session_state)
         return
+
+    _render_builder_monitoring_section(
+        model=run_model,
+        symbol=run_symbol,
+        timeframe=run_timeframe,
+        n_bars=len(run_df) if run_df is not None else 0,
+        max_iterations=max_iterations,
+        global_settings=llm_inference_global_settings,
+        model_profiles=llm_inference_model_profiles,
+        mode_label="Manuel",
+    )
 
     session = _run_single_builder_session(
         objective=objective,
@@ -7776,7 +8058,7 @@ def render_builder_view(
             f"Modèle: `{model}`",
         ]
         _render_builder_runtime_notes(
-            "🧩 Détails runtime autonome",
+            "Détails runtime autonome",
             idle_runtime_lines,
             expanded=False,
         )
@@ -7790,8 +8072,8 @@ def render_builder_view(
 
     # ── DIAG: Mode auto-sélection marché ──
     logger.info(
-        "🔍 [DIAG] auto_market_pick = %s | Symbole/TF par défaut: %s/%s",
-        "✅ ACTIVÉ" if auto_market_pick else "❌ DÉSACTIVÉ",
+        "[DIAG] auto_market_pick = %s | Symbole/TF par défaut: %s/%s",
+        "ACTIVÉ" if auto_market_pick else "DÉSACTIVÉ",
         symbol,
         timeframe,
     )
@@ -7847,7 +8129,7 @@ def render_builder_view(
             all_symbols = shuffled_tokens[:20]
 
         logger.info(
-            "🔄 Rotation tokens: %d disponibles, %d récemment testés, %d sélectionnés pour ce run",
+            "Rotation tokens: %d disponibles, %d récemment testés, %d sélectionnés pour ce run",
             len(available_tokens),
             len(recently_tested_tokens),
             len(all_symbols),
@@ -7860,7 +8142,7 @@ def render_builder_view(
 
     # ── DIAG: Univers de sélection ──
     logger.info(
-        "🔍 [DIAG] Univers disponible: %d symboles × %d timeframes = %d combinaisons | "
+        "[DIAG] Univers disponible: %d symboles × %d timeframes = %d combinaisons |"
         "Symboles: %s | Timeframes: %s",
         len(all_symbols), len(all_timeframes), len(all_symbols) * len(all_timeframes),
         ", ".join(all_symbols[:10]) + ("..." if len(all_symbols) > 10 else ""),
@@ -7922,7 +8204,7 @@ def render_builder_view(
             try:
                 from data.loader import load_ohlcv
                 df = load_ohlcv(symbol, timeframe)
-                st.caption(f"📥 Données chargées automatiquement: {symbol} {timeframe}")
+                st.caption(f"Données chargées automatiquement: {symbol} {timeframe}")
             except Exception:
                 logger.warning("auto load_ohlcv failed for %s %s", symbol, timeframe, exc_info=True)
         if df is None or len(df) == 0:
@@ -7968,7 +8250,7 @@ def render_builder_view(
             preferred_pairs.append((requested_symbol, requested_timeframe))
 
         logger.info(
-            "🔍 [DIAG] Startup data probe: trying up to %d pairs",
+            "[DIAG] Startup data probe: trying up to %d pairs",
             min(len(probe_symbols) * len(probe_timeframes), 24),
         )
         _heartbeat_builder_autonomous_runtime(
@@ -8005,11 +8287,21 @@ def render_builder_view(
             and (symbol, timeframe) != preferred_pairs[0]
         ):
             st.warning(
-                "⚠️ Présélection marché ignorée en mode autonome. "
+                "Présélection marché ignorée en mode autonome."
                 f"{requested_symbol} {requested_timeframe} est indisponible ou rejeté; "
                 f"fallback sur {symbol} {timeframe}."
             )
-        st.caption(f"📥 Données initiales: {symbol} {timeframe} ({len(df)} barres)")
+        _render_builder_monitoring_section(
+            model=model,
+            symbol=symbol,
+            timeframe=timeframe,
+            n_bars=len(df),
+            max_iterations=max_iterations,
+            global_settings=llm_inference_global_settings,
+            model_profiles=llm_inference_model_profiles,
+            mode_label="Autonome 24/24",
+        )
+        st.caption(f"Données initiales: {symbol} {timeframe} ({len(df)} barres)")
         _heartbeat_builder_autonomous_runtime(
             last_event="startup_probe_ready",
             last_progress_event="startup_probe_ready",

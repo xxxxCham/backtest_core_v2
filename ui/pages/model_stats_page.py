@@ -22,11 +22,11 @@ def _render_page_navigation() -> None:
 <div class="bc-sidebar-nav-block">
   <div class="bc-sidebar-nav-title">Navigation</div>
   <div class="bc-sidebar-nav-links">
-    <a class="bc-nav-link" href="/" target="_self">🏠 Application</a>
-    <a class="bc-nav-link" href="/range_editor_page" target="_self">⚙️ Éditeur de plages</a>
-    <a class="bc-nav-link active" href="/model_stats_page" target="_self">📊 Statistiques des modèles</a>
-    <a class="bc-nav-link" href="/indicator_stats_page" target="_self">📈 Indicateurs × Perf</a>
-    <a class="bc-nav-link" href="/results_store_page" target="_self">📚 Hub résultats</a>
+    <a class="bc-nav-link" href="/" target="_self">Application</a>
+    <a class="bc-nav-link" href="/range_editor_page" target="_self">Éditeur de plages</a>
+    <a class="bc-nav-link active" href="/model_stats_page" target="_self">Statistiques des modèles</a>
+    <a class="bc-nav-link" href="/indicator_stats_page" target="_self">Indicateurs × Perf</a>
+    <a class="bc-nav-link" href="/results_store_page" target="_self">Hub résultats</a>
   </div>
 </div>
 """,

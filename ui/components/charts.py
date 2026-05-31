@@ -1414,7 +1414,7 @@ def render_equity_and_drawdown(
 
     """
     if equity is None or equity.empty:
-        st.warning("⚠️ Aucune donnée d'équité à afficher")
+        st.warning("Aucune donnée d'équité à afficher")
         return
 
     # Calculer le drawdown
@@ -1428,7 +1428,7 @@ def render_equity_and_drawdown(
         shared_xaxes=True,
         vertical_spacing=0.08,
         row_heights=[0.7, 0.3],
-        subplot_titles=("💰 Équité ($)", "📉 Drawdown (%)"),
+        subplot_titles=("Équité ($)", "Drawdown (%)"),
     )
 
     alpha_text = ""
@@ -1514,7 +1514,7 @@ def render_equity_and_drawdown(
 def render_equity_curve(
     equity: pd.Series,
     initial_capital: float = 10000.0,
-    title: str = "💹 Courbe d'Équité",
+    title: str = "Courbe d'Équité",
     key: str = "equity_curve",
     height: int = 350,
 ) -> None:
@@ -1529,7 +1529,7 @@ def render_equity_curve(
 
     """
     if equity is None or equity.empty:
-        st.warning("⚠️ Aucune donnée d'équité")
+        st.warning("Aucune donnée d'équité")
         return
 
     st.markdown(f"#### {title}")
@@ -1576,7 +1576,7 @@ def render_equity_curve(
 def render_ohlcv_with_trades(
     df: pd.DataFrame,
     trades_df: pd.DataFrame,
-    title: str = "📈 Prix et Trades",
+    title: str = "Prix et Trades",
     key: str = "ohlcv_trades",
     height: int = 500,
 ) -> None:
@@ -1591,13 +1591,13 @@ def render_ohlcv_with_trades(
 
     """
     if df.empty:
-        st.warning("⚠️ Aucune donnée OHLCV")
+        st.warning("Aucune donnée OHLCV")
         return
 
     # Vérifier les colonnes requises
     required_ohlc = {"open", "high", "low", "close"}
     if not required_ohlc.issubset(set(df.columns)):
-        st.error(f"❌ Colonnes manquantes: {required_ohlc - set(df.columns)}")
+        st.error(f"Colonnes manquantes: {required_ohlc - set(df.columns)}")
         return
 
     trades_df = _normalize_trades_df(trades_df)
@@ -1695,17 +1695,17 @@ def render_ohlcv_with_trades_and_indicators(
     trades_df: pd.DataFrame,
     overlays: dict[str, Any],
     active_indicators: list[str] | None = None,
-    title: str = "📈 Prix, Indicateurs et Trades",
+    title: str = "Prix, Indicateurs et Trades",
     key: str = "ohlcv_trades_indicators",
     height: int = 650,
 ) -> None:
     """Affiche un graphique OHLCV avec indicateurs et marqueurs de trades."""
     if df.empty:
-        st.warning("⚠️ Aucune donnée OHLCV")
+        st.warning("Aucune donnée OHLCV")
         return
 
     if not {"open", "high", "low", "close"}.issubset(set(df.columns)):
-        st.error("❌ Colonnes OHLC manquantes")
+        st.error("Colonnes OHLC manquantes")
         return
 
     trades_df = _normalize_trades_df(trades_df)
@@ -2181,7 +2181,7 @@ def render_ohlcv_with_trades_and_indicators(
 def render_ohlcv_with_indicators(
     df: pd.DataFrame,
     indicators: dict[str, Any],
-    title: str = "📊 Prix et Indicateurs",
+    title: str = "Prix et Indicateurs",
     key: str = "ohlcv_indicators",
     height: int = 500,
 ) -> None:
@@ -2196,7 +2196,7 @@ def render_ohlcv_with_indicators(
 
     """
     if df.empty:
-        st.warning("⚠️ Aucune donnée OHLCV")
+        st.warning("Aucune donnée OHLCV")
         return
 
     st.markdown(f"#### {title}")
@@ -2266,7 +2266,7 @@ def render_ohlcv_with_indicators(
 def render_comparison_chart(
     results_list: list[dict[str, Any]],
     metric: str = "sharpe_ratio",
-    title: str = "📊 Comparaison des Résultats",
+    title: str = "Comparaison des Résultats",
     key: str = "comparison",
     height: int = 400,
 ) -> None:
@@ -2281,7 +2281,7 @@ def render_comparison_chart(
 
     """
     if not results_list:
-        st.warning("⚠️ Aucun résultat à comparer")
+        st.warning("Aucun résultat à comparer")
         return
 
     st.markdown(f"#### {title}")
@@ -2372,7 +2372,7 @@ def render_strategy_param_diagram(
 
 def render_trade_pnl_distribution(
     trades_df: pd.DataFrame,
-    title: str = "📊 Distribution des P&L par Trade",
+    title: str = "Distribution des P&L par Trade",
     key: str = "trade_pnl_dist",
     height: int = 400,
 ) -> None:
@@ -2387,15 +2387,15 @@ def render_trade_pnl_distribution(
     """
     _ = key
     if not SEABORN_AVAILABLE:
-        st.warning("⚠️ Seaborn non disponible - Distribution non affichée")
+        st.warning("Seaborn non disponible - Distribution non affichée")
         return
 
     if trades_df.empty or "pnl" not in trades_df.columns:
-        st.warning("⚠️ Aucune donnée de P&L à afficher")
+        st.warning("Aucune donnée de P&L à afficher")
         return
 
     st.markdown(f"#### {title}")
-    st.caption("📊 Graphique généré avec **Seaborn** (histogramme + KDE)")
+    st.caption("Graphique généré avec **Seaborn** (histogramme + KDE)")
 
     # Configuration style seaborn
     sns.set_style("darkgrid")
@@ -2453,7 +2453,7 @@ def render_trade_pnl_distribution(
 
 def render_returns_distribution(
     returns: pd.Series,
-    title: str = "📈 Distribution des Rendements",
+    title: str = "Distribution des Rendements",
     key: str = "returns_dist",
     height: int = 400,
 ) -> None:
@@ -2468,15 +2468,15 @@ def render_returns_distribution(
     """
     _ = key
     if not SEABORN_AVAILABLE:
-        st.warning("⚠️ Seaborn non disponible - Distribution non affichée")
+        st.warning("Seaborn non disponible - Distribution non affichée")
         return
 
     if returns.empty:
-        st.warning("⚠️ Aucune donnée de rendements à afficher")
+        st.warning("Aucune donnée de rendements à afficher")
         return
 
     st.markdown(f"#### {title}")
-    st.caption("📊 Graphique généré avec **Seaborn** (histogramme + KDE)")
+    st.caption("Graphique généré avec **Seaborn** (histogramme + KDE)")
 
     # Configuration style seaborn
     sns.set_style("darkgrid")
@@ -2786,9 +2786,9 @@ def render_walk_forward_results(summary: Any, key: str = "wfa_chart") -> None:
     is_robust = bool(payload.get("is_robust", False))
     confidence = _safe_float(payload.get("confidence_score"), 0.0)
     if is_robust:
-        st.success(f"✅ **Stratégie robuste** — Confiance : {confidence:.0%}")
+        st.success(f"**Stratégie robuste** — Confiance : {confidence:.0%}")
     else:
-        st.warning(f"⚠️ **Overfitting probable** — Confiance : {confidence:.0%}")
+        st.warning(f"**Overfitting probable** — Confiance : {confidence:.0%}")
 
     cfg = payload.get("config", {}) if isinstance(payload, dict) else {}
     mode_label = "expanding" if bool(cfg.get("expanding", False)) else "rolling"
@@ -2941,7 +2941,7 @@ def render_walk_forward_results(summary: Any, key: str = "wfa_chart") -> None:
 
     st.dataframe(pd.DataFrame(rows), width="stretch")
 
-    with st.expander("📋 Détails techniques WFA"):
+    with st.expander("Détails techniques WFA"):
         st.json(payload)
 
 

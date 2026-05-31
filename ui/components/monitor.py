@@ -406,18 +406,18 @@ def render_system_monitor(
     status = monitor.get_status(reading)
 
     # Header
-    st.subheader("📊 System Monitor")
+    st.subheader("System Monitor")
 
     # Alertes
     alerts = []
     if status.get("cpu") == "critical":
-        alerts.append(f"⚠️ CPU critique: {reading.cpu_percent:.1f}%")
+        alerts.append(f"CPU critique: {reading.cpu_percent:.1f}%")
     if status.get("memory") == "critical":
-        alerts.append(f"⚠️ RAM critique: {reading.memory_percent:.1f}%")
+        alerts.append(f"RAM critique: {reading.memory_percent:.1f}%")
     if status.get("gpu") == "critical":
-        alerts.append(f"⚠️ GPU critique: {reading.gpu_memory_percent:.1f}%")
+        alerts.append(f"GPU critique: {reading.gpu_memory_percent:.1f}%")
     if status.get("disk") == "critical":
-        alerts.append(f"⚠️ Disk critique: {reading.disk_percent:.1f}%")
+        alerts.append(f"Disk critique: {reading.disk_percent:.1f}%")
 
     if alerts:
         for alert in alerts:
@@ -484,7 +484,7 @@ def render_mini_monitor(key: str = "mini_monitor"):
     mem = psutil.virtual_memory()
 
     # Indicateurs simples
-    st.markdown("**📊 Ressources**")
+    st.markdown("**Ressources**")
 
     # CPU avec couleur
     cpu_color = "🟢" if cpu < 80 else ("🟡" if cpu < 95 else "🔴")

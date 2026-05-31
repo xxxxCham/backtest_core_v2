@@ -574,23 +574,23 @@ def render_agent_timeline(
     if not STREAMLIT_AVAILABLE:
         return
 
-    st.subheader(f"🤖 Timeline - {timeline.session_name}")
+    st.subheader(f"Timeline - {timeline.session_name}")
 
     # Métriques résumé
     summary = timeline.get_summary()
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("⏱️ Durée", f"{summary['duration_seconds']:.1f}s")
-    col2.metric("🔄 Itérations", summary["total_iterations"])
-    col3.metric("📝 Activités", summary["total_activities"])
-    col4.metric("⚖️ Décisions", summary["total_decisions"])
+    col1.metric("Durée", f"{summary['duration_seconds']:.1f}s")
+    col2.metric("Itérations", summary["total_iterations"])
+    col3.metric("Activités", summary["total_activities"])
+    col4.metric("Décisions", summary["total_decisions"])
 
     # Graphique timeline
     fig = create_timeline_figure(timeline)
     st.plotly_chart(fig, width="stretch", key=f"{key}_chart")
 
     # Détails par onglets
-    tab1, tab2, tab3 = st.tabs(["📋 Activités", "⚖️ Décisions", "📊 Métriques"])
+    tab1, tab2, tab3 = st.tabs(["Activités", "Décisions", "Métriques"])
 
     with tab1:
         # Filtrer par agent
@@ -669,14 +669,14 @@ def render_agent_timeline(
             # Best result
             if summary["best_metrics"]:
                 st.success(
-                    f"🏆 Meilleur résultat (Iter {summary['best_metrics']['iteration']}): "
+                    f"Meilleur résultat (Iter {summary['best_metrics']['iteration']}): "
                     f"Sharpe = {summary['best_metrics']['sharpe_ratio']:.3f}",
                 )
         else:
             st.info("Aucune métrique enregistrée")
 
     # Export
-    with st.expander("📥 Export"):
+    with st.expander("Export"):
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Copier JSON", key=f"{key}_copy"):
@@ -709,7 +709,7 @@ def render_mini_timeline(
     if not STREAMLIT_AVAILABLE:
         return
 
-    st.markdown("### 🤖 Agents")
+    st.markdown("### Agents")
 
     # Statut rapide
     col1, col2 = st.columns(2)

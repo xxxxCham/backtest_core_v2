@@ -166,6 +166,36 @@ SIDEBAR_STYLE_CSS = """
 [data-testid="stSidebar"] .bc-sidebar-card strong {
     color: var(--bc-gold-bright);
 }
+[data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(.bc-sidebar-exec-mode-anchor) {
+    gap: 0.5rem;
+}
+[data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(.bc-sidebar-exec-mode-anchor) [data-testid="stHorizontalBlock"] {
+    gap: 0.55rem;
+}
+[data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(.bc-sidebar-exec-mode-anchor) [data-testid="column"] {
+    min-width: 0;
+}
+[data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(.bc-sidebar-exec-mode-anchor) [data-testid="stButton"] {
+    height: 4.35rem;
+}
+[data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(.bc-sidebar-exec-mode-anchor) [data-testid="stButton"] > button {
+    width: 100% !important;
+    min-height: 4.35rem !important;
+    height: 4.35rem !important;
+    padding: 0.45rem 0.35rem !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    white-space: normal !important;
+    line-height: 1.3 !important;
+}
+[data-testid="stSidebar"] div[data-testid="stVerticalBlock"]:has(.bc-sidebar-exec-mode-anchor) [data-testid="stButton"] > button p {
+    width: 100%;
+    margin: 0 !important;
+    text-align: center !important;
+    line-height: 1.3 !important;
+}
 </style>
 """
 
@@ -377,7 +407,7 @@ def _resolve_live_llm_topology_config(
     builder_ollama_host: str,
     exec_ollama_host: str,
 ) -> LLMTopologyConfig:
-    if optimization_mode == "🏗️ Strategy Builder":
+    if optimization_mode == "Strategy Builder":
         return _get_phase1_topology_from_session(
             builder_ollama_host,
             session_prefix="builder",
@@ -514,7 +544,7 @@ def _apply_catalog_replay_request_to_state(
 
     session_state["optimization_mode"] = "Backtest Simple"
     session_state["exec_mode_selector"] = "Backtest Simple"
-    session_state["strategy_selection_mode"] = "📋 Classique"
+    session_state["strategy_selection_mode"] = "Classique"
     session_state["symbols_select"] = [symbol]
     session_state["timeframes_select"] = [timeframe]
     session_state["strategies_select"] = [strategy_label]
@@ -596,12 +626,12 @@ def apply_pending_sidebar_config() -> bool:
 
 def get_run_label_for_mode(optimization_mode: str) -> str:
     run_label_map = {
-        "Backtest Simple": "🚀 Lancer le Backtest",
-        "Grille de Paramètres": "🧪 Lancer le Sweep",
-        "🤖 Optimisation LLM": "🧠 Lancer l'itération LLM",
-        "🏗️ Strategy Builder": "🏗️ Lancer le Builder",
+        "Backtest Simple": "Lancer le Backtest",
+        "Grille de Paramètres": "Lancer le Sweep",
+        "Optimisation LLM": "Lancer l'itération LLM",
+        "Strategy Builder": "Lancer le Builder",
     }
-    return run_label_map.get(optimization_mode, "🚀 Lancer le Backtest")
+    return run_label_map.get(optimization_mode, "Lancer le Backtest")
 
 
 def request_execution_mode_change(mode_name: str) -> bool:
@@ -622,21 +652,24 @@ def _render_sidebar_mode_selector(current_mode: str) -> str:
     if selected_mode not in mode_names:
         selected_mode = mode_names[0]
 
-    for row_start in range(0, len(MODE_OPTIONS), 2):
-        row_options = MODE_OPTIONS[row_start : row_start + 2]
-        columns = st.sidebar.columns(len(row_options))
-        for col, (mode_name, icon, description) in zip(columns, row_options):
-            clean_name = re.sub(r"^[^\w]+", "", mode_name).strip() or mode_name
-            with col:
-                if st.button(
-                    f"{icon} {clean_name}",
-                    key=f"sidebar_exec_mode_button_{row_start}_{mode_name}",
-                    type="primary" if mode_name == selected_mode else "secondary",
-                    width="stretch",
-                    help=description,
-                ):
-                    if request_execution_mode_change(mode_name):
-                        st.rerun()
+    mode_group = st.sidebar.container()
+    with mode_group:
+        st.markdown('<div class="bc-sidebar-exec-mode-anchor"></div>', unsafe_allow_html=True)
+        for row_start in range(0, len(MODE_OPTIONS), 2):
+            row_options = MODE_OPTIONS[row_start : row_start + 2]
+            columns = st.columns(len(row_options))
+            for col, (mode_name, icon, description) in zip(columns, row_options):
+                clean_name = re.sub(r"^[^\w]+", "", mode_name).strip() or mode_name
+                with col:
+                    if st.button(
+                        f"{icon} {clean_name}",
+                        key=f"sidebar_exec_mode_button_{row_start}_{mode_name}",
+                        type="primary" if mode_name == selected_mode else "secondary",
+                        width="stretch",
+                        help=description,
+                    ):
+                        if request_execution_mode_change(mode_name):
+                            st.rerun()
 
     return selected_mode
 
@@ -668,13 +701,13 @@ def get_final_market_selection(
     source:
         - "llm_override" : Sélection LLM a écrasé la sélection UI
         - "ui_manual" : Sélection manuelle respectée
-        - "ui_random" : Sélection aléatoire (bouton 🎲)
+        - "ui_random" : Sélection aléatoire (bouton)
         - "fallback" : Univers vide ou sélection UI manquante
 
     reason:
         Description textuelle de la décision (pour logs + UI feedback)
 
-    """
+"""
     # Import config centralisée
     from config.market_selection import get_default_symbol, get_default_timeframe
 
@@ -706,7 +739,7 @@ def get_final_market_selection(
 
         # Détection sélection aléatoire (marqueur session_state)
         if st.session_state.get("_random_market_applied", False):
-            return (symbol, timeframe, "ui_random", "Sélection aléatoire (bouton 🎲)")
+            return (symbol, timeframe, "ui_random", "Sélection aléatoire (bouton)")
         return (symbol, timeframe, "ui_manual", "Sélection manuelle utilisateur")
 
     # 3. Fallback : Defaults depuis config ou univers disponible
@@ -764,7 +797,7 @@ def _render_sidebar_date_filter(
         timeframe_analysis = analyze_by_timeframe(symbols, timeframes)
 
         # Interface de sélection par timeframe
-        with st.sidebar.expander("🎯 **Analyse par Timeframe**", expanded=True):
+        with st.sidebar.expander("**Analyse par Timeframe**", expanded=True):
             if len(timeframes) > 1:
                 analysis_mode = st.radio(
                     "Mode d'analyse",
@@ -791,10 +824,10 @@ def _render_sidebar_date_filter(
                     duration = (common_end - common_start).days
 
                     st.success(
-                        f"✅ **Période harmonisée**: {common_start.strftime('%d/%m/%Y')} → {common_end.strftime('%d/%m/%Y')} ({duration}j)",
+                        f"**Période harmonisée**: {common_start.strftime('%d/%m/%Y')} → {common_end.strftime('%d/%m/%Y')} ({duration}j)",
                     )
                     st.caption(
-                        f"💡 Plage commune stricte (max début, min fin) sur "
+                        f"Plage commune stricte (max début, min fin) sur "
                         f"{len(symbols)} token(s) × {len(timeframes)} TF(s)",
                     )
 
@@ -802,14 +835,14 @@ def _render_sidebar_date_filter(
                     available_end = common_end.date()
                     default_start, default_end = _get_padded_date_range(common_start, common_end)
                 else:
-                    st.warning("⚠️ Impossible de trouver une période commune (intersection vide)")
+                    st.warning("Impossible de trouver une période commune (intersection vide)")
                     default_start = pd.Timestamp("2023-01-01").date()
                     default_end = pd.Timestamp.now().date()
                     available_start = default_start
                     available_end = default_end
 
             else:
-                st.info("📊 **Périodes optimales par timeframe**:")
+                st.info("**Périodes optimales par timeframe**:")
 
                 best_timeframe = None
                 best_score = 0.0
@@ -827,7 +860,7 @@ def _render_sidebar_date_filter(
                         end_fr = best_period.end_date.strftime("%d/%m/%Y")
                         duration = (best_period.end_date - best_period.start_date).days
 
-                        st.write(f"- 🎯 {start_fr} → {end_fr} ({duration}j)")
+                        st.write(f"- {start_fr} → {end_fr} ({duration}j)")
                         st.caption(
                             f"  Score: {best_period.completeness_score:.0f}%, Gap toléré: {data['gap_tolerance']:.0f}%",
                         )
@@ -848,7 +881,7 @@ def _render_sidebar_date_filter(
                             fallback_duration = fallback_period["best_duration_days"]
 
                             st.write(
-                                f"- ℹ️ Référence {fallback_period['best_symbol']}: "
+                                f"- Référence {fallback_period['best_symbol']}: "
                                 f"{fallback_start} → {fallback_end} ({fallback_duration}j)",
                             )
 
@@ -857,7 +890,7 @@ def _render_sidebar_date_filter(
                                 fallback_timeframe = tf
                                 fallback_period_ref = fallback_period
                         else:
-                            st.write("- ❌ Aucune donnée disponible")
+                            st.write("- Aucune donnée disponible")
 
                 if best_timeframe and best_period_ref:
                     available_start = best_period_ref.start_date.date()
@@ -866,7 +899,7 @@ def _render_sidebar_date_filter(
                         best_period_ref.start_date,
                         best_period_ref.end_date,
                     )
-                    st.success(f"🏆 **Défaut basé sur {best_timeframe}** (meilleur score: {best_score:.1f})")
+                    st.success(f"**Défaut basé sur {best_timeframe}** (meilleur score: {best_score:.1f})")
                 elif fallback_timeframe and fallback_period_ref:
                     fallback_start_ts = fallback_period_ref["best_start"]
                     fallback_end_ts = fallback_period_ref["best_end"]
@@ -877,18 +910,18 @@ def _render_sidebar_date_filter(
                         fallback_end_ts,
                     )
                     st.info(
-                        f"ℹ️ Aucun intervalle commun strict. Défaut basé sur "
+                        f"Aucun intervalle commun strict. Défaut basé sur "
                         f"{fallback_timeframe} ({fallback_period_ref['best_symbol']}).",
                     )
                 else:
-                    st.warning("⚠️ Aucune période optimale trouvée pour les timeframes sélectionnés")
+                    st.warning("Aucune période optimale trouvée pour les timeframes sélectionnés")
                     default_start = pd.Timestamp("2023-01-01").date()
                     default_end = pd.Timestamp.now().date()
                     available_start = default_start
                     available_end = default_end
 
             st.markdown("---")
-            st.caption("📅 **Période d'analyse** (format: DD/MM/YYYY)")
+            st.caption("**Période d'analyse** (format: DD/MM/YYYY)")
 
             # Auto-aligner les dates sur la plage commune si hors limites.
             if default_start and default_end and available_start and available_end:
@@ -917,14 +950,14 @@ def _render_sidebar_date_filter(
             col1, col2 = st.sidebar.columns(2)
             with col1:
                 start_date = st.date_input(
-                    "Date début 📅",
+                    "Date début",
                     key="start_date",
                     format="DD/MM/YYYY",
                     help="Date de début de la période d'analyse",
                 )
             with col2:
                 end_date = st.date_input(
-                    "Date fin 📅",
+                    "Date fin",
                     key="end_date",
                     format="DD/MM/YYYY",
                     help="Date de fin de la période d'analyse",
@@ -932,12 +965,12 @@ def _render_sidebar_date_filter(
 
             # Validation que start_date < end_date
             if start_date and end_date and start_date >= end_date:
-                st.sidebar.error("⚠️ La date de début doit être antérieure à la date de fin")
+                st.sidebar.error("La date de début doit être antérieure à la date de fin")
 
             # Affichage de la durée sélectionnée
             if start_date and end_date and start_date < end_date:
                 selected_days = (end_date - start_date).days
-                st.sidebar.caption(f"📊 Durée sélectionnée: **{selected_days} jours**")
+                st.sidebar.caption(f"Durée sélectionnée: **{selected_days} jours**")
 
             # Validation de la période par rapport à la plage commune
             if availability_result.has_common_range and start_date and end_date:
@@ -949,32 +982,32 @@ def _render_sidebar_date_filter(
                 if analysis_mode == "Période harmonisée":
                     if end_date < common_start_date:
                         st.sidebar.error(
-                            f"⚠️ Période demandée ({start_date.strftime('%d/%m/%Y')} → {end_date.strftime('%d/%m/%Y')}) est AVANT "
+                            f"Période demandée ({start_date.strftime('%d/%m/%Y')} → {end_date.strftime('%d/%m/%Y')}) est AVANT "
                             f"la plage commune ({common_start_date.strftime('%d/%m/%Y')})",
                         )
                     elif start_date > common_end_date:
                         st.sidebar.error(
-                            f"⚠️ Période demandée ({start_date.strftime('%d/%m/%Y')} → {end_date.strftime('%d/%m/%Y')}) est APRÈS "
+                            f"Période demandée ({start_date.strftime('%d/%m/%Y')} → {end_date.strftime('%d/%m/%Y')}) est APRÈS "
                             f"la plage commune ({common_end_date.strftime('%d/%m/%Y')})",
                         )
                     elif start_date < common_start_date:
                         st.sidebar.warning(
-                            f"⚠️ Début demandé ({start_date.strftime('%d/%m/%Y')}) est AVANT la plage commune. "
+                            f"Début demandé ({start_date.strftime('%d/%m/%Y')}) est AVANT la plage commune. "
                             f"Données réelles à partir de **{common_start_date.strftime('%d/%m/%Y')}**",
                         )
                     elif end_date > common_end_date:
                         st.sidebar.warning(
-                            f"⚠️ Fin demandée ({end_date.strftime('%d/%m/%Y')}) est APRÈS la plage commune. "
+                            f"Fin demandée ({end_date.strftime('%d/%m/%Y')}) est APRÈS la plage commune. "
                             f"Données réelles jusqu'à **{common_end_date.strftime('%d/%m/%Y')}**",
                         )
                 elif start_date < common_start_date or end_date > common_end_date:
                     st.sidebar.info(
-                        f"ℹ️ Plage commune globale: {common_start_date.strftime('%d/%m/%Y')} → {common_end_date.strftime('%d/%m/%Y')}. "
+                        f"Plage commune globale: {common_start_date.strftime('%d/%m/%Y')} → {common_end_date.strftime('%d/%m/%Y')}. "
                         "En mode indépendant, certaines combinaisons peuvent être tronquées.",
                     )
 
             st.markdown("---")
-            with st.sidebar.expander("🔍 Analyse détaillée des données", expanded=False):
+            with st.sidebar.expander("Analyse détaillée des données", expanded=False):
                 if availability_result.rows:
                     df_analysis = pd.DataFrame(availability_result.rows)
                     st.dataframe(
@@ -1008,17 +1041,17 @@ def _render_sidebar_date_filter(
 
                     st.markdown("**Résumé qualité des données (gaps)**")
                     st.caption(
-                        "✅ = couverture correcte (<10% de gaps) • ⚠️ = gaps significatifs • ❌ = fichier manquant.",
+                        "= couverture correcte (<10% de gaps) • = gaps significatifs • = fichier manquant.",
                     )
                     st.markdown(
-                        f"- ✅ Complètes : {complete_combos}/{total_combos}\n"
-                        f"- ⚠️ Incomplètes : {incomplete_combos}/{total_combos}\n"
-                        f"- ❌ Manquantes : {missing_combos}/{total_combos}",
+                        f"- Complètes : {complete_combos}/{total_combos}\n"
+                        f"- Incomplètes : {incomplete_combos}/{total_combos}\n"
+                        f"- Manquantes : {missing_combos}/{total_combos}",
                     )
 
                     if hasattr(availability_result, "optimal_periods") and availability_result.optimal_periods:
                         st.markdown(
-                            "💡 **Conseil :** Les périodes optimales ci-dessus évitent automatiquement les zones avec trop de données manquantes.",
+                            "**Conseil :** Les périodes optimales ci-dessus évitent automatiquement les zones avec trop de données manquantes.",
                         )
     else:
         start_date = None
@@ -1040,13 +1073,13 @@ def _render_sidebar_strategy_section(
     timeframes,
 ):
     # En mode Builder, le sélecteur de stratégie n'a pas de sens (le builder crée des stratégies)
-    if current_mode != "🏗️ Strategy Builder":
-        _sidebar_section("🎯 Stratégie")
+    if current_mode != "Strategy Builder":
+        _sidebar_section("Stratégie")
 
         # Mode de sélection : Classique vs Catalogue
         strategy_selection_mode = st.sidebar.radio(
             "Mode de sélection",
-            ["📋 Classique", "🗂️ Catalogue"],
+            ["Classique", "Catalogue"],
             key="strategy_selection_mode",
             horizontal=True,
             help="Classique = liste complète | Catalogue = filtré par catégories",
@@ -1058,11 +1091,11 @@ def _render_sidebar_strategy_section(
             skipped = st.session_state.pop("_catalog_strategy_selection_skipped", 0)
             st.session_state["strategies_select"] = labels_to_apply
             if skipped > 0:
-                st.sidebar.warning(f"⚠️ {skipped} stratégie(s) non exécutable(s) ignorée(s)")
+                st.sidebar.warning(f"{skipped} stratégie(s) non exécutable(s) ignorée(s)")
             if labels_to_apply:
-                st.sidebar.success(f"✅ {len(labels_to_apply)} stratégie(s) sélectionnée(s) depuis le catalogue")
+                st.sidebar.success(f"{len(labels_to_apply)} stratégie(s) sélectionnée(s) depuis le catalogue")
 
-        if strategy_selection_mode == "📋 Classique":
+        if strategy_selection_mode == "Classique":
             # === MODE CLASSIQUE : MULTI-SÉLECTION STRATÉGIES (multiselect) ===
             strategy_labels_ui = _stable_shuffled_options(
                 "_strategies_options_order_v1",
@@ -1087,14 +1120,14 @@ def _render_sidebar_strategy_section(
             strategy_names = st.session_state.get("strategies_select", [])
 
             if strategy_names:
-                st.sidebar.success(f"✅ {len(strategy_names)} stratégie(s) du catalogue")
+                st.sidebar.success(f"{len(strategy_names)} stratégie(s) du catalogue")
                 st.sidebar.caption(
-                    "💡 Utilisez le panel **Strategy Catalog** en bas de page "
+                    "Utilisez le panel **Strategy Catalog** en bas de page"
                     "pour filtrer et sélectionner vos stratégies",
                 )
             else:
                 st.sidebar.info(
-                    "📂 Aucune stratégie sélectionnée.\n\n"
+                    "Aucune stratégie sélectionnée.\n\n"
                     "Utilisez le panel **Strategy Catalog** en bas de page "
                     "pour sélectionner vos stratégies par catégorie.",
                 )
@@ -1102,7 +1135,7 @@ def _render_sidebar_strategy_section(
         # Info multi-stratégies si plusieurs sélections
         if len(strategy_names) > 1:
             st.sidebar.info(
-                f"📋 **{len(strategy_names)} stratégies sélectionnées**\n\n"
+                f"**{len(strategy_names)} stratégies sélectionnées**\n\n"
                 f"Paramètres configurables pour: **{strategy_names[0]}**\n\n"
                 f"Autres stratégies utiliseront leurs paramètres par défaut.",
             )
@@ -1123,7 +1156,7 @@ def _render_sidebar_strategy_section(
                 parts.append(f"{len(timeframes)} TF(s)")
 
             if len(parts) > 1:  # Seulement si au moins 2 dimensions multiples
-                st.sidebar.success(f"🔄 **Multi-sweep total**: {' × '.join(parts)} = **{total_combos} backtests**")
+                st.sidebar.success(f"**Multi-sweep total**: {' × '.join(parts)} = **{total_combos} backtests**")
 
         strategy_info = None
         if strategy_key:
@@ -1136,9 +1169,9 @@ def _render_sidebar_strategy_section(
                     indicators_list = ", ".join(
                         [f"**{ind.upper()}**" for ind in strategy_info.required_indicators],
                     )
-                    st.sidebar.info(f"📊 Indicateurs requis: {indicators_list}")
+                    st.sidebar.info(f"Indicateurs requis: {indicators_list}")
                 else:
-                    st.sidebar.info("📊 Indicateurs: Calculés internement")
+                    st.sidebar.info("Indicateurs: Calculés internement")
 
                 if strategy_info.internal_indicators:
                     internal_list = ", ".join(
@@ -1147,15 +1180,15 @@ def _render_sidebar_strategy_section(
                     st.sidebar.caption(f"_Calculés: {internal_list}_")
 
             except KeyError:
-                st.sidebar.warning(f"⚠️ Indicateurs non définis pour '{strategy_key}'")
+                st.sidebar.warning(f"Indicateurs non définis pour '{strategy_key}'")
 
-        _sidebar_section("📈 Indicateurs")
+        _sidebar_section("Indicateurs")
         available_indicators = get_strategy_ui_indicators(strategy_key) if strategy_key else []
         # Tous les indicateurs sont toujours affichés
         active_indicators: list[str] = available_indicators or []
 
         if available_indicators:
-            st.sidebar.caption(f"📊 {len(available_indicators)} indicateur(s) : {', '.join(available_indicators)}")
+            st.sidebar.caption(f"{len(available_indicators)} indicateur(s) : {', '.join(available_indicators)}")
         elif strategy_key:
             st.sidebar.caption("Aucun indicateur disponible.")
     else:
@@ -1213,8 +1246,8 @@ def _render_sidebar_parameters_section(
     granularity_slot = None
 
     # En mode Builder, pas de section paramètres (le builder gère ses propres params)
-    if optimization_mode != "🏗️ Strategy Builder":
-        _sidebar_section("🔧 Paramètres")
+    if optimization_mode != "Strategy Builder":
+        _sidebar_section("Paramètres")
         granularity_slot = st.sidebar.empty()
 
     if strategy_class:
@@ -1355,7 +1388,7 @@ def _render_sidebar_parameters_section(
 
             if range_warnings:
                 for warning in range_warnings:
-                    st.sidebar.warning(f"⚠️ {warning}")
+                    st.sidebar.warning(f"{warning}")
 
             if param_mode == "range" and param_ranges:
                 st.sidebar.markdown("---")
@@ -1365,22 +1398,22 @@ def _render_sidebar_parameters_section(
                 )
 
                 if stats.is_continuous:
-                    st.sidebar.info("ℹ️ Espace continu détecté")
+                    st.sidebar.info("Espace continu détecté")
                 elif stats.has_overflow:
                     st.sidebar.warning(
-                        f"⚠️ {stats.total_combinations:,} combinaisons (limite: {max_combos:,})",
+                        f"{stats.total_combinations:,} combinaisons (limite: {max_combos:,})",
                     )
                     st.sidebar.caption("Réduisez les plages ou augmentez le step")
                 else:
                     st.sidebar.success(
-                        f"✅ {stats.total_combinations:,} combinaisons à tester",
+                        f"{stats.total_combinations:,} combinaisons à tester",
                     )
 
-                with st.sidebar.expander("📊 Détail par paramètre"):
+                with st.sidebar.expander("Détail par paramètre"):
                     for pname, pcount in stats.per_param_counts.items():
                         st.caption(f"• {pname}: {pcount} valeurs")
             else:
-                st.sidebar.caption("📊 Mode simple: 1 combinaison")
+                st.sidebar.caption("Mode simple: 1 combinaison")
     elif strategy_key:
         st.sidebar.error(f"Stratégie '{strategy_key}' non trouvée")
 
@@ -1399,11 +1432,11 @@ def _render_sidebar_parameters_section(
 
 def render_sidebar() -> SidebarState:
     _inject_sidebar_styles()
-    st.sidebar.markdown('<div class="bc-sidebar-title">⚙️ Configuration</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="bc-sidebar-title">Configuration</div>', unsafe_allow_html=True)
     st.sidebar.caption("Réglages centralisés du backtest, sweep et builder.")
     st.sidebar.caption("Parcours: Données → Stratégies → Mode → Exécution → Paramètres → Presets")
 
-    with st.sidebar.expander("🔧 Debug", expanded=False):
+    with st.sidebar.expander("Debug", expanded=False):
         debug_enabled = st.checkbox(
             "Mode DEBUG",
             value=is_debug_enabled(),
@@ -1411,11 +1444,11 @@ def render_sidebar() -> SidebarState:
         )
         if debug_enabled:
             set_log_level("DEBUG")
-            st.caption("🟢 Logs détaillés activés")
+            st.caption("Logs détaillés activés")
         else:
             set_log_level("INFO")
 
-    _sidebar_section("📊 Données")
+    _sidebar_section("Données")
 
     # Filtre UI des TF:
     # - exclure 1m (non utilisé dans ce setup)
@@ -1433,7 +1466,7 @@ def render_sidebar() -> SidebarState:
             available_tokens = ["BTCUSDC", "ETHUSDC"]
             data_status.warning("Aucune donnée trouvée, utilisation des défauts")
         else:
-            data_status.success(f"✅ {len(available_tokens)} symboles disponibles")
+            data_status.success(f"{len(available_tokens)} symboles disponibles")
 
         if not available_timeframes:
             available_timeframes = ["1h", "4h", "1d"]
@@ -1539,10 +1572,10 @@ def render_sidebar() -> SidebarState:
     strategy_options = build_strategy_options(available_strategies)
 
     keep_current_strategy = st.sidebar.checkbox(
-        "Conserver la stratégie lors du tirage 🎲",
+        "Conserver la stratégie lors du tirage",
         value=st.session_state.get("keep_strategy_on_random_selection", True),
         key="keep_strategy_on_random_selection",
-        help="Si activé, le bouton 🎲 randomise seulement token + timeframe quand une stratégie est déjà sélectionnée.",
+        help="Si activé, le bouton randomise seulement token + timeframe quand une stratégie est déjà sélectionnée.",
     )
 
     # Appliquer une sélection aléatoire (1 token + 1 TF + 1 stratégie)
@@ -1569,13 +1602,13 @@ def render_sidebar() -> SidebarState:
         st.session_state["_random_market_applied"] = True
 
         st.session_state["_random_market_selection_summary"] = (
-            f"🎲 Aléatoire: {random_symbol or '-'} | {random_timeframe or '-'} | "
+            f"Aléatoire: {random_symbol or '-'} | {random_timeframe or '-'} | "
             f"stratégie {strategy_mode}: {random_strategy or '-'}"
         )
 
         # Log structuré permanent (caption UI disparaît au rerun)
         logger.info(
-            "Market selection: source=ui_random, symbol=%s, timeframe=%s, strategy=%s (%s), reason=Bouton 🎲",
+            "Market selection: source=ui_random, symbol=%s, timeframe=%s, strategy=%s (%s), reason=Bouton",
             random_symbol or "NONE",
             random_timeframe or "NONE",
             random_strategy or "NONE",
@@ -1604,7 +1637,7 @@ def render_sidebar() -> SidebarState:
 
         # Log structuré : ajout de tokens potentiels
         logger.info(
-            "Market selection: source=ui_potential_tokens, added_count=%d, tokens=%s, reason=Bouton 🎯 (tokens à potentiel)",
+            "Market selection: source=ui_potential_tokens, added_count=%d, tokens=%s, reason=Bouton (tokens à potentiel)",
             len(added_tokens),
             ", ".join(added_tokens) if added_tokens else "NONE_NEW",
         )
@@ -1623,7 +1656,7 @@ def render_sidebar() -> SidebarState:
             st.sidebar.warning(_msg)
 
     # Détection mode Builder
-    _is_builder = st.session_state.get("optimization_mode") == "🏗️ Strategy Builder"
+    _is_builder = st.session_state.get("optimization_mode") == "Strategy Builder"
     _builder_autonomous = st.session_state.get(
         "builder_autonomous",
         BUILDER_AUTONOMOUS_DEFAULT,
@@ -1698,17 +1731,17 @@ def render_sidebar() -> SidebarState:
     selected_strategy_preview = (st.session_state.get("strategies_select") or [""])[0]
     if _is_builder:
         llm_note = " (LLM peut override en auto-marché)" if (_builder_autonomous or _builder_auto_market) else ""
-        st.sidebar.caption(f"🎯 Sélection active : {symbol or '—'} | {timeframe or '—'}{llm_note}")
+        st.sidebar.caption(f"Sélection active : {symbol or '—'} | {timeframe or '—'}{llm_note}")
     else:
         st.sidebar.caption(
-            f"🎯 Sélection active : {symbol or '—'} | {timeframe or '—'} | {selected_strategy_preview or '—'}",
+            f"Sélection active : {symbol or '—'} | {timeframe or '—'} | {selected_strategy_preview or '—'}",
         )
 
     # Info multi-sweep si plusieurs sélections (tokens/timeframes uniquement à ce stade)
     if len(symbols) > 1 or len(timeframes) > 1:
         total_combos = len(symbols) * len(timeframes)
         st.sidebar.info(
-            f"🔄 Mode multi-sweep: {len(symbols)} token(s) × {len(timeframes)} TF(s) = {total_combos} combinaison(s)",
+            f"Mode multi-sweep: {len(symbols)} token(s) × {len(timeframes)} TF(s) = {total_combos} combinaison(s)",
         )
 
     # Analyse des données disponibles pour validation (toujours nécessaire)
@@ -1724,7 +1757,7 @@ def render_sidebar() -> SidebarState:
         examples = availability_result.missing_data[:5]
         more = f" ... +{n_missing - 5}" if n_missing > 5 else ""
         st.sidebar.warning(
-            f"⚠️ **{n_missing}/{n_total}** combo(s) sans données: "
+            f"**{n_missing}/{n_total}** combo(s) sans données: "
             f"{', '.join(examples)}{more}. "
             f"Ces combinaisons seront ignorées automatiquement.",
         )
@@ -1802,16 +1835,16 @@ def render_sidebar() -> SidebarState:
     st.sidebar.markdown("---")
     render_keeper_mode_control()
 
-    _sidebar_section("🔄 Mode d'exécution")
+    _sidebar_section("Mode d'exécution")
 
     if "optimization_mode" not in st.session_state:
         st.session_state.optimization_mode = "Grille de Paramètres"
     ensure_ui_execution_state_defaults(st.session_state)
 
     if st.session_state.get("is_running", False):
-        st.sidebar.warning("⏳ Exécution en cours (UI temporairement restreinte).")
+        st.sidebar.warning("Exécution en cours (UI temporairement restreinte).")
         if st.sidebar.button(
-            "🔓 Forcer le déverrouillage UI",
+            "Forcer le déverrouillage UI",
             key="force_unlock_ui",
             help="Réinitialise les verrous d'exécution si l'interface reste bloquée.",
         ):
@@ -1845,9 +1878,9 @@ def render_sidebar() -> SidebarState:
     max_combos = unlimited_max_combos
     n_workers = default_workers_cpu
 
-    if optimization_mode in {"Grille de Paramètres", "🤖 Optimisation LLM"}:
+    if optimization_mode in {"Grille de Paramètres", "Optimisation LLM"}:
         st.sidebar.markdown("---")
-        _sidebar_section("⚙️ Exécution")
+        _sidebar_section("Exécution")
 
         if "ui_n_workers" not in st.session_state:
             st.session_state["ui_n_workers"] = default_workers_cpu
@@ -1920,7 +1953,7 @@ def render_sidebar() -> SidebarState:
     builder_llm_routing_mode = str(
         st.session_state.get("builder_llm_routing_mode", "single_endpoint") or "single_endpoint",
     )
-    llm_routing_mode = builder_llm_routing_mode if optimization_mode == "🏗️ Strategy Builder" else exec_llm_routing_mode
+    llm_routing_mode = builder_llm_routing_mode if optimization_mode == "Strategy Builder" else exec_llm_routing_mode
 
     # ── Strategy Builder defaults ──
     builder_objective = ""
@@ -1950,7 +1983,7 @@ def render_sidebar() -> SidebarState:
     builder_flow_analysis_ablation: dict[str, bool] = {}
     builder_use_parametric_catalog = False
     topology_state_key = (
-        "builder_llm_topology_config" if optimization_mode == "🏗️ Strategy Builder" else "exec_llm_topology_config"
+        "builder_llm_topology_config" if optimization_mode == "Strategy Builder" else "exec_llm_topology_config"
     )
     topology_data = st.session_state.get(topology_state_key)
     if isinstance(topology_data, LLMTopologyConfig):
@@ -1966,7 +1999,7 @@ def render_sidebar() -> SidebarState:
             primary_host=os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434"),
         )
 
-    if optimization_mode == "🏗️ Strategy Builder":
+    if optimization_mode == "Strategy Builder":
         # UI Builder déplacée dans ui.exec_tabs._render_builder_tab()
         # Ici, on lit uniquement l'état pour alimenter SidebarState sans dupliquer les widgets.
         llm_routing_mode = str(
@@ -2055,9 +2088,9 @@ def render_sidebar() -> SidebarState:
             exec_ollama_host=exec_ollama_host,
         )
 
-        st.sidebar.caption("⚙️ Configuration Builder déplacée dans l'onglet principal Strategy Builder")
+        st.sidebar.caption("Configuration Builder déplacée dans l'onglet principal Strategy Builder")
 
-    elif optimization_mode == "🤖 Optimisation LLM":
+    elif optimization_mode == "Optimisation LLM":
         max_combos = unlimited_max_combos
         llm_config = st.session_state.get("exec_llm_config_obj")
         llm_model = st.session_state.get("exec_llm_model")
@@ -2085,14 +2118,14 @@ def render_sidebar() -> SidebarState:
         llm_compare_use_preset = bool(st.session_state.get("exec_llm_compare_use_preset", True))
         llm_compare_generate_report = bool(st.session_state.get("exec_llm_compare_generate_report", True))
 
-        st.sidebar.caption("⚙️ Configuration LLM déplacée dans l'onglet principal Optimisation LLM")
+        st.sidebar.caption("Configuration LLM déplacée dans l'onglet principal Optimisation LLM")
 
     # ======================== GPU ACCELERATION ========================
     st.sidebar.markdown("---")
-    _sidebar_section("⚡ Accélération GPU")
+    _sidebar_section("Accélération GPU")
     st.sidebar.caption("Mode CPU-only: GPU désactivé.")
     st.sidebar.caption("• Numba JIT + cache RAM utilisés • VRAM libérée pour autres usages")
-    if optimization_mode == "🏗️ Strategy Builder":
+    if optimization_mode == "Strategy Builder":
         st.sidebar.caption(
             "Le routage GPU des LLM Ollama se regle dans l'onglet principal "
             "`Strategy Builder`, pas dans cette section backtest.",
@@ -2117,7 +2150,7 @@ def render_sidebar() -> SidebarState:
     granularity_direction = _gran_ctx["granularity_direction"]
     granularity_diff = _gran_ctx["granularity_diff"]
 
-    _sidebar_section("💰 Trading")
+    _sidebar_section("Trading")
 
     # Checkbox pour activer/désactiver le leverage
     leverage_enabled = st.sidebar.checkbox(
@@ -2158,7 +2191,7 @@ def render_sidebar() -> SidebarState:
     # =========================================================================
     # Walk-Forward Analysis (WFA) — 10/02/2026
     # =========================================================================
-    _sidebar_section("🔬 Walk-Forward Analysis")
+    _sidebar_section("Walk-Forward Analysis")
 
     use_walk_forward = st.sidebar.checkbox(
         "Activer la validation Walk-Forward",
@@ -2204,10 +2237,10 @@ def render_sidebar() -> SidebarState:
             ),
         )
         st.sidebar.caption(
-            f"📐 {wfa_n_folds} folds × {wfa_train_ratio:.0%} train | {'expanding' if wfa_expanding else 'rolling'}",
+            f"{wfa_n_folds} folds × {wfa_train_ratio:.0%} train | {'expanding' if wfa_expanding else 'rolling'}",
         )
 
-    with st.sidebar.expander("💾 Presets versionnés", expanded=False):
+    with st.sidebar.expander("Presets versionnés", expanded=False):
         versioned_presets = list_strategy_versions(strategy_key)
 
         if "_sync_preset_version" in st.session_state:
@@ -2297,7 +2330,7 @@ def render_sidebar() -> SidebarState:
                 if summary:
                     st.json(summary)
 
-            if st.button("⬇️ Charger ce preset", key="load_versioned_preset"):
+            if st.button("Charger ce preset", key="load_versioned_preset"):
                 try:
                     loaded_preset = load_strategy_version(
                         strategy_name=strategy_key,
@@ -2342,7 +2375,7 @@ def render_sidebar() -> SidebarState:
         all_param_ranges[strategy_key] = param_ranges
         all_param_specs[strategy_key] = param_specs
 
-    if optimization_mode != "🏗️ Strategy Builder":
+    if optimization_mode != "Strategy Builder":
         granularity_source_params: dict[str, dict[str, Any]] = all_params
         if param_mode == "range":
             range_based_params: dict[str, dict[str, Any]] = {}
@@ -2430,7 +2463,7 @@ def render_sidebar() -> SidebarState:
 
     if param_mode == "range" and len(strategy_names) > 1:
         st.sidebar.markdown("---")
-        _sidebar_section("📌 Combinaisons multi-stratégies")
+        _sidebar_section("Combinaisons multi-stratégies")
         total_per_sweep = 0
         for strat_key in strategy_keys:
             ranges = all_param_ranges.get(strat_key) or {}
@@ -2560,7 +2593,7 @@ def render_sidebar() -> SidebarState:
 
     # === PANEL CATALOGUE DE STRATÉGIES ===
     # Afficher uniquement en mode Catalogue et hors mode Builder
-    if _current_mode != "🏗️ Strategy Builder" and st.session_state.get("strategy_selection_mode") == "🗂️ Catalogue":
+    if _current_mode != "Strategy Builder" and st.session_state.get("strategy_selection_mode") == "Catalogue":
         render_strategy_catalog_panel(strategy_options)
 
     return applied_state

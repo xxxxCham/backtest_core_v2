@@ -257,9 +257,9 @@ def _metrics_for_entry(entry: dict[str, Any]) -> dict[str, Any]:
 
 def render_strategy_catalog_panel(strategy_options: dict[str, str]) -> None:
     st.markdown("---")
-    st.subheader("🗂️ Strategy Catalog")
+    st.subheader("Strategy Catalog")
     st.caption(
-        "💡 **Filtrez et sélectionnez vos stratégies** — Les filtres ci-dessous sont optionnels pour affiner la liste.",
+        "**Filtrez et sélectionnez vos stratégies** — Les filtres ci-dessous sont optionnels pour affiner la liste.",
     )
 
     entries_all = list_entries(status=None)
@@ -278,7 +278,7 @@ def render_strategy_catalog_panel(strategy_options: dict[str, str]) -> None:
     col_a, col_b = st.columns(2)
     with col_a:
         categories = st.multiselect(
-            "📂 Catégorie (filtre optionnel)",
+            "Catégorie (filtre optionnel)",
             CATEGORY_ORDER,
             default=st.session_state.get("catalog_filter_categories", []),
             key="catalog_filter_categories",
@@ -293,13 +293,13 @@ def render_strategy_catalog_panel(strategy_options: dict[str, str]) -> None:
         )
 
     # Filtres avancés (collapsible pour éviter la confusion)
-    with st.expander("🔍 Filtres avancés (optionnels)", expanded=False):
+    with st.expander("Filtres avancés (optionnels)", expanded=False):
         st.caption("Ces filtres sont optionnels et servent uniquement à affiner la recherche.")
 
         col_c, col_d = st.columns(2)
         with col_c:
             st.multiselect(
-                "🪙 Token (filtre)",
+                "Token (filtre)",
                 all_symbols,
                 default=st.session_state.get("catalog_filter_symbols", []),
                 key="catalog_filter_symbols",
@@ -307,7 +307,7 @@ def render_strategy_catalog_panel(strategy_options: dict[str, str]) -> None:
             )
         with col_d:
             st.multiselect(
-                "⏰ Timeframe (filtre)",
+                "Timeframe (filtre)",
                 all_timeframes,
                 default=st.session_state.get("catalog_filter_timeframes", []),
                 key="catalog_filter_timeframes",
@@ -315,7 +315,7 @@ def render_strategy_catalog_panel(strategy_options: dict[str, str]) -> None:
             )
 
         st.multiselect(
-            "🏷️ Tags (filtre)",
+            "Tags (filtre)",
             all_tags,
             default=st.session_state.get("catalog_filter_tags", []),
             key="catalog_filter_tags",
@@ -325,7 +325,7 @@ def render_strategy_catalog_panel(strategy_options: dict[str, str]) -> None:
         col_e, col_f = st.columns(2)
         with col_e:
             st.multiselect(
-                "🧭 Phase canonique",
+                "Phase canonique",
                 all_phases,
                 default=st.session_state.get("catalog_filter_phases", []),
                 key="catalog_filter_phases",
@@ -333,7 +333,7 @@ def render_strategy_catalog_panel(strategy_options: dict[str, str]) -> None:
             )
         with col_f:
             st.multiselect(
-                "🧾 Décision",
+                "Décision",
                 all_decisions,
                 default=st.session_state.get("catalog_filter_decisions", []),
                 key="catalog_filter_decisions",
@@ -479,9 +479,9 @@ def render_strategy_catalog_panel(strategy_options: dict[str, str]) -> None:
     # Résumé de sélection
     if selected_ids:
         runnable_count = sum(1 for row in rows if row["id"] in selected_ids and row["runnable"] == "yes")
-        st.success(f"✅ **{len(selected_ids)} stratégie(s) sélectionnée(s)** — {runnable_count} exécutable(s)")
+        st.success(f"**{len(selected_ids)} stratégie(s) sélectionnée(s)** — {runnable_count} exécutable(s)")
     else:
-        st.info("ℹ️ Aucune stratégie sélectionnée. Cochez les cases pour sélectionner.")
+        st.info("Aucune stratégie sélectionnée. Cochez les cases pour sélectionner.")
 
     # Actions sur la sélection
     st.markdown("### Actions")
@@ -489,20 +489,20 @@ def render_strategy_catalog_panel(strategy_options: dict[str, str]) -> None:
 
     with action_col_a:
         move_to = st.selectbox(
-            "📦 Déplacer vers catégorie",
+            "Déplacer vers catégorie",
             CATEGORY_ORDER,
             index=0,
             key="catalog_move_target",
             help="Déplacer les stratégies sélectionnées vers une autre catégorie",
         )
     with action_col_b:
-        if st.button("📦 Move", key="catalog_move_btn", disabled=not selected_ids, width="stretch"):
+        if st.button("Move", key="catalog_move_btn", disabled=not selected_ids, width="stretch"):
             changed = move_entries(selected_ids, move_to)
-            st.success(f"✅ {changed} stratégie(s) déplacée(s)")
+            st.success(f"{changed} stratégie(s) déplacée(s)")
             st.rerun()
     with action_col_c:
         if st.button(
-            "✅ Utiliser cette sélection",
+            "Utiliser cette sélection",
             key="catalog_set_selection",
             disabled=not selected_ids,
             type="primary",

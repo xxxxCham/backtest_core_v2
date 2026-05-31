@@ -67,11 +67,11 @@ def _render_workspace_navigation(active: str = "app") -> None:
 <div class="bc-sidebar-nav-block">
     <div class="bc-sidebar-nav-title">Navigation</div>
     <div class="bc-sidebar-nav-links">
-        <a class="{app_class}" href="/" target="_self">🏠 Application</a>
-        <a class="{editor_class}" href="/range_editor_page" target="_self">⚙️ Éditeur de plages</a>
-        <a class="{model_stats_class}" href="/model_stats_page" target="_self">📊 Statistiques des modèles</a>
-        <a class="{indicator_stats_class}" href="/indicator_stats_page" target="_self">📈 Indicateurs × Perf</a>
-        <a class="{results_class}" href="/results_store_page" target="_self">📚 Hub résultats</a>
+        <a class="{app_class}" href="/" target="_self">Application</a>
+        <a class="{editor_class}" href="/range_editor_page" target="_self">Éditeur de plages</a>
+        <a class="{model_stats_class}" href="/model_stats_page" target="_self">Statistiques des modèles</a>
+        <a class="{indicator_stats_class}" href="/indicator_stats_page" target="_self">Indicateurs × Perf</a>
+        <a class="{results_class}" href="/results_store_page" target="_self">Hub résultats</a>
     </div>
 </div>
 """,
@@ -92,7 +92,7 @@ def configure_page() -> None:
         initial_sidebar_state="expanded",
     )
 
-    # Thème global "Trading desk sombre, accent or"
+    # Thème global "Trading desk sombre, accent cyan-teal"
     # (palette + tokens définis dans ui/theme/colors.py, CSS dans ui/theme/streamlit_css.py)
     apply_theme(force=True)
 
@@ -101,8 +101,8 @@ def render_footer() -> None:
     st.sidebar.markdown("---")
     st.sidebar.markdown("**Backtest Core v2.1**")
     optimization_mode = st.session_state.get("optimization_mode", "Backtest Simple")
-    if optimization_mode == "🤖 Optimisation LLM":
-        llm_status = "✅ LLM" if LLM_AVAILABLE else "❌ LLM"
+    if optimization_mode == "Optimisation LLM":
+        llm_status = "LLM" if LLM_AVAILABLE else "LLM"
         st.sidebar.caption(f"Architecture découplée UI/Moteur | {llm_status}")
     else:
         st.sidebar.caption("Architecture découplée UI/Moteur")
@@ -128,7 +128,7 @@ def main() -> None:
 
     if not BACKEND_AVAILABLE:
         _clear_execution_lock()
-        st.error("❌ Backend non disponible")
+        st.error("Backend non disponible")
         st.code(IMPORT_ERROR)
         st.stop()
 
@@ -140,13 +140,13 @@ def main() -> None:
         import traceback
 
         _clear_execution_lock()
-        st.error(f"❌ Exception sidebar: {e}")
+        st.error(f"Exception sidebar: {e}")
         st.code(traceback.format_exc())
         st.stop()
 
     if sidebar_state is None:
         _clear_execution_lock()
-        st.error("❌ Erreur sidebar - rechargez la page")
+        st.error("Erreur sidebar - rechargez la page")
         st.stop()
 
     render_exec_tabs(sidebar_state)

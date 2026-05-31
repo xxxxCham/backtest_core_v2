@@ -47,7 +47,7 @@ class ColorPalette(Enum):
     MONOCHROME = "monochrome"
     CYBERPUNK = "cyberpunk"
     TRADING = "trading"  # Ancienne palette trading bleu/vert
-    TRADING_DESK = "trading_desk"  # Palette dominante or - "trading desk sombre, accent or"
+    TRADING_DESK = "trading_desk"  # Palette trading desk sombre, accent cyan-teal
 
 
 # ============================================================================
@@ -529,13 +529,13 @@ PALETTES: dict[ColorPalette, dict[str, str]] = {
         "agent_validator": "#e040fb",
     },
     ColorPalette.TRADING_DESK: {
-        # ===== "Trading desk sombre, accent or" =====
-        # Brief design : info > déco, l'oeil va vers les valeurs critiques en or
+        # ===== "Trading desk sombre, accent cyan-teal" =====
+        # Brief design : info > déco, l'oeil va vers les actions critiques en cyan-teal
         # et vers les indicateurs sémantiques colorés.
 
         # --- Couleurs sémantiques (rôles UI) ---
-        "primary": "#d4a72c",       # Or de base — action principale + focus
-        "secondary": "#f0c95a",     # Or vif — valeurs importantes
+        "primary": "#2dd4bf",       # Cyan-teal — action principale + focus
+        "secondary": "#5eead4",     # Cyan-teal vif — valeurs importantes
         "success": "#3fb950",       # Vert positif / OK
         "warning": "#f0883e",       # Orange warning / état dégradé
         "error": "#f0606b",         # Rouge négatif / alerte critique
@@ -559,10 +559,10 @@ PALETTES: dict[ColorPalette, dict[str, str]] = {
         "text_secondary": "#8b96a4",     # Labels / texte secondaire
         "text_muted": "#5a6371",      # Tertiaire / placeholders / captions
 
-        # --- Accent or (3 nuances) ---
-        "gold": "#d4a72c",            # Or de base
-        "gold_bright": "#f0c95a",     # Or vif (valeurs importantes, prix)
-        "gold_pale": "#e8c25b",       # Or pâle (titres de sections)
+        # --- Accent principal (noms legacy conservés côté CSS) ---
+        "gold": "#2dd4bf",            # Cyan-teal de base
+        "gold_bright": "#5eead4",     # Cyan-teal vif (valeurs importantes, prix)
+        "gold_pale": "#99f6e4",       # Cyan-teal pâle (titres de sections)
 
         # --- Sémantiques étendues (accent rare) ---
         "purple": "#a371f7",          # Violet réservé
@@ -587,12 +587,12 @@ PALETTES: dict[ColorPalette, dict[str, str]] = {
         "take_profit": "#3fb950",
 
         # --- Charts indicators ---
-        "bb_mid": "#d4a72c",
+        "bb_mid": "#2dd4bf",
         "bb_bands": "#58a6ff",
         "bb_bands_rgba": "rgba(88, 166, 255, 0.12)",
-        "bb_entry_z": "rgba(212, 167, 44, 0.85)",
+        "bb_entry_z": "rgba(45, 212, 191, 0.85)",
         "ema_fast": "#58a6ff",
-        "ema_slow": "#d4a72c",
+        "ema_slow": "#2dd4bf",
         "ema_center": "#58a6ff",
         "macd_line": "#3fb950",
         "macd_signal": "#f0606b",
@@ -600,18 +600,18 @@ PALETTES: dict[ColorPalette, dict[str, str]] = {
         "rsi_oversold": "#3fb950",
         "rsi_overbought": "#f0606b",
         "atr_line": "#a371f7",
-        "atr_threshold": "#d4a72c",
+        "atr_threshold": "#2dd4bf",
         "atr_channel_upper": "#f0606b",
         "atr_channel_lower": "#3fb950",
         "stoch_k": "#58a6ff",
-        "stoch_d": "#d4a72c",
+        "stoch_d": "#2dd4bf",
 
         # --- Charts diagrammes stratégies ---
         "price_line": "#e6edf3",
         "bollinger_low": "rgba(88, 166, 255, 0.55)",
         "bollinger_high": "rgba(88, 166, 255, 0.55)",
         "bollinger_fill": "rgba(88, 166, 255, 0.10)",
-        "bollinger_mid": "rgba(212, 167, 44, 0.85)",
+        "bollinger_mid": "rgba(45, 212, 191, 0.85)",
         "stop_long": "rgba(240, 96, 107, 0.70)",
         "stop_short": "rgba(240, 96, 107, 0.70)",
         "entry_level_long": "rgba(63, 185, 80, 0.85)",
@@ -632,7 +632,7 @@ PALETTES: dict[ColorPalette, dict[str, str]] = {
 # ÉTAT GLOBAL ET GETTERS
 # ============================================================================
 
-# Palette active par défaut — thème "Trading desk sombre, accent or"
+# Palette active par défaut — thème "Trading desk sombre, accent cyan-teal"
 _active_palette: ColorPalette = ColorPalette.TRADING_DESK
 _theme_mode: ThemeMode = ThemeMode.DARK
 
