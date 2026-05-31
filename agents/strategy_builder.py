@@ -2222,9 +2222,9 @@ class StrategyBuilder:
 
         # Invariant: _WINDOW >= _MAX_UNIT * _THRESHOLD, sinon max_u est plafonné
         # par n // _THRESHOLD et les longues répétitions échappent à la détection.
-        _WINDOW: int = 1200  # chars inspectés à chaque scan
+        _WINDOW: int = 2400  # chars inspectés à chaque scan
         _MIN_UNIT: int = 3  # longueur min de l'unité répétée
-        _MAX_UNIT: int = 200  # longueur max (couvre répétitions de 2-3 lignes)
+        _MAX_UNIT: int = 400  # longueur max (couvre gros blocs ~6-8 lignes répétés)
         _THRESHOLD: int = 5  # répétitions consécutives pour déclencher
         _CHECK_EVERY: int = 40  # déclencher le scan tous les N chars reçus
 
